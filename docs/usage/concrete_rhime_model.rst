@@ -321,31 +321,41 @@ forward operator without constructing a second prior.
 Multisector model
 -----------------
 
-For the current shared-basis multisector model, each sector has an independent
-state and forward contribution:
+The multisector model uses one full physical state, with an independent prior
+for each source block:
 
 .. math::
 
    x_s &\sim p_s, \\
-   \mu_s &= H_s x_s, \\
-   \mu &= \sum_s \mu_s.
+   x &= \operatorname{concat}_s x_s, \\
+   H &= [H_1\; H_2\; \cdots], \\
+   \mu &= H x.
 
-If the normalized PyMC suffix for sector ``s`` is ``ff``, its variables are
-``x_ff`` and ``mu_ff`` and its sensitivity data is ``hx_ff``. Source values select
-the corresponding ``H`` slices; sector names provide model identities. They
-are not required to be the same strings.
+Standard and multisector expose the same physical ``x``, two-dimensional
+sensitivity data ``hx`` and combined flux contribution ``mu``. Multisector
+``x`` carries a gathered source/local-state index, including when sources have
+different region counts. Source values select the corresponding input blocks;
+sector names identify their priors and reporting labels. They are not required
+to be the same strings. Rectangular preparation is packed only for construction,
+without changing the retained preparation or basis.
+Registered ``hx`` may omit structurally zero columns; the shared linear operation
+selects ``x`` entries for the columns retained in ``hx``. Use complete prepared
+source blocks with their matching full-state blocks when reconstructing the
+scientific forward equation directly.
 
-Every sector state and every reparameterization-generated latent must have a
-unique backend name. Concrete composition relies on PyMC to reject duplicate
-generated names.
+Private prior variables and reparameterization-generated latents may still
+have source-block names, and their construction-owned prior records retain the
+sector associations. New models do not add separate ``x_ff``, ``hx_ff`` or
+``mu_ff`` full-state aliases for reporting. Every private prior and generated
+latent still needs a unique backend name; PyMC rejects duplicate names.
 
 Names and generated names
 -------------------------
 
 PyMC model variables currently share one flat effective namespace. A prior can
 create more names than the requested base name. In particular, a
-reparameterized lognormal requested as ``x_ff`` creates both ``x_ff`` and
-``x_ff_latent``.
+reparameterized lognormal prior requested as ``scale`` creates both ``scale``
+and ``scale_latent``.
 
 Both names should be treated as reserved for that prior. No data variable,
 other state, forward-term deterministic, or total should use either name. PyMC
@@ -539,9 +549,11 @@ constructs its alignment from those observations.
 A copied builder should use ``registered_model()`` before ``add_coords`` or
 public model components so inference can restore MultiIndexes and auxiliary
 scientific coordinates. Keep the output contract consistent with the graph:
-multisector roles include ``flux_scale:FF`` and ``flux_contribution:FF`` for a
-sector named ``FF``. Omit roles for absent terms. The flux reconstruction and
-products shown here require the existing multiplicative sector-state meaning,
+standard and multisector roles include ``flux_scale: x``,
+``emissions_sensitivity: hx`` and ``flux_contribution: mu``. Multisector
+sector/source metadata selects blocks from the full state. Omit roles for absent
+terms. The flux reconstruction and products shown here require the existing
+multiplicative sector-state meaning,
 retained basis and source mappings. A model that changes those meanings must
 provide its own reconstruction and product functions rather than reuse an
 incompatible contract. Direct construction does not make a custom graph

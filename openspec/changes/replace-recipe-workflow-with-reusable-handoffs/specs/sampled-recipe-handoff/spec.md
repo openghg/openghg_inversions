@@ -123,6 +123,14 @@ transitive authentication or rehashing dependencies before and after inference.
 - **AND** an explicit posterior trace selection keeping only `x_latent` and `mu` is rejected at the sampler boundary
 - **AND** replay cannot write an apparently valid inversion output with an absent flux-scale role
 
+#### Scenario: Retain the shared multisector physical state
+
+- **WHEN** multisector sampling completes with the shared flux-state formulation
+- **THEN** its saved contract declares the complete `x` as `flux_scale` and default
+  trace retention includes its gathered source/local-state labels
+- **AND** per-source products select from that state using the recorded source
+  associations without requiring per-sector full-state aliases
+
 ### Requirement: Replay uses existing scientific validation
 
 Replay SHALL read the current supported record and output-contract formats and
@@ -151,6 +159,18 @@ implicit preparation.
   associations incompatible with the saved scientific output contract
 - **THEN** replay reports the scientific incompatibility after loading and before
   product writes, without reconstructing a model
+
+#### Scenario: Replay an existing current-format per-sector trace
+
+- **WHEN** a supported current-format built-in sample record declares
+  `x_<suffix>` per-sector scaling variables and lacks an explicit canonical
+  `flux_scale` role
+- **THEN** the existing saved variable names and source associations remain
+  readable without reconstructing a model or changing the preparation generation
+- **AND** a record declaring a canonical role cannot recover a missing or
+  incompatible canonical state by silently selecting per-sector variables
+- **AND** this reader compatibility does not restore historical staged envelopes
+  or create alias variables in new sampled graphs
 
 ### Requirement: Postprocessing consumes one sampled handoff and one output policy
 

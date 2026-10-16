@@ -203,8 +203,9 @@ class SectorSpec:
         name: User-facing sector name.
         flux_source: OpenGHG flux ``source`` used to retrieve this sector.
         x_prior: Prior specification for this sector's flux scaling factors.
-        variable_suffix: PyMC-safe suffix used in multi-sector model variable
-            names. Standard single-sector RHIME uses plain ``x``/``mu`` names.
+        variable_suffix: Stable suffix for sector prior records, private latent
+            variables and sector reporting names. The physical flux state and
+            its total contribution use shared ``x`` and ``mu`` names.
         state_activity: Optional labelled active/fixed policy for this sector's
             flux-scaling states. ``None`` still applies the default flux policy,
             fixing exactly-zero sensitivity columns to one.

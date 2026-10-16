@@ -160,7 +160,7 @@ def test_multisector_rhime_pipeline_writes_latest_paris_flux_schema(
             "output_path": str(tmp_path),
             "basis_algorithm": "quadtree",
             "basis_output_path": str(tmp_path / "basis.nc"),
-            "bc_basis_directory": default_bc_basis_directory,
+            "bc_basis_paths": [default_bc_basis_directory / "EUROPE" / "NESW_EUROPE_2019.nc"],
             "nbasis": 4,
             "draws": 2,
             "burn": 0,
@@ -200,7 +200,9 @@ def test_multisector_rhime_pipeline_writes_latest_paris_flux_schema(
     assert expected_diagnostics_path.is_file()
     assert not list(tmp_path.glob("*inversion_output.nc"))
     assert result.run_metadata["start_date"] == "2019-01-01"
-    assert result.variable_roles["flux_scale:FF"] == "x_ff"
+    assert result.variable_roles["flux_scale"] == "x"
+    assert result.variable_roles["flux_contribution"] == "mu"
+    assert result.variable_roles["emissions_sensitivity"] == "hx"
     with xr.open_dataset(expected_flux_path) as flux:
         for state in ("prior", "posterior"):
             np.testing.assert_allclose(

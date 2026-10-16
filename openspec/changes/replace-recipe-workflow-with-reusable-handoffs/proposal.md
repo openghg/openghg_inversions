@@ -28,6 +28,17 @@ resource-resolution and runner-owned basis-export work before #866. Exact export
 destinations are already guaranteed by #840 and now owned by the resource-I/O spec;
 the duplicated-directory behavior in #866 is a regression, not a new requirement.
 
+On 16 October 2026, the maintainer approved implementation of one full labelled
+flux state for standard and multisector construction, following the comparison
+with ordinary CO2's existing shared-state formulation. Standard and multisector
+will use one `x`, two-dimensional `hx` and combined flux contribution `mu`.
+Source-specific priors remain independent where specified; source labels select
+blocks of the full state. This amends the implementation plan in design decision
+10 and task group 6. Approval of that formulation does not establish maintainer
+readability acceptance, completed validation or merged delivery. The current
+handoff formats and CO2's coherent affine reconstruction remain in scope at their
+existing owners; no capability promotion or archive is authorized by this amendment.
+
 ## Why
 
 Full and saved recipe routes still couple scientific preparation to later model
@@ -42,6 +53,11 @@ not a completed implementation or required artifact contract.
 - Keep one readable scientific sequence per family. Full execution calls science
   in memory; optional `save_preparation`/`save_samples` write numerical artifacts
   and the complete manifest last. Saving introduces no publisher or workflow engine.
+- Use the same concrete full-state flux calculation for standard and multisector.
+  Pack rectangular multisector sensitivities into a labelled gathered state for
+  model construction without changing borrowed preparation or basis artifacts.
+  Existing current-format built-in samples with per-sector state names remain
+  readable through their saved scientific roles; new graphs do not emit those aliases.
 - Give complete `RhimeConfig` requests one `data: DataConfig` record alongside the
   existing model, sampler and output owners. Move acquisition/preparation fields/defaults
   rather than duplicating them. Group legacy INI options into ordinary mappings;

@@ -117,8 +117,11 @@ def run_example(destination: Path, *, draws: int = 20) -> None:
         assert replay.run_metadata["end_date"] == "2019-02-01"
         assert [sector["name"] for sector in replay.model_metadata["sectors"]] == ["biosphere", "fossil"]
         posterior = replay.trace["posterior"]
-        expected_total = (posterior["x_biosphere"].mean(("chain", "draw")).squeeze() * flux["supplemental"]
-                          + posterior["x_fossil"].mean(("chain", "draw")).squeeze() * flux["inventory"])
+        scales = posterior[replay.variable_name("flux_scale")]
+        expected_total = (
+            scales.sel(source="supplemental", drop=True).mean(("chain", "draw")).squeeze() * flux["supplemental"]
+            + scales.sel(source="inventory", drop=True).mean(("chain", "draw")).squeeze() * flux["inventory"]
+        )
         # Native reporting preserves each inventory's within-region spatial pattern.
         diagnostics = make_sector_flux_outputs(replay, stats=["mean"], report_flux_on_inversion_grid=False)
         np.testing.assert_allclose(diagnostics["flux_total_posterior_mean"].squeeze(), expected_total)
@@ -129,7 +132,8 @@ def run_example(destination: Path, *, draws: int = 20) -> None:
             mean = h["supplemental"] * biosphere + h["inventory"] * fossil
             density = t.logpdf(y, df=4., loc=mean, scale=.1) if student_t else norm.logpdf(y, mean, .1)
             reference = norm.logpdf(biosphere, .9, width) + norm.logpdf(fossil, 1.1, width) + density.sum()
-            np.testing.assert_allclose(logp({"x_biosphere": np.array([biosphere]), "x_fossil": np.array([fossil])}),
+            np.testing.assert_allclose(logp({"x_biosphere_active": np.array([biosphere]),
+                                            "x_fossil_active": np.array([fossil])}),
                                        reference, rtol=1e-6, atol=1e-5)
         assert manifest.read_bytes() == original_manifest
         assert (manifest.parent / "prepared-inputs.nc").read_bytes() == original_inputs

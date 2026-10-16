@@ -7,7 +7,7 @@ import dask
 import pandas as pd
 import xarray as xr
 
-from openghg_inversions.array_ops import to_dense
+from openghg_inversions.array_ops import select_gathered_data_array, to_dense
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.flux_sanitization import copy_flux_nonfinite_attrs
 from openghg_inversions.postprocessing.countries import Countries, paris_regions_dict
@@ -98,9 +98,14 @@ def _multisector_output_sectors(inv_out: InversionOutput) -> list[OutputSector]:
 
 
 def _sector_scale_trace(inv_out: InversionOutput, sector: OutputSector) -> xr.Dataset:
-    """Return one sector's scale trace renamed to the standard single-sector base name."""
-    base_name = f"x_{sector.variable_suffix}"
+    """Select one source's full scaling state in its retained basis coordinates.
+
+    Current graphs expose one gathered state through the ``flux_scale`` role.
+    Historical saved traces without that role retain their per-sector variables.
+    """
     trace = inv_out.trace_dataset()
+    gathered = "flux_scale" in inv_out.model_metadata.get("variable_roles", {})
+    base_name = inv_out.variable_name("flux_scale") if gathered else f"x_{sector.variable_suffix}"
     rename: dict[str, str] = {}
     for suffix in TRACE_GROUP_SUFFIXES:
         data_var = f"{base_name}{suffix}"
@@ -110,7 +115,32 @@ def _sector_scale_trace(inv_out: InversionOutput, sector: OutputSector) -> xr.Da
     if not rename:
         raise ValueError(f"Could not find flux scale trace variable for sector {sector.name!r}.")
 
-    return trace[list(rename)].rename(rename)
+    selected = trace[list(rename)].rename(rename)
+    if not gathered:
+        return selected
+
+    state_dims = [
+        str(dim) for dim, index in selected.indexes.items()
+        if dim in selected.dims and isinstance(index, pd.MultiIndex) and "source" in index.names
+    ]
+    if len(state_dims) != 1:
+        raise ValueError("Multisector flux_scale requires a gathered state MultiIndex containing 'source'.")
+    state_dim = state_dims[0]
+    index = selected.get_index(state_dim)
+    local_levels = [str(name) for name in index.names if name != "source"]
+    if not local_levels:
+        raise ValueError("Multisector flux_scale requires source-local state labels.")
+    basis_state_dim = inv_out.basis_functions.operator.meta.state_dim
+    return xr.Dataset({
+        name: select_gathered_data_array(
+            variable,
+            key=sector.flux_source,
+            key_dim="source",
+            ragged_dim=local_levels[0],
+            stack_dim=state_dim,
+        ).rename({state_dim: basis_state_dim})
+        for name, variable in selected.data_vars.items()
+    })
 
 
 def _sector_flux(inv_out: InversionOutput, sector: OutputSector) -> xr.DataArray:

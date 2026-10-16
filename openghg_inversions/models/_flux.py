@@ -7,7 +7,7 @@ import re
 import pandas as pd
 import xarray as xr
 
-from openghg_inversions.array_ops import select_gathered_data_array
+from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array
 
 
 def safe_pymc_name(value: str) -> str:
@@ -59,6 +59,27 @@ def _prepared_sources(design: xr.DataArray, *, observation_dim: str = "nmeasure"
             f"Gathered multi-sector H requires unique state labels; duplicate state {duplicate!r}."
         )
     return list(dict.fromkeys(source_labels))
+
+
+def _stack_multisector_sensitivity(design: xr.DataArray) -> xr.DataArray:
+    """Gather rectangular source/state columns without changing their labels or order."""
+    if "source" not in design.dims:
+        return design.transpose("nmeasure", ...)
+    state_dims = [str(dim) for dim in design.dims if dim not in {"nmeasure", "source"}]
+    if len(state_dims) != 1:
+        raise ValueError("Multisector H requires one observation, source and state dimension.")
+    state_dim = state_dims[0]
+    # State dimensions and auxiliary metadata keep their scientific names.
+    occupied = set(design.dims) | set(design.coords)
+    stacked_dim = "state"
+    suffix = 0
+    while stacked_dim in occupied:
+        suffix += 1
+        stacked_dim = "flux_state" if suffix == 1 else f"flux_state_{suffix}"
+    return concat_gather_data_arrays(
+        {source: design.sel(source=source, drop=True) for source in design.get_index("source")},
+        key_dim="source", ragged_dim=state_dim, stack_dim=stacked_dim, join="exact",
+    ).transpose("nmeasure", stacked_dim)
 
 
 def _validate_unpadded_sector_design(

@@ -28,13 +28,17 @@ import xarray as xr
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.models.components import (
+    _add_multisource_state_vector,
     add_linear_component,
     add_offset_component,
+    add_state_vector,
+    apply_linear_sensitivity,
 )
+from openghg_inversions.models._flux import _stack_multisector_sensitivity
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
-from openghg_inversions.models.state_activity import prepare_linear_sensitivity
+from openghg_inversions.models.state_activity import prepare_linear_sensitivity, resolve_state_activity
 from openghg_inversions.observation_error import (
     aggregation_error_input_names,
     resolve_aggregation_error,
@@ -260,13 +264,33 @@ def build_standard_model(
     missing_priors = _standard_prior_parameters(model_spec).keys() - priors.keys()
     if missing_priors:
         raise ValueError(f"Missing materialized prior parameter mappings: {sorted(missing_priors)!r}.")
-    likelihood_settings = model_spec.likelihood
     lazy_priors, _ = unpack_collections(priors)
     if any(is_dask_collection(model_inputs[name]) for name in names) or lazy_priors:
         raise ValueError("Standard model inputs and prior parameters must be materialized before building.")
 
+    return _build_independent_rhime_model(
+        model_inputs, model_spec, priors=priors,
+        likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs,
+        sigma_alignment=sigma_alignment, multisector=False,
+    )
+
+
+def _build_independent_rhime_model(
+    model_inputs: xr.Dataset,
+    model_spec: RhimeModelSpec,
+    *,
+    priors: Mapping[str, PriorArgs],
+    likelihood_builder: RhimeLikelihoodBuilder | None,
+    likelihood_kwargs: Mapping[str, Any] | None,
+    sigma_alignment: SigmaAlignment | None,
+    multisector: bool,
+) -> RhimeModelBuildResult:
+    """Construct the shared independent-state RHIME recipe after boundary validation."""
     timing_start = timer_start()
-    flux_sensitivity = model_inputs["H"]
+    source_sensitivity = model_inputs["H"]
+    flux_sensitivity = (
+        _stack_multisector_sensitivity(source_sensitivity) if multisector else source_sensitivity
+    )
     observations = model_inputs["mf"]
     observation_error = model_inputs["mf_error"]
     minimum_error = model_inputs.get("min_error")
@@ -275,11 +299,8 @@ def build_standard_model(
     use_bc = model_spec.use_bc
     add_offset = model_spec.add_offset
     offset_args = model_spec.offset_args
-    sector = model_spec.sectors[0]
-    state_activity = sector.state_activity if sector.state_activity is not None else model_spec.state_activity
     bc_state_activity = model_spec.bc_state_activity
 
-    x_prior = dict(priors["x"])
     bc_prior = dict(priors.get("bc", DEFAULT_BC_PRIOR))
     offset_prior = dict(priors.get("offset_latent", DEFAULT_OFFSET_PRIOR))
 
@@ -291,17 +312,28 @@ def build_standard_model(
     )
 
     with registered_model() as model:
-        flux_component = add_linear_component(
-            prepared_flux,
-            data_name="hx",
-            prior_args=x_prior,
-            var_name="x",
-            output_name="mu",
-            output_dim="nmeasure",
-            compute_deterministic=True,
-            state_activity=state_activity,
+        if multisector:
+            prior_blocks = {
+                sector.flux_source: (
+                    f"x_{sector.variable_suffix}", priors[f"x_{sector.variable_suffix}"],
+                    sector.state_activity if sector.state_activity is not None else model_spec.state_activity,
+                )
+                for sector in model_spec.sectors
+            }
+            local_state_dim = next(
+                str(dim) for dim in source_sensitivity.dims if dim not in {"nmeasure", "source"}
+            )
+            state = _add_multisource_state_vector(
+                prepared_flux.removed, prior_blocks, local_state_dim=local_state_dim, var_name="x",
+            )
+        else:
+            sector = model_spec.sectors[0]
+            policy = sector.state_activity if sector.state_activity is not None else model_spec.state_activity
+            activity = resolve_state_activity(prepared_flux.removed, policy)
+            state = add_state_vector(activity, prior_args=dict(priors["x"]), var_name="x").state
+        pollution_mean = apply_linear_sensitivity(
+            prepared_flux, state, data_name="hx", output_name="mu",
         )
-        pollution_mean = flux_component.output
 
         boundary_mean = None
         if prepared_boundary is not None:
@@ -337,7 +369,7 @@ def build_standard_model(
             baseline=baseline_mean,
         )
         add_rhime_likelihood(
-            settings=likelihood_settings,
+            settings=model_spec.likelihood,
             likelihood_builder=likelihood_builder,
             likelihood_kwargs=likelihood_kwargs,
             forward=forward,
@@ -350,10 +382,10 @@ def build_standard_model(
             prior_parameters=priors,
         )
     result = builtin_model_build_result(
-        model, model_spec=model_spec, multisector=False,
+        model, model_spec=model_spec, multisector=multisector,
         input_names=tuple(str(name) for name in model_inputs.data_vars),
     )
-    log_timing("rhime.model_build", timer_seconds(timing_start), multisector=False)
+    log_timing("rhime.model_build", timer_seconds(timing_start), multisector=multisector)
     return result
 
 

@@ -7,8 +7,8 @@ same public runner and model. They differ only in their observation and
 footprint acquisition options.
 
 Use :func:`openghg_inversions.rhime.run_rhime_multisector` when every flux
-component should have its own scaling state. The ``flux_sources`` values are
-the OpenGHG ``source`` metadata used for retrieval. Optional
+component should have its own scaling prior within the full state. The
+``flux_sources`` values are the OpenGHG ``source`` metadata used for retrieval. Optional
 ``sector_sources`` entries give those sources shorter model-facing names.
 
 Before running
@@ -166,17 +166,23 @@ slice per requested flux source. Satellite inputs should also contain finite
 applied. Column runs retain ``mf_prior_factor`` and, when supplied,
 ``mf_prior_upper_level_factor`` in ``inv_inputs``.
 
-The posterior contains one sector scaling variable per sanitized sector name,
-for example ``x_anth``, ``x_resp``, and ``x_gpp_atm``. Use the semantic mapping
-instead of constructing names in downstream code:
+The posterior contains one full scaling variable, ``x``, on a gathered state
+coordinate carrying the source and local state labels. Its blocks retain their
+sector-specific priors. Use the scientific role to find the variable and the
+recorded source association to select a sector:
 
 .. code-block:: python
 
-   roles = result.variable_roles
+   scales = result.trace_group("posterior")[result.variable_name("flux_scale")]
    for sector in result.model_metadata["sectors"]:
-       role = f"flux_scale:{sector['name']}"
-       variable = roles[role]
-       print(sector["name"], result.trace_group("posterior")[variable].mean().item())
+       block = scales.sel(source=sector["flux_source"], drop=True)
+       print(sector["name"], block.mean().item())
+
+The model uses one two-dimensional sensitivity ``hx`` and one total flux
+concentration contribution ``mu``. Rectangular prepared ``H`` is packed only
+for model construction; the prepared inputs and retained basis remain unchanged.
+The first requested ``flux_sources`` entry supplies automatic basis weighting.
+Changing the order of ``sector_sources`` does not change that preparation choice.
 
 The returned value is the modern, serializable scientific result, including with
 ``output_format="none"``. ``output_format="inv_out"`` requests its file export;

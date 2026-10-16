@@ -44,3 +44,51 @@ argument SHALL remain available, as in the standard eager builder.
   without `likelihood_builder`
 - **THEN** it rejects the unsupported runner option before constructing a model
   or invoking a likelihood; complete-model functions are composed directly
+
+## ADDED Requirements
+
+### Requirement: One full labelled flux state for standard and multisector
+
+Standard and multisector construction SHALL expose one complete physical scaling
+state `x`, one two-dimensional sensitivity `hx` and one total flux concentration
+contribution `mu`. Their forward calculation SHALL apply that sensitivity to the
+same full state used by scientific output consumers. Multisector states SHALL
+retain source-local labels on a gathered state coordinate without rectangular
+padding. Packing rectangular sensitivities for construction SHALL NOT mutate
+prepared inputs or retained basis artifacts; already gathered state coordinates
+SHALL retain their scientific meaning and ordering.
+
+Independent source blocks SHALL retain their selected prior families, parameters,
+reparameterization and active/fixed policies. Private prior variables and recorded
+sector-prior identities MAY differ by block. Fixed and zero-effect entries SHALL
+remain in the full physical state. New graphs SHALL NOT create per-sector
+full-state, sensitivity or contribution aliases solely to preserve old names.
+Standard and multisector SHALL share the concrete flux calculation without
+introducing a generic execution framework or an optional representation switch.
+
+#### Scenario: Different priors on ragged source blocks
+
+- **WHEN** multisector sources have unequal state counts and different supported
+  priors or active/fixed policies
+- **THEN** one full source-labelled `x` contains every physical state and one
+  labelled linear calculation gives the complete flux concentration contribution
+- **AND** structurally pruned backend sensitivity columns select their matching
+  full-state entries without changing the scientific `H @ x` calculation
+- **AND** its joint density and forward calculation preserve the declared block
+  priors, fixed values and labelled source routing
+
+#### Scenario: Shared construction preserves preparation ownership
+
+- **WHEN** standard or multisector construction consumes eager scientific inputs
+- **THEN** the same concrete full-state flux operation is used
+- **AND** model-only packing leaves the caller's preparation and retained basis
+  values, source order and lazy unselected arrays unchanged
+
+#### Scenario: CO2 retains its coherent shared-state interpretation
+
+- **WHEN** ordinary CO2 applies its full correlated retained state and reconstructs
+  native or country flux
+- **THEN** the coherent prior, effective sensitivity, affine intercept and
+  retained-state-conditional reconstruction remain unchanged
+- **AND** common labelled state representation does not substitute independent
+  source scaling or standard multiplicative reconstruction for the affine map

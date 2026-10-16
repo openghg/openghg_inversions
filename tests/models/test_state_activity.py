@@ -697,11 +697,12 @@ def test_multisector_rhime_can_freeze_a_sector_and_use_array_priors() -> None:
 
     assert "x_ff_active" not in model.named_vars
     assert "x_ocean_active" in model.named_vars
-    np.testing.assert_allclose(model.named_vars["x_ff"].eval(), np.ones(4))
-    assert model.named_vars["x_ocean"].eval().shape == (4,)
-    assert model.named_vars["mu_ff"].eval().shape == (2,)
-    assert model.named_vars["mu_ocean"].eval().shape == (2,)
-    assert "mu" not in model.named_vars
+    state, mean = pm.draw([model["x"], model["mu"]], random_seed=42)
+    np.testing.assert_allclose(state[:4], np.ones(4))
+    assert state.shape == (8,)
+    np.testing.assert_allclose(mean, h.values @ state[:4] + 2.0 * h.values @ state[4:])
+    np.testing.assert_allclose(model["x_ocean_prior_mu"].get_value(), [1.1, 1.2, 1.3, 1.4])
+    assert not {"mu_ff", "mu_ocean", "hx_ff", "hx_ocean"}.intersection(model.named_vars)
 
 
 def test_multisector_model_applies_sector_override_and_shared_activity() -> None:
@@ -738,11 +739,7 @@ def test_multisector_model_applies_sector_override_and_shared_activity() -> None
     model = build_multisector_graph(_model_inputs(multi_h), model_spec)
 
     assert not any(rv.name.startswith("x_") for rv in model.free_RVs)
-    ff, ocean, ff_mean, ocean_mean = pm.draw(
-        [model["x_ff"], model["x_ocean"], model["mu_ff"], model["mu_ocean"]],
-        random_seed=42,
-    )
-    np.testing.assert_allclose(ff, 2.0)
-    np.testing.assert_allclose(ocean, 3.0)
-    np.testing.assert_allclose(ff_mean, h.values.sum(axis=1) * 2.0)
-    np.testing.assert_allclose(ocean_mean, h.values.sum(axis=1) * 6.0)
+    state, mean = pm.draw([model["x"], model["mu"]], random_seed=42)
+    np.testing.assert_allclose(state[:4], 2.0)
+    np.testing.assert_allclose(state[4:], 3.0)
+    np.testing.assert_allclose(mean, h.values.sum(axis=1) * 8.0)
