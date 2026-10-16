@@ -343,11 +343,21 @@ open for broader validation, review and merged evidence; no maintainer
 readability acceptance, cached adoption or programme completion is claimed.
 
 The public configured product entry point is `co2.run_co2_from_config`, exposed
-by `rhime run-co2`. It consumes model, sampler and output choices; the direct
-`run_rhime_co2` still returns its annotated trace. Full/saved routes visibly call
+by `rhime run --model co2`, with `rhime run-co2` retained as an alias. It consumes
+model, sampler and output choices; the Python selector's
+`rhime.run(model="co2", prepared_inputs=...)` and direct `run_rhime_co2` still
+return their annotated trace. Full/saved routes visibly call
 `materialize_co2_inputs`, `build_co2_from_materialized`, `sample_rhime_model`,
 trace annotation, `make_co2_output`, `calculate_co2_products` and
 `save_co2_products`. Full execution uses no manifests.
+
+The user's primary-CLI correction is reflected in the model-selection delta:
+both executables accept `run --model co2`, retain `run-co2` as an alias, and
+forward configuration/date/destination/component overrides to the configured
+product runner. The existing Python selector contract is unchanged. All 52
+public-selector, ordinary/standard phase and installed ordinary/cached CLI checks
+pass, including products and full trace export through the primary spelling.
+This CLI-only follow-up supplements the fixed `ccffce5f` Slurm validation.
 
 Ordinary execution returns `Co2Output`, borrowing the complete trace `DataTree`
 and preparation and retaining conditional affine meaning. It carries no writing

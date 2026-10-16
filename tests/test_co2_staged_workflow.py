@@ -380,7 +380,7 @@ def test_installed_co2_rejects_unsupported_output_before_writing(
     config.write_text(config.read_text().replace('output_format = "basic"', 'output_format = "inv_out"'))
     destination = tmp_path / "unsupported"
     arguments = (
-        ["run-co2", "--config", config, "--output-path", destination]
+        ["run", "--model", "co2", "--config", config, "--output-path", destination]
         if variant == "ordinary"
         else ["prepare", "--model", "co2", "--config", config, "--output-dir", destination]
     )
@@ -395,7 +395,7 @@ def test_installed_configured_co2_full_execution_writes_selected_products(tmp_pa
     config = _configuration(tmp_path, "ordinary")
     config.write_text(config.read_text().replace('[outputs]\n', '[outputs]\nsave_trace = true\n'))
     destination = tmp_path / "full-products"
-    _cli("run-co2", "--config", config, "--output-path", destination)
+    _cli("run", "--model", "co2", "--config", config, "--output-path", destination)
     for name in ("basic", "native_flux", "country_flux"):
         path = destination / f"co2-stage-test_{name}_co2_EUROPE_2020-01-01.nc"
         assert path.is_file()

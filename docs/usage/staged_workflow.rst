@@ -218,9 +218,9 @@ For example, with preparation settings in ``preparation.json``:
      --output-dir run/paris
 
 ``--model standard`` is the default for these commands. A manifest's family must
-match the selected route. Full-run ``rhime run`` choices and aliases are
-unchanged; saved-phase selection does not add CO2 configuration-file support to
-the full-run command.
+match the selected route. Ordinary CO₂ configured full execution is available
+through ``rhime run --model co2``; see :doc:`co2_model_family` for its
+prepared-input configuration.
 
 Python callers can use the same handoffs:
 
@@ -250,8 +250,10 @@ Ordinary CO₂ handoffs
 Ordinary CO₂ uses its own coherent preparation and conditional affine output
 meaning. ``run_co2_from_config`` and its saved phases call the same preparation,
 materialization, construction, sampling and product operations; full execution
-requires no manifests. ``rhime run-co2`` consumes the configured model, sampler
-and output request. Direct ``run_rhime_co2`` calls continue to return traces.
+requires no manifests. ``rhime run --model co2`` consumes the configured model,
+sampler and output request; ``rhime run-co2`` remains an alias. Direct Python
+``run_rhime_co2`` and ``rhime.run(model="co2", prepared_inputs=...)`` calls
+continue to return traces.
 
 ``rhime sample --model co2 --preparation-manifest ...`` consumes one preparation
 handoff and current inference choices. Compatible BC/offset priors or supported

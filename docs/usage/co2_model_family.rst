@@ -177,7 +177,12 @@ Full configured execution writes the selected products to the supplied directory
 
 .. code-block:: bash
 
-   rhime run-co2 -c co2.toml --output-path run/full
+   rhime run --model co2 -c co2.toml --output-path run/full
+
+``rhime run-co2`` remains an alias. This configured CLI route uses
+``run_co2_from_config`` and writes requested products; Python
+``rhime.run(model="co2", prepared_inputs=...)`` continues to select the direct
+runner and return its annotated trace.
 
 Alternatively, save preparation and inference separately:
 

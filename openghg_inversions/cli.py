@@ -16,7 +16,7 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--kwargs",
         type=json.loads,
-        help="Pass keyword arguments to the RHIME function, e.g. '{\"draws\": 10}'.",
+        help="JSON configuration overrides; CO2 uses model/likelihood/sampling/outputs sections.",
     )
     parser.add_argument("--output-path", help="Path to write results to.")
 
@@ -37,6 +37,9 @@ def _command_kwargs(args: argparse.Namespace) -> dict[str, Any]:
 
 def _run_command(args: argparse.Namespace) -> None:
     """Run the selected configuration-driven recipe."""
+    if args.model == "co2":
+        _run_co2_command(args)
+        return
     from openghg_inversions.rhime import run
 
     run(model=args.model, config_file=args.config, **_command_kwargs(args))
@@ -334,7 +337,7 @@ def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser
     selected_run = subparsers.add_parser("run", help="Run a selected RHIME model")
     _add_run_args(selected_run)
     selected_run.add_argument(
-        "--model", choices=("standard", "multisector", "nested"), default="standard",
+        "--model", choices=("standard", "multisector", "nested", "co2"), default="standard",
         help="Configuration-driven model recipe (default: standard)",
     )
     selected_run.set_defaults(func=_run_command)
@@ -349,7 +352,7 @@ def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser
     _add_run_args(run_multi_parser)
     run_multi_parser.set_defaults(func=_run_rhime_multisector_command)
 
-    co2_parser = subparsers.add_parser("run-co2", help="Run configured ordinary CO2 and write requested products")
+    co2_parser = subparsers.add_parser("run-co2", help="Alias for run --model co2")
     _add_run_args(co2_parser)
     co2_parser.set_defaults(func=_run_co2_command)
 

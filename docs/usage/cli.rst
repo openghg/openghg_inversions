@@ -48,6 +48,21 @@ guide. New configuration files should use the RHIME vocabulary documented in
 validated production-shape examples are used by
 :doc:`rhime_standard_tutorial` and :doc:`rhime_multisector_tutorial`.
 
+Ordinary CO₂ runs
+------------------
+
+Use ``rhime run --model co2`` with a CO₂ TOML configuration and prepared
+scientific inputs:
+
+.. code-block:: console
+
+   $ rhime run --model co2 --config co2.toml --output-path run/full
+
+The configured model, sampler and output choices govern execution and requested
+products. Original requested dates and domain must be supplied explicitly or
+retained in preparation provenance. ``rhime run-co2`` remains an alias for this
+configured route. See :doc:`co2_model_family` for its scientific prerequisites.
+
 Saved standard phases
 ----------------------
 
@@ -73,12 +88,13 @@ The public Python selector is :func:`openghg_inversions.rhime.run`:
 The ``co2``, ``co2_cached_sigma``, ``co2_o2`` and ``co2_o2_cached_sigma`` Python
 choices call their existing prepared-input recipes. They require the appropriate
 ``prepared_inputs`` object and preserve each recipe's arguments and return type;
-selection does not provide a new acquisition or checkpoint route. These families
-are therefore not choices for the configuration-driven ``rhime run`` command.
-For configured ordinary CO₂ products use the separate ``rhime run-co2`` command
-or :func:`openghg_inversions.rhime.co2.run_co2_from_config`. These consume
-prepared scientific inputs and explicit requested dates/domain rather than
-acquiring OpenGHG data; direct Python recipe selection still returns its trace.
+selection does not provide a new acquisition or checkpoint route. Python
+``run(model="co2", prepared_inputs=...)`` retains its direct trace return.
+The CLI ``rhime run --model co2`` instead consumes a configured ordinary CO₂
+product request through :func:`openghg_inversions.rhime.co2.run_co2_from_config`.
+It uses prepared scientific inputs and explicit requested dates/domain without
+acquiring OpenGHG data. Cached and linked CO₂ recipes are not choices for the
+configuration-driven ``rhime run`` command.
 See :doc:`co2_model_family` for the TOML configuration and handoff commands.
 
 ``openghg-inversions`` and its ``run-rhime``, ``run-rhime-multisector`` and
