@@ -3,6 +3,8 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
+from pathlib import Path as _Path
+
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
@@ -88,3 +90,7 @@ html_theme_options = {
 }
 html_static_path = ['_static']
 html_css_files = ['custom.css']
+
+# Keep local builds and archived release builds on the same version presentation.
+_version_config_path = _Path(__file__).resolve().parents[1] / "scripts" / "docs_version_config.py"
+exec(compile(_version_config_path.read_text(), str(_version_config_path), "exec"))

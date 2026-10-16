@@ -1,0 +1,221 @@
+name: Validate Docs (pull requests)
+
+on:
+  pull_request:
+    branches: [main, devel]
+    paths:
+      - 'docs/**'
+      - 'openghg_inversions/**/*.py'
+      - 'tox.ini'
+      - 'pyproject.toml'
+      - 'setup.cfg'
+      - 'setup.py'
+      - 'scripts/publish_docs.py'
+      - 'scripts/docs_version_config.py'
+      - 'tests/test_publish_docs.py'
+      - 'tests/test_docs_version_config.py'
+      - '.github/workflows/docs.yaml'
+      - '.github/workflows/docs-pr.yaml'
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Validate publication and select preview versions
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.versions.outputs.versions }}
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: '0.12.5'
+          enable-cache: true
+
+      - name: Validate documentation publication and version selector
+        run: >-
+          uv run --no-project --with pytest python -m pytest --noconftest
+          tests/test_publish_docs.py tests/test_docs_version_config.py
+
+      - name: Include historical builds when publishing configuration changes
+        id: versions
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          if git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- \
+            .github/workflows/docs.yaml .github/workflows/docs-pr.yaml \
+            scripts/publish_docs.py scripts/docs_version_config.py docs/conf.py; then
+            echo 'versions=["devel"]' >> "$GITHUB_OUTPUT"
+          else
+            STATUS=$?
+            if [ "$STATUS" != 1 ]; then
+              exit "$STATUS"
+            fi
+            echo 'versions=["devel","v0.7.4","v0.6.0"]' >> "$GITHUB_OUTPUT"
+          fi
+
+  docs:
+    name: Build documentation (${{ matrix.version }})
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.prepare.outputs.versions) }}
+    env:
+      DOCS_VERSION: ${{ matrix.version }}
+      DOCS_BASE_URL: http://127.0.0.1:8765
+    steps:
+      - name: Checkout pull request tooling
+        uses: actions/checkout@v7
+        with:
+          path: control
+          persist-credentials: false
+
+      - name: Checkout documentation source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ matrix.version == 'devel' && github.sha || format('refs/tags/{0}', matrix.version) }}
+          path: source
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: '0.12.5'
+          enable-cache: true
+
+      - name: Apply pull request version configuration
+        run: |
+          printf '\n' >> source/docs/conf.py
+          cat control/scripts/docs_version_config.py >> source/docs/conf.py
+
+      - name: Build docs in the source version's own environment
+        id: build
+        working-directory: source
+        run: |
+          DOCS_ENV=$(python - <<'PY'
+          import configparser
+
+          config = configparser.ConfigParser(interpolation=None)
+          config.read("tox.ini")
+          if config.has_section("testenv:docs-full"):
+              print("docs-full")
+          elif config.has_section("testenv:docs"):
+              print("docs")
+          else:
+              raise SystemExit("Source version has no documentation build environment")
+          PY
+          )
+          # v0.6.0 regenerates the API in docs and writes HTML directly to _build.
+          if [ "$DOCS_ENV" = docs-full ]; then
+            echo 'html_dir=source/docs/_build/html' >> "$GITHUB_OUTPUT"
+          else
+            echo 'html_dir=source/docs/_build' >> "$GITHUB_OUTPUT"
+          fi
+          uvx --with tox-uv==1.36.0 tox==4.60.0 -e "$DOCS_ENV" \
+            -x 'testenv.pass_env+=DOCS_VERSION,DOCS_BASE_URL'
+
+      - name: Upload documentation for preview assembly
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-preview-build-${{ matrix.version }}
+          path: ${{ steps.build.outputs.html_dir }}
+          include-hidden-files: true
+          if-no-files-found: error
+
+  preview:
+    name: Assemble downloadable documentation preview
+    needs: docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pull request tooling
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Download documentation builds
+        uses: actions/download-artifact@v8
+        with:
+          pattern: docs-preview-build-*
+          path: builds
+
+      - name: Assemble preview and browsing instructions
+        run: |
+          for BUILD in builds/docs-preview-build-*; do
+            VERSION=${BUILD##*/}
+            VERSION=${VERSION#docs-preview-build-}
+            python scripts/publish_docs.py \
+              --site-dir preview \
+              --build-dir "$BUILD" \
+              --version "$VERSION" \
+              --base-url http://127.0.0.1:8765
+          done
+          cat > preview/README.txt <<'EOF'
+          Documentation versioning preview
+
+          Extract the docs-versioning-preview artifact and open a terminal in the
+          extracted folder containing this README and index.html. Run:
+
+              python3 -m http.server 8765 --bind 127.0.0.1
+
+          Open http://127.0.0.1:8765/ in your browser. Keep the terminal running.
+          Serve the folder over HTTP; opening HTML files directly prevents the
+          version selector from fetching its shared version list.
+
+          devel contains this pull request's docs. When publishing configuration
+          changes, the preview also includes 0.7.4 and 0.6.0 built from their exact
+          release tags using their own environments and this pull request's version
+          presentation. See the version archive for the versions included.
+
+          Review the version dropdown, matching-page navigation, the archive, and
+          development/release banners. With historical builds included, check the
+          default redirect and stable links point to 0.7.4. Otherwise, the preview
+          defaults to devel.
+
+          This is a local preview. It has not been deployed to GitHub Pages.
+          EOF
+
+      - name: Upload browsable preview
+        id: upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-versioning-preview
+          path: preview/
+          include-hidden-files: true
+          if-no-files-found: error
+
+      - name: Link preview from workflow summary
+        env:
+          PREVIEW_URL: ${{ steps.upload.outputs.artifact-url }}
+        run: |
+          printf '[Download the documentation preview](%s)\n\n' "$PREVIEW_URL" >> "$GITHUB_STEP_SUMMARY"
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          Extract the ZIP, then follow README.txt to serve it with
+          `python3 -m http.server 8765 --bind 127.0.0.1` and browse
+          <http://127.0.0.1:8765/>. Historical 0.7.4 and 0.6.0 snapshots are included
+          when the PR changes publishing configuration; devel is always included.
+          EOF

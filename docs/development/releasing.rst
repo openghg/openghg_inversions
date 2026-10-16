@@ -138,3 +138,28 @@ Every automation leaves ordinary Git and GitHub operations available:
 * create a GitHub release manually only after the same CI gate passes.
 
 Never bypass or recreate a successful PyPI publication.
+
+Versioned documentation
+-----------------------
+
+The documentation workflow publishes release snapshots at ``/vX.Y.Z/`` and
+development documentation at ``/devel/`` on GitHub Pages. The root and
+``/stable/`` point to the highest published stable version with a successful
+documentation build. Archived documentation does not imply ongoing support.
+
+For the initial rollout, upgrade the documentation workflow, publishing helper,
+and selector configuration on ``main`` first. Keep the ``devel`` upgrade
+unmerged, and drain queued or running legacy documentation and GitHub Pages
+deployments. Avoid changes that trigger the old ``devel`` workflow during
+bootstrap. Publish the latest supported release through the maintained
+workflow, for example:
+
+.. code-block:: bash
+
+   gh workflow run docs.yaml --ref main -f docs_ref=v0.7.4
+
+Wait for GitHub Pages publication and verify that the public root and
+``/stable/`` open that release before merging the versioning changes into
+``devel``. Its automatic deployment must preserve stable; older release
+backfills can follow. Never dispatch the old workflow stored in a historical
+release tag or rerun a legacy deployment: it can replace the entire site.

@@ -1,78 +1,178 @@
-name: Build & Deploy Docs (devel)
+name: Build & Deploy Versioned Docs
 
 on:
   push:
-    branches:
-      - devel
+    branches: [devel]
     paths:
       - 'docs/**'
+      - 'openghg_inversions/**/*.py'
+      - 'scripts/publish_docs.py'
+      - 'scripts/docs_version_config.py'
       - 'tox.ini'
       - 'pyproject.toml'
       - 'setup.cfg'
       - 'setup.py'
+      - '.github/workflows/docs.yaml'
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      docs_ref:
+        description: 'Documentation source: devel or a published release tag (for example v0.7.4)'
+        required: true
+        default: devel
+        type: string
 
 permissions:
   contents: write
-  pages: write
 
 jobs:
   docs:
     runs-on: ubuntu-latest
+    # Queue every release; a single pending slot would discard older backfills.
     concurrency:
       group: docs-deploy
-      cancel-in-progress: true
+      queue: max
+      cancel-in-progress: false
+    env:
+      DOCS_BASE_URL: https://openghg.github.io/openghg_inversions
 
     steps:
-      - name: Checkout (full history)
-        uses: actions/checkout@v4
+      - name: Select and validate documentation source
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_REF: ${{ inputs.docs_ref }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            if [ "$GITHUB_REF" != refs/heads/main ] && [ "$GITHUB_REF" != refs/heads/devel ]; then
+              echo 'Dispatch docs.yaml from main or devel, with the release tag in docs_ref.'
+              exit 1
+            fi
+            DOCS_VERSION=$REQUESTED_REF
+          elif [ "$GITHUB_EVENT_NAME" = release ]; then
+            DOCS_VERSION=$RELEASE_TAG
+          else
+            DOCS_VERSION=devel
+          fi
+          if [ "$DOCS_VERSION" = devel ]; then
+            if [ "$GITHUB_EVENT_NAME" = push ]; then
+              SOURCE_REF=$GITHUB_SHA
+            else
+              SOURCE_REF=refs/heads/devel
+            fi
+          elif [[ "$DOCS_VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            PUBLISHED=$(gh release view "$DOCS_VERSION" --repo "$GITHUB_REPOSITORY" \
+              --json isDraft,isPrerelease --jq '(.isDraft == false) and (.isPrerelease == false)')
+            if [ "$PUBLISHED" != true ]; then
+              echo 'Documentation archives require a published, non-prerelease GitHub release.'
+              exit 1
+            fi
+            SOURCE_REF=refs/tags/$DOCS_VERSION
+          else
+            echo 'docs_ref must be devel or a published tag such as v0.7.4.'
+            exit 1
+          fi
+          {
+            echo "version=$DOCS_VERSION"
+            echo "ref=$SOURCE_REF"
+          } >> "$GITHUB_OUTPUT"
+
+      # Release tags retain old workflows and scripts; publication uses maintained code.
+      - name: Checkout publication tooling
+        uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          ref: ${{ github.event_name == 'release' && 'main' || github.sha }}
+          path: control
+
+      - name: Checkout exact documentation source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.source.outputs.ref }}
+          path: source
+          persist-credentials: false
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
-          version: "latest"
+          version: '0.12.5'
           enable-cache: true
 
-      - name: Build docs using tox
-        run: uvx --with tox-uv tox -e docs-full
-        
-      - name: Show built docs (debug)
+      - name: Add maintained version selector to historical configuration
         run: |
-          echo "Listing docs/_build/ (if present):"
-          if [ -d docs/_build/ ]; then
-            find docs/_build/ -maxdepth 3 -type f -print || true
-            echo "Total files:"
-            find docs/_build/ -type f | wc -l
+          printf '\n' >> source/docs/conf.py
+          cat control/scripts/docs_version_config.py >> source/docs/conf.py
+
+      - name: Build docs in the source version's own environment
+        id: build
+        working-directory: source
+        env:
+          DOCS_VERSION: ${{ steps.source.outputs.version }}
+        run: |
+          DOCS_ENV=$(python - <<'PY'
+          import configparser
+
+          config = configparser.ConfigParser(interpolation=None)
+          config.read("tox.ini")
+          if config.has_section("testenv:docs-full"):
+              print("docs-full")
+          elif config.has_section("testenv:docs"):
+              print("docs")
+          else:
+              raise SystemExit("Source version has no documentation build environment")
+          PY
+          )
+          # v0.6.0 regenerates the API in docs and writes HTML directly to _build.
+          if [ "$DOCS_ENV" = docs-full ]; then
+            echo 'html_dir=source/docs/_build/html' >> "$GITHUB_OUTPUT"
           else
-            echo "Directory docs/_build/ does not exist"
+            echo 'html_dir=source/docs/_build' >> "$GITHUB_OUTPUT"
           fi
+          uvx --with tox-uv==1.36.0 tox==4.60.0 -e "$DOCS_ENV" \
+            -x 'testenv.pass_env+=DOCS_VERSION,DOCS_BASE_URL'
 
-      - name: Upload built docs artifact (for inspection)
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Upload built docs artifact
+        if: ${{ always() && steps.build.outputs.html_dir != '' }}
+        uses: actions/upload-artifact@v7
         with:
-          name: built-docs
-          path: docs/_build/
+          name: built-docs-${{ steps.source.outputs.version }}
+          path: ${{ steps.build.outputs.html_dir }}
 
-      - name: Fail if publish dir empty
+      - name: Checkout current site after the build
+        working-directory: control
+        shell: bash
         run: |
-          if [ ! -d docs/_build/html/ ] || [ -z "$(ls -A docs/_build/html/ 2>/dev/null)" ]; then
-            echo "ERROR: publish_dir docs/_build/html/ is empty or missing. Aborting deploy."
-            exit 1
+          mkdir ../site
+          if git ls-remote --exit-code --heads origin gh-pages > "$RUNNER_TEMP/gh-pages-ref"; then
+            git fetch --depth=1 origin refs/heads/gh-pages:refs/remotes/origin/gh-pages
+            git archive refs/remotes/origin/gh-pages | tar -x -C ../site
+          else
+            STATUS=$?
+            if [ "$STATUS" != 2 ]; then
+              exit "$STATUS"
+            fi
           fi
+
+      - name: Assemble version archive and stable entry points
+        env:
+          DOCS_VERSION: ${{ steps.source.outputs.version }}
+          DOCS_BUILD_DIR: ${{ steps.build.outputs.html_dir }}
+        run: >-
+          python control/scripts/publish_docs.py
+          --site-dir site
+          --build-dir "$DOCS_BUILD_DIR"
+          --version "$DOCS_VERSION"
+          --base-url "$DOCS_BASE_URL"
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: docs/_build/html/
+          publish_dir: site
           publish_branch: gh-pages
