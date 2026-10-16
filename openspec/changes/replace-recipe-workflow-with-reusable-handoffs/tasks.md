@@ -417,12 +417,12 @@ Validation before Slurm:
 - Earlier editable-checkout validation 19448074 was cancelled when the approved
   simplification superseded its inputs; it supplies no terminal validation. Full
   locked Python 3.12/3.13, type and strict documentation checks use a fixed revision
-  and the repository Slurm runner; terminal comparison remains pending.
+  and the repository Slurm runner; final terminal comparison is recorded below.
 - Runtime `ccffce5f` is pushed in #886. Fixed detached-checkout Slurm job
   19448969 runs `py312-openghgCur,py313-openghgCur,type,docs-strict`; callback
   19448970 has verified `afterany:19448969`, ticket
   `sw-20261016T094109Z-3cc04fbfe0e2`. The three final preflight checks passed.
-  Terminal comparison remains pending; this does not clear task 3.6.
+  The first terminal comparison and corrective rerun are recorded below; this does not clear task 3.6.
 
 Broader Slurm 19448969 terminal evidence at `ccffce5f`: both full locked
 Python suites reached 3,105 passes and eight skips, with the same single failure
@@ -437,18 +437,37 @@ CLI local-variable errors. Explicit dictionary annotations and a distinct cached
 preparation local fix these without changing scientific operations. The PyMC
 missing-stubs diagnostic moved from retired `co2/stages.py` ownership to
 `co2/handoffs.py`; it remains baseline debt without suppression. The prior
-`fixed_ou.expand_mapping` error is removed. The expected next count is 163,
-subject to Slurm confirmation. Strict docs reported 321 warnings versus baseline
+`fixed_ou.expand_mapping` error is removed. The corrected rerun below confirms 163 diagnostics. Strict docs reported 321 warnings versus baseline
 318; all three additions were unresolved short function references and now use
 fully qualified targets verified in Sphinx's inventory. Broader confirmation
-remains pending. Peak memory was `21525080K` for the combined job, supporting
+is recorded below. Peak memory was `21525080K` for the combined job, supporting
 24 GiB for the same concurrent rerun.
 
 Corrected runtime `cae92463` passes 97 focused public/phase/scientific tests and
 six documentation tests, Ruff, diff and strict OpenSpec checks. Fixed-revision
 Slurm rerun 19450581 covers both full locked Python suites, type and strict docs;
 callback 19450582 has verified `afterany:19450581`, ticket
-`sw-20261016T100752Z-ac19101a0f22`. Terminal confirmation remains pending.
+`sw-20261016T100752Z-ac19101a0f22`.
+
+Final terminal evidence — 16 October 2026: Slurm 19450581 completed at fixed
+runtime `cae92463`; both `py312-openghgCur` and `py313-openghgCur` full suites
+passed (tox exit zero). Successful parallel tox output suppresses individual
+pytest totals, so no new exact test count is inferred. The combined job returned
+nonzero only for existing type/documentation debt. Strict documentation has the
+identical normalized set of 318 warnings as baseline `208a21d9`/19448086.
+Mypy has 163 diagnostics versus baseline 164: one existing fixed-OU mapping error
+is removed and the existing PyMC missing-stubs diagnostic relocates from
+`co2/stages.py` to `co2/handoffs.py`. No introduced diagnostics remain after
+accounting for that ownership move. Agents independently confirmed both deltas
+and reviewed rendered CO2 family, CLI and output API pages without finding new
+issues. Changed-path Ruff, diff and strict OpenSpec checks pass. Final MaxRSS is
+`22473024K`; allocation was 24 GiB.
+
+The ordinary implementation/scientific validation evidence is ready for review in
+#886. Task 3.6 remains open specifically for maintainer review and merged evidence;
+no readability acceptance or whole-programme completion is claimed. Subsequent
+commits record evidence only. Existing #679/#881 debt, cached section 4, linked
+OPE-165 and integrated acceptance remain separate. Nothing is merged.
 
 Concrete cached handoff: consume `load_preparation` (coherent inputs, bound
 companion and generation), keep the matched cached construction/step owner and
