@@ -6,6 +6,7 @@ import json
 import warnings
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
+from math import prod
 from pathlib import Path
 from typing import cast, Literal, TypeVar
 from typing_extensions import Self
@@ -19,6 +20,7 @@ from openghg_inversions.utils import get_country_file_path
 from ._country_codes import CountryInfoList
 from ._basis_products import make_x_to_country_matrix
 from .inversion_output import InversionOutput
+from .stats import _STATS_MAX_POINTS, _chunk_non_sample_dims
 
 # type for xr.Dataset *or* xr.DataArray
 DataSetOrArray = TypeVar("DataSetOrArray", xr.DataArray, xr.Dataset)
@@ -443,6 +445,11 @@ class Countries:
         TODO: there is a "country unit" conversion in the old code, but it seems to always produce
               1.0, based on how it is used in hbmcmc
         """
+        contraction_dims = set(x_to_country.dims) & set(x_trace.dims)
+        output_points = prod(size for dim, size in x_to_country.sizes.items() if dim not in contraction_dims)
+        # Keep small matrix contractions intact to retain their accumulation order.
+        if output_points > _STATS_MAX_POINTS:
+            x_to_country = _chunk_non_sample_dims(x_to_country, contraction_dims)
         raw_trace = sparse_xr_dot(x_to_country, x_trace)
         molar_mass = convert.molar_mass(species)
         return raw_trace * 365 * 24 * 3600 * molar_mass  # type: ignore

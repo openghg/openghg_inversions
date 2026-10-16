@@ -24,7 +24,7 @@ from pathlib import Path
 from collections.abc import Iterable, Mapping
 from typing_extensions import Self
 from dataclasses import dataclass, field
-from typing import Any, Hashable, Literal, cast
+from typing import Any, Literal, cast
 import json
 
 import arviz as az
@@ -108,41 +108,14 @@ def filter_data_vars_by_prefix(
     return ds[data_vars]
 
 
-def _filter_trace_data_vars_by_name(ds: xr.Dataset, var_names: str | list[str]) -> xr.Dataset:
-    """Select trace variables by exact base variable name.
-
-    Trace datasets use names like ``x_prior`` or ``mu_bc_posterior``. This
-    helper matches the full base variable name before the trace-group suffix so
-    ``var_names="x"`` does not also select ``x_latent_prior``.
-    """
-    if isinstance(var_names, str):
-        var_names = [var_names]
-
-    group_suffixes = (
-        "_prior_predictive",
-        "_posterior_predictive",
-        "_prior",
-        "_posterior",
-    )
-    selected: list[Hashable] = []
-    wanted = set(var_names)
-
-    for dv in ds.data_vars:
-        name = str(dv)
-        for suffix in group_suffixes:
-            if name.endswith(suffix):
-                base_name = name.removesuffix(suffix)
-                if base_name in wanted:
-                    selected.append(dv)
-                break
-
-    return ds[selected]
-
-
 def convert_idata_to_dataset(
-    idata: az.InferenceData, group_filters=["prior", "posterior"], add_suffix=True
+    idata: az.InferenceData,
+    group_filters=["prior", "posterior"],
+    add_suffix=True,
+    *,
+    var_names: Iterable[str] | str | None = None,
 ) -> xr.Dataset:
-    """Merge all groups in an arviz InferenceData object into a single xr.Dataset.
+    """Select variables within trace groups, then outer-merge their first chains.
 
     Args:
         idata: arviz InferenceData containing traces (and other data)
@@ -153,16 +126,24 @@ def convert_idata_to_dataset(
           "posterior_predictive" groups.
         add_suffix: if True, rename the data variables so that they end in the
           name of the group they came from.
+        var_names: Exact variable names before group suffixes are added. None
+          selects all variables. Selection precedes alignment, so unrelated
+          variables and groups cannot enlarge the selected draw coordinates.
 
     Returns:
-        xr.Dataset containing all data variables in the selected groups of the
-        InferenceData
+        Dataset with selected variables, group suffixes, and outer-join missing
+        draw padding. Lazy payloads remain lazy and inputs are not modified.
 
     """
+    wanted = None if var_names is None else set([var_names] if isinstance(var_names, str) else var_names)
     traces = []
     for group in idata.groups():
         if any(filt in group for filt in group_filters):
             trace = idata[group]
+            if wanted is not None:
+                trace = trace[[name for name in trace.data_vars if name in wanted]]
+                if not trace.data_vars:
+                    continue
             if add_suffix:
                 rename_dict = {dv: f"{dv}_{group}" for dv in trace.data_vars}
                 trace = trace.rename_vars(rename_dict)
@@ -371,9 +352,25 @@ class InversionOutput:
 
         return self.inv_inputs[list(dict.fromkeys(selected))]
 
-    def trace_dataset(self, var_roles: Iterable[str] | str | None = None) -> xr.Dataset:
-        """Return prior and posterior trace samples selected by semantic role."""
-        result = convert_idata_to_dataset(self.trace)
+    def trace_dataset(
+        self,
+        var_roles: Iterable[str] | str | None = None,
+        *,
+        var_names: Iterable[str] | str | None = None,
+    ) -> xr.Dataset:
+        """Return selected first-chain prior/posterior samples, including predictive groups.
+
+        Select by semantic ``var_roles`` or exact unsuffixed ``var_names``, not
+        both; omitting both selects all trace variables. Each group is filtered
+        before outer alignment, preserving missing-draw padding only among
+        selected variables. Group suffixes and observation metadata are added
+        without modifying borrowed inputs or computing lazy payloads.
+        """
+        if var_roles is not None:
+            if var_names is not None:
+                raise ValueError("Select trace variables by var_roles or var_names, not both.")
+            var_names = self._variable_names_for_roles(var_roles)
+        result = convert_idata_to_dataset(self.trace, var_names=var_names)
         obs_name = self.variable_name("observation")
         if obs_name in self.inv_inputs:
             obs = self.inv_inputs[obs_name]
@@ -383,9 +380,6 @@ class InversionOutput:
                 else obs.attrs.get("long_name", "observed_mole_fraction")
             )
             _add_attributes_to_trace_dataset(result, obs.attrs.get("units", ""), obs_long_name)
-
-        if var_roles is not None:
-            result = _filter_trace_data_vars_by_name(result, self._variable_names_for_roles(var_roles))
 
         return result
 

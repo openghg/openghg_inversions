@@ -25,7 +25,6 @@ from openghg_inversions.postprocessing.make_outputs import (
     make_country_outputs,
     make_flux_outputs,
     make_multisector_country_trace_outputs,
-    make_multisector_flux_trace_outputs,
     observation_and_error_outputs,
 )
 from openghg_inversions.postprocessing.stats import calculate_stats, stats_functions
@@ -1592,25 +1591,12 @@ def paris_flux_output_latest(
     sector_name_by_suffix = _paris_sector_name_by_suffix(inv_out)
     sector_names = list(sector_name_by_suffix.values())
 
-    spatial_flux_trace = (
-        make_multisector_flux_trace_outputs(
-            inv_out,
-            report_flux_on_inversion_grid=False,
-            materialize=False,
-        )
-        if inv_out.is_multisector
-        else None
-    )
-    flux_outs = (
-        calculate_stats(spatial_flux_trace, stats=stats, **stats_args)
-        if spatial_flux_trace is not None
-        else make_flux_outputs(
-            inv_out,
-            stats=stats,
-            stats_args=stats_args,
-            report_flux_on_inversion_grid=False,
-            include_scale_factors=False,
-        )
+    flux_outs = make_flux_outputs(
+        inv_out,
+        stats=stats,
+        stats_args=stats_args,
+        report_flux_on_inversion_grid=False,
+        include_scale_factors=False,
     )
     countries = _latest_paris_countries(
         country_file=country_file,
@@ -1786,7 +1772,7 @@ def paris_flux_output_latest(
     result.attrs["paris_flux_template_version"] = template_files.flux_version
     result = copy_flux_nonfinite_attrs(
         result,
-        spatial_flux_trace if spatial_flux_trace is not None else flux_outs,
+        flux_outs,
     )
 
     result = _cast_data_vars_to_template_dtypes(result, template_files.flux, sector_names=sector_names)

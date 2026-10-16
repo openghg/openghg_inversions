@@ -931,3 +931,37 @@ The command prints a prominent warning, raises on unsupported options, and
 does not fall back to RHIME if the legacy run fails.
 Direct ``fixedbasisMCMC(...)`` calls are a temporary legacy Python path, not a
 wrapper around ``run_rhime(...)``.
+
+Postprocessing memory
+~~~~~~~~~~~~~~~~~~~~~
+
+Standard flux products reduce samples in basis-state space before reconstructing
+the grid. Multisector totals first combine matching sector draws, then calculate
+their statistics; marginal sector intervals are not added together. Built-in
+bucket-basis reconstruction uses bounded spatial and flux-time chunks. Built-in
+statistics complete one bounded non-sample block at a time, retaining all required
+samples and reusing its sources across requested summaries and HDI probabilities.
+The statistic kernels, missing-draw handling, and 0.7 first-chain selection are
+unchanged.
+
+Calls containing a custom registered statistic receive the complete dataset,
+preserving its reduction defaults and access to related variables. These calls
+do not inherit the built-in statistics' block memory bound.
+
+Multisector flux products retain the selected compact state samples for the duration
+of the product, preserving their sample chunks and reusing them for grid tiles and
+scale-factor summaries. Full reconstructed grid samples are not retained.
+
+Trace selection occurs within each prior/posterior group before their coordinates
+are aligned, so requesting flux scaling does not pad unrelated concentration
+variables. ``InversionOutput.trace_dataset`` accepts semantic ``var_roles`` or
+exact ``var_names`` for this selection.
+
+These bounds limit additional computation workspace. Country projection geometry
+and region-mean prior flux retain their existing spatial calculations. Already
+resident inputs, retained compact intermediates, and the completed output still
+require memory, and an externally supplied lazy source must itself have suitably
+bounded producer tasks. Splitting its result into small blocks cannot shrink a
+task that reads or constructs a larger array. The shared
+``calculate_stats`` boundary executes blocks serially and returns completed
+summaries; individual statistic helpers can still return lazy arrays.

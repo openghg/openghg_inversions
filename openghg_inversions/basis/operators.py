@@ -47,7 +47,8 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from copy import copy
 from dataclasses import dataclass
 from typing import Any, ClassVar, Literal, TypeVar, cast
 
@@ -583,7 +584,8 @@ class BucketBasisOperator(BasisOperator):
             )
             mat = state_metadata_on_state_dim.assign_to_matrix(mat, state_dim=self.meta.state_dim)
 
-        # chunking
+        # Retain the already constructed sparse payload for independently bounded graphs.
+        self._unchunked_basis_matrix = mat
         mat = mat.chunk(chunks) if chunks is not None else mat.chunk()
 
         self._basis_matrix = mat
@@ -602,6 +604,24 @@ class BucketBasisOperator(BasisOperator):
         generally the compatible retained restriction ``Pi``.
         """
         return self._basis_matrix
+
+    def with_chunks(self, chunks: Mapping[str, int | tuple[int, ...]]) -> Self:
+        """Return a shallow operator copy with independently chunked geometry.
+
+        The copy retains the original sparse geometry and metadata. Xarray/Dask
+        may copy that compact sparse payload when building the new graph; this
+        operation never densifies geometry, reloads ``basis_flat``, or executes
+        auxiliary coordinates. The original operator and graph remain unchanged.
+
+        Args:
+            chunks: Dimension chunk sizes passed to the retained matrix's ``chunk`` method.
+
+        Returns:
+            Shallow operator copy with its own chunked sparse matrix graph.
+        """
+        result = copy(self)
+        result._basis_matrix = self._unchunked_basis_matrix.chunk(chunks)
+        return result
 
     @property
     def state_metadata(self) -> xr.Dataset | None:
