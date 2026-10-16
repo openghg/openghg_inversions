@@ -503,7 +503,7 @@ built = build_standard_model(inputs, model_spec, priors=priors, likelihood_build
 built.output_contract.validate_requested_output(output_spec.output_format)
 posterior = sample_rhime_model(built, sampler)
 annotate_sample_trace(built, posterior, likelihood_builder=...)
-inv_out = make_rhime_output(...)
+inv_out = make_model_output(...)
 postprocess_standard_outputs(inv_out, output_spec)  # compute and write derived products
 save_inversion_output(inv_out, output_spec)  # export scientific result and trace
 return inv_out

@@ -309,7 +309,7 @@ pattern, including its result migration, on 16 October. Accordingly,
 return `InversionOutput`; this extends the earlier standard-only result amendment
 and is flagged for PR review. Full and saved routes compose `prepare_multisector`,
 `materialize_multisector_inputs`, `build_multisector_model`, sampling and trace
-annotation, `make_rhime_output`, `postprocess_multisector_outputs` and explicit
+annotation, `make_model_output`, `postprocess_multisector_outputs` and explicit
 artifact exports. Acquisition/validation and optional basis exports remain visible
 in the runners; construction consumes the supplied eager Dataset and prior values.
 
@@ -387,7 +387,7 @@ artifact/storage policy and integrated acceptance remain outside this delivery.
 
 The maintainer also directed shared output ownership rather than duplicated
 standard/multisector functions. Both recipes and their saved routes now call
-`make_rhime_output(..., split_by_sectors=...)` and `save_inversion_output`;
+`make_model_output(..., split_by_sectors=...)` and `save_inversion_output`;
 family-specific product computation remains explicit. The identical multisector
 constructor and forwarding exporter are deleted, with standard/multisector
 callers, custom/cookiecutter examples, API docs and migration guidance updated
@@ -405,6 +405,48 @@ full-suite completion. All changed Python paths pass Ruff; strict active-change
 validation and diff checks pass. Documentation checks resolve 164 API references
 and parse 28 Python blocks; the revised complete-composition snippet runs against
 real synthetic preparation/sampling (two draws, execution smoke only).
+
+The further readability review follows the pre-#866 standard history:
+`6822bd3b` removed the whole-model hook, `b0251e7e` consolidated construction,
+`189569f9` removed the result/run-spec route, and `638067db` exposed acquisition
+and output operations. The final function comparison is:
+
+| Standard | Multisector | Difference that remains |
+| --- | --- | --- |
+| `_require_component_inputs` | same name | Selected component diagnostics. |
+| `standard_model_input_names` | `multisector_model_input_names` | Source-resolved model inputs. |
+| `_standard_input_names` | `_multisector_input_names` | Sector identities and exact source coverage. |
+| `_standard_prior_parameters` | `_multisector_prior_parameters` | Separate eager priors for each sector. |
+| `materialize_standard_inputs` | `materialize_multisector_inputs` | Retained source-specific basis compatibility. |
+| `build_standard_model` | `build_multisector_model` | Source loop, state/prior alignment and coordinate namespaces. |
+| `prepare_standard` | `prepare_multisector` | Source-resolved sensitivity preparation. |
+| `run_standard` | `run_multisector` | Sector-specific products and preflight. |
+
+The only extra multisector function is `_validate_multisector_basis_layout`:
+source-specific operators may have different state coordinates, so preparation
+reuse and replay must protect each source-to-state binding. The raw
+`build_multisector_rhime_model`, eager forwarding layer and tuple-producing sector
+preparation helper are replaced by one visible eager builder; optional
+`sigma_alignment` remains available. The builder now rejects extra independently
+supplied H sources as well as incompatible retained preparation. Shared output
+construction is named `make_model_output`; new names avoid a redundant RHIME
+prefix while existing delivered specification/result types remain unchanged.
+Multiline signatures/calls use one argument per line. Repository Ruff runs lint
+only and did not require the earlier packed formatting.
+
+Readability/construction validation: **215 passed** across full/staged/replay
+scientific parity, standard/multisector checkpoints, phase CLI, output API,
+tutorials, model-family docs and custom/cookiecutter consumers. The four-module
+scientific builder/state-policy/serialization run initially passed **423 cases**
+with five obsolete one-source fixtures failing the multisector input boundary;
+those fixtures were corrected without weakening validation, and their complete
+**11-case containing subset passed**. The **16 integration cases** also pass.
+The independent eager-builder extra-source rejection is exercised in the parity
+suite. Ruff on all changed Python paths, diff checks and strict OpenSpec
+validation pass. Fifteen changed documentation Python blocks parse and their
+direct document targets resolve. Full compatibility/type/docs checks must run
+on the new fixed revision; earlier green GitHub evidence at `f900d539` remains
+labelled with that revision rather than claimed for the consolidation.
 
 ## 3. Ordinary CO2 reusable-handoff adoption
 

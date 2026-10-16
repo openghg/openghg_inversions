@@ -26,7 +26,7 @@ from typing import Any
 
 from openghg_inversions.rhime import (
     RhimeConfig,
-    make_rhime_output,
+    make_model_output,
     postprocess_standard_outputs,
     save_inversion_output,
     annotate_sample_trace,
@@ -137,10 +137,13 @@ def run_custom_rhime(
     idata = sample_rhime_model(model_build_result, config.sampler)
 
     annotate_sample_trace(model_build_result, idata, likelihood_builder=likelihood_builder)
-    inv_out = make_rhime_output(
-        prepared=prepared, model_spec=config.model, posterior=idata,
+    inv_out = make_model_output(
+        prepared=prepared,
+        model_spec=config.model,
+        posterior=idata,
         output_contract=model_build_result.output_contract,
-        start_date=config.data.start_date, end_date=config.data.end_date,
+        start_date=config.data.start_date,
+        end_date=config.data.end_date,
         actual_inference=config.sampler.describe(),
         split_by_sectors=config.data.split_by_sectors,
     )

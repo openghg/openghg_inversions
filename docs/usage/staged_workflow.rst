@@ -307,7 +307,7 @@ destination or country file.
 scientific context, retained source flux, output roles and actual inference
 metadata. The result holds no live model or sampler; replay builds no PyMC model
 and runs no inference. It does not replace unknown original metadata with current
-defaults. ``make_rhime_output`` binds samples to scientific context;
+defaults. ``make_model_output`` binds samples to scientific context;
 ``postprocess_multisector_outputs(result, output_spec)`` computes and writes
 requested products, then ``save_inversion_output(result, output_spec)``
 exports the scientific result and trace. Full and saved routes call those same

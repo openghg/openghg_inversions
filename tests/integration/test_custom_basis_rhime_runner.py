@@ -213,7 +213,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
     monkeypatch.setattr(custom_basis_runner, "build_standard_model", build)
     monkeypatch.setattr(custom_basis_runner, "sample_rhime_model", sample)
     monkeypatch.setattr(custom_basis_runner, "annotate_sample_trace", annotate)
-    monkeypatch.setattr(custom_basis_runner, "make_rhime_output", make_result)
+    monkeypatch.setattr(custom_basis_runner, "make_model_output", make_result)
     monkeypatch.setattr(custom_basis_runner, "save_inversion_output", write_outputs)
 
     result = custom_basis_runner.run_custom_rhime(

@@ -623,9 +623,14 @@ def annotate_sample_trace(
         )
 
 
-def make_rhime_output(
-    *, prepared: RhimePreparedInputs, model_spec: RhimeModelSpec, posterior: xr.DataTree,
-    output_contract: OutputContract, start_date: str, end_date: str,
+def make_model_output(
+    *,
+    prepared: RhimePreparedInputs,
+    model_spec: RhimeModelSpec,
+    posterior: xr.DataTree,
+    output_contract: OutputContract,
+    start_date: str,
+    end_date: str,
     split_by_sectors: bool,
     actual_inference: Mapping[str, Any] | None = None,
     provenance: Mapping[str, Any] | None = None,
@@ -664,9 +669,16 @@ def make_rhime_output(
             metadata[key] = json.loads(posterior.attrs[attr])
     contract = replace(output_contract, metadata=metadata) if metadata != output_contract.metadata else output_contract
     return make_inversion_output(
-        prepared=prepared, trace=posterior, contract=contract,
-        run_metadata={"start_date": start_date, "end_date": end_date, "sites": list(prepared.sites),
-                      "averaging_period": list(prepared.averaging_period), "split_by_sectors": split_by_sectors},
+        prepared=prepared,
+        trace=posterior,
+        contract=contract,
+        run_metadata={
+            "start_date": start_date,
+            "end_date": end_date,
+            "sites": list(prepared.sites),
+            "averaging_period": list(prepared.averaging_period),
+            "split_by_sectors": split_by_sectors,
+        },
         model_metadata=_structured_metadata(model_metadata),
         output_metadata={"sampler": dict(actual_inference) if isinstance(actual_inference, Mapping) else actual_inference},
         provenance=installed_ogi_provenance() if provenance is None else dict(provenance),
@@ -695,7 +707,9 @@ def save_inversion_output(inv_out: InversionOutput, output_spec: RhimeOutputSpec
         _validate_filename_component(name, value)
     stem = f"{output_spec.output_name}{inv_out.run_metadata['start_date']}"
     inversion_path = _resolve_output_path(
-        output_spec.save_inversion_output, output_spec.output_path, f"{stem}_inversion_output.nc",
+        output_spec.save_inversion_output,
+        output_spec.output_path,
+        f"{stem}_inversion_output.nc",
     )
     trace_path = _resolve_output_path(output_spec.save_trace, output_spec.output_path, f"{stem}_trace.nc")
     if inversion_path is not None:

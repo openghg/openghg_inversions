@@ -178,7 +178,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
     monkeypatch.setattr(rhime_runner, "build_standard_model", build)
     monkeypatch.setattr(rhime_runner, "sample_rhime_model", sample)
     monkeypatch.setattr(rhime_runner, "annotate_sample_trace", annotate)
-    monkeypatch.setattr(rhime_runner, "make_rhime_output", make_result)
+    monkeypatch.setattr(rhime_runner, "make_model_output", make_result)
     monkeypatch.setattr(rhime_runner, "postprocess_standard_outputs", write_outputs)
     monkeypatch.setattr(rhime_runner, "save_inversion_output", lambda *a: calls.append("export"))
 

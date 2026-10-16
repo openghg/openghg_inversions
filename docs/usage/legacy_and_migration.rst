@@ -83,13 +83,21 @@ Replace ``build_standard``, ``build_standard_rhime_model`` and
 be materialized before calling it; ``materialize_standard_inputs`` is the shared
 convenience operation. It is not another CLI phase.
 
+Replace ``build_multisector_rhime_model`` and
+``build_multisector_rhime_model_result`` with ``build_multisector_model``.
+Pass the canonical Dataset and resolved ``RhimeModelSpec``, together with eager
+``priors`` from ``materialize_multisector_inputs``. The single builder constructs
+the scientific graph and returns ``RhimeModelBuildResult``; use ``built.model``
+when a caller needs the PyMC graph. Its optional ``sigma_alignment`` argument
+accepts an already resolved mismatch alignment, as in the standard builder.
+
 ``RhimeModelBuildResult`` now takes only ``model`` and ``output_contract``.
 Move its former ``variable_roles``, ``supported_output_formats`` and ``metadata``
 arguments into an ``OutputContract`` from
 ``openghg_inversions.postprocessing.contracts``. The legacy
 ``make_standard_rhime_result`` facade is removed. The former
 ``make_standard_output`` and ``make_multisector_output`` constructors are
-replaced by ``make_rhime_output(..., split_by_sectors=...)`` for both recipes.
+replaced by ``make_model_output(..., split_by_sectors=...)`` for both recipes.
 Pass ``False`` for standard and ``True`` for multisector scientific results.
 The former ``save_standard_artifacts`` and ``save_multisector_artifacts``
 exporters are replaced by the shared ``save_inversion_output`` function.
@@ -240,9 +248,8 @@ then ``save_inversion_output(result, output_spec)`` for exports.
 Standard and multisector execution no longer construct ``RhimeRunSpec`` or
 return ``RhimeResult``. These shared types remain only for the deferred nested
 and cached CO2 recipes until their own consumers migrate. Remove multisector
-calls to ``build_multisector_rhime_model_result``,
-``make_multisector_rhime_result`` and ``make_multisector_rhime_outputs``. Use
-``build_multisector_model``, ``make_rhime_output``, and the explicit
+calls to ``make_multisector_rhime_result`` and ``make_multisector_rhime_outputs``.
+Use ``build_multisector_model``, ``make_model_output``, and the explicit
 product/export calls above. For a custom complete model, pass selected eager
 scientific inputs to an ordinary function and sample its returned graph;
 there is no multisector model-builder context or ``model_builder`` hook.
@@ -254,8 +261,8 @@ with ``rhime.multisector_stages.prepare``/``sample``/``postprocess``. Sampling
 requires one preparation manifest and current model/sampler choices; products
 require one sample manifest and current output choices. Use :doc:`staged_workflow`
 to regenerate reusable preparation and sample manifests. Numerical prepared-input
-codecs, direct scientific builder contracts and final product formats are
-preserved; this migration does not convert 0.7 staged manifests.
+codecs and final product formats are preserved; this migration does not convert
+0.7 staged manifests.
 
 Parameter mapping
 -----------------

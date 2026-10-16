@@ -87,7 +87,7 @@ manifest lifetime, compatible model changes and graph-free product replay.
    openghg_inversions.rhime.multisector_stages.load_samples
    openghg_inversions.rhime.multisector_stages.postprocess
    openghg_inversions.rhime.multisector_stages.prior_predictive
-   openghg_inversions.rhime.outputs.make_rhime_output
+   openghg_inversions.rhime.outputs.make_model_output
    openghg_inversions.rhime.outputs.postprocess_multisector_outputs
    openghg_inversions.rhime.outputs.save_inversion_output
 

@@ -170,6 +170,12 @@ def test_coherent_extra_prepared_source_cannot_silently_disappear_from_model_or_
                                      "output_format": "none"}, multisector=True)
     with pytest.raises(ValueError, match="source|Source"):
         multisector.run_multisector(config=config, prepared=prepared)
+    with pytest.raises(ValueError, match="sources must cover the retained source layout exactly"):
+        multisector.build_multisector_model(
+            prepared.inv_inputs,
+            config.model,
+            priors={f"x_{sector.variable_suffix}": sector.x_prior for sector in config.model.sectors},
+        )
     assert not (tmp_path / "samples").exists()
 
 

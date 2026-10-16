@@ -19,8 +19,11 @@ without a complete-model-builder hook. The superseded
 `run_rhime_from_prepared_inputs` entry point and multisector
 `build_multisector_rhime_model_result` adapter SHALL be removed with their
 consumers. Whole-model customization SHALL directly compose scientific functions
-with explicit inputs rather than use a run-specification context. The lower-level
-`build_multisector_rhime_model` SHALL likewise not accept `model_builder`.
+with explicit inputs rather than use a run-specification context. The superseded
+raw `build_multisector_rhime_model` function SHALL be removed; the single eager
+`build_multisector_model` SHALL construct its scientific graph directly rather
+than forward into a second public builder. The optional `sigma_alignment`
+argument SHALL remain available, as in the standard eager builder.
 
 #### Scenario: Reject competing likelihood selections
 

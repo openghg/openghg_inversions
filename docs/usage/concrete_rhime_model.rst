@@ -483,7 +483,9 @@ ambient run-specification context.
 This example exposes the multisector operations using an existing canonical
 ``prepared`` value and resolved ``config``. Replace the ``build_multisector_model``
 call with your copied builder to change the complete graph. Keep input and prior
-materialization explicit, so related lazy arrays compute together:
+materialization explicit, so selected scientific arrays and enabled prior
+parameters compute together. Construction consumes these eager values; it does
+not materialize them or read unrelated lazy preparation extensions:
 
 .. code-block:: python
 
@@ -493,7 +495,7 @@ materialization explicit, so related lazy arrays compute together:
    )
    from openghg_inversions.rhime.outputs import (
        annotate_sample_trace,
-       make_rhime_output,
+       make_model_output,
        postprocess_multisector_outputs,
        save_inversion_output,
        validate_multisector_output_resources,
@@ -502,11 +504,15 @@ materialization explicit, so related lazy arrays compute together:
 
    validate_multisector_output_resources(config.output)
    model_inputs, priors = materialize_multisector_inputs(prepared, config.model)
-   built = build_multisector_model(model_inputs, config.model, priors=priors)
+   built = build_multisector_model(
+       model_inputs,
+       config.model,
+       priors=priors,
+   )
    built.output_contract.validate_requested_output(config.output.output_format)
    posterior = sample_rhime_model(built, config.sampler)
    annotate_sample_trace(built, posterior)
-   result = make_rhime_output(
+   result = make_model_output(
        prepared=prepared,
        model_spec=config.model,
        split_by_sectors=config.data.split_by_sectors,
@@ -520,11 +526,15 @@ materialization explicit, so related lazy arrays compute together:
    save_inversion_output(result, config.output)
 
 The standard recipe exposes corresponding ``materialize_standard_inputs`` and
-``build_standard_model`` functions. Both recipes share ``make_rhime_output``
+``build_standard_model`` functions. Both recipes share ``make_model_output``
 with an explicit ``split_by_sectors`` choice and ``save_inversion_output`` for
-scientific result and trace exports. Both eager builders return ``RhimeModelBuildResult``, containing the concrete ``pm.Model``
-and its ``OutputContract``. The sampler consumes that graph and its scientific
-variable roles; it does not resolve model choices or output destinations.
+scientific result and trace exports. Each recipe has one eager model builder.
+Both builders return ``RhimeModelBuildResult``, containing the concrete
+``pm.Model`` and its ``OutputContract``. The sampler consumes that graph and
+its scientific variable roles; it does not resolve model choices or output destinations.
+Pass ``sigma_alignment=...`` to either builder when you already have a
+``SigmaAlignment`` for the selected observations; otherwise the likelihood
+constructs its alignment from those observations.
 
 A copied builder should use ``registered_model()`` before ``add_coords`` or
 public model components so inference can restore MultiIndexes and auxiliary

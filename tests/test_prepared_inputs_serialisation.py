@@ -28,6 +28,7 @@ from openghg_inversions.inversion_data import prepared_inputs as prepared_contra
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime import (
     PollutionEventSettings,
+    RhimeModelBuildResult,
     RhimeModelSpec,
     RhimeOutputSpec,
     RhimeSampler,
@@ -1274,18 +1275,19 @@ def test_multisource_order_survives_load_run_and_reconstruction(
     )
     sampled = make_trace()
     observed: dict[str, object] = {}
-    original_builder = rhime_multisector.build_multisector_rhime_model
+    original_builder = rhime_multisector.build_multisector_model
 
     def fake_builder(
-        flux_sensitivity: xr.DataArray,
+        model_inputs: xr.Dataset,
+        actual_spec: RhimeModelSpec,
         **kwargs: Any,
-    ) -> pm.Model:
+    ) -> RhimeModelBuildResult:
         """Record ordered builder inputs and build the real canonical graph."""
         assert kwargs["likelihood_builder"] is None
-        assert kwargs["likelihood_settings"] == model_spec.likelihood
-        observed["source_order"] = tuple(flux_sensitivity.source.values)
-        observed["sectors"] = kwargs["sectors"]
-        return original_builder(flux_sensitivity, **kwargs)
+        assert actual_spec.likelihood == model_spec.likelihood
+        observed["source_order"] = tuple(model_inputs["H"].source.values)
+        observed["sectors"] = actual_spec.sectors
+        return original_builder(model_inputs, actual_spec, **kwargs)
 
     def fake_sample(
         self: RhimeSampler,
@@ -1298,7 +1300,7 @@ def test_multisource_order_survives_load_run_and_reconstruction(
         assert variable_roles["concentration"] == "y"
         return sampled
 
-    monkeypatch.setattr(rhime_multisector, "build_multisector_rhime_model", fake_builder)
+    monkeypatch.setattr(rhime_multisector, "build_multisector_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
 
     result = rhime_multisector.run_multisector(prepared=loaded, config=config)

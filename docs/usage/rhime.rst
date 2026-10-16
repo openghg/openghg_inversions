@@ -726,7 +726,8 @@ containing the value ``"outer"``:
    from openghg_inversions.models import StateActivity
    from dataclasses import replace
    from openghg_inversions.rhime.standard import (
-       build_standard_model, materialize_standard_inputs,
+       build_standard_model,
+       materialize_standard_inputs,
    )
 
    state_policy = StateActivity(
@@ -735,13 +736,19 @@ containing the value ``"outer"``:
    )
    selected_model = replace(model_spec, state_activity=state_policy)
    inputs, priors = materialize_standard_inputs(prepared, selected_model)
-   built = build_standard_model(inputs, selected_model, priors=priors)
+   built = build_standard_model(
+       inputs,
+       selected_model,
+       priors=priors,
+   )
    model = built.model
 
-The direct multisector builder accepts one ordered sequence of ``SectorSpec``
-objects. Each sector carries its source, backend suffix, prior, and optional
-``state_activity`` override; the builder's ``state_activity`` argument supplies
-the shared policy. ``StateActivity(active=False)`` freezes a complete sector.
+The multisector builder reads the ordered ``RhimeModelSpec.sectors`` sequence.
+Each ``SectorSpec`` carries its source, backend suffix, prior, and optional
+``state_activity`` override; ``RhimeModelSpec.state_activity`` supplies the
+shared policy. Call ``materialize_multisector_inputs(prepared, model_spec)``
+first, then pass its Dataset and eager priors to ``build_multisector_model``.
+``StateActivity(active=False)`` freezes a complete sector.
 RHIME config-file syntax and persisted activity-reason tables remain follow-up
 work. Each ``SectorSpec.x_prior`` supports the same scalar, full-state array,
 and labelled ``DataArray`` parameter forms; labelled values must match the
@@ -754,8 +761,8 @@ consume the resulting ``ResolvedStateActivity``; they do not inspect ``H`` or
 infer its output dimension.
 
 Boundary-condition scaling states can be handled the same way. Set
-``RhimeModelSpec(bc_state_activity=StateActivity(active=False))`` (or the
-equivalent low-level builder argument) to retain ``mu_bc = H_bc @ bc`` with a
+``bc_state_activity=StateActivity(active=False)`` on ``RhimeModelSpec`` to retain
+``mu_bc = H_bc @ bc`` with a
 fixed ``bc`` vector and no boundary-condition random variable. This is distinct
 from supplying a standalone baseline time series, which belongs to a separate
 baseline component.
@@ -880,7 +887,8 @@ This example uses canonical ``prepared`` inputs and a resolved one-sector
    )
    from dataclasses import replace
    from openghg_inversions.rhime.standard import (
-       build_standard_model, materialize_standard_inputs,
+       build_standard_model,
+       materialize_standard_inputs,
    )
 
    x_prior_stdev = project_basis_prior_stdev(
@@ -894,7 +902,11 @@ This example uses canonical ``prepared`` inputs and a resolved one-sector
    )
    selected_model = replace(model_spec, sectors=(selected_sector,))
    inputs, priors = materialize_standard_inputs(prepared, selected_model)
-   built = build_standard_model(inputs, selected_model, priors=priors)
+   built = build_standard_model(
+       inputs,
+       selected_model,
+       priors=priors,
+   )
    model = built.model
 
 ``calibrate_basis_prior_stdev`` accepts a caller-defined target matrix and

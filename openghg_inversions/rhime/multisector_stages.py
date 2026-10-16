@@ -19,20 +19,30 @@ from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.serialization import load_trace, save_trace
 
 from ._stage_artifacts import (
-    _output_path, check_checkpoint_targets, finish_checkpoint, read_manifest,
-    reference, start_checkpoint,
+    _output_path,
+    check_checkpoint_targets,
+    finish_checkpoint,
+    read_manifest,
+    reference,
+    start_checkpoint,
 )
 from ._stage_checks import _check_draws, _check_stage, prior_predictive_check
 from .builders import RhimeLikelihoodBuilder
 from .outputs import (
-    annotate_sample_trace, make_rhime_output, postprocess_multisector_outputs,
-    save_inversion_output, validate_multisector_output_resources,
+    annotate_sample_trace,
+    make_model_output,
+    postprocess_multisector_outputs,
+    save_inversion_output,
+    validate_multisector_output_resources,
 )
 from .sampling import sample_rhime_model
 from .params import DataConfig, resolve_model_options
 from .specs import RhimeModelSpec, RhimeOutputSpec
 from .multisector import (
-    _validate_multisector_basis_layout, build_multisector_model, materialize_multisector_inputs, prepare_multisector,
+    _validate_multisector_basis_layout,
+    build_multisector_model,
+    materialize_multisector_inputs,
+    prepare_multisector,
 )
 from .preparation import acquire_merged_data, resolve_basis_inputs
 
@@ -51,7 +61,9 @@ def _require_multisector(data_config: DataConfig) -> None:
 def _preparation_record(manifest: str | Path) -> tuple[Path, dict[str, Any]]:
     """Read a completed preparation and its writer-assigned generation."""
     path, record = read_manifest(
-        manifest, "openghg_inversions.multisector.prepare", ("prepared_inputs", "data", "generation"),
+        manifest,
+        "openghg_inversions.multisector.prepare",
+        ("prepared_inputs", "data", "generation"),
     )
     if not isinstance(record["generation"], str) or not record["generation"]:
         raise ValueError(f"Preparation manifest {path} requires a nonempty generation.")
@@ -65,7 +77,10 @@ def _check_generation(manifest: Path, record: Mapping[str, Any], expected: str) 
 
 
 def save_preparation(
-    prepared: RhimePreparedInputs, *, data_config: DataConfig, output_dir: str | Path,
+    prepared: RhimePreparedInputs,
+    *,
+    data_config: DataConfig,
+    output_dir: str | Path,
 ) -> Path:
     """Save prepared inputs and their configuration, publishing the manifest last.
 
@@ -85,15 +100,25 @@ def save_preparation(
     _require_multisector(data_config)
     destination = start_checkpoint(output_dir, "prepare", payloads=("prepared-inputs.nc",))
     prepared.save(destination / "prepared-inputs.nc")
-    return finish_checkpoint(destination, "prepare", {
-        "schema": "openghg_inversions.multisector.prepare", "schema_version": 1,
-        "producer": "openghg_inversions", "stage": "prepare", "generation": uuid4().hex,
-        "prepared_inputs": "prepared-inputs.nc", "data": data_config.to_params(),
-    })
+    return finish_checkpoint(
+        destination,
+        "prepare",
+        {
+            "schema": "openghg_inversions.multisector.prepare",
+            "schema_version": 1,
+            "producer": "openghg_inversions",
+            "stage": "prepare",
+            "generation": uuid4().hex,
+            "prepared_inputs": "prepared-inputs.nc",
+            "data": data_config.to_params(),
+        },
+    )
 
 
 def _load_preparation(
-    manifest: str | Path, *, expected_generation: str | None = None,
+    manifest: str | Path,
+    *,
+    expected_generation: str | None = None,
 ) -> tuple[RhimePreparedInputs, DataConfig, str, Path]:
     """Load numerical inputs and capture the generation from the same manifest."""
     path, record = _preparation_record(manifest)
@@ -125,7 +150,10 @@ def load_preparation(manifest: str | Path) -> tuple[RhimePreparedInputs, DataCon
 
 
 def prepare(
-    data_config: DataConfig, *, output_dir: str | Path, merged_data: RhimeMergedData | None = None,
+    data_config: DataConfig,
+    *,
+    output_dir: str | Path,
+    merged_data: RhimeMergedData | None = None,
 ) -> Path:
     """Run shared multisector preparation and save its reusable checkpoint.
 
@@ -155,11 +183,22 @@ def prepare(
         )
 
     prepared = prepare_multisector(
-        merged_data, basis_inputs=basis_inputs, bc_basis=bc_basis,
+        merged_data,
+        basis_inputs=basis_inputs,
+        bc_basis=bc_basis,
         **data_config.select(
-            "domain", "start_date", "flux_sources", "averaging_error", "filters",
-            "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
-            "min_error", "min_error_options",
+            "domain",
+            "start_date",
+            "flux_sources",
+            "averaging_error",
+            "filters",
+            "basis_algorithm",
+            "nbasis",
+            "fix_basis_outer_regions",
+            "use_bc",
+            "bc_freq",
+            "min_error",
+            "min_error_options",
         ),
     )
 
@@ -170,9 +209,14 @@ def prepare(
 
 
 def save_samples(
-    preparation_manifest: str | Path, posterior: xr.DataTree, *,
-    output_contract: OutputContract, model: RhimeModelSpec,
-    actual_inference: Mapping[str, Any], output_dir: str | Path, preparation_generation: str,
+    preparation_manifest: str | Path,
+    posterior: xr.DataTree,
+    *,
+    output_contract: OutputContract,
+    model: RhimeModelSpec,
+    actual_inference: Mapping[str, Any],
+    output_dir: str | Path,
+    preparation_generation: str,
 ) -> Path:
     """Save samples bound to one completed preparation generation.
 
@@ -201,23 +245,37 @@ def save_samples(
     data_config = DataConfig.from_params(preparation["data"], multisector=True)
     model_record = model.to_record(trace=posterior, data_config=data_config)
     destination = start_checkpoint(
-        output_dir, "sample", payloads=("posterior.nc",),
+        output_dir,
+        "sample",
+        payloads=("posterior.nc",),
         referenced=(preparation_path, reference(preparation_path, preparation["prepared_inputs"])),
     )
     save_trace(posterior, destination / "posterior.nc")
-    return finish_checkpoint(destination, "sample", {
-        "schema": "openghg_inversions.multisector.sample", "schema_version": 1,
-        "producer": "openghg_inversions", "stage": "sample",
-        "preparation": os.path.relpath(preparation_path, destination), "preparation_generation": preparation["generation"],
-        "posterior": "posterior.nc", "output_contract": output_contract.to_dict(),
-        "model": model_record, "actual_inference": dict(actual_inference),
-        "provenance": installed_ogi_provenance(),
-    })
+    return finish_checkpoint(
+        destination,
+        "sample",
+        {
+            "schema": "openghg_inversions.multisector.sample",
+            "schema_version": 1,
+            "producer": "openghg_inversions",
+            "stage": "sample",
+            "preparation": os.path.relpath(preparation_path, destination),
+            "preparation_generation": preparation["generation"],
+            "posterior": "posterior.nc",
+            "output_contract": output_contract.to_dict(),
+            "model": model_record,
+            "actual_inference": dict(actual_inference),
+            "provenance": installed_ogi_provenance(),
+        },
+    )
 
 
 def sample(
-    preparation_manifest: str | Path, *, model: Mapping[str, Any],
-    sampler: RhimeSampler | Literal["default"] = "default", output_dir: str | Path,
+    preparation_manifest: str | Path,
+    *,
+    model: Mapping[str, Any],
+    sampler: RhimeSampler | Literal["default"] = "default",
+    output_dir: str | Path,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
 ) -> Path:
@@ -243,22 +301,35 @@ def sample(
     model_spec = resolve_model_options(model, data_config=data_config)
     model_spec.validate_recordable()
     check_checkpoint_targets(
-        Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),
+        Path(output_dir).resolve(),
+        stage="sample",
+        payloads=("posterior.nc",),
         referenced=(Path(preparation_manifest).resolve(), payload),
     )
 
     model_inputs, priors = materialize_multisector_inputs(prepared, model_spec)
     built = build_multisector_model(
-        model_inputs, model_spec, priors=priors,
-        likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs,
+        model_inputs,
+        model_spec,
+        priors=priors,
+        likelihood_builder=likelihood_builder,
+        likelihood_kwargs=likelihood_kwargs,
     )
 
     posterior = sample_rhime_model(built, sampler)
-    annotate_sample_trace(built, posterior, likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs)
+    annotate_sample_trace(
+        built,
+        posterior,
+        likelihood_builder=likelihood_builder,
+        likelihood_kwargs=likelihood_kwargs,
+    )
 
     return save_samples(
-        preparation_manifest, posterior, output_contract=built.output_contract,
-        model=model_spec, actual_inference=sampler.describe(),
+        preparation_manifest,
+        posterior,
+        output_contract=built.output_contract,
+        model=model_spec,
+        actual_inference=sampler.describe(),
         output_dir=output_dir,
         preparation_generation=generation,
     )
@@ -279,25 +350,40 @@ def load_samples(sample_manifest: str | Path) -> InversionOutput:
             preparation has been replaced since sampling.
         FileNotFoundError: If a referenced checkpoint is missing.
     """
-    path, record = read_manifest(sample_manifest, "openghg_inversions.multisector.sample", (
-        "preparation", "preparation_generation", "posterior", "output_contract", "model",
-        "actual_inference", "provenance",
-    ))
+    path, record = read_manifest(
+        sample_manifest,
+        "openghg_inversions.multisector.sample",
+        (
+            "preparation",
+            "preparation_generation",
+            "posterior",
+            "output_contract",
+            "model",
+            "actual_inference",
+            "provenance",
+        ),
+    )
     preparation_path = reference(path, record["preparation"])
     if not isinstance(record["preparation_generation"], str) or not record["preparation_generation"]:
         raise ValueError(f"Sample manifest {path} requires a preparation generation.")
     prepared, data_config, _, _ = _load_preparation(
-        preparation_path, expected_generation=record["preparation_generation"],
+        preparation_path,
+        expected_generation=record["preparation_generation"],
     )
     posterior = load_trace(reference(path, record["posterior"]))
     output_contract = OutputContract.from_dict(record["output_contract"])
     output_contract.validate_trace(posterior)
     model_spec = RhimeModelSpec.from_record(record["model"], trace=posterior, data_config=data_config)
     _validate_multisector_basis_layout(prepared.basis_functions, model_spec, prepared.inv_inputs)
-    return make_rhime_output(
-        prepared=prepared, model_spec=model_spec, posterior=posterior,
-        output_contract=output_contract, start_date=data_config.start_date, end_date=data_config.end_date,
-        actual_inference=record["actual_inference"], provenance=record["provenance"],
+    return make_model_output(
+        prepared=prepared,
+        model_spec=model_spec,
+        posterior=posterior,
+        output_contract=output_contract,
+        start_date=data_config.start_date,
+        end_date=data_config.end_date,
+        actual_inference=record["actual_inference"],
+        provenance=record["provenance"],
         split_by_sectors=data_config.split_by_sectors,
     )
 
@@ -324,8 +410,13 @@ def postprocess(sample_manifest: str | Path, *, output: RhimeOutputSpec) -> Inve
 
 
 def prior_predictive(
-    preparation_manifest: str | Path, *, model: Mapping[str, Any], output_dir: str | Path,
-    draws: int = 100, check_output: str | Path | None = None, stage: str = "prior-predictive",
+    preparation_manifest: str | Path,
+    *,
+    model: Mapping[str, Any],
+    output_dir: str | Path,
+    draws: int = 100,
+    check_output: str | Path | None = None,
+    stage: str = "prior-predictive",
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -352,7 +443,8 @@ def prior_predictive(
     destination = Path(output_dir).resolve()
     report = _output_path(destination, check_output, "prior-predictive-readiness.json")
     check_checkpoint_targets(
-        destination, stage=None,
+        destination,
+        stage=None,
         payloads=("prior-predictive.nc", str(report.relative_to(destination))),
         referenced=(Path(preparation_manifest).resolve(), payload),
     )
@@ -361,10 +453,17 @@ def prior_predictive(
     def build() -> Any:
         model_inputs, priors = materialize_multisector_inputs(prepared, model_spec)
         return build_multisector_model(
-            model_inputs, model_spec, priors=priors,
-            likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs,
+            model_inputs,
+            model_spec,
+            priors=priors,
+            likelihood_builder=likelihood_builder,
+            likelihood_kwargs=likelihood_kwargs,
         )
 
     return prior_predictive_check(
-        build, draws=draws, destination=destination, report=report, stage=stage,
+        build,
+        draws=draws,
+        destination=destination,
+        report=report,
+        stage=stage,
     )
