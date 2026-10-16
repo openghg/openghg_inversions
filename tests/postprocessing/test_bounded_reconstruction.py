@@ -85,7 +85,7 @@ def test_reconstruction_keeps_labelled_native_domains_and_borrowed_inputs(
     before_metadata = basis.operator.state_metadata
     expected = (
         reconstruct_flux_stats(basis, basis.flux, state, report_flux_on_inversion_grid=inversion_grid)
-        .map(to_dense)
+        .map(to_dense, keep_attrs=True)
         .compute(scheduler="single-threaded")
     )
     actual = reconstruct_flux_stats(
@@ -109,6 +109,44 @@ def test_reconstruction_keeps_labelled_native_domains_and_borrowed_inputs(
     assert state.summary.data.__dask_graph__() is state_graph
     if grouped:
         xr.testing.assert_identical(basis.operator.state_metadata, before_metadata)
+
+
+@pytest.mark.parametrize("keep_attrs", [False, True])
+def test_bounded_conversions_preserve_metadata_independently_of_xarray_defaults(keep_attrs):
+    """Payload conversion must not depend on the installed xarray attr default."""
+    basis = _domain_basis("outer")
+    state = xr.Dataset(
+        {"summary": ("region", np.ones(3, dtype="float32"), {"units": "1"})},
+        coords={"region": [11, 2, 7]},
+        attrs={"contract": "retained-summary-metadata"},
+    )
+    with xr.set_options(keep_attrs=keep_attrs):
+        expected_flux = (
+            reconstruct_flux_stats(basis, basis.flux, state, report_flux_on_inversion_grid=False)
+            .map(to_dense, keep_attrs=True)
+            .compute(scheduler="single-threaded")
+        )
+        actual_flux = reconstruct_flux_stats(
+            basis,
+            basis.flux,
+            state,
+            report_flux_on_inversion_grid=False,
+            _chunks={"lat": 2, "lon": 3, "flux_time": 1},
+        ).compute(scheduler="single-threaded")
+        expected_scale = (
+            reconstruct_scale_factor_stats(basis, state)
+            .map(to_dense, keep_attrs=True)
+            .compute(scheduler="single-threaded")
+        )
+        actual_scale = reconstruct_scale_factor_stats(basis, state, _chunks={"lat": 2, "lon": 3}).compute(
+            scheduler="single-threaded"
+        )
+    xr.testing.assert_identical(actual_flux, expected_flux)
+    xr.testing.assert_identical(actual_scale, expected_scale)
+    for product in (expected_flux, actual_flux, expected_scale, actual_scale):
+        assert product.attrs["contract"] == state.attrs["contract"]
+        assert product.summary.attrs == state.summary.attrs == {"units": "1"}
+    assert "openghg_inversions:non_finite_flux" in actual_flux.attrs
 
 
 @pytest.mark.parametrize("inversion_grid", [False, True])
@@ -165,7 +203,7 @@ def test_scale_reconstruction_chunks_geometry_without_computing_borrowed_states(
     with Callback(pretask=lambda key, *args: tasks.append(key)):
         result = reconstruct_scale_factor_stats(basis, state, _chunks={"lat": 2, "lon": 3})
     assert not tasks
-    expected = reconstruct_scale_factor_stats(basis, state).compute().map(to_dense)
+    expected = reconstruct_scale_factor_stats(basis, state).compute().map(to_dense, keep_attrs=True)
     xr.testing.assert_identical(result.compute(), expected)
     assert max(result["mean"].chunksizes["lat"]) == 2
     assert max(result["mean"].chunksizes["lon"]) == 3
@@ -279,7 +317,7 @@ def test_weighted_tiles_preserve_original_zero_nan_masks_and_reuse_sources(
     state["second"] = state["first"] * 2
     expected = (
         reconstruct_flux_stats(basis, flux, state, report_flux_on_inversion_grid=False)
-        .map(to_dense)
+        .map(to_dense, keep_attrs=True)
         .compute(scheduler="single-threaded")
     )
     loads.clear()
@@ -406,7 +444,7 @@ def test_standard_common_postprocessing_keeps_outer_and_inner_separate(
                 report_flux_on_inversion_grid=False,
             )
             .compute()
-            .map(to_dense)
+            .map(to_dense, keep_attrs=True)
         )
         np.testing.assert_array_equal(products[domain].flux_posterior_mean, expected.expected)
         if domain == "outer":

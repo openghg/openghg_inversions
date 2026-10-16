@@ -299,7 +299,7 @@ def reconstruct_flux_stats(
             region_flux = region_flux.compute(scheduler="single-threaded").as_numpy()
 
     if _chunks is not None:
-        stats_ds = stats_ds.map(to_dense)
+        stats_ds = stats_ds.map(to_dense, keep_attrs=True)
         if region_flux is not None:
             basis_functions = _chunk_basis_functions(basis_functions, _chunks)
             region_flux = region_flux.chunk(
@@ -309,7 +309,7 @@ def reconstruct_flux_stats(
     if region_flux is not None:
         state = _to_operator_state_dim(stats_ds, basis_functions) * region_flux
         if _chunks is not None:
-            state = state.map(to_dense)
+            state = state.map(to_dense, keep_attrs=True)
         return copy_flux_nonfinite_attrs(
             _interpolate_dataset(state, basis_functions, weights=None, _chunks=_chunks), flux
         )
@@ -332,7 +332,7 @@ def reconstruct_scale_factor_stats(
     """
     if _chunks is not None:
         basis_functions = _chunk_basis_functions(basis_functions, _chunks)
-        stats_ds = stats_ds.map(to_dense)
+        stats_ds = stats_ds.map(to_dense, keep_attrs=True)
     return _interpolate_dataset(stats_ds, basis_functions, weights=None, _chunks=_chunks)
 
 
