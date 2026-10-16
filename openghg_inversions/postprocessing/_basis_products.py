@@ -308,8 +308,6 @@ def reconstruct_flux_stats(
 
     if region_flux is not None:
         state = _to_operator_state_dim(stats_ds, basis_functions) * region_flux
-        if _chunks is not None:
-            state = state.map(to_dense, keep_attrs=True)
         return copy_flux_nonfinite_attrs(
             _interpolate_dataset(state, basis_functions, weights=None, _chunks=_chunks), flux
         )

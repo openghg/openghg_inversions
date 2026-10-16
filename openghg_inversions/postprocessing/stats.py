@@ -504,8 +504,6 @@ def _calculate_stats(ds: xr.Dataset, stats: list[str], **kwargs) -> xr.Dataset:
     stats_datasets = []
 
     for stat in stats:
-        if stat not in stats_functions:
-            raise ValueError(f"Statistic {stat} not available.")
         sf = stats_functions[stat]
 
         # get any kwargs that could be passed to this stat

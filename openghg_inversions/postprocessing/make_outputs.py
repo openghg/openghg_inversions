@@ -312,11 +312,9 @@ def _sector_scale_factor_stats(
     *,
     stats: list[str] | None,
     stats_args: dict | None,
-    trace: xr.Dataset | None = None,
+    trace: xr.Dataset,
 ) -> xr.Dataset:
-    """Summarize one sector, optionally reusing selected compact state samples."""
-    if trace is None:
-        trace = _sector_scale_trace(inv_out, sector)
+    """Summarize one sector from selected compact state samples."""
     basis_functions = _sector_basis_functions(inv_out, sector, trace)
     sector_stats_args = _stats_args_with_defaults(
         stats,
