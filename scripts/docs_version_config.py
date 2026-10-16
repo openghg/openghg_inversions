@@ -10,6 +10,7 @@ if _docs_version != "devel" and not _re.fullmatch(r"v(0|[1-9]\d*)\.(0|[1-9]\d*)\
 
 release = _docs_version.removeprefix("v")
 version = ".".join(release.split(".")[:2])
+html_title = "OpenGHG Inversions"
 _docs_base_url = _os.environ.get("DOCS_BASE_URL", "https://openghg.github.io/openghg_inversions").rstrip("/")
 _stable_url = _escape(f"{_docs_base_url}/stable/", quote=True)
 _archive_url = _escape(f"{_docs_base_url}/versions/", quote=True)
@@ -21,12 +22,15 @@ html_theme_options["switcher"] = {
 }
 # The shared index may not exist yet when building a new release or a local preview.
 html_theme_options["check_switcher"] = False
-_navbar_start = html_theme_options.get("navbar_start", ["navbar-logo"])
-if isinstance(_navbar_start, str):
-    _navbar_start = [item.strip() for item in _navbar_start.split(",") if item.strip()]
-html_theme_options["navbar_start"] = list(_navbar_start)
-if "version-switcher" not in html_theme_options["navbar_start"]:
-    html_theme_options["navbar_start"].append("version-switcher")
+for _region, _default in (
+    ("navbar_start", ["navbar-logo"]),
+    ("navbar_end", ["theme-switcher", "navbar-icon-links"]),
+):
+    _items = html_theme_options.get(_region, _default)
+    if isinstance(_items, str):
+        _items = [item.strip() for item in _items.split(",") if item.strip()]
+    html_theme_options[_region] = [item for item in _items if item != "version-switcher"]
+html_theme_options["navbar_end"].append("version-switcher")
 
 if _docs_version == "devel":
     _announcement = "Unreleased development documentation; "
