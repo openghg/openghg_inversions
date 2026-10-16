@@ -348,8 +348,8 @@ xarray consumers, configuration/site resolution, nested consumers, resource path
 basis inputs, merged/prepared codecs, output contracts and prior registration.
 The malformed-schema CLI regressions pass in this consolidated run. Changed-path
 Ruff, `git diff --check` and strict validation of this active OpenSpec change pass.
-Full compatibility/type/documentation Slurm results and comparison against
-`208a21d9` remain pending and will be recorded with the PR evidence.
+Final compatibility/type/documentation Slurm results and comparison against
+`208a21d9` are recorded below and in the PR evidence.
 
 CI run `38878858180` exposed two unmigrated test consumers: six multisector
 basis-export cases stopped inside sensitivities, before scientific preparation
@@ -444,8 +444,8 @@ those fixtures were corrected without weakening validation, and their complete
 The independent eager-builder extra-source rejection is exercised in the parity
 suite. Ruff on all changed Python paths, diff checks and strict OpenSpec
 validation pass. Fifteen changed documentation Python blocks parse and their
-direct document targets resolve. Full compatibility/type/docs checks must run
-on the new fixed revision; earlier green GitHub evidence at `f900d539` remains
+direct document targets resolve. Final compatibility/type/docs checks are recorded
+below; earlier green GitHub evidence at `f900d539` remains
 labelled with that revision rather than claimed for the consolidation.
 
 Slurm `19451784` completed all seven environments at `9348c610`. Python 3.12
@@ -453,8 +453,8 @@ and 3.13 locked runs each report **3,019 passed / 8 skipped**, and OpenGHG devel
 reports **3,015 passed / 12 skipped**, with exactly two failures in each: the
 preserved CO2 installed-stage tests require a Git revision, while the validation
 archive deliberately contained no `.git` and returned `revision=None`. This is
-a validation-context failure, not evidence of a scientific change; compatibility
-must be rerun from a detached Git checkout with the fixed revision. Lower-bound
+a validation-context failure, not evidence of a scientific change; the final retry
+below uses a detached Git checkout with the fixed revision. Lower-bound
 PyMC and borrowed-reference typing environments pass.
 
 Mypy reports **162 errors in 50 files**, against baseline **164 in 52**, with
@@ -462,10 +462,30 @@ zero introduced normalized diagnostics. Strict docs report **309 warnings**,
 against baseline **318**: one new heading underline warning is fixed; two
 existing external TensorVariable-reference warnings relocate to the new stage
 page while six disappear elsewhere, and six old RhimeConfig ambiguity warnings
-disappear. No baseline warning suppression was added. A fresh strict-docs run
-must confirm the fix; comparison artifacts retain location-aware and diagnostic
+disappear. No baseline warning suppression was added. The final strict-docs run
+confirms the fix; comparison artifacts retain location-aware and diagnostic
 content counts. The retry uses a detached local clone, with generated API docs
 outside that checkout to keep scientific provenance stable during tests.
+
+**Final validation:** Slurm **19452831** validates fixed checkout `e5e158a1`.
+`py312-openghgCur`, `py313-openghgCur` and `py312-openghgDev` all pass their
+complete suites (861.60 s, 876.96 s and 535.94 s respectively, including setup).
+The two CO2 provenance cases also pass locally from the detached Git checkout.
+The successful lower-bound/borrowed-type environments and the Mypy comparison
+above apply to the identical scientific code at `9348c610`; `e5e158a1` changes
+only the heading and evidence. Strict docs finish at **308 warnings**, with
+zero added normalized warning content against the **318-warning** baseline.
+Exactly the heading warning disappears from the preceding run. Seven rendered
+pages, **780 local links** and **15 current API anchors** have no broken targets.
+Existing broad typing debt remains owned by **#881** and strict-docs debt by
+**#679**; neither check is claimed globally clean. GitHub tests/docs at
+`e5e158a1` also pass (runs `38892269780` and `38892269799`).
+
+This completes the implementation/validation evidence for review, not the
+programme gate. **2.4 remains unchecked** until maintainer review and merged
+implementation evidence. Shared deferred-family adapter retirement and cached
+CO2/integrated acceptance remain with #880/OPE-207; no maintainer readability
+acceptance, spec promotion/archive or merge is claimed.
 
 ## 3. Ordinary CO2 reusable-handoff adoption
 
