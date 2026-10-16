@@ -198,7 +198,7 @@ def _check_saved_family(args: argparse.Namespace) -> dict[str, Any] | None:
     """Reject an explicit selector that contradicts a current saved handoff."""
     manifest = args.sample_manifest if args.command == "postprocess" else args.preparation_manifest
     if not Path(manifest).exists():
-        return
+        return None
     record = json.loads(Path(manifest).read_text(encoding="utf-8"))
     if not isinstance(record, dict):
         raise argparse.ArgumentError(None, "Saved manifest must contain one JSON object.")
@@ -225,7 +225,7 @@ def _prior_predictive_command(args: argparse.Namespace) -> None:
         from openghg_inversions.rhime.co2.configuration import resolve_co2_prior_seed
 
         params = _co2_params(args)
-        choices = {name: params[name] for name in ("model", "likelihood") if name in params}
+        choices: dict[str, Any] = {name: params[name] for name in ("model", "likelihood") if name in params}
         result = prior_co2(args.preparation_manifest, model=choices,
                            random_seed=resolve_co2_prior_seed(params), **common)
     elif args.model == "standard":
@@ -262,7 +262,7 @@ def _sample_command(args: argparse.Namespace) -> None:
         from openghg_inversions.rhime.co2.configuration import resolve_co2_sampler
 
         params = _co2_params(args)
-        choices = {name: params[name] for name in ("model", "likelihood") if name in params}
+        choices: dict[str, Any] = {name: params[name] for name in ("model", "likelihood") if name in params}
         result = sample_co2(args.preparation_manifest, model=choices,
                             sampler=resolve_co2_sampler(params), output_dir=_stage_output_dir(args))
         print(result)

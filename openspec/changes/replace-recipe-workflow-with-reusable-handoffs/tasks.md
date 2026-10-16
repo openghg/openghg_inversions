@@ -414,9 +414,25 @@ Validation of the current review corrections:
   tests, 16 parity tests, six installed workflow and six documentation tests passed;
   the executable example completed. Root-focused checks also passed (123 tests).
   These overlap with the integration selection and are not added into its total.
-- Changed-path Ruff, diff and strict OpenSpec validation pass. New broader checks
-  must run at a fixed revision through `scripts/slurm_tox.sh` before the revised
-  acceptance can be claimed.
+- Changed-path Ruff, diff and strict OpenSpec validation pass. The broader
+  fixed-revision result and corrective type/docs check are recorded below.
+
+Review-correction terminal evidence: Slurm 19455545 at fixed `43f4ab03`
+completed both full locked Python 3.12/3.13 suites successfully (tox exit zero).
+The combined job failed type/docs. Individual diagnostic comparison finds six
+new CLI typing errors (169 versus prior-good 163) and two new short title
+underlines among 315 documentation warnings. Five obsolete warnings disappear
+with the removed ordinary runners; lower total warnings alone do not clear the
+gate. Two agents independently checked these deltas and the rendered CO2 pages.
+Peak memory was `19515492K` for the combined job.
+
+The correction makes the missing-record return explicitly `None`, annotates the
+two decoded model mappings as `dict[str, Any]`, and fixes the two title underlines.
+These changes alter no numerical operations or CLI behavior. All 32 ordinary/
+standard CLI checks pass again. A fixed-revision `type,docs-strict` Slurm rerun
+will verify the introduced diagnostics are gone; the passing full suites are
+retained rather than rerun for annotations and underlines. Tasks 3.1/3.6 remain
+open for the corrected validation, maintainer review and merged acceptance.
 
 Prior-head evidence, superseded for current review corrections: fixed-revision
 Slurm 19450581 at `cae92463` passed both full locked Python 3.12 and 3.13 suites.

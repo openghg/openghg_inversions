@@ -131,7 +131,7 @@ combinations are likewise a general state-grouping choice rather than an
 outer-region model option.
 
 Compose ordinary CO2 scientific operations
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The concrete model builder accepts explicit scientific arrays. For durable
 :class:`~openghg_inversions.rhime.co2.Co2PreparedInputs`, scientific callers can
@@ -168,7 +168,7 @@ The location and scale parameters in ``offset_prior`` use the observations'
 concentration units.
 
 Configure prepared-input execution from TOML
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The CO2 family provides three installed TOML templates:
 ``co2.toml``, ``co2_cached_sigma.toml``, and ``co2_o2.toml``. Use
