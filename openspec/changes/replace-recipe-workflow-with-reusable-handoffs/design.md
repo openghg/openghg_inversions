@@ -673,6 +673,9 @@ rectangular input sensitivities are packed for construction only, and existing
 gathered input indexes are preserved. Preparation and retained basis artifacts
 stay borrowed and unchanged. State order comes from the scientific input labels,
 not the order of sector declarations or backend variable suffixes.
+The model-only state dimension may be renamed when its name conflicts with
+another component's input or prior metadata; its scientific index values, level
+names and order remain unchanged.
 
 Independent sector priors may have different distributions, array parameters,
 reparameterizations and active/fixed states. Their private prior variables and

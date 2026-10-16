@@ -815,3 +815,67 @@ or external-store satellite integration is claimed. Short chains establish
 execution and product parity rather than convergence. This completes task 6.4's
 focused/relevant broader validation, not maintainer readability acceptance or
 merged delivery; tasks 2.4, 3.1/3.6 and group 5 retain their existing gates.
+
+### PR #891 coordinate review fixes — 16 October 2026
+
+The model flux-state axis reserves dimension and coordinate names from other
+model inputs and labelled non-flux prior parameters. Source-prior metadata uses
+its private namespace. The non-flux reservation follows a
+reproduced case where boundary-prior metadata, absent from `H_bc`, overwrote the
+restored flux MultiIndex and removed source selection. The reservation inspects
+metadata names only and does not compute borrowed payloads.
+
+The same prior-only collision was reproduced with gathered input: the combined
+base restored per-sector labels, whereas the shared-state graph lost its source
+index. A collision may therefore rename an existing state dimension for model
+construction only, preserving the index values, level names, order and borrowed
+prepared inputs. Source-based output selection discovers the sampled index and
+restores the retained basis dimension rather than depending on its model name.
+
+Private full-prior and active-state coordinates use distinct namespaces. Unequal
+source blocks with suffixes `ff` and `ff_active` now coexist without changing
+their random-variable or construction-record names. One pure coordinate helper
+serves independent, multisource and correlated state construction; existing
+standard/CO2 coordinate names and preparation outside a model context remain
+unchanged. When every sensitivity column is retained, preparation borrows the
+matrix payload; actual pruning keeps its full-state mapping and coordinate rules.
+The review fixes are recorded in `891.bugfix.md`; they require no new usage flow.
+
+Focused validation:
+
+- `tests/models/test_state_coordinates.py`, `tests/models/test_state_activity.py`,
+  `tests/models/test_correlated_state.py` and `tests/models/test_prior_registration.py`:
+  93 passed. The four new cases cover both unequal-block source orders, partial
+  native MultiIndex activity and existing independent/correlated coordinate names.
+- `tests/models/test_sensitivity_borrowing.py`, `tests/models/test_state_activity.py`
+  and `tests/models/test_components.py`: 69 passed in 23.94 seconds. New cases
+  check read-only eager storage sharing, borrowed lazy payloads with one inspection,
+  and exact-zero pruning while retaining tiny nonzero columns.
+- `tests/test_rhime.py`, `tests/test_multisector_handoff_parity.py`,
+  `tests/test_multisector_handoffs.py`, `tests/test_standard_phase_cli.py`,
+  `tests/test_co2_phase_cli.py` and `tests/test_sampler_selection.py`:
+  425 passed (351 warnings).
+- `tests/models/test_correlated_state.py`, `tests/models/test_coords.py`,
+  `tests/test_co2_rhime.py`, `tests/test_co2_handoff_parity.py`,
+  `tests/test_co2_cached_sigma.py`, `tests/test_rhime_co2_o2.py`,
+  `tests/test_nested_rhime.py` and `tests/postprocessing/test_make_outputs.py`:
+  241 passed (156 warnings) in 214.61 seconds. These broader runs preceded the
+  final gathered-axis collision fix; the affected rerun is recorded below.
+- After that fix, `tests/models/test_stacked_state.py` and
+  `tests/models/test_state_coordinates.py`: 19 passed (one warning) in
+  4.50 seconds. Restoration preserves source selection and boundary metadata
+  for rectangular inputs and unequal gathered inputs, including prior-only
+  collisions and a second occupied candidate axis name.
+- `tests/postprocessing/test_stacked_state_persistence.py` and the existing
+  stacked output-selector cases: five passed (28 deselected, one warning) in
+  6.67 seconds. The new case builds and samples a gathered graph with a prior-only
+  collision, saves/reopens its trace as NetCDF, and verifies canonical source
+  extraction restores the local retained basis labels and values.
+- After the gathered-axis fix, `tests/test_rhime.py`,
+  `tests/test_multisector_handoff_parity.py`, `tests/test_multisector_handoffs.py`
+  and `tests/test_standard_phase_cli.py`: 383 passed (350 warnings) in
+  122.87 seconds.
+- Changed-path Ruff, diff checks and strict active OpenSpec validation pass.
+
+These checks add review-fix evidence to task 6.4 without changing the open family
+acceptance or capability-promotion gates.

@@ -286,6 +286,20 @@ def add_coherent_affine_component(
     return pm.Deterministic(output_name, fixed + linear_signal, dims=fixed_contribution.dims)
 
 
+def _active_state_coords(
+    coordinate: xr.DataArray,
+    active_indices: np.ndarray,
+    namespace: str,
+) -> tuple[str, xr.Coordinates | dict[str, Any]]:
+    """Select active labels and namespace their dimension and MultiIndex levels."""
+    active_dim = f"{coordinate.dims[0]}_{namespace}"
+    active_index = coordinate.to_index()[active_indices]
+    if isinstance(active_index, pd.MultiIndex):
+        active_index = active_index.set_names([f"{name}_{namespace}" for name in active_index.names])
+        return active_dim, xr.Coordinates.from_pandas_multiindex(active_index, active_dim)
+    return active_dim, {active_dim: active_index.to_numpy()}
+
+
 def add_state_vector(
     activity: ResolvedStateActivity,
     /,
@@ -347,16 +361,7 @@ def add_state_vector(
     latent: TensorVariable | None = None
     active_state: TensorVariable | None = None
     if activity.n_active:
-        active_dim = f"{state_dim}_{var_name}_active"
-        active_index = state_coord.to_index()[active_indices]
-        active_coords: xr.Coordinates | dict[str, Any]
-        if isinstance(active_index, pd.MultiIndex):
-            active_index = active_index.set_names(
-                [f"{name}_{var_name}_active" for name in active_index.names]
-            )
-            active_coords = xr.Coordinates.from_pandas_multiindex(active_index, active_dim)
-        else:
-            active_coords = {active_dim: active_index.to_numpy()}
+        active_dim, active_coords = _active_state_coords(state_coord, active_indices, f"{var_name}_active")
         add_coords(active_coords, model_dims=(active_dim,))
         active_state = parse_prior(
             f"{var_name}_active",
@@ -410,30 +415,23 @@ def _add_multisource_state_vector(
         if not activity.n_active:
             continue
 
+        prior_namespace = f"prior_{record_name}"
         block_zero = _namespace_sector_state_coords(
-            local_zero, variable_suffix=record_name, namespace_state_dim=True,
+            local_zero, variable_suffix=prior_namespace, namespace_state_dim=True,
         )
         block_dim = str(block_zero.dims[0])
         add_coords(block_zero.coords, model_dims=(block_dim,))
         parameters = {
             name: _namespace_sector_state_coords(
-                value, variable_suffix=record_name, namespace_state_dim=True,
+                value, variable_suffix=prior_namespace, namespace_state_dim=True,
             ) if isinstance(value, xr.DataArray) and value.ndim else value
             for name, value in aligned_prior.items()
         }
         active_indices = activity.active_indices
-        active_dim = f"{block_dim}_active"
-        active_index = block_zero.get_index(block_dim)[active_indices]
-        active_coords: xr.Coordinates | dict[str, Any]
-        if isinstance(active_index, pd.MultiIndex):
-            active_index = active_index.set_names([f"{name}_active" for name in active_index.names])
-            active_coords = xr.Coordinates.from_pandas_multiindex(active_index, active_dim)
-        else:
-            active_coords = {active_dim: active_index.to_numpy()}
-        add_coords(
-            active_coords,
-            model_dims=(active_dim,),
+        active_dim, active_coords = _active_state_coords(
+            local_zero.coords[local_state_dim], active_indices, f"active_{record_name}",
         )
+        add_coords(active_coords, model_dims=(active_dim,))
         draw = parse_prior(
             f"{record_name}_active", parameters, dims=active_dim,
             active_indices=active_indices, record_name=record_name,
@@ -636,16 +634,7 @@ def prepare_active_correlated_lognormal_prior(
         return prior
 
     active_indices = activity.active_indices
-    active_dim = f"{state_dim}_{var_name}_active"
-    active_index = mean.coords[state_dim].to_index()[active_indices]
-    active_coords: xr.Coordinates | dict[str, Any]
-    if isinstance(active_index, pd.MultiIndex):
-        active_index = active_index.set_names(
-            [f"{name}_{var_name}_active" for name in active_index.names]
-        )
-        active_coords = xr.Coordinates.from_pandas_multiindex(active_index, active_dim)
-    else:
-        active_coords = {active_dim: active_index.to_numpy()}
+    active_dim, active_coords = _active_state_coords(mean.coords[state_dim], active_indices, f"{var_name}_active")
     active_mean = xr.DataArray(
         mean.isel({state_dim: active_indices}).values,
         dims=(active_dim,),

@@ -288,9 +288,20 @@ def _build_independent_rhime_model(
     """Construct the shared independent-state RHIME recipe after boundary validation."""
     timing_start = timer_start()
     source_sensitivity = model_inputs["H"]
-    flux_sensitivity = (
-        _stack_multisector_sensitivity(source_sensitivity) if multisector else source_sensitivity
-    )
+    flux_sensitivity = source_sensitivity
+    if multisector:
+        other_inputs = model_inputs[[name for name in model_inputs.data_vars if name != "H"]]
+        coordinate_names = set(other_inputs.dims) | set(other_inputs.coords)
+        # Flux prior coordinates are registered under private source namespaces.
+        flux_prior_names = {f"x_{sector.variable_suffix}" for sector in model_spec.sectors}
+        for name, parameters in priors.items():
+            if name in flux_prior_names:
+                continue
+            for value in parameters.values():
+                if isinstance(value, xr.DataArray):
+                    coordinate_names.update(value.dims)
+                    coordinate_names.update(value.coords)
+        flux_sensitivity = _stack_multisector_sensitivity(source_sensitivity, reserved_names=coordinate_names)
     observations = model_inputs["mf"]
     observation_error = model_inputs["mf_error"]
     minimum_error = model_inputs.get("min_error")

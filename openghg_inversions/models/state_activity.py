@@ -92,17 +92,19 @@ def prepare_linear_sensitivity(
     """Remove exact-zero columns once and retain their full-state mapping.
 
     This is the eager inspection boundary for a labelled sensitivity matrix. The
-    returned sensitivity keeps borrowed array data and contains only nonzero
-    columns; ``removed`` retains the complete scientific state coordinate and
-    auxiliary state metadata for reconstruction and provenance.
+    returned sensitivity borrows the matrix payload when all columns are retained;
+    otherwise it selects only nonzero columns. ``removed`` retains the complete
+    scientific state coordinate and auxiliary state metadata for reconstruction
+    and provenance.
     """
     output_dim = str(output_dim)
     matrix = sensitivity.transpose(output_dim, ...)
     removed = detect_zero_sensitivity(matrix, output_dim=output_dim)
     state_dim = str(removed.dims[0])
     retained_indices = np.flatnonzero(~removed.to_numpy())
-    retained = matrix.isel({state_dim: retained_indices})
+    retained = matrix
     if retained_indices.size != matrix.sizes[state_dim]:
+        retained = matrix.isel({state_dim: retained_indices})
         retained = retained.rename({state_dim: f"{state_dim}_retained"})
         retained_dim = f"{state_dim}_retained"
         retained_auxiliary = {

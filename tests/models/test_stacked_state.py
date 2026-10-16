@@ -13,7 +13,7 @@ from scipy.stats import norm
 import xarray as xr
 
 from openghg_inversions.models._flux import _stack_multisector_sensitivity
-from openghg_inversions.models.coords import get_coord_registry
+from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.models.priors import prior_records
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.rhime.multisector import build_multisector_model
@@ -167,6 +167,61 @@ def test_stacked_dimension_does_not_replace_existing_auxiliary_coordinates():
     np.testing.assert_array_equal(stacked.coords["flux_state"], [3, 4, 3, 4])
 
 
+@pytest.mark.parametrize("boundary_coords", [("state",), ("state", "flux_state")])
+@pytest.mark.parametrize("layout,metadata_owner", [
+    ("rectangular", "sensitivity"), ("rectangular", "prior"), ("gathered", "prior"),
+])
+def test_stacked_trace_restores_flux_labels_and_boundary_auxiliary_coordinates(
+    boundary_coords, layout, metadata_owner,
+):
+    h = xr.DataArray(
+        np.arange(1., 9.).reshape(2, 2, 2), dims=("source", "nmeasure", "region"),
+        coords={"source": ["ff", "ocean"], "nmeasure": [0, 1], "region": ["a", "b"]},
+    )
+    expected = pd.MultiIndex.from_product([["ff", "ocean"], ["a", "b"]], names=["source", "region"])
+    if layout == "gathered":
+        h = h.stack(state=("source", "region")).isel(state=[0, 1, 2])
+        expected = expected[:3]
+    inputs = _inputs(h).assign(H_bc=xr.DataArray(
+        [[1., 2.], [3., 4.]], dims=("nmeasure", "bc_region"),
+        coords={"nmeasure": [0, 1], "bc_region": ["north", "south"]},
+    ))
+    prior = {"pdf": "normal", "mu": 1., "sigma": .2}
+    bc_prior = prior.copy()
+    metadata = {name: ("bc_region", [10, 20]) for name in boundary_coords}
+    if metadata_owner == "sensitivity":
+        inputs = inputs.assign_coords(metadata)
+    else:
+        bc_prior["sigma"] = xr.DataArray([.2, .3], dims="bc_region", coords={
+            "bc_region": ["north", "south"], **metadata,
+        })
+    original = inputs.copy(deep=True)
+    spec = RhimeModelSpec(
+        "ch4", "EUROPE", (SectorSpec("FF", "ff", prior, "ff"),
+                          SectorSpec("ocean", "ocean", prior, "ocean")),
+        use_bc=True, bc_prior=bc_prior, likelihood=FixedErrorSettings(),
+    )
+    model = build_multisector_model(inputs, spec, priors={"x_ff": prior, "x_ocean": prior, "bc": bc_prior}).model
+    with model:
+        trace = pm.sample_prior_predictive(draws=2, var_names=["x", "bc", "mu", "mu_bc"], random_seed=437)
+    registry = get_coord_registry(model)
+    assert registry is not None
+    restored = restore_inferencedata_coords(trace, registry).prior
+    state_dim = model.named_vars_to_dims["x"][0]
+    assert restored["x"].get_index(state_dim).equals(expected)
+    for source in ("ff", "ocean"):
+        assert restored["x"].sel(source=source).get_index("region").equals(
+            expected[expected.get_level_values("source") == source].droplevel("source"),
+        )
+    for name in boundary_coords:
+        assert restored.coords[name].dims == ("bc_region",)
+        np.testing.assert_array_equal(restored.coords[name], [10, 20])
+    full_sensitivity = (h.to_numpy() if layout == "gathered"
+                        else np.column_stack([h.sel(source=source) for source in h.source.values]))
+    np.testing.assert_allclose(restored["mu"], restored["x"].values @ full_sensitivity.T)
+    xr.testing.assert_identical(inputs, original)
+
+
 def test_rectangular_sources_preserve_native_multiindex_state_and_prior_labels():
     local = pd.MultiIndex.from_tuples([("north", "Jan"), ("south", "Feb")], names=["basin", "month"])
     h = xr.DataArray(
@@ -189,4 +244,4 @@ def test_rectangular_sources_preserve_native_multiindex_state_and_prior_labels()
     registry = get_coord_registry(model)
     assert registry is not None
     assert registry.original_coords["state"].names == ["source", "basin", "month"]
-    assert isinstance(registry.original_coords["region_x_ff_active"], pd.MultiIndex)
+    assert isinstance(registry.original_coords["region_active_x_ff"], pd.MultiIndex)
