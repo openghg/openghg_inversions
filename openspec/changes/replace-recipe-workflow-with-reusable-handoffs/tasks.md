@@ -335,7 +335,8 @@ suite, supported Python versions, typing and documentation.
 
 ### Ordinary CO2 implementation evidence — 16 October 2026
 
-Branch `codex/ope-207-ordinary-co2-handoffs` starts from current `devel`
+Draft [PR #886](https://github.com/openghg/openghg_inversions/pull/886),
+branch `codex/ope-207-ordinary-co2-handoffs`, starts from current `devel`
 `208a21d9`, including merged standard #866 and configuration closeout #883.
 This covers ordinary CO2 only, part of #880/OPE-207 and #808. Task 3.6 remains
 open for broader validation, review and merged evidence; no maintainer
