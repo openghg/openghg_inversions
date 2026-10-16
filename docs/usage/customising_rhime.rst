@@ -30,10 +30,13 @@ Choose the smallest starting point that fits the change:
   fluxes, pass a borrowed ``RhimeMergedData`` object as ``merged_data``.
 * To change a preparation stage such as basis construction, copy the visible
   runner and replace that stage.
-* To start from alternative or cached prepared data with the standard model, use
-  ``run_standard(prepared=prepared, config=config)``. To replace the complete standard graph,
-  construct and sample a PyMC model directly; the complete-builder hook remains
-  available only for multisector compatibility.
+* To start from alternative or cached prepared data, use
+  ``run_standard(prepared=prepared, config=config)`` or
+  ``run_multisector(prepared=prepared, config=config)``. To replace the complete
+  standard graph, construct and sample a PyMC model directly. The multisector
+  ``run_rhime_from_prepared_inputs`` compatibility boundary retains its complete
+  model-builder hook and ``RhimeResult`` return for existing advanced callers.
+  Ordinary standard and multisector runners return ``InversionOutput``.
 
 .. _cached-sigma-co2-recipe:
 .. _run-the-production-cached-sigma-co2-recipe:
@@ -384,8 +387,10 @@ Run it with a normal RHIME configuration and optional JSON overrides::
    python -m package_name.run_with_likelihood config.ini \
        --kwargs '{"output_path": "outputs", "output_format": "inv_out"}'
 
-``run_rhime_multisector`` accepts the same Python-only builder contract. The
-standard multi-sector model retains sector flux components and roles, then
+``run_multisector`` accepts the same Python-only likelihood-builder contract,
+including with ``prepared=...``. Saved sampling through
+``multisector_stages.sample`` uses that contract too. The multisector model
+retains sector flux components and roles, then
 passes their combined observation mean to the likelihood, so no special case
 or semantic compromise is required.
 

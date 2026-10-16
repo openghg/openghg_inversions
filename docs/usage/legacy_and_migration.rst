@@ -210,8 +210,9 @@ The Python ``run_rhime`` API is removed in 0.8; importing it raises an
 proposal to retain a deprecated wrapper. The ``run-rhime`` CLI command retains its
 name, written files and logging and calls ``run_standard`` directly.
 
-``run_standard``, standard prepared-input execution and ``stages.postprocess``
-return an :class:`~openghg_inversions.postprocessing.inversion_output.InversionOutput`,
+``run_standard``, ``run_multisector``, their ``prepared=...`` execution and their
+saved ``postprocess`` operations return an
+:class:`~openghg_inversions.postprocessing.inversion_output.InversionOutput`,
 including with ``output_format="none"``. Use ``result.trace`` instead of
 ``result.idata``, and use ``result.inv_inputs``, ``result.basis_functions``,
 ``result.variable_roles``, ``result.run_metadata`` and ``result.model_metadata``
@@ -219,7 +220,35 @@ for the scientific result. Output-policy choices, written paths, live PyMC model
 and samplers are not stored on it; ``output_metadata`` contains the inference
 description. Call product functions such as ``basic_output(result)`` to produce
 in-memory summaries. For graph inspection, call the eager model builder directly.
-Deferred multisector, nested and CO2 families retain their existing result types.
+Nested and CO2 families retain their existing result types.
+
+For multisector prepared execution with ordinary configuration, use
+``run_multisector(prepared=prepared, config=config)`` and a ``RhimeConfig``
+constructed with ``multisector=True``. Keep sector/source mappings and ordering
+unchanged. The result is already the inversion output; remove
+``result.inv_out`` and ``result.outputs["inversion_output"]`` access. Read sector
+records from ``result.model_metadata["sectors"]`` and their scientific roles from
+``result.variable_roles``. Compute in-memory sector diagnostics with
+``postprocessing.make_outputs.make_sector_flux_outputs``. Copied runners call
+``postprocess_multisector_outputs(result, output_spec)`` for requested products,
+then ``save_multisector_artifacts(result, output_spec)`` for exports.
+
+The advanced ``run_rhime_from_prepared_inputs`` boundary remains transitional:
+it retains ``RhimeResult`` for existing ``RhimeRunSpec`` and complete-model-builder
+callers. New ordinary multisector execution and saved replay use
+``run_multisector`` and its ``InversionOutput`` contract. This advanced boundary is
+the remaining result-interface exception; its removal requires migration of those
+custom-builder consumers.
+
+The saved multisector envelope and its complete-configuration identity and
+output-binding gates are removed in 0.8. Replace multisector
+``prepare_rhime_stage``/``sample_rhime_stage``/``postprocess_rhime_stage`` calls
+with ``rhime.multisector_stages.prepare``/``sample``/``postprocess``. Sampling
+requires one preparation manifest and current model/sampler choices; products
+require one sample manifest and current output choices. Use :doc:`staged_workflow`
+to regenerate reusable preparation and sample manifests. Numerical prepared-input
+codecs, direct scientific builder contracts and final product formats are
+preserved; this migration does not convert 0.7 staged manifests.
 
 Parameter mapping
 -----------------

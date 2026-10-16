@@ -638,6 +638,19 @@ def _make_standard_fixture_output(result: RhimeResult, prepared: RhimePreparedIn
     )
 
 
+def _make_multisector_fixture_output(result: RhimeResult, prepared: RhimePreparedInputs) -> InversionOutput:
+    """Bind ordinary output fixtures through the multisector scientific output owner."""
+    result.idata.attrs["rhime_priors"] = json.dumps({
+        f"x_{sector.variable_suffix}": sector.x_prior for sector in result.model_spec.sectors
+    })
+    return rhime_outputs.make_multisector_output(
+        prepared=prepared, model_spec=result.model_spec, posterior=result.idata,
+        output_contract=result.output_contract,
+        start_date=result.run_spec.start_date, end_date=result.run_spec.end_date,
+        provenance={"package": "unit-test"},
+    )
+
+
 def _posterior_only_idata(model: pm.Model, variable_names: tuple[str, ...]) -> xr.DataTree:
     """Build deterministic posterior variables using a PyMC model's coordinates.
 
@@ -1190,6 +1203,19 @@ def test_additive_sigma_inputs_align_site_keyed_scales() -> None:
 
     assert prior is not None
     np.testing.assert_array_equal(prior["sigma"], [[2.0], [5.0]])
+
+
+@pytest.mark.parametrize("unused", [True, 0.0, -1.0, np.nan, np.inf, "3.0"])
+def test_additive_sigma_inputs_validate_extra_site_scales(unused: Any) -> None:
+    """Dropped sites retain the same prior validation as retained sites."""
+    observations = xr.DataArray(
+        [1.0], dims="nmeasure", coords={"site": ("nmeasure", ["TAC"])},
+    )
+    with pytest.raises(ValueError, match="finite positive numbers"):
+        rhime_model_building.prepare_additive_sigma_inputs(
+            observations,
+            sigma_prior={"pdf": "halfnormal", "sigma": {"TAC": 2.0, "MHD": unused}},
+        )
 
 
 def test_additive_sigma_inputs_reject_incomplete_site_scales() -> None:
@@ -2851,12 +2877,7 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
 
     def build(*args: Any, **kwargs: Any) -> RhimeModelBuildResult:
         """Record replay's selected public build stage."""
-        if sector_count > 1:
-            assert kwargs["prepared"] is replay_context["prepared"]
-        else:
-            assert args == (model_inputs, model_spec)
-        if sector_count > 1:
-            assert kwargs["model_inputs"] is model_inputs
+        assert args == (model_inputs, model_spec)
         stage_calls.append("build")
         return build_result
 
@@ -2896,10 +2917,11 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
                             lambda value, *, variable_names, prior_parameters:
                             (materialize(value, variable_names=variable_names), prior_parameters))
     else:
-        monkeypatch.setattr(build_module, "materialize_pymc_inputs", materialize)
+        monkeypatch.setattr(build_module, "materialize_multisector_inputs",
+                            lambda value, spec: (materialize(value, variable_names=("H", "mf", "mf_error", "min_error")), {}))
     monkeypatch.setattr(
         build_module,
-        "build_standard_model" if sector_count == 1 else "build_multisector_rhime_model_result",
+        "build_standard_model" if sector_count == 1 else "build_multisector_model",
         build,
     )
     monkeypatch.setattr(build_module, "sample_rhime_model", sample)
@@ -2939,16 +2961,16 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
         ("run_standard", "build_standard_model", "make_standard_output", False, True, False),
         (
             "run_rhime_multisector",
-            "build_multisector_rhime_model_result",
-            "make_multisector_rhime_result",
+            "build_multisector_model",
+            "make_multisector_output",
             True,
             False,
             False,
         ),
         (
             "run_rhime_multisector",
-            "build_multisector_rhime_model_result",
-            "make_multisector_rhime_result",
+            "build_multisector_model",
+            "make_multisector_output",
             True,
             True,
             False,
@@ -3106,10 +3128,7 @@ def test_public_rhime_runners_follow_named_stage_order(
         assert kwargs["likelihood_builder"] is expected_builder
         expected_options = {"project_option": 42} if custom_likelihood else None
         assert kwargs["likelihood_kwargs"] == expected_options
-        if multisector:
-            assert kwargs["run_spec"] == run_spec
-        else:
-            assert args == (model_inputs, run_spec.model)
+        assert args == (model_inputs, run_spec.model)
         calls.append("build")
         return build_result
 
@@ -3122,21 +3141,14 @@ def test_public_rhime_runners_follow_named_stage_order(
 
     def result(**kwargs: Any) -> RhimeResult:
         """Record the recipe-specific public result stage."""
-        if multisector:
-            expected_builder = example_likelihoods.likelihood_builder if custom_likelihood else None
-            assert kwargs["likelihood_builder"] is expected_builder
-        else:
-            assert kwargs["posterior"] is idata
-            assert kwargs["output_contract"] is build_result.output_contract
+        assert kwargs["posterior"] is idata
+        assert kwargs["output_contract"] is build_result.output_contract
         calls.append("result")
         return expected
 
     def outputs(*args: Any, **kwargs: Any) -> None:
         """Record the recipe-specific public output stage."""
-        if multisector:
-            assert kwargs == {"result": expected, "prepared": prepared}
-        else:
-            assert args == (expected, config.output)
+        assert args == (expected, config.output)
         calls.append("outputs")
         return expected
 
@@ -3148,18 +3160,17 @@ def test_public_rhime_runners_follow_named_stage_order(
     monkeypatch.setattr(recipe_module, "assemble_rhime_inputs", assemble)
     monkeypatch.setattr(rhime_params.RhimeConfig, "retained_run_spec", align)
     if multisector:
-        monkeypatch.setattr(recipe_module, "materialize_pymc_inputs", materialize)
-    else:
-        monkeypatch.setattr(recipe_module, "postprocess_standard_outputs", lambda *args: None)
-        monkeypatch.setattr(recipe_module, "_materialize_pymc_inputs_and_priors",
-                            lambda value, *, variable_names, prior_parameters:
-                            (materialize(value, variable_names=variable_names), prior_parameters))
+        monkeypatch.setattr(recipe_module, "_validate_multisector_basis_layout", lambda *args: None)
+    monkeypatch.setattr(recipe_module, "postprocess_multisector_outputs" if multisector else "postprocess_standard_outputs", lambda *args: None)
+    monkeypatch.setattr(recipe_module, "_materialize_pymc_inputs_and_priors",
+                        lambda value, *, variable_names, prior_parameters:
+                        (materialize(value, variable_names=variable_names), prior_parameters))
     monkeypatch.setattr(recipe_module, build_stage, build)
     monkeypatch.setattr(recipe_module, "sample_rhime_model", sample)
     monkeypatch.setattr(recipe_module, result_stage, result)
     monkeypatch.setattr(
         recipe_module,
-        "make_multisector_rhime_outputs" if multisector else "save_standard_artifacts",
+        "save_multisector_artifacts" if multisector else "save_standard_artifacts",
         outputs,
     )
 
@@ -3186,8 +3197,7 @@ def test_public_rhime_runners_follow_named_stage_order(
         "result",
         "outputs",
     ]
-    if not multisector:
-        expected_calls.remove("align")
+    expected_calls.remove("align")
     assert calls == expected_calls
 
 
@@ -3228,7 +3238,7 @@ def test_ordinary_runners_reject_orphaned_likelihood_options_before_config(
     recipe_module = rhime_multisector if runner is run_rhime_multisector else rhime_standard
     monkeypatch.setattr(
         recipe_module,
-        "read_rhime_ini" if runner is run_rhime_multisector else "load_params",
+        "load_params",
         lambda *args, **kwargs: pytest.fail("orphaned options must fail before configuration"),
     )
 
@@ -3240,29 +3250,18 @@ def test_ordinary_runners_reject_orphaned_likelihood_options_before_config(
 @pytest.mark.parametrize("mismatch_model", ["pollution_event", "additive_sigma"])
 def test_ordinary_runners_reject_custom_likelihood_with_configured_mismatch(
     monkeypatch: pytest.MonkeyPatch,
-    runner: Callable[..., RhimeResult],
+    runner: Callable[..., InversionOutput],
     mismatch_model: str,
 ) -> None:
-    """A Python likelihood cannot compete with an explicit built-in selection."""
-    recipe_module = rhime_multisector if runner is run_rhime_multisector else rhime_standard
-    if runner is run_standard:
-        data = dict(species="ch4", domain="EUROPE", sites=["TAC"], averaging_period="1h",
-                    start_date="2019-01-01", end_date="2019-01-02", flux_sources=["inventory"])
-        with pytest.raises(ValueError, match="custom likelihood.*built-in mismatch"):
-            runner(data=data, model={"mismatch_model": mismatch_model},
-                   output={"output_format": "none", "output_name": "conflict"}, likelihood_builder=example_likelihoods.likelihood_builder)
-        return
-    monkeypatch.setattr(
-        recipe_module.RhimeConfig,
-        "from_params",
-        lambda *args, **kwargs: pytest.fail("the selection conflict must fail before resolution"),
-    )
-
+    """A Python likelihood cannot compete with explicit built-in scientific choices."""
+    monkeypatch.setattr(RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquisition"))
+    data = dict(species="ch4", domain="EUROPE", sites=["TAC"], averaging_period="1h",
+                start_date="2019-01-01", end_date="2019-01-02",
+                flux_sources=["inventory", "ocean"] if runner is run_rhime_multisector else ["inventory"])
     with pytest.raises(ValueError, match="custom likelihood.*built-in mismatch"):
-        runner(
-            likelihood_builder=example_likelihoods.likelihood_builder,
-            mismatch_model=mismatch_model,
-        )
+        runner(data=data, model={"mismatch_model": mismatch_model},
+               output={"output_format": "none", "output_name": "conflict"},
+               likelihood_builder=example_likelihoods.likelihood_builder)
 
 
 @pytest.mark.parametrize("runner", [run_standard, run_rhime_multisector])
@@ -3533,7 +3532,7 @@ def test_run_rhime_from_prepared_inputs_accepts_complete_model_builder(
     # This contract check isolates complete-model metadata from sector flux diagnostics.
     monkeypatch.setattr(rhime_outputs, "_make_multisector_flux_diagnostics", lambda inv_out: xr.Dataset())
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_prepared, "materialize_pymc_inputs", fail_materialization)
+    monkeypatch.setattr(rhime_prepared, "materialize_multisector_inputs", fail_materialization)
     result = _run_prepared(
         prepared_inputs=prepared,
         run_spec=run_spec,
@@ -3808,7 +3807,7 @@ def test_prepared_runner_rejects_custom_likelihood_with_builtin_selection_before
     )
     monkeypatch.setattr(
         rhime_prepared,
-        "materialize_pymc_inputs",
+        "materialize_multisector_inputs",
         lambda *args, **kwargs: pytest.fail("selection conflict must precede materialization"),
     )
 
@@ -4655,13 +4654,7 @@ def test_multisector_model_result_resolves_explicit_inputs_from_spec(
         fake_build_rhime_multisector_model,
     )
     monkeypatch.setattr(rhime_multisector, "RhimeModelBuilderContext", fail_context)
-    monkeypatch.setattr(rhime_multisector, "_validate_multisector_basis_layout", lambda *args: None)
     inv_inputs = _minimal_output_inv_inputs()
-    prepared = RhimePreparedInputs(
-        inv_inputs=inv_inputs,
-        basis_functions=_fake_basis_functions(),
-        site_metadata=_prepared_site_metadata(),
-    )
     model_spec = RhimeModelSpec(
         species="ch4",
         domain="EUROPE",
@@ -4685,19 +4678,15 @@ def test_multisector_model_result_resolves_explicit_inputs_from_spec(
         bc_state_activity=bc_activity,
         state_activity=shared_activity,
     )
-    _, _, base_run_spec = _minimal_output_specs(output_format="none")
-    run_spec = replace(base_run_spec, model=model_spec, split_by_sectors=True)
-
-    result = rhime_multisector.build_multisector_rhime_model_result(
-        prepared=prepared,
-        model_inputs=inv_inputs,
-        run_spec=run_spec,
+    result = rhime_multisector.build_multisector_model(
+        inv_inputs, model_spec,
+        priors={f"x_{sector.variable_suffix}": sector.x_prior for sector in model_spec.sectors},
     )
 
     assert result.model is sentinel
     assert seen["flux_sensitivity"].variable is inv_inputs["H"].variable
     assert seen["kwargs"]["observations"].variable is inv_inputs["mf"].variable
-    assert seen["kwargs"]["sectors"] is model_spec.sectors
+    assert seen["kwargs"]["sectors"] == model_spec.sectors
     assert seen["kwargs"]["state_activity"] is shared_activity
     assert seen["kwargs"]["bc_state_activity"] is bc_activity
     assert seen["kwargs"]["likelihood_builder"] is None
@@ -7547,20 +7536,19 @@ def test_make_multisector_outputs_attach_modern_inv_out(tmp_path: Path) -> None:
     )
 
     bundle = _result_for_outputs(run_spec, idata, model_spec=model_spec)
-    rhime_outputs.make_multisector_rhime_outputs(result=bundle, prepared=prepared)
+    inv_out = _make_multisector_fixture_output(bundle, prepared)
+    products = rhime_outputs.postprocess_multisector_outputs(inv_out, output_spec)
+    rhime_outputs.save_multisector_artifacts(inv_out, output_spec)
 
-    assert isinstance(bundle.inv_out, InversionOutput)
-    assert bundle.inv_out.run_metadata["split_by_sectors"] is True
-    assert bundle.output_metadata["inversion_output_contract"] == "modern"
-    assert bundle.outputs["inversion_output"] is bundle.inv_out
+    assert isinstance(inv_out, InversionOutput)
+    assert inv_out.run_metadata["split_by_sectors"] is True
+    assert products["inversion_output"] is inv_out
     trace_path = tmp_path / "test2019-01-01_trace.nc"
     inversion_output_path = tmp_path / "test2019-01-01_inversion_output.nc"
-    assert bundle.output_metadata["trace_path"] == str(trace_path)
-    assert bundle.output_metadata["inversion_output_path"] == str(inversion_output_path)
     assert trace_path.exists()
     assert inversion_output_path.exists()
     reloaded = InversionOutput.load(inversion_output_path)
-    assert reloaded.model_metadata["variable_roles"] == bundle.inv_out.model_metadata["variable_roles"]
+    assert reloaded.model_metadata["variable_roles"] == inv_out.model_metadata["variable_roles"]
     assert reloaded.run_metadata["split_by_sectors"] is True
 
 
@@ -7599,8 +7587,9 @@ def test_multisector_paris_options_are_checked_before_output_writes(
         run_spec, _minimal_output_idata(), model_spec=model_spec, country_file=str(europe_country_file),
     )
 
+    inv_out = _make_multisector_fixture_output(result, prepared)
     with pytest.raises(ValueError, match="Unsupported multi-sector.*unexpected"):
-        rhime_outputs.make_multisector_rhime_outputs(result=result, prepared=prepared)
+        rhime_outputs.postprocess_multisector_outputs(inv_out, result.output_spec)
     assert not any(tmp_path.iterdir())
 
 
@@ -7618,10 +7607,11 @@ def test_multisector_none_skips_postprocessing() -> None:
         basis_functions=_fake_basis_functions(),
         site_metadata=_prepared_site_metadata(),
     )
-    rhime_outputs.make_multisector_rhime_outputs(result=result, prepared=prepared)
-    assert result.inv_out is None
-    assert result.outputs == {}
-    assert "trace_path" not in result.output_metadata
+    inv_out = _make_multisector_fixture_output(result, prepared)
+    products = rhime_outputs.postprocess_multisector_outputs(inv_out, result.output_spec)
+    rhime_outputs.save_multisector_artifacts(inv_out, result.output_spec)
+    assert isinstance(inv_out, InversionOutput)
+    assert products == {}
 
 
 @pytest.mark.rhime_contract
@@ -7692,20 +7682,21 @@ def test_make_multisector_outputs_build_latest_paris_flux(
         model_spec=model_spec,
         country_file=str(europe_country_file),
     )
-    rhime_outputs.make_multisector_rhime_outputs(result=bundle, prepared=prepared)
+    inv_out = _make_multisector_fixture_output(bundle, prepared)
+    products = rhime_outputs.postprocess_multisector_outputs(inv_out, bundle.output_spec)
+    rhime_outputs.save_multisector_artifacts(inv_out, bundle.output_spec)
 
-    assert "paris_flux" in bundle.outputs
-    assert "paris_concentration" in bundle.outputs
-    assert "total concentration" in bundle.output_metadata["paris_note"]
-    paris_flux = bundle.outputs["paris_flux"]
+    assert "paris_flux" in products
+    assert "paris_concentration" in products
+    paris_flux = products["paris_flux"]
     assert "flux_total_posterior" in paris_flux
     assert "flux_ff_posterior" in paris_flux
     assert "flux_ocean_posterior" in paris_flux
     assert tuple(paris_flux.sector.values) == ("ff", "ocean")
 
-    paris_flux_path = Path(bundle.output_metadata["paris_flux_path"])
-    paris_concentration_path = Path(bundle.output_metadata["paris_concentration_path"])
-    diagnostics_path = Path(bundle.output_metadata["sector_flux_diagnostics_path"])
+    paris_flux_path = tmp_path / "test_flux_ch4_EUROPE_2019-01-01.nc"
+    paris_concentration_path = tmp_path / "test_conc_ch4_EUROPE_2019-01-01.nc"
+    diagnostics_path = tmp_path / "test2019-01-01_sector_flux_diagnostics.nc"
     assert paris_flux_path.exists()
     assert paris_concentration_path.exists()
     assert diagnostics_path.exists()
@@ -9060,29 +9051,28 @@ def test_run_rhime_multisector_api_smoke(
         runner_kwargs["likelihood_builder"] = multisector_fixed_error
     result = run_rhime_multisector(**args, **runner_kwargs)
 
-    assert isinstance(result, RhimeResult)
+    assert isinstance(result, InversionOutput)
     assert isinstance(result.basis_functions, BasisFunctions)
     assert not hasattr(result, "basis_objects")
-    assert result.run_spec.split_by_sectors is True
+    assert result.run_metadata["split_by_sectors"] is True
     if custom_likelihood:
-        assert result.output_metadata["likelihood_builder"]["qualname"].endswith("multisector_fixed_error")
+        assert result.model_metadata["builder"]["likelihood_builder"]["qualname"].endswith("multisector_fixed_error")
     else:
-        assert "likelihood_builder" not in result.output_metadata
-    assert [sector.name for sector in result.model_spec.sectors] == ["FF", "ocean"]
-    assert result.model_spec.sectors[0].x_prior == {
+        assert "likelihood_builder" not in result.model_metadata["builder"]
+    assert [sector["name"] for sector in result.model_metadata["sectors"]] == ["FF", "ocean"]
+    assert result.model_metadata["sectors"][0]["x_prior"] == {
         "pdf": "uniform",
         "lower": 0.8,
         "upper": 1.0,
     }
-    assert result.model_spec.sectors[1].x_prior == {
+    assert result.model_metadata["sectors"][1]["x_prior"] == {
         "pdf": "uniform",
         "lower": 1.1,
         "upper": 1.3,
     }
-    posterior = cast(Any, result.idata).posterior
+    posterior = cast(Any, result.trace).posterior
     assert "x_ff" in posterior
     assert "x_ocean" in posterior
-    assert result.outputs == {}
 
 
 @pytest.mark.rhime_contract

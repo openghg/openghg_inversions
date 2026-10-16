@@ -72,13 +72,13 @@ def _resolve_site_additive_sigma_prior(
     missing = [name for name in site_names if name not in scale]
     if missing:
         raise ValueError(f"Site-keyed additive-sigma prior is missing retained site(s): {missing!r}.")
-    values = [scale[name] for name in site_names]
+    values = list(scale.values())
     if any(isinstance(value, bool) or not isinstance(value, Real) for value in values):
         raise ValueError("Site-keyed additive-sigma prior values must be finite positive numbers.")
     scales = np.asarray(values, dtype=float)
     if np.any(~np.isfinite(scales)) or np.any(scales <= 0):
         raise ValueError("Site-keyed additive-sigma prior values must be finite positive numbers.")
-    resolved["sigma"] = scales[:, None]
+    resolved["sigma"] = np.asarray([scale[name] for name in site_names], dtype=float)[:, None]
     return resolved
 
 

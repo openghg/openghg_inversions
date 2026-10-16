@@ -47,6 +47,9 @@ from .preparation import (
     with_prepared_rhime_sites,
 )
 from .multisector import (
+    build_multisector_model,
+    prepare_multisector,
+    materialize_multisector_inputs,
     build_multisector_rhime_model,
     build_multisector_rhime_model_result,
     make_multisector_rhime_result,
@@ -70,6 +73,10 @@ from .nested import (
 )
 from .outputs import (
     RhimeResult,
+    make_multisector_output,
+    postprocess_multisector_outputs,
+    save_multisector_artifacts,
+    validate_multisector_output_resources,
     make_multisector_rhime_outputs,
     make_standard_output,
     annotate_sample_trace,
@@ -141,6 +148,13 @@ __all__ = [
     "PREPARATION_CHECK_NAME",
     "assemble_rhime_inputs",
     "align_inner_merged_to_outer_observations",
+    "build_multisector_model",
+    "prepare_multisector",
+    "materialize_multisector_inputs",
+    "make_multisector_output",
+    "postprocess_multisector_outputs",
+    "save_multisector_artifacts",
+    "validate_multisector_output_resources",
     "build_multisector_rhime_model",
     "build_co2_model",
     "build_multisector_rhime_model_result",

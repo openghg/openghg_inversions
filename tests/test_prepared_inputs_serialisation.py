@@ -1329,6 +1329,6 @@ def test_multisource_order_survives_load_run_and_reconstruction(
     )
 
     assert observed["source_order"] == ("B", "A")
-    assert observed["sectors"] is model_spec.sectors
+    assert observed["sectors"] == model_spec.sectors
     assert observed["output_order"] == ("B", "A")
     assert result.outputs == {"postprocessed": True}

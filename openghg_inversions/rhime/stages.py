@@ -1,10 +1,7 @@
-"""Public file-backed RHIME stages and explicit family dispatch.
+"""Standard numerical handoffs and retained CO2 staged entry points.
 
-This module is in transition: standard ``prepare``, ``sample`` and ``postprocess``
-use the current numerical handoffs, while multisector and CO2 dispatch retains
-its earlier interfaces until those recipes migrate. The public stage namespace
-remains; retaining the old family wrappers does not make them the standard API.
-Concrete workflows own scientific execution and replay policy.
+Multisector handoffs live in :mod:`.multisector_stages`. Each concrete recipe
+owns its scientific execution; the old multisector envelope is retired.
 """
 
 from __future__ import annotations
@@ -13,8 +10,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 from collections.abc import Mapping
 
-from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
-from . import _multisector_stages
 from ._standard_stages import prepare, sample, postprocess, prior_predictive, load_preparation, load_samples, save_preparation, save_samples
 from ._stage_checks import (
     CHECK_SCHEMA_VERSION,
@@ -23,22 +18,24 @@ from ._stage_checks import (
     diagnose_rhime_stage,
 )
 from .outputs import RhimeResult
-from .params import RhimeConfig
 from .requests import load_params
 
 if TYPE_CHECKING:
     from .co2.stages import Co2StageSetup
 
-ModelKind = Literal["multisector", "co2"]
+ModelKind = Literal["co2"]
 
 
-def _reject_standard(model: str, function: str, replacement: str) -> None:
-    """Fail clearly for untyped callers selecting the retired standard envelope."""
-    if model == "standard":
+def _reject_migrated(model: str, function: str, replacement: str) -> None:
+    """Name the concrete replacement for retired family envelopes."""
+    if model in {"standard", "multisector"}:
+        module = "stages" if model == "standard" else "multisector_stages"
         raise ValueError(
-            f"`{function}` no longer supports model='standard'; use `stages.{replacement}` "
-            "with a standard preparation or sample manifest."
+            f"`{function}` no longer supports model={model!r}; use `{module}.{replacement}` "
+            "with a preparation or sample manifest."
         )
+    if model != "co2":
+        raise ValueError(f"Unsupported staged model {model!r}.")
 
 
 def load_stage_params(
@@ -46,7 +43,7 @@ def load_stage_params(
     config_file: str | Path | None = None,
     params_file: str | Path | None = None,
     overrides: Mapping[str, Any] | None = None,
-    model: ModelKind | Literal["standard"] = "standard",
+    model: Literal["standard", "multisector", "co2"] = "standard",
 ) -> dict[str, Any]:
     """Load existing RHIME parameters from one explicit source.
 
@@ -81,7 +78,7 @@ def load_stage_params(
     return load_params(config_file=config_file, params_file=params_file, overrides=overrides)
 
 
-def resolve_stage_setup(params: Mapping[str, Any], *, model: ModelKind) -> RhimeConfig | Co2StageSetup:
+def resolve_stage_setup(params: Mapping[str, Any], *, model: ModelKind) -> Co2StageSetup:
     """Resolve effective stage options through the selected recipe's boundary.
 
     Args:
@@ -90,8 +87,7 @@ def resolve_stage_setup(params: Mapping[str, Any], *, model: ModelKind) -> Rhime
         model: Recipe whose configuration and staged workflow will be used.
 
     Returns:
-        Complete ``RhimeConfig`` for standard or multisector execution, or
-        the CO2 workflow's setup. Resolution does not acquire scientific data
+        The CO2 workflow's setup. Resolution does not acquire scientific data
         or execute inference.
 
     Raises:
@@ -103,13 +99,11 @@ def resolve_stage_setup(params: Mapping[str, Any], *, model: ModelKind) -> Rhime
         from .co2.stages import resolve_co2_stage_setup
 
         return resolve_co2_stage_setup(params=params)
-    _reject_standard(model, "resolve_stage_setup", "prepare")
-    if model != "multisector":
-        raise ValueError(f"Unsupported staged model {model!r}.")
-    return RhimeConfig.from_params(translate_rhime_aliases(params), multisector=True)
+    _reject_migrated(model, "resolve_stage_setup", "prepare")
+    raise ValueError(f"Unsupported staged model {model!r}.")
 
 
-def effective_configuration(setup: RhimeConfig | Co2StageSetup, *, model: ModelKind) -> dict[str, Any]:
+def effective_configuration(setup: Co2StageSetup, *, model: ModelKind) -> dict[str, Any]:
     """Project resolved choices into the selected workflow's manifest vocabulary.
 
     Args:
@@ -117,10 +111,7 @@ def effective_configuration(setup: RhimeConfig | Co2StageSetup, *, model: ModelK
         model: Recipe that owns the manifest representation.
 
     Returns:
-        Manifest settings for provenance and replay. Standard and multisector
-        mappings contain ``model``, ``preparation``, ``model_spec``, ``output``
-        and ``sampler``; preparation includes the complete requested site
-        selectors. CO2 uses its own recipe, reconstruction and output fields.
+        CO2 recipe, reconstruction and output settings for provenance and replay.
         This is a staged artifact representation, not a general configuration
         serialization API or a retained execution run specification.
     """
@@ -129,15 +120,14 @@ def effective_configuration(setup: RhimeConfig | Co2StageSetup, *, model: ModelK
         from .co2.stages import effective_co2_configuration
 
         return effective_co2_configuration(setup=cast("Co2StageSetup", setup))
-    _reject_standard(model, "effective_configuration", "load_preparation")
-    return _multisector_stages.effective_configuration(setup=cast(RhimeConfig, setup))
+    _reject_migrated(model, "effective_configuration", "load_preparation")
+    raise ValueError(f"Unsupported staged model {model!r}.")
 
 
-def configuration_identity(setup: RhimeConfig | Co2StageSetup, *, model: ModelKind) -> str:
+def configuration_identity(setup: Co2StageSetup, *, model: ModelKind) -> str:
     """Hash the resolved settings required for scientific replay.
 
-    Standard and multisector identities cover preparation, period, model,
-    and prior choices. CO2 identities cover recipe replay settings. Numerical
+    CO2 identities cover recipe replay settings. Numerical
     artifacts are loaded through their scientific owners without stage digests.
     """
 
@@ -145,45 +135,42 @@ def configuration_identity(setup: RhimeConfig | Co2StageSetup, *, model: ModelKi
         from .co2.stages import co2_configuration_identity
 
         return co2_configuration_identity(setup=cast("Co2StageSetup", setup))
-    _reject_standard(model, "configuration_identity", "load_preparation")
-    return _multisector_stages.configuration_identity(setup=cast(RhimeConfig, setup))
+    _reject_migrated(model, "configuration_identity", "load_preparation")
+    raise ValueError(f"Unsupported staged model {model!r}.")
 
 
 def prepare_rhime_stage(
     *,
-    setup: RhimeConfig | Co2StageSetup,
+    setup: Co2StageSetup,
     model: ModelKind,
     output_dir: str | Path,
 ) -> dict[str, Any]:
-    """Prepare and save inputs for the deferred multisector or CO2 staged workflow.
+    """Prepare and save inputs for the retained CO2 staged workflow.
 
     Args:
         setup: Resolved configuration from :func:`resolve_stage_setup`.
-        model: ``"multisector"`` or ``"co2"``; standard uses :func:`prepare`.
+        model: ``"co2"``; standard uses :func:`prepare`.
         output_dir: Stage directory receiving the prepared inputs and manifest.
 
     Returns:
         The written preparation manifest, including its ``manifest_path``.
 
     Raises:
-        ValueError: If ``model="standard"`` or a requested site was not prepared.
+        ValueError: If the model is standard or multisector or a requested site was not prepared.
     """
 
-    _reject_standard(model, "prepare_rhime_stage", "prepare")
+    _reject_migrated(model, "prepare_rhime_stage", "prepare")
 
     if model == "co2":
         from .co2.stages import prepare_co2_stage
 
         return prepare_co2_stage(setup=cast("Co2StageSetup", setup), output_dir=output_dir)
-    return _multisector_stages.prepare_rhime_stage(
-        setup=cast(RhimeConfig, setup),
-        output_dir=output_dir,
-    )
+    raise ValueError(f"Unsupported staged model {model!r}.")
 
 
 def prior_predictive_stage(
     *,
-    setup: RhimeConfig | Co2StageSetup,
+    setup: Co2StageSetup,
     model: ModelKind,
     prepared_inputs: str | Path,
     output_dir: str | Path,
@@ -192,11 +179,11 @@ def prior_predictive_stage(
     draws: int = 100,
     stage: str = "prior-predictive",
 ) -> dict[str, Any]:
-    """Check finite prior-predictive draws for the deferred multisector or CO2 workflow.
+    """Check finite prior-predictive draws for the retained CO2 workflow.
 
     Args:
         setup: Resolved configuration matching the preparation.
-        model: ``"multisector"`` or ``"co2"``; standard uses :func:`prior_predictive`.
+        model: ``"co2"``; standard uses :func:`prior_predictive`.
         prepared_inputs: Saved prepared inputs.
         output_dir: Stage directory receiving the evidence and report.
         check_output: Optional report path beneath ``output_dir``.
@@ -208,11 +195,11 @@ def prior_predictive_stage(
         The readiness check written to the report.
 
     Raises:
-        ValueError: If ``model="standard"``, ``draws`` or ``stage`` is invalid, or
+        ValueError: If the model is standard or multisector, ``draws`` or ``stage`` is invalid, or
             the preparation does not match ``setup``.
     """
 
-    _reject_standard(model, "prior_predictive_stage", "prior_predictive")
+    _reject_migrated(model, "prior_predictive_stage", "prior_predictive")
 
     if model == "co2":
         from .co2.stages import prior_predictive_co2_stage
@@ -226,33 +213,24 @@ def prior_predictive_stage(
             draws=draws,
             stage=stage,
         )
-    return _multisector_stages.prior_predictive_stage(
-        setup=cast(RhimeConfig, setup),
-        prepared_inputs=prepared_inputs,
-        output_dir=output_dir,
-        check_output=check_output,
-        preparation_manifest=preparation_manifest,
-        draws=draws,
-        stage=stage,
-    )
+    raise ValueError(f"Unsupported staged model {model!r}.")
 
 
 def sample_rhime_stage(
     *,
-    setup: RhimeConfig | Co2StageSetup,
+    setup: Co2StageSetup,
     model: ModelKind,
     prepared_inputs: str | Path,
     output_dir: str | Path,
     preparation_manifest: str | Path,
 ) -> dict[str, Any]:
-    """Sample saved inputs for the deferred multisector or CO2 workflow.
+    """Sample saved inputs for the retained CO2 workflow.
 
-    Multisector writes version-2 sample manifests with output bindings; CO2
-    keeps its version-1 manifest.
+    CO2 retains its version-1 manifest.
 
     Args:
         setup: Resolved configuration matching the preparation.
-        model: ``"multisector"`` or ``"co2"``; standard uses :func:`sample`.
+        model: ``"co2"``; standard uses :func:`sample`.
         prepared_inputs: Saved prepared inputs.
         output_dir: Stage directory receiving the posterior and manifest.
         preparation_manifest: Manifest matching ``prepared_inputs``.
@@ -261,10 +239,10 @@ def sample_rhime_stage(
         The written sample manifest, including its ``manifest_path``.
 
     Raises:
-        ValueError: If ``model="standard"`` or the preparation does not match ``setup``.
+        ValueError: If the model is standard or multisector or the preparation does not match ``setup``.
     """
 
-    _reject_standard(model, "sample_rhime_stage", "sample")
+    _reject_migrated(model, "sample_rhime_stage", "sample")
 
     if model == "co2":
         from .co2.stages import sample_co2_stage
@@ -275,17 +253,12 @@ def sample_rhime_stage(
             output_dir=output_dir,
             preparation_manifest=preparation_manifest,
         )
-    return _multisector_stages.sample_rhime_stage(
-        setup=cast(RhimeConfig, setup),
-        prepared_inputs=prepared_inputs,
-        output_dir=output_dir,
-        preparation_manifest=preparation_manifest,
-    )
+    raise ValueError(f"Unsupported staged model {model!r}.")
 
 
 def postprocess_rhime_stage(
     *,
-    setup: RhimeConfig | Co2StageSetup,
+    setup: Co2StageSetup,
     model: ModelKind,
     prepared_inputs: str | Path,
     posterior: str | Path,
@@ -293,15 +266,13 @@ def postprocess_rhime_stage(
     preparation_manifest: str | Path,
     sample_manifest: str | Path,
 ) -> RhimeResult:
-    """Make products from saved samples for the deferred multisector or CO2 workflow.
+    """Make products from saved samples for the retained CO2 workflow.
 
-    Version-2 multisector and version-1 CO2 manifests replay without a graph;
-    historical multisector version-1 manifests rebuild their missing output
-    roles. Invalid bindings never fall back.
+    The retained CO2 route replays its scientific output context.
 
     Args:
         setup: Resolved configuration matching the saved artifacts.
-        model: ``"multisector"`` or ``"co2"``; standard uses :func:`postprocess`.
+        model: ``"co2"``; standard uses :func:`postprocess`.
         prepared_inputs: Saved prepared inputs.
         posterior: Saved posterior trace.
         output_dir: Stage directory receiving the products and manifest.
@@ -312,11 +283,11 @@ def postprocess_rhime_stage(
         The replayed result.
 
     Raises:
-        ValueError: If ``model="standard"``, the artifacts do not match ``setup``,
+        ValueError: If the model is standard or multisector, the artifacts do not match ``setup``,
             or the output binding is invalid.
     """
 
-    _reject_standard(model, "postprocess_rhime_stage", "postprocess")
+    _reject_migrated(model, "postprocess_rhime_stage", "postprocess")
 
     if model == "co2":
         from .co2.stages import postprocess_co2_stage
@@ -329,14 +300,7 @@ def postprocess_rhime_stage(
             preparation_manifest=preparation_manifest,
             sample_manifest=sample_manifest,
         )
-    return _multisector_stages.postprocess_rhime_stage(
-        setup=cast(RhimeConfig, setup),
-        prepared_inputs=prepared_inputs,
-        posterior=posterior,
-        output_dir=output_dir,
-        preparation_manifest=preparation_manifest,
-        sample_manifest=sample_manifest,
-    )
+    raise ValueError(f"Unsupported staged model {model!r}.")
 
 
 __all__ = [

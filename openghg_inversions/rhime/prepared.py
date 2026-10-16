@@ -11,9 +11,8 @@ from openghg_inversions._timing import timer_seconds, timer_start
 from openghg_inversions.inversion_data import RhimePreparedInputs
 
 from .builders import RhimeLikelihoodBuilder, RhimeModelBuilder
-from .materialization import materialize_pymc_inputs
 from .multisector import build_multisector_rhime_model_result, make_multisector_rhime_result
-from .multisector import multisector_model_input_names
+from .multisector import materialize_multisector_inputs, build_multisector_model
 from .outputs import (
     RhimeResult,
     make_multisector_rhime_outputs,
@@ -56,8 +55,10 @@ def run_rhime_from_prepared_inputs(
 ) -> RhimeResult:
     """Run a retained multisector recipe from prepared scientific inputs.
 
-    Standard callers use ``run_standard(prepared=..., config=...)`` so prepared
-    and acquired standard execution share the same scientific pipeline.
+    Ordinary callers use ``run_standard(prepared=..., config=...)`` or
+    ``run_multisector(prepared=..., config=...)``. This compatibility boundary
+    retains ``RhimeRunSpec`` and complete-model builders with ``RhimeResult``
+    until those consumers migrate; built-in graphs use the same eager operations.
 
     Args:
         prepared_inputs: Borrowed canonical inputs and retained basis functions.
@@ -115,29 +116,27 @@ def run_rhime_from_prepared_inputs(
     build_and_sample_start = timer_start()
     # Complete-model builders historically own canonical, potentially lazy
     # inputs. Only built-in graphs cross the named eager PyMC boundary here.
-    model_inputs = (
-        prepared_inputs.inv_inputs
-        if model_builder is not None
-        else materialize_pymc_inputs(
-            prepared_inputs,
-            variable_names=multisector_model_input_names(prepared_inputs, run_spec.model),
+    if model_builder is not None:
+        model_build_result = build_multisector_rhime_model_result(
+            prepared=prepared_inputs, model_inputs=prepared_inputs.inv_inputs,
+            run_spec=run_spec, model_builder=model_builder,
         )
-    )
-    model_build_result = build_multisector_rhime_model_result(
-        prepared=prepared_inputs,
-        model_inputs=model_inputs,
-        run_spec=run_spec,
-        model_builder=model_builder,
-        likelihood_builder=likelihood_builder,
-        likelihood_kwargs=likelihood_kwargs,
-    )
+    else:
+        model_inputs, priors = materialize_multisector_inputs(prepared_inputs, run_spec.model)
+        model_build_result = build_multisector_model(
+            model_inputs, run_spec.model, priors=priors,
+            likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs,
+        )
     if model_builder is None:
         model_build_result.output_contract.validate_requested_output(output_spec.output_format)
     idata = sample_rhime_model(
         model_build_result,
         active_sampler,
     )
-    annotate_sample_trace(model_build_result, idata)
+    annotate_sample_trace(
+        model_build_result, idata, likelihood_builder=likelihood_builder,
+        likelihood_kwargs=likelihood_kwargs,
+    )
     build_and_sample_seconds = timer_seconds(build_and_sample_start)
 
     result = make_multisector_rhime_result(

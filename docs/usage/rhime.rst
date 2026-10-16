@@ -225,8 +225,17 @@ inference description in ``result.output_metadata["sampler"]`` without a live
 sampler or PyMC model. Replay reuses that description without inference or current
 defaults.
 
-``run_rhime_from_prepared_inputs`` is retained only for multisector execution with
-``RhimeRunSpec``. The standard 0.7 call using ``prepared_inputs`` plus a one-sector
+For multisector execution with ordinary resolved configuration, use
+``run_multisector(prepared=prepared, config=config)`` with
+``RhimeConfig.from_params(options, multisector=True)``. It returns ``InversionOutput``
+and uses the same materialization, construction, inference and output operations
+as a full multisector run. Saved phases use those operations through
+``rhime.multisector_stages``; see :doc:`staged_workflow` for preparation reuse,
+compatible prior/likelihood changes and graph-free product replay.
+
+``run_rhime_from_prepared_inputs`` is retained for multisector execution with
+``RhimeRunSpec``, including its custom complete-model-builder hook. The standard
+0.7 call using ``prepared_inputs`` plus a one-sector
 ``run_spec`` must migrate to ``run_standard(prepared=..., config=...)``; it is not
 accepted by the retained multisector entry point. That entry point and the nested,
 CO2 and CO2/O2 prepared runners accept ``sampler="default"`` (also omission) or a
@@ -235,8 +244,9 @@ isolates mutable option containers while borrowing scientific arrays.
 
 The prepared object is trusted canonical input: it must already contain the
 observation, error, sensitivity, and optional boundary-condition variables
-required by the selected model. A multisector run requires
-``run_spec.split_by_sectors=True`` and a source-resolved layout on
+required by the selected model. A multisector run requires sector-split
+configuration (or ``run_spec.split_by_sectors=True`` at the retained compatibility
+boundary) and a source-resolved layout on
 ``prepared.inv_inputs["H"]``. Shared-basis inputs may use a rectangular
 ``source`` dimension. Source-specific, ragged state blocks use one gathered
 state dimension with a ``(source, region_in_source)`` MultiIndex. A scalar

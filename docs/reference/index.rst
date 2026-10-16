@@ -59,11 +59,11 @@ retained execution metadata and compatibility helpers.
    openghg_inversions.rhime.DataConfig.select
    openghg_inversions.inversion_data.SiteOptions
 
-Reuse standard preparation and samples
---------------------------------------
+Reuse standard and multisector preparation and samples
+------------------------------------------------------
 
-These standard-route operations share the full runner's scientific preparation
-and output owners. See the :doc:`saved-phase guide </usage/staged_workflow>` for
+These operations share their recipe's full runner preparation, inference and
+output owners. See the :doc:`saved-phase guide </usage/staged_workflow>` for
 manifest lifetime, compatible model changes and graph-free product replay.
 
 .. autosummary::
@@ -77,15 +77,28 @@ manifest lifetime, compatible model changes and graph-free product replay.
    openghg_inversions.rhime.stages.load_samples
    openghg_inversions.rhime.stages.postprocess
    openghg_inversions.rhime.stages.prior_predictive
+   openghg_inversions.rhime.multisector.prepare_multisector
+   openghg_inversions.rhime.multisector_stages.prepare
+   openghg_inversions.rhime.multisector_stages.save_preparation
+   openghg_inversions.rhime.multisector_stages.load_preparation
+   openghg_inversions.rhime.multisector_stages.sample
+   openghg_inversions.rhime.multisector_stages.save_samples
+   openghg_inversions.rhime.multisector_stages.load_samples
+   openghg_inversions.rhime.multisector_stages.postprocess
+   openghg_inversions.rhime.multisector_stages.prior_predictive
+   openghg_inversions.rhime.outputs.make_multisector_output
+   openghg_inversions.rhime.outputs.postprocess_multisector_outputs
+   openghg_inversions.rhime.outputs.save_multisector_artifacts
 
 Run specifications and results
 ------------------------------
 
-Standard runners return ``InversionOutput``. ``RhimeResult`` and ``RhimeRunSpec``
-remain compatibility objects for multisector, nested and CO2 recipes until their
-separate handoff adoption. These objects describe model, sampling and output
-choices. The sampler's former ``rhime`` imports remain compatible;
-its implementation is owned by ``inference``.
+Standard and multisector runners return ``InversionOutput``, including prepared
+execution and graph-free saved replay. ``RhimeResult`` and ``RhimeRunSpec`` remain
+at the advanced multisector complete-model-builder boundary and for nested and
+CO2 recipes. These retained objects describe model, sampling and output choices.
+The sampler's former ``rhime`` imports remain compatible; its implementation is
+owned by ``inference``.
 
 .. autosummary::
    :nosignatures:

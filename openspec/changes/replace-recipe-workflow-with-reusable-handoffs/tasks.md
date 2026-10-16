@@ -273,7 +273,7 @@ suite, supported Python versions, typing and documentation.
 
 ## 2. Multisector reusable-handoff adoption
 
-- [ ] 2.1 Give multisector concrete preparation, inference and products calls using
+- [x] 2.1 Give multisector concrete preparation, inference and products calls using
   the standard delivery's established persistence mechanics through ordinary
   functions. Verify full/staged/replay preserve sector/source-labelled inputs,
   scientific roles, retained-site subsets, all-source flux/source order and borrowed
@@ -282,17 +282,92 @@ suite, supported Python versions, typing and documentation.
   (including a `prepare_multisector(merged, ...)` preparation owner), then delete
   the `_multisector_stages.py` envelope, its `stages.py` dispatch and the CLI
   `--prepared-inputs`/`--posterior` arguments for multisector.
-- [ ] 2.2 Verify compatible sector-prior/likelihood changes reuse preparation and
+- [x] 2.2 Verify compatible sector-prior/likelihood changes reuse preparation and
   genuine preparation changes fail. Exercise saved-result products with unchanged
   sample meaning and current reporting choices, including graph-free
   replay and rejection of scientifically incompatible source layouts.
-- [ ] 2.3 Deliver the applicable multisector CLI/example, guidance/docstrings,
+- [x] 2.3 Deliver the applicable multisector CLI/example, guidance/docstrings,
   readiness/diagnosis checks and release notes with its writer/reader/callers.
   Verify full/phase-only choices, requested-window metadata and declared role
   validation independently of immediate product requests.
 - [ ] 2.4 Clear the multisector gate with existing scientific/product references
   across full/staged/replay plus focused and relevant broader checks. Record the
   merged implementation and evidence before marking this delivery complete.
+
+
+### Multisector implementation evidence, 16 October 2026
+
+The multisector slice starts from current `devel` `208a21d9`, consuming merged
+standard #866 and configuration closeout #883. It owns tasks 2.1–2.3 and the
+implementation/validation portion of 2.4. **Task 2.4 remains unchecked**: merged
+implementation evidence and maintainer review are outstanding. No programme
+completion, maintainer readability acceptance, spec promotion or merge is claimed.
+
+The maintainer explicitly directed this implementation to follow the standard
+pattern, including its result migration, on 16 October. Accordingly,
+`run_multisector`, `run_multisector(prepared=..., config=...)` and saved replay
+return `InversionOutput`; this extends the earlier standard-only result amendment
+and is flagged for PR review. Full and saved routes compose `prepare_multisector`,
+`materialize_multisector_inputs`, `build_multisector_model`, sampling and trace
+annotation, `make_multisector_output`, `postprocess_multisector_outputs` and explicit
+artifact exports. Acquisition/validation and optional basis exports remain visible
+in the runners; construction consumes the supplied eager Dataset and prior values.
+
+`rhime.multisector_stages` saves/loads preparation and samples through the existing
+codecs and checkpoint functions, with manifest-relative references, generation
+binding and embedded `OutputContract`. The obsolete `_multisector_stages` envelope,
+configuration identity/equality gate, output-binding sidecar reader, legacy graph
+recovery and multisector envelope dispatch are removed together with their callers.
+Multisector CLI saved phases consume one manifest and phase-owned choices.
+
+The runnable `examples/multisector_handoffs.py` prepares once, samples Normal
+scaling priors with two widths and fixed-error/Student-t likelihoods into distinct
+locations, and compares full/prepared/staged/replay traces and flux products.
+Independent SciPy density checks cover three two-sector states per likelihood
+(`rtol=1e-6`, `atol=1e-5` for float32 arithmetic). Independent native-flux
+reconstruction uses unequal inventory fields `[[1,2],[3,4]]` and
+`[[.3,1.2],[2.1,.4]]`, distinct from the historical operator's prior.
+Native source ordering and model-sector declaration ordering are preserved
+independently by labels and explicit recorded associations.
+
+`tests/test_multisector_handoff_parity.py`: **14 passed** after the source and
+eager-builder review fixes, plus **1 passed** in the added signed-source replay
+case (negative source flux/sensitivity and independently reconstructed native totals). This includes default lognormal scientific/latent
+state retention; joint lazy prior/input materialization and zero-state pruning;
+retained-site/requested-window metadata; omitted, extra and incompatible source
+layouts; borrowed/unselected lazy arrays; unchanged prepared numerical files;
+equivalent default/shorthand preparation records; and fresh-process replay after
+removing the original operator with acquisition, construction, materialization and
+inference forbidden. Full and prepared runs also pass with checkpoint serialization
+and manifest operations forbidden.
+
+Final consolidated local evidence: **1,026 passed** across 22 focused/relevant
+broader test files covering RHIME science and products, multisector and standard
+handoffs/parity, CLI/readiness/diagnosis, CO2 facade preservation, tutorial and
+xarray consumers, configuration/site resolution, nested consumers, resource paths,
+basis inputs, merged/prepared codecs, output contracts and prior registration.
+The malformed-schema CLI regressions pass in this consolidated run. Changed-path
+Ruff, `git diff --check` and strict validation of this active OpenSpec change pass.
+Full compatibility/type/documentation Slurm results and comparison against
+`208a21d9` remain pending and will be recorded with the PR evidence.
+
+Scientific checks retained for #808 have concrete owners: selected arrays and
+source/basis coverage before materialization, baked BC policy at model resolution,
+prepared labels/units at numerical loading, and scientific roles at construction
+and external save/load. A model omitting a retained source now fails rather than
+silently excluding its flux from totals. Replay uses original requested dates and
+actual inference descriptions with current output choices, without fresh sampler
+settings or graph recovery.
+
+Concrete residual: `run_rhime_from_prepared_inputs` still supports existing
+`RhimeRunSpec` consumers, including complete-model builders, returning `RhimeResult`.
+Its result/build/output adapters remain for those consumers; nested and other
+families are preserved. The remaining ordinary compatibility consumers include
+`tests/test_prepared_inputs_serialisation.py` and `tests/test_xarray_input_adapter.py`.
+Their migration and final shared-adapter retirement remain tracked by #880;
+this slice does not claim they have disappeared. Ordinary/cached CO2, nested,
+model-input ownership, artifact/storage policy and integrated acceptance remain
+outside the multisector delivery.
 
 ## 3. Ordinary CO2 reusable-handoff adoption
 
