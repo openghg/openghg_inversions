@@ -408,6 +408,11 @@ Validation before Slurm:
   simplification superseded its inputs; it supplies no terminal validation. Full
   locked Python 3.12/3.13, type and strict documentation checks use a fixed revision
   and the repository Slurm runner; terminal comparison remains pending.
+- Runtime `ccffce5f` is pushed in #886. Fixed detached-checkout Slurm job
+  19448969 runs `py312-openghgCur,py313-openghgCur,type,docs-strict`; callback
+  19448970 has verified `afterany:19448969`, ticket
+  `sw-20261016T094109Z-3cc04fbfe0e2`. The three final preflight checks passed.
+  Terminal comparison remains pending; this does not clear task 3.6.
 
 Concrete cached handoff: consume `load_preparation` (coherent inputs, bound
 companion and generation), keep the matched cached construction/step owner and
