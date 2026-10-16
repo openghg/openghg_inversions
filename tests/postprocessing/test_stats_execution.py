@@ -1,0 +1,256 @@
+"""Numerical and execution regressions for shared bounded statistics."""
+
+from collections import Counter
+
+import arviz as az
+import dask.array as da
+from dask import delayed
+from dask.callbacks import Callback
+import numpy as np
+import pytest
+import sparse
+import xarray as xr
+
+from openghg_inversions.postprocessing import stats as module
+
+
+@pytest.mark.parametrize("eager_companion", [False, True], ids=["dask-only", "mixed"])
+@pytest.mark.parametrize(
+    "layout",
+    [
+        (100, 1, 100), (1, 100, 100), (127, 1, 128),
+        (2, 1, 128), (100, 1, 100, 100, 1),
+        (1, 128), (128, 1, 128), (128, 1, 1, 128),
+    ],
+)
+def test_singleton_source_blocks_keep_eager_and_lazy_reduction_layouts(layout, eager_companion):
+    """Leading, internal and adjacent singleton chunks preserve native kernels."""
+    values = np.random.default_rng(31).normal(1950, 200, (1000, sum(layout))).astype("float32")
+    boundaries = np.cumsum((0, *layout))
+    calls = Counter()
+
+    def source(start, stop):
+        calls[start] += 1
+        return -values[:, start:stop]
+
+    lazy = da.concatenate(
+        [
+            da.from_delayed(delayed(source)(start, stop), shape=(1000, stop - start), dtype=values.dtype)
+            for start, stop in zip(boundaries[:-1], boundaries[1:])
+        ],
+        axis=1,
+    )
+    data = xr.Dataset(
+        {
+            "companion": (("draw", "point"), values if eager_companion else -lazy),
+            "lazy": (("draw", "point"), lazy),
+        },
+        coords={"point": np.arange(sum(layout))[::-1]},
+    )
+    borrowed = data.lazy.data
+    graph = borrowed.__dask_graph__()
+    statistics = ["mean", "stdev", "quantiles", "hdi"]
+    expected = module._calculate_stats(data, statistics, hdi_prob=[0.68, 0.95]).compute()
+    calls.clear()
+    payloads = []
+
+    def observe(key, value, *args):
+        if isinstance(value, np.ndarray) and 1000 in value.shape:
+            payloads.append(value.size)
+
+    with Callback(posttask=observe):
+        actual = module.calculate_stats(data, statistics, hdi_prob=[0.68, 0.95])
+    xr.testing.assert_identical(actual, expected)
+    expected_calls = {start: 1 for start in boundaries[:-1]}
+    if eager_companion and layout == (1, 128):
+        expected_calls[1] = 2
+    elif eager_companion and layout == (128, 1, 128):
+        expected_calls[0] = 2
+    assert calls == expected_calls
+    assert payloads and max(payloads) <= 1000 * 128
+    assert data.lazy.data is borrowed
+    assert data.lazy.data.__dask_graph__() is graph
+
+
+def test_statistic_chunk_policy_ignores_lazy_auxiliary_coordinate_layout():
+    """Inspect numerical chunks without forcing or rechunking borrowed coordinates."""
+    values = np.arange(20 * 259, dtype="float32").reshape(20, 259)
+    data = xr.Dataset(
+        {"x": (("draw", "point"), da.from_array(values, chunks=(20, 100)))},
+        coords={"aux": ("point", da.arange(259, chunks=128))},
+    )
+    source = data.x.data
+    source_graph = source.__dask_graph__()
+    auxiliary = data.aux.data
+    auxiliary_graph = auxiliary.__dask_graph__()
+    tasks = []
+    with Callback(pretask=lambda key, *args: tasks.append(key)):
+        direct = module.hdi(data)
+    assert not tasks
+    expected = module._calculate_stats(data.compute(), ["mean", "hdi"]).compute()
+    actual = module.calculate_stats(data, ["mean", "hdi"])
+    xr.testing.assert_identical(actual, expected)
+    xr.testing.assert_identical(direct.compute(), expected[["x_hdi_68"]])
+    assert data.x.data is source
+    assert data.x.data.__dask_graph__() is source_graph
+    assert data.aux.data is auxiliary
+    assert data.aux.data.__dask_graph__() is auxiliary_graph
+    assert source.chunks == ((20,), (100, 100, 59))
+    assert auxiliary.chunks == ((128, 128, 3),)
+
+
+@pytest.mark.parametrize("sparse_payload", [False, True])
+@pytest.mark.parametrize("source_size", [100, 128])
+def test_statistics_reuse_bounded_sources_and_preserve_borrowed_graphs(sparse_payload, source_size):
+    """Each source feeds both variables, summaries and HDI probabilities once."""
+    calls = Counter()
+    values = np.random.default_rng(7).uniform(0, 2, (19, 259)).astype("float32")
+    values[12:, 5] = np.nan
+    values[:, 17] = 0
+
+    def source(start, stop):
+        calls[start] += 1
+        block = values[:, start:stop]
+        return sparse.COO.from_numpy(block) if sparse_payload else block
+
+    chunks = [
+        da.from_delayed(
+            delayed(source)(start, min(start + source_size, 259)),
+            shape=(19, min(source_size, 259 - start)),
+            dtype="float32",
+            meta=sparse.COO.from_numpy(np.empty((0, 0))) if sparse_payload else None,
+        )
+        for start in range(0, 259, source_size)
+    ]
+    original = da.concatenate(chunks, axis=1)
+    data = xr.Dataset(
+        {"y": (("draw", "nmeasure"), original), "related": (("draw", "nmeasure"), original * 2)},
+        coords={"draw": np.arange(19), "nmeasure": np.arange(259)[::-1]},
+    )
+    graph = data.y.data.__dask_graph__()
+    original_chunks = data.y.chunks
+    payloads = []
+
+    def observe(key, value, dsk, state, worker):
+        if isinstance(value, (np.ndarray, sparse.COO)):
+            payloads.append(value.shape)
+
+    with Callback(posttask=observe):
+        actual = module.calculate_stats(
+            data, stats=["mean", "stdev", "quantiles", "hdi"], hdi_prob=(p for p in [0.68, 0.95])
+        )
+
+    assert calls == {start: 1 for start in range(0, 259, source_size)}
+    assert data.y.data is original
+    assert data.y.data.__dask_graph__() is graph
+    assert data.y.chunks == original_chunks
+    assert payloads and max(np.prod(shape) for shape in payloads) <= 19 * 128
+    assert all(value.chunks is None for value in actual.data_vars.values())
+    expected = module._calculate_stats(
+        data, ["mean", "stdev", "quantiles", "hdi"], hdi_prob=[0.68, 0.95]
+    ).compute()
+    xr.testing.assert_identical(module._to_dense_dataset(actual), module._to_dense_dataset(expected))
+    for name in expected:
+        if "hdi" in name or "quantile" in name:
+            xr.testing.assert_identical(actual[name], expected[name])
+
+
+@pytest.mark.parametrize("sample_dim", ["draw", "samples"])
+@pytest.mark.parametrize("option", ["hdi_prob", "hdi__hdi_prob", "shared"])
+def test_hdi_generators_and_complete_sample_cores(sample_dim, option):
+    """Complete chain/sample cores survive NaNs, edge blocks and generator aliasing."""
+    values = np.random.default_rng(14).normal(size=(2, 17, 131)).astype("float32")
+    values[0, -3:, 9] = np.nan
+    data = xr.Dataset({"x": (("chain", sample_dim, "state"), values)}).chunk(
+        {"chain": 1, sample_dim: 5, "state": 128}
+    )
+    probability = (p for p in (0.68, 0.95))
+    options = (
+        {option: probability}
+        if option != "shared"
+        else {
+            "hdi_prob": probability,
+            "hdi__hdi_prob": probability,
+        }
+    )
+    result = module.calculate_stats(data, stats=["hdi"], sample_dim=sample_dim, **options)
+    reference = data.compute().rename({sample_dim: "draw"}) if sample_dim != "draw" else data.compute()
+    for prob in (0.68, 0.95):
+        expected = az.hdi(reference, hdi_prob=prob)
+        xr.testing.assert_equal(
+            result[f"x_hdi_{int(prob * 100)}"], expected.x.rename(f"x_hdi_{int(prob * 100)}")
+        )
+    assert result.hdi.attrs == {"hdi_prob": 0.68}
+
+
+def test_direct_hdi_stays_lazy_and_bounds_non_sample_chunks():
+    """Split an oversized measurement chunk before complete-sample kernels execute."""
+    values = da.from_array(np.arange(23 * 267, dtype="float32").reshape(23, 267), chunks=(6, 267))
+    data = xr.Dataset({"y": (("draw", "nmeasure"), values)})
+    seen = []
+    with Callback(posttask=lambda *args: seen.append(args[1])):
+        result = module.hdi(data, hdi_prob=[0.68, 0.95])
+    assert not seen
+    assert max(result.y_hdi_68.chunks[0]) <= 128
+    xr.testing.assert_identical(result.compute(), module.hdi(data.compute(), hdi_prob=[0.68, 0.95]).compute())
+
+
+def test_block_assembly_keeps_independent_state_axes_and_metadata():
+    """Grouping variables never broadcasts unequal labelled state spaces together."""
+    data = xr.Dataset(
+        {
+            "outer": (("draw", "outer_state"), np.ones((12, 137), dtype="float32"), {"units": "1"}),
+            "inner": (("draw", "inner_state"), np.ones((12, 9), dtype="float32") * 2, {"domain": "inner"}),
+        },
+        coords={"outer_state": np.arange(137)[::-1], "inner_state": [9, 1, 7, 3, 5, 2, 6, 4, 8]},
+    )
+    expected = module._calculate_stats(data, ["mean", "quantiles"]).compute()
+    actual = module.calculate_stats(data, stats=["mean", "quantiles"])
+    xr.testing.assert_identical(actual, expected)
+
+
+def test_effective_hdi_probability_does_not_consume_overridden_generator():
+    """An ignored generic iterable remains untouched by a stat-specific override."""
+    generic = (p for p in (0.5,))
+    data = xr.Dataset({"x": (("draw", "state"), np.ones((20, 129)))})
+    result = module.calculate_stats(
+        data, stats=["hdi"], hdi_prob=generic, hdi__hdi_prob=(p for p in (0.68, 0.95))
+    )
+    assert list(generic) == [0.5]
+    assert set(result.data_vars) == {"x_hdi_68", "x_hdi_95"}
+
+
+def test_multiple_flux_times_edge_blocks_and_exact_companion_kernels(monkeypatch):
+    """All sample-dependent companions use the same bounded spatial/time slices."""
+    monkeypatch.setattr(module, "_STATS_CHUNKS", {"lat": 2, "lon": 2, "flux_time": 1})
+    values = np.random.default_rng(21).normal(size=(25, 5, 7, 3)).astype("float32")
+    values[:, 0, 0, :] = 0
+    data = xr.Dataset(
+        {"flux": (("draw", "lat", "lon", "flux_time"), values, {"units": "mol m-2 s-1"})},
+        coords={"lat": [4, 3, 2, 1, 0], "lon": range(7), "flux_time": [10, 20, 30]},
+    ).chunk({"draw": 5, "lat": 2, "lon": 2, "flux_time": 1})
+    original_attrs = data.flux.attrs.copy()
+    options = {"stats": ["mean", "stdev", "median", "mode", "quantiles", "hdi"], "hdi_prob": [0.68, 0.95]}
+    sizes = []
+    with Callback(
+        posttask=lambda key, value, *args: sizes.append(value.size) if isinstance(value, np.ndarray) else None
+    ):
+        actual = module.calculate_stats(data, **options)
+    expected = module._calculate_stats(data, **options).compute()
+    xr.testing.assert_identical(actual, expected)
+    assert data.flux.attrs == original_attrs
+    assert max(sizes) <= 25 * 2 * 2
+
+
+@pytest.mark.parametrize("sample_dim", [None, ["draw", "state"]])
+@pytest.mark.parametrize("specific", [False, True])
+def test_reduction_over_multiple_or_all_dimensions(sample_dim, specific):
+    """Global/list reductions remain scalar rather than becoming per-tile summaries."""
+    data = xr.Dataset({"x": (("draw", "state"), np.arange(2 * 129, dtype="float64").reshape(2, 129))}).chunk(
+        {"draw": 1, "state": 100}
+    )
+    options = {"mean__sample_dim" if specific else "sample_dim": sample_dim}
+    actual = module.calculate_stats(data, stats=["mean"], **options)
+    expected = module._calculate_stats(data, ["mean"], **options).compute()
+    xr.testing.assert_identical(actual, expected)
+    assert actual.x_mean.ndim == 0

@@ -17,7 +17,7 @@ from openghg_inversions.postprocessing._basis_products import (
     reconstruct_scale_factor_stats,
 )
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
-from openghg_inversions.postprocessing.stats import calculate_stats
+from openghg_inversions.postprocessing.stats import _STATS_CHUNKS, calculate_stats
 from openghg_inversions.postprocessing.utils import rename_by_replacement
 
 
@@ -46,42 +46,7 @@ TRACE_GROUP_SUFFIXES = (
     "_posterior",
 )
 
-_FLUX_STATS_CHUNKS = {"lat": 32, "lon": 32, "latitude": 32, "longitude": 32, "flux_time": 1}
-
-
-def _calculate_flux_stats(ds: xr.Dataset, **kwargs) -> xr.Dataset:
-    """Reduce one gridded variable and spatial/time tile at a time.
-
-    Reconstruction must already have bounded spatial chunks. Keep the original
-    sample chunks and statistic kernels, and materialize only completed tile
-    statistics before moving on. This bounds live reconstruction intermediates
-    without changing the sample reduction order.
-    """
-    sample_dims = {value for key, value in kwargs.items() if key.endswith("sample_dim")}
-    limits = {dim: size for dim, size in _FLUX_STATS_CHUNKS.items() if dim not in sample_dims}
-
-    def reduce_tile(data: xr.Dataset, dimensions: list[str]) -> xr.Dataset:
-        if dimensions:
-            dim, *remaining = dimensions
-            if data.sizes[dim]:
-                return xr.concat(
-                    [
-                        reduce_tile(data.isel({dim: slice(start, start + limits[dim])}), remaining)
-                        for start in range(0, data.sizes[dim], limits[dim])
-                    ],
-                    dim=dim,
-                    combine_attrs="override",
-                )
-        result = calculate_stats(data, **kwargs)
-        return result.compute().as_numpy()
-
-    # The eager HDI boundary also runs under this scheduler: concurrent tiles
-    # or upstream contractions must not multiply the reconstruction workspace.
-    with dask.config.set(scheduler="single-threaded"):
-        return xr.merge(
-            [reduce_tile(ds[[name]], [dim for dim in limits if dim in ds[name].dims]) for name in ds],
-            combine_attrs="override",
-        )
+_FLUX_STATS_CHUNKS = _STATS_CHUNKS
 
 
 _PRODUCT_METADATA_FIELDS = Literal["species", "domain", "start_date", "end_date"]
@@ -127,7 +92,7 @@ def _multisector_output_sectors(inv_out: InversionOutput) -> list[OutputSector]:
 def _sector_scale_trace(inv_out: InversionOutput, sector: OutputSector) -> xr.Dataset:
     """Return one sector's scale trace renamed to the standard single-sector base name."""
     base_name = f"x_{sector.variable_suffix}"
-    trace = inv_out.trace_dataset()
+    trace = inv_out.trace_dataset(var_names=[base_name])
     rename: dict[str, str] = {}
     for suffix in TRACE_GROUP_SUFFIXES:
         data_var = f"{base_name}{suffix}"
@@ -297,6 +262,10 @@ def _stats_args_with_defaults(
         result["stats"] = stats
     if chunk_dim is not None:
         result["chunk_dim"] = chunk_dim
+    # Reuse the effective probabilities across products and sector reductions.
+    probability_key = "hdi__hdi_prob" if "hdi__hdi_prob" in result else "hdi_prob"
+    if isinstance(result.get(probability_key), Iterable):
+        result[probability_key] = tuple(result[probability_key])
     return result
 
 
@@ -319,9 +288,11 @@ def _sector_flux_trace_dataset(
     *,
     report_flux_on_inversion_grid: bool,
     chunks: Mapping[str, int] | None = None,
+    trace: xr.Dataset | None = None,
 ) -> xr.Dataset:
-    """Return one sector's per-draw reconstructed flux trace."""
-    trace = _sector_scale_trace(inv_out, sector)
+    """Reconstruct one sector, optionally reusing selected compact state samples."""
+    if trace is None:
+        trace = _sector_scale_trace(inv_out, sector)
     basis_functions = _sector_basis_functions(inv_out, sector, trace)
     sector_flux = _sector_flux(inv_out, sector)
     reconstructed = reconstruct_flux_stats(
@@ -341,9 +312,11 @@ def _sector_scale_factor_stats(
     *,
     stats: list[str] | None,
     stats_args: dict | None,
+    trace: xr.Dataset | None = None,
 ) -> xr.Dataset:
-    """Return one sector's gridded scale-factor statistics."""
-    trace = _sector_scale_trace(inv_out, sector)
+    """Summarize one sector, optionally reusing selected compact state samples."""
+    if trace is None:
+        trace = _sector_scale_trace(inv_out, sector)
     basis_functions = _sector_basis_functions(inv_out, sector, trace)
     sector_stats_args = _stats_args_with_defaults(
         stats,
@@ -351,7 +324,7 @@ def _sector_scale_factor_stats(
         chunk_dim=_state_chunk_dim(trace, inv_out),
     )
     scale_stats = calculate_stats(trace, **sector_stats_args)
-    result = reconstruct_scale_factor_stats(basis_functions, scale_stats)
+    result = reconstruct_scale_factor_stats(basis_functions, scale_stats, _chunks=_FLUX_STATS_CHUNKS)
     for data_var in result.data_vars:
         if data_var in scale_stats.data_vars:
             result[data_var].attrs = scale_stats[data_var].attrs
@@ -405,6 +378,7 @@ def _multisector_flux_trace_parts(
     report_flux_on_inversion_grid: bool = True,
     *,
     chunks: Mapping[str, int] | None = None,
+    scale_traces: Mapping[str, xr.Dataset] | None = None,
 ) -> tuple[list[OutputSector], list[xr.Dataset], xr.Dataset]:
     """Return sector metadata, sector flux traces, and total flux trace."""
     if not inv_out.is_multisector:
@@ -417,6 +391,7 @@ def _multisector_flux_trace_parts(
             sector,
             report_flux_on_inversion_grid=report_flux_on_inversion_grid,
             chunks=chunks,
+            **({"trace": scale_traces[sector.variable_suffix]} if scale_traces is not None else {}),
         )
         for sector in sectors
     ]
@@ -555,21 +530,29 @@ def make_sector_flux_outputs(
     include_scale_factors: bool = True,
     report_flux_on_inversion_grid: bool = True,
 ) -> xr.Dataset:
-    """Return multisector flux statistics by sector plus correctly reconstructed total flux statistics."""
+    """Return sector and paired-total statistics with bounded grid workspace.
+
+    Selected compact state samples are materialized together once per product,
+    retaining their Dask chunks for numerical reduction order. This state-by-sample
+    residency is reused across grid tiles, HDI probabilities and scaling summaries;
+    full reconstructed grid traces are not persisted. Borrowed inputs are unchanged.
+    """
+    sectors = _multisector_output_sectors(inv_out)
+    prepared_traces = dask.persist(
+        *[_sector_scale_trace(inv_out, sector) for sector in sectors], scheduler="single-threaded"
+    )
+    scale_traces = {
+        sector.variable_suffix: trace for sector, trace in zip(sectors, prepared_traces, strict=True)
+    }
     sectors, sector_flux_traces, total_flux_trace = _multisector_flux_trace_parts(
         inv_out,
         report_flux_on_inversion_grid=report_flux_on_inversion_grid,
         chunks=_FLUX_STATS_CHUNKS,
+        scale_traces=scale_traces,
     )
     flux_stats_args = _stats_args_with_defaults(stats, stats_args)
-    # Reuse one-shot probability iterables across totals, sectors, and tiles.
-    probability_key = "hdi__hdi_prob" if "hdi__hdi_prob" in flux_stats_args else "hdi_prob"
-    if isinstance(flux_stats_args.get(probability_key), Iterable):
-        flux_stats_args[probability_key] = tuple(flux_stats_args[probability_key])
-
-    outputs = [_calculate_flux_stats(total_flux_trace, **flux_stats_args)]
-    for sector, flux_trace in zip(sectors, sector_flux_traces, strict=True):
-        outputs.append(_calculate_flux_stats(flux_trace, **flux_stats_args))
+    outputs = [calculate_stats(xr.merge([total_flux_trace, *sector_flux_traces]), **flux_stats_args)]
+    for sector in sectors:
         if include_scale_factors:
             outputs.append(
                 _sector_scale_factor_stats(
@@ -577,10 +560,12 @@ def make_sector_flux_outputs(
                     sector,
                     stats=stats,
                     stats_args=flux_stats_args,
+                    trace=scale_traces[sector.variable_suffix],
                 )
             )
 
-    result = _set_multisector_flux_attrs(xr.merge(outputs), inv_out, sectors).as_numpy()
+    with dask.config.set(scheduler="single-threaded"):
+        result = _set_multisector_flux_attrs(xr.merge(outputs), inv_out, sectors).compute().as_numpy()
     result = _copy_first_flux_nonfinite_metadata(result, [total_flux_trace, *sector_flux_traces])
     return add_basis_reconstruction_metadata(result, inv_out.basis_functions)
 
@@ -607,8 +592,9 @@ def make_flux_outputs(
             For instance, stats_args = {"mode_kde__chunk_size": 20} would pass the
             argument chunk_size = 20 to the stat function mode_kde, and no others.
         include_scale_factors: If True, report stats for scale factors, in
-            addition to stats for fluxes (which are calculated by transforming the
-            scale factor stats to the lat/lon grid using the prior flux).
+            addition to stats for fluxes. Standard single-sector products transform
+            scale factor statistics to the lat/lon grid using the prior flux;
+            multisector products summarize reconstructed, paired draws.
         report_flux_on_inversion_grid: If True, report flux using the mean prior
             flux in each basis region; otherwise reconstruct using the native-grid
             prior flux.
@@ -641,6 +627,7 @@ def make_flux_outputs(
         inv_out.flux,
         stats_ds,
         report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+        _chunks=_FLUX_STATS_CHUNKS,
     )
 
     for dv in flux_stats.data_vars:
@@ -654,7 +641,9 @@ def make_flux_outputs(
     flux_stats = rename_by_replacement(flux_stats, "x", "flux")
 
     if include_scale_factors:
-        scale_factor_stats = reconstruct_scale_factor_stats(inv_out.basis_functions, stats_ds)
+        scale_factor_stats = reconstruct_scale_factor_stats(
+            inv_out.basis_functions, stats_ds, _chunks=_FLUX_STATS_CHUNKS
+        )
 
         for dv in scale_factor_stats.data_vars:
             if dv in stats_ds.data_vars:
@@ -667,7 +656,9 @@ def make_flux_outputs(
 
         flux_stats = xr.merge([flux_stats, scale_factor_stats])
 
-    return add_basis_reconstruction_metadata(flux_stats.as_numpy(), inv_out.basis_functions)
+    with dask.config.set(scheduler="single-threaded"):
+        result = flux_stats.compute().as_numpy()
+    return add_basis_reconstruction_metadata(result, inv_out.basis_functions)
 
 
 def flatten_post_prior(ds: xr.Dataset) -> xr.Dataset:
@@ -755,7 +746,7 @@ def make_concentration_outputs(
             used only when no separate boundary is available.
 
     Returns:
-        xr.Dataset with computed flux stats.
+        Dataset with computed concentration and baseline statistics.
 
     """
     posterior = cast(Any, inv_out.trace).posterior
@@ -792,16 +783,20 @@ def make_concentration_outputs(
         },
     )
 
+    baseline_operands = {}
     if combine_bc_and_offset and offset_available:
         if boundary_available:
             for data_var in list(trace.data_vars):
                 name = str(data_var)
                 if name.startswith("mu_bc"):
                     offset_data_var = name.replace("mu_bc", "offset", 1)
-                    trace[data_var] = trace[data_var] + trace[offset_data_var]
-                    trace[data_var].attrs["long_name"] = (
-                        f"{name.removeprefix('mu_bc_')}_modelled_baseline_including_offset"
+                    operand_name = f"_baseline_operand_{name}"
+                    # Broadcast borrowed views before grouping, including draw-only
+                    # offsets. Addition belongs inside the shared bounded executor.
+                    trace[data_var], trace[operand_name] = xr.broadcast(
+                        trace[data_var], trace[offset_data_var]
                     )
+                    baseline_operands[name] = operand_name
         elif not complete_baseline_available:
             for data_var in list(trace.data_vars):
                 name = str(data_var)
@@ -812,16 +807,27 @@ def make_concentration_outputs(
                         f"{baseline_data_var.removeprefix('mu_bc_')}_modelled_baseline_including_offset"
                     )
 
-    if stats_args is None:
-        stats_args = {}
-
-    if stats is not None:
-        stats_args["stats"] = stats
-
+    stats_args = _stats_args_with_defaults(stats, stats_args)
     stats_args["chunk_dim"] = "nmeasure"
     stats_args["chunk_size"] = 1
 
-    conc_stats = calculate_stats(trace, **stats_args)
+    def combine_baseline_block(block: xr.Dataset) -> xr.Dataset:
+        """Add baseline operands with their native backend and bounded workspace."""
+        result = block.copy(deep=False)
+        for name, operand in baseline_operands.items():
+            if name in result:
+                result[name] = result[name] + result[operand]
+                result[name].attrs["long_name"] = (
+                    f"{name.removeprefix('mu_bc_')}_modelled_baseline_including_offset"
+                )
+                result = result.drop_vars(operand)
+        return result
+
+    conc_stats = calculate_stats(
+        trace,
+        _prepare_block=combine_baseline_block if baseline_operands else None,
+        **stats_args,
+    )
 
     return conc_stats
 
@@ -884,11 +890,7 @@ def make_country_outputs(
     )
     country_traces = countries.get_country_trace(inv_out=inv_out)
 
-    if stats_args is None:
-        stats_args = {}
-    if stats is not None:
-        stats_args["stats"] = stats
-
+    stats_args = _stats_args_with_defaults(stats, stats_args)
     country_stats = calculate_stats(country_traces, **stats_args)
 
     return add_basis_reconstruction_metadata(country_stats.as_numpy(), inv_out.basis_functions)
@@ -921,6 +923,7 @@ def basic_output(
 
     """
     _require_single_sector_output(inv_out, "Basic postprocessing")
+    stats_args = _stats_args_with_defaults(stats, stats_args)
     obs_and_errs = observation_and_error_outputs(inv_out)
     conc_outs = make_concentration_outputs(inv_out, stats=stats, stats_args=stats_args)
     flux_outs = make_flux_outputs(inv_out, stats=stats, stats_args=stats_args)

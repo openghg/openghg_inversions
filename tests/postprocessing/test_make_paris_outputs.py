@@ -245,17 +245,18 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
     )
     reduction_calls: list[tuple[tuple[str, ...], bool]] = []
     sector_reconstruction_grids: list[bool] = []
-    original_reduce = make_outputs._calculate_flux_stats
+    original_reduce = make_outputs.calculate_stats
     original_sector_reconstruct = make_outputs._sector_flux_trace_dataset
 
     def record_reduction(trace: xr.Dataset, **kwargs) -> xr.Dataset:
         """Record that full traces stay lazy until the bounded reduction boundary."""
-        reduction_calls.append(
-            (
-                tuple(str(name) for name in trace.data_vars),
-                all(not isinstance(value.data, np.ndarray) for value in trace.data_vars.values()),
+        if any(str(name).startswith("flux_") for name in trace.data_vars):
+            reduction_calls.append(
+                (
+                    tuple(str(name) for name in trace.data_vars),
+                    all(not isinstance(value.data, np.ndarray) for value in trace.data_vars.values()),
+                )
             )
-        )
         return original_reduce(trace, **kwargs)
 
     def record_sector_reconstruction(
@@ -264,6 +265,7 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
         *,
         report_flux_on_inversion_grid: bool,
         chunks: dict[str, int] | None = None,
+        trace: xr.Dataset | None = None,
     ) -> xr.Dataset:
         """Record each sector reconstruction and the grid it targets."""
         sector_reconstruction_grids.append(report_flux_on_inversion_grid)
@@ -272,9 +274,10 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
             sector,
             report_flux_on_inversion_grid=report_flux_on_inversion_grid,
             chunks=chunks,
+            trace=trace,
         )
 
-    monkeypatch.setattr(make_outputs, "_calculate_flux_stats", record_reduction)
+    monkeypatch.setattr(make_outputs, "calculate_stats", record_reduction)
     monkeypatch.setattr(make_outputs, "_sector_flux_trace_dataset", record_sector_reconstruction)
 
     flux_outputs = paris_flux_output(

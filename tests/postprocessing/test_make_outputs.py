@@ -502,6 +502,9 @@ def test_multisector_flux_tiles_preserve_statistics_and_bound_reconstruction(
     expected = make_outputs.add_basis_reconstruction_metadata(expected, inv_out.basis_functions)
 
     monkeypatch.setattr(make_outputs, "_FLUX_STATS_CHUNKS", {"lat": 2, "lon": 2, "flux_time": 1})
+    monkeypatch.setattr(
+        "openghg_inversions.postprocessing.stats._STATS_CHUNKS", {"lat": 2, "lon": 2, "flux_time": 1}
+    )
     sample_payload_sizes = []
 
     def record_payload(key, value, dsk, state, worker_id):
