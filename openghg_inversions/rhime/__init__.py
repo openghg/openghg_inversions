@@ -25,7 +25,7 @@ from .builders import (
     RhimeModelBuilderContext,
     RhimeModelBuildResult,
 )
-from .co2 import build_co2_model, co2_model_input_names, run_rhime_co2
+from .co2 import build_co2_model, co2_model_input_names, run_co2
 from openghg_inversions.inversion_data import MergedData, PreparedInputs, RhimeMergedData, SiteOptions
 
 from .api import run
@@ -177,7 +177,7 @@ __all__ = [
     "postprocess_rhime_stage",
     "prepare_rhime_stage",
     "prior_predictive_stage",
-    "run_rhime_co2",
+    "run_co2",
     "run_rhime_from_prepared_inputs",
     "run_rhime_multisector",
     "run_rhime_nested",

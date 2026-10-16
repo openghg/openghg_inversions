@@ -8,7 +8,8 @@ import pymc as pm
 import xarray as xr
 
 from openghg_inversions.rhime.co2 import (
-    build_rhime_co2,
+    materialize_co2_inputs,
+    build_co2_from_materialized,
     build_rhime_co2_cached_sigma,
     sample_co2_cached_prior_predictive,
 )
@@ -64,9 +65,11 @@ def test_unsampled_builders_and_correlated_cached_prior(monkeypatch: Any, tmp_pa
                                 ))
         else:
             monkeypatch.setattr(module, "materialize_pymc_inputs", materialize)
-        monkeypatch.setattr(module, "sample_rhime_model", unexpected_sampling)
+        if module is co2_cached_sigma_runner:
+            monkeypatch.setattr(module, "sample_rhime_model", unexpected_sampling)
     prepared = cast(Any, Prepared())
-    ordinary = build_rhime_co2(prepared_inputs=prepared, no_model_error=True)
+    inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, no_model_error=True)
+    ordinary = build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, no_model_error=True)
     assert ordinary.output_contract.variable_roles["model_mean"] == "modelled_concentration"
     cached = build_rhime_co2_cached_sigma(
         prepared_inputs=prepared,

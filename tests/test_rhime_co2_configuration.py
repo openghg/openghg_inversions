@@ -24,6 +24,9 @@ from openghg_inversions.rhime.co2.configuration import (
     resolve_co2_family_config,
     resolve_co2_model,
     resolve_co2_sampler,
+    resolve_co2_prior_seed,
+    resolve_co2_preparation,
+    validate_co2_config,
 )
 from openghg_inversions.rhime.co2.co2_cached_sigma_runner import (
     run_rhime_co2_cached_sigma,
@@ -32,7 +35,6 @@ from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs
 from openghg_inversions.rhime.co2.co2_o2_runner import (
     run_rhime_co2_o2_from_prepared_inputs,
 )
-from openghg_inversions.rhime.co2.co2_runner import run_rhime_co2
 from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.rhime.sampling import RhimeSampler
 from tests.helpers import make_trace
@@ -96,34 +98,32 @@ def test_installed_templates_pass_the_semantic_resolver() -> None:
     )
     for resource in templates.values():
         config = load_co2_family_config(resource)
-        assert resolve_co2_family_config(config)
+        if config.get("variant") == "ordinary":
+            validate_co2_config(config)
+            resolve_co2_preparation(config, require_path=True)
+            resolve_co2_model(config)
+            resolve_co2_sampler(config)
+        else:
+            assert resolve_co2_family_config(config)
 
 
-def test_ordinary_configuration_matches_direct_python_arguments() -> None:
-    setup = resolve_co2_family_config(_ordinary())
-
-    assert isinstance(setup, Co2RunSetup)
-    assert setup.runner is run_rhime_co2
-    assert setup.preparation_kwargs == {"path": Path("prepared.zarr")}
-    assert setup.runner_kwargs == {
+def test_ordinary_configuration_matches_explicit_scientific_arguments() -> None:
+    config = _ordinary()
+    assert resolve_co2_model(config) == {
         "no_model_error": False,
         "sigma_prior": {"pdf": "halfnormal", "sigma": 0.75},
     }
-    assert setup.sampler == RhimeSampler(
-        draws=20,
-        tune=10,
-        chains=2,
-        nuts_sampler="numpyro",
+    assert resolve_co2_preparation(config, require_path=True)["prepared_path"] == Path("prepared.zarr").resolve()
+    assert resolve_co2_sampler(config) == RhimeSampler(
+        draws=20, tune=10, chains=2, nuts_sampler="numpyro",
         sample_kwargs={"target_accept": 0.95, "random_seed": 42},
         posterior_predictive_kwargs={"random_seed": 42},
     )
 
-    prepared = cast(Any, object())
-    assert setup.runner_arguments(prepared) == {
-        "prepared_inputs": prepared,
-        **setup.runner_kwargs,
-        "sampler": setup.sampler,
-    }
+
+def test_ordinary_legacy_family_facade_is_retired() -> None:
+    with pytest.raises(ValueError, match="Ordinary CO2 no longer uses Co2RunSetup"):
+        resolve_co2_family_config(_ordinary())
 
 
 @pytest.mark.parametrize(
@@ -164,9 +164,9 @@ def test_ordinary_package_likelihoods_lower_explicitly(
     config = _ordinary()
     config["likelihood"] = {"kind": kind, **options}
 
-    setup = cast(Co2RunSetup, resolve_co2_family_config(config))
-
-    assert setup.runner_kwargs == {
+    if kind == "scalar_sigma":
+        expected = {**expected, "eigenbasis_path": Path("sigma.nc").resolve()}
+    assert resolve_co2_model(config) == {
         "likelihood_builder": builder,
         "likelihood_kwargs": expected,
     }
@@ -178,13 +178,13 @@ def test_resolved_nested_options_are_json_serializable_for_provenance() -> None:
         "kind": "site_sigma",
         "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.0},
     }
-    setup = cast(Co2RunSetup, resolve_co2_family_config(config))
+    model = resolve_co2_model(config)
     trace = make_trace()
 
     annotate_likelihood_trace(
         trace,
         builder_identity={"module": "test", "qualname": "builder"},
-        likelihood_kwargs=cast(Mapping[str, Any], setup.runner_kwargs["likelihood_kwargs"]),
+        likelihood_kwargs=cast(Mapping[str, Any], model["likelihood_kwargs"]),
     )
 
     assert json.loads(trace.attrs["rhime_likelihood_kwargs"]) == {
@@ -320,7 +320,10 @@ def test_top_level_invalid_options_fail_during_resolution(
     config.update(change)
 
     with pytest.raises(ValueError, match=message):
-        resolve_co2_family_config(config)
+        if config["recipe"] == "co2_o2":
+            resolve_co2_family_config(config)
+        else:
+            validate_co2_config(config)
 
 
 @pytest.mark.parametrize(
@@ -357,7 +360,7 @@ def test_invalid_likelihoods_fail_during_resolution(
     config["likelihood"] = likelihood
 
     with pytest.raises((TypeError, ValueError), match=message):
-        resolve_co2_family_config(config)
+        resolve_co2_model(config)
 
 
 @pytest.mark.parametrize(
@@ -375,7 +378,7 @@ def test_invalid_prior_parameters_fail_during_resolution(
     config["likelihood"] = {"kind": "additive_sigma", "sigma_prior": prior}
 
     with pytest.raises((TypeError, ValueError), match=message):
-        resolve_co2_family_config(config)
+        resolve_co2_model(config)
 
 
 def test_lognormal_prior_accepts_supported_moment_parameterization() -> None:
@@ -390,9 +393,9 @@ def test_lognormal_prior_accepts_supported_moment_parameterization() -> None:
         },
     }
 
-    setup = cast(Co2RunSetup, resolve_co2_family_config(config))
+    model = resolve_co2_model(config)
 
-    assert setup.runner_kwargs["sigma_prior"] == {
+    assert model["sigma_prior"] == {
         "pdf": "lognormal",
         "mean": 1.0,
         "stdev": 0.25,
@@ -428,7 +431,7 @@ def test_sampling_rejects_burn_that_removes_every_draw(
     config["sampling"] = sampling
 
     with pytest.raises(ValueError, match="burn must be less than"):
-        resolve_co2_family_config(config)
+        resolve_co2_sampler(config)
 
 
 def test_cached_variant_rejects_unsupported_posterior_predictive_names() -> None:
@@ -467,7 +470,7 @@ def test_global_offset_rejects_site_specific_options_during_resolution(
     }
 
     with pytest.raises(ValueError, match=message):
-        resolve_co2_family_config(config)
+        resolve_co2_model(config)
 
 
 @pytest.mark.parametrize(
@@ -558,14 +561,17 @@ def test_imported_preparation_facts_are_explicit_and_optional() -> None:
     config = _ordinary()
     config["prepared_inputs"] = {
         "path": "prepared.zarr", "start_date": "2020-01-01", "end_date": "2020-02-01", "domain": "EUROPE",
+        "reconstruction_path": "affine.nc",
     }
-    setup = cast(Co2RunSetup, resolve_co2_family_config(config))
-    assert dict(setup.preparation_kwargs) == {
-        "path": Path("prepared.zarr"), "start_date": "2020-01-01", "end_date": "2020-02-01", "domain": "EUROPE",
+    assert resolve_co2_preparation(config) == {
+        "prepared_path": Path("prepared.zarr").resolve(), "affine_path": Path("affine.nc").resolve(),
+        "start_date": "2020-01-01", "end_date": "2020-02-01", "domain": "EUROPE",
     }
-    assert dict(cast(Co2RunSetup, resolve_co2_family_config(_ordinary())).preparation_kwargs) == {
-        "path": Path("prepared.zarr")
+    assert resolve_co2_preparation({}) == {
+        "prepared_path": None, "affine_path": None, "start_date": None, "end_date": None, "domain": None,
     }
+    with pytest.raises(ValueError, match="prepared_inputs.path"):
+        resolve_co2_preparation({}, require_path=True)
 
 
 def test_model_resolution_consumes_only_owned_choices_without_an_envelope() -> None:
@@ -617,3 +623,33 @@ def test_component_resolution_preserves_selected_caller_values() -> None:
     assert model["offset_prior"] == {"pdf": "normal", "mu": 0.0, "sigma": 0.2}
     assert sampler.draws == 20
     assert config == before
+
+
+def test_prior_seed_consumes_only_its_owned_sampling_option() -> None:
+    config = {"sampling": {"random_seed": 42, "draws": -1, "nuts_sampler": object()}, "model": object()}
+    assert resolve_co2_prior_seed(config) == 42
+    assert resolve_co2_prior_seed({}) is None
+    assert resolve_co2_prior_seed({"sampling": {"draws": -1}}) is None
+    with pytest.raises(ValueError, match="sampling.draws"):
+        resolve_co2_sampler(config)
+
+
+@pytest.mark.parametrize("seed", [True, -1, 0.5, "42", None])
+def test_prior_and_posterior_share_random_seed_validation(seed: object) -> None:
+    for resolve in (resolve_co2_prior_seed, resolve_co2_sampler):
+        with pytest.raises(ValueError, match="random_seed must be a non-negative integer"):
+            resolve({"sampling": {"random_seed": seed}})
+
+
+def test_envelope_validation_does_not_resolve_unowned_sections() -> None:
+    config = {"model": object(), "sampling": object(), "outputs": object()}
+    assert validate_co2_config(config) == config
+    assert validate_co2_config({}) == {}
+    with pytest.raises(ValueError, match="config.recipe"):
+        validate_co2_config({"recipe": "co2_o2"})
+
+
+@pytest.mark.parametrize("prepared", [{"path": False}, {"path": ""}, {"reconstruction_path": []}, {"surprise": True}])
+def test_preparation_owner_rejects_invalid_or_unknown_options(prepared: object) -> None:
+    with pytest.raises((TypeError, ValueError), match="prepared_inputs"):
+        resolve_co2_preparation({"prepared_inputs": prepared})

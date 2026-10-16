@@ -30,7 +30,7 @@ from openghg_inversions.serialization import reset_serialisation_multiindexes, s
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
 from .co2_affine_output import BoundCo2AffineFluxMap
-from .co2_preparation import Co2PreparedInputs
+from .co2_preparation import Co2PreparedInputs, _require_equivalent_units
 
 
 @dataclass
@@ -41,7 +41,8 @@ class Co2Output:
     multiplicative flux scaling. ``idata`` remains the borrowed full DataTree,
     including distinct sample groups and their coordinates. Inference provenance
     remains descriptive in ``output_metadata``; no live sampler or writing policy
-    belongs to this scientific view. Requested products remain accessible in
+    belongs to this scientific view. ``sampler=None`` explicitly represents the
+    absent inference object required by the replay contract. Products remain accessible in
     ``outputs``. Reporting choices are supplied to calculation/export operations.
     """
 
@@ -56,6 +57,41 @@ class Co2Output:
     output_metadata: dict = field(default_factory=dict)
 
 
+def validate_co2_trace(trace: xr.DataTree, prepared: Co2PreparedInputs | None = None) -> None:
+    """Validate saved output roles and labelled reconstruction without computing draws."""
+    roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
+    if not isinstance(roles, dict) or any(not isinstance(value, str) or not value for value in roles.values()):
+        raise ValueError("CO2 trace requires scientific role names mapped to variable names.")
+    required = {"model_mean", "pollution_concentration", "flux_scale"}
+    missing = required - roles.keys()
+    if missing:
+        raise ValueError(f"CO2 trace lacks scientific role(s): {sorted(missing)!r}.")
+    if "posterior" not in trace.children:
+        raise ValueError("CO2 samples require posterior draws.")
+    for group in ("prior", "posterior"):
+        if group not in trace.children:
+            continue
+        dataset = trace[group].to_dataset()
+        for role in required | ({"boundary_concentration", "offset_concentration", "model_error"} & roles.keys()):
+            if roles[role] not in dataset:
+                raise ValueError(f"CO2 scientific outputs require role {role!r} in {group}.")
+            variable = dataset[roles[role]]
+            if not {"chain", "draw"}.issubset(variable.dims):
+                raise ValueError(f"CO2 role {role!r} in {group} requires chain/draw sample dimensions.")
+            if prepared is not None:
+                state_dim = prepared.inv_inputs["alpha_prior_mean"].dims[0]
+                expected_dim = state_dim if role == "flux_scale" else "nmeasure"
+                if set(variable.dims) != {"chain", "draw", expected_dim}:
+                    raise ValueError(f"CO2 role {role!r} in {group} requires only chain/draw and dimension {expected_dim!r}.")
+                expected_units = "1" if role == "flux_scale" else prepared.inv_inputs["mf"].attrs["units"]
+                _require_equivalent_units(
+                    variable.attrs.get("units"), expected_units, name=f"CO2 role {role!r} in {group}",
+                )
+                xr.align(variable, prepared.inv_inputs["mf"], join="exact", copy=False)
+        if prepared is not None:
+            xr.align(dataset[roles["flux_scale"]], prepared.inv_inputs["alpha_prior_mean"], join="exact", copy=False)
+
+
 def make_co2_output(
     *, prepared: Co2PreparedInputs, trace: xr.DataTree, start_date: str,
     end_date: str, domain: str,
@@ -66,6 +102,29 @@ def make_co2_output(
     return Co2Output(prepared, trace, start_date, end_date, domain,
                      bound=bound,
                      output_metadata=dict(output_metadata or {}))
+
+
+def _validate_co2_paris_options(kwargs: Mapping | None) -> None:
+    """Validate supported reporting choices without reading scientific artifacts."""
+    kwargs = kwargs or {}
+    supported = {
+        "template_version",
+        "flux_frequency",
+        "country_selections",
+        "time_point",
+        "report_mode",
+        "inversion_grid",
+    }
+    if unknown := kwargs.keys() - supported:
+        raise ValueError(f"Unsupported CO2 PARIS options: {sorted(unknown)}.")
+    for name, expected in (
+        ("template_version", "latest"),
+        ("time_point", "midpoint"),
+        ("report_mode", False),
+        ("inversion_grid", False),
+    ):
+        if kwargs.get(name, expected) != expected:
+            raise ValueError(f"CO2 PARIS outputs require {name}={expected!r}.")
 
 
 @dataclass(frozen=True)
@@ -105,6 +164,8 @@ class Co2OutputOptions:
             if not isinstance(self.paris_postprocessing_kwargs, Mapping):
                 raise TypeError("CO2 paris_postprocessing_kwargs must be a mapping.")
             object.__setattr__(self, "paris_postprocessing_kwargs", dict(self.paris_postprocessing_kwargs))
+        if self.output_format == "paris":
+            _validate_co2_paris_options(self.paris_postprocessing_kwargs)
 
     @classmethod
     def from_params(cls, params: Mapping) -> Co2OutputOptions:
@@ -127,38 +188,22 @@ def validate_co2_output_spec(
     The standard multiplicative inversion-output and legacy formats cannot
     represent coherent affine CO2 reconstruction.
     """
-    if output_spec.output_format not in {"none", "basic", "paris"}:
-        raise ValueError(
-            "CO2 outputs support output_format='none', 'basic', or 'paris'; inv_out and legacy are unsupported."
-        )
-    if isinstance(output_spec, RhimeOutputSpec) and output_spec.save_inversion_output:
-        raise ValueError(
-            "CO2 save_inversion_output is unsupported; retain the prepared, posterior, and reconstruction stage artifacts."
-        )
+    if isinstance(output_spec, RhimeOutputSpec):
+        if output_spec.output_format not in {"none", "basic", "paris"}:
+            raise ValueError(
+                "CO2 outputs support output_format='none', 'basic', or 'paris'; inv_out and legacy are unsupported."
+            )
+        if output_spec.save_inversion_output:
+            raise ValueError(
+                "CO2 save_inversion_output is unsupported; retain the prepared, posterior, and reconstruction stage artifacts."
+            )
     if output_spec.country_file and not has_reconstruction:
         raise ValueError("CO2 country flux outputs require a bound affine reconstruction.")
     if output_spec.output_format == "paris":
         if not has_reconstruction:
             raise ValueError("CO2 PARIS flux outputs require a bound affine reconstruction.")
-        kwargs = output_spec.paris_postprocessing_kwargs or {}
-        supported = {
-            "template_version",
-            "flux_frequency",
-            "country_selections",
-            "time_point",
-            "report_mode",
-            "inversion_grid",
-        }
-        if unknown := kwargs.keys() - supported:
-            raise ValueError(f"Unsupported CO2 PARIS options: {sorted(unknown)}.")
-        for name, expected in (
-            ("template_version", "latest"),
-            ("time_point", "midpoint"),
-            ("report_mode", False),
-            ("inversion_grid", False),
-        ):
-            if kwargs.get(name, expected) != expected:
-                raise ValueError(f"CO2 PARIS outputs require {name}={expected!r}.")
+        if isinstance(output_spec, RhimeOutputSpec):
+            _validate_co2_paris_options(output_spec.paris_postprocessing_kwargs)
 
 
 def validate_co2_outputs(
@@ -214,6 +259,22 @@ def validate_co2_reporting_inputs(
         raise ValueError("CO2 country flux outputs require a bound affine reconstruction.")
     xr.align(bound.affine_map.flux, countries.matrix, join="exact", copy=False)
     return countries
+
+
+def validate_co2_product_request(
+    output: Co2OutputOptions | RhimeOutputSpec, *, prepared: Co2PreparedInputs,
+    bound: BoundCo2AffineFluxMap | None = None,
+    source_to_sector: Mapping[str, str] | None = None,
+) -> Countries | None:
+    """Validate one product request and load its reporting inputs before execution.
+
+    Full execution calls this before model construction; replay calls it with
+    loaded scientific context. Calculation trusts these choices and reuses the
+    returned country matrix. Saved prior-draw availability is checked separately
+    when products consume the completed trace.
+    """
+    validate_co2_outputs(output, bound=bound, source_to_sector=source_to_sector)
+    return validate_co2_reporting_inputs(output, prepared, bound)
 
 
 def make_co2_rhime_result(
@@ -512,13 +573,15 @@ def calculate_co2_products(
 ) -> None:
     """Calculate and attach CO2 components and requested conditional products.
 
-    All products are constructed before any destination is opened. Basic
+    Call :func:`validate_co2_product_request` before this operation and pass its
+    reporting inputs. Calculation trusts that preflight; it checks actual saved
+    prior draws when a product requires them. All products are constructed before
+    any destination is opened. Basic
     summaries preserve independent prior and posterior counts. Native/country
     products use the supplied exact affine map; PARIS reports their conditional
     scope. Files use the ordinary RHIME naming convention. Full component
     draws remain available in ``result.outputs['concentration_components']``.
     """
-    validate_co2_outputs(output, bound=bound, source_to_sector=source_to_sector)
     if output.output_format == "none":
         if isinstance(result, Co2Output):
             result.outputs.clear()
@@ -528,8 +591,6 @@ def calculate_co2_products(
     components = reconstruct_co2_concentrations(result.idata, prepared)
     products = {"basic": _basic_product(components)}
     if bound is not None:
-        if countries is None:
-            countries = validate_co2_reporting_inputs(output, prepared, bound)
         native, country = _affine_products(result.idata, bound, countries, source_to_sector)
         products["native_flux"] = native
         if country is not None:
@@ -584,8 +645,11 @@ def make_co2_rhime_outputs(
     bound: BoundCo2AffineFluxMap | None = None, source_to_sector: Mapping[str, str] | None = None,
 ) -> None:
     """Calculate and export CO2 products for the retained cached-stage adapter."""
+    countries = validate_co2_product_request(
+        result.output_spec, prepared=prepared, bound=bound, source_to_sector=source_to_sector,
+    )
     calculate_co2_products(result=result, prepared=prepared, output=result.output_spec,
-                           bound=bound, source_to_sector=source_to_sector)
+                           bound=bound, source_to_sector=source_to_sector, countries=countries)
     save_co2_products(result, output=result.output_spec)
 
 
@@ -595,6 +659,8 @@ __all__ = [
     "make_co2_output",
     "calculate_co2_products",
     "save_co2_products",
+    "validate_co2_trace",
+    "validate_co2_product_request",
     "validate_co2_output_spec",
     "validate_co2_outputs",
     "validate_co2_source_mapping",

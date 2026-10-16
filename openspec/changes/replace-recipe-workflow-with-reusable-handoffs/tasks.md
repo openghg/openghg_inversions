@@ -296,11 +296,14 @@ suite, supported Python versions, typing and documentation.
 
 ## 3. Ordinary CO2 reusable-handoff adoption
 
-- [x] 3.1 Resolve owned CO2 phase choices consistently for configured full and
+- [ ] 3.1 Resolve owned CO2 phase choices consistently for configured full and
   staged execution, reusing its readable preparation/building/inference owners.
   Verify the actual configured full-run entry point consumes model/sampler/output
-  choices and writes the selected products/destination, while raw runner trace
-  returns remain intact. Remove redundant stage-only configuration wrappers;
+  choices and writes the selected products/destination through canonical
+  `run_co2`, selected by both Python and CLI. Trace-only callers compose the
+  existing scientific operations; obsolete ordinary runners/build wrappers
+  are removed under the approved 16 October review amendment. Remove redundant
+  stage-only configuration wrappers;
   keep the full route independent of manifest machinery while sharing its step
   functions with the saved phases (design decision 8). Delete the CO2 branches of
   the staged envelope facade once the handoffs replace them.
@@ -336,150 +339,106 @@ suite, supported Python versions, typing and documentation.
 ### Ordinary CO2 implementation evidence — 16 October 2026
 
 Draft [PR #886](https://github.com/openghg/openghg_inversions/pull/886),
-branch `codex/ope-207-ordinary-co2-handoffs`, starts from current `devel`
-`208a21d9`, including merged standard #866 and configuration closeout #883.
-This covers ordinary CO2 only, part of #880/OPE-207 and #808. Task 3.6 remains
-open for broader validation, review and merged evidence; no maintainer
-readability acceptance, cached adoption or programme completion is claimed.
+branch `codex/ope-207-ordinary-co2-handoffs`, starts from `devel` `208a21d9`,
+including merged standard #866 and configuration closeout #883. It owns ordinary
+CO2 tasks 3.1–3.6 and the ordinary entries of #808. Tasks 3.1 and 3.6 remain open
+for review corrections' broader validation, maintainer review and merged
+acceptance; no readability acceptance or programme completion is claimed.
 
-The public configured product entry point is `co2.run_co2_from_config`, exposed
-by `rhime run --model co2`, with `rhime run-co2` retained as an alias. It consumes
-model, sampler and output choices; the Python selector's
-`rhime.run(model="co2", prepared_inputs=...)` and direct `run_rhime_co2` still
-return their annotated trace. Full/saved routes visibly call
-`materialize_co2_inputs`, `build_co2_from_materialized`, `sample_rhime_model`,
-trace annotation, `make_co2_output`, `calculate_co2_products` and
-`save_co2_products`. Full execution uses no manifests.
+The maintainer approved the review response and canonical runner simplification
+on 16 October (design decision 9). `co2.run_co2` returns `Co2Output` and is selected
+by both Python `rhime.run(model="co2", ...)` and CLI `rhime run --model co2`.
+`run-co2` remains a CLI alias. Redundant ordinary `run_rhime_co2`,
+`build_rhime_co2` and intermediate `run_co2_from_config` names are removed without
+aliases. Trace-only callers compose existing operations; no extra runner is
+introduced. Cached and linked direct runners are unchanged.
 
-The user's primary-CLI correction is reflected in the model-selection delta:
-both executables accept `run --model co2`, retain `run-co2` as an alias, and
-forward configuration/date/destination/component overrides to the configured
-product runner. The existing Python selector contract is unchanged. All 52
-public-selector, ordinary/standard phase and installed ordinary/cached CLI checks
-pass, including products and full trace export through the primary spelling.
-This CLI-only follow-up supplements the fixed `ccffce5f` Slurm validation.
+Full execution is independent of manifests. Full and saved phases explicitly
+call materialization, eager construction with a separate numerical `priors`
+mapping, sampling, shared trace annotation, result construction, product
+calculation and export. Decoded model/likelihood choices resolve at the staged
+sampling boundary. One configuration parser owns each section; key-level
+overrides preserve other configured choices. Affine paths belong to
+`prepared_inputs.reconstruction_path`. Repeated requested facts from numerical
+provenance, configuration and invocation must agree by date meaning; missing
+facts remain explicit. Filtering both interval edges preserves requested bounds.
 
-Ordinary execution returns `Co2Output`, borrowing the complete trace `DataTree`
-and preparation and retaining conditional affine meaning. It carries no writing
-policy or live sampler; recorded inference remains descriptive provenance. Product
-calculation preserves original groups, coordinates and independent prior/posterior
-sample axes. A standard multiplicative `InversionOutput` cannot represent this
-reconstruction. CO2 records keep explicit requested facts without inventing an
-acquisition `DataConfig` with defaults. Cached adapters remain until section 4;
-these family-specific differences need reviewer acceptance.
+Ordinary configured runs begin with a prepared numerical artifact; Python may
+also supply canonical inputs and a coherent reduction. CLI `prepare` imports
+and validates an existing preparation. Native scientific preparation needs native
+sensitivities, covariance and projection choices that the standard basis-reduced
+preparer cannot supply. [#890](https://github.com/openghg/openghg_inversions/issues/890)
+owns this separate configured native-input preparation route. This bounded scope
+is explicit in CLI/docs and the approved design amendment. Original requested
+`aggregation_error_rank` (including exact `None`) now survives in preparation
+provenance alongside actual numerical rank diagnostics.
 
-The user's 16 October simplification direction is implemented within #886:
-concrete preparation/model/sampler/output resolvers replace the phase-switch
-resolver, with one sampler supplied to sampling. `load_samples` needs no reporting
-policy. `Co2OutputOptions` contains only the six supported ordinary reporting
-choices; source-to-sector reporting is supplied separately. Imported NetCDF/Zarr
-pairs are validated and referenced in place, with no copying or format selection;
-callers must retain those files for later operations. New pairs still use the
-existing numerical writers and manifest-last completion. No scientific boundary
-or coherent/affine compatibility check was removed.
+One preparation-record finisher serves imported references and newly written
+numerical pairs with manifest-last completion. Imported pairs are validated in
+place and must remain available. Sampling and readiness do not load unused
+affine companions; result replay binds them explicitly. Preparation retains
+coherent native priors/covariance/operators/projections and source/grid
+associations. Compatible BC/offset/mismatch changes reuse it; defining changes
+require a coherent new preparation. Per-site inference checks every supplied
+value, permits valid dropped-site extras, requires retained coverage and then
+selects retained labels, including fixed-sigma and OU constraints.
 
-`co2.handoffs` keeps writers/readers/callers together: ordinary references,
-generation binding, manifest-last completion and existing NetCDF/Zarr codecs.
-Replay uses saved trace roles/provenance with `sampler=None`, without callable
-import, acquisition, model-input materialization, construction or inference.
-Missing/malformed descriptive metadata remains unavailable. Existing coherent
-reduction and affine content/projection/source/grid/unit/operator checks stay at
-their owners; bucket assignment and signed-flux comparisons now serve both
-live/saved binding. Retained-site numeric validation checks all supplied values
-before selecting retained labels.
+`Co2Output` borrows the complete `DataTree` without flattening groups or independent
+prior/posterior sample axes. Scientific trace/affine state owns reconstruction,
+role/alignment/unit checks and bounded actual model metadata; it does not use the
+standard multiplicative `OutputContract`. Decision 9 explicitly reconciles this
+with decision 6 and the existing CO2-specific capability scenario. Replay has
+`sampler=None` as absence under the existing replay contract, and uses saved
+meaning/provenance without acquisition, callable import, graph construction or
+inference. Missing descriptive facts remain unavailable. The named preparation
+record retains its concrete fields. These are documented partial pushbacks to
+the review rather than unrecorded structural differences.
 
-`examples/co2_handoffs.py` runs full/saved product parity and a second compatible
-BC/offset/fixed-mismatch choice from unchanged preparation. Actual filtering
-removes both period edges. Tests cover new/imported affine pairs, explicit missing
-imported facts, original PARIS bounds, independent concentration/flux equations
-and a SciPy likelihood reference (product `rtol` up to `2e-6`; likelihood
-`rel=1e-5`, `abs=1e-4`). Short chains establish plumbing, not convergence.
+Output options own intrinsic checks; one product preflight owns supported
+combinations and resource loading. Calculation trusts that result and checks
+actual saved draw evidence separately from a live sampler's planned prior
+request. Readiness restores the configured seed without resolving unused MCMC
+options, reports invalid predictive evidence and propagates scientific/loading/
+serialization errors before a completed destination, as the existing CO2 spec
+requires. Diagnosis remains independent. CLI missing-manifest diagnostics are
+scoped to the supplied manifest and dispatch uses current schemas.
 
-Validation before Slurm:
+Validation of the current review corrections:
 
-- 227 ordinary science/configuration/handoff/CLI/likelihood checks passed.
-- 141 coherent/affine/codec/product-owner checks passed.
-- 128 cached/linked/scalar-sigma/deferred-replay regressions passed.
-- 93 standard handoff/phase checks passed.
-- Final integration reruns: 19 parity/CLI checks, 27 CO2/standard phase checks,
-  45 public-selector/sampler/resource checks and 6 installed ordinary/cached/full
-  CLI cases passed, including requested trace export.
-- Changed-path Ruff, `git diff --check` and strict OpenSpec validation pass.
-- After simplifying the interfaces: 240 focused ordinary science/configuration/
-  handoff/CLI/likelihood checks and 177 standard/sampler/public-API/resource
-  compatibility checks passed. Four installed ordinary CLI checks passed; the
-  runnable example completed. The complete-trace preservation regression passed.
-  Independent review added early required-prior validation for affine basic/PARIS
-  products while preserving posterior-only concentration summaries; three targeted
-  preflight/concentration checks cover this boundary.
-- Slurm baseline 19448086 at `devel` `208a21d9` reports 164 Mypy errors in 52
-  files and 318 strict-documentation warnings (existing #679/#881 debt).
-- Earlier editable-checkout validation 19448074 was cancelled when the approved
-  simplification superseded its inputs; it supplies no terminal validation. Full
-  locked Python 3.12/3.13, type and strict documentation checks use a fixed revision
-  and the repository Slurm runner; final terminal comparison is recorded below.
-- Runtime `ccffce5f` is pushed in #886. Fixed detached-checkout Slurm job
-  19448969 runs `py312-openghgCur,py313-openghgCur,type,docs-strict`; callback
-  19448970 has verified `afterany:19448969`, ticket
-  `sw-20261016T094109Z-3cc04fbfe0e2`. The three final preflight checks passed.
-  The first terminal comparison and corrective rerun are recorded below; this does not clear task 3.6.
+- 362 integrated tests passed in 215.30 seconds: every changed test module plus
+  existing coherent-reduction, affine-map and CO2 affine-output references. This
+  includes real configured Python selection, installed ordinary/cached CLI,
+  new/imported pairs, saved products, readiness and independent likelihood/flux
+  calculations. Short chains establish plumbing, not convergence.
+- Independent agent checks: 136 science/configuration tests, 39 handoff/output
+  tests, 16 parity tests, six installed workflow and six documentation tests passed;
+  the executable example completed. Root-focused checks also passed (123 tests).
+  These overlap with the integration selection and are not added into its total.
+- Changed-path Ruff, diff and strict OpenSpec validation pass. New broader checks
+  must run at a fixed revision through `scripts/slurm_tox.sh` before the revised
+  acceptance can be claimed.
 
-Broader Slurm 19448969 terminal evidence at `ccffce5f`: both full locked
-Python suites reached 3,105 passes and eight skips, with the same single failure
-in a stale CO2 documentation-reader assertion. Scientific, coherent, likelihood,
-affine and product checks passed. The assertion now describes the delivered
-ordinary manifests and separate cached/linked boundaries; six documentation tests
-pass locally. This is a failed run, not a full-suite pass.
+Prior-head evidence, superseded for current review corrections: fixed-revision
+Slurm 19450581 at `cae92463` passed both full locked Python 3.12 and 3.13 suites.
+The combined job failed only type/docs: 163 Mypy diagnostics versus 164 at devel
+`208a21d9`/19448086 (one fixed-OU error removed, existing PyMC stub diagnostic
+moved to its new owner), and the identical normalized 318 strict documentation
+warnings. Existing debt is #679/#881. MaxRSS `22473024K` justifies 24 GiB for the
+same concurrent validation workload. This earlier result does not validate the
+new runner/configuration/review changes.
 
-Mypy reported 173 diagnostics versus baseline 164. Normalized comparison found
-eight new heterogeneous-options inference errors in `co2_runner` and two new
-CLI local-variable errors. Explicit dictionary annotations and a distinct cached
-preparation local fix these without changing scientific operations. The PyMC
-missing-stubs diagnostic moved from retired `co2/stages.py` ownership to
-`co2/handoffs.py`; it remains baseline debt without suppression. The prior
-`fixed_ou.expand_mapping` error is removed. The corrected rerun below confirms 163 diagnostics. Strict docs reported 321 warnings versus baseline
-318; all three additions were unresolved short function references and now use
-fully qualified targets verified in Sphinx's inventory. Broader confirmation
-is recorded below. Peak memory was `21525080K` for the combined job, supporting
-24 GiB for the same concurrent rerun.
-
-Corrected runtime `cae92463` passes 97 focused public/phase/scientific tests and
-six documentation tests, Ruff, diff and strict OpenSpec checks. Fixed-revision
-Slurm rerun 19450581 covers both full locked Python suites, type and strict docs;
-callback 19450582 has verified `afterany:19450581`, ticket
-`sw-20261016T100752Z-ac19101a0f22`.
-
-Final terminal evidence — 16 October 2026: Slurm 19450581 completed at fixed
-runtime `cae92463`; both `py312-openghgCur` and `py313-openghgCur` full suites
-passed (tox exit zero). Successful parallel tox output suppresses individual
-pytest totals, so no new exact test count is inferred. The combined job returned
-nonzero only for existing type/documentation debt. Strict documentation has the
-identical normalized set of 318 warnings as baseline `208a21d9`/19448086.
-Mypy has 163 diagnostics versus baseline 164: one existing fixed-OU mapping error
-is removed and the existing PyMC missing-stubs diagnostic relocates from
-`co2/stages.py` to `co2/handoffs.py`. No introduced diagnostics remain after
-accounting for that ownership move. Agents independently confirmed both deltas
-and reviewed rendered CO2 family, CLI and output API pages without finding new
-issues. Changed-path Ruff, diff and strict OpenSpec checks pass. Final MaxRSS is
-`22473024K`; allocation was 24 GiB.
-
-The ordinary implementation/scientific validation evidence is ready for review in
-#886. Task 3.6 remains open specifically for maintainer review and merged evidence;
-no readability acceptance or whole-programme completion is claimed. Subsequent
-commits record evidence only. Existing #679/#881 debt, cached section 4, linked
-OPE-165 and integrated acceptance remain separate. Nothing is merged.
-
-Concrete cached handoff: consume `load_preparation` (coherent inputs, bound
-companion and generation), keep the matched cached construction/step owner and
-PyMC backend, save through `save_samples(actual_inference=...,
-preparation_generation=...)`, and return `Co2Output` before explicit product
-calculation/exports. Preserve sigma-then-state order, accepted cache updates,
-prediction roles and covariance/eigenbasis checks. Validate cached per-site
-initialization and OU mappings at their owner. Run cached likelihood/dense-oracle/
-posterior-reference checks plus new/imported affine replay. The retained cached
-envelope/hash/date routing is a section 4/#808 residual. Linked CO2/O2 stays in
-OPE-165; nested stays outside this change. Sections 4–5 and OPE-207/#880/#808
-remain open. No storage redesign or acquisition persistence was added.
+Concrete cached handoff: use `load_preparation` for coherent inputs, requested
+facts, numerical/affine references and generation; bind reconstruction at the
+product boundary. Keep matched cached construction and PyMC backend, save through
+`save_samples(actual_inference=..., preparation_generation=...)`, and return
+`Co2Output` before explicit preflight/calculation/export. Preserve sigma-then-state
+order, accepted-cache updates, prediction roles and covariance/eigenbasis checks.
+Validate cached per-site initialization and OU mappings at their owner. Exercise
+cached likelihood/dense-oracle/posterior references plus new/imported affine
+replay. Cached envelope/hash/date routing is a section 4/#808 residual. Linked
+CO2/O2 stays in OPE-165; nested remains excluded. Sections 4–5 and
+OPE-207/#880/#808 stay open. No storage redesign or acquisition persistence is
+included. Nothing is merged.
 
 ## 4. Cached CO2 reusable-handoff adoption
 

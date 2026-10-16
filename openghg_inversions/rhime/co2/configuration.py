@@ -27,7 +27,6 @@ from .co2_o2_cached_sigma_runner import run_rhime_co2_o2_cached_sigma_from_prepa
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .co2_o2_runner import run_rhime_co2_o2_from_prepared_inputs
 from .co2_preparation import Co2PreparedInputs
-from .co2_runner import run_rhime_co2
 
 
 Runner = Callable[..., Any]
@@ -281,6 +280,74 @@ def _prepared_inputs(options: dict[str, object]) -> Mapping[str, object]:
     return _frozen(result)
 
 
+def validate_co2_config(config: Mapping[str, object]) -> dict[str, Any]:
+    """Validate the ordinary/cached file envelope without resolving its sections.
+
+    Missing headers select ordinary CO2 for phase-only requests. Component
+    parsers own scientific values and resource paths; unrelated sections are
+    neither traversed nor materialized here.
+    """
+    options = _table(config, "config")
+    version = options.get("format_version", 1)
+    if type(version) is not int or version != 1:
+        raise ValueError("config.format_version must be the integer 1.")
+    if options.get("recipe", "co2") != "co2":
+        raise ValueError("config.recipe must be 'co2' for CO2 execution.")
+    if options.get("variant", "ordinary") not in ("ordinary", "cached_fixed_ou"):
+        raise ValueError("config.variant must be 'ordinary' or 'cached_fixed_ou'.")
+    allowed = {"format_version", "recipe", "variant", "prepared_inputs", "model", "likelihood", "sampling", "outputs"}
+    _reject_unknown({name: value for name, value in options.items() if name not in allowed}, "config")
+    return options
+
+
+def resolve_co2_preparation(
+    config: Mapping[str, object], *, require_path: bool = False,
+) -> dict[str, Any]:
+    """Resolve ordinary preparation locations and original requested facts.
+
+    ``require_path=True`` selects artifact-importing callers. In-memory callers
+    may instead supply canonical inputs and a coherent reduction. The affine
+    companion belongs to ``prepared_inputs.reconstruction_path``; output choices
+    cannot replace that scientific association.
+    """
+    options = _table(config, "config")
+    prepared = _table(options.get("prepared_inputs", {}), "prepared_inputs")
+    result: dict[str, Any] = {
+        "prepared_path": None, "affine_path": None,
+        "start_date": None, "end_date": None, "domain": None,
+    }
+    if require_path and "path" not in prepared:
+        raise ValueError("Missing required option prepared_inputs.path.")
+    for name, argument in (("path", "prepared_path"), ("reconstruction_path", "affine_path")):
+        if name in prepared:
+            value = prepared.pop(name)
+            if not isinstance(value, str | Path):
+                raise TypeError(f"prepared_inputs.{name} must be a filesystem path.")
+            if isinstance(value, str):
+                value = _string(value, f"prepared_inputs.{name}")
+            result[argument] = Path(value).expanduser().resolve()
+    for name in ("start_date", "end_date", "domain"):
+        if name in prepared:
+            result[name] = _string(prepared.pop(name), f"prepared_inputs.{name}")
+    _reject_unknown(prepared, "prepared_inputs")
+    return result
+
+
+def _random_seed(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("sampling.random_seed must be a non-negative integer.")
+    return value
+
+
+def resolve_co2_prior_seed(config: Mapping[str, object]) -> int | None:
+    """Resolve only the random seed consumed by prior predictive sampling.
+
+    MCMC options are unused by prior prediction and remain unvalidated here.
+    """
+    options = _table(_table(config, "config").get("sampling", {}), "sampling")
+    return _random_seed(options["random_seed"]) if "random_seed" in options else None
+
+
 def _sampling(value: object, *, cached: bool) -> RhimeSampler:
     options = _table(value, "sampling")
     kwargs: dict[str, Any] = {}
@@ -333,9 +400,7 @@ def _sampling(value: object, *, cached: bool) -> RhimeSampler:
         sample_kwargs["target_accept"] = target_accept
     posterior_kwargs: dict[str, Any] = {}
     if "random_seed" in options:
-        random_seed = options.pop("random_seed")
-        if isinstance(random_seed, bool) or not isinstance(random_seed, int) or random_seed < 0:
-            raise ValueError("sampling.random_seed must be a non-negative integer.")
+        random_seed = _random_seed(options.pop("random_seed"))
         sample_kwargs["random_seed"] = random_seed
         posterior_kwargs["random_seed"] = random_seed
     _reject_unknown(options, "sampling")
@@ -533,20 +598,21 @@ def _cached_likelihood(value: object) -> dict[str, Any]:
 
 
 def _resolve_co2(options: dict[str, object], variant: str) -> Co2RunSetup:
-    if variant not in ("ordinary", "cached_fixed_ou"):
+    if variant == "ordinary":
+        raise ValueError(
+            "Ordinary CO2 no longer uses Co2RunSetup. Use run_co2 for configured "
+            "products, or resolve_co2_model/resolve_co2_sampler and the explicit "
+            "materialize_co2_inputs, build_co2_from_materialized and sampling operations."
+        )
+    if variant != "cached_fixed_ou":
         raise ValueError("recipe='co2' requires variant='ordinary' or 'cached_fixed_ou'.")
     prepared = _prepared_inputs(options)
     model = _model(options.pop("model", {}))
     likelihood = _take(options, "likelihood", "config")
-    cached = variant == "cached_fixed_ou"
-    sampler = _sampling(options.pop("sampling", {}), cached=cached)
+    sampler = _sampling(options.pop("sampling", {}), cached=True)
     _reject_unknown(options, "config")
-    if cached:
-        runner: Runner = run_rhime_co2_cached_sigma
-        runner_kwargs = {**model, **_cached_likelihood(likelihood)}
-    else:
-        runner = run_rhime_co2
-        runner_kwargs = {**model, **_ordinary_likelihood(likelihood)}
+    runner: Runner = run_rhime_co2_cached_sigma
+    runner_kwargs = {**model, **_cached_likelihood(likelihood)}
     return Co2RunSetup(prepared, runner, _frozen(runner_kwargs), sampler)
 
 
@@ -646,7 +712,11 @@ def co2_config_templates() -> Mapping[str, Traversable]:
 def resolve_co2_family_config(
     config: Mapping[str, object],
 ) -> Co2RunSetup | Co2O2RunSetup:
-    """Resolve a format-neutral mapping into one concrete recipe setup."""
+    """Resolve cached CO2 or linked CO2/O2 configuration into its recipe setup.
+
+    Ordinary CO2 uses the independent preparation, model and sampler section
+    owners with :func:`~openghg_inversions.rhime.co2.execution.run_co2`, or explicit materialization and construction.
+    """
     options = _table(config, "config")
     version = _take(options, "format_version", "config")
     if isinstance(version, bool) or not isinstance(version, int) or version != 1:
@@ -711,4 +781,7 @@ __all__ = [
     "resolve_co2_family_config",
     "resolve_co2_model",
     "resolve_co2_sampler",
+    "resolve_co2_prior_seed",
+    "resolve_co2_preparation",
+    "validate_co2_config",
 ]

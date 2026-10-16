@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-import json
 import os
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -32,28 +31,28 @@ from openghg_inversions.rhime._stage_artifacts import (
 from openghg_inversions.rhime._stage_checks import (
     PREPARATION_CHECK_NAME, _check_draws, _check_stage, _check_result,
 )
-from openghg_inversions.rhime.builders import callable_metadata
-from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.rhime.sampling import sample_rhime_model
 from openghg_inversions.serialization import load_trace, save_trace
 
 from .co2_affine_output import (
-    BoundCo2AffineFluxMap, load_and_bind_affine_flux_map, prepared_inputs_content_id,
+    load_and_bind_affine_flux_map, prepared_inputs_content_id,
 )
 from .co2_outputs import (
     Co2Output, Co2OutputOptions, make_co2_output, calculate_co2_products, save_co2_products,
+    validate_co2_trace, validate_co2_product_request,
 )
 from .co2_preparation import (
-    Co2PreparedInputs, prepare_co2_inputs, requested_co2_facts, _require_equivalent_units,
+    Co2PreparedInputs, prepare_co2_inputs, requested_co2_facts,
 )
 from .co2_runner import (
-    annotate_co2_trace, materialize_co2_inputs, build_co2_from_materialized, describe_co2_likelihood_kwargs,
+    annotate_co2_trace, materialize_co2_inputs, build_co2_from_materialized,
 )
+from .configuration import resolve_co2_model
 
 
 @dataclass(frozen=True)
 class Co2Preparation:
-    """Loaded coherent inputs, optional bound reconstruction and original request.
+    """Loaded coherent inputs, reconstruction reference and original request.
 
     ``generation`` must be returned to :func:`save_samples` after inference.
     ``payload`` identifies the numerical prepared artifact, independently of its
@@ -62,7 +61,6 @@ class Co2Preparation:
     """
 
     prepared: Co2PreparedInputs
-    bound: BoundCo2AffineFluxMap | None
     generation: str
     start_date: str
     end_date: str
@@ -78,6 +76,22 @@ def _preparation_record(manifest: str | Path) -> tuple[Path, dict[str, Any]]:
     if not isinstance(record["generation"], str) or not record["generation"]:
         raise ValueError(f"CO2 preparation {path} requires a nonempty generation.")
     return path, record
+
+
+def _finish_preparation(
+    destination: Path, *, prepared_path: Path, affine_path: Path | None,
+    facts: Mapping[str, str],
+) -> Path:
+    """Publish one preparation record after saving or validating its numerical pair."""
+    record = {
+        "schema": "openghg_inversions.co2.prepare", "schema_version": 1,
+        "producer": "openghg_inversions", "stage": "prepare", "generation": uuid4().hex,
+        "prepared_inputs": os.path.relpath(prepared_path, destination), **facts,
+        "provenance": installed_ogi_provenance(),
+    }
+    if affine_path is not None:
+        record["affine_reconstruction"] = os.path.relpath(affine_path, destination)
+    return finish_checkpoint(destination, "prepare", record)
 
 
 def save_preparation(
@@ -98,18 +112,14 @@ def save_preparation(
     destination = start_checkpoint(output_dir, "prepare", payloads=payloads)
     prepared_path = destination / "prepared-inputs.nc"
     prepared.save(prepared_path)
-    record = {
-        "schema": "openghg_inversions.co2.prepare", "schema_version": 1,
-        "producer": "openghg_inversions", "stage": "prepare", "generation": uuid4().hex,
-        "prepared_inputs": "prepared-inputs.nc", **facts,
-        "provenance": installed_ogi_provenance(),
-    }
+    companion = None
     if affine_artifact is not None:
         companion = destination / "affine-flux-map.nc"
         save_affine(replace(affine_artifact, prepared_inputs_id=prepared_inputs_content_id(prepared_path)), companion)
         load_and_bind_affine_flux_map(companion, prepared_path)
-        record["affine_reconstruction"] = "affine-flux-map.nc"
-    return finish_checkpoint(destination, "prepare", record)
+    return _finish_preparation(
+        destination, prepared_path=prepared_path, affine_path=companion, facts=facts,
+    )
 
 
 def prepare(
@@ -156,15 +166,9 @@ def prepare(
     destination = start_checkpoint(
         output_dir, "prepare", payloads=(), referenced=(source,) + ((companion,) if companion else ()),
     )
-    record = {
-        "schema": "openghg_inversions.co2.prepare", "schema_version": 1,
-        "producer": "openghg_inversions", "stage": "prepare", "generation": uuid4().hex,
-        "prepared_inputs": os.path.relpath(source, destination), **facts,
-        "provenance": installed_ogi_provenance(),
-    }
-    if companion is not None:
-        record["affine_reconstruction"] = os.path.relpath(companion, destination)
-    return finish_checkpoint(destination, "prepare", record)
+    return _finish_preparation(
+        destination, prepared_path=source, affine_path=companion, facts=facts,
+    )
 
 
 def load_preparation(manifest: str | Path, *, expected_generation: str | None = None) -> Co2Preparation:
@@ -173,6 +177,7 @@ def load_preparation(manifest: str | Path, *, expected_generation: str | None = 
     Relative references resolve beside the manifest. Missing artifacts and
     invalid scientific bindings propagate from their owning numerical loaders.
     An expected generation rejects replacement of a preparation after sampling.
+    Affine references stay unloaded until scientific output replay consumes them.
     """
     path, record = _preparation_record(manifest)
     if expected_generation is not None and record["generation"] != expected_generation:
@@ -181,45 +186,9 @@ def load_preparation(manifest: str | Path, *, expected_generation: str | None = 
     prepared = Co2PreparedInputs.load(payload)
     facts = requested_co2_facts(prepared, **{name: record[name] for name in ("start_date", "end_date", "domain")})
     affine_payload = reference(path, record["affine_reconstruction"]) if "affine_reconstruction" in record else None
-    bound = load_and_bind_affine_flux_map(affine_payload, payload) if affine_payload is not None else None
     return Co2Preparation(
-        prepared, bound, record["generation"], payload=payload, affine_payload=affine_payload, **facts,
+        prepared=prepared, generation=record["generation"], payload=payload, affine_payload=affine_payload, **facts,
     )
-
-
-def _validate_trace(trace: xr.DataTree, prepared: Co2PreparedInputs | None = None) -> None:
-    """Validate saved output roles and labelled reconstruction without computing draws."""
-    roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
-    if not isinstance(roles, dict) or any(not isinstance(value, str) or not value for value in roles.values()):
-        raise ValueError("CO2 trace requires scientific role names mapped to variable names.")
-    required = {"model_mean", "pollution_concentration", "flux_scale"}
-    missing = required - roles.keys()
-    if missing:
-        raise ValueError(f"CO2 trace lacks scientific role(s): {sorted(missing)!r}.")
-    if "posterior" not in trace.children:
-        raise ValueError("CO2 samples require posterior draws.")
-    for group in ("prior", "posterior"):
-        if group not in trace.children:
-            continue
-        dataset = trace[group].to_dataset()
-        for role in required | ({"boundary_concentration", "offset_concentration", "model_error"} & roles.keys()):
-            if roles[role] not in dataset:
-                raise ValueError(f"CO2 scientific outputs require role {role!r} in {group}.")
-            variable = dataset[roles[role]]
-            if not {"chain", "draw"}.issubset(variable.dims):
-                raise ValueError(f"CO2 role {role!r} in {group} requires chain/draw sample dimensions.")
-            if prepared is not None:
-                state_dim = prepared.inv_inputs["alpha_prior_mean"].dims[0]
-                expected_dim = state_dim if role == "flux_scale" else "nmeasure"
-                if set(variable.dims) != {"chain", "draw", expected_dim}:
-                    raise ValueError(f"CO2 role {role!r} in {group} requires only chain/draw and dimension {expected_dim!r}.")
-                expected_units = "1" if role == "flux_scale" else prepared.inv_inputs["mf"].attrs["units"]
-                _require_equivalent_units(
-                    variable.attrs.get("units"), expected_units, name=f"CO2 role {role!r} in {group}",
-                )
-                xr.align(variable, prepared.inv_inputs["mf"], join="exact", copy=False)
-        if prepared is not None:
-            xr.align(dataset[roles["flux_scale"]], prepared.inv_inputs["alpha_prior_mean"], join="exact", copy=False)
 
 
 def save_samples(
@@ -235,7 +204,7 @@ def save_samples(
     preparation_path, preparation = _preparation_record(preparation_manifest)
     if preparation["generation"] != preparation_generation:
         raise ValueError(f"CO2 preparation {preparation_path} was replaced; samples require generation {preparation_generation!r}.")
-    _validate_trace(trace)
+    validate_co2_trace(trace)
     prepared_path = reference(preparation_path, preparation["prepared_inputs"])
     affine_path = (
         reference(preparation_path, preparation["affine_reconstruction"])
@@ -269,26 +238,25 @@ def sample(
     """
     active_sampler = resolve_sampler(sampler)
     preparation = load_preparation(preparation_manifest)
+    model_options = resolve_co2_model(model)
     check_checkpoint_targets(
         Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),
         referenced=(Path(preparation_manifest).resolve(), preparation.payload)
         + ((preparation.affine_payload,) if preparation.affine_payload else ()),
     )
-    model_inputs, materialized_options = materialize_co2_inputs(
-        prepared_inputs=preparation.prepared, **model,
+    model_inputs, priors = materialize_co2_inputs(
+        prepared_inputs=preparation.prepared, **model_options,
     )
     built = build_co2_from_materialized(
         model_inputs, prepared_inputs=preparation.prepared,
-        **{**model, **materialized_options},
+        priors=priors, **model_options,
     )
     trace = sample_rhime_model(built, active_sampler)
-    annotate_co2_trace(trace, built, concentration_units=preparation.prepared.inv_inputs["mf"].attrs.get("units"))
-    likelihood_builder = model.get("likelihood_builder")
-    if likelihood_builder is not None:
-        annotate_likelihood_trace(
-            trace, builder_identity=callable_metadata(likelihood_builder),
-            likelihood_kwargs=describe_co2_likelihood_kwargs(model.get("likelihood_kwargs")),
-        )
+    annotate_co2_trace(
+        trace, built, concentration_units=preparation.prepared.inv_inputs["mf"].attrs.get("units"),
+        likelihood_builder=model_options.get("likelihood_builder"),
+        likelihood_kwargs=model_options.get("likelihood_kwargs"),
+    )
     return save_samples(
         preparation_manifest, trace, actual_inference=active_sampler.describe(), preparation_generation=preparation.generation,
         output_dir=output_dir,
@@ -312,9 +280,13 @@ def load_samples(sample_manifest: str | Path) -> Co2Output:
         raise ValueError(f"CO2 samples {path} require a nonempty preparation generation.")
     preparation = load_preparation(reference(path, record["preparation"]), expected_generation=generation)
     trace = load_trace(reference(path, record["posterior"]))
-    _validate_trace(trace, preparation.prepared)
+    validate_co2_trace(trace, preparation.prepared)
+    bound = (
+        load_and_bind_affine_flux_map(preparation.affine_payload, preparation.payload)
+        if preparation.affine_payload is not None else None
+    )
     result = make_co2_output(
-        prepared=preparation.prepared, trace=trace, bound=preparation.bound,
+        prepared=preparation.prepared, trace=trace, bound=bound,
         start_date=preparation.start_date, end_date=preparation.end_date, domain=preparation.domain,
         output_metadata={
             "sampler": record.get("actual_inference") if isinstance(record.get("actual_inference"), Mapping) else {},
@@ -334,9 +306,12 @@ def postprocess(
     choices. All product validation/calculation precedes opening output paths.
     """
     loaded = load_samples(sample_manifest)
+    countries = validate_co2_product_request(
+        output, prepared=loaded.prepared, bound=loaded.bound, source_to_sector=source_to_sector,
+    )
     calculate_co2_products(
         result=loaded, prepared=loaded.prepared, bound=loaded.bound,
-        output=output, source_to_sector=source_to_sector,
+        output=output, source_to_sector=source_to_sector, countries=countries,
     )
     save_co2_products(loaded, output=output)
     return loaded
@@ -356,6 +331,7 @@ def prior_predictive(
     _check_draws(draws)
     stage = _check_stage(stage)
     preparation = load_preparation(preparation_manifest)
+    model_options = resolve_co2_model(model)
     destination = Path(output_dir).resolve()
     report = _output_path(destination, check_output, "prior-predictive-readiness.json")
     check_checkpoint_targets(
@@ -364,12 +340,12 @@ def prior_predictive(
         + ((preparation.affine_payload,) if preparation.affine_payload else ()),
     )
     report.unlink(missing_ok=True)
-    model_inputs, materialized_options = materialize_co2_inputs(
-        prepared_inputs=preparation.prepared, **model,
+    model_inputs, priors = materialize_co2_inputs(
+        prepared_inputs=preparation.prepared, **model_options,
     )
     built = build_co2_from_materialized(
         model_inputs, prepared_inputs=preparation.prepared,
-        **{**model, **materialized_options},
+        priors=priors, **model_options,
     )
     with built.model:
         prior = pm.sample_prior_predictive(draws, random_seed=random_seed)
@@ -378,13 +354,9 @@ def prior_predictive(
         prior = restore_inferencedata_coords(prior, registry)
     annotate_co2_trace(
         prior, built, concentration_units=preparation.prepared.inv_inputs["mf"].attrs.get("units"),
+        likelihood_builder=model_options.get("likelihood_builder"),
+        likelihood_kwargs=model_options.get("likelihood_kwargs"),
     )
-    likelihood_builder = model.get("likelihood_builder")
-    if likelihood_builder is not None:
-        annotate_likelihood_trace(
-            prior, builder_identity=callable_metadata(likelihood_builder),
-            likelihood_kwargs=describe_co2_likelihood_kwargs(model.get("likelihood_kwargs")),
-        )
     concentration = built.output_contract.variable_roles.get("concentration")
     predictive = prior.children.get("prior_predictive")
     values = [np.asarray(group[name].values) for group in prior.children.values() for name in group.data_vars]

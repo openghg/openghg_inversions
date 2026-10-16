@@ -9,7 +9,6 @@ import xarray as xr
 from openghg_inversions.basis.affine_flux_map_io import load as load_affine
 from openghg_inversions.rhime.co2 import handoffs
 from openghg_inversions.rhime.co2.co2_affine_output import produce_bucket_affine_flux_map
-from openghg_inversions.rhime.co2.configuration import resolve_co2_model
 from openghg_inversions.rhime.co2.co2_outputs import Co2OutputOptions
 from openghg_inversions.inference.sampling import RhimeSampler
 from test_co2_affine_output import _prepared
@@ -28,9 +27,7 @@ FACTS = {"start_date": "2019-12-01", "end_date": "2020-02-01", "domain": "EUROPE
 
 
 def _model(**likelihood):
-    return resolve_co2_model({
-        "likelihood": {"kind": "additive_sigma", "no_model_error": True, **likelihood},
-    })
+    return {"likelihood": {"kind": "additive_sigma", "no_model_error": True, **likelihood}}
 
 
 
@@ -67,9 +64,9 @@ def test_new_affine_pair_uses_saved_content_binding_and_manifest_last(tmp_path, 
     artifact = produce_bucket_affine_flux_map(prepared, native, prepared_inputs_id="in-memory")
     manifest = handoffs.save_preparation(prepared, affine_artifact=artifact, output_dir=tmp_path / "new", **FACTS)
     loaded = handoffs.load_preparation(manifest)
-    assert loaded.bound is not None
-    assert loaded.bound.artifact.prepared_inputs_id != "in-memory"
-    xr.testing.assert_equal(loaded.bound.affine_map.flux, prepared.basis_functions.flux.rename("flux"))
+    bound = handoffs.load_and_bind_affine_flux_map(loaded.affine_payload, loaded.payload)
+    assert bound.artifact.prepared_inputs_id != "in-memory"
+    xr.testing.assert_equal(bound.affine_map.flux, prepared.basis_functions.flux.rename("flux"))
     broken = replace(artifact, projection_provenance={"projection_strategy": "wrong"})
     with pytest.raises(ValueError, match="projection provenance"):
         handoffs.save_preparation(prepared, affine_artifact=broken, output_dir=tmp_path / "broken", **FACTS)
@@ -91,11 +88,12 @@ def test_imported_affine_pair_is_referenced_without_copying(tmp_path, extension)
         prepared_path=source, affine_path=companion, output_dir=tmp_path / "referenced", **FACTS,
     )
     restored = handoffs.load_preparation(manifest)
-    assert restored.bound is not None
     assert restored.payload == source.resolve()
     assert restored.affine_payload == companion.resolve()
     assert list(manifest.parent.iterdir()) == [manifest]
-    assert restored.bound.artifact.prepared_inputs_id == artifact.prepared_inputs_id
+    assert handoffs.load_and_bind_affine_flux_map(
+        restored.affine_payload, restored.payload,
+    ).artifact.prepared_inputs_id == artifact.prepared_inputs_id
 
 
 def test_replaced_preparation_rejects_saved_generation_before_writing(tmp_path):
@@ -268,3 +266,78 @@ def test_imported_preparation_manifest_cannot_alias_external_numerical_file(tmp_
     with pytest.raises(ValueError, match="beneath|overwrite"):
         handoffs.prepare(prepared_path=source, output_dir=destination, **FACTS)
     assert source.read_bytes() == original
+
+
+@pytest.mark.parametrize("phase", ["sample", "prior_predictive"])
+def test_inference_loads_decoded_model_without_reading_unused_affine(tmp_path, monkeypatch, phase):
+    prepared, native = _prepared()
+    artifact = produce_bucket_affine_flux_map(prepared, native, prepared_inputs_id="in-memory")
+    prep = handoffs.save_preparation(prepared, affine_artifact=artifact, output_dir=tmp_path / "prep", **FACTS)
+    (prep.parent / "affine-flux-map.nc").unlink()
+    captured = []
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Inference must not load an output reconstruction")
+
+    def model_boundary(**kwargs):
+        captured.append(kwargs)
+        raise RuntimeError("model boundary reached")
+
+    monkeypatch.setattr(handoffs, "load_and_bind_affine_flux_map", forbidden)
+    monkeypatch.setattr(handoffs, "materialize_co2_inputs", model_boundary)
+    with pytest.raises(RuntimeError, match="model boundary reached"):
+        getattr(handoffs, phase)(
+            prep, model={"model": {"boundary": {"enabled": False}},
+                         "likelihood": {"kind": "additive_sigma", "no_model_error": True}},
+            output_dir=tmp_path / "inference",
+        )
+    assert captured[0]["use_bc"] is False
+    assert captured[0]["no_model_error"] is True
+    assert not (tmp_path / "inference").exists()
+
+
+@pytest.mark.parametrize("companion", ["missing", "incompatible"])
+def test_replay_checks_affine_companion_even_without_products(tmp_path, companion):
+    from openghg_inversions.basis.affine_flux_map_io import save as save_affine
+
+    prepared, trace = _components_fixture()
+    _, native = _prepared()
+    artifact = produce_bucket_affine_flux_map(prepared, native, prepared_inputs_id="in-memory")
+    prep = handoffs.save_preparation(prepared, affine_artifact=artifact, output_dir=tmp_path / "prep", **FACTS)
+    samples = handoffs.save_samples(
+        prep, trace, actual_inference={"draws": 3},
+        preparation_generation=handoffs.load_preparation(prep).generation,
+        output_dir=tmp_path / "sample",
+    )
+    if companion == "missing":
+        (prep.parent / "affine-flux-map.nc").unlink()
+        expected = FileNotFoundError
+    else:
+        recorded = json.loads(prep.read_text())
+        original = load_affine(prep.parent / "affine-flux-map.nc")
+        save_affine(replace(original, projection_provenance={"projection_strategy": "wrong"}),
+                    prep.parent / "incompatible.nc")
+        recorded["affine_reconstruction"] = "incompatible.nc"
+        prep.write_text(json.dumps(recorded))
+        expected = ValueError
+    with pytest.raises(expected):
+        handoffs.postprocess(samples, output=Co2OutputOptions(output_format="none", output_path=tmp_path / "products"))
+    assert not (tmp_path / "products").exists()
+
+
+def test_decoded_prior_readiness_uses_shared_scientific_trace_annotation(tmp_path):
+    from openghg_inversions.serialization import load_trace
+
+    prepared, _ = _prepared()
+    prep = handoffs.save_preparation(prepared, output_dir=tmp_path / "prep", **FACTS)
+    result = handoffs.prior_predictive(
+        prep, model=_model(), output_dir=tmp_path / "check", draws=2, random_seed=19,
+    )
+    assert result["status"] == "pass"
+    trace = load_trace(tmp_path / "check" / "prior-predictive.nc")
+    assert trace.prior_predictive.indexes["nmeasure"].equals(prepared.inv_inputs.indexes["nmeasure"])
+    metadata = json.loads(trace.attrs["rhime_model_metadata"])
+    assert metadata["no_model_error"] is True
+    assert metadata["likelihood"] == "additive_sigma"
+    assert metadata["use_bc"] is False
+    assert "rhime_priors" in trace.attrs

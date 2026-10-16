@@ -44,7 +44,7 @@ The resource-I/O and HBMCMC entries were updated the same day for the accepted
      - :download:`RHIME model selection
        <../../openspec/specs/rhime-model-selection/spec.md>`
      - Baseline of delivered behavior; :doc:`/usage/rhime` and
-       :doc:`/usage/cli`. The :download:`ordinary CO2 CLI extension
+       :doc:`/usage/cli`. The :download:`ordinary CO2 selector/runner amendment
        <../../openspec/changes/replace-recipe-workflow-with-reusable-handoffs/specs/rhime-model-selection/spec.md>`
        is pending review in `PR 886 <https://github.com/openghg/openghg_inversions/pull/886>`_.
    * - Registered coordinates and custom likelihood composition

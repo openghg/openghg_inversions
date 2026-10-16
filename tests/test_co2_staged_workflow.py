@@ -80,6 +80,8 @@ def _handoff(directory: Path) -> tuple[Path, Co2PreparedInputs]:
 
 
 def _configuration(directory: Path, variant: str) -> Path:
+    preparation_reconstruction = 'reconstruction_path = "affine.nc"' if variant == "ordinary" else ""
+    output_reconstruction = 'reconstruction_path = "affine.nc"' if variant != "ordinary" else ""
     likelihood = (
         'kind = "additive_sigma"\nno_model_error = true\nfixed_model_mismatch = 0.0'
         if variant == "ordinary"
@@ -95,6 +97,7 @@ path = "source-prepared.nc"
 start_date = "2020-01-01"
 end_date = "2020-02-01"
 domain = "EUROPE"
+{preparation_reconstruction}
 [likelihood]
 {likelihood}
 [model.boundary]
@@ -116,7 +119,7 @@ sample_posterior_predictive = true
 [outputs]
 output_format = "basic"
 output_name = "co2-stage-test"
-reconstruction_path = "affine.nc"
+{output_reconstruction}
 country_file = "countries.nc"
 ''',
         encoding="utf-8",
@@ -311,10 +314,11 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(
         "outputs": {
             "output_format": "paris",
             "output_name": "co2-stage-test",
-            "reconstruction_path": str(tmp_path / "affine.nc"),
             "country_file": str(tmp_path / "countries.nc"),
         }
     }
+    if variant == "cached_fixed_ou":
+        outputs["outputs"]["reconstruction_path"] = str(tmp_path / "affine.nc")
     _in_process_cli(
         "postprocess",
         *common,

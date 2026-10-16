@@ -32,7 +32,7 @@ def test_unknown_model_rejected():
         run(model="missing")
 
 
-@pytest.mark.parametrize("model", ["co2", "co2_cached_sigma", "co2_o2", "co2_o2_cached_sigma"])
+@pytest.mark.parametrize("model", ["co2_cached_sigma", "co2_o2", "co2_o2_cached_sigma"])
 def test_carbon_recipes_require_their_actual_prepared_inputs(model):
     with pytest.raises(TypeError, match="prepared_inputs"):
         run(model=model)
@@ -68,12 +68,8 @@ def test_both_executables_select_models_and_preserve_overrides(monkeypatch, entr
 @pytest.mark.parametrize("command", [["run", "--model", "co2"], ["run-co2"]])
 def test_configured_co2_cli_preserves_sections_and_run_overrides(monkeypatch, entrypoint, command):
     calls = []
-    monkeypatch.setattr("openghg_inversions.rhime.co2.run_co2_from_config", lambda **kw: calls.append(kw))
+    monkeypatch.setattr("openghg_inversions.rhime.co2.run_co2", lambda **kw: calls.append(kw))
 
-    def direct_recipe_forbidden(**kwargs):
-        raise AssertionError("Configured CO2 CLI must use the product runner")
-
-    monkeypatch.setattr("openghg_inversions.rhime.run", direct_recipe_forbidden)
     entrypoint([*command, "2020-01-01", "2020-02-01", "-c", "co2.toml",
                 "--output-path", "products", "--kwargs", '{"sampling":{"draws":10}}'])
     assert calls == [dict(config_file="co2.toml", start_date="2020-01-01", end_date="2020-02-01",
@@ -87,3 +83,25 @@ def test_cli_default_and_prepared_only_model_boundary():
     for model in ("co2_cached_sigma", "co2_o2", "co2_o2_cached_sigma"):
         with pytest.raises(SystemExit):
             parser.parse_args(["run", "-c", "run.ini", "--model", model])
+
+
+def test_python_co2_selector_uses_the_canonical_product_runner(monkeypatch):
+    calls = []
+    output = object()
+
+    def configured(**kwargs):
+        calls.append(kwargs)
+        return output
+
+    monkeypatch.setattr("openghg_inversions.rhime.co2.run_co2", configured)
+    assert run(model="co2", config_file="co2.toml", output_path="products") is output
+    assert calls == [{"config_file": "co2.toml", "output_path": "products"}]
+
+
+def test_removed_ordinary_runner_names_have_no_compatibility_aliases():
+    from openghg_inversions.rhime import co2
+    from openghg_inversions import rhime
+
+    for name in ("run_rhime_co2", "build_rhime_co2", "run_co2_from_config"):
+        assert not hasattr(co2, name)
+        assert not hasattr(rhime, name)

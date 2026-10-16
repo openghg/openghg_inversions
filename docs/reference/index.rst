@@ -32,8 +32,7 @@ runner.
    openghg_inversions.rhime.run_rhime_nested
    openghg_inversions.rhime.run_rhime_from_prepared_inputs
    openghg_inversions.rhime.run_rhime_nested_from_prepared_inputs
-   openghg_inversions.rhime.run_rhime_co2
-   openghg_inversions.rhime.co2.run_co2_from_config
+   openghg_inversions.rhime.co2.run_co2
    openghg_inversions.rhime.co2.run_rhime_co2_cached_sigma
    openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs
    openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs
@@ -162,9 +161,9 @@ value and its unchanged version-1 schema live in
    openghg_inversions.rhime.co2.handoffs.load_samples
    openghg_inversions.rhime.co2.handoffs.postprocess
    openghg_inversions.rhime.co2.handoffs.prior_predictive
-   openghg_inversions.rhime.co2.build_rhime_co2
    openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs
    openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized
+   openghg_inversions.rhime.co2.co2_outputs.validate_co2_product_request
    openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma
    openghg_inversions.rhime.co2.sample_co2_cached_prior_predictive
    openghg_inversions.rhime.co2.prepare_co2_o2_inputs

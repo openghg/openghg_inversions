@@ -26,9 +26,12 @@ establish their implementation.
 Merged #854 supplies current [model-selection](../../specs/rhime-model-selection/spec.md)
 and [model-composition](../../specs/rhime-model-composition/spec.md) baselines.
 Preserve the Python selector and installed full-run model choices, argument
-forwarding and established aliases. A saved-phase family selector is a separate
-boundary; it does not add CO2 acquisition or configuration-file support to the
-prepared-only Python recipes or extend the installed full-run selector.
+forwarding and established aliases. The ordinary CO2 selection amendment approved on 16 October 2026 routes both
+Python and CLI selection to `run_co2`, starting from coherent prepared inputs.
+It removes the redundant ordinary raw runner and bundled builder; trace-only
+callers compose the existing numerical operations. Cached/linked prepared-input
+selection remains unchanged. No CO2 acquisition/native-preparation route is added;
+that separate scientific work is tracked in #890.
 
 Construction reuses `CoordRegistry` and the existing custom-likelihood seam,
 including canonical `y`/`epsilon`, explicit kwargs, conflict precedence and
@@ -377,7 +380,7 @@ loader/composition boundary.
 | --- | --- |
 | Prepared numerical artifact | Retained observations/site metadata, coordinates, units, basis/operator and retained flux; existing numerical codec |
 | Preparation record and associated configuration | Family and numerical references; original requested dates, species/domain and preparation choices at their existing owner |
-| Sample record | Preparation and posterior references, embedded `OutputContract`, actual inference/sampler description and reference to the run context |
+| Sample record | Preparation/posterior references, actual inference/sampler description and bounded run context; standard/multisector embed `OutputContract`, while CO2 retains trace roles and affine associations |
 | Run context | Configuration used for the run and any required reporting/reconstruction inputs; may be retained beside records or supplied explicitly |
 | Current output policy | Supported products, reporting maps/options, names and destinations |
 
@@ -597,3 +600,50 @@ with implementation release notes, not with a planning-only completion claim.
   selected run context without implicit copies or fallback search.
 - A broad plan can repeat #798: require real standard scientific evidence and
   a readability review before adoption by other families.
+
+
+### 9. Ordinary CO2 review clarifications — 16 October 2026
+
+The maintainer approved the review corrections and explicitly selected one
+ordinary product runner without an additional trace-only runner. `run_co2` owns
+configured prepared-input product execution and is selected by both Python and
+CLI. Retire ordinary `run_rhime_co2`, the bundled `build_rhime_co2` and the
+unshipped `run_co2_from_config` rather than keeping naming/return aliases.
+Direct scientific composition remains possible through materialize, eager-build,
+sample and annotation operations. Cached/linked runners are outside this reset.
+
+Ordinary CO2 does not have configured native acquisition/preparation. Its CLI
+`prepare` validates/references an existing coherent prepared/affine pair; Python
+can produce a new pair from canonical inputs and an explicit coherent reduction.
+Native sensitivities, defining covariance and retained projection need their own
+scientific integration in [#890](https://github.com/openghg/openghg_inversions/issues/890),
+consuming #493/#566. Do not reinterpret basis-reduced standard `H` as a native
+operator or invent native priors from a gas name. Document this prepared-input
+starting point rather than implying acquisition parity with standard.
+
+CO2 has one parser for each owned section. Section-level overrides preserve
+unspecified choices; affine reconstruction references belong to `prepared_inputs`.
+Saved sampling/readiness accept decoded model/likelihood choices and resolve them
+against saved numerical facts. Explicit requested dates/domain may fill missing
+imported facts but cannot replace conflicting recorded facts. Record the original
+aggregation-error rank request in numerical preparation provenance, alongside
+existing actual-rank/approximation diagnostics, without a parallel manifest truth.
+
+CO2's saved scientific roles and affine associations satisfy the sampled-handoff
+contract without forcing the generic `OutputContract` representation. Construction
+owns bounded actual model metadata, registered prior descriptions and numerical
+parameter references; missing imported descriptions remain unavailable. The CO2
+external-trace validator stays beside the scientific output owner and checks roles,
+dimensions, units and alignment even when products are disabled. Generic contract
+validation does not replace these family-specific checks. Named preparation fields
+remain a concrete handoff, and `sampler=None` expresses the required absence-of-live-
+sampler protocol without creating an inference object.
+
+Full/saved routes call one trace-annotation operation and one preparation-record
+finisher. They share output policy/resource preflight; calculation trusts that
+preflight. Live planned prior generation and replay's actual saved prior draws
+remain distinct checks. Inference loads coherent prepared inputs without eagerly
+loading its unused affine companion; creation/import and replay retain the
+scientific affine binding checks. CO2 readiness restores the configured optional
+seed without requiring MCMC settings, and preserves the already specified execution-
+error propagation. Returned invalid predictive evidence still produces a failed check.

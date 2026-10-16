@@ -34,7 +34,7 @@ def test_ordinary_co2_rejects_retired_envelope_with_handoff_guidance(tmp_path):
     params = _config(tmp_path / "absent.nc")
     params.update(variant="ordinary", likelihood={"kind": "additive_sigma", "no_model_error": True})
     for resolve in (resolve_co2_stage_setup, lambda value: stages.resolve_stage_setup(value, model="co2")):
-        with pytest.raises(ValueError, match="co2.handoffs.prepare.*run_co2_from_config"):
+        with pytest.raises(ValueError, match="co2.handoffs.prepare.*run_co2"):
             resolve(params)
     assert not (tmp_path / "absent.nc").exists()
 

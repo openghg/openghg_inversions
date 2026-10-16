@@ -21,6 +21,7 @@ from openghg_inversions.rhime.co2.co2_outputs import (
     make_co2_output,
     reconstruct_co2_concentrations,
     validate_co2_outputs,
+    validate_co2_product_request,
 )
 from openghg_inversions.rhime.specs import RhimeOutputSpec
 from openghg_inversions.serialization import restore_serialisation_multiindexes
@@ -122,7 +123,8 @@ def test_direct_basic_output_roundtrips_observation_multiindex_without_mutating_
         domain="EUROPE",
     )
     output = Co2OutputOptions(output_format="basic", output_path=tmp_path)
-    calculate_co2_products(result=result, prepared=prepared, output=output)
+    countries = validate_co2_product_request(output, prepared=prepared)
+    calculate_co2_products(result=result, prepared=prepared, output=output, countries=countries)
     save_co2_products(result, output=output)
 
     with xr.open_dataset(result.output_metadata["basic_path"]) as saved:
@@ -274,3 +276,22 @@ def test_paris_two_month_affine_flux_infers_frequency_and_preserves_bounds(time_
     expected_days = (expected_bounds - epoch) / np.timedelta64(1, "D")
     np.testing.assert_allclose(exported.time_bnds, expected_days)
     np.testing.assert_allclose(exported.time, expected_days.mean(axis=1))
+
+
+def test_product_calculation_trusts_the_completed_request_preflight(monkeypatch):
+    from openghg_inversions.rhime.co2 import co2_outputs
+
+    prepared, trace = _components_fixture()
+    output = Co2OutputOptions()
+    result = make_co2_output(
+        prepared=prepared, trace=trace, domain="EUROPE", start_date="2020-01-01", end_date="2020-02-01",
+    )
+    countries = validate_co2_product_request(output, prepared=prepared)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Calculation must trust request validation and reporting inputs")
+
+    monkeypatch.setattr(co2_outputs, "validate_co2_outputs", forbidden)
+    monkeypatch.setattr(co2_outputs, "validate_co2_reporting_inputs", forbidden)
+    calculate_co2_products(result=result, prepared=prepared, output=output, countries=countries)
+    assert "basic" in result.outputs

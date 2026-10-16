@@ -22,9 +22,8 @@ Current support
      - CO₂ and O₂ channels with shared and tracer-specific retained states and
        cross-channel covariance.
    * - Public entry point
-     - :func:`openghg_inversions.rhime.co2.run_co2_from_config` consumes a
-       configured product request. :func:`openghg_inversions.rhime.run_rhime_co2`
-       retains its direct scientific trace return; see the
+     - :func:`openghg_inversions.rhime.co2.run_co2` consumes a
+       configured product request in Python or through model selection; see the
        :ref:`package-supported cached-sigma specialization
        <co2-cached-sigma-recipe>` for its prepared-input runner.
      - :func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs`
@@ -70,8 +69,9 @@ Current support
        `Staged CO₂ commands`_ below.
      - Not supported by the staged CLI.
    * - Outputs and postprocessing
-     - Direct scientific runners return an annotated xarray ``DataTree``.
-       Configured ordinary execution returns ``Co2Output`` with its trace,
+     - Scientific operation composition and the cached runner retain an
+       annotated xarray ``DataTree``. Configured ordinary execution returns
+       ``Co2Output`` with its trace,
        in-memory products and requested file paths.
        :ref:`Conditional native-flux and country summaries
        <co2-affine-flux-summaries>` are available from a bound affine artifact;
@@ -122,10 +122,11 @@ Staged CO₂ commands
 Ordinary CO₂ starts from canonical scientific inputs and a coherent reduction,
 or an existing :class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact.
 It does not acquire OpenGHG data or infer a coherent reduction from a gas name.
-``run_co2_from_config`` prepares or loads inputs, explicitly materializes the
+``run_co2`` prepares or loads inputs, explicitly materializes the
 selected scientific arrays, constructs the model, samples, then
 calculates and writes requested products. Full execution uses no manifests.
-The direct ``run_rhime_co2`` runner still returns its annotated trace.
+Direct scientific callers can compose materialization, model construction,
+sampling and trace annotation explicitly; see :doc:`co2_models`.
 
 Saved phases call those same scientific operations. ``prepare`` references an
 existing numerical artifact and its optional affine companion in place; keep
@@ -173,16 +174,19 @@ An ordinary TOML configuration can contain:
    output_format = "basic"
    output_name = "co2"
 
-Full configured execution writes the selected products to the supplied directory:
+Configured execution from prepared inputs writes the selected products:
 
 .. code-block:: bash
 
    rhime run --model co2 -c co2.toml --output-path run/full
 
 ``rhime run-co2`` remains an alias. This configured CLI route uses
-``run_co2_from_config`` and writes requested products; Python
-``rhime.run(model="co2", prepared_inputs=...)`` continues to select the direct
-runner and return its annotated trace.
+``run_co2`` and writes requested products. Python
+``rhime.run(model="co2", config_file="co2.toml")`` selects the same configured
+runner and returns ``Co2Output``. Acquisition and construction of the defining
+native-resolution reduction remain separate from this prepared-input route.
+That extension is tracked in
+`CO₂ native preparation #890 <https://github.com/openghg/openghg_inversions/issues/890>`_.
 
 Alternatively, save preparation and inference separately:
 
@@ -238,12 +242,17 @@ A short smoke test is not evidence of convergence.
 Conditional native-flux and country products require prior and posterior
 ``flux_scale`` draws and a companion bound to the preparation used for inference.
 Enable ``sampling.sample_prior_predictive`` to retain prior draws. Missing
-required draws or incompatible affine inputs fail before product writing. Add
-these fields to ``[outputs]`` when importing an existing bound pair:
+required draws or incompatible affine inputs fail before product writing. The
+companion belongs to preparation; country masks are current reporting choices:
 
 .. code-block:: toml
 
+   [prepared_inputs]
+   # Alongside the prepared path, requested dates and domain above:
    reconstruction_path = "co2-affine.nc"
+
+   [outputs]
+   output_format = "basic"
    country_file = "countries.nc"
 
 The affine artifact APIs are described under :ref:`co2-affine-flux-summaries`.
@@ -269,6 +278,10 @@ calculation and export operations. Its ordinary CO₂ fields are
 ``paris_postprocessing_kwargs``. Naming uses the RHIME convention. Reporting
 ``source_to_sector`` mappings are current product choices, separate from saved
 inference. Standard inversion-output flags and naming options are not accepted.
+Direct product callers first use
+:func:`~openghg_inversions.rhime.co2.co2_outputs.validate_co2_product_request`,
+which checks the selected products and loads compatible reporting masks once;
+calculation reuses those resolved reporting inputs.
 Supported products are basic summaries, concentration components
 and conditional native/country summaries. A later ``output_format = "paris"``
 request writes supported concentration and flux products from the same samples;

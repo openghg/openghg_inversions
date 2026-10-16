@@ -5,8 +5,8 @@ import json
 import pytest
 
 from openghg_inversions.cli import main
-from openghg_inversions.rhime.co2.execution import load_co2_params, resolve_co2_preparation, resolve_co2_output
-from openghg_inversions.rhime.co2.configuration import resolve_co2_model
+from openghg_inversions.rhime.co2.execution import load_co2_params, resolve_co2_output
+from openghg_inversions.rhime.co2.configuration import resolve_co2_model, resolve_co2_preparation
 
 
 def test_inference_phase_ignores_inactive_resources_and_uses_current_sampler(tmp_path, monkeypatch, capsys):
@@ -30,7 +30,7 @@ def test_inference_phase_ignores_inactive_resources_and_uses_current_sampler(tmp
     main(["sample", "--model", "co2", "--params-file", str(choices),
           "--preparation-manifest", str(manifest), "--output-dir", str(tmp_path / "sample")])
     assert calls[0][0] == str(manifest)
-    assert calls[0][1]["no_model_error"] is True
+    assert calls[0][1]["likelihood"]["no_model_error"] is True
     assert calls[0][2:] == (7, tmp_path / "sample")
     assert "sample-manifest.json" in capsys.readouterr().out
 
@@ -43,7 +43,7 @@ def test_replay_cli_resolves_outputs_without_model_or_sampler(tmp_path, monkeypa
     calls = []
     monkeypatch.setattr(handoffs, "postprocess", lambda manifest, **kwargs: calls.append((manifest, kwargs)))
     main(["postprocess", "--model", "co2", "--sample-manifest", str(manifest),
-          "--kwargs", '{"outputs":{"output_format":"basic","output_name":"later","reconstruction_path":42}}',
+          "--kwargs", '{"outputs":{"output_format":"basic","output_name":"later"}}',
           "--output-dir", str(tmp_path / "products")])
     output = calls[0][1]["output"]
     assert output.output_name == "later"
@@ -51,9 +51,10 @@ def test_replay_cli_resolves_outputs_without_model_or_sampler(tmp_path, monkeypa
 
 
 def test_missing_co2_handoff_reports_the_file_without_legacy_config(tmp_path):
-    with pytest.raises(FileNotFoundError, match="missing.json"):
+    with pytest.raises(SystemExit) as caught:
         main(["sample", "--model", "co2", "--preparation-manifest", str(tmp_path / "missing.json"),
               "--output-dir", str(tmp_path / "sample")])
+    assert caught.value.code == 2
     assert not (tmp_path / "sample").exists()
 
 
@@ -74,7 +75,7 @@ def test_configured_full_rejects_mismatched_country_grid_before_materialization(
 
     monkeypatch.setattr(execution, "materialize_co2_inputs", forbidden)
     with pytest.raises(ValueError, match="align"):
-        execution.run_co2_from_config(params=params, prepared=prepared, affine_artifact=affine)
+        execution.run_co2(params=params, prepared=prepared, affine_artifact=affine)
     assert not (tmp_path / "products").exists()
 
 
@@ -129,3 +130,68 @@ def test_diagnosis_accepts_one_co2_sample_manifest_without_preparation(tmp_path,
 def test_phase_rejects_unsupported_format_versions(version):
     with pytest.raises(ValueError, match="format_version"):
         load_co2_params(params={"format_version": version})
+
+
+def test_partial_component_override_preserves_the_other_choices():
+    original = {"sampling": {"draws": 30, "tune": 11, "chains": 2, "random_seed": 73,
+                             "sample_prior_predictive": 8, "nuts_sampler": "numpyro"},
+                "outputs": {"output_format": "basic", "output_name": "retained", "save_trace": "trace.nc"}}
+    override = {"sampling": {"draws": 10}, "outputs": {"output_name": "later"}}
+    loaded = load_co2_params(params=original, overrides=override)
+    assert loaded["sampling"] == {**original["sampling"], "draws": 10}
+    assert loaded["outputs"] == {**original["outputs"], "output_name": "later"}
+    assert original["sampling"]["draws"] == 30
+    assert original["outputs"]["output_name"] == "retained"
+    assert override["sampling"] == {"draws": 10}
+
+
+def test_prior_cli_preserves_seed_without_resolving_inactive_mcmc_choices(tmp_path, monkeypatch):
+    from openghg_inversions.rhime.co2 import handoffs
+
+    manifest = tmp_path / "prepare.json"
+    manifest.write_text(json.dumps({"schema": "openghg_inversions.co2.prepare"}))
+    calls = []
+
+    def prior(preparation, **kwargs):
+        calls.append((preparation, kwargs))
+        return {"status": "pass"}
+
+    monkeypatch.setattr(handoffs, "prior_predictive", prior)
+    main(["prior-predictive", "--model", "co2", "--preparation-manifest", str(manifest),
+          "--output-dir", str(tmp_path / "check"), "--kwargs", json.dumps({
+              "likelihood": {"kind": "additive_sigma", "no_model_error": True},
+              "sampling": {"random_seed": 73, "draws": "inactive-invalid"},
+          })])
+    assert calls[0][1]["random_seed"] == 73
+    assert calls[0][1]["model"] == {"likelihood": {"kind": "additive_sigma", "no_model_error": True}}
+
+
+def test_unknown_co2_manifest_schema_fails_before_configuration_or_writes(tmp_path):
+    manifest = tmp_path / "unknown.json"
+    manifest.write_text(json.dumps({"schema": "unrelated.prepare"}))
+    with pytest.raises(SystemExit) as caught:
+        main(["sample", "--model", "co2", "--preparation-manifest", str(manifest),
+              "--output-dir", str(tmp_path / "sample")])
+    assert caught.value.code == 2
+    assert not (tmp_path / "sample").exists()
+
+
+@pytest.mark.parametrize("claims", [
+    {"start_date": "2020-03-01", "end_date": "2020-04-01"},
+    {"start_date": ""},
+])
+def test_full_rejects_positional_date_conflicts_with_imported_request(tmp_path, monkeypatch, claims):
+    from examples.co2_handoffs import configuration, synthetic_inputs
+    from openghg_inversions.rhime.co2 import execution
+
+    _, _, prepared, _, countries = synthetic_inputs(tmp_path)
+    params = configuration(tmp_path / "rejected", countries)
+    params["outputs"] = {"output_format": "none"}
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Conflicting request facts must fail before inference")
+
+    monkeypatch.setattr(execution, "materialize_co2_inputs", forbidden)
+    with pytest.raises(ValueError, match="requested|conflict|start_date"):
+        execution.run_co2(params=params, prepared=prepared, **claims)
+    assert not (tmp_path / "rejected").exists()

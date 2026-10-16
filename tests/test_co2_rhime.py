@@ -30,13 +30,28 @@ from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
 from openghg_inversions.rhime.co2 import (
     build_co2_model,
-    run_rhime_co2,
 )
 from openghg_inversions.rhime.co2 import co2_runner
+from openghg_inversions.rhime import sampling
+from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.serialization import load_trace, save_trace
 
 
 FIXTURE = Path(__file__).parent / "data" / "co2_only_golden.json"
+
+
+def _sample_co2(*, prepared_inputs: Any, sampler: Any = "default", **model: Any) -> xr.DataTree:
+    """Compose explicit scientific operations for graph/annotation assertions."""
+    active_sampler = resolve_sampler(sampler)
+    inputs, priors = co2_runner.materialize_co2_inputs(prepared_inputs=prepared_inputs, **model)
+    built = co2_runner.build_co2_from_materialized(
+        inputs, prepared_inputs=prepared_inputs, priors=priors, **model,
+    )
+    trace = sampling.sample_rhime_model(built, active_sampler)
+    return co2_runner.annotate_co2_trace(
+        trace, built, concentration_units=prepared_inputs.inv_inputs["mf"].attrs.get("units"),
+        likelihood_builder=model.get("likelihood_builder"), likelihood_kwargs=model.get("likelihood_kwargs"),
+    )
 
 
 def _mock_materialization(monkeypatch: Any, operation: Any) -> None:
@@ -203,26 +218,26 @@ def test_co2_model_rejects_sigma_prior_without_alignment() -> None:
         {"sigma_prior": {"pdf": "halfnormal", "sigma": 1.0}},
     ],
 )
-def test_public_co2_runner_rejects_model_error_options_when_disabled(
+def test_co2_operations_rejects_model_error_options_when_disabled(
     model_error_option: dict[str, Any],
 ) -> None:
     with pytest.raises(ValueError, match="cannot be combined"):
-        run_rhime_co2(
+        _sample_co2(
             prepared_inputs=cast(Any, object()),
             no_model_error=True,
             **model_error_option,
         )
 
 
-def test_public_co2_runner_rejects_default_model_error_with_selected_likelihood() -> None:
+def test_co2_operations_rejects_default_model_error_with_selected_likelihood() -> None:
     with pytest.raises(ValueError, match="replaces the default model-error options"):
-        run_rhime_co2(
+        _sample_co2(
             prepared_inputs=cast(Any, object()),
             likelihood_builder=add_site_sigma_gaussian_likelihood,
             no_model_error=True,
         )
     with pytest.raises(ValueError, match="likelihood_kwargs require likelihood_builder"):
-        run_rhime_co2(
+        _sample_co2(
             prepared_inputs=cast(Any, object()),
             likelihood_kwargs={"fixed_site_amplitudes": {"MHD": 0.5}},
         )
@@ -383,11 +398,11 @@ def test_co2_partial_activity_preserves_full_gathered_multiindex_state() -> None
     ]
 
 
-def test_public_co2_runner_persists_fixed_mismatch_manifest(
+def test_co2_operations_persists_fixed_mismatch_manifest(
     monkeypatch: Any,
     tmp_path: Path,
 ) -> None:
-    """The runner persists fixed mismatch, roles, units, and recipe metadata."""
+    """Trace annotation persists fixed mismatch, roles, units, and recipe metadata."""
     inputs = _golden_inputs()
 
     class PreparedInputsStub:
@@ -413,8 +428,8 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
         sampled_models.append(built.model)
         return _empty_sampled_trace(inputs)
 
-    monkeypatch.setattr(co2_runner, "sample_rhime_model", sample_model)
-    result = run_rhime_co2(
+    monkeypatch.setattr(sampling, "sample_rhime_model", sample_model)
+    result = _sample_co2(
         prepared_inputs=cast(Any, PreparedInputsStub()),
         fixed_model_mismatch=1.0,
         no_model_error=True,
@@ -455,6 +470,10 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
     assert set(roles.values()) <= trace_variables
     assert metadata["recipe"] == "co2"
     assert metadata["basis_artifact_source"] == "unknown"
+    assert metadata["no_model_error"] is True
+    assert metadata["use_bc"] is False
+    assert metadata["likelihood"] == "additive_sigma"
+    assert metadata["fixed_model_mismatch"] == "fixed_model_mismatch"
     assert result.posterior["flux_scaling"].attrs["units"] == "1"
     assert result.posterior["modelled_concentration"].attrs["units"] == "ppm"
     assert result.posterior_predictive["y"].attrs["units"] == "ppm"
@@ -471,7 +490,7 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
     assert restored.constant_data["fixed_prior_contribution"].attrs["units"] == "ppm"
 
 
-def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: Any) -> None:
+def test_co2_operations_derives_default_model_error_alignment(monkeypatch: Any) -> None:
     """The runner derives default site-by-period mismatch alignment from labels."""
     inputs = _golden_inputs()
     inputs = inputs.assign_coords(
@@ -499,9 +518,9 @@ def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: An
         return _empty_sampled_trace(inputs)
 
     _mock_materialization(monkeypatch, materialize)
-    monkeypatch.setattr(co2_runner, "sample_rhime_model", sample_model)
+    monkeypatch.setattr(sampling, "sample_rhime_model", sample_model)
 
-    run_rhime_co2(prepared_inputs=cast(Any, PreparedInputsStub()))
+    _sample_co2(prepared_inputs=cast(Any, PreparedInputsStub()))
 
     assert "site_indicator" not in materialized_names[0]
     np.testing.assert_array_equal(
@@ -515,8 +534,8 @@ def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: An
     assert "sigma" in sampled_models[0].named_vars
 
 
-def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) -> None:
-    """The public runner materializes and composes boundary and offset once."""
+def test_co2_operations_selects_boundary_and_offset_once(monkeypatch: Any) -> None:
+    """Explicit operations materialize and compose boundary and offset once."""
     inputs = _production_boundary_inputs()
 
     class PreparedInputsStub:
@@ -539,7 +558,7 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) ->
         return _empty_sampled_trace(inputs)
 
     _mock_materialization(monkeypatch, materialize)
-    monkeypatch.setattr(co2_runner, "sample_rhime_model", sample_model)
+    monkeypatch.setattr(sampling, "sample_rhime_model", sample_model)
     bc_active = xr.DataArray(
         [True, False, True, False, True, False, True, False],
         dims="bc_region",
@@ -551,7 +570,7 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) ->
         coords={"bc_region": inputs["bc_region"]},
     )
 
-    result = run_rhime_co2(
+    result = _sample_co2(
         prepared_inputs=cast(Any, PreparedInputsStub()),
         fixed_model_mismatch=1.0,
         no_model_error=True,
@@ -567,6 +586,10 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) ->
     assert len(materialized_names) == 1
     assert materialized_names[0].count("H_bc") == 1
     assert {"hbc", "bc", "mu_bc", "offset", "offset_latent"} <= set(model.named_vars)
+    metadata = json.loads(result.attrs["rhime_model_metadata"])
+    assert metadata["use_bc"] is True
+    assert metadata["add_offset"] is True
+    assert metadata["offset_args"] == {"offset_freq": None, "drop_first": False, "per_site": False}
     assert roles["boundary_concentration"] == "mu_bc"
     assert roles["boundary_scale"] == "bc"
     assert roles["boundary_sensitivity"] == "hbc"
@@ -601,7 +624,7 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) ->
     )
 
 
-def test_public_co2_runner_does_not_auto_select_prepared_baseline(monkeypatch: Any) -> None:
+def test_co2_operations_does_not_auto_select_prepared_baseline(monkeypatch: Any) -> None:
     """A prepared boundary remains unused unless the runner explicitly selects it."""
     inputs = _production_boundary_inputs()
 
@@ -625,8 +648,8 @@ def test_public_co2_runner_does_not_auto_select_prepared_baseline(monkeypatch: A
         return _empty_sampled_trace(inputs)
 
     _mock_materialization(monkeypatch, materialize)
-    monkeypatch.setattr(co2_runner, "sample_rhime_model", sample_model)
-    run_rhime_co2(
+    monkeypatch.setattr(sampling, "sample_rhime_model", sample_model)
+    _sample_co2(
         prepared_inputs=cast(Any, PreparedInputsStub()),
         fixed_model_mismatch=1.0,
         no_model_error=True,
@@ -674,8 +697,8 @@ def _run_selected_co2_likelihood(
         received.update(kwargs)
         return likelihood_builder(**kwargs)
 
-    monkeypatch.setattr(co2_runner, "sample_rhime_model", sample_model)
-    result = run_rhime_co2(
+    monkeypatch.setattr(sampling, "sample_rhime_model", sample_model)
+    result = _sample_co2(
         prepared_inputs=cast(Any, PreparedInputsStub()),
         likelihood_builder=recording_likelihood,
         likelihood_kwargs=likelihood_kwargs,
@@ -696,7 +719,7 @@ def _initial_mean_and_observed_logp(model: pm.Model) -> tuple[np.ndarray, float]
     return mean, logp
 
 
-def test_public_co2_runner_selects_fixed_ou_likelihood(monkeypatch: Any) -> None:
+def test_co2_operations_selects_fixed_ou_likelihood(monkeypatch: Any) -> None:
     """Fixed OU keeps its labelled temporal covariance equation."""
     likelihood_kwargs = {
         "tau_hours": 5.0,
@@ -746,7 +769,7 @@ def test_public_co2_runner_selects_fixed_ou_likelihood(monkeypatch: Any) -> None
     )
 
 
-def test_public_co2_runner_selects_iid_site_sigma_likelihood(monkeypatch: Any) -> None:
+def test_co2_operations_selects_iid_site_sigma_likelihood(monkeypatch: Any) -> None:
     """IID site sigma keeps its labelled diagonal mismatch equation."""
     likelihood_kwargs = {"fixed_site_amplitudes": {"MHD": 0.5}}
     inputs, built, received, result = _run_selected_co2_likelihood(
@@ -783,7 +806,7 @@ def test_public_co2_runner_selects_iid_site_sigma_likelihood(monkeypatch: Any) -
     )
 
 
-def test_public_co2_runner_resolves_scalar_sigma_cache_before_model(
+def test_co2_operations_resolves_scalar_sigma_cache_before_model(
     monkeypatch: Any,
     tmp_path: Path,
 ) -> None:
@@ -838,13 +861,13 @@ def test_public_co2_runner_resolves_scalar_sigma_cache_before_model(
         )
         return trace
 
-    monkeypatch.setattr(co2_runner, "sample_rhime_model", sample_model)
+    monkeypatch.setattr(sampling, "sample_rhime_model", sample_model)
     likelihood_kwargs = {
         "eigenbasis_path": cache_path,
         "sigma_prior": {"pdf": "halfnormal", "sigma": 0.75},
     }
 
-    result = run_rhime_co2(
+    result = _sample_co2(
         prepared_inputs=cast(Any, PreparedInputsStub()),
         likelihood_builder=add_scalar_sigma_eigen_likelihood,
         likelihood_kwargs=likelihood_kwargs,
@@ -883,7 +906,7 @@ def test_public_co2_runner_resolves_scalar_sigma_cache_before_model(
     ) == ["global_iid_mismatch_standard_deviation"]
 
 
-def test_public_co2_runner_preserves_materialized_fixed_mismatch(monkeypatch: Any) -> None:
+def test_co2_operations_preserves_materialized_fixed_mismatch(monkeypatch: Any) -> None:
     """A materialized fixed mismatch is forwarded without replacement."""
     inputs = _golden_inputs()
     inputs["fixed_model_mismatch"] = xr.full_like(inputs["mf"], 0.75)
@@ -903,9 +926,9 @@ def test_public_co2_runner_preserves_materialized_fixed_mismatch(monkeypatch: An
         sampled_models.append(built.model)
         return _empty_sampled_trace(inputs)
 
-    monkeypatch.setattr(co2_runner, "sample_rhime_model", sample_model)
+    monkeypatch.setattr(sampling, "sample_rhime_model", sample_model)
 
-    run_rhime_co2(
+    _sample_co2(
         prepared_inputs=cast(Any, PreparedInputsStub()),
         no_model_error=True,
     )
@@ -1040,15 +1063,16 @@ def test_co2_materialization_shares_inputs_enabled_priors_and_explicit_mismatch_
         "offset_prior": {"pdf": "normal", "mu": 0.0, "sigma": shared[0]},
         "fixed_model_mismatch": mismatch,
     }
-    model_inputs, eager_choices = co2_runner.materialize_co2_inputs(prepared_inputs=prepared, **choices)
+    model_inputs, priors = co2_runner.materialize_co2_inputs(prepared_inputs=prepared, **choices)
     assert executions == ["shared"]
     assert isinstance(prepared.inv_inputs["H"].data, da.Array)
     assert isinstance(choices["bc_prior"]["sigma"], da.Array)
     assert isinstance(mismatch.data, da.Array)
     assert isinstance(model_inputs["diagnostic"].data, da.Array)
-    np.testing.assert_allclose(eager_choices["fixed_model_mismatch"], [0.1])
+    assert set(priors) == {"sigma", "bc", "offset_latent"}
+    np.testing.assert_allclose(model_inputs["fixed_model_mismatch"], [0.1])
     built = co2_runner.build_co2_from_materialized(
-        model_inputs, prepared_inputs=prepared, **{**choices, **eager_choices},
+        model_inputs, prepared_inputs=prepared, priors=priors, **choices,
     )
     assert executions == ["shared"]
     assert {"bc", "offset", "sigma", "fixed_model_mismatch"} <= set(built.model.named_vars)
@@ -1066,7 +1090,7 @@ def test_co2_eager_builder_rejects_lazy_selected_inputs_before_construction(monk
 
     monkeypatch.setattr(co2_runner, "build_co2_model", unexpected_construction)
     with pytest.raises(ValueError, match="must be materialized"):
-        co2_runner.build_co2_from_materialized(inputs, prepared_inputs=prepared)
+        co2_runner.build_co2_from_materialized(inputs, prepared_inputs=prepared, priors={})
 
 
 def test_co2_materialization_requires_exact_explicit_mismatch_observation_labels() -> None:
@@ -1076,3 +1100,109 @@ def test_co2_materialization_requires_exact_explicit_mismatch_observation_labels
     mismatch = xr.DataArray([0.2], dims="nmeasure", coords={"nmeasure": ["wrong"]})
     with pytest.raises(ValueError, match="align|index|join"):
         co2_runner.materialize_co2_inputs(prepared_inputs=prepared, fixed_model_mismatch=mismatch)
+
+
+@pytest.mark.parametrize(
+    "changed_fact", [{"start_date": "2020-01-02"}, {"end_date": "2020-01-30"}, {"domain": "OTHER"}],
+)
+def test_requested_facts_reject_conflicting_saved_provenance(changed_fact: dict[str, str]) -> None:
+    from test_co2_affine_output import _prepared
+    from openghg_inversions.rhime.co2.co2_preparation import requested_co2_facts
+
+    prepared, _ = _prepared()
+    saved = {"start_date": "2020-01-01", "end_date": "2020-02-01", "domain": "EUROPE"}
+    prepared = replace(prepared, provenance=saved)
+    with pytest.raises(ValueError, match="conflicts with preparation"):
+        requested_co2_facts(prepared, **changed_fact)
+    assert dict(prepared.provenance) == saved
+
+
+def test_requested_facts_fill_only_missing_values_and_compare_dates_by_timestamp() -> None:
+    from test_co2_affine_output import _prepared
+    from openghg_inversions.rhime.co2.co2_preparation import requested_co2_facts
+
+    prepared, _ = _prepared()
+    prepared = replace(prepared, provenance={"start_date": "2020-01-01", "end_date": "2020-02-01"})
+    assert requested_co2_facts(prepared, start_date="2020-01-01T00:00:00", domain="EUROPE") == {
+        "start_date": "2020-01-01", "end_date": "2020-02-01", "domain": "EUROPE",
+    }
+    with pytest.raises(ValueError, match="explicit requested facts.*domain"):
+        requested_co2_facts(prepared)
+
+
+@pytest.mark.parametrize("requested_rank", [None, 512])
+def test_preparation_preserves_original_requested_rank_through_serialization(requested_rank: int | None) -> None:
+    from test_co2_preparation import _canonical_inputs, _reduction
+    from openghg_inversions.rhime.co2.co2_preparation import Co2PreparedInputs, prepare_co2_inputs
+
+    canonical = _canonical_inputs()
+    prepared = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=requested_rank)
+    restored = Co2PreparedInputs.from_datatree(prepared.to_datatree())
+    assert restored.provenance["aggregation_error_rank"] == requested_rank
+    if requested_rank is not None:
+        assert restored.provenance["aggregation_error"]["requested_rank"] == canonical.inv_inputs.sizes["nmeasure"]
+
+
+@pytest.mark.parametrize(
+    ("builder", "prior_option", "variable", "kind"),
+    [
+        (add_site_sigma_gaussian_likelihood, "site_amplitude_prior", "sigma_site", "site_sigma"),
+        (add_fixed_ou_gaussian_likelihood, "site_amplitude_prior", "ou_site_amplitude", "fixed_ou"),
+        (add_scalar_sigma_eigen_likelihood, "sigma_prior", "sigma_global", "scalar_sigma"),
+    ],
+)
+def test_enabled_likelihood_priors_share_the_explicit_materialization_boundary(
+    builder: Any, prior_option: str, variable: str, kind: str, tmp_path: Path,
+) -> None:
+    from test_co2_affine_output import _prepared
+
+    prepared, _ = _prepared()
+    calls = []
+
+    @delayed
+    def numerical_values() -> np.ndarray:
+        calls.append("shared")
+        return np.asarray([0.3, 0.7])
+
+    shared = da.from_delayed(numerical_values(), shape=(2,), dtype=float)
+    inputs = prepared.inv_inputs.copy(deep=False)
+    inputs["H"] = inputs["H"].copy(data=shared[None, :])
+    prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
+    likelihood_options: dict[str, Any] = {prior_option: {"pdf": "halfnormal", "sigma": shared[0]}}
+    if kind == "fixed_ou":
+        likelihood_options["tau_hours"] = {"MHD": 24.0}
+    elif kind == "scalar_sigma":
+        eigenbasis = co2_runner.prepare_co2_scalar_sigma_eigenbasis(prepared)
+        likelihood_options["eigenbasis_path"] = save_scalar_sigma_eigenbasis(tmp_path / "eigenbasis.nc", eigenbasis)
+    choices = {"likelihood_builder": builder, "likelihood_kwargs": likelihood_options}
+    model_inputs, priors = co2_runner.materialize_co2_inputs(prepared_inputs=prepared, **choices)
+    assert calls == ["shared"]
+    assert set(priors) == {variable}
+    assert isinstance(likelihood_options[prior_option]["sigma"], da.Array)
+    built = co2_runner.build_co2_from_materialized(model_inputs, prepared_inputs=prepared, priors=priors, **choices)
+    assert variable in built.model.named_vars
+    assert built.output_contract.metadata["likelihood"] == kind
+    assert calls == ["shared"]
+
+
+def test_imported_requested_facts_check_declared_context_before_filling_missing_provenance() -> None:
+    from test_co2_affine_output import _prepared
+    from openghg_inversions.rhime.co2.co2_preparation import requested_co2_facts
+
+    prepared, _ = _prepared()
+    configured = {"start_date": "2020-01-01", "end_date": "2020-02-01", "domain": "EUROPE"}
+    with pytest.raises(ValueError, match="start_date conflicts with preparation or declared request"):
+        requested_co2_facts(prepared, recorded_facts=configured, start_date="2020-03-01", end_date="2020-04-01")
+    assert requested_co2_facts(prepared, recorded_facts=configured, start_date="2020-01-01T00:00:00") == configured
+    assert "start_date" not in prepared.provenance
+    assert configured["start_date"] == "2020-01-01"
+
+
+def test_requested_facts_check_configuration_against_numerical_provenance() -> None:
+    from test_co2_affine_output import _prepared
+    from openghg_inversions.rhime.co2.co2_preparation import requested_co2_facts
+
+    prepared, _ = _prepared()
+    prepared = replace(prepared, provenance={"start_date": "2020-01-01", "end_date": "2020-02-01", "domain": "EUROPE"})
+    with pytest.raises(ValueError, match="domain conflicts"):
+        requested_co2_facts(prepared, recorded_facts={"domain": "OTHER"})

@@ -1,8 +1,7 @@
-"""Run the CO2 recipe from its dedicated prepared-input artifact.
+"""Materialize, construct and annotate the concrete CO2 scientific model.
 
-The runner selects and jointly materializes only the declared scientific
-arrays, constructs the readable CO2 model, samples it, and annotates the
-result. It also owns preparation of the optional scalar-sigma eigenbasis.
+These explicit operations share numerical meaning between configured full
+execution and saved inference. Saved product replay does not construct a model.
 """
 
 from __future__ import annotations
@@ -12,7 +11,7 @@ from dataclasses import replace
 from collections.abc import Mapping
 import json
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import xarray as xr
 from dask.base import unpack_collections
@@ -46,11 +45,9 @@ from openghg_inversions.rhime.materialization import (
     _materialize_pymc_inputs_and_priors,
 )
 from openghg_inversions.rhime.outputs import annotate_likelihood_trace
-from openghg_inversions.inference.sampling import resolve_sampler
-from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 from openghg_inversions.sigma import SigmaAlignment
 
-from .co2_model import build_co2_model
+from .co2_model import _normalise_offset_args, build_co2_model
 from .co2_preparation import Co2PreparedInputs
 
 
@@ -69,6 +66,8 @@ def annotate_co2_trace(
     built: RhimeModelBuildResult,
     *,
     concentration_units: str | None,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    likelihood_kwargs: Mapping[str, Any] | None = None,
 ) -> xr.DataTree:
     """Persist CO2 scientific roles and units on prior or posterior output.
 
@@ -77,6 +76,9 @@ def annotate_co2_trace(
         built: Concrete model with the CO2 variable-role and provenance mapping.
         concentration_units: Observation concentration units, or ``None`` to
             omit concentration-unit attributes.
+        likelihood_builder: Optional component whose identity is descriptive
+            provenance, never executable replay instructions.
+        likelihood_kwargs: Component options described without computing arrays.
 
     Returns:
         The annotated trace.
@@ -86,6 +88,11 @@ def annotate_co2_trace(
     metadata = dict(built.output_contract.metadata)
     trace.attrs["rhime_variable_roles"] = json.dumps(roles, sort_keys=True)
     trace.attrs["rhime_model_metadata"] = json.dumps(metadata, sort_keys=True)
+    if likelihood_builder is not None:
+        annotate_likelihood_trace(
+            trace, builder_identity=callable_metadata(likelihood_builder),
+            likelihood_kwargs=describe_co2_likelihood_kwargs(likelihood_kwargs),
+        )
 
     roles_by_variable: dict[str, list[str]] = defaultdict(list)
     for role, variable_name in roles.items():
@@ -141,9 +148,6 @@ def annotate_co2_trace(
             elif concentration_units is not None and name in concentration_variables:
                 variable.attrs["units"] = concentration_units
     return trace
-
-
-_annotate_co2_trace = annotate_co2_trace
 
 
 def _state_activity_from_inputs(model_inputs: xr.Dataset) -> StateActivity | None:
@@ -303,12 +307,44 @@ def materialize_co2_inputs(
     bc_state_activity: StateActivity | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
-) -> tuple[xr.Dataset, dict[str, Any]]:
+) -> tuple[xr.Dataset, dict[str, PriorArgs]]:
     """Jointly materialize selected CO2 inputs, enabled priors and fixed mismatch.
 
-    Returned keyword values replace borrowed model options for eager construction.
-    Unselected arrays and arbitrary custom likelihood options remain borrowed,
-    including descriptive-only arrays. Preparation and caller priors are unchanged.
+    Return selected scientific arrays and prior parameters keyed by their graph
+    variables: ``sigma``, ``bc``, ``offset_latent``, ``sigma_site``,
+    ``ou_site_amplitude`` or ``sigma_global``. Explicit labelled fixed mismatch
+    is installed in the returned Dataset. Construction consumes these numerical
+    values separately from the unchanged model choices. Unselected arrays and
+    arbitrary custom likelihood options remain borrowed and uncomputed.
+
+    Args:
+        prepared_inputs: Borrowed coherent-reduction preparation.
+        sigma_alignment: Additive-error grouping; omitted grouping is derived
+            from the retained observation sites during construction.
+        sigma_prior: Optional additive-error prior; omitted parameters use the
+            component defaults.
+        fixed_model_mismatch: Known concentration standard deviation, either a
+            scalar or an exactly aligned observation vector. Omission retains
+            a prepared mismatch field when present.
+        likelihood_builder: Ordinary component replacing additive-error options.
+        likelihood_kwargs: Selected component options. Built-in numerical
+            priors participate in this boundary; custom components own any
+            additional numerical option materialization.
+        no_model_error: Omit inferred additive error; cannot accompany a sigma
+            prior, grouping or replacement likelihood.
+        use_bc: Include prepared boundary sensitivity.
+        bc_prior: Optional boundary-scale prior, enabled only with ``use_bc``.
+        bc_state_activity: Optional boundary active/fixed-state policy.
+        offset_prior: Optional prior enabling concentration offsets.
+        offset_args: Offset frequency, ``per_site`` and ``drop_first`` settings.
+
+    Returns:
+        Borrowed Dataset copy with selected arrays eager, plus eager prior
+        parameters. The preparation and supplied parameter mappings are unchanged.
+
+    Raises:
+        ValueError: If model choices conflict, required prepared arrays are
+            absent, or a labelled mismatch does not align exactly.
     """
     if no_model_error and (sigma_alignment is not None or sigma_prior is not None):
         raise ValueError("`no_model_error=True` cannot be combined with `sigma_alignment` or `sigma_prior`.")
@@ -343,41 +379,28 @@ def materialize_co2_inputs(
         names = (*names, "fixed_model_mismatch")
     priors = {}
     if likelihood_builder is None and not no_model_error and sigma_prior is not None:
-        priors["sigma_prior"] = sigma_prior
+        priors["sigma"] = sigma_prior
     if use_bc and bc_prior is not None:
-        priors["bc_prior"] = bc_prior
+        priors["bc"] = bc_prior
     if offset_prior is not None:
-        priors["offset_prior"] = offset_prior
-    likelihood_priors = {}
-    if likelihood_builder in (
-        add_fixed_ou_gaussian_likelihood, add_site_sigma_gaussian_likelihood,
-        add_scalar_sigma_eigen_likelihood,
-    ):
-        likelihood_priors = {
-            name: value for name, value in (likelihood_kwargs or {}).items()
-            if name in {"sigma_prior", "site_amplitude_prior"}
-        }
-        priors.update({f"likelihood:{name}": value for name, value in likelihood_priors.items()})
-    model_inputs, computed = _materialize_pymc_inputs_and_priors(
+        priors["offset_latent"] = offset_prior
+    likelihood_options = likelihood_kwargs or {}
+    if likelihood_builder is add_scalar_sigma_eigen_likelihood and "sigma_prior" in likelihood_options:
+        priors["sigma_global"] = likelihood_options["sigma_prior"]
+    elif likelihood_builder is add_site_sigma_gaussian_likelihood and "site_amplitude_prior" in likelihood_options:
+        priors["sigma_site"] = likelihood_options["site_amplitude_prior"]
+    elif likelihood_builder is add_fixed_ou_gaussian_likelihood and "site_amplitude_prior" in likelihood_options:
+        priors["ou_site_amplitude"] = likelihood_options["site_amplitude_prior"]
+    return _materialize_pymc_inputs_and_priors(
         backend_inputs, variable_names=names, prior_parameters=priors,
     )
-    options: dict[str, Any] = {
-        name: value for name, value in computed.items() if not name.startswith("likelihood:")
-    }
-    if likelihood_priors:
-        options["likelihood_kwargs"] = {
-            **(likelihood_kwargs or {}),
-            **{name: computed[f"likelihood:{name}"] for name in likelihood_priors},
-        }
-    if isinstance(fixed_model_mismatch, xr.DataArray):
-        options["fixed_model_mismatch"] = model_inputs["fixed_model_mismatch"]
-    return model_inputs, options
 
 
 def build_co2_from_materialized(
     model_inputs: xr.Dataset,
     *,
     prepared_inputs: Co2PreparedInputs,
+    priors: Mapping[str, PriorArgs],
     sigma_alignment: SigmaAlignment | None = None,
     sigma_prior: PriorArgs | None = None,
     fixed_model_mismatch: float | xr.DataArray | None = None,
@@ -393,25 +416,39 @@ def build_co2_from_materialized(
     """Construct the CO2 model from explicitly materialized scientific inputs.
 
     ``prepared_inputs`` supplies aggregation mode and descriptive provenance.
-    Arrays and enabled numerical priors must already be eager. This operation
-    performs scientific construction only; saved product replay never calls it.
+    ``priors`` supplies selected eager numerical parameters under the graph names
+    returned by :func:`~openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs`. Prior arguments in the model
+    choices select components, but their borrowed numerical values are not used.
+    This operation performs construction only; saved replay never calls it.
+    Remaining model choices have the semantics documented by
+    :func:`~openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs`. A configured scalar-sigma eigenbasis is
+    loaded and checked against observations, error and aggregation covariance
+    before its likelihood is constructed.
+
+    Args:
+        model_inputs: Selected scientific arrays already materialized together.
+        prepared_inputs: Preparation supplying aggregation mode and provenance.
+        priors: Materialized prior parameters under their concrete graph names.
+
+    Returns:
+        Constructed model with scientific variable roles and bounded metadata.
+
+    Raises:
+        ValueError: If selected inputs or numerical priors remain lazy, or
+            scientific components reject the supplied choices.
     """
     prepared = prepared_inputs
     names = co2_model_input_names(
         prepared, use_bc=use_bc,
         preserve_prepared_fixed_mismatch=likelihood_builder is None and fixed_model_mismatch is None,
     )
-    likelihood_priors = (
-        {name: value for name, value in (likelihood_kwargs or {}).items()
-         if name in {"sigma_prior", "site_amplitude_prior"}}
-        if likelihood_builder in (
-            add_fixed_ou_gaussian_likelihood, add_site_sigma_gaussian_likelihood,
-            add_scalar_sigma_eigen_likelihood,
-        ) else {}
+    prepared_mismatch = (
+        model_inputs.get("fixed_model_mismatch")
+        if likelihood_builder is None and (fixed_model_mismatch is None or isinstance(fixed_model_mismatch, xr.DataArray))
+        else fixed_model_mismatch
     )
     lazy, _ = unpack_collections((
-        *(model_inputs[name] for name in names), sigma_prior, bc_prior, offset_prior, fixed_model_mismatch,
-        likelihood_priors,
+        *(model_inputs[name] for name in names), priors, prepared_mismatch,
     ))
     if lazy:
         raise ValueError("CO2 model inputs and enabled priors must be materialized before building.")
@@ -421,17 +458,19 @@ def build_co2_from_materialized(
         model_inputs,
         prepared.aggregation_error_mode,
     )
+    options = dict(likelihood_kwargs or {})
+    if likelihood_builder is add_scalar_sigma_eigen_likelihood and "sigma_prior" in options:
+        options["sigma_prior"] = priors["sigma_global"]
+    elif likelihood_builder is add_site_sigma_gaussian_likelihood and "site_amplitude_prior" in options:
+        options["site_amplitude_prior"] = priors["sigma_site"]
+    elif likelihood_builder is add_fixed_ou_gaussian_likelihood and "site_amplitude_prior" in options:
+        options["site_amplitude_prior"] = priors["ou_site_amplitude"]
     model_likelihood_kwargs = _resolve_co2_likelihood_kwargs(
         likelihood_builder,
-        likelihood_kwargs,
+        options if likelihood_kwargs is not None else None,
         observations=model_inputs["mf"],
         observation_error=model_inputs["mf_error"],
         aggregation_error=aggregation_error,
-    )
-    prepared_mismatch = (
-        model_inputs.get("fixed_model_mismatch")
-        if likelihood_builder is None and fixed_model_mismatch is None
-        else fixed_model_mismatch
     )
     prior_covariance = model_inputs["alpha_prior_covariance"]
     retained_prior = CorrelatedLognormalPrior(
@@ -449,13 +488,13 @@ def build_co2_from_materialized(
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=model_likelihood_kwargs,
         sigma_alignment=sigma_alignment,
-        sigma_prior=sigma_prior,
+        sigma_prior=priors["sigma"] if sigma_prior is not None else None,
         fixed_model_mismatch=prepared_mismatch,
         state_activity=_state_activity_from_inputs(model_inputs),
         boundary_sensitivity=model_inputs.get("H_bc") if use_bc else None,
-        bc_prior=bc_prior,
+        bc_prior=priors["bc"] if use_bc and bc_prior is not None else None,
         bc_state_activity=bc_state_activity,
-        offset_prior=offset_prior,
+        offset_prior=priors["offset_latent"] if offset_prior is not None else None,
         offset_args=offset_args,
     )
     variable_roles = {
@@ -486,6 +525,10 @@ def build_co2_from_materialized(
     }.items():
         if name in model.named_vars:
             variable_roles[role] = name
+    resolved_offset_args = None
+    if offset_prior is not None:
+        frequency, drop_first, per_site = _normalise_offset_args(offset_args)
+        resolved_offset_args = {"offset_freq": frequency, "drop_first": drop_first, "per_site": per_site}
     built = RhimeModelBuildResult(
         model=model,
         output_contract=OutputContract(
@@ -494,6 +537,17 @@ def build_co2_from_materialized(
                 "recipe": "co2",
                 "kind": "builtin",
                 "prior": "correlated arithmetic-moment lognormal",
+                "no_model_error": no_model_error,
+                "use_bc": use_bc,
+                "add_offset": offset_prior is not None,
+                "offset_args": resolved_offset_args,
+                "likelihood": (
+                    "additive_sigma" if likelihood_builder is None else
+                    "site_sigma" if likelihood_builder is add_site_sigma_gaussian_likelihood else
+                    "fixed_ou" if likelihood_builder is add_fixed_ou_gaussian_likelihood else
+                    "scalar_sigma" if likelihood_builder is add_scalar_sigma_eigen_likelihood else "custom"
+                ),
+                "fixed_model_mismatch": "fixed_model_mismatch" if "fixed_model_mismatch" in model.named_vars else None,
                 "basis_artifact_source": getattr(prepared, "basis_artifact_source", "unknown"),
                 "basis_artifact_path": getattr(prepared, "basis_artifact_path", None),
             },
@@ -501,182 +555,12 @@ def build_co2_from_materialized(
     )
     return built
 
-def build_rhime_co2(
-    *,
-    prepared_inputs: Co2PreparedInputs,
-    sigma_alignment: SigmaAlignment | None = None,
-    sigma_prior: PriorArgs | None = None,
-    fixed_model_mismatch: float | xr.DataArray | None = None,
-    likelihood_builder: RhimeLikelihoodBuilder | None = None,
-    likelihood_kwargs: Mapping[str, Any] | None = None,
-    no_model_error: bool = False,
-    use_bc: bool = False,
-    bc_prior: PriorArgs | None = None,
-    bc_state_activity: StateActivity | None = None,
-    offset_prior: PriorArgs | None = None,
-    offset_args: Mapping[str, Any] | None = None,
-) -> RhimeModelBuildResult:
-    """Materialize and build the CO2 coherent-reduction model without sampling.
-
-    This convenience API composes
-    :func:`~openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs` and
-    :func:`~openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized`
-    for an already validated
-    :class:`Co2PreparedInputs` artifact. Configured full execution and saved
-    inference call these two scientific operations explicitly.
-    Saved product replay uses the recorded trace and does not call this operation.
-
-    ``fixed_model_mismatch=None`` preserves a prepared fixed-mismatch field if
-    present, otherwise omits the term. An explicit scalar or labelled vector
-    overrides prepared data. By default, inferred model error varies by site
-    over one shared time period. An explicit ``sigma_alignment`` overrides
-    that alignment; ``no_model_error=True`` disables inferred model error.
-
-    Args:
-        prepared_inputs: Validated coherent-reduction inputs for the CO2
-            recipe.
-        sigma_alignment: Optional grouping policy for inferred additive model
-            error. The default is derived from the prepared site indicator.
-        sigma_prior: Optional prior arguments for inferred additive model
-            error.
-        fixed_model_mismatch: Optional known scalar or labelled mismatch
-            standard deviation. When omitted, a prepared value is preserved.
-        likelihood_builder: Optional ordinary likelihood component replacing
-            the default additive-sigma likelihood.
-        likelihood_kwargs: Options passed only to the selected likelihood. For
-            the scalar-sigma eigen likelihood, pass an ``eigenbasis_path`` and
-            ``sigma_prior``; the cache is loaded before model construction.
-        no_model_error: If true, omit inferred additive model error.
-        use_bc: Whether to include prepared ``H_bc`` boundary sensitivity.
-        bc_prior: Optional prior for boundary-condition scaling.
-        bc_state_activity: Optional active/fixed boundary-state policy.
-        offset_prior: Optional prior for an offset component. When omitted, no
-            offset is added.
-        offset_args: Optional offset settings: ``offset_freq``, ``drop_first``,
-            and ``per_site``.
-
-    Returns:
-        Concrete model with CO2 variable roles and serializable provenance.
-
-    Raises:
-        ValueError: If model-error options contradict ``no_model_error``, or
-            prepared inputs are missing, inconsistent, or fail model
-            construction.
-    """
-    options: dict[str, Any] = dict(
-        sigma_alignment=sigma_alignment, sigma_prior=sigma_prior,
-        fixed_model_mismatch=fixed_model_mismatch, likelihood_builder=likelihood_builder,
-        likelihood_kwargs=likelihood_kwargs, no_model_error=no_model_error,
-        use_bc=use_bc, bc_prior=bc_prior, bc_state_activity=bc_state_activity,
-        offset_prior=offset_prior, offset_args=offset_args,
-    )
-    model_inputs, materialized_options = materialize_co2_inputs(prepared_inputs=prepared_inputs, **options)
-    return build_co2_from_materialized(
-        model_inputs, prepared_inputs=prepared_inputs, **{**options, **materialized_options},
-    )
-
-
-
-def run_rhime_co2(
-    *,
-    prepared_inputs: Co2PreparedInputs,
-    sigma_alignment: SigmaAlignment | None = None,
-    sigma_prior: PriorArgs | None = None,
-    fixed_model_mismatch: float | xr.DataArray | None = None,
-    likelihood_builder: RhimeLikelihoodBuilder | None = None,
-    likelihood_kwargs: Mapping[str, Any] | None = None,
-    sampler: RhimeSampler | Literal["default"] = "default",
-    no_model_error: bool = False,
-    use_bc: bool = False,
-    bc_prior: PriorArgs | None = None,
-    bc_state_activity: StateActivity | None = None,
-    offset_prior: PriorArgs | None = None,
-    offset_args: Mapping[str, Any] | None = None,
-) -> xr.DataTree:
-    """Materialize, build, and sample the CO2 coherent-reduction model.
-
-    This callable performs scientific construction and inference for an already
-    validated :class:`Co2PreparedInputs` artifact. It delegates labelled input
-    materialization and retained-prior construction to :func:`build_rhime_co2`,
-    then samples and annotates the resulting graph.
-    Saved product replay uses the recorded trace and does not call this operation.
-
-    ``fixed_model_mismatch=None`` preserves a prepared fixed-mismatch field if
-    present, otherwise omits the term. An explicit scalar or labelled vector
-    overrides prepared data. By default, inferred model error varies by site
-    over one shared time period. An explicit ``sigma_alignment`` overrides
-    that alignment; ``no_model_error=True`` disables inferred model error.
-
-    Args:
-        prepared_inputs: Validated coherent-reduction inputs for the CO2
-            recipe.
-        sigma_alignment: Optional grouping policy for inferred additive model
-            error. The default is derived from the prepared site indicator.
-        sigma_prior: Optional prior arguments for inferred additive model
-            error.
-        fixed_model_mismatch: Optional known scalar or labelled mismatch
-            standard deviation. When omitted, a prepared value is preserved.
-        likelihood_builder: Optional ordinary likelihood component replacing
-            the default additive-sigma likelihood.
-        likelihood_kwargs: Options passed only to the selected likelihood. For
-            the scalar-sigma eigen likelihood, pass an ``eigenbasis_path`` and
-            ``sigma_prior``; the cache is loaded before model construction.
-        sampler: Sampler configuration or ``"default"``; explicit ``None`` is invalid.
-        no_model_error: If true, omit inferred additive model error.
-        use_bc: Whether to include prepared ``H_bc`` boundary sensitivity.
-        bc_prior: Optional prior for boundary-condition scaling.
-        bc_state_activity: Optional active/fixed boundary-state policy.
-        offset_prior: Optional prior for an offset component. When omitted, no
-            offset is added.
-        offset_args: Optional offset settings: ``offset_freq``, ``drop_first``,
-            and ``per_site``.
-
-    Returns:
-        Sampled DataTree annotated with the CO2 variable-role and model
-        manifests.
-
-    Raises:
-        TypeError: If the sampler is neither a configuration nor ``"default"``.
-        ValueError: If model-error options contradict ``no_model_error``, or
-            prepared inputs are missing, inconsistent, or fail model
-            construction.
-    """
-    active_sampler = resolve_sampler(sampler)
-    built = build_rhime_co2(
-        prepared_inputs=prepared_inputs,
-        sigma_alignment=sigma_alignment,
-        sigma_prior=sigma_prior,
-        fixed_model_mismatch=fixed_model_mismatch,
-        likelihood_builder=likelihood_builder,
-        likelihood_kwargs=likelihood_kwargs,
-        no_model_error=no_model_error,
-        use_bc=use_bc,
-        bc_prior=bc_prior,
-        bc_state_activity=bc_state_activity,
-        offset_prior=offset_prior,
-        offset_args=offset_args,
-    )
-    trace = sample_rhime_model(built, active_sampler)
-    trace = annotate_co2_trace(
-        trace,
-        built,
-        concentration_units=prepared_inputs.inv_inputs["mf"].attrs.get("units"),
-    )
-    if likelihood_builder is not None:
-        annotate_likelihood_trace(
-            trace,
-            builder_identity=callable_metadata(likelihood_builder),
-            likelihood_kwargs=describe_co2_likelihood_kwargs(likelihood_kwargs),
-        )
-    return trace
 
 
 __all__ = [
     "annotate_co2_trace",
-    "build_rhime_co2",
     "build_co2_from_materialized",
     "materialize_co2_inputs",
     "co2_model_input_names",
     "prepare_co2_scalar_sigma_eigenbasis",
-    "run_rhime_co2",
 ]

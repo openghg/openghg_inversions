@@ -13,7 +13,9 @@ from examples.co2_handoffs import END_DATE, START_DATE, configuration, synthetic
 from openghg_inversions.basis.affine_flux_map_io import save as save_affine
 from openghg_inversions.rhime.co2 import co2_runner
 from openghg_inversions.rhime.co2.co2_affine_output import prepared_inputs_content_id
-from openghg_inversions.rhime.co2.co2_outputs import Co2OutputOptions, calculate_co2_products, make_co2_output
+from openghg_inversions.rhime.co2.co2_outputs import (
+    Co2OutputOptions, calculate_co2_products, make_co2_output, validate_co2_product_request,
+)
 from openghg_inversions.rhime.co2.configuration import resolve_co2_model, resolve_co2_sampler
 
 
@@ -43,7 +45,9 @@ def test_scientific_view_and_products_preserve_complete_trace(monkeypatch):
 
     with monkeypatch.context() as product_checks:
         product_checks.setattr(xr.DataTree, "to_dataset", child_dataset_only)
-        calculate_co2_products(result=view, prepared=prepared, output=Co2OutputOptions())
+        output = Co2OutputOptions()
+        countries = validate_co2_product_request(output, prepared=prepared)
+        calculate_co2_products(result=view, prepared=prepared, output=output, countries=countries)
     assert view.idata is trace
     assert view.outputs["concentration_components"].sizes["prior_draw"] == 4
     assert view.outputs["concentration_components"].sizes["draw"] == 3
@@ -67,12 +71,14 @@ def test_ordinary_output_options_normalize_only_their_paths(tmp_path, monkeypatc
 @pytest.mark.parametrize("imported", [False, True], ids=["new-pair", "imported-pair"])
 def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, monkeypatch, imported):
     """Every product route uses retained scientific meaning, including signed flux."""
-    from openghg_inversions.rhime.co2 import handoffs, run_co2_from_config
+    from openghg_inversions.rhime.co2 import handoffs, run_co2
     from openghg_inversions.rhime.co2 import execution
+    from openghg_inversions.rhime import run
 
     canonical, reduction, prepared, affine, countries = synthetic_inputs(tmp_path)
     params = configuration(tmp_path / "full-products", countries)
-    model = resolve_co2_model(params)
+    choices = {name: params[name] for name in ("model", "likelihood")}
+    model = resolve_co2_model(choices)
     sampler = resolve_co2_sampler(params)
     if imported:
         source = tmp_path / "source.nc"
@@ -89,7 +95,7 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
             start_date=START_DATE, end_date=END_DATE, domain="EUROPE",
         )
     before = manifest.read_bytes()
-    samples = handoffs.sample(manifest, model=model, sampler=sampler, output_dir=tmp_path / "samples")
+    samples = handoffs.sample(manifest, model=choices, sampler=sampler, output_dir=tmp_path / "samples")
     staged = handoffs.postprocess(
         samples, output=Co2OutputOptions(
             output_format="basic", output_name="co2",
@@ -103,10 +109,16 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
         full_checks.setattr(handoffs, "load_preparation", forbidden)
         full_checks.setattr(handoffs, "save_preparation", forbidden)
         full_checks.setattr(handoffs, "sample", forbidden)
-        full = run_co2_from_config(
-            params=params, canonical_inputs=canonical, reduction=reduction,
-            aggregation_error_rank=1, affine_artifact=affine,
-        )
+        if imported:
+            full = run(
+                model="co2", params=params, canonical_inputs=canonical, reduction=reduction,
+                aggregation_error_rank=1, affine_artifact=affine,
+            )
+        else:
+            full = run_co2(
+                params=params, canonical_inputs=canonical, reduction=reduction,
+                aggregation_error_rank=1, affine_artifact=affine,
+            )
     for name in ("basic", "concentration_components", "native_flux", "country_flux"):
         xr.testing.assert_allclose(full.outputs[name], staged.outputs[name])
         if name != "concentration_components":
@@ -152,7 +164,8 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
     assert staged.outputs["concentration_components"].sizes["draw"] == 12
     assert staged.outputs["concentration_components"].modelled_posterior.attrs["units"] == "ppm"
 
-    built = co2_runner.build_rhime_co2(prepared_inputs=prepared, **model)
+    model_inputs, priors = co2_runner.materialize_co2_inputs(prepared_inputs=prepared, **model)
+    built = co2_runner.build_co2_from_materialized(model_inputs, prepared_inputs=prepared, priors=priors, **model)
     point = built.model.initial_point()
     mean_function = built.model.compile_fn(
         built.model.replace_rvs_by_values([built.model[roles["model_mean"]]])[0],
@@ -166,15 +179,15 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
     reference = multivariate_normal.logpdf(prepared.inv_inputs.mf.values, mean=mean_function(point), cov=covariance)
     assert likelihood == pytest.approx(reference, rel=1e-5, abs=1e-4)
 
-    monkeypatch.setattr(co2_runner, "build_rhime_co2", forbidden)
+    monkeypatch.setattr(co2_runner, "build_co2_from_materialized", forbidden)
     monkeypatch.setattr(co2_runner, "build_co2_model", forbidden)
-    monkeypatch.setattr(co2_runner, "sample_rhime_model", forbidden)
+    monkeypatch.setattr(co2_runner, "materialize_co2_inputs", forbidden)
     monkeypatch.setattr(co2_runner, "materialize_pymc_inputs", forbidden)
     monkeypatch.setattr(handoffs, "prepare_co2_inputs", forbidden)
     monkeypatch.setattr(handoffs, "materialize_co2_inputs", forbidden)
     monkeypatch.setattr(handoffs, "build_co2_from_materialized", forbidden)
     monkeypatch.setattr(handoffs, "sample_rhime_model", forbidden)
-    monkeypatch.setattr(execution, "run_co2_from_config", forbidden)
+    monkeypatch.setattr(execution, "run_co2", forbidden)
     replay = handoffs.postprocess(
         samples, output=Co2OutputOptions(
             output_format="paris", output_name="replay",
@@ -196,7 +209,7 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
 
 def test_configured_full_uses_output_policy_before_sampling(tmp_path, monkeypatch):
     """Unsupported output choices fail before expensive scientific execution."""
-    from openghg_inversions.rhime.co2 import run_co2_from_config
+    from openghg_inversions.rhime.co2 import run_co2
     from openghg_inversions.rhime.co2 import execution
 
     _, _, prepared, affine, countries = synthetic_inputs(tmp_path)
@@ -209,7 +222,7 @@ def test_configured_full_uses_output_policy_before_sampling(tmp_path, monkeypatc
     monkeypatch.setattr(execution, "materialize_co2_inputs", forbidden)
     monkeypatch.setattr(execution, "build_co2_from_materialized", forbidden)
     with pytest.raises(ValueError, match="support"):
-        run_co2_from_config(params=params, prepared=prepared, affine_artifact=affine)
+        run_co2(params=params, prepared=prepared, affine_artifact=affine)
     assert not (tmp_path / "unsupported").exists()
 
 
@@ -230,7 +243,7 @@ def test_affine_basic_requires_prior_draws_before_materialization(tmp_path, monk
     monkeypatch.setattr(execution, "materialize_co2_inputs", forbidden)
     monkeypatch.setattr(execution, "sample_rhime_model", forbidden)
     with pytest.raises(ValueError, match="prior draws|prior.*flux_scale|sample_prior_predictive"):
-        execution.run_co2_from_config(params=params, prepared=prepared, affine_artifact=affine)
+        execution.run_co2(params=params, prepared=prepared, affine_artifact=affine)
     assert not (tmp_path / "rejected").exists()
 
 
@@ -267,7 +280,7 @@ def test_configured_concentration_only_basic_accepts_no_prior_draws(tmp_path, mo
         return trace
 
     monkeypatch.setattr(execution, "sample_rhime_model", reference_draws)
-    result = execution.run_co2_from_config(params=params, prepared=prepared)
+    result = execution.run_co2(params=params, prepared=prepared)
     assert len(sampled) == 1
     assert result.idata is trace
     assert "prior" not in result.idata.children
@@ -295,7 +308,8 @@ def test_full_rejects_supplied_preparation_with_an_unrelated_saved_affine_pair(t
     )
     params = configuration(tmp_path / "rejected", countries)
     params["prepared_inputs"]["path"] = str(source)
-    params["outputs"].update(output_format="none", reconstruction_path=str(companion))
+    params["outputs"]["output_format"] = "none"
+    params["prepared_inputs"]["reconstruction_path"] = str(companion)
 
     def forbidden(*args, **kwargs):
         raise AssertionError("A conflicting prepared/affine pair must fail before inference")
@@ -303,7 +317,7 @@ def test_full_rejects_supplied_preparation_with_an_unrelated_saved_affine_pair(t
     monkeypatch.setattr(execution, "sample_rhime_model", forbidden)
     monkeypatch.setattr(execution, "materialize_co2_inputs", forbidden)
     with pytest.raises(ValueError, match="prepar|affine|source"):
-        execution.run_co2_from_config(params=params, prepared=supplied)
+        execution.run_co2(params=params, prepared=supplied)
     assert not (tmp_path / "rejected").exists()
 
 
@@ -323,7 +337,7 @@ def test_full_rejects_bucket_affine_flux_mismatch_before_inference(tmp_path, mon
     monkeypatch.setattr(execution, "sample_rhime_model", forbidden)
     monkeypatch.setattr(execution, "materialize_co2_inputs", forbidden)
     with pytest.raises(ValueError, match="flux"):
-        execution.run_co2_from_config(params=params, prepared=prepared, affine_artifact=altered)
+        execution.run_co2(params=params, prepared=prepared, affine_artifact=altered)
     assert not (tmp_path / "rejected").exists()
 
 

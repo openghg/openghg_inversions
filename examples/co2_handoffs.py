@@ -126,9 +126,9 @@ def configuration(destination: Path, countries: Path) -> dict:
 
 def run_example(destination: Path) -> None:
     """Save a new prepared/affine pair and compare replay with full execution."""
-    from openghg_inversions.rhime.co2 import run_co2_from_config
+    from openghg_inversions.rhime.co2 import run_co2
     from openghg_inversions.rhime.co2.execution import resolve_co2_output
-    from openghg_inversions.rhime.co2.configuration import resolve_co2_model, resolve_co2_sampler
+    from openghg_inversions.rhime.co2.configuration import resolve_co2_sampler
     from openghg_inversions.rhime.co2 import handoffs
 
     canonical, reduction, prepared, affine, countries = synthetic_inputs(destination)
@@ -138,14 +138,14 @@ def run_example(destination: Path) -> None:
         end_date=END_DATE, domain="EUROPE", affine_artifact=affine,
     )
     preparation_bytes = manifest.read_bytes()
-    model = resolve_co2_model(params)
+    model = {name: params[name] for name in ("model", "likelihood")}
     sampler = resolve_co2_sampler(params)
     samples = handoffs.sample(
         manifest, model=model, sampler=sampler, output_dir=destination / "sample",
     )
     replay_params = {"outputs": {**params["outputs"], "output_path": str(destination / "replay")}}
     replay = handoffs.postprocess(samples, **resolve_co2_output(replay_params))
-    full = run_co2_from_config(
+    full = run_co2(
         params=params, canonical_inputs=canonical, reduction=reduction,
         aggregation_error_rank=1, affine_artifact=affine,
     )
@@ -159,7 +159,7 @@ def run_example(destination: Path) -> None:
     alternative["model"]["boundary"]["prior"]["sigma"] = .2
     alternative["model"]["offset"]["prior"]["mu"] = .05
     alternative["likelihood"]["fixed_model_mismatch"] = .15
-    changed_model = resolve_co2_model(alternative)
+    changed_model = {name: alternative[name] for name in ("model", "likelihood")}
     other_samples = handoffs.sample(
         manifest, model=changed_model, sampler=sampler, output_dir=destination / "alternative-sample",
     )

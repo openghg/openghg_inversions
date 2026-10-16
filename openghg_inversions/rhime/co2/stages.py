@@ -128,7 +128,7 @@ def resolve_co2_stage_setup(params: Mapping[str, Any]) -> Co2StageSetup:
         raise ValueError(
             "Ordinary CO2 no longer uses the staged envelope. Use co2.handoffs.prepare, "
             "sample and postprocess with one preparation or sample manifest, or "
-            "co2.run_co2_from_config for configured full execution."
+            "co2.run_co2 for configured full execution."
         )
     from .co2_outputs import validate_co2_output_spec
 

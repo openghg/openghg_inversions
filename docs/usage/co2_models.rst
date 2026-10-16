@@ -1,7 +1,7 @@
 CO₂ model recipes
 =================
 
-This page describes the scientific graphs and current prepared-input replay
+This page describes the scientific graphs and current prepared-input execution
 seams for the CO₂-only and linked CO₂/O₂ recipes. Start with the
 :doc:`CO₂ model family <co2_model_family>` support matrix before using these
 interfaces.
@@ -50,13 +50,16 @@ mismatch ``sigma``, its covariance is
        (s_y^2 + s_{fixed}^2 + \sigma^2).
 
 The lower-level builder adds inferred ``sigma`` only when the caller supplies a
-``sigma_alignment``. The public :func:`~openghg_inversions.rhime.run_rhime_co2`
-runner creates a site-specific alignment over one shared time period by
+``sigma_alignment``. The scientific construction operation
+:func:`~openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized`
+creates a site-specific alignment over one shared time period by
 default, and uses an independent HalfNormal prior with ``sigma=1.0`` in the
 observations' concentration units unless ``sigma_prior`` overrides it. Override
 ``sigma_prior`` when that scale is inappropriate for the observation units or
 scientific application. Set ``no_model_error=True`` to disable this inferred
 term.
+Configured ordinary execution selects these options through the ``likelihood``
+section, including ``sigma_prior`` and ``no_model_error``.
 
 The CO₂ runner does not consume ``min_error`` or apply a minimum-error floor.
 Other recipes and components own their own floor settings; for example, the
@@ -127,28 +130,29 @@ conditions, offsets, and outer flux remain distinct scientific terms. Sector
 combinations are likewise a general state-grouping choice rather than an
 outer-region model option.
 
-Run the ordinary prepared-input CO2 runner
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Compose ordinary CO2 scientific operations
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The model builder accepts explicit scientific arrays rather than a dataset.
-For durable prepared artifacts, :func:`openghg_inversions.rhime.run_rhime_co2`
-is the public replay seam. It accepts only a
-:class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact, validates
-and materializes its selected arrays, resolves its declared aggregation-error
-representation, calls the explicit builder, samples, and stores a JSON
-variable-role and model-provenance manifest on the returned xarray
-``DataTree``.
-The artifact, rather than a runner argument, owns whether aggregation error is
-stored as an exact dense covariance or as a low-rank-plus-diagonal (LRPD)
-approximation. A prepared ``fixed_model_mismatch`` is preserved when the
-runner argument is ``None``; an explicit scalar or labelled vector overrides
-it. Persist gathered-state traces with
-:func:`openghg_inversions.serialization.save_trace`, which uses the
-same MultiIndex-safe boundary as standard and multisector RHIME outputs.
-The current prepared-input runner does not accept or construct an
-outer-specific object. It constructs the complete retained prior from the
-prepared arithmetic mean and covariance, then forwards the prepared activity
-policy to the builder.
+The concrete model builder accepts explicit scientific arrays. For durable
+:class:`~openghg_inversions.rhime.co2.Co2PreparedInputs`, scientific callers can
+compose :func:`~openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs`,
+:func:`~openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized`,
+:func:`~openghg_inversions.rhime.sampling.sample_rhime_model` and
+:func:`~openghg_inversions.rhime.co2.annotate_co2_trace` to retain the annotated
+inference ``DataTree`` directly. The example below shows these visible steps.
+Configured callers use :func:`~openghg_inversions.rhime.co2.run_co2`, which
+returns a scientific view with the trace and requested products.
+
+The artifact owns whether aggregation error is stored as an exact dense
+covariance or a low-rank-plus-diagonal (LRPD) approximation. A prepared
+``fixed_model_mismatch`` is preserved when the construction option is ``None``;
+an explicit scalar or labelled vector overrides it. Materialization selects
+related inputs and enabled priors together; eager construction forms the complete
+retained prior from the prepared arithmetic mean and covariance and forwards the
+prepared activity policy. Persist traces with
+:func:`openghg_inversions.serialization.save_trace`, which preserves their
+groups and observation/state MultiIndexes. Product replay uses saved scientific
+meaning without repeating construction or sampling.
 
 Set ``use_bc=True`` to select ``H_bc`` from the prepared artifact and add its
 boundary contribution. ``bc_prior`` overrides the default labelled boundary
@@ -163,8 +167,8 @@ likelihood, and sampled outputs.
 The location and scale parameters in ``offset_prior`` use the observations'
 concentration units.
 
-Configure prepared-input replay from TOML
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Configure prepared-input execution from TOML
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The CO2 family provides three installed TOML templates:
 ``co2.toml``, ``co2_cached_sigma.toml``, and ``co2_o2.toml``. Use
@@ -175,19 +179,21 @@ The CO2-only templates also underpin ``--model co2`` staged commands; see
 :doc:`co2_model_family` for the staged output table and complete command
 sequence. Linked CO2/O2 templates remain Python-only.
 
-:func:`openghg_inversions.rhime.co2.load_co2_family_config` reads TOML, while
-:func:`openghg_inversions.rhime.co2.resolve_co2_family_config` accepts an
-ordinary mapping and returns a frozen
-:class:`~openghg_inversions.rhime.co2.Co2RunSetup` or
-:class:`~openghg_inversions.rhime.co2.Co2O2RunSetup`. Keeping parsing separate
-from resolution makes the scientific choices independent of the file format.
-The setup identifies the runner and contains explicit ``preparation_kwargs``,
-``runner_kwargs``, and :class:`~openghg_inversions.rhime.RhimeSampler` values;
-it does not retain an ambient configuration mapping. After preparing or
-loading the appropriate artifact, ``setup.runner_arguments(prepared)`` binds
-it to the exact arguments accepted by ``setup.runner``. For the linked recipe,
-this step expands the two configured error scalars over the labelled joint
-observation axis and verifies its species and unit labels.
+:func:`openghg_inversions.rhime.co2.load_co2_family_config` reads TOML. Ordinary
+CO₂ uses :func:`~openghg_inversions.rhime.co2.run_co2` or the Python/CLI model
+selector. Preparation, model, sampler and output values are resolved at their
+concrete owners; saved sampling accepts decoded model/likelihood choices and one
+separate sampler. Native-resolution acquisition and coherent-reduction construction
+are separate from this configured prepared-input route.
+
+Cached and linked recipes retain
+:func:`openghg_inversions.rhime.co2.resolve_co2_family_config`, which accepts a
+mapping and returns :class:`~openghg_inversions.rhime.co2.Co2RunSetup` or
+:class:`~openghg_inversions.rhime.co2.Co2O2RunSetup`. Those setups retain their
+explicit runner binding. For linked data, ``setup.runner_arguments(prepared)``
+expands configured independent errors over the joint observation axis and checks
+species/unit labels. The ordinary branch of that resolver is retired; use
+``run_co2`` or the concrete scientific operations above.
 
 For example, the ordinary TOML settings::
 
@@ -197,6 +203,9 @@ For example, the ordinary TOML settings::
 
    [prepared_inputs]
    path = "co2-coherent-dense.zarr"
+   start_date = "2020-01-01"
+   end_date = "2020-02-01"
+   domain = "EUROPE"
 
    [likelihood]
    kind = "additive_sigma"
@@ -208,45 +217,23 @@ For example, the ordinary TOML settings::
    chains = 4
    nuts_sampler = "numpyro"
 
-resolve to the same scientific runner choices as this direct Python call::
+can execute through the canonical configured runner::
 
-   from openghg_inversions.rhime import RhimeSampler, run_rhime_co2
-   from openghg_inversions.rhime.co2 import Co2PreparedInputs
+   from openghg_inversions.rhime.co2 import run_co2
 
-   prepared = Co2PreparedInputs.load("co2-coherent-dense.zarr")
-   idata = run_rhime_co2(
-       prepared_inputs=prepared,
-       sigma_prior={"pdf": "halfnormal", "sigma": 0.75},
-       sampler=RhimeSampler(
-           draws=1000,
-           tune=1000,
-           chains=4,
-           nuts_sampler="numpyro",
-       ),
-   )
+   result = run_co2(config_file="my-co2.toml")
+   idata = result.idata  # The complete annotated inference DataTree.
 
-The resolved ordinary setup can execute that same call through its explicit
-binding method::
+Equivalently, ``rhime.run(model="co2", config_file="my-co2.toml")`` selects the
+same runner. Output choices remain separate from the scientific trace.
+``prepared_inputs.path``, ``prepared_inputs.reconstruction_path`` and
+``likelihood.eigenbasis_path`` become ordinary ``pathlib.Path`` values.
+Relative values are interpreted from the process working directory, not the
+directory containing the ordinary TOML file. Use absolute paths when the run
+may start from another directory. The retained cached staged interface keeps its
+existing configuration-file-relative path behavior.
 
-   from openghg_inversions.rhime.co2 import (
-       Co2PreparedInputs,
-       load_co2_family_config,
-       resolve_co2_family_config,
-   )
-
-   config = load_co2_family_config("my-co2.toml")
-   setup = resolve_co2_family_config(config)
-   prepared = Co2PreparedInputs.load(setup.preparation_kwargs["path"])
-   idata = setup.runner(**setup.runner_arguments(prepared))
-
-``prepared_inputs.path`` and ``likelihood.eigenbasis_path`` become ordinary
-``pathlib.Path`` values. Relative values are interpreted from the process
-working directory, not from the directory containing the TOML file. Use
-absolute paths when the run may start from another directory. The staged CLI
-resolves these paths relative to the configuration file before invoking this
-resolver.
-
-The resolver deliberately supports a closed matrix rather than arbitrary
+Configuration deliberately supports a closed matrix rather than arbitrary
 callable imports:
 
 .. list-table::
@@ -259,7 +246,7 @@ callable imports:
      - Configuration boundary
    * - ``co2``
      - ``ordinary``
-     - ``run_rhime_co2``
+     - ``run_co2``
      - ``additive_sigma``, ``site_sigma``, ``fixed_ou``, or ``scalar_sigma``
        likelihood; boundary conditions and offsets are available.
    * - ``co2``
@@ -279,8 +266,10 @@ callable imports:
        runner-owned PyMC sampler; one shared channel-unit label.
 
 For ``variant = "ordinary"``, the ``[likelihood]`` table accepts these closed
-forms. Scalar-or-site-map values use either one positive number or an inline
-table such as ``{ MHD = 24.0, TAC = 12.0 }``.
+forms. Scalar-or-site-map values use one number or an inline table such as
+``{ MHD = 24.0, TAC = 12.0 }``; the component-specific sign constraints are below.
+Site maps validate every supplied value, including entries for dropped sites,
+require retained-site coverage, then select retained labels.
 
 .. list-table:: Ordinary CO2 likelihood configuration
    :header-rows: 1
@@ -522,7 +511,10 @@ unresolved covariance::
 
    from openghg_inversions.inversion_data import RhimePreparedInputs
    from openghg_inversions.rhime.co2 import prepare_co2_inputs
-   from openghg_inversions.rhime import run_rhime_co2
+   from openghg_inversions.rhime.co2.co2_runner import (
+       annotate_co2_trace, materialize_co2_inputs, build_co2_from_materialized,
+   )
+   from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
    canonical_inputs = RhimePreparedInputs.load("base-prepared-inputs.zarr")
    prepared = prepare_co2_inputs(
@@ -532,8 +524,7 @@ unresolved covariance::
    )
    prepared.save("co2-coherent-dense.zarr")
 
-   idata = run_rhime_co2(
-       prepared_inputs=prepared,
+   model = dict(
        use_bc=True,
        bc_prior={
            "pdf": "truncatednormal",
@@ -544,13 +535,17 @@ unresolved covariance::
        offset_prior={"pdf": "normal", "mu": 0.0, "sigma": 0.1},
        offset_args={"per_site": False},
    )
+   inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, **model)
+   built = build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, **model)
+   idata = sample_rhime_model(built, RhimeSampler())
+   annotate_co2_trace(idata, built, concentration_units=prepared.inv_inputs["mf"].attrs["units"])
 
 Reload a durable artifact with
 :meth:`openghg_inversions.rhime.co2.Co2PreparedInputs.load`. The loaded
-artifact retains the selected representation, so replay does not require or
+artifact retains the selected representation, so construction does not require or
 accept ``aggregation_error_mode``.
 
-The CO2 builder and prepared-input runner also accept one ordinary
+The ordinary scientific construction operations also accept one
 ``likelihood_builder`` with explicit ``likelihood_kwargs``. This selects
 package components such as
 :func:`openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood` and
@@ -582,7 +577,7 @@ diagonal covariance. It also differs from the
 site amplitudes for a time-correlated OU covariance and owns a matched sampler
 with an accepted-state runtime cache. The scalar-sigma cache is instead an
 external numerical preparation artifact used through the ordinary
-``run_rhime_co2`` likelihood seam.
+scientific construction seam.
 
 Prepare and save that artifact once from the same prepared CO2 inputs that
 sampling will use::
@@ -597,18 +592,27 @@ sampling will use::
    eigenbasis = prepare_co2_scalar_sigma_eigenbasis(prepared)
    save_scalar_sigma_eigenbasis("scalar-sigma-eigenbasis.nc", eigenbasis)
 
-Select the package likelihood through the CO2 runner::
+Select the package likelihood through the scientific operations::
 
    from openghg_inversions.models import add_scalar_sigma_eigen_likelihood
-   from openghg_inversions.rhime.co2 import run_rhime_co2
+   from openghg_inversions.rhime.co2.co2_runner import (
+       annotate_co2_trace, materialize_co2_inputs, build_co2_from_materialized,
+   )
+   from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
-   trace = run_rhime_co2(
-       prepared_inputs=prepared,
+   model = dict(
        likelihood_builder=add_scalar_sigma_eigen_likelihood,
        likelihood_kwargs={
            "eigenbasis_path": "scalar-sigma-eigenbasis.nc",
            "sigma_prior": {"pdf": "halfnormal", "sigma": 0.75},
        },
+   )
+   inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, **model)
+   built = build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, **model)
+   trace = sample_rhime_model(built, RhimeSampler())
+   annotate_co2_trace(
+       trace, built, concentration_units=prepared.inv_inputs["mf"].attrs["units"],
+       likelihood_builder=model["likelihood_builder"], likelihood_kwargs=model["likelihood_kwargs"],
    )
 
 The cache stores labelled eigenvectors and eigenvalues, the aggregation-error
