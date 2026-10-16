@@ -139,12 +139,26 @@ use ``docs_ref=devel``. A failed build leaves the published site unchanged;
 inspect its Actions logs and uploaded build artifact before retrying. Historical
 dependency requirements may need a separately reviewed build adjustment.
 
-For the initial rollout, update both ``main`` and ``devel`` with the maintained
-workflow, publishing helper, and selector configuration before starting
-backfills. Publish the latest supported 0.7 patch first, then ``v0.6.0`` and
-``devel``. Never dispatch ``docs.yaml`` with ``--ref`` set to a historical
-release tag: its old workflow can replace the entire site. Do not rewrite
-release tags to install the new workflow.
+For the initial rollout, follow this order:
+
+#. Upgrade ``main`` with the maintained workflow, publishing helper, and
+   selector configuration. Keep the ``devel`` pull request unmerged: merging
+   it automatically publishes development documentation, which becomes the
+   default if no release snapshot exists yet.
+#. Drain queued or running legacy documentation deployments, including their
+   GitHub Pages publication runs, by waiting for completion or cancelling
+   them. Avoid changes that trigger the old ``devel`` workflow until the
+   branch upgrade is complete; do not rerun legacy deployments.
+#. Dispatch the maintained workflow on ``main`` with the latest supported
+   0.7 release tag as ``docs_ref``. Wait for GitHub Pages publication and
+   verify that the public root and ``/stable/`` lead to that release.
+#. Only then merge the versioning changes into ``devel``. Verify that its
+   automatic deployment preserves the stable release and default, then
+   backfill ``v0.6.0``.
+
+Never dispatch ``docs.yaml`` with ``--ref`` set to a historical release tag:
+its old workflow can replace the entire site. Do not rewrite release tags to
+install the new workflow.
 
 After each publication, check the version label, selector, archive, and
 ``/stable/`` destination on the hosted site. Check a nested API or usage page
