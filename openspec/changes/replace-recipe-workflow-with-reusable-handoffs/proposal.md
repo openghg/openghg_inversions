@@ -87,11 +87,11 @@ not a completed implementation or required artifact contract.
 ### Existing capabilities consumed
 
 The [configuration capability](../../specs/rhime-configuration/spec.md) records
-the delivered flat configuration. Pending grouped `RhimeConfig.data`, option
-resolution and independent phase selection belong to the separate
-[configuration change](../group-rhime-configuration-by-owner/proposal.md),
-coordinated with #866. This change consumes those amendments without duplicating
-their delta.
+grouped `RhimeConfig.data`, option resolution and independent phase selection
+delivered by merged #866. The
+[archived configuration change](../archive/2026-10-16-group-rhime-configuration-by-owner/proposal.md)
+records the delivery history. This change consumes the durable capability without
+duplicating its requirements.
 
 The [resource-I/O capability](../../specs/rhime-resource-io/spec.md) records
 runner-owned path resolution and optional basis exports, selected-resource
@@ -112,7 +112,7 @@ contract is not a current capability or an implementation prerequisite.
 
 The three new capabilities live under this active change as proposed deltas.
 The durable configuration and resource-I/O capabilities describe delivered behavior;
-their pending amendments remain in the separate active changes linked above.
+configuration promotion is complete; remaining handoff delivery stays here.
 `openspec/changes/archive/` retains completed or superseded history.
 This replacement remains active; implementation evidence is recorded in [tasks.md](tasks.md). Its
 deltas SHALL NOT be synced merely because planning is approved.
