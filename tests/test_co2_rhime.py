@@ -5,8 +5,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any, cast
+from dataclasses import replace
 
 import numpy as np
+import dask.array as da
+from dask import delayed
 import pandas as pd
 import pymc as pm
 import pytest
@@ -34,6 +37,12 @@ from openghg_inversions.serialization import load_trace, save_trace
 
 
 FIXTURE = Path(__file__).parent / "data" / "co2_only_golden.json"
+
+
+def _mock_materialization(monkeypatch: Any, operation: Any) -> None:
+    def materialize(prepared: Any, *, variable_names: Any, prior_parameters: Any = None) -> Any:
+        return operation(prepared, variable_names=variable_names), dict(prior_parameters or {})
+    monkeypatch.setattr(co2_runner, "_materialize_pymc_inputs_and_priors", materialize)
 
 
 def _golden_inputs() -> xr.Dataset:
@@ -389,7 +398,7 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
         def validated(self) -> "PreparedInputsStub":
             return self
 
-    monkeypatch.setattr(co2_runner, "materialize_pymc_inputs", lambda *_args, **_kwargs: inputs)
+    _mock_materialization(monkeypatch, lambda *_args, **_kwargs: inputs)
     builder_kwargs: dict[str, Any] = {}
     original_builder = co2_runner.build_co2_model
 
@@ -489,7 +498,7 @@ def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: An
         sampled_models.append(built.model)
         return _empty_sampled_trace(inputs)
 
-    monkeypatch.setattr(co2_runner, "materialize_pymc_inputs", materialize)
+    _mock_materialization(monkeypatch, materialize)
     monkeypatch.setattr(co2_runner, "sample_rhime_model", sample_model)
 
     run_rhime_co2(prepared_inputs=cast(Any, PreparedInputsStub()))
@@ -529,7 +538,7 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) ->
         built_models.append(built.model)
         return _empty_sampled_trace(inputs)
 
-    monkeypatch.setattr(co2_runner, "materialize_pymc_inputs", materialize)
+    _mock_materialization(monkeypatch, materialize)
     monkeypatch.setattr(co2_runner, "sample_rhime_model", sample_model)
     bc_active = xr.DataArray(
         [True, False, True, False, True, False, True, False],
@@ -615,7 +624,7 @@ def test_public_co2_runner_does_not_auto_select_prepared_baseline(monkeypatch: A
         built_models.append(built.model)
         return _empty_sampled_trace(inputs)
 
-    monkeypatch.setattr(co2_runner, "materialize_pymc_inputs", materialize)
+    _mock_materialization(monkeypatch, materialize)
     monkeypatch.setattr(co2_runner, "sample_rhime_model", sample_model)
     run_rhime_co2(
         prepared_inputs=cast(Any, PreparedInputsStub()),
@@ -652,7 +661,7 @@ def _run_selected_co2_likelihood(
         def validated(self) -> "PreparedInputsStub":
             return self
 
-    monkeypatch.setattr(co2_runner, "materialize_pymc_inputs", lambda *_args, **_kwargs: inputs)
+    _mock_materialization(monkeypatch, lambda *_args, **_kwargs: inputs)
     built_results: list[Any] = []
 
     def sample_model(built: Any, _sampler: Any) -> xr.DataTree:
@@ -799,11 +808,7 @@ def test_public_co2_runner_resolves_scalar_sigma_cache_before_model(
         def validated(self) -> "PreparedInputsStub":
             return self
 
-    monkeypatch.setattr(
-        co2_runner,
-        "materialize_pymc_inputs",
-        lambda *_args, **_kwargs: inputs,
-    )
+    _mock_materialization(monkeypatch, lambda *_args, **_kwargs: inputs)
     load_contexts: list[pm.Model | None] = []
 
     def recording_load(
@@ -891,7 +896,7 @@ def test_public_co2_runner_preserves_materialized_fixed_mismatch(monkeypatch: An
         def validated(self) -> "PreparedInputsStub":
             return self
 
-    monkeypatch.setattr(co2_runner, "materialize_pymc_inputs", lambda *_args, **_kwargs: inputs)
+    _mock_materialization(monkeypatch, lambda *_args, **_kwargs: inputs)
     sampled_models: list[pm.Model] = []
 
     def sample_model(built: Any, _sampler: Any) -> xr.DataTree:
@@ -906,3 +911,168 @@ def test_public_co2_runner_preserves_materialized_fixed_mismatch(monkeypatch: An
     )
 
     np.testing.assert_allclose(sampled_models[0]["fixed_model_mismatch"].eval(), 0.75)
+
+
+@pytest.mark.parametrize(
+    ("likelihood", "option"),
+    [
+        (add_site_sigma_gaussian_likelihood, "fixed_site_amplitudes"),
+        (add_fixed_ou_gaussian_likelihood, "fixed_site_amplitudes"),
+        (add_fixed_ou_gaussian_likelihood, "tau_hours"),
+    ],
+)
+@pytest.mark.parametrize("bad_value", [-1.0, np.nan, np.inf, True, "1.0", "invalid"])
+@pytest.mark.parametrize("site", ["MHD", "dropped"])
+def test_co2_inference_validates_every_supplied_site_value(
+    likelihood: Any, option: str, bad_value: Any, site: str
+) -> None:
+    """Filtering a site cannot hide invalid supplied model choices."""
+    options: dict[str, Any] = {"fixed_site_amplitudes": {"TAC": 0.7, "MHD": 0.5, "dropped": 0.2}}
+    if likelihood is add_fixed_ou_gaussian_likelihood:
+        options["tau_hours"] = {"TAC": 7.0, "MHD": 5.0, "dropped": 3.0}
+    options[option][site] = bad_value
+    with pytest.raises(ValueError, match="finite|numeric|boolean"):
+        _build_model(
+            _production_boundary_inputs(), likelihood_builder=likelihood, likelihood_kwargs=options
+        )
+
+
+@pytest.mark.parametrize("option", ["fixed_site_amplitudes", "tau_hours"])
+def test_co2_ou_requires_retained_site_mapping_coverage(option: str) -> None:
+    options = {
+        "fixed_site_amplitudes": {"TAC": 0.7, "MHD": 0.5, "dropped": 0.2},
+        "tau_hours": {"TAC": 7.0, "MHD": 5.0, "dropped": 3.0},
+    }
+    del options[option]["TAC"]
+    with pytest.raises(ValueError, match="every coordinate label"):
+        _build_model(
+            _production_boundary_inputs(),
+            likelihood_builder=add_fixed_ou_gaussian_likelihood,
+            likelihood_kwargs=options,
+        )
+
+
+@pytest.mark.parametrize("likelihood", [add_site_sigma_gaussian_likelihood, add_fixed_ou_gaussian_likelihood])
+def test_co2_fixed_site_zero_is_valid_and_extra_sites_are_selected_by_label(likelihood: Any) -> None:
+    options: dict[str, Any] = {"fixed_site_amplitudes": {"dropped": 3.0, "TAC": 0.7, "MHD": 0.0}}
+    if likelihood is add_fixed_ou_gaussian_likelihood:
+        options["tau_hours"] = {"dropped": 30.0, "TAC": 7.0, "MHD": 5.0}
+    inputs = _production_boundary_inputs()
+    inputs["mf_error"] = inputs["mf_error"].copy(data=[0.2, 0.3])
+    model = _build_model(inputs, likelihood_builder=likelihood, likelihood_kwargs=options)
+    sigma_name = "sigma_site" if likelihood is add_site_sigma_gaussian_likelihood else "ou_site_amplitude"
+    np.testing.assert_allclose(model[sigma_name].eval(), [0.0, 0.7])
+    if likelihood is add_fixed_ou_gaussian_likelihood:
+        np.testing.assert_allclose(model["ou_tau_hours"].eval(), [5.0, 7.0])
+    mean, logp = _initial_mean_and_observed_logp(model)
+    # One observation per site: both covariance models reduce to this diagonal addition.
+    expected_covariance = inputs["aggregation_error_covariance"].values + np.diag(
+        inputs["mf_error"].values**2 + np.asarray([0.0, 0.7**2])
+    )
+    assert logp == pytest.approx(
+        multivariate_normal.logpdf(inputs["mf"].values, mean=mean, cov=expected_covariance), rel=1e-6
+    )
+
+
+@pytest.mark.parametrize("site", ["MHD", "dropped"])
+def test_co2_ou_time_scale_zero_is_invalid_even_for_dropped_site(site: str) -> None:
+    options: dict[str, Any] = {"tau_hours": {"MHD": 5.0, "TAC": 7.0, "dropped": 3.0}, "fixed_site_amplitudes": 0.5}
+    options["tau_hours"][site] = 0.0
+    with pytest.raises(ValueError, match="finite, strictly positive"):
+        _build_model(
+            _production_boundary_inputs(),
+            likelihood_builder=add_fixed_ou_gaussian_likelihood,
+            likelihood_kwargs=options,
+        )
+
+
+def test_co2_trace_descriptive_metadata_does_not_compute_unused_lazy_options(monkeypatch: Any) -> None:
+    @delayed
+    def unexpected_computation() -> np.ndarray:
+        raise AssertionError("Describing a likelihood option must not compute it.")
+
+    diagnostic = xr.DataArray(
+        da.from_delayed(unexpected_computation(), shape=(2,), dtype=float),
+        dims="diagnostic", name="unused_diagnostic", attrs={"units": "ppm"},
+    )
+
+    def custom_likelihood(*, diagnostic: xr.DataArray, **kwargs: Any) -> Any:
+        return add_site_sigma_gaussian_likelihood(**kwargs)
+
+    _, _, _, trace = _run_selected_co2_likelihood(
+        monkeypatch, custom_likelihood,
+        {"diagnostic": diagnostic, "fixed_site_amplitudes": {"MHD": 0.5}},
+    )
+    assert json.loads(trace.attrs["rhime_likelihood_kwargs"])["diagnostic"] == {
+        "name": "unused_diagnostic", "dims": ["diagnostic"], "shape": [2], "units": "ppm",
+    }
+
+
+def test_co2_materialization_shares_inputs_enabled_priors_and_explicit_mismatch_graph() -> None:
+    from test_co2_affine_output import _prepared
+
+    prepared, _ = _prepared()
+    executions = []
+
+    @delayed
+    def shared_values() -> np.ndarray:
+        executions.append("shared")
+        return np.asarray([0.1, 0.2])
+
+    @delayed
+    def unrelated_values() -> np.ndarray:
+        raise AssertionError("Unselected diagnostics must remain lazy.")
+
+    shared = da.from_delayed(shared_values(), shape=(2,), dtype=float)
+    inputs = prepared.inv_inputs.copy(deep=False)
+    inputs["H"] = inputs["H"].copy(data=shared[None, :])
+    inputs["H_bc"] = xr.DataArray(shared[:1].reshape(1, 1), dims=("nmeasure", "bc_region"),
+                                  coords={"nmeasure": inputs.nmeasure, "bc_region": ["background"]})
+    inputs["diagnostic"] = xr.DataArray(
+        da.from_delayed(unrelated_values(), shape=(1,), dtype=float), dims="diagnostic_dim",
+    )
+    prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
+    mismatch = inputs["mf"].copy(data=shared[:1])
+    choices: dict[str, Any] = {
+        "use_bc": True,
+        "sigma_prior": {"pdf": "halfnormal", "sigma": shared[0]},
+        "bc_prior": {"pdf": "normal", "mu": 1.0, "sigma": shared[0]},
+        "offset_prior": {"pdf": "normal", "mu": 0.0, "sigma": shared[0]},
+        "fixed_model_mismatch": mismatch,
+    }
+    model_inputs, eager_choices = co2_runner.materialize_co2_inputs(prepared_inputs=prepared, **choices)
+    assert executions == ["shared"]
+    assert isinstance(prepared.inv_inputs["H"].data, da.Array)
+    assert isinstance(choices["bc_prior"]["sigma"], da.Array)
+    assert isinstance(mismatch.data, da.Array)
+    assert isinstance(model_inputs["diagnostic"].data, da.Array)
+    np.testing.assert_allclose(eager_choices["fixed_model_mismatch"], [0.1])
+    built = co2_runner.build_co2_from_materialized(
+        model_inputs, prepared_inputs=prepared, **{**choices, **eager_choices},
+    )
+    assert executions == ["shared"]
+    assert {"bc", "offset", "sigma", "fixed_model_mismatch"} <= set(built.model.named_vars)
+
+
+def test_co2_eager_builder_rejects_lazy_selected_inputs_before_construction(monkeypatch: Any) -> None:
+    from test_co2_affine_output import _prepared
+
+    prepared, _ = _prepared()
+    inputs = prepared.inv_inputs.copy(deep=False)
+    inputs["H"] = inputs["H"].chunk()
+
+    def unexpected_construction(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("Lazy values must be rejected before constructing a graph.")
+
+    monkeypatch.setattr(co2_runner, "build_co2_model", unexpected_construction)
+    with pytest.raises(ValueError, match="must be materialized"):
+        co2_runner.build_co2_from_materialized(inputs, prepared_inputs=prepared)
+
+
+def test_co2_materialization_requires_exact_explicit_mismatch_observation_labels() -> None:
+    from test_co2_affine_output import _prepared
+
+    prepared, _ = _prepared()
+    mismatch = xr.DataArray([0.2], dims="nmeasure", coords={"nmeasure": ["wrong"]})
+    with pytest.raises(ValueError, match="align|index|join"):
+        co2_runner.materialize_co2_inputs(prepared_inputs=prepared, fixed_model_mismatch=mismatch)

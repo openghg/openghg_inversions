@@ -6,6 +6,10 @@ variant = "ordinary"
 
 [prepared_inputs]
 path = "prepared-co2.zarr"
+# Keep the original requested window, even when filtering removed edge observations.
+start_date = "2020-01-01"
+end_date = "2020-02-01"
+domain = "EUROPE"
 
 [likelihood]
 kind = "additive_sigma"

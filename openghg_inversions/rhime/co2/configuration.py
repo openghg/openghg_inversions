@@ -35,27 +35,31 @@ Runner = Callable[..., Any]
 
 @dataclass(frozen=True, slots=True)
 class Co2RunSetup:
-    """Resolved execution setup for CO2 prepared-input replay.
+    """Resolved execution setup for CO2 prepared-input inference.
 
     Attributes:
         preparation_kwargs: Artifact-location values resolved from the
             configuration. ``path`` is suitable for
-            :meth:`Co2PreparedInputs.load`.
+            :meth:`Co2PreparedInputs.load`. Optional ``start_date``, ``end_date``
+            and ``domain`` supply authoritative imported preparation facts;
+            omitted facts remain absent rather than being inferred.
         runner: Selected public prepared-input runner.
         runner_kwargs: Validated scientific arguments for ``runner``.
         sampler: Validated sampling configuration for ``runner``.
+        variant: Explicit ordinary/cached capability selection.
     """
 
     preparation_kwargs: Mapping[str, object]
     runner: Runner
     runner_kwargs: Mapping[str, object]
     sampler: RhimeSampler
+    variant: str = "ordinary"
 
     def runner_arguments(self, prepared_inputs: Co2PreparedInputs) -> Mapping[str, object]:
         """Bind a prepared artifact to the selected runner.
 
         Args:
-            prepared_inputs: In-memory CO2 artifact to replay.
+            prepared_inputs: In-memory CO2 artifact to sample.
 
         Returns:
             Exact keyword arguments for :attr:`runner`.
@@ -271,8 +275,12 @@ def _prior(value: object, path: str, *, positive: bool = False) -> Mapping[str, 
 def _prepared_inputs(options: dict[str, object]) -> Mapping[str, object]:
     prepared = _table(_take(options, "prepared_inputs", "config"), "prepared_inputs")
     path = Path(_string(_take(prepared, "path", "prepared_inputs"), "prepared_inputs.path"))
+    result: dict[str, object] = {"path": path}
+    for name in ("start_date", "end_date", "domain"):
+        if name in prepared:
+            result[name] = _string(prepared.pop(name), f"prepared_inputs.{name}")
     _reject_unknown(prepared, "prepared_inputs")
-    return _frozen({"path": path})
+    return _frozen(result)
 
 
 def _sampling(value: object, *, cached: bool) -> RhimeSampler:
@@ -526,14 +534,21 @@ def _cached_likelihood(value: object) -> dict[str, Any]:
     return result
 
 
-def _resolve_co2(options: dict[str, object], variant: str) -> Co2RunSetup:
+def _resolve_co2(
+    options: dict[str, object],
+    variant: str,
+    *,
+    preparation_kwargs: Mapping[str, object] | None = None,
+    sampling: bool = True,
+) -> Co2RunSetup:
     if variant not in ("ordinary", "cached_fixed_ou"):
         raise ValueError("recipe='co2' requires variant='ordinary' or 'cached_fixed_ou'.")
-    prepared = _prepared_inputs(options)
+    prepared = _prepared_inputs(options) if preparation_kwargs is None else preparation_kwargs
     model = _model(options.pop("model", {}))
     likelihood = _take(options, "likelihood", "config")
     cached = variant == "cached_fixed_ou"
-    sampler = _sampling(options.pop("sampling", {}), cached=cached)
+    sampling_options = options.pop("sampling", {})
+    sampler = _sampling(sampling_options, cached=cached) if sampling else RhimeSampler()
     _reject_unknown(options, "config")
     if cached:
         runner: Runner = run_rhime_co2_cached_sigma
@@ -541,7 +556,7 @@ def _resolve_co2(options: dict[str, object], variant: str) -> Co2RunSetup:
     else:
         runner = run_rhime_co2
         runner_kwargs = {**model, **_ordinary_likelihood(likelihood)}
-    return Co2RunSetup(prepared, runner, _frozen(runner_kwargs), sampler)
+    return Co2RunSetup(prepared, runner, _frozen(runner_kwargs), sampler, variant=variant)
 
 
 def _resolve_linked(options: dict[str, object], variant: str) -> Co2O2RunSetup:
@@ -654,10 +669,40 @@ def resolve_co2_family_config(
     raise ValueError("config.recipe must be 'co2' or 'co2_o2'.")
 
 
+def resolve_co2_inference(
+    config: Mapping[str, object], *, sampling: bool = True
+) -> Co2RunSetup:
+    """Resolve ordinary CO2 model choices independently of preparation and outputs.
+
+    Args:
+        config: Full or phase-only configuration. Only the version, recipe,
+            variant, model, likelihood and sampling sections are consumed.
+        sampling: Resolve live sampler options. False leaves unused sampling
+            choices untouched and supplies a fresh default sampler.
+
+    Returns:
+        Scientific runner arguments with no preparation-location requirements.
+
+    Raises:
+        ValueError: If the selected version or recipe is unsupported.
+    """
+    selected = {
+        key: value for key, value in _table(config, "config").items()
+        if key in {"format_version", "recipe", "variant", "model", "likelihood", "sampling"}
+    }
+    version = _take(selected, "format_version", "config")
+    if isinstance(version, bool) or not isinstance(version, int) or version != 1:
+        raise ValueError("config.format_version must be the integer 1.")
+    if selected.pop("recipe", None) != "co2" or selected.pop("variant", None) != "ordinary":
+        raise ValueError("Ordinary CO2 inference requires recipe='co2' and variant='ordinary'.")
+    return _resolve_co2(selected, "ordinary", preparation_kwargs=_frozen({}), sampling=sampling)
+
+
 __all__ = [
     "Co2O2RunSetup",
     "Co2RunSetup",
     "co2_config_templates",
     "load_co2_family_config",
     "resolve_co2_family_config",
+    "resolve_co2_inference",
 ]

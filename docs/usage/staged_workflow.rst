@@ -244,6 +244,31 @@ Python callers can use the same handoffs:
 For a runnable synthetic scientific parity example, see
 :download:`standard_handoffs.py <../../examples/standard_handoffs.py>`.
 
+Ordinary CO₂ handoffs
+---------------------
+
+Ordinary CO₂ uses its own coherent preparation and conditional affine output
+meaning. ``run_co2_from_config`` and its saved phases call the same preparation,
+materialization, construction, sampling and product operations; full execution
+requires no manifests. ``rhime run-co2`` consumes the configured model, sampler
+and output request. Direct ``run_rhime_co2`` calls continue to return traces.
+
+``rhime sample --model co2 --preparation-manifest ...`` consumes one preparation
+handoff and current inference choices. Compatible BC/offset priors or supported
+mismatch choices reuse preparation; changing defining native priors, covariance,
+operators or projection requires a coherent new preparation. Requested dates
+remain separate from retained observation extrema, including for imported pairs.
+
+``rhime postprocess --model co2 --sample-manifest ...`` loads saved scientific
+meaning and provenance without constructing a graph or sampling. It returns a
+``Co2Output`` scientific view with ``sampler=None`` and supports the same
+concentration and conditional native/country products as full execution.
+Missing imported request facts must be supplied explicitly. See
+:doc:`co2_model_family` for configuration, readiness/diagnosis, affine
+compatibility and the distinct cached-CO₂ boundary, and
+:download:`co2_handoffs.py <../../examples/co2_handoffs.py>` for an executable
+full/saved scientific comparison. Linked CO₂/O₂ and nested workflows are separate.
+
 Readiness and independent diagnosis
 -----------------------------------
 
@@ -270,12 +295,14 @@ and stage label.
 Other families and migration
 ----------------------------
 
-Multisector and CO2 retain their existing staged interfaces pending separate
+Multisector and cached CO2 retain their existing staged interfaces pending separate
 handoff adoption. They require explicit ``--model``, a full configuration and
 ``--prepared-inputs``/``--preparation-manifest`` for sampling. Postprocessing also
 requires ``--posterior`` and ``--sample-manifest``. Multisector retains its
-configuration restriction and output-binding record. CO2 takes an existing
-coherent preparation; see :doc:`co2_model_family` for its supported outputs.
+configuration restriction and output-binding record. Ordinary CO2 uses the
+manifest-only interface described above; cached CO2 takes an existing coherent
+preparation through its separate interface. See :doc:`co2_model_family` for
+supported CO2 outputs.
 Linked CO2/O2 staging remains separate work.
 
 The new standard handoff format replaces historical standard staged envelopes

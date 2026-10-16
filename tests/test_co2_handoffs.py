@@ -1,0 +1,250 @@
+"""Ordinary CO2 checkpoint integrity and graph-free scientific replay."""
+
+from dataclasses import replace
+import json
+
+import pytest
+import xarray as xr
+
+from openghg_inversions.basis.affine_flux_map_io import load as load_affine
+from openghg_inversions.rhime.co2 import handoffs
+from openghg_inversions.rhime.co2.co2_affine_output import produce_bucket_affine_flux_map
+from openghg_inversions.rhime.co2.configuration import resolve_co2_family_config
+from openghg_inversions.rhime.specs import RhimeOutputSpec
+from test_co2_affine_output import _prepared
+from test_co2_staged_outputs import _components_fixture as _raw_components_fixture
+
+
+def _components_fixture():
+    prepared, trace = _raw_components_fixture()
+    for group in trace.children.values():
+        for name, value in group.data_vars.items():
+            value.attrs["units"] = "1" if name == "state_custom" else "ppm"
+    return prepared, trace
+
+
+FACTS = {"start_date": "2019-12-01", "end_date": "2020-02-01", "domain": "EUROPE"}
+
+
+def _model(**likelihood):
+    return resolve_co2_family_config({
+        "format_version": 1, "recipe": "co2", "variant": "ordinary",
+        "prepared_inputs": {"path": "unused.nc"},
+        "likelihood": {"kind": "additive_sigma", "no_model_error": True, **likelihood},
+        "sampling": {"draws": 4, "tune": 2, "chains": 1, "nuts_sampler": "pymc"},
+    })
+
+
+@pytest.mark.parametrize("missing", ["start_date", "end_date", "domain"])
+def test_imported_preparation_requires_missing_requested_facts(tmp_path, missing):
+    prepared, _ = _prepared()
+    source = tmp_path / "source.nc"
+    prepared.save(source)
+    facts = {name: value for name, value in FACTS.items() if name != missing}
+    with pytest.raises(ValueError, match=missing):
+        handoffs.prepare(prepared_path=source, output_dir=tmp_path / "missing", **facts)
+    assert not (tmp_path / "missing").exists()
+
+
+@pytest.mark.parametrize("extension", [".nc", ".zarr"])
+def test_original_dates_are_distinct_from_observation_extrema_and_survive_import(tmp_path, extension):
+    prepared, _ = _prepared()
+    prepared = replace(prepared, provenance={**prepared.provenance, **FACTS})
+    source = tmp_path / f"source{extension}"
+    prepared.save(source)
+    manifest = handoffs.prepare(prepared_path=source, output_dir=tmp_path / "import")
+    loaded = handoffs.load_preparation(manifest)
+    assert loaded.start_date == FACTS["start_date"]
+    assert loaded.end_date == FACTS["end_date"]
+    assert loaded.domain == FACTS["domain"]
+    if extension == ".nc":
+        assert loaded.payload.read_bytes() == source.read_bytes()
+    else:
+        assert loaded.payload.is_dir()
+        xr.testing.assert_identical(loaded.prepared.inv_inputs, prepared.inv_inputs)
+    assert str(prepared.inv_inputs.time.values[0])[:10] == "2020-01-01"
+
+
+def test_new_affine_pair_uses_saved_content_binding_and_manifest_last(tmp_path, monkeypatch):
+    prepared, native = _prepared()
+    artifact = produce_bucket_affine_flux_map(prepared, native, prepared_inputs_id="in-memory")
+    manifest = handoffs.save_preparation(prepared, affine_artifact=artifact, output_dir=tmp_path / "new", **FACTS)
+    loaded = handoffs.load_preparation(manifest)
+    assert loaded.bound is not None
+    assert loaded.bound.artifact.prepared_inputs_id != "in-memory"
+    xr.testing.assert_equal(loaded.bound.affine_map.flux, prepared.basis_functions.flux.rename("flux"))
+    broken = replace(artifact, projection_provenance={"projection_strategy": "wrong"})
+    with pytest.raises(ValueError, match="projection provenance"):
+        handoffs.save_preparation(prepared, affine_artifact=broken, output_dir=tmp_path / "broken", **FACTS)
+    assert not (tmp_path / "broken" / "prepare-manifest.json").exists()
+
+
+def test_imported_affine_pair_is_copied_without_reencoding(tmp_path):
+    prepared, native = _prepared()
+    artifact = produce_bucket_affine_flux_map(prepared, native, prepared_inputs_id="in-memory")
+    first = handoffs.save_preparation(prepared, affine_artifact=artifact, output_dir=tmp_path / "first", **FACTS)
+    manifest = handoffs.prepare(
+        prepared_path=first.parent / "prepared-inputs.nc", affine_path=first.parent / "affine-flux-map.nc",
+        output_dir=tmp_path / "copy", **FACTS,
+    )
+    restored = handoffs.load_preparation(manifest)
+    assert restored.bound is not None
+    for name in ("prepared-inputs.nc", "affine-flux-map.nc"):
+        assert (manifest.parent / name).read_bytes() == (first.parent / name).read_bytes()
+
+
+def test_replaced_preparation_rejects_saved_generation_before_writing(tmp_path):
+    prepared, trace = _components_fixture()
+    manifest = handoffs.save_preparation(prepared, output_dir=tmp_path / "prep", **FACTS)
+    loaded = handoffs.load_preparation(manifest)
+    handoffs.save_preparation(prepared, output_dir=tmp_path / "prep", **FACTS)
+    with pytest.raises(ValueError, match="replaced"):
+        handoffs.save_samples(
+            manifest, trace, actual_inference=_model().sampler.describe(), preparation_generation=loaded.generation, output_dir=tmp_path / "sample",
+        )
+    assert not (tmp_path / "sample").exists()
+
+
+def test_sample_writer_rejects_missing_role_even_without_immediate_products(tmp_path):
+    prepared, trace = _components_fixture()
+    manifest = handoffs.save_preparation(prepared, output_dir=tmp_path / "prep", **FACTS)
+    generation = handoffs.load_preparation(manifest).generation
+    trace["posterior"] = trace.posterior.to_dataset().drop_vars("state_custom")
+    with pytest.raises(ValueError, match="flux_scale"):
+        handoffs.save_samples(
+            manifest, trace, actual_inference=_model().sampler.describe(), preparation_generation=generation, output_dir=tmp_path / "sample",
+        )
+    assert not (tmp_path / "sample").exists()
+
+
+def test_affine_source_or_projection_mismatch_never_completes(tmp_path):
+    prepared, native = _prepared()
+    artifact = produce_bucket_affine_flux_map(prepared, native, prepared_inputs_id="in-memory")
+    manifest = handoffs.save_preparation(prepared, affine_artifact=artifact, output_dir=tmp_path / "prep", **FACTS)
+    companion = manifest.parent / "affine-flux-map.nc"
+    incompatible = load_affine(companion)
+    assert incompatible.prepared_inputs_id
+    with pytest.raises(ValueError, match="start_date"):
+        handoffs.prepare(
+            prepared_path=manifest.parent / "prepared-inputs.nc", affine_path=companion,
+            output_dir=tmp_path / "incomplete", end_date=FACTS["end_date"], domain=FACTS["domain"],
+        )
+    assert not (tmp_path / "incomplete").exists()
+
+
+def test_graph_free_replay_keeps_recorded_sampler_and_provenance(tmp_path, monkeypatch):
+    prepared, trace = _components_fixture()
+    trace.attrs["rhime_priors"] = "{}"
+    prep = handoffs.save_preparation(prepared, output_dir=tmp_path / "prep", **FACTS)
+    generation = handoffs.load_preparation(prep).generation
+    sample = handoffs.save_samples(
+        prep, trace, actual_inference=_model().sampler.describe(), preparation_generation=generation, output_dir=tmp_path / "sample",
+    )
+    record = json.loads(sample.read_text())
+    record["actual_inference"] = {"draws": 25}
+    record["provenance"] = {"version": "saved-version", "revision": None, "dirty": None}
+    sample.write_text(json.dumps(record))
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Replay must not construct or sample")
+
+    monkeypatch.setattr(handoffs, "sample_rhime_model", forbidden)
+    monkeypatch.setattr(handoffs, "build_co2_from_materialized", forbidden)
+    monkeypatch.setattr(handoffs, "materialize_co2_inputs", forbidden)
+    monkeypatch.setattr(handoffs, "installed_ogi_provenance", forbidden)
+    output = RhimeOutputSpec(output_format="basic", save_inversion_output=False)
+    result = handoffs.postprocess(sample, output=output)
+    assert result.sampler is None
+    assert result.output_metadata["sampler"] == {"draws": 25}
+    assert result.output_metadata["provenance"] == record["provenance"]
+    assert result.start_date == FACTS["start_date"]
+    assert result.end_date == FACTS["end_date"]
+    assert "basic" in result.outputs
+
+
+def test_sample_checkpoint_cannot_overwrite_its_preparation(tmp_path):
+    prepared, trace = _components_fixture()
+    prep = handoffs.save_preparation(prepared, output_dir=tmp_path / "prep", **FACTS)
+    generation = handoffs.load_preparation(prep).generation
+    # Sample payload redirects onto the numerical preparation.
+    (prep.parent / "posterior.nc").symlink_to(prep.parent / "prepared-inputs.nc")
+    with pytest.raises(ValueError, match="overwrite"):
+        handoffs.save_samples(prep, trace, actual_inference=_model().sampler.describe(), preparation_generation=generation, output_dir=prep.parent)
+
+
+def test_readiness_scientific_and_loading_failures_propagate_before_destination(tmp_path, monkeypatch):
+    prepared, _ = _prepared()
+    prep = handoffs.save_preparation(prepared, output_dir=tmp_path / "prep", **FACTS)
+
+    def invalid(**kwargs):
+        raise ValueError("invalid coherent likelihood")
+
+    monkeypatch.setattr(handoffs, "materialize_co2_inputs", invalid)
+    with pytest.raises(ValueError, match="invalid coherent likelihood"):
+        handoffs.prior_predictive(prep, model=_model(), output_dir=tmp_path / "check", draws=2)
+    assert not (tmp_path / "check").exists()
+    (prep.parent / "prepared-inputs.nc").unlink()
+    with pytest.raises(FileNotFoundError):
+        handoffs.prior_predictive(prep, model=_model(), output_dir=tmp_path / "missing", draws=2)
+    assert not (tmp_path / "missing").exists()
+
+
+def test_failed_sample_write_invalidates_old_completion_marker(tmp_path, monkeypatch):
+    prepared, trace = _components_fixture()
+    prep = handoffs.save_preparation(prepared, output_dir=tmp_path / "prep", **FACTS)
+    generation = handoffs.load_preparation(prep).generation
+    sample = handoffs.save_samples(
+        prep, trace, actual_inference=_model().sampler.describe(), preparation_generation=generation, output_dir=tmp_path / "sample",
+    )
+
+    def failed(*args):
+        raise OSError("disk unavailable")
+
+    monkeypatch.setattr(handoffs, "save_trace", failed)
+    with pytest.raises(OSError, match="disk unavailable"):
+        handoffs.save_samples(
+            prep, trace, actual_inference=_model().sampler.describe(), preparation_generation=generation, output_dir=tmp_path / "sample",
+        )
+    assert not sample.exists()
+
+
+@pytest.mark.parametrize("recorded", [None, "missing", "malformed"])
+def test_missing_or_malformed_descriptive_metadata_stays_unavailable(tmp_path, recorded):
+    prepared, trace = _components_fixture()
+    prep = handoffs.save_preparation(prepared, output_dir=tmp_path / "prep", **FACTS)
+    sample = handoffs.save_samples(
+        prep, trace, actual_inference={"draws": 4},
+        preparation_generation=handoffs.load_preparation(prep).generation, output_dir=tmp_path / "sample",
+    )
+    record = json.loads(sample.read_text())
+    for name in ("actual_inference", "provenance"):
+        if recorded == "missing":
+            record.pop(name)
+        else:
+            record[name] = recorded
+    sample.write_text(json.dumps(record))
+    loaded = handoffs.load_samples(sample, output=RhimeOutputSpec(output_format="none", save_inversion_output=False))
+    assert loaded.sampler is None
+    assert loaded.output_metadata["sampler"] == {}
+    assert loaded.output_metadata["provenance"] == {}
+
+
+@pytest.mark.parametrize("sampler", [None, "unknown"])
+def test_invalid_live_sampler_fails_before_loading_preparation(tmp_path, sampler):
+    with pytest.raises((TypeError, ValueError), match="sampler"):
+        handoffs.sample(tmp_path / "missing.json", model=_model(), sampler=sampler, output_dir=tmp_path / "sample")
+    assert not (tmp_path / "sample").exists()
+
+
+def test_sample_reader_rejects_unsupported_inference_kind(tmp_path):
+    prepared, trace = _components_fixture()
+    prep = handoffs.save_preparation(prepared, output_dir=tmp_path / "prep", **FACTS)
+    sample = handoffs.save_samples(
+        prep, trace, actual_inference={"draws": 4},
+        preparation_generation=handoffs.load_preparation(prep).generation, output_dir=tmp_path / "sample",
+    )
+    record = json.loads(sample.read_text())
+    record["inference_kind"] = "variational"
+    sample.write_text(json.dumps(record))
+    with pytest.raises(ValueError, match="inference_kind"):
+        handoffs.load_samples(sample, output=RhimeOutputSpec(output_format="none", save_inversion_output=False))

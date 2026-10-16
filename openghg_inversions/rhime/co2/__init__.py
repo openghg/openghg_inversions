@@ -43,6 +43,8 @@ from .configuration import (
     load_co2_family_config,
     resolve_co2_family_config,
 )
+from .execution import run_co2_from_config
+from .co2_outputs import Co2Output
 
 __all__ = [
     "Co2O2RunSetup",
@@ -51,6 +53,7 @@ __all__ = [
     "BoundCo2AffineFluxMap",
     "Co2CachedSigmaModel",
     "Co2RunSetup",
+    "Co2Output",
     "annotate_co2_trace",
     "sample_co2_cached_prior_predictive",
     "build_co2_cached_sigma_model",
@@ -74,6 +77,7 @@ __all__ = [
     "produce_bucket_affine_flux_map",
     "resolve_co2_family_config",
     "run_rhime_co2",
+    "run_co2_from_config",
     "run_rhime_co2_cached_sigma",
     "run_rhime_co2_o2_from_prepared_inputs",
     "run_rhime_co2_o2_cached_sigma_from_prepared_inputs",

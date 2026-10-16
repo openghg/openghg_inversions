@@ -57,7 +57,13 @@ def test_unsampled_builders_and_correlated_cached_prior(monkeypatch: Any, tmp_pa
         raise AssertionError("Building a staged graph must not sample the posterior")
 
     for module in (co2_runner, co2_cached_sigma_runner):
-        monkeypatch.setattr(module, "materialize_pymc_inputs", materialize)
+        if module is co2_runner:
+            monkeypatch.setattr(module, "_materialize_pymc_inputs_and_priors",
+                                lambda prepared, *, variable_names, prior_parameters: (
+                                    materialize(prepared, variable_names=variable_names), prior_parameters,
+                                ))
+        else:
+            monkeypatch.setattr(module, "materialize_pymc_inputs", materialize)
         monkeypatch.setattr(module, "sample_rhime_model", unexpected_sampling)
     prepared = cast(Any, Prepared())
     ordinary = build_rhime_co2(prepared_inputs=prepared, no_model_error=True)

@@ -16,11 +16,11 @@ from openghg_inversions.rhime.co2.co2_outputs import (
     _affine_products,
     _basic_product,
     make_co2_rhime_outputs,
-    make_co2_rhime_result,
+    make_co2_output,
     reconstruct_co2_concentrations,
     validate_co2_outputs,
 )
-from openghg_inversions.rhime.specs import RhimeModelSpec, RhimeOutputSpec, RhimeRunSpec
+from openghg_inversions.rhime.specs import RhimeOutputSpec
 from openghg_inversions.serialization import restore_serialisation_multiindexes
 from test_co2_affine_output import _prepared
 
@@ -113,18 +113,15 @@ def test_direct_basic_output_roundtrips_observation_multiindex_without_mutating_
     prepared, trace = _components_fixture()
     inputs_before = prepared.inv_inputs.copy(deep=True)
     trace_before = trace.copy(deep=True)
-    run_spec = RhimeRunSpec(
+    result = make_co2_output(
+        prepared=prepared, trace=trace,
         start_date="2020-01-01",
         end_date="2020-02-01",
-        sites=("MHD",),
-        averaging_period=("1h",),
-        model=RhimeModelSpec(species="co2", domain="EUROPE", sectors=()),
+        domain="EUROPE",
         output=RhimeOutputSpec(
             output_format="basic", output_path=str(tmp_path), save_inversion_output=False
         ),
     )
-    result = make_co2_rhime_result(prepared=prepared, run_spec=run_spec, sampler=None, idata=trace)
-
     make_co2_rhime_outputs(result=result, prepared=prepared)
 
     with xr.open_dataset(result.output_metadata["basic_path"]) as saved:

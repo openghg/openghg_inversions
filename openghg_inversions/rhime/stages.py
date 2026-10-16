@@ -1,10 +1,11 @@
 """Public file-backed RHIME stages and explicit family dispatch.
 
 This module is in transition: standard ``prepare``, ``sample`` and ``postprocess``
-use the current numerical handoffs, while multisector and CO2 dispatch retains
+use the current numerical handoffs, while multisector and cached CO2 dispatch retain
 its earlier interfaces until those recipes migrate. The public stage namespace
 remains; retaining the old family wrappers does not make them the standard API.
 Concrete workflows own scientific execution and replay policy.
+Ordinary CO2 uses ``co2.handoffs`` and rejects these retained envelope wrappers.
 """
 
 from __future__ import annotations

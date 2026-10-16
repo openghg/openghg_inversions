@@ -22,7 +22,9 @@ Current support
      - CO₂ and O₂ channels with shared and tracer-specific retained states and
        cross-channel covariance.
    * - Public entry point
-     - :func:`openghg_inversions.rhime.run_rhime_co2`; see the
+     - :func:`openghg_inversions.rhime.co2.run_co2_from_config` consumes a
+       configured product request. :func:`openghg_inversions.rhime.run_rhime_co2`
+       retains its direct scientific trace return; see the
        :ref:`package-supported cached-sigma specialization
        <co2-cached-sigma-recipe>` for its prepared-input runner.
      - :func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs`
@@ -42,6 +44,7 @@ Current support
    * - Configuration
      - A packaged TOML template and strict resolver produce explicit arguments
        for the ordinary or cached fixed-OU prepared-input Python runner.
+       Ordinary full and saved operations resolve their own applicable choices.
      - A packaged TOML template and strict resolver produce explicit arguments
        for the linked ordinary and cached fixed-OU prepared-input Python runners.
    * - Fixed-OU mismatch
@@ -62,13 +65,15 @@ Current support
        a joint log likelihood, preserving cross-channel covariance with the
        matched cached sampler.
    * - Staged workflow
-     - Installed ``--model co2`` stages support ordinary and cached fixed-OU
-       replay from a saved coherent prepared-input artifact; see
+     - Ordinary ``--model co2`` phases consume one preparation or sample
+       manifest. Cached fixed-OU retains its separate staged interface; see
        `Staged CO₂ commands`_ below.
      - Not supported by the staged CLI.
    * - Outputs and postprocessing
-     - Returns an annotated xarray ``DataTree``. Use the documented serialization
-       boundary. :ref:`Conditional native-flux and country summaries
+     - Direct scientific runners return an annotated xarray ``DataTree``.
+       Configured ordinary execution returns ``Co2Output`` with its trace,
+       in-memory products and requested file paths.
+       :ref:`Conditional native-flux and country summaries
        <co2-affine-flux-summaries>` are available from a bound affine artifact;
        staged basic, concentration, conditional native-flux and country products
        are available, with supported PARIS exports.
@@ -98,8 +103,8 @@ making those concepts specific to CO₂.
 The family page records present software support, not evidence that a selected
 recipe is scientifically suitable for a particular inversion. Linked
 staged integration and scientist acceptance are tracked in `OPE-79
-<https://linear.app/openghg-inversions/issue/OPE-79>`_. The CO₂ staged commands
-reuse the existing TOML configuration boundary and prepared-input Python runners.
+<https://linear.app/openghg-inversions/issue/OPE-79>`_. The CO₂ commands reuse
+the TOML configuration boundary and prepared-input scientific operations.
 
 The CO2-only handoff is intentionally separate from both the generic
 ``RhimePreparedInputs`` boundary and the linked CO2/O2 preparation contract.
@@ -114,20 +119,29 @@ standard and multisector runners or to ``run_hbmcmc.py``.
 Staged CO₂ commands
 -------------------
 
-Use the installed ``openghg-inversions`` command with ``--model co2`` and a
-CO₂ TOML configuration. First construct and save a
-:class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact with
-:func:`~openghg_inversions.rhime.co2.prepare_co2_inputs`; this is the scientific
-handoff from your observation preparation and coherent reduction. The staged
-``prepare`` command validates and copies that artifact and writes a manifest.
+Ordinary CO₂ starts from canonical scientific inputs and a coherent reduction,
+or an existing :class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact.
 It does not acquire OpenGHG data or infer a coherent reduction from a gas name.
+``run_co2_from_config`` prepares or loads inputs, explicitly materializes the
+selected scientific arrays, constructs the model, samples, then
+calculates and writes requested products. Full execution uses no manifests.
+The direct ``run_rhime_co2`` runner still returns its annotated trace.
 
-CO₂ manifests record the installed package version, Git revision and checkout
-modification status when available. A release wheel without VCS metadata or an
-associated checkout can run these stages; unavailable revision and modification
-status are recorded as ``null``.
+Saved phases call those same scientific operations. ``prepare`` imports an
+existing numerical artifact and its optional affine companion; Python callers
+can also prepare from canonical inputs and a coherent reduction. A new
+prepared/affine pair is saved with the existing codecs and checked by the affine
+loader before its manifest is written. Imported pairs retain their numerical
+association. Both routes retain source labels, grids and projection meaning.
 
-For example, an ordinary configuration can contain:
+Record original requested dates and domain explicitly. Filtering can remove
+observations at both edges, so retained observation extrema cannot supply the
+original request. Missing imported facts fail clearly; supply
+``prepared_inputs.start_date``, ``end_date`` and ``domain``, or retain those facts
+in preparation provenance. Sites and averaging periods come from the retained
+numerical preparation.
+
+An ordinary TOML configuration can contain:
 
 .. code-block:: toml
 
@@ -137,6 +151,9 @@ For example, an ordinary configuration can contain:
 
    [prepared_inputs]
    path = "prepared-co2.nc"
+   start_date = "2020-01-01"
+   end_date = "2020-02-01"
+   domain = "EUROPE"
 
    [likelihood]
    kind = "additive_sigma"
@@ -154,85 +171,106 @@ For example, an ordinary configuration can contain:
    [outputs]
    output_format = "basic"
    output_name = "co2"
+   save_inversion_output = false
 
-Run each stage with explicit handoffs:
+Full configured execution writes the selected products to the supplied directory:
 
 .. code-block:: bash
 
-   openghg-inversions prepare --model co2 -c co2.toml \
-     --output-dir run/prepare
-   openghg-inversions prior-predictive --model co2 -c co2.toml \
-     --prepared-inputs run/prepare/prepared-inputs.nc \
+   rhime run-co2 -c co2.toml --output-path run/full
+
+Alternatively, save preparation and inference separately:
+
+.. code-block:: bash
+
+   rhime prepare --model co2 -c co2.toml --output-dir run/prepare
+   rhime prior-predictive --model co2 -c co2.toml \
      --preparation-manifest run/prepare/prepare-manifest.json \
      --draws 100 --strict --output-dir run/prior
-   openghg-inversions sample --model co2 -c co2.toml \
-     --prepared-inputs run/prepare/prepared-inputs.nc \
+   rhime sample --model co2 -c co2.toml \
      --preparation-manifest run/prepare/prepare-manifest.json \
      --output-dir run/sample
-   openghg-inversions diagnose \
-     --posterior run/sample/posterior.nc \
+   rhime diagnose --posterior run/sample/posterior.nc \
      --sample-manifest run/sample/sample-manifest.json \
      --strict --output-dir run/diagnose
-   openghg-inversions postprocess --model co2 -c co2.toml \
-     --prepared-inputs run/prepare/prepared-inputs.nc \
-     --preparation-manifest run/prepare/prepare-manifest.json \
-     --posterior run/sample/posterior.nc \
+   rhime postprocess --model co2 -c co2.toml \
      --sample-manifest run/sample/sample-manifest.json \
      --output-dir run/postprocess
 
-``prior-predictive --strict`` exits unsuccessfully when its readiness check
-fails. ``diagnose --strict`` exits unsuccessfully when a convergence threshold
-fails; inspect ``sampler-convergence.json`` and the diagnostic summary before
-using posterior summaries. A short smoke test is not evidence of convergence.
+``prepare`` and ``sample`` each print one absolute manifest path. Ordinary
+sampling needs only that preparation manifest and current inference choices;
+postprocessing needs only the sample manifest and current output choices.
+Separate ``--prepared-inputs`` or ``--posterior`` arguments are not accepted on
+these ordinary scientific phases. Each phase resolves its own configuration
+sections; prior readiness requires no posterior sampler or final-product choices.
+Relative configuration paths resolve from the invocation working directory.
+Manifest references resolve relative to their declaring manifest; absolute
+shared-cache references are also supported. Keep manifests and their dependencies.
 
-For cached fixed-OU replay, use ``variant = "cached_fixed_ou"`` and replace the
-likelihood table with:
+Compatible BC/offset priors and supported mismatch changes can sample the same
+preparation into another destination. Per-site model mappings validate every
+supplied value, including values for dropped sites, require retained-site
+coverage, then select retained labels. Ordinary fixed sigma is nonnegative;
+OU time scales are positive. Defining native priors, covariance, operators and
+projections determine coherent preparation and require a coherent new preparation
+when changed. Full-configuration equality and callable representations do not
+decide scientific compatibility.
 
-.. code-block:: toml
+Replay loads saved trace roles, inference provenance and affine associations.
+It performs no acquisition, preparation, model construction or inference, and
+returns ``Co2Output`` with ``sampler=None``. Missing descriptive facts remain
+unavailable. Records include package version and Git revision/checkout status
+when available; unavailable VCS facts are ``null`` and do not prevent execution.
 
-   [likelihood]
-   kind = "fixed_ou"
-   tau_hours = 24.0
-   site_amplitude_prior_scale = 1.0
+``prior-predictive --strict`` exits unsuccessfully for a failed readiness check;
+unknown checks retain their existing meaning. Invalid returned predictive
+evidence produces a failed report and retains applicable predictive artifacts.
+CO₂ execution errors propagate before creating the readiness destination.
+``diagnose`` assesses the supplied posterior independently of construction;
+``--strict`` exits unsuccessfully when an available convergence threshold fails.
+A short smoke test is not evidence of convergence.
 
-Keep ``sampling.nuts_sampler = "pymc"``. The same staged commands apply. The
-ordinary variant also supports its documented fixed-OU and specialized
-likelihood choices; their prepared data and cache prerequisites still apply.
-
-Preserve the preparation and sample manifests with the matched NetCDF files
-and original scientific configuration. Stages retain configuration-equality
-checks but do not authenticate files with workflow digests. Numerical consumers
-validate scientific compatibility, including the affine reconstruction's
-association with its prepared artifact. Paths inside the TOML file resolve
-relative to that file.
-
-Conditional native-flux and country outputs require saved prior and posterior
-``flux_scale`` draws and an affine reconstruction bound to the exact prepared
-artifact. Enable ``sampling.sample_prior_predictive`` when generating the prior
-draws. During replay, the output consumer checks the saved trace; current
-sampler settings do not restrict products from existing draws. Missing required
-draws fail before output files are written. Add the following to
-``[outputs]`` when those artifacts are available:
+Conditional native-flux and country products require prior and posterior
+``flux_scale`` draws and a companion bound to the preparation used for inference.
+Enable ``sampling.sample_prior_predictive`` to retain prior draws. Missing
+required draws or incompatible affine inputs fail before product writing. Add
+these fields to ``[outputs]`` when importing an existing bound pair:
 
 .. code-block:: toml
 
    reconstruction_path = "co2-affine.nc"
    country_file = "countries.nc"
 
-The affine artifact is produced with the APIs described under
-:ref:`co2-affine-flux-summaries`. Source identities are preserved through
-reconstruction. If reporting sectors differ from native sources, supply an
-explicit ``[outputs.source_to_sector]`` mapping. Source sums and sector
-transforms precede uncertainty statistics. Native-flux and country products
-carry ``retained_state_conditional`` uncertainty scope; they do not include the
-unresolved native-state posterior uncertainty tracked separately in OPE-68.
+The affine artifact APIs are described under :ref:`co2-affine-flux-summaries`.
+Sample replay uses the saved companion; later output choices cannot replace its
+scientific meaning. Native sources retain their identities; when reporting
+sectors differ, supply an explicit ``outputs.source_to_sector`` mapping.
+Source sums and sector transforms precede uncertainty statistics. Native-flux
+and country products carry ``retained_state_conditional`` uncertainty scope;
+they exclude unresolved native-state posterior uncertainty tracked in OPE-68.
 
-``postprocess`` writes ``basic.nc``, concentration components and requested
-conditional products, plus ``postprocess-manifest.json`` listing the product
-paths. ``output_format = "paris"`` requests supported PARIS concentration and
-flux products and requires the bound reconstruction and an explicit
-``outputs.country_file``. Supported PARIS exports use the latest templates,
-mean summaries, native grids and midpoint flux
-timestamps. Legacy inversion-output formats and unsupported PARIS options are
-rejected before product writing.
-Linked CO₂/O₂ staged routing is tracked separately in OPE-165.
+``Co2Output`` contains the preparation, annotated trace, original requested
+window, optional bound affine reconstruction, in-memory products and file-path
+metadata. Its supported products are basic summaries, concentration components
+and conditional native/country summaries. A later ``output_format = "paris"``
+request writes supported concentration and flux products from the same samples;
+it requires the bound companion and an explicit country file. PARIS supports the
+latest templates, means, native grids and midpoint flux timestamps. ``inv_out``,
+legacy formats and unsupported PARIS options fail before product writing.
+See :download:`co2_handoffs.py <../../examples/co2_handoffs.py>` for real
+coherent preparation, filtering at both edges, full/saved comparison and signed
+affine products. ``Co2Output`` retains the conditional affine meaning; a standard
+multiplicative ``InversionOutput`` cannot represent that reconstruction.
+
+Cached and linked boundaries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Cached CO₂ handoff adoption remains separate. Its existing
+``variant = "cached_fixed_ou"`` staged interface continues to use explicit
+``--prepared-inputs``, ``--preparation-manifest``, ``--posterior`` and
+``--sample-manifest`` arguments where applicable. It does not consume the new
+ordinary handoff format. Use ``likelihood.kind = "fixed_ou"``, a positive
+``tau_hours``, ``site_amplitude_prior_scale`` and ``sampling.nuts_sampler = "pymc"``
+for that existing route. Preserve its original configuration and matched files.
+Linked CO₂/O₂ staged routing remains separate in OPE-165; nested workflows are
+outside these CO₂ commands.

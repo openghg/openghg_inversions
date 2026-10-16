@@ -296,7 +296,7 @@ suite, supported Python versions, typing and documentation.
 
 ## 3. Ordinary CO2 reusable-handoff adoption
 
-- [ ] 3.1 Resolve owned CO2 phase choices consistently for configured full and
+- [x] 3.1 Resolve owned CO2 phase choices consistently for configured full and
   staged execution, reusing its readable preparation/building/inference owners.
   Verify the actual configured full-run entry point consumes model/sampler/output
   choices and writes the selected products/destination, while raw runner trace
@@ -304,12 +304,12 @@ suite, supported Python versions, typing and documentation.
   keep the full route independent of manifest machinery while sharing its step
   functions with the saved phases (design decision 8). Delete the CO2 branches of
   the staged envelope facade once the handoffs replace them.
-- [ ] 3.2 Implement ordinary CO2 prepared/sample handoffs using existing numerical
+- [x] 3.2 Implement ordinary CO2 prepared/sample handoffs using existing numerical
   persistence and trace/affine output meaning. Verify independent BC/offset priors
   or supported mismatch changes reuse coherent preparation; changed defining
   native prior/covariance/operator/projection requires new preparation. Check that
   the affine reconstruction uses the prepared sources and grid.
-- [ ] 3.3 Preserve authoritative requested dates separately from retained
+- [x] 3.3 Preserve authoritative requested dates separately from retained
   observation extrema for imported and newly produced CO2 preparations. Verify
   filtering both period edges does not shorten output metadata; make missing
   required imported facts explicit rather than inferring them from observations.
@@ -317,12 +317,12 @@ suite, supported Python versions, typing and documentation.
   codecs, check their scientific compatibility, then save the manifest last.
   Verify imported bound pairs remain valid and native/country replay works for a newly
   produced pair as well as an imported pair.
-- [ ] 3.4 Validate per-site model mappings at inference against prepared retained
+- [x] 3.4 Validate per-site model mappings at inference against prepared retained
   labels: permit valid extra requested sites, validate every supplied value even
   for dropped sites, require retained coverage, then select retained labels.
   Cover nonnegative ordinary fixed sigma and positive OU time scales, including
   zero/negative/nonfinite values and unequal per-site options.
-- [ ] 3.5 Deliver ordinary CO2 CLI/examples, guidance/docstrings, readiness,
+- [x] 3.5 Deliver ordinary CO2 CLI/examples, guidance/docstrings, readiness,
   independent diagnosis and applicable release notes with its writer/reader/callers.
   Verify unsupported science/output requests fail before expensive work or report
   destination creation, predictive evidence retains its scientific meaning and
@@ -332,6 +332,71 @@ suite, supported Python versions, typing and documentation.
   affine reconstruction references, plus configured-full/staged/replay products
   and focused/relevant broader checks. Record the merged evidence and the public
   product entry point before cached adoption; leave linked CO2/O2 work in OPE-165.
+
+### Ordinary CO2 implementation evidence — 16 October 2026
+
+Branch `codex/ope-207-ordinary-co2-handoffs` starts from current `devel`
+`208a21d9`, including merged standard #866 and configuration closeout #883.
+This covers ordinary CO2 only, part of #880/OPE-207 and #808. Task 3.6 remains
+open for broader validation, review and merged evidence; no maintainer
+readability acceptance, cached adoption or programme completion is claimed.
+
+The public configured product entry point is `co2.run_co2_from_config`, exposed
+by `rhime run-co2`. It consumes model, sampler and output choices; the direct
+`run_rhime_co2` still returns its annotated trace. Full/saved routes visibly call
+`materialize_co2_inputs`, `build_co2_from_materialized`, `sample_rhime_model`,
+trace annotation, `make_co2_output`, `calculate_co2_products` and
+`save_co2_products`. Full execution uses no manifests.
+
+Following the user's instruction to copy the standard scientific-result pattern,
+ordinary execution returns `Co2Output`, borrowing preparation/trace and retaining
+conditional affine meaning, without constructing `RhimeResult` or `RhimeRunSpec`.
+A standard multiplicative `InversionOutput` cannot represent this reconstruction.
+CO2 records keep explicit requested facts and numerical provenance without
+inventing an acquisition `DataConfig` with defaults. Cached adapters remain until
+section 4; these family-specific differences need reviewer acceptance.
+
+`co2.handoffs` keeps writers/readers/callers together: ordinary references,
+generation binding, manifest-last completion and existing NetCDF/Zarr codecs.
+Replay uses saved trace roles/provenance with `sampler=None`, without callable
+import, acquisition, model-input materialization, construction or inference.
+Missing/malformed descriptive metadata remains unavailable. Existing coherent
+reduction and affine content/projection/source/grid/unit/operator checks stay at
+their owners; bucket assignment and signed-flux comparisons now serve both
+live/saved binding. Retained-site numeric validation checks all supplied values
+before selecting retained labels.
+
+`examples/co2_handoffs.py` runs full/saved product parity and a second compatible
+BC/offset/fixed-mismatch choice from unchanged preparation. Actual filtering
+removes both period edges. Tests cover new/imported affine pairs, explicit missing
+imported facts, original PARIS bounds, independent concentration/flux equations
+and a SciPy likelihood reference (product `rtol` up to `2e-6`; likelihood
+`rel=1e-5`, `abs=1e-4`). Short chains establish plumbing, not convergence.
+
+Validation before Slurm:
+
+- 227 ordinary science/configuration/handoff/CLI/likelihood checks passed.
+- 141 coherent/affine/codec/product-owner checks passed.
+- 128 cached/linked/scalar-sigma/deferred-replay regressions passed.
+- 93 standard handoff/phase checks passed.
+- Final integration reruns: 19 parity/CLI checks, 27 CO2/standard phase checks,
+  45 public-selector/sampler/resource checks and 6 installed ordinary/cached/full
+  CLI cases passed, including requested trace export.
+- Changed-path Ruff, `git diff --check` and strict OpenSpec validation pass.
+- Full locked Python 3.12/3.13, type and strict documentation checks use the
+  repository Slurm runner; terminal evidence will be recorded separately.
+
+Concrete cached handoff: consume `load_preparation` (coherent inputs, bound
+companion and generation), keep the matched cached construction/step owner and
+PyMC backend, save through `save_samples(actual_inference=...,
+preparation_generation=...)`, and return `Co2Output` before explicit product
+calculation/exports. Preserve sigma-then-state order, accepted cache updates,
+prediction roles and covariance/eigenbasis checks. Validate cached per-site
+initialization and OU mappings at their owner. Run cached likelihood/dense-oracle/
+posterior-reference checks plus new/imported affine replay. The retained cached
+envelope/hash/date routing is a section 4/#808 residual. Linked CO2/O2 stays in
+OPE-165; nested stays outside this change. Sections 4–5 and OPE-207/#880/#808
+remain open. No storage redesign or acquisition persistence was added.
 
 ## 4. Cached CO2 reusable-handoff adoption
 

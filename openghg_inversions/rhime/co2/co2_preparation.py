@@ -468,6 +468,31 @@ class Co2PreparedInputs:
         return cls.from_datatree(open_datatree_loaded(file_path))
 
 
+def requested_co2_facts(
+    prepared: Co2PreparedInputs, *, start_date: str | None = None,
+    end_date: str | None = None, domain: str | None = None,
+) -> dict[str, str]:
+    """Return authoritative requested facts without inferring observation extrema.
+
+    Explicit values take precedence over exact preparation provenance keys.
+    Imported preparations missing dates or domain require the caller to supply
+    them; filtering observations cannot recover the original requested window.
+    """
+    facts = {"start_date": start_date, "end_date": end_date, "domain": domain}
+    for name, value in facts.items():
+        if value is None:
+            facts[name] = prepared.provenance.get(name)
+    missing = [name for name, value in facts.items() if not isinstance(value, str) or not value.strip()]
+    if missing:
+        raise ValueError(f"CO2 preparation requires explicit requested facts: {missing!r}.")
+    result = {name: str(value) for name, value in facts.items()}
+    start, end = pd.Timestamp(result["start_date"]), pd.Timestamp(result["end_date"])
+    if pd.isna(start) or pd.isna(end) or start >= end:
+        raise ValueError("CO2 requested start_date must precede a valid end_date.")
+    return result
+
+
+
 def prepare_co2_inputs(
     canonical_inputs: RhimePreparedInputs,
     reduction: CoherentGaussianReduction,
@@ -717,4 +742,5 @@ __all__ = [
     "CO2_PREPARED_INPUTS_SCHEMA_VERSION",
     "Co2PreparedInputs",
     "prepare_co2_inputs",
+    "requested_co2_facts",
 ]

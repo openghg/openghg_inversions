@@ -586,20 +586,32 @@ def _tau_values(
 
 
 def _site_values(
-    value: ArrayLike | float,
+    value: ArrayLike | float | Mapping[str, float],
     n_site: int,
     name: str,
     *,
     positive: bool,
+    coordinate: xr.DataArray | None = None,
 ) -> FloatArray:
-    values = np.asarray(value, dtype=np.float64)
+    supplied = list(value.values()) if isinstance(value, Mapping) else value
+    raw = np.asarray(supplied, dtype=object)
+    if any(
+        isinstance(item, (bool, np.bool_))
+        or not isinstance(item, (int, float, np.integer, np.floating))
+        for item in (value.values() if isinstance(value, Mapping) else raw.flat)
+    ):
+        raise ValueError(f"{name} must contain numeric values, not boolean or nonnumeric values.")
+    values = np.asarray(supplied, dtype=np.float64)
+    if not np.isfinite(values).all() or np.any(values <= 0.0 if positive else values < 0.0):
+        qualifier = "strictly positive" if positive else "non-negative"
+        raise ValueError(f"{name} must contain finite, {qualifier} values.")
+    if isinstance(value, Mapping):
+        assert coordinate is not None
+        values = np.asarray(expand_mapping(value, coordinate).values, dtype=np.float64)
     if values.ndim == 0:
         values = np.full(n_site, values.item(), dtype=np.float64)
     elif values.shape != (n_site,):
         raise ValueError(f"{name} must be scalar or have shape {(n_site,)}, got {values.shape}.")
-    if not np.isfinite(values).all() or np.any(values <= 0.0 if positive else values < 0.0):
-        qualifier = "strictly positive" if positive else "non-negative"
-        raise ValueError(f"{name} must contain finite, {qualifier} values.")
     return cast(FloatArray, values.copy())
 
 
@@ -624,6 +636,9 @@ def add_fixed_ou_gaussian_likelihood(
     strictly positive generalized base-plus-OU mode variances before the
     low-rank update. ``sigma_alignment`` may explicitly map a labelled joint
     observation axis to species/site groups; by default groups are sites.
+    Site mappings must cover the retained labels. Every supplied amplitude
+    must be numeric, finite and non-negative, and every supplied time scale
+    must be numeric, finite and positive, including entries for dropped sites.
     """
     if fixed_site_amplitudes is not None and site_amplitude_prior is not None:
         raise ValueError("Pass either `fixed_site_amplitudes` or `site_amplitude_prior`, not both.")
@@ -651,10 +666,8 @@ def add_fixed_ou_gaussian_likelihood(
     site_labels = tuple(str(label) for label in site_coord.values)
     observation_variance = np.square(np.asarray(observation_error.values, dtype=np.float64))
     factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation_error)
-    resolved_tau = (
-        expand_mapping(tau_hours, site_coord).values
-        if isinstance(tau_hours, Mapping)
-        else tau_hours
+    resolved_tau = _site_values(
+        tau_hours, alignment.nsite, "tau_hours", positive=True, coordinate=site_coord
     )
     prepared = prepare_fixed_ou_low_rank(
         factor,
@@ -667,12 +680,11 @@ def add_fixed_ou_gaussian_likelihood(
     fixed_amplitudes = None
     if fixed_site_amplitudes is not None:
         fixed_amplitudes = _site_values(
-            expand_mapping(fixed_site_amplitudes, site_coord).values
-            if isinstance(fixed_site_amplitudes, Mapping)
-            else fixed_site_amplitudes,
+            fixed_site_amplitudes,
             alignment.nsite,
             "fixed_site_amplitudes",
             positive=False,
+            coordinate=site_coord,
         )
         mode_variance = prepared.mode_eigenvalues + np.square(fixed_amplitudes)[
             prepared.mode_site_index

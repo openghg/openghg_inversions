@@ -75,7 +75,11 @@ choices call their existing prepared-input recipes. They require the appropriate
 ``prepared_inputs`` object and preserve each recipe's arguments and return type;
 selection does not provide a new acquisition or checkpoint route. These families
 are therefore not choices for the configuration-driven ``rhime run`` command.
-Existing CO2 staged commands retain their current support boundaries.
+For configured ordinary CO₂ products use the separate ``rhime run-co2`` command
+or :func:`openghg_inversions.rhime.co2.run_co2_from_config`. These consume
+prepared scientific inputs and explicit requested dates/domain rather than
+acquiring OpenGHG data; direct Python recipe selection still returns its trace.
+See :doc:`co2_model_family` for the TOML configuration and handoff commands.
 
 ``openghg-inversions`` and its ``run-rhime``, ``run-rhime-multisector`` and
 ``run-rhime-nested`` subcommands remain supported through the 0.9 compatibility
@@ -227,6 +231,9 @@ separate a run into persisted handoffs. Select ``--model standard``,
 ``diagnose`` reads the posterior independently of the recipe. See
 :doc:`staged_workflow` for the shared stage interface and
 :doc:`co2_model_family` for ordinary and cached fixed-OU CO2 TOML examples.
-The CO2 route starts from a saved coherent prepared-input artifact and requires
-an identifiable installed Git revision; it uses its own constrained output
-contract.
+Ordinary CO₂ sampling consumes only its preparation manifest, and replay consumes
+only its sample manifest plus current output choices. Saved scientific meaning
+and provenance drive replay without constructing a graph. The existing cached
+CO₂ stage interface remains separate; see :doc:`co2_model_family`. Git revision
+and checkout status are recorded when available, with unavailable values left
+explicitly unknown.

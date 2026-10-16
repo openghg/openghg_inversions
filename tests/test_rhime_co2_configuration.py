@@ -22,6 +22,7 @@ from openghg_inversions.rhime.co2.configuration import (
     co2_config_templates,
     load_co2_family_config,
     resolve_co2_family_config,
+    resolve_co2_inference,
 )
 from openghg_inversions.rhime.co2.co2_cached_sigma_runner import (
     run_rhime_co2_cached_sigma,
@@ -550,3 +551,33 @@ def test_linked_binding_rechecks_units_against_prepared_inputs() -> None:
 
     with pytest.raises(ValueError, match="channels.o2.units"):
         setup.runner_arguments(prepared)
+
+
+def test_imported_preparation_facts_are_explicit_and_optional() -> None:
+    config = _ordinary()
+    config["prepared_inputs"] = {
+        "path": "prepared.zarr", "start_date": "2020-01-01", "end_date": "2020-02-01", "domain": "EUROPE",
+    }
+    setup = cast(Co2RunSetup, resolve_co2_family_config(config))
+    assert dict(setup.preparation_kwargs) == {
+        "path": Path("prepared.zarr"), "start_date": "2020-01-01", "end_date": "2020-02-01", "domain": "EUROPE",
+    }
+    assert dict(cast(Co2RunSetup, resolve_co2_family_config(_ordinary())).preparation_kwargs) == {
+        "path": Path("prepared.zarr")
+    }
+
+
+def test_inference_resolution_consumes_only_owned_choices() -> None:
+    config = _ordinary()
+    del config["prepared_inputs"]
+    config["outputs"] = object()
+    setup = resolve_co2_inference(config)
+    assert setup.preparation_kwargs == {}
+    assert setup.runner is run_rhime_co2
+    assert setup.runner_kwargs["sigma_prior"] == {"pdf": "halfnormal", "sigma": 0.75}
+    assert setup.sampler.draws == 20
+    config["sampling"] = object()
+    prior_setup = resolve_co2_inference(config, sampling=False)
+    assert prior_setup.sampler is not resolve_co2_inference(config, sampling=False).sampler
+    with pytest.raises(TypeError, match="sampling must be a table"):
+        resolve_co2_inference(config)
