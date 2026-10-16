@@ -188,8 +188,9 @@ recursive immutability of borrowed arrays or caller-owned containers.
 Configuration groups acquisition and preparation choices under
 ``RhimeConfig.data: DataConfig``. The runner acquires data separately and passes
 it into scientific preparation. ``MergedData`` holds acquired data only;
-preparation steps pass per-site datasets and ``SiteOptions`` between them. The standard recipe supports reusable preparation and sample manifests; see
-:doc:`/usage/staged_workflow`. The remaining family adoption tasks from
+preparation steps pass per-site datasets and ``SiteOptions`` between them.
+Standard and multisector recipes support reusable preparation and sample
+manifests; see :doc:`/usage/staged_workflow`. The remaining family adoption tasks from
 `PR 802 <https://github.com/openghg/openghg_inversions/pull/802>`_ remain active.
 This guide does not fix private module locations, configuration class layout,
 or future manifest structure. Existing templates and complete option listings

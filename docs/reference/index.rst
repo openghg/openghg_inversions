@@ -30,7 +30,6 @@ runner.
    openghg_inversions.rhime.run_nested
    openghg_inversions.rhime.run_rhime_multisector
    openghg_inversions.rhime.run_rhime_nested
-   openghg_inversions.rhime.run_rhime_from_prepared_inputs
    openghg_inversions.rhime.run_rhime_nested_from_prepared_inputs
    openghg_inversions.rhime.co2.run_co2
    openghg_inversions.rhime.co2.run_rhime_co2_cached_sigma
@@ -59,11 +58,11 @@ retained execution metadata and compatibility helpers.
    openghg_inversions.rhime.DataConfig.select
    openghg_inversions.inversion_data.SiteOptions
 
-Reuse standard preparation and samples
---------------------------------------
+Reuse standard and multisector preparation and samples
+------------------------------------------------------
 
-These standard-route operations share the full runner's scientific preparation
-and output owners. See the :doc:`saved-phase guide </usage/staged_workflow>` for
+These operations share their recipe's full runner preparation, inference and
+output owners. See the :doc:`saved-phase guide </usage/staged_workflow>` for
 manifest lifetime, compatible model changes and graph-free product replay.
 
 .. autosummary::
@@ -77,15 +76,31 @@ manifest lifetime, compatible model changes and graph-free product replay.
    openghg_inversions.rhime.stages.load_samples
    openghg_inversions.rhime.stages.postprocess
    openghg_inversions.rhime.stages.prior_predictive
+   openghg_inversions.rhime.multisector.prepare_multisector
+   openghg_inversions.rhime.multisector.materialize_multisector_inputs
+   openghg_inversions.rhime.multisector.build_multisector_model
+   openghg_inversions.rhime.multisector_stages.prepare
+   openghg_inversions.rhime.multisector_stages.save_preparation
+   openghg_inversions.rhime.multisector_stages.load_preparation
+   openghg_inversions.rhime.multisector_stages.sample
+   openghg_inversions.rhime.multisector_stages.save_samples
+   openghg_inversions.rhime.multisector_stages.load_samples
+   openghg_inversions.rhime.multisector_stages.postprocess
+   openghg_inversions.rhime.multisector_stages.prior_predictive
+   openghg_inversions.rhime.outputs.make_model_output
+   openghg_inversions.rhime.outputs.postprocess_multisector_outputs
+   openghg_inversions.rhime.outputs.save_inversion_output
 
 Run specifications and results
 ------------------------------
 
-Standard runners return ``InversionOutput``. ``RhimeResult`` and ``RhimeRunSpec``
-remain compatibility objects for multisector, nested and CO2 recipes until their
-separate handoff adoption. These objects describe model, sampling and output
-choices. The sampler's former ``rhime`` imports remain compatible;
-its implementation is owned by ``inference``.
+Standard and multisector runners return ``InversionOutput``, including prepared
+execution and graph-free saved replay. ``RhimeResult`` and ``RhimeRunSpec`` remain
+only for the deferred nested and CO2 recipes. Standard and multisector
+execution pass model choices, inference and output policy to their separate
+owners.
+The sampler's former ``rhime`` imports remain compatible; its implementation is
+owned by ``inference``.
 
 .. autosummary::
    :nosignatures:
@@ -132,7 +147,6 @@ value and its unchanged version-1 schema live in
    openghg_inversions.rhime.standard.materialize_standard_inputs
    openghg_inversions.rhime.standard.prepare_standard
    openghg_inversions.rhime.postprocess_standard_outputs
-   openghg_inversions.rhime.save_standard_artifacts
    openghg_inversions.rhime.annotate_sample_trace
    openghg_inversions.rhime.requests.load_params
    openghg_inversions.rhime.params.retained_run_spec

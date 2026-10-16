@@ -214,7 +214,7 @@ def test_co2_preparation_allows_unknown_revision(tmp_path, monkeypatch):
      (None, {"draws": 17}), ("absent", "complete"), ("malformed", "complete")],
 )
 def test_co2_replay_requires_version_one_and_stays_graph_free(tmp_path, monkeypatch, binding, recorded):
-    from openghg_inversions.rhime import _multisector_stages, stages
+    from openghg_inversions.rhime import multisector_stages, stages
     from openghg_inversions.rhime._stage_artifacts import write_json
     from openghg_inversions.rhime.co2 import stages as co2_stages
     from openghg_inversions.serialization import save_trace
@@ -261,7 +261,7 @@ def test_co2_replay_requires_version_one_and_stays_graph_free(tmp_path, monkeypa
 
     monkeypatch.setattr(RhimeSampler, "sample", forbidden)
     monkeypatch.setattr(co2_stages, "build_rhime_co2_cached_sigma", forbidden)
-    monkeypatch.setattr(_multisector_stages, "_build_prepared_model", forbidden)
+    monkeypatch.setattr(multisector_stages, "build_multisector_model", forbidden)
     if binding is not None:
         monkeypatch.setattr(co2_stages, "load_trace", forbidden)
         with pytest.raises(ValueError, match="CO2 postprocessing requires schema_version=1"):

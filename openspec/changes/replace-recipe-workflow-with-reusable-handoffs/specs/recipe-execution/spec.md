@@ -115,7 +115,7 @@ owners without implying additional nested or linked checkpoint support.
   regression reference rather than requiring identical stochastic trajectories
 
 #### Scenario: Direct customization and partial recipes
-- **WHEN** a caller uses supported likelihood or retained multisector complete-model customization,
+- **WHEN** a caller uses supported likelihood customization or directly composes a complete model,
   or a family supports only prepared construction and its own inference
 - **THEN** its explicit scientific arguments, conflict rules and return contract,
   subject to the declared sampler-default and prerequisite basis-export migrations,
@@ -192,7 +192,7 @@ xarray and Dask objects.
 
 ### Requirement: Optional live samplers and descriptive replay metadata
 
-Standard results SHALL be `InversionOutput` and SHALL NOT hold live samplers or
+Standard and multisector results SHALL be `InversionOutput` and SHALL NOT hold live samplers or
 models. Deferred-family `RhimeResult.sampler` SHALL remain optional and default
 to `None` without a sampler factory. Saved sampler provenance SHALL be plain metadata describing the actual
 inference invocation. Product replay and diagnosis SHALL NOT rebuild the
@@ -228,9 +228,9 @@ together before calling the eager builder; the standard prepared-input route
 SHALL use the same construction operation as
 full and saved execution, receiving model choices without output configuration.
 Its complete-model-builder hook SHALL be rejected; its custom-likelihood seam
-SHALL remain available. Retained multisector complete-model builders SHALL receive
-inputs after the documented preparation boundaries, including remaining lazy
-arrays, and own any further materialization their implementation requires.
+SHALL remain available. Multisector construction SHALL use the same separation.
+Caller-owned complete models MAY directly compose scientific functions with
+explicit inputs and SHALL own any further materialization they require.
 
 #### Scenario: Borrowed lazy preparation and construction
 - **WHEN** a route receives borrowed inputs with shared lazy arrays
@@ -240,13 +240,23 @@ arrays, and own any further materialization their implementation requires.
   materialize together at the declared boundary rather than through incidental
   configuration access
 
-#### Scenario: Retained multisector complete-model builder
-- **WHEN** a multisector caller supplies a supported complete-model builder
-- **THEN** the route forwards its resolved scientific arguments and prepared
-  inputs, including remaining lazy arrays, without imposing the built-in model's
-  additional construction boundary
+#### Scenario: Direct multisector complete-model composition
+- **WHEN** a caller needs a multisector complete graph beyond the built-in recipe
+- **THEN** the caller directly composes preparation, materialization, its scientific
+  construction function, sampling and compatible output operations with explicit
+  arguments, without a runner builder hook or run-specification context
 
 ### Requirement: Standard scientific results and explicit exports
+
+The same result and separation requirements SHALL apply to multisector full,
+prepared-input and postprocessing execution. Multisector callers SHALL use
+`run_multisector(prepared=..., config=...)` or directly compose its scientific
+operations. The superseded `run_rhime_from_prepared_inputs` entry point and its
+multisector build/result/output adapters SHALL be removed together with their
+callers. Complete-model customization SHALL use explicit scientific composition
+rather than an output-bearing `RhimeRunSpec` builder context. Shared envelope
+types MAY remain for actual nested and CO2 consumers until their owning
+adoption slices migrate those consumers.
 
 Standard full, prepared-input and postprocessing routes SHALL build an
 `InversionOutput` view, write requested products/exports, and return that view.

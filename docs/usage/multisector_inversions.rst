@@ -145,7 +145,9 @@ multisector model used for surface sites.
 Inspecting and processing results
 ---------------------------------
 
-Both calls return a :class:`openghg_inversions.rhime.RhimeResult`. Inspect the
+Both calls return an
+:class:`~openghg_inversions.postprocessing.inversion_output.InversionOutput`.
+Inspect the
 canonical inputs before interpreting the posterior:
 
 .. code-block:: python
@@ -154,7 +156,7 @@ canonical inputs before interpreting the posterior:
 
    print(result.inv_inputs["H"].dims)
    print(result.inv_inputs["H"].coords["source"].values)
-   print(result.idata.posterior)
+   print(result.trace_group("posterior"))
    print(result.output_metadata)
 
 For a shared basis, expect a distinct ``source`` dimension and one sensitivity
@@ -170,19 +172,32 @@ instead of constructing names in downstream code:
 
 .. code-block:: python
 
-   roles = result.model_build_result.variable_roles
-   for sector in result.model_spec.sectors:
-       role = f"flux_scale:{sector.name}"
+   roles = result.variable_roles
+   for sector in result.model_metadata["sectors"]:
+       role = f"flux_scale:{sector['name']}"
        variable = roles[role]
-       print(sector.name, result.idata.posterior[variable].mean().item())
+       print(sector["name"], result.trace_group("posterior")[variable].mean().item())
 
-With ``output_format="inv_out"``, ``result.inv_out`` is the modern,
-serializable inversion product and is also saved when
-``save_inversion_output=True``. Multisector runs additionally populate
-``result.outputs`` and ``result.output_metadata`` with any requested sector
-diagnostics. Legacy output is intentionally unavailable for multisector runs;
-use ``inv_out``, ``basic``, ``paris``, or ``none`` according to the required
-downstream product.
+The returned value is the modern, serializable scientific result, including with
+``output_format="none"``. ``output_format="inv_out"`` requests its file export;
+``save_inversion_output`` and ``save_trace`` control optional exports. Current
+output policy is separate from the result's scientific context and inference
+metadata. Compute in-memory sector diagnostics explicitly:
+
+.. code-block:: python
+
+   from openghg_inversions.postprocessing.make_outputs import make_sector_flux_outputs
+
+   diagnostics = make_sector_flux_outputs(
+       result, stats=["mean"], include_scale_factors=True,
+       report_flux_on_inversion_grid=False,
+   )
+
+Copied runners call ``postprocess_multisector_outputs(result, output_spec)`` for
+configured products, then ``save_inversion_output(result, output_spec)`` for
+exports. Use ``inv_out``, ``paris``, or ``none`` for multisector runs;
+``basic`` and legacy HBMCMC output remain single-sector-only. See :doc:`staged_workflow` for
+reusing prepared inputs and saved samples with current product choices.
 
 Configuration and batch runs
 ----------------------------

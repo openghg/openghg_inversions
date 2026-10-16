@@ -95,7 +95,7 @@ def test_phase_reports_all_unsuitable_override_keys(tmp_path):
 
 def test_phase_paths_use_invocation_directory(tmp_path, monkeypatch):
     from argparse import Namespace
-    from openghg_inversions.cli import _standard_phase_options
+    from openghg_inversions.cli import _rhime_phase_options
 
     config_dir = tmp_path / "config"
     invocation = tmp_path / "invocation"
@@ -106,7 +106,7 @@ def test_phase_paths_use_invocation_directory(tmp_path, monkeypatch):
                                    "sampler": {"draws": "invalid"}}))
     monkeypatch.chdir(invocation)
     args = Namespace(config=None, params_file=str(choices), kwargs={"basis_output_path": "../exports/basis.nc"})
-    result = _standard_phase_options(args, phase="prepare")
+    result = _rhime_phase_options(args, phase="prepare")
     assert result["data"]["basis_path"] == invocation / "operator.nc"
     assert result["data"]["basis_output_path"] == tmp_path / "exports/basis.nc"
     assert result["sampler"] == {}
@@ -115,7 +115,7 @@ def test_phase_paths_use_invocation_directory(tmp_path, monkeypatch):
 def test_phase_aliases_do_not_import_hbmcmc(tmp_path, monkeypatch):
     import builtins
     from argparse import Namespace
-    from openghg_inversions.cli import _standard_phase_options
+    from openghg_inversions.cli import _rhime_phase_options
 
     original_import = builtins.__import__
     def guarded_import(name, *args, **kwargs):
@@ -124,21 +124,21 @@ def test_phase_aliases_do_not_import_hbmcmc(tmp_path, monkeypatch):
     monkeypatch.setattr(builtins, "__import__", guarded_import)
     args = Namespace(config=None, params_file=None, kwargs={"xprior": {"pdf": "normal", "sigma": 0.2}})
     with pytest.warns(DeprecationWarning):
-        result = _standard_phase_options(args, phase="sample")
+        result = _rhime_phase_options(args, phase="sample")
     assert result["model"]["x_prior"]["sigma"] == 0.2
 
 
 def test_flat_saved_model_claims_are_not_discarded(tmp_path):
     from argparse import Namespace
-    from openghg_inversions.cli import _standard_phase_options
+    from openghg_inversions.cli import _rhime_phase_options
 
     path = tmp_path / "choices.json"
     claims = {"use_bc": False, "bc_freq": "monthly", "mismatch_model": "fixed_error"}
     path.write_text(json.dumps(claims))
     args = Namespace(config=None, params_file=str(path), kwargs=None)
-    flat = _standard_phase_options(args, phase="sample")
+    flat = _rhime_phase_options(args, phase="sample")
     path.write_text(json.dumps({"model": claims}))
-    assert flat == _standard_phase_options(args, phase="sample")
+    assert flat == _rhime_phase_options(args, phase="sample")
     assert flat["model"] == claims
 
 
@@ -152,7 +152,7 @@ def test_prior_readiness_rejects_explicit_sampler_overrides(tmp_path):
 @pytest.mark.parametrize("grouped", [False, True])
 def test_phase_preserves_resource_migration_guidance_in_aggregate_error(grouped):
     from argparse import Namespace
-    from openghg_inversions.cli import _standard_phase_options
+    from openghg_inversions.cli import _rhime_phase_options
     from openghg_inversions.rhime._runner_compat import normalise_param_aliases
 
     removed = {"country_directory": "old", "bc_basis_case": "old", "bc_basis_directory": "old"}
@@ -160,7 +160,7 @@ def test_phase_preserves_resource_migration_guidance_in_aggregate_error(grouped)
     kwargs.update(unknown=1, draws=10)
     args = Namespace(config=None, params_file=None, kwargs=kwargs)
     with pytest.raises(ValueError) as caught:
-        _standard_phase_options(args, phase="prepare")
+        _rhime_phase_options(args, phase="prepare")
     message = str(caught.value)
     for name in (*removed, "unknown", "draws"):
         assert name in message
@@ -173,11 +173,11 @@ def test_phase_preserves_resource_migration_guidance_in_aggregate_error(grouped)
 
 def test_phase_errors_explain_every_removed_option():
     from argparse import Namespace
-    from openghg_inversions.cli import _standard_phase_options
+    from openghg_inversions.cli import _rhime_phase_options
 
     args = Namespace(config=None, params_file=None,
                      kwargs={"mcmc_type": "nuts", "calculate_min_error": True, "reparameterise_log_normal": True})
     with pytest.raises(ValueError) as caught:
-        _standard_phase_options(args, phase="sample")
+        _rhime_phase_options(args, phase="sample")
     for replacement in ("nuts_sampler", "`min_error`", "reparameterise"):
         assert replacement in str(caught.value)

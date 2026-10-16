@@ -1,10 +1,10 @@
 Staged RHIME workflows
 ======================
 
-The standard recipe can prepare once, sample compatible models into separate
-locations, and produce different outputs from saved samples. ``run_standard``
-with or without ``prepared=...`` uses the same scientific operations
-as the saved phases: prepare inputs, explicitly materialize selected arrays and
+The standard and multisector recipes can prepare once, sample compatible models
+into separate locations, and produce different outputs from saved samples.
+``run_standard`` and ``run_multisector``, with or without ``prepared=...``,
+use the same scientific operations as their saved phases: prepare inputs, explicitly materialize selected arrays and
 enabled priors where needed, build one eager model, sample, construct an
 ``InversionOutput`` view, then write requested products and exports. Checkpoints
 add loading and saving at those boundaries; full execution needs no intermediate
@@ -38,7 +38,7 @@ data, filters, basis, native flux or baked numerical policy needs new preparatio
 ``load_samples`` decodes the sample manifest to ``InversionOutput``.
 ``postprocess`` uses that reader with current output choices, calls
 ``postprocess_standard_outputs`` to compute and write requested PARIS or legacy
-products, then calls ``save_standard_artifacts`` for optional exports. It loads
+products, then calls ``save_inversion_output`` for optional exports. It loads
 the recorded model meaning, output contract, inference metadata, prepared inputs
 and samples without building a graph or running inference. It returns
 ``InversionOutput`` without a live model or sampler. Missing descriptive metadata stays
@@ -139,7 +139,7 @@ Standard ``output_format="basic"`` returns the scientific view without computing
 an unused summary. For in-memory reporting, call ``basic_output(inv_out,
 country_file=...)`` yourself. PARIS and legacy products require ``output_path``;
 missing destinations fail before sampling in a full run or before loading samples
-in staged postprocessing. ``save_standard_artifacts`` only exports the scientific
+in staged postprocessing. ``save_inversion_output`` only exports the scientific
 result and trace; it does not compute derived products.
 
 Choose saved artifacts by what you need to reuse:
@@ -244,6 +244,87 @@ Python callers can use the same handoffs:
 For a runnable synthetic scientific parity example, see
 :download:`standard_handoffs.py <../../examples/standard_handoffs.py>`.
 
+Multisector saved phases
+------------------------
+
+Use ``openghg_inversions.rhime.multisector_stages`` for multisector ``prepare``,
+``sample``, ``load_preparation``, ``load_samples`` and ``postprocess``. These
+operations use the same manifest lifetime, generation binding and numerical
+codecs as standard handoffs. They call the multisector preparation, materialization,
+construction, sampling and product operations directly. Full
+``run_multisector`` execution calls those same operations in memory; no
+checkpoint is required. Acquisition or supplied-merged validation happens before
+``prepare_multisector``; preparation itself neither retrieves data nor writes
+exports. Caller-owned xarray and Dask arrays remain borrowed until explicit
+materialization or serialization boundaries.
+
+Resolve preparation with ``DataConfig.from_params(options, multisector=True)``.
+Keep ``flux_sources`` ordered. At sampling, supply ``sector_sources`` to map
+scientific sector names to those source labels. Each sector uses a distinct prepared source;
+its scaling and concentration-contribution roles are saved with the samples.
+Both rectangular shared-basis and source-labelled gathered layouts retain their
+scientific interpretation. Preparation retains all source fluxes; the first
+requested source supplies basis weighting. Retained sites and their averaging
+periods come from the prepared numerical inputs, even when a requested site is
+dropped. Original requested dates remain the inversion window for later products.
+
+Sampling can change ``sector_priors`` or a compatible Python
+``likelihood_builder`` without preparing again. The custom likelihood requires
+``mismatch_model=None`` and receives the combined sector observation mean through
+the existing likelihood interface. Missing required arrays, incompatible source
+layouts, or a conflicting baked ``bc_freq`` require corrected inputs or a new
+preparation. Current model choices cannot change acquisition, filtering, basis
+construction or the saved native flux.
+
+Saved sampling follows the standard recordable-model limits: explicit
+``state_activity``, ``bc_state_activity`` and sector activity overrides are not
+encoded in sample records and fail before inference. Full and direct prepared
+execution can still use those policies. Whole-model customization uses direct
+scientific composition; see :ref:`rhime-complete-model-composition`. Saved
+sampling supports the ordinary custom-likelihood seam.
+
+For example, after placing multisector preparation choices in ``sectors.json``:
+
+.. code-block:: bash
+
+   rhime prepare --model multisector --params-file sectors.json \
+     --output-dir run/prepare
+   rhime sample --model multisector \
+     --preparation-manifest run/prepare/prepare-manifest.json \
+     --kwargs '{"sector_sources":{"anth":"anth-inventory","wetlands":"wetlands-inventory"},"sector_priors":{"anth":{"pdf":"normal","mu":1,"sigma":0.2},"wetlands":{"pdf":"normal","mu":1,"sigma":0.5}}}' \
+     --output-dir run/model-a
+   rhime postprocess --model multisector \
+     --sample-manifest run/model-a/sample-manifest.json \
+     --kwargs '{"output_format":"inv_out"}' --output-dir run/products
+
+The keys in ``sector_sources`` and ``sector_priors`` must agree, and the mapped
+sources must match those acquired by ``sectors.json``. Use separate sample
+destinations for each model. Sampling accepts model and sampler choices alone;
+postprocessing accepts output choices alone, including a current output name,
+destination or country file.
+
+``load_samples`` and ``postprocess`` return ``InversionOutput`` with the original
+scientific context, retained source flux, output roles and actual inference
+metadata. The result holds no live model or sampler; replay builds no PyMC model
+and runs no inference. It does not replace unknown original metadata with current
+defaults. ``make_model_output`` binds samples to scientific context;
+``postprocess_multisector_outputs(result, output_spec)`` computes and writes
+requested products, then ``save_inversion_output(result, output_spec)``
+exports the scientific result and trace. Full and saved routes call those same
+operations. Legacy HBMCMC products remain unsupported for multisector.
+
+Use ``result.trace`` for samples, ``result.variable_roles`` for scientific roles,
+and ``result.run_metadata`` / ``result.model_metadata`` for recorded context.
+Product choices and written-file receipts are separate from this scientific view.
+For in-memory sector diagnostics, call
+``postprocessing.make_outputs.make_sector_flux_outputs`` explicitly.
+``output_format="none"`` still returns the scientific result. Multisector supports
+``none``, ``inv_out`` and ``paris``; ``basic`` and ``legacy`` are single-sector formats.
+
+The runnable :download:`multisector_handoffs.py
+<../../examples/multisector_handoffs.py>` demonstrates preparation reuse, separate
+model samples, multiple output choices, and comparison with full execution.
+
 Ordinary CO₂ handoffs
 ---------------------
 
@@ -279,7 +360,13 @@ Readiness and independent diagnosis
 ``rhime prior-predictive --preparation-manifest ... --output-dir ...`` builds
 the selected model and draws prior predictions without posterior inference.
 ``--draws`` controls its sample count. Loading and serialization errors
-propagate; supported model/input failures produce a readiness ``fail`` result.
+propagate; for standard and multisector, supported model/input failures produce
+a readiness ``fail`` result. Ordinary CO₂ construction and inference errors
+propagate; evaluated missing, empty or non-finite predictive evidence produces
+a failed check.
+Select ``--model multisector`` for prior predictions from a multisector preparation
+manifest. Python callers use ``multisector_stages.prior_predictive`` with current
+model choices and the same likelihood seam as sampling.
 Readiness checks finite evidence, not scientific plausibility. See
 :doc:`prior_predictive_checking` for interpreting predictions.
 
@@ -288,6 +375,8 @@ Readiness checks finite evidence, not scientific plausibility. See
 ``rhime diagnose --posterior posterior.nc --output-dir ...`` independently
 reports maximum R-hat, minimum bulk/tail ESS, divergences and unassessable
 variables. ``--sample-manifest`` optionally supplies descriptive run context.
+For a current sample manifest, omit ``--posterior`` to use its recorded posterior
+reference; an explicit posterior path takes precedence.
 Defaults are maximum R-hat 1.01, minimum bulk/tail ESS 400 and zero divergences.
 Available metrics exceeding a threshold yield ``fail``; missing metrics yield
 ``unknown`` when none fails; otherwise the result is ``pass``. Neither check
@@ -299,17 +388,23 @@ and stage label.
 Other families and migration
 ----------------------------
 
-Multisector and cached CO2 retain their existing staged interfaces pending separate
-handoff adoption. They require explicit ``--model``, a full configuration and
+Cached CO2 retains its existing staged interface pending separate handoff adoption.
+It requires explicit ``--model co2``, a full configuration and
 ``--prepared-inputs``/``--preparation-manifest`` for sampling. Postprocessing also
-requires ``--posterior`` and ``--sample-manifest``. Multisector retains its
-configuration restriction and output-binding record. Ordinary CO2 uses the
+requires ``--posterior`` and ``--sample-manifest``. Ordinary CO2 uses the
 manifest-only interface described above; cached CO2 takes an existing coherent
 preparation through its separate interface. See :doc:`co2_model_family` for
 supported CO2 outputs.
 Linked CO2/O2 staging remains separate work.
 
-The new standard handoff format replaces historical standard staged envelopes
-and multi-artifact argument lists. Regenerate those handoffs with 0.8, or use the
-original package version to consume them. Existing numerical codecs, scientific
-Python APIs and final product formats retain their contracts.
+The new standard and multisector handoff formats replace their historical staged
+envelopes and multi-artifact argument lists. For multisector, replace
+``prepare_rhime_stage``, ``sample_rhime_stage``, ``postprocess_rhime_stage`` and
+stage-setup/configuration-identity calls with ``multisector_stages.prepare``,
+``sample`` and ``postprocess``. CLI sampling takes only
+``--preparation-manifest``; postprocessing takes only ``--sample-manifest``.
+Remove multisector ``--prepared-inputs`` and ``--posterior`` phase arguments.
+Regenerate handoffs with 0.8, or use the original package version to consume them;
+there is no historical-envelope adapter. Existing numerical codecs and final
+product formats retain their contracts. See :doc:`legacy_and_migration` for the
+multisector prepared-input entry point and retained custom-builder boundary.

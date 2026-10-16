@@ -273,7 +273,7 @@ suite, supported Python versions, typing and documentation.
 
 ## 2. Multisector reusable-handoff adoption
 
-- [ ] 2.1 Give multisector concrete preparation, inference and products calls using
+- [x] 2.1 Give multisector concrete preparation, inference and products calls using
   the standard delivery's established persistence mechanics through ordinary
   functions. Verify full/staged/replay preserve sector/source-labelled inputs,
   scientific roles, retained-site subsets, all-source flux/source order and borrowed
@@ -282,17 +282,210 @@ suite, supported Python versions, typing and documentation.
   (including a `prepare_multisector(merged, ...)` preparation owner), then delete
   the `_multisector_stages.py` envelope, its `stages.py` dispatch and the CLI
   `--prepared-inputs`/`--posterior` arguments for multisector.
-- [ ] 2.2 Verify compatible sector-prior/likelihood changes reuse preparation and
+- [x] 2.2 Verify compatible sector-prior/likelihood changes reuse preparation and
   genuine preparation changes fail. Exercise saved-result products with unchanged
   sample meaning and current reporting choices, including graph-free
   replay and rejection of scientifically incompatible source layouts.
-- [ ] 2.3 Deliver the applicable multisector CLI/example, guidance/docstrings,
+- [x] 2.3 Deliver the applicable multisector CLI/example, guidance/docstrings,
   readiness/diagnosis checks and release notes with its writer/reader/callers.
   Verify full/phase-only choices, requested-window metadata and declared role
   validation independently of immediate product requests.
 - [ ] 2.4 Clear the multisector gate with existing scientific/product references
   across full/staged/replay plus focused and relevant broader checks. Record the
   merged implementation and evidence before marking this delivery complete.
+
+
+### Multisector implementation evidence, 16 October 2026
+
+The multisector slice starts from current `devel` `208a21d9`, consuming merged
+standard #866 and configuration closeout #883. It owns tasks 2.1–2.3 and the
+implementation/validation portion of 2.4. **Task 2.4 remains unchecked**: merged
+implementation evidence and maintainer review are outstanding. No programme
+completion, maintainer readability acceptance, spec promotion or merge is claimed.
+
+The maintainer explicitly directed this implementation to follow the standard
+pattern, including its result migration, on 16 October. Accordingly,
+`run_multisector`, `run_multisector(prepared=..., config=...)` and saved replay
+return `InversionOutput`; this extends the earlier standard-only result amendment
+and is flagged for PR review. Full and saved routes compose `prepare_multisector`,
+`materialize_multisector_inputs`, `build_multisector_model`, sampling and trace
+annotation, `make_model_output`, `postprocess_multisector_outputs` and explicit
+artifact exports. Acquisition/validation and optional basis exports remain visible
+in the runners; construction consumes the supplied eager Dataset and prior values.
+
+`rhime.multisector_stages` saves/loads preparation and samples through the existing
+codecs and checkpoint functions, with manifest-relative references, generation
+binding and embedded `OutputContract`. The obsolete `_multisector_stages` envelope,
+configuration identity/equality gate, output-binding sidecar reader, legacy graph
+recovery and multisector envelope dispatch are removed together with their callers.
+Multisector CLI saved phases consume one manifest and phase-owned choices.
+
+The runnable `examples/multisector_handoffs.py` prepares once, samples Normal
+scaling priors with two widths and fixed-error/Student-t likelihoods into distinct
+locations, and compares full/prepared/staged/replay traces and flux products.
+Independent SciPy density checks cover three two-sector states per likelihood
+(`rtol=1e-6`, `atol=1e-5` for float32 arithmetic). Independent native-flux
+reconstruction uses unequal inventory fields `[[1,2],[3,4]]` and
+`[[.3,1.2],[2.1,.4]]`, distinct from the historical operator's prior.
+Native source ordering and model-sector declaration ordering are preserved
+independently by labels and explicit recorded associations.
+
+`tests/test_multisector_handoff_parity.py`: **14 passed** after the source and
+eager-builder review fixes, plus **1 passed** in the added signed-source replay
+case (negative source flux/sensitivity and independently reconstructed native totals). This includes default lognormal scientific/latent
+state retention; joint lazy prior/input materialization and zero-state pruning;
+retained-site/requested-window metadata; omitted, extra and incompatible source
+layouts; borrowed/unselected lazy arrays; unchanged prepared numerical files;
+equivalent default/shorthand preparation records; and fresh-process replay after
+removing the original operator with acquisition, construction, materialization and
+inference forbidden. Full and prepared runs also pass with checkpoint serialization
+and manifest operations forbidden.
+
+Final consolidated local evidence: **1,026 passed** across 22 focused/relevant
+broader test files covering RHIME science and products, multisector and standard
+handoffs/parity, CLI/readiness/diagnosis, CO2 facade preservation, tutorial and
+xarray consumers, configuration/site resolution, nested consumers, resource paths,
+basis inputs, merged/prepared codecs, output contracts and prior registration.
+The malformed-schema CLI regressions pass in this consolidated run. Changed-path
+Ruff, `git diff --check` and strict validation of this active OpenSpec change pass.
+Final compatibility/type/documentation Slurm results and comparison against
+`208a21d9` are recorded below and in the PR evidence.
+
+CI run `38878858180` exposed two unmigrated test consumers: six multisector
+basis-export cases stopped inside sensitivities, before scientific preparation
+now completes; the import-boundary test still called the retired multisector
+stage resolver. The export checks now stop at materialization, as standard does,
+and assert preserved scientific payloads/metadata without a destination receipt.
+The import-boundary check exercises configured/raw multisector execution and
+current staged preparation with HBMCMC imports blocked. Local `.venv` execution
+of both complete test modules passes **86 tests**, with changed-path Ruff and
+`git diff --check` clean. Production code is unchanged by this CI correction.
+The unchanged `208a21d9` Slurm baseline (`19448566`) reports **164 Mypy errors in
+52 files** and **318 strict-docs warnings**; those diagnostics are retained for
+candidate comparison, without claiming the branch introduces no regressions.
+
+Scientific checks retained for #808 have concrete owners: selected arrays and
+source/basis coverage before materialization, baked BC policy at model resolution,
+prepared labels/units at numerical loading, and scientific roles at construction
+and external save/load. A model omitting a retained source now fails rather than
+silently excluding its flux from totals. Replay uses original requested dates and
+actual inference descriptions with current output choices, without fresh sampler
+settings or graph recovery.
+
+The maintainer's subsequent 16 October correction retires the remaining
+`run_rhime_from_prepared_inputs` route and its multisector build/result/output
+adapters rather than preserving them for test/example consumers. All affected
+ordinary prepared-input callers migrate to `run_multisector(prepared=..., config=...)`
+and explicit scientific composition; the `RhimeRunSpec` complete-builder hook and
+unused callable adapter/protocol are removed. Neither standard nor multisector
+execution constructs `RhimeResult` or `RhimeRunSpec`. Shared envelope types and
+the nested graph-validation context remain because nested and CO2 still
+consume them; their owning slices must migrate those real consumers before
+global deletion. Ordinary CO2 #886 is coordinated separately and already uses
+its concrete scientific output. Nested/cached CO2, model-input ownership,
+artifact/storage policy and integrated acceptance remain outside this delivery.
+
+The maintainer also directed shared output ownership rather than duplicated
+standard/multisector functions. Both recipes and their saved routes now call
+`make_model_output(..., split_by_sectors=...)` and `save_inversion_output`;
+family-specific product computation remains explicit. The identical multisector
+constructor and forwarding exporter are deleted, with standard/multisector
+callers, custom/cookiecutter examples, API docs and migration guidance updated
+together. The model-composition delta records removal of the former retained
+multisector complete-builder requirement for review.
+
+Retirement/shared-output local evidence: **313 passed** in `test_rhime.py`;
+**225 passed** across serialization, xarray adapter, reporting preflight,
+multisector scientific parity, standard API and three custom-runner integration
+modules; **193 passed** across standard/multisector handoffs, phase CLI,
+readiness, resource boundaries, tutorials and model-family documentation.
+Shared nested/CO2 preservation adds **72 passed**; public API/configuration
+preservation adds **155 passed**. These are bounded selections, not a claim of
+full-suite completion. All changed Python paths pass Ruff; strict active-change
+validation and diff checks pass. Documentation checks resolve 164 API references
+and parse 28 Python blocks; the revised complete-composition snippet runs against
+real synthetic preparation/sampling (two draws, execution smoke only).
+
+The further readability review follows the pre-#866 standard history:
+`6822bd3b` removed the whole-model hook, `b0251e7e` consolidated construction,
+`189569f9` removed the result/run-spec route, and `638067db` exposed acquisition
+and output operations. The final function comparison is:
+
+| Standard | Multisector | Difference that remains |
+| --- | --- | --- |
+| `_require_component_inputs` | same name | Selected component diagnostics. |
+| `standard_model_input_names` | `multisector_model_input_names` | Source-resolved model inputs. |
+| `_standard_input_names` | `_multisector_input_names` | Sector identities and exact source coverage. |
+| `_standard_prior_parameters` | `_multisector_prior_parameters` | Separate eager priors for each sector. |
+| `materialize_standard_inputs` | `materialize_multisector_inputs` | Retained source-specific basis compatibility. |
+| `build_standard_model` | `build_multisector_model` | Source loop, state/prior alignment and coordinate namespaces. |
+| `prepare_standard` | `prepare_multisector` | Source-resolved sensitivity preparation. |
+| `run_standard` | `run_multisector` | Sector-specific products and preflight. |
+
+The only extra multisector function is `_validate_multisector_basis_layout`:
+source-specific operators may have different state coordinates, so preparation
+reuse and replay must protect each source-to-state binding. The raw
+`build_multisector_rhime_model`, eager forwarding layer and tuple-producing sector
+preparation helper are replaced by one visible eager builder; optional
+`sigma_alignment` remains available. The builder now rejects extra independently
+supplied H sources as well as incompatible retained preparation. Shared output
+construction is named `make_model_output`; new names avoid a redundant RHIME
+prefix while existing delivered specification/result types remain unchanged.
+Multiline signatures/calls use one argument per line. Repository Ruff runs lint
+only and did not require the earlier packed formatting.
+
+Readability/construction validation: **215 passed** across full/staged/replay
+scientific parity, standard/multisector checkpoints, phase CLI, output API,
+tutorials, model-family docs and custom/cookiecutter consumers. The four-module
+scientific builder/state-policy/serialization run initially passed **423 cases**
+with five obsolete one-source fixtures failing the multisector input boundary;
+those fixtures were corrected without weakening validation, and their complete
+**11-case containing subset passed**. The **16 integration cases** also pass.
+The independent eager-builder extra-source rejection is exercised in the parity
+suite. Ruff on all changed Python paths, diff checks and strict OpenSpec
+validation pass. Fifteen changed documentation Python blocks parse and their
+direct document targets resolve. Final compatibility/type/docs checks are recorded
+below; earlier green GitHub evidence at `f900d539` remains
+labelled with that revision rather than claimed for the consolidation.
+
+Slurm `19451784` completed all seven environments at `9348c610`. Python 3.12
+and 3.13 locked runs each report **3,019 passed / 8 skipped**, and OpenGHG devel
+reports **3,015 passed / 12 skipped**, with exactly two failures in each: the
+preserved CO2 installed-stage tests require a Git revision, while the validation
+archive deliberately contained no `.git` and returned `revision=None`. This is
+a validation-context failure, not evidence of a scientific change; the final retry
+below uses a detached Git checkout with the fixed revision. Lower-bound
+PyMC and borrowed-reference typing environments pass.
+
+Mypy reports **162 errors in 50 files**, against baseline **164 in 52**, with
+zero introduced normalized diagnostics. Strict docs report **309 warnings**,
+against baseline **318**: one new heading underline warning is fixed; two
+existing external TensorVariable-reference warnings relocate to the new stage
+page while six disappear elsewhere, and six old RhimeConfig ambiguity warnings
+disappear. No baseline warning suppression was added. The final strict-docs run
+confirms the fix; comparison artifacts retain location-aware and diagnostic
+content counts. The retry uses a detached local clone, with generated API docs
+outside that checkout to keep scientific provenance stable during tests.
+
+**Final validation:** Slurm **19452831** validates fixed checkout `e5e158a1`.
+`py312-openghgCur`, `py313-openghgCur` and `py312-openghgDev` all pass their
+complete suites (861.60 s, 876.96 s and 535.94 s respectively, including setup).
+The two CO2 provenance cases also pass locally from the detached Git checkout.
+The successful lower-bound/borrowed-type environments and the Mypy comparison
+above apply to the identical scientific code at `9348c610`; `e5e158a1` changes
+only the heading and evidence. Strict docs finish at **308 warnings**, with
+zero added normalized warning content against the **318-warning** baseline.
+Exactly the heading warning disappears from the preceding run. Seven rendered
+pages, **780 local links** and **15 current API anchors** have no broken targets.
+Existing broad typing debt remains owned by **#881** and strict-docs debt by
+**#679**; neither check is claimed globally clean. GitHub tests/docs at
+`e5e158a1` also pass (runs `38892269780` and `38892269799`).
+
+This completes the implementation/validation evidence for review, not the
+programme gate. **2.4 remains unchecked** until maintainer review and merged
+implementation evidence. Shared deferred-family adapter retirement and cached
+CO2/integrated acceptance remain with #880/OPE-207; no maintainer readability
+acceptance, spec promotion/archive or merge is claimed.
 
 ## 3. Ordinary CO2 reusable-handoff adoption
 

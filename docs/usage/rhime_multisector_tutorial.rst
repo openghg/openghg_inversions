@@ -73,10 +73,10 @@ The supported Python route is:
            "OPENGHG_TUTORIAL_CODE_REF", "local checkout"
        ),
        "tutorial data": os.environ.get("OPENGHG_TUTORIAL_DATA_TAG", "v1.0.0"),
-       "sites": list(result.run_spec.sites),
+       "sites": result.run_metadata["sites"],
        "observations": result.inv_inputs.sizes["nmeasure"],
        "posterior samples": {
-           name: result.idata.posterior.sizes[name] for name in ("chain", "draw")
+           name: result.trace_group("posterior").sizes[name] for name in ("chain", "draw")
        },
    }
 
@@ -88,23 +88,22 @@ The supported Python route is:
     'observations': 84,
     'posterior samples': {'chain': 2, 'draw': 50}}
 
-Inspect labelled state and provenance
--------------------------------------
+Inspect labelled state and model context
+----------------------------------------
 
 .. jupyter-input::
 
-   inversion_output = result.outputs["inversion_output"]
    {
        "sectors": [
-           (sector.name, sector.flux_source) for sector in result.model_spec.sectors
+           (sector["name"], sector["flux_source"])
+           for sector in result.model_metadata["sectors"]
        ],
        "H dimensions": result.inv_inputs["H"].dims,
        "source labels": result.inv_inputs["H"].source.values.tolist(),
        "scale variables": sorted(
-           name for name in result.idata.posterior.data_vars if name.startswith("x_")
+           name for name in result.trace_group("posterior").data_vars if name.startswith("x_")
        ),
-       "variable roles": result.model_build_result.variable_roles,
-       "provenance contract": inversion_output.provenance["contract"],
+       "variable roles": result.model_metadata["variable_roles"],
    }
 
 .. jupyter-output::
@@ -130,8 +129,7 @@ Inspect labelled state and provenance
      'boundary': 'mu_bc',
      'baseline_scale': 'bc',
      'baseline_sensitivity': 'hbc',
-     'baseline': 'mu_bc'},
-    'provenance contract': 'modern_rhime_inversion_output'}
+     'baseline': 'mu_bc'}}
 
 Shared-basis preparation represents sensitivity as
 ``H(region, nmeasure, source)``. Source-specific bases may instead use one
@@ -151,24 +149,32 @@ separately identify those sources, even when every array label is correct.
 Inspect the sector/source output
 --------------------------------
 
-Every multisector run constructs labelled sector diagnostics. With the
-configured ``inv_out`` output they are also persisted:
+The configured ``inv_out`` output writes labelled sector diagnostics alongside
+the self-contained inversion output. To inspect the same scientific reduction in
+memory, call the product operation explicitly:
 
 .. jupyter-input::
 
-   diagnostics = result.outputs["sector_flux_diagnostics"]
+   from openghg_inversions.postprocessing.make_outputs import make_sector_flux_outputs
+
+   diagnostics = make_sector_flux_outputs(
+       result,
+       stats=["mean"],
+       include_scale_factors=True,
+       report_flux_on_inversion_grid=False,
+   )
+   product_stem = "multisector_tutorial" + result.start_date
+   diagnostic_path = tutorial_output_path / f"{product_stem}_sector_flux_diagnostics.nc"
+   inversion_path = tutorial_output_path / f"{product_stem}_inversion_output.nc"
+   assert diagnostic_path.exists() and inversion_path.exists()
    {
        "diagnostic variables": sorted(diagnostics.data_vars),
        "diagnostic sizes": dict(diagnostics.sizes),
        "variable dimensions": {
            name: diagnostics[name].dims for name in sorted(diagnostics.data_vars)
        },
-       "sector diagnostics file": Path(
-           result.output_metadata["sector_flux_diagnostics_path"]
-       ).name,
-       "inversion output file": Path(
-           result.output_metadata["inversion_output_path"]
-       ).name,
+       "sector diagnostics file": diagnostic_path.name,
+       "inversion output file": inversion_path.name,
    }
 
 .. jupyter-output::
@@ -218,6 +224,24 @@ two maintained fixture products, one a dimension-shuffled numerical duplicate,
 and deterministic sampling. That verifies labelled routing and persistence,
 not scientific sector separation. Normal CI does not clone or download the
 companion data repository.
+
+Reuse preparation and saved samples
+------------------------------------
+
+For the same resolved ``RhimeConfig``,
+``run_multisector(prepared=prepared, config=config)`` starts at the model-input
+boundary and returns ``InversionOutput``, as the full runner does.
+``rhime.multisector_stages.prepare`` saves one preparation manifest;
+``sample`` accepts it with current compatible sector-prior, likelihood and sampler
+choices; ``postprocess`` accepts one sample manifest with current output choices.
+Keep each model's samples in a separate destination. Replayed products retain the
+original requested window, sector/source associations and prior flux without
+building a graph or repeating inference.
+
+See :doc:`staged_workflow` for phase-only configuration and checkpoint lifetime,
+and the runnable :download:`multisector_handoffs.py
+<../../examples/multisector_handoffs.py>` for a synthetic comparison of full,
+staged and replayed execution.
 
 Common failures
 ---------------

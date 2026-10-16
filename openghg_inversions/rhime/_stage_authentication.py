@@ -12,7 +12,6 @@ from typing import Any
 from collections.abc import Mapping
 
 from openghg_inversions.inference.sampling import RhimeSampler
-from openghg_inversions.postprocessing.contracts import OutputContract
 
 
 def _load_stage_manifest(path: str | Path, *, stage: str) -> tuple[Path, dict[str, Any]]:
@@ -38,49 +37,6 @@ def _load_stage_manifest(path: str | Path, *, stage: str) -> tuple[Path, dict[st
     if mismatched:
         raise ValueError(f"Stage manifest {manifest_path} has an invalid envelope: {mismatched!r}.")
     return manifest_path, loaded
-
-
-def _load_output_binding(
-    manifest: Mapping[str, Any],
-    *,
-    manifest_path: Path,
-) -> OutputContract:
-    """Load the referenced graph-free output contract."""
-    artifacts = manifest.get("artifacts")
-    relative_path = artifacts.get("output_binding") if isinstance(artifacts, Mapping) else None
-    if not isinstance(relative_path, str) or not relative_path or Path(relative_path).is_absolute():
-        raise ValueError("Sample manifest requires a relative output_binding artifact path.")
-    binding_path = (manifest_path.parent / relative_path).resolve()
-    if not binding_path.is_relative_to(manifest_path.parent):
-        raise ValueError("Output binding must be beneath its sample manifest directory.")
-    binding = json.loads(binding_path.read_text(encoding="utf-8"))
-    fields = {"schema", "schema_version", "output_contract"}
-    if not isinstance(binding, dict) or set(binding) != fields:
-        raise ValueError("Output binding has missing or unexpected fields.")
-    if (
-        binding["schema"] != "openghg_inversions.output_binding"
-        or type(binding["schema_version"]) is not int
-        or binding["schema_version"] != 1
-    ):
-        raise ValueError("Output binding has an unsupported schema or schema_version.")
-    return OutputContract.from_dict(binding["output_contract"])
-
-
-def _load_sample_manifest(
-    path: str | Path,
-    *,
-    configuration_identity: str | None = None,
-) -> dict[str, Any]:
-    """Load a sample record and check its configured replay restriction."""
-    _, manifest = _load_stage_manifest(path, stage="sample")
-    if configuration_identity is not None:
-        expected = configuration_identity
-        if manifest.get("configuration_identity") != expected:
-            raise ValueError(
-                "Posterior does not match the effective RHIME configuration: "
-                f"manifest has {manifest.get('configuration_identity')!r}, current configuration has {expected!r}."
-            )
-    return manifest
 
 
 def _sampler_metadata_from_sample_manifest(manifest: Mapping[str, Any]) -> dict[str, int | str]:
