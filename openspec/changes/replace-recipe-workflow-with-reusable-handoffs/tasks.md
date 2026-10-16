@@ -351,6 +351,19 @@ Ruff, `git diff --check` and strict validation of this active OpenSpec change pa
 Full compatibility/type/documentation Slurm results and comparison against
 `208a21d9` remain pending and will be recorded with the PR evidence.
 
+CI run `38878858180` exposed two unmigrated test consumers: six multisector
+basis-export cases stopped inside sensitivities, before scientific preparation
+now completes; the import-boundary test still called the retired multisector
+stage resolver. The export checks now stop at materialization, as standard does,
+and assert preserved scientific payloads/metadata without a destination receipt.
+The import-boundary check exercises configured/raw multisector execution and
+current staged preparation with HBMCMC imports blocked. Local `.venv` execution
+of both complete test modules passes **86 tests**, with changed-path Ruff and
+`git diff --check` clean. Production code is unchanged by this CI correction.
+The unchanged `208a21d9` Slurm baseline (`19448566`) reports **164 Mypy errors in
+52 files** and **318 strict-docs warnings**; those diagnostics are retained for
+candidate comparison, without claiming the branch introduces no regressions.
+
 Scientific checks retained for #808 have concrete owners: selected arrays and
 source/basis coverage before materialization, baked BC policy at model resolution,
 prepared labels/units at numerical loading, and scientific roles at construction
