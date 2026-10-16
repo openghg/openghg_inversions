@@ -22,7 +22,8 @@ from openghg_inversions.rhime.co2.configuration import (
     co2_config_templates,
     load_co2_family_config,
     resolve_co2_family_config,
-    resolve_co2_inference,
+    resolve_co2_model,
+    resolve_co2_sampler,
 )
 from openghg_inversions.rhime.co2.co2_cached_sigma_runner import (
     run_rhime_co2_cached_sigma,
@@ -567,17 +568,52 @@ def test_imported_preparation_facts_are_explicit_and_optional() -> None:
     }
 
 
-def test_inference_resolution_consumes_only_owned_choices() -> None:
+def test_model_resolution_consumes_only_owned_choices_without_an_envelope() -> None:
     config = _ordinary()
-    del config["prepared_inputs"]
+    for name in ("format_version", "recipe", "variant", "prepared_inputs"):
+        del config[name]
     config["outputs"] = object()
-    setup = resolve_co2_inference(config)
-    assert setup.preparation_kwargs == {}
-    assert setup.runner is run_rhime_co2
-    assert setup.runner_kwargs["sigma_prior"] == {"pdf": "halfnormal", "sigma": 0.75}
-    assert setup.sampler.draws == 20
     config["sampling"] = object()
-    prior_setup = resolve_co2_inference(config, sampling=False)
-    assert prior_setup.sampler is not resolve_co2_inference(config, sampling=False).sampler
+    model = resolve_co2_model(config)
+    assert model == {"no_model_error": False, "sigma_prior": {"pdf": "halfnormal", "sigma": 0.75}}
+
+
+def test_sampler_resolution_consumes_only_owned_choices_without_an_envelope() -> None:
+    config = {"sampling": cast(dict, _ordinary()["sampling"]), "model": object(), "outputs": object()}
+    assert resolve_co2_sampler(config).draws == 20
+    assert resolve_co2_sampler({}) is not resolve_co2_sampler({})
+    config["sampling"] = object()
     with pytest.raises(TypeError, match="sampling must be a table"):
-        resolve_co2_inference(config)
+        resolve_co2_sampler(config)
+
+
+def test_model_resolution_owns_eigenbasis_path_from_invocation_directory(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = {
+        "likelihood": {
+            "kind": "scalar_sigma", "eigenbasis_path": "cache/eigenbasis.nc",
+            "sigma_prior": {"pdf": "halfnormal", "sigma": 0.5},
+        },
+    }
+    before = deepcopy(config)
+    model = resolve_co2_model(config)
+    assert model["likelihood_builder"] is add_scalar_sigma_eigen_likelihood
+    assert model["likelihood_kwargs"]["eigenbasis_path"] == tmp_path / "cache" / "eigenbasis.nc"
+    assert config == before
+    assert not (tmp_path / "cache").exists()
+
+
+def test_component_resolution_preserves_selected_caller_values() -> None:
+    config = _ordinary()
+    config["model"] = {
+        "boundary": {"enabled": True, "prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1}},
+        "offset": {"prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.2}, "per_site": True},
+    }
+    before = deepcopy(config)
+    model = resolve_co2_model(config)
+    sampler = resolve_co2_sampler(config)
+    assert model["use_bc"] is True
+    assert model["bc_prior"] == {"pdf": "normal", "mu": 1.0, "sigma": 0.1}
+    assert model["offset_prior"] == {"pdf": "normal", "mu": 0.0, "sigma": 0.2}
+    assert sampler.draws == 20
+    assert config == before

@@ -127,8 +127,9 @@ selected scientific arrays, constructs the model, samples, then
 calculates and writes requested products. Full execution uses no manifests.
 The direct ``run_rhime_co2`` runner still returns its annotated trace.
 
-Saved phases call those same scientific operations. ``prepare`` imports an
-existing numerical artifact and its optional affine companion; Python callers
+Saved phases call those same scientific operations. ``prepare`` references an
+existing numerical artifact and its optional affine companion in place; keep
+those files available for later operations. Python callers
 can also prepare from canonical inputs and a coherent reduction. A new
 prepared/affine pair is saved with the existing codecs and checked by the affine
 loader before its manifest is written. Imported pairs retain their numerical
@@ -171,7 +172,6 @@ An ordinary TOML configuration can contain:
    [outputs]
    output_format = "basic"
    output_name = "co2"
-   save_inversion_output = false
 
 Full configured execution writes the selected products to the supplied directory:
 
@@ -249,9 +249,22 @@ Source sums and sector transforms precede uncertainty statistics. Native-flux
 and country products carry ``retained_state_conditional`` uncertainty scope;
 they exclude unresolved native-state posterior uncertainty tracked in OPE-68.
 
-``Co2Output`` contains the preparation, annotated trace, original requested
-window, optional bound affine reconstruction, in-memory products and file-path
-metadata. Its supported products are basic summaries, concentration components
+``Co2Output`` borrows the preparation and complete annotated trace DataTree,
+retaining separate prior, posterior, predictive and diagnostic groups with
+their own coordinates. It also retains the original requested window, optional
+bound affine reconstruction, in-memory products and descriptive provenance.
+It carries no writing policy or live sampler; ``sampler`` is ``None`` for both
+live and replay results. Concentration products deliberately use a derived
+Dataset with separate prior sample axes; this does not flatten the original trace.
+
+Pass :class:`openghg_inversions.rhime.co2.co2_outputs.Co2OutputOptions` to
+calculation and export operations. Its ordinary CO₂ fields are
+``output_format`` (``none``, ``basic`` or ``paris``), ``output_path``,
+``output_name``, ``save_trace``, ``country_file`` and
+``paris_postprocessing_kwargs``. Naming uses the RHIME convention. Reporting
+``source_to_sector`` mappings are current product choices, separate from saved
+inference. Standard inversion-output flags and naming options are not accepted.
+Supported products are basic summaries, concentration components
 and conditional native/country summaries. A later ``output_format = "paris"``
 request writes supported concentration and flux products from the same samples;
 it requires the bound companion and an explicit country file. PARIS supports the

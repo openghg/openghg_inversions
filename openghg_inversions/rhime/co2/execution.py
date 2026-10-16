@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 import json
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact
@@ -16,30 +16,28 @@ from openghg_inversions.rhime._stage_artifacts import _validate_filename_compone
 from openghg_inversions.rhime.builders import callable_metadata
 from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.rhime.sampling import sample_rhime_model
-from openghg_inversions.rhime.specs import RhimeOutputSpec
 
 from .co2_affine_output import _bind_affine_flux_map, load_and_bind_affine_flux_map
 from .co2_outputs import (
-    Co2Output, calculate_co2_products, save_co2_products, make_co2_output,
+    Co2Output, Co2OutputOptions, calculate_co2_products, save_co2_products, make_co2_output,
     validate_co2_output_spec, validate_co2_reporting_inputs,
 )
 from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs
 from .co2_runner import (
     annotate_co2_trace, materialize_co2_inputs, build_co2_from_materialized, describe_co2_likelihood_kwargs,
 )
-from .configuration import load_co2_family_config, resolve_co2_inference
+from .configuration import load_co2_family_config, resolve_co2_model, resolve_co2_sampler
 
 
 def load_co2_params(
     *, config_file: str | Path | None = None, params_file: str | Path | None = None,
     params: Mapping[str, Any] | None = None, overrides: Mapping[str, Any] | None = None,
-    phase: Literal["prepare", "sample", "prior", "postprocess"] | None = None,
 ) -> dict[str, Any]:
-    """Load one TOML/JSON/Python request, resolving paths from the invocation.
+    """Load and validate one TOML/JSON/Python request without touching arrays.
 
-    Overrides replace top-level sections before normalization. Configuration
-    resources use the same working-directory base in full and saved execution;
-    checkpoint references are resolved separately beside their manifest.
+    Overrides replace top-level sections before normalization. Each concrete
+    owner resolves its own paths from the invocation working directory. Saved
+    references are resolved separately beside their declaring manifest.
     """
     if sum(value is not None for value in (config_file, params_file, params)) != 1:
         raise ValueError("Pass exactly one of config_file, params_file or params.")
@@ -52,73 +50,44 @@ def load_co2_params(
     else:
         options = dict(params or {})
     options.update(overrides or {})
-    for section, keys in (
-        ("prepared_inputs", ("path",)), ("likelihood", ("eigenbasis_path",)),
-        ("outputs", ("reconstruction_path", "country_file", "output_path", "save_trace")),
-    ):
-        if section not in options:
-            continue
-        if phase in {"sample", "prior"} and section != "likelihood":
-            continue
-        if phase == "postprocess" and section != "outputs":
-            continue
-        if phase == "prepare" and section == "likelihood":
-            continue
-        values = dict(options[section])
-        for key in keys:
-            if phase == "postprocess" and key == "reconstruction_path":
-                continue
-            if phase == "prepare" and section == "outputs" and key != "reconstruction_path":
-                continue
-            if values.get(key) is not None and not isinstance(values[key], bool):
-                values[key] = Path(values[key]).expanduser().resolve()
-        options[section] = values
+    if type(options.get("format_version", 1)) is not int or options.get("format_version", 1) != 1:
+        raise ValueError("config.format_version must be the integer 1.")
+    if options.get("recipe", "co2") != "co2":
+        raise ValueError("CO2 execution requires recipe='co2'.")
+    if options.get("variant", "ordinary") not in {"ordinary", "cached_fixed_ou"}:
+        raise ValueError("CO2 variant must be 'ordinary' or 'cached_fixed_ou'.")
+    allowed = {"format_version", "recipe", "variant", "prepared_inputs", "model", "likelihood", "sampling", "outputs"}
+    if unknown := options.keys() - allowed:
+        raise ValueError(f"Unknown CO2 configuration option(s): {sorted(unknown)!r}.")
     return options
 
 
-def resolve_co2_phase_options(
-    params: Mapping[str, Any], *, phase: Literal["prepare", "sample", "prior", "postprocess"],
-) -> dict[str, Any]:
-    """Resolve only the preparation, inference or output choices a phase uses.
+def resolve_co2_preparation(params: Mapping[str, Any]) -> dict[str, Any]:
+    """Resolve explicit prepared/affine locations and original requested facts.
 
-    Phase-only requests need no unrelated sections. Defining coherent native
-    priors and operators remain numerical preparation inputs, rather than
-    inference overrides. Linked and cached recipes retain their own routes.
+    This owner reads no inference or reporting choices. Imported artifact paths
+    resolve from the invocation working directory; numerical loaders own facts
+    that can only be checked against their arrays.
     """
-    if type(params.get("format_version", 1)) is not int or params.get("format_version", 1) != 1:
-        raise ValueError("config.format_version must be the integer 1.")
-    if params.get("recipe", "co2") != "co2" or params.get("variant", "ordinary") != "ordinary":
-        raise ValueError("Ordinary CO2 phases require recipe='co2', variant='ordinary'.")
-    allowed = {"format_version", "recipe", "variant", "prepared_inputs", "model", "likelihood", "sampling", "outputs"}
-    if unknown := params.keys() - allowed:
-        raise ValueError(f"Unknown CO2 configuration option(s): {sorted(unknown)!r}.")
-    if phase == "prepare":
-        prepared = dict(params.get("prepared_inputs", {}))
-        if unknown := prepared.keys() - {"path", "start_date", "end_date", "domain"}:
-            raise ValueError(f"Unknown prepared_inputs option(s): {sorted(unknown)!r}.")
-        return {
-            "prepared_path": prepared.get("path"), "start_date": prepared.get("start_date"),
-            "end_date": prepared.get("end_date"), "domain": prepared.get("domain"),
-            "affine_path": params.get("outputs", {}).get("reconstruction_path"),
-        }
-    if phase in {"sample", "prior"}:
-        science = {"format_version": 1, "recipe": "co2", "variant": "ordinary", **params}
-        return {"model": resolve_co2_inference(science, sampling=phase == "sample")}
+    prepared = dict(params.get("prepared_inputs", {}))
+    if unknown := prepared.keys() - {"path", "start_date", "end_date", "domain"}:
+        raise ValueError(f"Unknown prepared_inputs option(s): {sorted(unknown)!r}.")
+    source = prepared.get("path")
+    companion = params.get("outputs", {}).get("reconstruction_path")
+    return {
+        "prepared_path": Path(source).expanduser().resolve() if source is not None else None,
+        "affine_path": Path(companion).expanduser().resolve() if companion is not None else None,
+        "start_date": prepared.get("start_date"), "end_date": prepared.get("end_date"),
+        "domain": prepared.get("domain"),
+    }
+
+
+def resolve_co2_output(params: Mapping[str, Any]) -> dict[str, Any]:
+    """Resolve supported CO2 products and their current reporting choices only."""
     choices = dict(params.get("outputs", {}))
-    # A saved sample owns its affine association; a new reporting request cannot replace it.
     choices.pop("reconstruction_path", None)
     source_to_sector = choices.pop("source_to_sector", None)
-    if source_to_sector is not None and (
-        not isinstance(source_to_sector, Mapping) or not source_to_sector
-        or any(not isinstance(key, str) or not isinstance(value, str) or not value.isidentifier()
-               for key, value in source_to_sector.items())
-    ):
-        raise ValueError("outputs.source_to_sector must map sources to identifier sector names.")
-    choices.setdefault("output_format", "basic")
-    choices.setdefault("save_inversion_output", False)
-    output = RhimeOutputSpec.from_params(choices, multisector=False)
-    _validate_filename_component("output_name", output.output_name)
-    return {"output": output, "source_to_sector": source_to_sector}
+    return {"output": Co2OutputOptions.from_params(choices), "source_to_sector": source_to_sector}
 
 
 def run_co2_from_config(
@@ -151,9 +120,12 @@ def run_co2_from_config(
     options = load_co2_params(config_file=config_file, params_file=params_file, params=params, overrides=overrides)
     if output_path is not None:
         options["outputs"] = {**options.get("outputs", {}), "output_path": Path(output_path).expanduser().resolve()}
-    preparation = resolve_co2_phase_options(options, phase="prepare")
-    model = resolve_co2_phase_options(options, phase="sample")["model"]
-    output_choices = resolve_co2_phase_options(options, phase="postprocess")
+    if options.get("variant", "ordinary") != "ordinary":
+        raise ValueError("run_co2_from_config requires variant='ordinary'; cached execution has its own runner.")
+    preparation = resolve_co2_preparation(options)
+    model = resolve_co2_model(options)
+    sampler = resolve_co2_sampler(options)
+    output_choices = resolve_co2_output(options)
     output = output_choices["output"]
     affine_path = preparation["affine_path"]
     validate_co2_output_spec(output, has_reconstruction=affine_path is not None or affine_artifact is not None)
@@ -165,7 +137,7 @@ def run_co2_from_config(
         raise ValueError("Pass prepared or canonical_inputs/reduction, not both.")
     source = preparation["prepared_path"]
     supplied_prepared = prepared is not None
-    if canonical_inputs is not None:
+    if canonical_inputs is not None and reduction is not None:
         prepared = prepare_co2_inputs(canonical_inputs, reduction, aggregation_error_rank=aggregation_error_rank)
     elif prepared is None:
         if source is None:
@@ -177,9 +149,6 @@ def run_co2_from_config(
     )
     for name in ("domain", "start_date"):
         _validate_filename_component(name, facts[name])
-    if output.output_format == "paris":
-        if not model.sampler.sample_prior_predictive:
-            raise ValueError("CO2 PARIS outputs require prior draws; enable sample_prior_predictive.")
     bound = None
     if affine_artifact is not None:
         if affine_path is not None:
@@ -193,25 +162,26 @@ def run_co2_from_config(
 
     validate_co2_outputs(output, bound=bound, source_to_sector=output_choices["source_to_sector"])
     countries = validate_co2_reporting_inputs(output, prepared, bound)
-    active_sampler = resolve_sampler(model.sampler)
-    model_inputs, materialized_options = materialize_co2_inputs(prepared_inputs=prepared, **model.runner_kwargs)
+    if bound is not None and output.output_format != "none" and not sampler.sample_prior_predictive:
+        raise ValueError("CO2 affine products require prior draws; enable sample_prior_predictive.")
+    active_sampler = resolve_sampler(sampler)
+    model_inputs, materialized_options = materialize_co2_inputs(prepared_inputs=prepared, **model)
     built = build_co2_from_materialized(model_inputs, prepared_inputs=prepared,
-                                       **{**model.runner_kwargs, **materialized_options})
+                                       **{**model, **materialized_options})
     trace = sample_rhime_model(built, active_sampler)
     annotate_co2_trace(trace, built, concentration_units=prepared.inv_inputs["mf"].attrs.get("units"))
-    if "likelihood_builder" in model.runner_kwargs:
+    if "likelihood_builder" in model:
         annotate_likelihood_trace(
-            trace, builder_identity=callable_metadata(model.runner_kwargs["likelihood_builder"]),
-            likelihood_kwargs=describe_co2_likelihood_kwargs(model.runner_kwargs.get("likelihood_kwargs")),
+            trace, builder_identity=callable_metadata(model["likelihood_builder"]),
+            likelihood_kwargs=describe_co2_likelihood_kwargs(model.get("likelihood_kwargs")),
         )
-    result = make_co2_output(prepared=prepared, output=output, trace=trace, bound=bound,
-                            source_to_sector=output_choices["source_to_sector"],
-                            sampler=active_sampler, output_metadata={"sampler": active_sampler.describe(),
+    result = make_co2_output(prepared=prepared, trace=trace, bound=bound,
+                            output_metadata={"sampler": active_sampler.describe(),
                             "provenance": installed_ogi_provenance()}, **facts)
     calculate_co2_products(result=result, prepared=prepared, bound=bound,
-                           source_to_sector=output_choices["source_to_sector"], countries=countries)
-    save_co2_products(result)
+                           source_to_sector=output_choices["source_to_sector"], countries=countries, output=output)
+    save_co2_products(result, output=output)
     return result
 
 
-__all__ = ["load_co2_params", "resolve_co2_phase_options", "run_co2_from_config"]
+__all__ = ["load_co2_params", "resolve_co2_preparation", "resolve_co2_output", "run_co2_from_config"]

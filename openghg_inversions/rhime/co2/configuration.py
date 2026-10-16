@@ -46,14 +46,12 @@ class Co2RunSetup:
         runner: Selected public prepared-input runner.
         runner_kwargs: Validated scientific arguments for ``runner``.
         sampler: Validated sampling configuration for ``runner``.
-        variant: Explicit ordinary/cached capability selection.
     """
 
     preparation_kwargs: Mapping[str, object]
     runner: Runner
     runner_kwargs: Mapping[str, object]
     sampler: RhimeSampler
-    variant: str = "ordinary"
 
     def runner_arguments(self, prepared_inputs: Co2PreparedInputs) -> Mapping[str, object]:
         """Bind a prepared artifact to the selected runner.
@@ -534,21 +532,14 @@ def _cached_likelihood(value: object) -> dict[str, Any]:
     return result
 
 
-def _resolve_co2(
-    options: dict[str, object],
-    variant: str,
-    *,
-    preparation_kwargs: Mapping[str, object] | None = None,
-    sampling: bool = True,
-) -> Co2RunSetup:
+def _resolve_co2(options: dict[str, object], variant: str) -> Co2RunSetup:
     if variant not in ("ordinary", "cached_fixed_ou"):
         raise ValueError("recipe='co2' requires variant='ordinary' or 'cached_fixed_ou'.")
-    prepared = _prepared_inputs(options) if preparation_kwargs is None else preparation_kwargs
+    prepared = _prepared_inputs(options)
     model = _model(options.pop("model", {}))
     likelihood = _take(options, "likelihood", "config")
     cached = variant == "cached_fixed_ou"
-    sampling_options = options.pop("sampling", {})
-    sampler = _sampling(sampling_options, cached=cached) if sampling else RhimeSampler()
+    sampler = _sampling(options.pop("sampling", {}), cached=cached)
     _reject_unknown(options, "config")
     if cached:
         runner: Runner = run_rhime_co2_cached_sigma
@@ -556,7 +547,7 @@ def _resolve_co2(
     else:
         runner = run_rhime_co2
         runner_kwargs = {**model, **_ordinary_likelihood(likelihood)}
-    return Co2RunSetup(prepared, runner, _frozen(runner_kwargs), sampler, variant=variant)
+    return Co2RunSetup(prepared, runner, _frozen(runner_kwargs), sampler)
 
 
 def _resolve_linked(options: dict[str, object], variant: str) -> Co2O2RunSetup:
@@ -669,33 +660,47 @@ def resolve_co2_family_config(
     raise ValueError("config.recipe must be 'co2' or 'co2_o2'.")
 
 
-def resolve_co2_inference(
-    config: Mapping[str, object], *, sampling: bool = True
-) -> Co2RunSetup:
+def resolve_co2_model(config: Mapping[str, object]) -> dict[str, Any]:
     """Resolve ordinary CO2 model choices independently of preparation and outputs.
 
     Args:
-        config: Full or phase-only configuration. Only the version, recipe,
-            variant, model, likelihood and sampling sections are consumed.
-        sampling: Resolve live sampler options. False leaves unused sampling
-            choices untouched and supplies a fresh default sampler.
+        config: Component or full configuration. Only optional ``model`` and
+            required ``likelihood`` sections are consumed. File frontends own
+            envelope validation; direct model choices require no header.
 
     Returns:
-        Scientific runner arguments with no preparation-location requirements.
+        Scientific construction keywords. Scalar-sigma eigenbasis paths resolve
+        from the invocation working directory without opening the resource.
 
     Raises:
-        ValueError: If the selected version or recipe is unsupported.
+        ValueError: If selected model or likelihood choices are invalid.
     """
-    selected = {
-        key: value for key, value in _table(config, "config").items()
-        if key in {"format_version", "recipe", "variant", "model", "likelihood", "sampling"}
-    }
-    version = _take(selected, "format_version", "config")
-    if isinstance(version, bool) or not isinstance(version, int) or version != 1:
-        raise ValueError("config.format_version must be the integer 1.")
-    if selected.pop("recipe", None) != "co2" or selected.pop("variant", None) != "ordinary":
-        raise ValueError("Ordinary CO2 inference requires recipe='co2' and variant='ordinary'.")
-    return _resolve_co2(selected, "ordinary", preparation_kwargs=_frozen({}), sampling=sampling)
+    options = _table(config, "config")
+    model = _model(options.get("model", {}))
+    likelihood = _ordinary_likelihood(_take(options, "likelihood", "config"))
+    likelihood_kwargs = likelihood.get("likelihood_kwargs", {})
+    if "eigenbasis_path" in likelihood_kwargs:
+        likelihood["likelihood_kwargs"] = {
+            **likelihood_kwargs,
+            "eigenbasis_path": likelihood_kwargs["eigenbasis_path"].expanduser().resolve(),
+        }
+    return {**model, **likelihood}
+
+
+def resolve_co2_sampler(config: Mapping[str, object]) -> RhimeSampler:
+    """Resolve ordinary CO2 sampling choices without touching other components.
+
+    Args:
+        config: Component or full configuration with an optional ``sampling``
+            section. No preparation, model or file-envelope fields are required.
+
+    Returns:
+        A fresh sampler with validated ordinary CO2 options.
+
+    Raises:
+        ValueError: If supplied sampling choices are unsupported.
+    """
+    return _sampling(_table(config, "config").get("sampling", {}), cached=False)
 
 
 __all__ = [
@@ -704,5 +709,6 @@ __all__ = [
     "co2_config_templates",
     "load_co2_family_config",
     "resolve_co2_family_config",
-    "resolve_co2_inference",
+    "resolve_co2_model",
+    "resolve_co2_sampler",
 ]

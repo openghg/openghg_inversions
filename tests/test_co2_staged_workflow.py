@@ -161,12 +161,21 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(
     source, original = _handoff(tmp_path)
     config = _configuration(tmp_path, variant)
     common = ["--model", "co2", "--config", str(config)]
-    prepared = tmp_path / "prepare" / "prepared-inputs.nc"
+    prepared = source if variant == "ordinary" else tmp_path / "prepare" / "prepared-inputs.nc"
     preparation = tmp_path / "prepare" / "prepare-manifest.json"
     posterior = tmp_path / "sample" / "posterior.nc"
     sampling = tmp_path / "sample" / "sample-manifest.json"
     _cli("prepare", *common, "--output-dir", tmp_path / "prepare")
-    assert prepared.read_bytes() == source.read_bytes()
+    if variant == "ordinary":
+        from openghg_inversions.rhime.co2.handoffs import load_preparation
+
+        loaded = load_preparation(preparation)
+        assert loaded.payload == source
+        assert loaded.affine_payload == tmp_path / "affine.nc"
+        assert not (tmp_path / "prepare" / "prepared-inputs.nc").exists()
+        assert not (tmp_path / "prepare" / "affine-flux-map.nc").exists()
+    else:
+        assert prepared.read_bytes() == source.read_bytes()
     restored = Co2PreparedInputs.load(prepared)
     xr.testing.assert_identical(restored.inv_inputs, original.inv_inputs)
     handoff = ["--preparation-manifest", str(preparation)]

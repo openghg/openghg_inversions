@@ -12,8 +12,7 @@ from dataclasses import dataclass, replace
 import json
 import os
 from pathlib import Path
-import shutil
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from uuid import uuid4
 
 import numpy as np
@@ -33,7 +32,6 @@ from openghg_inversions.rhime._stage_artifacts import (
 from openghg_inversions.rhime._stage_checks import (
     PREPARATION_CHECK_NAME, _check_draws, _check_stage, _check_result,
 )
-from openghg_inversions.rhime.specs import RhimeOutputSpec
 from openghg_inversions.rhime.builders import callable_metadata
 from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.rhime.sampling import sample_rhime_model
@@ -43,7 +41,7 @@ from .co2_affine_output import (
     BoundCo2AffineFluxMap, load_and_bind_affine_flux_map, prepared_inputs_content_id,
 )
 from .co2_outputs import (
-    Co2Output, make_co2_output, calculate_co2_products, save_co2_products, validate_co2_outputs,
+    Co2Output, Co2OutputOptions, make_co2_output, calculate_co2_products, save_co2_products,
 )
 from .co2_preparation import (
     Co2PreparedInputs, prepare_co2_inputs, requested_co2_facts, _require_equivalent_units,
@@ -51,7 +49,6 @@ from .co2_preparation import (
 from .co2_runner import (
     annotate_co2_trace, materialize_co2_inputs, build_co2_from_materialized, describe_co2_likelihood_kwargs,
 )
-from .configuration import Co2RunSetup
 
 
 @dataclass(frozen=True)
@@ -115,16 +112,6 @@ def save_preparation(
     return finish_checkpoint(destination, "prepare", record)
 
 
-def _copy_artifact(source: Path, destination: Path) -> None:
-    """Copy an explicitly imported artifact in its existing numerical format."""
-    if source.is_dir():
-        if destination.exists():
-            shutil.rmtree(destination)
-        shutil.copytree(source, destination)
-    else:
-        shutil.copyfile(source, destination)
-
-
 def prepare(
     *, output_dir: str | Path, prepared_path: str | Path | None = None,
     start_date: str | None = None, end_date: str | None = None, domain: str | None = None,
@@ -136,9 +123,9 @@ def prepare(
     """Prepare a coherent reduction or import a saved prepared/affine pair.
 
     Pass canonical inputs and their defining coherent reduction together, or one
-    saved prepared path. Imported affine pairs are copied byte-for-byte to retain
-    their numerical binding. New pairs use :func:`save_preparation` and the
-    existing numerical codecs. Defining priors, covariance, operators and
+    saved prepared path. Imported pairs are validated and referenced directly;
+    callers retain those files for later sampling/replay. New pairs use
+    :func:`save_preparation` and the existing numerical codecs. Defining priors, covariance, operators and
     projections belong to the coherent preparation, never an inference override.
     """
     if (canonical_inputs is None) != (reduction is None):
@@ -150,38 +137,33 @@ def prepare(
     if canonical_inputs is not None:
         if affine_path is not None:
             raise ValueError("A new preparation requires affine_artifact, not an imported companion path.")
-        prepared = prepare_co2_inputs(canonical_inputs, reduction, aggregation_error_rank=aggregation_error_rank)
+        prepared = prepare_co2_inputs(
+            canonical_inputs, cast(CoherentGaussianReduction, reduction),
+            aggregation_error_rank=aggregation_error_rank,
+        )
         return save_preparation(
             prepared, output_dir=output_dir, start_date=start_date, end_date=end_date, domain=domain,
             affine_artifact=affine_artifact,
         )
-    source = Path(prepared_path).resolve()
+    source = Path(cast(str | Path, prepared_path)).resolve()
     prepared = Co2PreparedInputs.load(source)
     if affine_artifact is not None:
-        return save_preparation(
-            prepared, output_dir=output_dir, start_date=start_date, end_date=end_date, domain=domain,
-            affine_artifact=affine_artifact,
-        )
+        raise ValueError("Imported preparation requires affine_path; use save_preparation for a new pair.")
     facts = requested_co2_facts(prepared, start_date=start_date, end_date=end_date, domain=domain)
     companion = Path(affine_path).resolve() if affine_path is not None else None
     if companion is not None:
         load_and_bind_affine_flux_map(companion, source)
-    prepared_name = "prepared-inputs.zarr" if source.is_dir() else "prepared-inputs.nc"
-    affine_name = "affine-flux-map.zarr" if companion is not None and companion.is_dir() else "affine-flux-map.nc"
-    payloads = (prepared_name,) + ((affine_name,) if companion is not None else ())
     destination = start_checkpoint(
-        output_dir, "prepare", payloads=payloads, referenced=(source,) + ((companion,) if companion else ()),
+        output_dir, "prepare", payloads=(), referenced=(source,) + ((companion,) if companion else ()),
     )
-    _copy_artifact(source, destination / prepared_name)
     record = {
         "schema": "openghg_inversions.co2.prepare", "schema_version": 1,
         "producer": "openghg_inversions", "stage": "prepare", "generation": uuid4().hex,
-        "prepared_inputs": prepared_name, **facts,
+        "prepared_inputs": os.path.relpath(source, destination), **facts,
         "provenance": installed_ogi_provenance(),
     }
     if companion is not None:
-        _copy_artifact(companion, destination / affine_name)
-        record["affine_reconstruction"] = affine_name
+        record["affine_reconstruction"] = os.path.relpath(companion, destination)
     return finish_checkpoint(destination, "prepare", record)
 
 
@@ -240,15 +222,9 @@ def _validate_trace(trace: xr.DataTree, prepared: Co2PreparedInputs | None = Non
             xr.align(dataset[roles["flux_scale"]], prepared.inv_inputs["alpha_prior_mean"], join="exact", copy=False)
 
 
-def _require_ordinary(model: Co2RunSetup) -> None:
-    if model.variant != "ordinary":
-        raise ValueError("Ordinary CO2 handoffs require variant='ordinary'; cached adoption remains separate.")
-
-
 def save_samples(
     preparation_manifest: str | Path, trace: xr.DataTree, *, actual_inference: Mapping[str, Any],
     preparation_generation: str, output_dir: str | Path,
-    source_to_sector: Mapping[str, str] | None = None,
 ) -> Path:
     """Save annotated samples and inference provenance bound to a preparation generation.
 
@@ -265,14 +241,6 @@ def save_samples(
         reference(preparation_path, preparation["affine_reconstruction"])
         if "affine_reconstruction" in preparation else None
     )
-    if source_to_sector is not None and (
-        not isinstance(source_to_sector, Mapping) or not source_to_sector
-        or any(not isinstance(key, str) or not isinstance(value, str) or not value.isidentifier()
-               for key, value in source_to_sector.items())
-    ):
-        raise ValueError("CO2 source_to_sector must map native sources to identifier sector names.")
-    if source_to_sector is not None and affine_path is None:
-        raise ValueError("CO2 source_to_sector requires a bound affine reconstruction.")
     destination = start_checkpoint(
         output_dir, "sample", payloads=("posterior.nc",),
         referenced=(preparation_path, prepared_path) + ((affine_path,) if affine_path is not None else ()),
@@ -284,13 +252,11 @@ def save_samples(
         "preparation": os.path.relpath(preparation_path, destination),
         "preparation_generation": preparation_generation, "posterior": "posterior.nc",
         "actual_inference": dict(actual_inference), "provenance": installed_ogi_provenance(),
-        "source_to_sector": dict(source_to_sector) if source_to_sector is not None else None,
     })
 
 
 def sample(
-    preparation_manifest: str | Path, *, model: Co2RunSetup, output_dir: str | Path,
-    source_to_sector: Mapping[str, str] | None = None,
+    preparation_manifest: str | Path, *, model: Mapping[str, Any], output_dir: str | Path,
     sampler: RhimeSampler | Literal["default"] = "default",
 ) -> Path:
     """Build and sample ordinary CO2 using current science and its resolved sampler.
@@ -298,10 +264,9 @@ def sample(
     Compatible independent BC/offset priors and supported likelihood choices can
     reuse preparation; the defining coherent native reduction stays unchanged.
     Full execution and saved sampling share the explicit build and sample owners.
-    ``sampler="default"`` selects fresh defaults; pass ``model.sampler`` to use
-    configured sampler choices. Direct runner trace returns remain unchanged.
+    ``sampler="default"`` selects fresh defaults; an explicit sampler supplies
+    configured sampling choices. Direct runner trace returns remain unchanged.
     """
-    _require_ordinary(model)
     active_sampler = resolve_sampler(sampler)
     preparation = load_preparation(preparation_manifest)
     check_checkpoint_targets(
@@ -309,35 +274,28 @@ def sample(
         referenced=(Path(preparation_manifest).resolve(), preparation.payload)
         + ((preparation.affine_payload,) if preparation.affine_payload else ()),
     )
-    validate_co2_outputs(
-        RhimeOutputSpec(output_format="none", save_inversion_output=False),
-        bound=preparation.bound, source_to_sector=source_to_sector,
-    )
     model_inputs, materialized_options = materialize_co2_inputs(
-        prepared_inputs=preparation.prepared, **model.runner_kwargs,
+        prepared_inputs=preparation.prepared, **model,
     )
     built = build_co2_from_materialized(
         model_inputs, prepared_inputs=preparation.prepared,
-        **{**model.runner_kwargs, **materialized_options},
+        **{**model, **materialized_options},
     )
     trace = sample_rhime_model(built, active_sampler)
     annotate_co2_trace(trace, built, concentration_units=preparation.prepared.inv_inputs["mf"].attrs.get("units"))
-    likelihood_builder = model.runner_kwargs.get("likelihood_builder")
+    likelihood_builder = model.get("likelihood_builder")
     if likelihood_builder is not None:
         annotate_likelihood_trace(
             trace, builder_identity=callable_metadata(likelihood_builder),
-            likelihood_kwargs=describe_co2_likelihood_kwargs(model.runner_kwargs.get("likelihood_kwargs")),
+            likelihood_kwargs=describe_co2_likelihood_kwargs(model.get("likelihood_kwargs")),
         )
     return save_samples(
         preparation_manifest, trace, actual_inference=active_sampler.describe(), preparation_generation=preparation.generation,
-        output_dir=output_dir, source_to_sector=source_to_sector,
+        output_dir=output_dir,
     )
 
 
-def load_samples(
-    sample_manifest: str | Path, *, output: RhimeOutputSpec,
-    source_to_sector: Mapping[str, str] | None = None,
-) -> Co2Output:
+def load_samples(sample_manifest: str | Path) -> Co2Output:
     """Load saved scientific meaning without acquisition, construction or inference.
 
     Replayed results retain ``sampler=None`` and plain recorded inference and
@@ -345,7 +303,7 @@ def load_samples(
     preparation, independently of observation extrema or current model settings.
     """
     path, record = read_manifest(sample_manifest, "openghg_inversions.co2.sample", (
-        "preparation", "preparation_generation", "posterior", "source_to_sector", "inference_kind",
+        "preparation", "preparation_generation", "posterior", "inference_kind",
     ))
     if record["inference_kind"] != "mcmc":
         raise ValueError(f"CO2 samples {path} require inference_kind='mcmc'.")
@@ -356,10 +314,9 @@ def load_samples(
     trace = load_trace(reference(path, record["posterior"]))
     _validate_trace(trace, preparation.prepared)
     result = make_co2_output(
-        prepared=preparation.prepared, trace=trace, sampler=None, bound=preparation.bound,
-        source_to_sector=record["source_to_sector"] if source_to_sector is None else source_to_sector,
+        prepared=preparation.prepared, trace=trace, bound=preparation.bound,
         start_date=preparation.start_date, end_date=preparation.end_date, domain=preparation.domain,
-        output=output, output_metadata={
+        output_metadata={
             "sampler": record.get("actual_inference") if isinstance(record.get("actual_inference"), Mapping) else {},
             "provenance": record.get("provenance") if isinstance(record.get("provenance"), Mapping) else {},
         },
@@ -368,7 +325,7 @@ def load_samples(
 
 
 def postprocess(
-    sample_manifest: str | Path, *, output: RhimeOutputSpec,
+    sample_manifest: str | Path, *, output: Co2OutputOptions,
     source_to_sector: Mapping[str, str] | None = None,
 ) -> Co2Output:
     """Reopen one sample manifest, calculate requested products and export them.
@@ -376,18 +333,19 @@ def postprocess(
     Products use saved coherent/affine scientific meaning and current reporting
     choices. All product validation/calculation precedes opening output paths.
     """
-    loaded = load_samples(sample_manifest, output=output, source_to_sector=source_to_sector)
+    loaded = load_samples(sample_manifest)
     calculate_co2_products(
         result=loaded, prepared=loaded.prepared, bound=loaded.bound,
-        source_to_sector=loaded.source_to_sector,
+        output=output, source_to_sector=source_to_sector,
     )
-    save_co2_products(loaded)
+    save_co2_products(loaded, output=output)
     return loaded
 
 
 def prior_predictive(
-    preparation_manifest: str | Path, *, model: Co2RunSetup, output_dir: str | Path,
+    preparation_manifest: str | Path, *, model: Mapping[str, Any], output_dir: str | Path,
     draws: int = 100, check_output: str | Path | None = None, stage: str = "prior-predictive",
+    random_seed: int | None = None,
 ) -> dict[str, Any]:
     """Check exact graph prior predictions without posterior inference.
 
@@ -395,7 +353,6 @@ def prior_predictive(
     evaluated missing, empty or non-finite predictive evidence becomes a failed
     report. The check never repairs absent posterior/replay evidence.
     """
-    _require_ordinary(model)
     _check_draws(draws)
     stage = _check_stage(stage)
     preparation = load_preparation(preparation_manifest)
@@ -408,26 +365,25 @@ def prior_predictive(
     )
     report.unlink(missing_ok=True)
     model_inputs, materialized_options = materialize_co2_inputs(
-        prepared_inputs=preparation.prepared, **model.runner_kwargs,
+        prepared_inputs=preparation.prepared, **model,
     )
     built = build_co2_from_materialized(
         model_inputs, prepared_inputs=preparation.prepared,
-        **{**model.runner_kwargs, **materialized_options},
+        **{**model, **materialized_options},
     )
-    seed = dict(model.sampler.sample_kwargs or {}).get("random_seed")
     with built.model:
-        prior = pm.sample_prior_predictive(draws, random_seed=seed)
+        prior = pm.sample_prior_predictive(draws, random_seed=random_seed)
     registry = get_coord_registry(built.model)
     if registry is not None:
         prior = restore_inferencedata_coords(prior, registry)
     annotate_co2_trace(
         prior, built, concentration_units=preparation.prepared.inv_inputs["mf"].attrs.get("units"),
     )
-    likelihood_builder = model.runner_kwargs.get("likelihood_builder")
+    likelihood_builder = model.get("likelihood_builder")
     if likelihood_builder is not None:
         annotate_likelihood_trace(
             prior, builder_identity=callable_metadata(likelihood_builder),
-            likelihood_kwargs=describe_co2_likelihood_kwargs(model.runner_kwargs.get("likelihood_kwargs")),
+            likelihood_kwargs=describe_co2_likelihood_kwargs(model.get("likelihood_kwargs")),
         )
     concentration = built.output_contract.variable_roles.get("concentration")
     predictive = prior.children.get("prior_predictive")
@@ -454,7 +410,6 @@ def prior_predictive(
     )
     write_json(report, result)
     return result
-
 
 
 __all__ = [

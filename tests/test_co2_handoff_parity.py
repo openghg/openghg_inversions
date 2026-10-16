@@ -13,7 +13,55 @@ from examples.co2_handoffs import END_DATE, START_DATE, configuration, synthetic
 from openghg_inversions.basis.affine_flux_map_io import save as save_affine
 from openghg_inversions.rhime.co2 import co2_runner
 from openghg_inversions.rhime.co2.co2_affine_output import prepared_inputs_content_id
-from openghg_inversions.rhime.specs import RhimeOutputSpec
+from openghg_inversions.rhime.co2.co2_outputs import Co2OutputOptions, calculate_co2_products, make_co2_output
+from openghg_inversions.rhime.co2.configuration import resolve_co2_model, resolve_co2_sampler
+
+
+def test_scientific_view_and_products_preserve_complete_trace(monkeypatch):
+    """Sample groups keep separate axes and remain the caller's original tree."""
+    from test_co2_staged_outputs import _components_fixture
+
+    prepared, trace = _components_fixture()
+    before = trace.copy(deep=True)
+    view = make_co2_output(
+        prepared=prepared, trace=trace, start_date=START_DATE, end_date=END_DATE, domain="EUROPE",
+    )
+    assert view.prepared is prepared
+    assert view.idata is trace
+    assert view.idata.prior.sizes["draw"] == 4
+    assert view.idata.posterior.sizes["draw"] == 3
+    assert set(view.idata.children) == set(trace.children)
+    assert not hasattr(view, "output_spec")
+    assert not hasattr(view, "source_to_sector")
+    assert view.sampler is None
+    to_dataset = xr.DataTree.to_dataset
+
+    def child_dataset_only(tree, *args, **kwargs):
+        if tree is trace:
+            raise AssertionError("Product calculation must not flatten the complete trace tree")
+        return to_dataset(tree, *args, **kwargs)
+
+    with monkeypatch.context() as product_checks:
+        product_checks.setattr(xr.DataTree, "to_dataset", child_dataset_only)
+        calculate_co2_products(result=view, prepared=prepared, output=Co2OutputOptions())
+    assert view.idata is trace
+    assert view.outputs["concentration_components"].sizes["prior_draw"] == 4
+    assert view.outputs["concentration_components"].sizes["draw"] == 3
+    xr.testing.assert_identical(trace, before)
+
+
+@pytest.mark.parametrize("option", ["save_inversion_output", "output_filename_convention", "save_basis"])
+def test_ordinary_output_options_reject_unrelated_standard_flags(option):
+    with pytest.raises(ValueError, match="Unsupported CO2 output"):
+        Co2OutputOptions.from_params({option: False})
+
+
+def test_ordinary_output_options_normalize_only_their_paths(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    options = Co2OutputOptions.from_params({"output_path": "products", "save_trace": "samples.nc"})
+    assert options.output_path == tmp_path / "products"
+    assert options.save_trace == tmp_path / "samples.nc"
+    assert options.output_name == "rhime"
 
 
 @pytest.mark.parametrize("imported", [False, True], ids=["new-pair", "imported-pair"])
@@ -24,7 +72,8 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
 
     canonical, reduction, prepared, affine, countries = synthetic_inputs(tmp_path)
     params = configuration(tmp_path / "full-products", countries)
-    setup = execution.resolve_co2_phase_options(params, phase="sample")["model"]
+    model = resolve_co2_model(params)
+    sampler = resolve_co2_sampler(params)
     if imported:
         source = tmp_path / "source.nc"
         companion = tmp_path / "source-affine.nc"
@@ -40,10 +89,10 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
             start_date=START_DATE, end_date=END_DATE, domain="EUROPE",
         )
     before = manifest.read_bytes()
-    samples = handoffs.sample(manifest, model=setup, sampler=setup.sampler, output_dir=tmp_path / "samples")
+    samples = handoffs.sample(manifest, model=model, sampler=sampler, output_dir=tmp_path / "samples")
     staged = handoffs.postprocess(
-        samples, output=RhimeOutputSpec(
-            output_format="basic", output_name="co2", save_inversion_output=False,
+        samples, output=Co2OutputOptions(
+            output_format="basic", output_name="co2",
             country_file=str(countries), output_path=str(tmp_path / "staged-products"),
         ),
     )
@@ -63,7 +112,10 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
         if name != "concentration_components":
             assert Path(full.output_metadata[f"{name}_path"]).is_file()
             assert Path(staged.output_metadata[f"{name}_path"]).is_file()
-    assert full.sampler is not None
+    assert full.sampler is None
+    assert full.output_metadata["sampler"]["draws"] == 12
+    assert not hasattr(full, "output_spec")
+    assert not hasattr(full, "source_to_sector")
     assert staged.sampler is None
     assert not hasattr(staged, "model")
     assert not hasattr(full, "run_spec")
@@ -100,7 +152,7 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
     assert staged.outputs["concentration_components"].sizes["draw"] == 12
     assert staged.outputs["concentration_components"].modelled_posterior.attrs["units"] == "ppm"
 
-    built = co2_runner.build_rhime_co2(prepared_inputs=prepared, **setup.runner_kwargs)
+    built = co2_runner.build_rhime_co2(prepared_inputs=prepared, **model)
     point = built.model.initial_point()
     mean_function = built.model.compile_fn(
         built.model.replace_rvs_by_values([built.model[roles["model_mean"]]])[0],
@@ -124,8 +176,8 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
     monkeypatch.setattr(handoffs, "sample_rhime_model", forbidden)
     monkeypatch.setattr(execution, "run_co2_from_config", forbidden)
     replay = handoffs.postprocess(
-        samples, output=RhimeOutputSpec(
-            output_format="paris", output_name="replay", save_inversion_output=False,
+        samples, output=Co2OutputOptions(
+            output_format="paris", output_name="replay",
             country_file=str(countries), output_path=str(tmp_path / "replay-products"),
         ),
     )
@@ -159,6 +211,69 @@ def test_configured_full_uses_output_policy_before_sampling(tmp_path, monkeypatc
     with pytest.raises(ValueError, match="support"):
         run_co2_from_config(params=params, prepared=prepared, affine_artifact=affine)
     assert not (tmp_path / "unsupported").exists()
+
+
+@pytest.mark.parametrize("country_output", [False, True], ids=["native", "native-country"])
+def test_affine_basic_requires_prior_draws_before_materialization(tmp_path, monkeypatch, country_output):
+    """Conditional native summaries require both prior and posterior states."""
+    from openghg_inversions.rhime.co2 import execution
+
+    _, _, prepared, affine, countries = synthetic_inputs(tmp_path)
+    params = configuration(tmp_path / "rejected", countries)
+    params["sampling"]["sample_prior_predictive"] = False
+    if not country_output:
+        params["outputs"].pop("country_file")
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Missing affine prior draws must fail before materialization or sampling")
+
+    monkeypatch.setattr(execution, "materialize_co2_inputs", forbidden)
+    monkeypatch.setattr(execution, "sample_rhime_model", forbidden)
+    with pytest.raises(ValueError, match="prior draws|prior.*flux_scale|sample_prior_predictive"):
+        execution.run_co2_from_config(params=params, prepared=prepared, affine_artifact=affine)
+    assert not (tmp_path / "rejected").exists()
+
+
+def test_configured_concentration_only_basic_accepts_no_prior_draws(tmp_path, monkeypatch):
+    """The affine preflight does not require prior draws for concentration summaries."""
+    from openghg_inversions.rhime.co2 import execution
+
+    _, _, prepared, _, countries = synthetic_inputs(tmp_path)
+    params = configuration(tmp_path / "concentrations", countries)
+    params["model"] = {}
+    params["outputs"].pop("country_file")
+    params["sampling"].update(sample_prior_predictive=False, sample_posterior_predictive=False)
+    state = xr.DataArray(
+        prepared.inv_inputs.alpha_prior_mean.values[None, None, :] * np.asarray([.9, 1.1])[None, :, None],
+        dims=("chain", "draw", "region"),
+        coords={"chain": [0], "draw": [0, 1], "region": prepared.inv_inputs.region},
+    )
+    mean = (xr.dot(prepared.inv_inputs.H, state, dim="region") + prepared.inv_inputs.fixed_prior_contribution).transpose(
+        "chain", "draw", "nmeasure",
+    )
+    marginal_error = np.sqrt(
+        prepared.inv_inputs.mf_error**2 + prepared.inv_inputs.diagonal_residual_variance
+        + (prepared.inv_inputs.low_rank_factor**2).sum("agg_rank")
+    )
+    trace = xr.DataTree.from_dict({"posterior": xr.Dataset({
+        "flux_scaling": state, "co2_flux_contribution": mean,
+        "modelled_concentration": mean, "epsilon": xr.ones_like(mean) * marginal_error,
+    })})
+    sampled = []
+
+    def reference_draws(built, sampler):
+        assert not sampler.sample_prior_predictive
+        sampled.append(built)
+        return trace
+
+    monkeypatch.setattr(execution, "sample_rhime_model", reference_draws)
+    result = execution.run_co2_from_config(params=params, prepared=prepared)
+    assert len(sampled) == 1
+    assert result.idata is trace
+    assert "prior" not in result.idata.children
+    assert "native_flux" not in result.outputs
+    xr.testing.assert_allclose(result.outputs["basic"].modelled_posterior_mean, mean.mean(("chain", "draw")))
+    assert Path(result.output_metadata["basic_path"]).is_file()
 
 
 def test_full_rejects_supplied_preparation_with_an_unrelated_saved_affine_pair(tmp_path, monkeypatch):
@@ -231,11 +346,10 @@ def test_no_output_replay_rejects_inconsistent_scientific_role_meaning(tmp_path,
     prep = handoffs.save_preparation(
         prepared, output_dir=tmp_path / "prep", start_date=START_DATE, end_date=END_DATE, domain="EUROPE",
     )
-    output = RhimeOutputSpec(output_format="none", save_inversion_output=False)
     # A reader owns external trace validation; live PyMC traces need no repeated check.
     with pytest.raises(ValueError, match="role|dimension|units|flux_scale"):
         sample = handoffs.save_samples(
             prep, trace, actual_inference={"draws": 3},
             preparation_generation=handoffs.load_preparation(prep).generation, output_dir=tmp_path / "sample",
         )
-        handoffs.load_samples(sample, output=output)
+        handoffs.load_samples(sample)

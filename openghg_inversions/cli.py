@@ -127,16 +127,16 @@ def _standard_phase_options(args: argparse.Namespace, *, phase: str) -> dict[str
     )
 
 
-def _co2_phase_options(args: argparse.Namespace, *, phase: str) -> dict[str, Any]:
-    """Load only the choices used by one ordinary CO2 phase."""
-    from openghg_inversions.rhime.co2.execution import load_co2_params, resolve_co2_phase_options
+def _co2_params(args: argparse.Namespace) -> dict[str, Any]:
+    """Read an ordinary CO2 request; concrete owners resolve their own choices."""
+    from openghg_inversions.rhime.co2.execution import load_co2_params
 
     params = load_co2_params(config_file=args.config, params_file=args.params_file,
                              params={} if args.config is None and args.params_file is None else None,
-                             overrides=args.kwargs, phase=phase)
-    if phase == "postprocess":
-        params["outputs"] = {**params.get("outputs", {}), "output_path": _stage_output_dir(args)}
-    return resolve_co2_phase_options(params, phase=phase)
+                             overrides=args.kwargs)
+    if params.get("variant", "ordinary") != "ordinary":
+        raise ValueError("Ordinary CO2 handoffs require variant='ordinary'.")
+    return params
 
 
 def _ordinary_co2_manifest(args: argparse.Namespace) -> bool:
@@ -165,13 +165,12 @@ def _prepare_command(args: argparse.Namespace) -> None:
                            output_dir=_stage_output_dir(args))
         print(manifest)
     elif args.model == "co2":
-        from openghg_inversions.rhime.co2.execution import load_co2_params, resolve_co2_phase_options
+        from openghg_inversions.rhime.co2.execution import load_co2_params, resolve_co2_preparation
         from openghg_inversions.rhime.co2.handoffs import prepare as prepare_co2
 
-        params = load_co2_params(config_file=args.config, params_file=args.params_file, overrides=args.kwargs,
-                                phase="prepare")
+        params = load_co2_params(config_file=args.config, params_file=args.params_file, overrides=args.kwargs)
         if params.get("variant", "ordinary") == "ordinary":
-            print(prepare_co2(**resolve_co2_phase_options(params, phase="prepare"), output_dir=_stage_output_dir(args)))
+            print(prepare_co2(**resolve_co2_preparation(params), output_dir=_stage_output_dir(args)))
         else:
             manifest = prepare_rhime_stage(setup=_stage_setup(args), model=args.model,
                                            output_dir=_stage_output_dir(args))
@@ -208,7 +207,9 @@ def _prior_predictive_command(args: argparse.Namespace) -> None:
         from openghg_inversions.rhime.co2.handoffs import prior_predictive as prior_co2
 
         _reject_co2_artifact_args(args)
-        result = prior_co2(args.preparation_manifest, **_co2_phase_options(args, phase="prior"), **common)
+        from openghg_inversions.rhime.co2.configuration import resolve_co2_model
+
+        result = prior_co2(args.preparation_manifest, model=resolve_co2_model(_co2_params(args)), **common)
     elif args.model == "standard":
         _reject_standard_artifact_args(args)
         choices = _standard_phase_options(args, phase="prior")
@@ -241,9 +242,11 @@ def _sample_command(args: argparse.Namespace) -> None:
         from openghg_inversions.rhime.co2.handoffs import sample as sample_co2
 
         _reject_co2_artifact_args(args)
-        choices = _co2_phase_options(args, phase="sample")
-        result = sample_co2(args.preparation_manifest, **choices, sampler=choices["model"].sampler,
-                            output_dir=_stage_output_dir(args))
+        from openghg_inversions.rhime.co2.configuration import resolve_co2_model, resolve_co2_sampler
+
+        params = _co2_params(args)
+        result = sample_co2(args.preparation_manifest, model=resolve_co2_model(params),
+                            sampler=resolve_co2_sampler(params), output_dir=_stage_output_dir(args))
         print(result)
     elif args.model == "standard":
         _reject_standard_artifact_args(args)
@@ -290,8 +293,11 @@ def _postprocess_command(args: argparse.Namespace) -> None:
         from openghg_inversions.rhime.co2.handoffs import postprocess as postprocess_co2
 
         _reject_co2_artifact_args(args)
-        choices = _co2_phase_options(args, phase="postprocess")
-        postprocess_co2(args.sample_manifest, **choices)
+        from openghg_inversions.rhime.co2.execution import resolve_co2_output
+
+        params = _co2_params(args)
+        params["outputs"] = {**params.get("outputs", {}), "output_path": _stage_output_dir(args)}
+        postprocess_co2(args.sample_manifest, **resolve_co2_output(params))
     elif args.model == "standard":
         _reject_standard_artifact_args(args)
         choices = _standard_phase_options(args, phase="postprocess")["output"]

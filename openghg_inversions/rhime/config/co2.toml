@@ -1,4 +1,4 @@
-# Ordinary CO2 replay from a coherent prepared-input artifact.
+# Ordinary CO2 inference from a coherent prepared-input artifact.
 # Replace this path with an artifact written by Co2PreparedInputs.save().
 format_version = 1
 recipe = "co2"

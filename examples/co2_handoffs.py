@@ -119,7 +119,7 @@ def configuration(destination: Path, countries: Path) -> dict:
         "sampling": {"draws": 12, "tune": 12, "chains": 1, "nuts_sampler": "pymc",
                      "progressbar": False, "random_seed": 126, "sample_prior_predictive": 8,
                      "sample_posterior_predictive": True},
-        "outputs": {"output_format": "basic", "output_name": "co2", "save_inversion_output": False,
+        "outputs": {"output_format": "basic", "output_name": "co2",
                     "output_path": str(destination), "country_file": str(countries)},
     }
 
@@ -127,7 +127,8 @@ def configuration(destination: Path, countries: Path) -> dict:
 def run_example(destination: Path) -> None:
     """Save a new prepared/affine pair and compare replay with full execution."""
     from openghg_inversions.rhime.co2 import run_co2_from_config
-    from openghg_inversions.rhime.co2.execution import resolve_co2_phase_options
+    from openghg_inversions.rhime.co2.execution import resolve_co2_output
+    from openghg_inversions.rhime.co2.configuration import resolve_co2_model, resolve_co2_sampler
     from openghg_inversions.rhime.co2 import handoffs
 
     canonical, reduction, prepared, affine, countries = synthetic_inputs(destination)
@@ -137,12 +138,13 @@ def run_example(destination: Path) -> None:
         end_date=END_DATE, domain="EUROPE", affine_artifact=affine,
     )
     preparation_bytes = manifest.read_bytes()
-    model = resolve_co2_phase_options(params, phase="sample")["model"]
+    model = resolve_co2_model(params)
+    sampler = resolve_co2_sampler(params)
     samples = handoffs.sample(
-        manifest, model=model, sampler=model.sampler, output_dir=destination / "sample",
+        manifest, model=model, sampler=sampler, output_dir=destination / "sample",
     )
     replay_params = {"outputs": {**params["outputs"], "output_path": str(destination / "replay")}}
-    replay = handoffs.postprocess(samples, **resolve_co2_phase_options(replay_params, phase="postprocess"))
+    replay = handoffs.postprocess(samples, **resolve_co2_output(replay_params))
     full = run_co2_from_config(
         params=params, canonical_inputs=canonical, reduction=reduction,
         aggregation_error_rank=1, affine_artifact=affine,
@@ -157,13 +159,12 @@ def run_example(destination: Path) -> None:
     alternative["model"]["boundary"]["prior"]["sigma"] = .2
     alternative["model"]["offset"]["prior"]["mu"] = .05
     alternative["likelihood"]["fixed_model_mismatch"] = .15
-    changed_model = resolve_co2_phase_options(alternative, phase="sample")["model"]
+    changed_model = resolve_co2_model(alternative)
     other_samples = handoffs.sample(
-        manifest, model=changed_model, sampler=changed_model.sampler, output_dir=destination / "alternative-sample",
+        manifest, model=changed_model, sampler=sampler, output_dir=destination / "alternative-sample",
     )
-    other = handoffs.postprocess(other_samples, **resolve_co2_phase_options(
+    other = handoffs.postprocess(other_samples, **resolve_co2_output(
         {"outputs": {**params["outputs"], "output_path": str(destination / "alternative-products")}},
-        phase="postprocess",
     ))
     assert other.outputs["native_flux"].attrs["uncertainty_scope"] == "retained_state_conditional"
     assert manifest.read_bytes() == preparation_bytes

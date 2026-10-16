@@ -5,7 +5,8 @@ import json
 import pytest
 
 from openghg_inversions.cli import main
-from openghg_inversions.rhime.co2.execution import load_co2_params, resolve_co2_phase_options
+from openghg_inversions.rhime.co2.execution import load_co2_params, resolve_co2_preparation, resolve_co2_output
+from openghg_inversions.rhime.co2.configuration import resolve_co2_model
 
 
 def test_inference_phase_ignores_inactive_resources_and_uses_current_sampler(tmp_path, monkeypatch, capsys):
@@ -22,7 +23,7 @@ def test_inference_phase_ignores_inactive_resources_and_uses_current_sampler(tmp
     calls = []
 
     def sample(preparation, *, model, sampler, output_dir):
-        calls.append((preparation, model.runner_kwargs, sampler.draws, output_dir))
+        calls.append((preparation, model, sampler.draws, output_dir))
         return output_dir / "sample-manifest.json"
 
     monkeypatch.setattr(handoffs, "sample", sample)
@@ -78,12 +79,12 @@ def test_configured_full_rejects_mismatched_country_grid_before_materialization(
 
 
 def test_co2_prior_choices_need_no_sampling_or_output_sections():
-    choices = resolve_co2_phase_options({
+    choices = resolve_co2_model({
         "likelihood": {"kind": "additive_sigma", "no_model_error": True},
         "sampling": {"draws": "invalid inactive value"},
         "outputs": {"output_format": "invalid inactive value"},
-    }, phase="prior")
-    assert choices["model"].runner_kwargs["no_model_error"] is True
+    })
+    assert choices["no_model_error"] is True
 
 
 def test_co2_current_manifest_rejects_wrong_family_before_config(tmp_path):
@@ -102,8 +103,8 @@ def test_co2_file_and_override_paths_use_one_invocation_base(tmp_path, monkeypat
     invocation.mkdir()
     monkeypatch.chdir(invocation)
     options = load_co2_params(params_file=source, overrides={"outputs": {"country_file": "other.nc"}})
-    assert options["prepared_inputs"]["path"] == invocation / "prepared.nc"
-    assert options["outputs"]["country_file"] == invocation / "other.nc"
+    assert resolve_co2_preparation(options)["prepared_path"] == invocation / "prepared.nc"
+    assert resolve_co2_output(options)["output"].country_file == invocation / "other.nc"
 
 
 def test_diagnosis_accepts_one_co2_sample_manifest_without_preparation(tmp_path, monkeypatch):
@@ -127,4 +128,4 @@ def test_diagnosis_accepts_one_co2_sample_manifest_without_preparation(tmp_path,
 @pytest.mark.parametrize("version", [True, "1", 2])
 def test_phase_rejects_unsupported_format_versions(version):
     with pytest.raises(ValueError, match="format_version"):
-        resolve_co2_phase_options({"format_version": version}, phase="prepare")
+        load_co2_params(params={"format_version": version})

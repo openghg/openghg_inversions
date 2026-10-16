@@ -349,13 +349,24 @@ by `rhime run-co2`. It consumes model, sampler and output choices; the direct
 trace annotation, `make_co2_output`, `calculate_co2_products` and
 `save_co2_products`. Full execution uses no manifests.
 
-Following the user's instruction to copy the standard scientific-result pattern,
-ordinary execution returns `Co2Output`, borrowing preparation/trace and retaining
-conditional affine meaning, without constructing `RhimeResult` or `RhimeRunSpec`.
-A standard multiplicative `InversionOutput` cannot represent this reconstruction.
-CO2 records keep explicit requested facts and numerical provenance without
-inventing an acquisition `DataConfig` with defaults. Cached adapters remain until
-section 4; these family-specific differences need reviewer acceptance.
+Ordinary execution returns `Co2Output`, borrowing the complete trace `DataTree`
+and preparation and retaining conditional affine meaning. It carries no writing
+policy or live sampler; recorded inference remains descriptive provenance. Product
+calculation preserves original groups, coordinates and independent prior/posterior
+sample axes. A standard multiplicative `InversionOutput` cannot represent this
+reconstruction. CO2 records keep explicit requested facts without inventing an
+acquisition `DataConfig` with defaults. Cached adapters remain until section 4;
+these family-specific differences need reviewer acceptance.
+
+The user's 16 October simplification direction is implemented within #886:
+concrete preparation/model/sampler/output resolvers replace the phase-switch
+resolver, with one sampler supplied to sampling. `load_samples` needs no reporting
+policy. `Co2OutputOptions` contains only the six supported ordinary reporting
+choices; source-to-sector reporting is supplied separately. Imported NetCDF/Zarr
+pairs are validated and referenced in place, with no copying or format selection;
+callers must retain those files for later operations. New pairs still use the
+existing numerical writers and manifest-last completion. No scientific boundary
+or coherent/affine compatibility check was removed.
 
 `co2.handoffs` keeps writers/readers/callers together: ordinary references,
 generation binding, manifest-last completion and existing NetCDF/Zarr codecs.
@@ -384,8 +395,19 @@ Validation before Slurm:
   45 public-selector/sampler/resource checks and 6 installed ordinary/cached/full
   CLI cases passed, including requested trace export.
 - Changed-path Ruff, `git diff --check` and strict OpenSpec validation pass.
-- Full locked Python 3.12/3.13, type and strict documentation checks use the
-  repository Slurm runner; terminal evidence will be recorded separately.
+- After simplifying the interfaces: 240 focused ordinary science/configuration/
+  handoff/CLI/likelihood checks and 177 standard/sampler/public-API/resource
+  compatibility checks passed. Four installed ordinary CLI checks passed; the
+  runnable example completed. The complete-trace preservation regression passed.
+  Independent review added early required-prior validation for affine basic/PARIS
+  products while preserving posterior-only concentration summaries; three targeted
+  preflight/concentration checks cover this boundary.
+- Slurm baseline 19448086 at `devel` `208a21d9` reports 164 Mypy errors in 52
+  files and 318 strict-documentation warnings (existing #679/#881 debt).
+- Earlier editable-checkout validation 19448074 was cancelled when the approved
+  simplification superseded its inputs; it supplies no terminal validation. Full
+  locked Python 3.12/3.13, type and strict documentation checks use a fixed revision
+  and the repository Slurm runner; terminal comparison remains pending.
 
 Concrete cached handoff: consume `load_preparation` (coherent inputs, bound
 companion and generation), keep the matched cached construction/step owner and

@@ -145,6 +145,7 @@ value and its unchanged version-1 schema live in
    openghg_inversions.rhime.combine_nested_rhime_inputs
    openghg_inversions.rhime.co2.Co2PreparedInputs
    openghg_inversions.rhime.co2.co2_outputs.Co2Output
+   openghg_inversions.rhime.co2.co2_outputs.Co2OutputOptions
    openghg_inversions.rhime.co2.BoundCo2AffineFluxMap
    openghg_inversions.rhime.co2.produce_bucket_affine_flux_map
    openghg_inversions.rhime.co2.import_explicit_affine_flux_map
