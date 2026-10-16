@@ -1,13 +1,19 @@
-## 0.7.5 (2026-10-06)
+## 0.7.5 (2026-10-16)
 
+
+### Bug fixes
+
+- Report observation retrieval `AttributeError` exceptions with site and store context and stop the run instead of silently treating them as missing observations. ([#765](https://github.com/openghg/openghg_inversions/issues/765))
+
+- Reduce postprocessing workspace for standard and multisector outputs by bounding bucket-basis flux reconstruction and shared built-in flux, concentration, country, and scale-factor statistics. Reuse related summaries and HDI probabilities within each block, and select requested trace variables before alignment and missing-draw padding. Retain existing statistic kernels, custom statistic behavior, iterator-valued reduction dimensions, unindexed coordinates, 0.7 first-chain selection, and output formats.
+
+  Fix inversion-grid flux reconstruction for signed, Dask-backed prior flux whose sparse chunks have differing positive and negative zero fill values. ([#862](https://github.com/openghg/openghg_inversions/issues/862))
 
 ### Documentation
 
 - Document observation-uncertainty handling, its decision history, and count and precision failures in resampling, distinguishing supplied variability from variability calculated during averaging. ([#765](https://github.com/openghg/openghg_inversions/issues/765))
 
-### Bug fixes
-
-- Report observation retrieval `AttributeError` exceptions with site and store context and stop the run instead of silently treating them as missing observations. ([#765](https://github.com/openghg/openghg_inversions/issues/765))
+- Publish separate release and development documentation on GitHub Pages, with a version selector and the supported release as the default. ([#884](https://github.com/openghg/openghg_inversions/issues/884))
 
 ## 0.7.4 (2026-10-01)
 
