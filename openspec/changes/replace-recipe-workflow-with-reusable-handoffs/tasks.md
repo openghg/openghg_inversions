@@ -444,6 +444,12 @@ fully qualified targets verified in Sphinx's inventory. Broader confirmation
 remains pending. Peak memory was `21525080K` for the combined job, supporting
 24 GiB for the same concurrent rerun.
 
+Corrected runtime `cae92463` passes 97 focused public/phase/scientific tests and
+six documentation tests, Ruff, diff and strict OpenSpec checks. Fixed-revision
+Slurm rerun 19450581 covers both full locked Python suites, type and strict docs;
+callback 19450582 has verified `afterany:19450581`, ticket
+`sw-20261016T100752Z-ac19101a0f22`. Terminal confirmation remains pending.
+
 Concrete cached handoff: consume `load_preparation` (coherent inputs, bound
 companion and generation), keep the matched cached construction/step owner and
 PyMC backend, save through `save_samples(actual_inference=...,
