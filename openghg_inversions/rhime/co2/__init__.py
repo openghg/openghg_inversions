@@ -15,10 +15,10 @@ from .co2_affine_output import (
 from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs
 from .co2_runner import (
     annotate_co2_trace,
-    build_rhime_co2,
+    materialize_co2_inputs,
+    build_co2_from_materialized,
     co2_model_input_names,
     prepare_co2_scalar_sigma_eigenbasis,
-    run_rhime_co2,
 )
 from .co2_cached_sigma_model import Co2CachedSigmaModel, build_co2_cached_sigma_model
 from .co2_cached_sigma_runner import (
@@ -43,6 +43,8 @@ from .configuration import (
     load_co2_family_config,
     resolve_co2_family_config,
 )
+from .execution import run_co2
+from .co2_outputs import Co2Output
 
 __all__ = [
     "Co2O2RunSetup",
@@ -51,11 +53,13 @@ __all__ = [
     "BoundCo2AffineFluxMap",
     "Co2CachedSigmaModel",
     "Co2RunSetup",
+    "Co2Output",
     "annotate_co2_trace",
+    "materialize_co2_inputs",
+    "build_co2_from_materialized",
     "sample_co2_cached_prior_predictive",
     "build_co2_cached_sigma_model",
     "build_co2_model",
-    "build_rhime_co2",
     "build_rhime_co2_cached_sigma",
     "co2_cached_sigma_build_result",
     "build_co2_o2_model",
@@ -73,7 +77,7 @@ __all__ = [
     "prepared_inputs_content_id",
     "produce_bucket_affine_flux_map",
     "resolve_co2_family_config",
-    "run_rhime_co2",
+    "run_co2",
     "run_rhime_co2_cached_sigma",
     "run_rhime_co2_o2_from_prepared_inputs",
     "run_rhime_co2_o2_cached_sigma_from_prepared_inputs",

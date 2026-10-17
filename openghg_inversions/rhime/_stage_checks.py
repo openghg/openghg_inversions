@@ -18,6 +18,7 @@ from ._stage_artifacts import (
     write_json as _write_json,
     _output_path,
     _stage_output_directory,
+    reference,
 )
 from ._stage_authentication import _load_stage_manifest
 
@@ -153,7 +154,7 @@ def _validate_diagnostic_thresholds(
 
 def diagnose_rhime_stage(
     *,
-    posterior: str | Path,
+    posterior: str | Path | None = None,
     output_dir: str | Path,
     sample_manifest: str | Path | None = None,
     check_output: str | Path | None = None,
@@ -163,10 +164,12 @@ def diagnose_rhime_stage(
     max_divergences: int = 0,
     stage: str = "posterior",
 ) -> dict[str, Any]:
-    """Calculate convergence from the supplied posterior.
+    """Calculate convergence from a posterior path or current sample manifest.
 
     An optional sample manifest supplies descriptive run context, without
-    authenticating the posterior file.
+    authenticating the posterior file. When ``posterior`` is omitted, resolve
+    its reference beside the sample manifest. Diagnosis needs no preparation,
+    model construction or inference; explicit posterior paths take precedence.
     """
     stage = _check_stage(stage)
     _validate_diagnostic_thresholds(
@@ -175,10 +178,14 @@ def diagnose_rhime_stage(
         min_tail_ess=min_tail_ess,
         max_divergences=max_divergences,
     )
-    posterior_path = Path(posterior).resolve()
     sample_contract = None
     if sample_manifest is not None:
-        _, sample_contract = _load_stage_manifest(sample_manifest, stage="sample")
+        manifest_path, sample_contract = _load_stage_manifest(sample_manifest, stage="sample")
+        if posterior is None:
+            posterior = reference(manifest_path, sample_contract.get("posterior"))
+    if posterior is None:
+        raise ValueError("Pass a posterior path or a current sample manifest containing its reference.")
+    posterior_path = Path(posterior).resolve()
     idata = load_trace(posterior_path)
     summary = posterior_summary(idata["posterior"].to_dataset())
     destination = _stage_output_directory(output_dir)

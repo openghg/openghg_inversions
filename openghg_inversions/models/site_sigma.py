@@ -82,8 +82,9 @@ def add_site_sigma_gaussian_likelihood(
         mean: Completed one-dimensional forward-model concentration tensor
             aligned with ``output_dim`` and ``observations``.
         fixed_site_amplitudes: Fixed amplitudes keyed by site label, in the same
-            units as ``observations``. Entries for sites absent after filtering
-            are ignored.
+            units as ``observations``. Every supplied value must be numeric,
+            finite and non-negative; valid entries for sites absent after
+            filtering are ignored.
         site_amplitude_prior: Explicit positive-support prior for inferred site
             amplitudes, in the same units as ``observations``.
         output_dim: Observation dimension used by named PyMC variables.
@@ -121,22 +122,24 @@ def add_site_sigma_gaussian_likelihood(
     )
 
     if fixed_site_amplitudes is not None:
-        if any(isinstance(value, (bool, np.bool_)) for value in fixed_site_amplitudes.values()):
+        if any(
+            isinstance(value, (bool, np.bool_))
+            or not isinstance(value, (int, float, np.integer, np.floating))
+            for value in fixed_site_amplitudes.values()
+        ):
             raise ValueError("Fixed site amplitudes must be numeric, not boolean.")
+        supplied_values = np.asarray(list(fixed_site_amplitudes.values()), dtype=np.float64)
+        if not np.isfinite(supplied_values).all() or (supplied_values < 0.0).any():
+            raise ValueError(
+                "`fixed_site_amplitudes` must contain only finite, non-negative values."
+            )
         fixed_sigma = expand_mapping(
             fixed_site_amplitudes,
             site_coord,
             name=SITE_SIGMA,
         )
-        try:
-            fixed_sigma = fixed_sigma.astype(np.float64)
-        except (TypeError, ValueError) as error:
-            raise ValueError("Fixed site amplitudes must be numeric.") from error
+        fixed_sigma = fixed_sigma.astype(np.float64)
         amplitude_values = np.asarray(fixed_sigma.values)
-        if not np.isfinite(amplitude_values).all() or (amplitude_values < 0.0).any():
-            raise ValueError(
-                "`fixed_site_amplitudes` must contain only finite, non-negative values."
-            )
         aligned_variance = np.square(amplitude_values[np.asarray(site_index.values)])
         fixed_independent_variance = (
             np.square(np.asarray(observation_error.values, dtype=np.float64)) + aligned_variance

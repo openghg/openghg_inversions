@@ -81,7 +81,7 @@ def test_standard_reader_path_avoids_detailed_co2_material() -> None:
 
 
 def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
-    """A CO₂ reader can identify installed replay and linked-route boundaries."""
+    """A CO₂ reader can find configured runs, handoffs and deferred family routes."""
     chooser = _source("model_recipes.rst")
     family = _source("co2_model_family.rst")
     recipes = _source("co2_models.rst")
@@ -89,21 +89,32 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "CO₂-only" in chooser
     assert "Linked CO₂/O₂" in chooser
     assert "run_rhime_co2_o2`` workflow" in chooser
-    assert "run_rhime_co2" in family
+    assert "rhime.co2.run_co2`" in family
     assert "run_rhime_co2_o2_from_prepared_inputs" in family
     assert "co2_model_family" in _toctree_entries("usage.rst")
     assert _toctree_entries("co2_model_family.rst") == ["co2_models"]
     workflow = family.split("   * - Staged workflow\n", 1)[1].split(
         "   * - Outputs and postprocessing\n", 1
     )[0]
-    assert "Installed ``--model co2`` stages support ordinary and cached fixed-OU" in workflow
+    workflow = " ".join(workflow.split())
+    assert "Ordinary ``--model co2``" in workflow and "manifest" in workflow
+    assert "Cached fixed-OU" in workflow and "separate staged interface" in workflow
     assert "Not supported by the staged CLI" in workflow
+    ordinary, cached = family.split("Cached and linked boundaries\n", 1)
+    assert "rhime run --model co2" in ordinary
+    assert "``rhime run-co2`` remains an alias" in ordinary
+    assert "run_co2" in ordinary
     for stage in ("prepare", "prior-predictive", "sample", "postprocess"):
-        assert f"openghg-inversions {stage} --model co2" in family
-    assert "openghg-inversions diagnose" in family
-    assert "Linked CO₂/O₂ staged routing is tracked separately in OPE-165" in family
+        assert f"rhime {stage} --model co2" in ordinary
+    assert "rhime diagnose --posterior" in ordinary
+    assert ordinary.count("--preparation-manifest run/prepare/prepare-manifest.json") == 2
+    assert ordinary.count("--sample-manifest run/sample/sample-manifest.json") == 2
+    assert "--prepared-inputs run/" not in ordinary
+    assert '``variant = "cached_fixed_ou"``' in cached
+    assert "--prepared-inputs" in cached and "--posterior" in cached
+    assert "ordinary handoff format" in cached
+    assert "Linked CO₂/O₂" in cached and "OPE-165" in cached
     assert "packaged TOML template" in family
-    assert "reuse the existing TOML configuration boundary and prepared-input Python runners" in family
     assert "scientist acceptance" in family
     assert "Scientist acceptance remains future work" in family
     assert "CO2 coherent-reduction model" in recipes
@@ -112,8 +123,8 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "aggregation_error_covariance" in recipes
     assert "Unit conversion is caller-owned" in recipes
     assert ".. _co2-cached-sigma-recipe:" in recipes
-    assert "Run the ordinary prepared-input CO2 runner" in recipes
-    assert "Configure prepared-input replay from TOML" in recipes
+    assert "Compose ordinary CO2 scientific operations" in recipes
+    assert "Configure prepared-input execution from TOML" in recipes
     assert "load_co2_family_config" in recipes
     assert "resolve_co2_family_config" in recipes
     assert "co2_cached_sigma.toml" in recipes
@@ -132,7 +143,11 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "``co2_o2``" in recipes
     assert "heterogeneous ppm/per-meg" in recipes
     assert "OPE-86" in recipes
-    assert "idata = run_rhime_co2(" in recipes
+    assert "idata = sample_rhime_model(" in recipes
+    assert "materialize_co2_inputs" in recipes
+    assert "build_co2_from_materialized" in recipes
+    assert "annotate_co2_trace" in recipes
+    assert "idata = run_rhime_co2(" not in recipes
     assert "idata = run_rhime_co2_cached_sigma(" in recipes
     assert recipes.count("use_bc=True") >= 2
     assert "Channel-labelled boundary sensitivities, priors and activity" in family

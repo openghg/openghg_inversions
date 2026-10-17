@@ -218,9 +218,9 @@ For example, with preparation settings in ``preparation.json``:
      --output-dir run/paris
 
 ``--model standard`` is the default for these commands. A manifest's family must
-match the selected route. Full-run ``rhime run`` choices and aliases are
-unchanged; saved-phase selection does not add CO2 configuration-file support to
-the full-run command.
+match the selected route. Ordinary CO₂ configured full execution is available
+through ``rhime run --model co2``; see :doc:`co2_model_family` for its
+prepared-input configuration.
 
 Python callers can use the same handoffs:
 
@@ -326,13 +326,45 @@ preparation reuse, separate model samples, multiple output choices and compariso
 with full execution. Its :download:`companion script
 <../../examples/multisector_handoffs.py>` also checks independent model equations.
 
+Ordinary CO₂ handoffs
+---------------------
+
+Ordinary CO₂ uses its own coherent preparation and conditional affine output
+meaning. ``run_co2`` and its saved phases call the same preparation,
+materialization, construction, sampling and product operations; full execution
+requires no manifests. ``rhime run --model co2`` consumes the configured model,
+sampler and output request; ``rhime run-co2`` remains an alias. Python
+``rhime.run(model="co2", config_file="co2.toml")`` selects the same ``run_co2``
+entry point and returns the scientific ``Co2Output`` view. This route requires
+prepared inputs or caller-supplied canonical inputs with a coherent reduction;
+configured acquisition and native-reduction construction are separate work.
+
+``rhime sample --model co2 --preparation-manifest ...`` consumes one preparation
+handoff and current inference choices. Compatible BC/offset priors or supported
+mismatch choices reuse preparation; changing defining native priors, covariance,
+operators or projection requires a coherent new preparation. Requested dates
+remain separate from retained observation extrema, including for imported pairs.
+
+``rhime postprocess --model co2 --sample-manifest ...`` loads saved scientific
+meaning and provenance without constructing a graph or sampling. It returns a
+``Co2Output`` scientific view with ``sampler=None`` and supports the same
+concentration and conditional native/country products as full execution.
+Missing imported request facts must be supplied explicitly. See
+:doc:`co2_model_family` for configuration, readiness/diagnosis, affine
+compatibility and the distinct cached-CO₂ boundary, and
+:download:`co2_handoffs.py <../../examples/co2_handoffs.py>` for an executable
+full/saved scientific comparison. Linked CO₂/O₂ and nested workflows are separate.
+
 Readiness and independent diagnosis
 -----------------------------------
 
 ``rhime prior-predictive --preparation-manifest ... --output-dir ...`` builds
 the selected model and draws prior predictions without posterior inference.
 ``--draws`` controls its sample count. Loading and serialization errors
-propagate; supported model/input failures produce a readiness ``fail`` result.
+propagate; for standard and multisector, supported model/input failures produce
+a readiness ``fail`` result. Ordinary CO₂ construction and inference errors
+propagate; evaluated missing, empty or non-finite predictive evidence produces
+a failed check.
 Select ``--model multisector`` for prior predictions from a multisector preparation
 manifest. Python callers use ``multisector_stages.prior_predictive`` with current
 model choices and the same likelihood seam as sampling.
@@ -344,6 +376,8 @@ Readiness checks finite evidence, not scientific plausibility. See
 ``rhime diagnose --posterior posterior.nc --output-dir ...`` independently
 reports maximum R-hat, minimum bulk/tail ESS, divergences and unassessable
 variables. ``--sample-manifest`` optionally supplies descriptive run context.
+For a current sample manifest, omit ``--posterior`` to use its recorded posterior
+reference; an explicit posterior path takes precedence.
 Defaults are maximum R-hat 1.01, minimum bulk/tail ESS 400 and zero divergences.
 Available metrics exceeding a threshold yield ``fail``; missing metrics yield
 ``unknown`` when none fails; otherwise the result is ``pass``. Neither check
@@ -355,11 +389,13 @@ and stage label.
 Other families and migration
 ----------------------------
 
-CO2 retains its existing staged interface pending separate handoff adoption.
+Cached CO2 retains its existing staged interface pending separate handoff adoption.
 It requires explicit ``--model co2``, a full configuration and
 ``--prepared-inputs``/``--preparation-manifest`` for sampling. Postprocessing also
-requires ``--posterior`` and ``--sample-manifest``. CO2 takes an existing
-coherent preparation; see :doc:`co2_model_family` for its supported outputs.
+requires ``--posterior`` and ``--sample-manifest``. Ordinary CO2 uses the
+manifest-only interface described above; cached CO2 takes an existing coherent
+preparation through its separate interface. See :doc:`co2_model_family` for
+supported CO2 outputs.
 Linked CO2/O2 staging remains separate work.
 
 The new standard and multisector handoff formats replace their historical staged

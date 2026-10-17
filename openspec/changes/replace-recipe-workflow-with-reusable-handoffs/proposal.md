@@ -99,9 +99,12 @@ checks and exact destinations delivered by #868. This change consumes those
 contracts without introducing another resource owner.
 
 Merged #854 records delivered [model selection](../../specs/rhime-model-selection/spec.md)
-and [model composition](../../specs/rhime-model-composition/spec.md). This change
-consumes those baselines without modifying them: established selectors/aliases,
-registered coordinates and custom-likelihood contracts keep their existing owners.
+and [model composition](../../specs/rhime-model-composition/spec.md). This change consumes those baselines, with the maintainer-approved 16 October
+ordinary CO2 model-selection amendment: Python and CLI select one configured
+`run_co2` product runner and retire the redundant ordinary raw runner/build wrapper.
+Trace-only callers compose the existing scientific operations. Other established
+selectors/aliases, registered coordinates and custom-likelihood contracts keep
+their existing owners.
 New saved-phase interfaces and role validation are the deltas described here,
 not evidence that those proposed interfaces have already shipped.
 

@@ -21,30 +21,43 @@ def _config(path):
     return {
         "format_version": 1,
         "recipe": "co2",
-        "variant": "ordinary",
+        "variant": "cached_fixed_ou",
         "prepared_inputs": {"path": str(path)},
-        "likelihood": {"kind": "additive_sigma", "no_model_error": True},
+        "likelihood": {"kind": "fixed_ou", "tau_hours": 24.0, "site_amplitude_prior_scale": 1.0},
         "sampling": {"draws": 4, "tune": 4, "chains": 1, "nuts_sampler": "pymc"},
     }
 
 
+def test_ordinary_co2_rejects_retired_envelope_with_handoff_guidance(tmp_path):
+    from openghg_inversions.rhime import stages
+
+    params = _config(tmp_path / "absent.nc")
+    params.update(variant="ordinary", likelihood={"kind": "additive_sigma", "no_model_error": True})
+    for resolve in (resolve_co2_stage_setup, lambda value: stages.resolve_stage_setup(value, model="co2")):
+        with pytest.raises(ValueError, match="co2.handoffs.prepare.*run_co2"):
+            resolve(params)
+    assert not (tmp_path / "absent.nc").exists()
+
+
 def test_direct_source_neutral_coherent_preparation(tmp_path):
+    from openghg_inversions.rhime.co2.handoffs import prepare, load_preparation
+
     canonical = _canonical_inputs()
-    setup = resolve_co2_stage_setup(_config(tmp_path / "not-needed.nc"))
-    manifest = prepare_co2_stage(
-        setup=setup,
+    manifest = prepare(
         output_dir=tmp_path / "stage",
         canonical_inputs=canonical,
         reduction=_reduction(canonical),
         aggregation_error_rank=None,
+        start_date="2020-01-01", end_date="2020-02-01", domain="EUROPE",
     )
     prepared = Co2PreparedInputs.load(tmp_path / "stage" / "prepared-inputs.nc")
     assert prepared.aggregation_error_mode == "dense"
     xr.testing.assert_identical(prepared.inv_inputs.mf, canonical.inv_inputs.mf)
-    assert manifest["stage"] == "prepare"
-    assert "artifact_identities" not in manifest
+    loaded = load_preparation(manifest)
+    assert loaded.start_date == "2020-01-01"
+    assert loaded.end_date == "2020-02-01"
     persisted = json.loads((tmp_path / "stage" / "prepare-manifest.json").read_text())
-    assert persisted["ogi"] == manifest["ogi"]
+    assert set(persisted["provenance"]) == {"version", "revision", "dirty"}
     assert not (tmp_path / "not-needed.nc").exists()
 
 
@@ -56,7 +69,7 @@ def test_identity_ignores_transport_output_and_sampling_but_binds_science(tmp_pa
     relocated["sampling"]["draws"] = 10
     relocated["outputs"] = {"output_name": "renamed"}
     assert co2_configuration_identity(resolve_co2_stage_setup(relocated)) == first
-    relocated["likelihood"]["fixed_model_mismatch"] = 1.0
+    relocated["likelihood"]["tau_hours"] = 12.0
     assert co2_configuration_identity(resolve_co2_stage_setup(relocated)) != first
 
 
@@ -84,10 +97,9 @@ def test_unsupported_sector_request_fails_at_config_boundary(tmp_path):
         resolve_co2_stage_setup(params)
 
 
-@pytest.mark.parametrize("variant", ["ordinary", "cached_fixed_ou"])
 @pytest.mark.parametrize("has_prior", [True, False])
 def test_affine_replay_checks_saved_draws_instead_of_current_sampler(
-    tmp_path, monkeypatch, variant, has_prior
+    tmp_path, monkeypatch, has_prior
 ):
     from openghg_inversions.basis.affine_flux_map_io import save
     from openghg_inversions.rhime.co2 import stages
@@ -112,12 +124,7 @@ def test_affine_replay_checks_saved_draws_instead_of_current_sampler(
         companion,
     )
     params = _config(source)
-    if variant == "cached_fixed_ou":
-        params.update(
-            variant=variant,
-            likelihood={"kind": "fixed_ou", "tau_hours": 24.0, "site_amplitude_prior_scale": 1.0},
-        )
-        trace.attrs["rhime_model_metadata"] = json.dumps({"recipe": "co2_cached_sigma_fixed_ou"})
+    trace.attrs["rhime_model_metadata"] = json.dumps({"recipe": "co2_cached_sigma_fixed_ou"})
     params["outputs"] = {"output_format": "basic", "reconstruction_path": str(companion)}
     params["sampling"]["sample_prior_predictive"] = 4
     sampled_setup = resolve_co2_stage_setup(params)
@@ -137,7 +144,6 @@ def test_affine_replay_checks_saved_draws_instead_of_current_sampler(
     def forbidden(*args, **kwargs):
         raise AssertionError("Saved CO2 replay must not build a model or execute inference.")
 
-    monkeypatch.setattr(stages, "build_rhime_co2", forbidden)
     monkeypatch.setattr(stages, "build_rhime_co2_cached_sigma", forbidden)
     monkeypatch.setattr(RhimeSampler, "sample", forbidden)
     arguments = {
@@ -254,7 +260,6 @@ def test_co2_replay_requires_version_one_and_stays_graph_free(tmp_path, monkeypa
     from openghg_inversions.rhime.sampling import RhimeSampler
 
     monkeypatch.setattr(RhimeSampler, "sample", forbidden)
-    monkeypatch.setattr(co2_stages, "build_rhime_co2", forbidden)
     monkeypatch.setattr(co2_stages, "build_rhime_co2_cached_sigma", forbidden)
     monkeypatch.setattr(multisector_stages, "build_multisector_model", forbidden)
     if binding is not None:

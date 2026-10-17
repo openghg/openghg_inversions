@@ -80,6 +80,8 @@ def _handoff(directory: Path) -> tuple[Path, Co2PreparedInputs]:
 
 
 def _configuration(directory: Path, variant: str) -> Path:
+    preparation_reconstruction = 'reconstruction_path = "affine.nc"' if variant == "ordinary" else ""
+    output_reconstruction = 'reconstruction_path = "affine.nc"' if variant != "ordinary" else ""
     likelihood = (
         'kind = "additive_sigma"\nno_model_error = true\nfixed_model_mismatch = 0.0'
         if variant == "ordinary"
@@ -92,6 +94,10 @@ recipe = "co2"
 variant = "{variant}"
 [prepared_inputs]
 path = "source-prepared.nc"
+start_date = "2020-01-01"
+end_date = "2020-02-01"
+domain = "EUROPE"
+{preparation_reconstruction}
 [likelihood]
 {likelihood}
 [model.boundary]
@@ -113,7 +119,7 @@ sample_posterior_predictive = true
 [outputs]
 output_format = "basic"
 output_name = "co2-stage-test"
-reconstruction_path = "affine.nc"
+{output_reconstruction}
 country_file = "countries.nc"
 ''',
         encoding="utf-8",
@@ -154,18 +160,30 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(
     tmp_path: Path, variant: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("RUN_ROOT", raising=False)
+    monkeypatch.chdir(tmp_path)
     source, original = _handoff(tmp_path)
     config = _configuration(tmp_path, variant)
     common = ["--model", "co2", "--config", str(config)]
-    prepared = tmp_path / "prepare" / "prepared-inputs.nc"
+    prepared = source if variant == "ordinary" else tmp_path / "prepare" / "prepared-inputs.nc"
     preparation = tmp_path / "prepare" / "prepare-manifest.json"
     posterior = tmp_path / "sample" / "posterior.nc"
     sampling = tmp_path / "sample" / "sample-manifest.json"
     _cli("prepare", *common, "--output-dir", tmp_path / "prepare")
-    assert prepared.read_bytes() == source.read_bytes()
+    if variant == "ordinary":
+        from openghg_inversions.rhime.co2.handoffs import load_preparation
+
+        loaded = load_preparation(preparation)
+        assert loaded.payload == source
+        assert loaded.affine_payload == tmp_path / "affine.nc"
+        assert not (tmp_path / "prepare" / "prepared-inputs.nc").exists()
+        assert not (tmp_path / "prepare" / "affine-flux-map.nc").exists()
+    else:
+        assert prepared.read_bytes() == source.read_bytes()
     restored = Co2PreparedInputs.load(prepared)
     xr.testing.assert_identical(restored.inv_inputs, original.inv_inputs)
-    handoff = ["--prepared-inputs", str(prepared), "--preparation-manifest", str(preparation)]
+    handoff = ["--preparation-manifest", str(preparation)]
+    if variant == "cached_fixed_ou":
+        handoff = ["--prepared-inputs", str(prepared), *handoff]
     _cli(
         "prior-predictive", *common, *handoff, "--draws", "8", "--strict", "--output-dir", tmp_path / "prior"
     )
@@ -201,19 +219,24 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(
     assert "posterior_predictive" in trace.children
     sample_manifest = json.loads(sampling.read_text())
     prepare_manifest = json.loads(preparation.read_text())
-    assert set(prepare_manifest["ogi"]) == {"version", "revision", "dirty"}
-    assert prepare_manifest["ogi"]["version"]
-    revision = prepare_manifest["ogi"]["revision"]
+    provenance_key = "provenance" if variant == "ordinary" else "ogi"
+    assert set(prepare_manifest[provenance_key]) == {"version", "revision", "dirty"}
+    assert prepare_manifest[provenance_key]["version"]
+    revision = prepare_manifest[provenance_key]["revision"]
     assert len(revision) == 40 and all(character in "0123456789abcdef" for character in revision)
-    assert sample_manifest["ogi"] == prepare_manifest["ogi"]
-    assert sample_manifest["configuration_identity"] == prepare_manifest["configuration_identity"]
+    assert sample_manifest[provenance_key] == prepare_manifest[provenance_key]
+    if variant == "ordinary":
+        assert sample_manifest["preparation_generation"] == prepare_manifest["generation"]
+        assert prepare_manifest["start_date"] == "2020-01-01"
+        assert prepare_manifest["end_date"] == "2020-02-01"
+    else:
+        assert sample_manifest["configuration_identity"] == prepare_manifest["configuration_identity"]
     assert "artifact_identities" not in prepare_manifest
     assert "artifact_identities" not in sample_manifest
     assert "input_identities" not in sample_manifest
+    diagnostic_inputs = [] if variant == "ordinary" else ["--posterior", posterior]
     _in_process_cli(
-        "diagnose",
-        "--posterior",
-        posterior,
+        "diagnose", *diagnostic_inputs,
         "--sample-manifest",
         sampling,
         "--output-dir",
@@ -222,73 +245,84 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(
     diagnostics = json.loads((tmp_path / "diagnose" / "sampler-convergence.json").read_text())
     assert diagnostics["measured_values"]["chains"] == 2
     assert diagnostics["measured_values"]["draws_per_chain"] == 12
-    diagnose_manifest = json.loads((tmp_path / "diagnose" / "diagnose-manifest.json").read_text())
-    assert diagnose_manifest["ogi"]["revision"] == revision
-    assert diagnose_manifest["configuration_identity"] == sample_manifest["configuration_identity"]
-    assert "input_identities" not in diagnose_manifest
-    assert "artifact_identities" not in diagnose_manifest
+    if variant == "cached_fixed_ou":
+        diagnose_manifest = json.loads((tmp_path / "diagnose" / "diagnose-manifest.json").read_text())
+        assert diagnose_manifest["ogi"]["revision"] == revision
+        assert diagnose_manifest["configuration_identity"] == sample_manifest["configuration_identity"]
+        assert "input_identities" not in diagnose_manifest
+        assert "artifact_identities" not in diagnose_manifest
+    postprocess_inputs = [] if variant == "ordinary" else [*handoff, "--posterior", posterior]
+    def product_path(directory, name):
+        filename = f"co2-stage-test_{name}_co2_EUROPE_2020-01-01.nc" if variant == "ordinary" else f"{name}.nc"
+        return tmp_path / directory / filename
     _in_process_cli(
         "postprocess",
         *common,
-        *handoff,
-        "--posterior",
-        posterior,
+        *postprocess_inputs,
         "--sample-manifest",
         sampling,
         "--output-dir",
         tmp_path / "postprocess",
     )
-    post = json.loads((tmp_path / "postprocess" / "postprocess-manifest.json").read_text())
-    assert "input_identities" not in post
-    assert "artifact_identities" not in post
-    assert (tmp_path / "postprocess" / "basic.nc").is_file()
+    if variant == "cached_fixed_ou":
+        post = json.loads((tmp_path / "postprocess" / "postprocess-manifest.json").read_text())
+        assert "input_identities" not in post
+        assert "artifact_identities" not in post
+    assert product_path("postprocess", "basic").is_file()
     for name in ("native_flux", "country_flux"):
-        with xr.open_dataset(tmp_path / "postprocess" / f"{name}.nc") as product:
+        with xr.open_dataset(product_path("postprocess", name)) as product:
             assert product.attrs["uncertainty_scope"] == "retained_state_conditional"
             assert product.attrs["prepared_inputs_id"] == prepared_inputs_content_id(source)
             assert all(
                 value.attrs["uncertainty_scope"] == "retained_state_conditional"
                 for value in product.data_vars.values()
             )
-    with xr.open_dataset(tmp_path / "postprocess" / "concentration_components.nc") as components:
-        assert "predictive_posterior" in components
-        assert components.predictive_prior.sizes["prior_draw"] == 8
-        assert "active_flux_scale_posterior" in components
-        assert "residual_posterior" in components
-        assert components["predictive_posterior"].attrs["units"] == "ppm"
+    if variant == "ordinary":
+        from openghg_inversions.rhime.co2.co2_outputs import reconstruct_co2_concentrations
+
+        components = reconstruct_co2_concentrations(trace, restored)
+    else:
+        with xr.open_dataset(tmp_path / "postprocess" / "concentration_components.nc") as saved_components:
+            components = saved_components.load()
+    assert "predictive_posterior" in components
+    assert components.predictive_prior.sizes["prior_draw"] == 8
+    assert "active_flux_scale_posterior" in components
+    assert "residual_posterior" in components
+    assert components["predictive_posterior"].attrs["units"] == "ppm"
     # Installed stages above cover process boundaries; replay uses the same CLI in-process.
     # Replaying saved inputs and posterior must produce identical scientific products.
     _in_process_cli(
         "postprocess",
         *common,
-        *handoff,
-        "--posterior",
-        posterior,
+        *postprocess_inputs,
         "--sample-manifest",
         sampling,
         "--output-dir",
         tmp_path / "replay",
     )
-    for name in ("basic", "concentration_components", "native_flux", "country_flux"):
+    replay_products = ["basic", "native_flux", "country_flux"]
+    if variant == "cached_fixed_ou":
+        replay_products.append("concentration_components")
+    for name in replay_products:
         with (
-            xr.open_dataset(tmp_path / "postprocess" / f"{name}.nc") as result,
-            xr.open_dataset(tmp_path / "replay" / f"{name}.nc") as replay,
+            xr.open_dataset(product_path("postprocess", name)) as result,
+            xr.open_dataset(product_path("replay", name)) as replay,
         ):
             xr.testing.assert_identical(result, replay)
     # PARIS adaptation reuses the exact sampled handoff, with no second sampler run.
     outputs = {
         "outputs": {
             "output_format": "paris",
-            "reconstruction_path": str(tmp_path / "affine.nc"),
+            "output_name": "co2-stage-test",
             "country_file": str(tmp_path / "countries.nc"),
         }
     }
+    if variant == "cached_fixed_ou":
+        outputs["outputs"]["reconstruction_path"] = str(tmp_path / "affine.nc")
     _in_process_cli(
         "postprocess",
         *common,
-        *handoff,
-        "--posterior",
-        posterior,
+        *postprocess_inputs,
         "--sample-manifest",
         sampling,
         "--kwargs",
@@ -297,7 +331,7 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(
         tmp_path / "paris",
     )
     for name in ("paris_concentration", "paris_flux"):
-        path = tmp_path / "paris" / f"{name}.nc"
+        path = product_path("paris", name)
         assert path.is_file()
         with NetCDFDataset(path) as product:
             if name == "paris_flux":
@@ -321,12 +355,16 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(
         restored.provenance,
     )
     unrelated.save(tmp_path / "unrelated.nc")
-    with pytest.raises(ValueError, match="Affine flux prepared-input content identity does not match"):
+    rejected_inputs = ["--prepared-inputs", tmp_path / "unrelated.nc"]
+    rejection = (
+        "Ordinary CO2 phases take one manifest" if variant == "ordinary"
+        else "Affine flux prepared-input content identity does not match"
+    )
+    with pytest.raises(ValueError, match=rejection):
         _in_process_cli(
             "sample",
             *common,
-            "--prepared-inputs",
-            tmp_path / "unrelated.nc",
+            *rejected_inputs,
             "--preparation-manifest",
             preparation,
             "--output-dir",
@@ -335,16 +373,45 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(
     assert not (tmp_path / "rejected" / "posterior.nc").exists()
 
 
-def test_installed_co2_prepare_rejects_unsupported_output_before_writing(tmp_path: Path) -> None:
+@pytest.mark.parametrize("variant", ["ordinary", "cached_fixed_ou"])
+def test_installed_co2_rejects_unsupported_output_before_writing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    variant: str,
+) -> None:
+    monkeypatch.chdir(tmp_path)
     _handoff(tmp_path)
-    config = _configuration(tmp_path, "ordinary")
+    config = _configuration(tmp_path, variant)
     config.write_text(config.read_text().replace('output_format = "basic"', 'output_format = "inv_out"'))
     destination = tmp_path / "unsupported"
-    failure = _cli(
-        "prepare", "--model", "co2", "--config", config, "--output-dir", destination, success=False
+    arguments = (
+        ["run", "--model", "co2", "--config", config, "--output-path", destination]
+        if variant == "ordinary"
+        else ["prepare", "--model", "co2", "--config", config, "--output-dir", destination]
     )
+    failure = _cli(*arguments, success=False)
     assert "unsupported" in failure.stderr or "support" in failure.stderr
     assert not destination.exists()
+
+
+def test_installed_configured_co2_full_execution_writes_selected_products(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _handoff(tmp_path)
+    config = _configuration(tmp_path, "ordinary")
+    config.write_text(config.read_text().replace('[outputs]\n', '[outputs]\nsave_trace = true\n'))
+    destination = tmp_path / "full-products"
+    _cli("run", "--model", "co2", "--config", config, "--output-path", destination)
+    for name in ("basic", "native_flux", "country_flux"):
+        path = destination / f"co2-stage-test_{name}_co2_EUROPE_2020-01-01.nc"
+        assert path.is_file()
+        with xr.open_dataset(path) as saved:
+            assert saved.data_vars
+            if name != "basic":
+                assert saved.attrs["uncertainty_scope"] == "retained_state_conditional"
+    assert not list(destination.glob("*-manifest.json"))
+    trace = load_trace(destination / "co2-stage-test2020-01-01_trace.nc")
+    assert trace.posterior.sizes["draw"] == 12
+    assert trace.posterior.sizes["chain"] == 2
+    assert trace.prior.sizes["draw"] == 8
 
 
 def test_co2_overrides_replace_sections_before_file_path_conversion(tmp_path, monkeypatch):

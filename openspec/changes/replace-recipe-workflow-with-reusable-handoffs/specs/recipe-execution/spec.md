@@ -54,7 +54,8 @@ Runners SHALL consume the resource-I/O contract's save and resource-resolution
 boundary supplied by #868.
 Direct scientific customization, signatures and numerical returns SHALL retain
 their contracts except for the explicit 0.8 standard API/result and eager-builder
-migrations, the sampler-default migration below,
+migrations, the sampler-default migration below, the maintainer-approved ordinary CO2
+runner/selector reset to `run_co2`,
 #868's removal of the basis-preparation export argument, and the preparation
 steps' change from `MergedData` to per-site datasets and `SiteOptions`;
 staged/setup APIs and owned CO2 configuration conventions SHALL
