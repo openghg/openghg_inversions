@@ -19,6 +19,8 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 import xarray as xr
+from pymc.pytensorf import convert_data
+from pytensor.tensor.sharedvar import TensorSharedVariable
 from pytensor.tensor.variable import TensorVariable
 
 
@@ -30,10 +32,12 @@ def add_model_data(data: xr.DataArray, name: str | None = None) -> TensorVariabl
         name: Model variable name; defaults to ``data.name``.
 
     Returns:
-        The registered tensor, or the existing variable with the same name.
+        The registered tensor, reusing existing model data only when dimensions,
+        backend dtype and values, and supplied scientific coordinates agree.
 
     Raises:
-        ValueError: If neither an explicit name nor ``data.name`` is available.
+        ValueError: If neither an explicit name nor ``data.name`` is available,
+            or an existing name has incompatible data or coordinates.
         RuntimeError: If the model lacks the coordinate registry installed by
             :func:`registered_model`.
     """
@@ -41,11 +45,21 @@ def add_model_data(data: xr.DataArray, name: str | None = None) -> TensorVariabl
     if name is None:
         raise ValueError("Data must have a name if a name is not provided.")
     model = pm.modelcontext(None)
-    if name in model:
-        return cast(TensorVariable, model[name])
     materialized = data.compute()
     dims = tuple(str(dim) for dim in materialized.dims)
+    existing = model[name] if name in model else None
+    if existing is not None:
+        if existing not in model.data_vars:
+            raise ValueError(f"Model variable {name!r} already exists and is not registered data.")
+        if model.named_vars_to_dims.get(existing.name, ()) != dims:
+            raise ValueError(f"Conflicting model data registration for {name!r}: dimensions differ.")
+        values = convert_data(materialized.values)
+        current = cast(TensorSharedVariable, existing).get_value(borrow=True)
+        if current.dtype != values.dtype or not np.array_equal(current, values):
+            raise ValueError(f"Conflicting model data registration for {name!r}: dtype or values differ.")
     add_coords(materialized.coords, model_dims=dims)
+    if existing is not None:
+        return cast(TensorVariable, existing)
     return cast(TensorVariable, pm.Data(name, materialized.values, dims=dims))
 
 

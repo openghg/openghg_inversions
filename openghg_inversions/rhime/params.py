@@ -11,7 +11,7 @@ defaults; scientific callable signatures do not define the external schema.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import MISSING, dataclass, field, fields, replace
+from dataclasses import MISSING, dataclass, field, fields
 from pathlib import Path
 from typing import Any, get_args, get_type_hints
 
@@ -244,9 +244,6 @@ class RhimeConfig:
                 _validate_sector_source_mapping(source_names, normalise_sector_sources(sector_sources) or {})
         data = DataConfig.from_params(sections["data"], multisector=multisector)
         model = resolve_model_options(sections["model"], data_config=data)
-        # Multisector source routing owns the retained source order.
-        if multisector and sections["model"].get("sector_sources") is not None:
-            data = replace(data, flux_sources=tuple(s.flux_source for s in model.sectors))
         return cls(
             data=data, model=model,
             sampler=resolve_sampler_options(sections["sampler"]),

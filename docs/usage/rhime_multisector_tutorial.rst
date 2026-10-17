@@ -100,9 +100,7 @@ Inspect labelled state and model context
        ],
        "H dimensions": result.inv_inputs["H"].dims,
        "source labels": result.inv_inputs["H"].source.values.tolist(),
-       "scale variables": sorted(
-           name for name in result.trace_group("posterior").data_vars if name.startswith("x_")
-       ),
+       "flux state variable": result.variable_name("flux_scale"),
        "variable roles": result.model_metadata["variable_roles"],
    }
 
@@ -112,7 +110,7 @@ Inspect labelled state and model context
      ('wetlands', 'wetcharts-v131-wetlands')],
     'H dimensions': ('region', 'nmeasure', 'source'),
     'source labels': ['edgar-v80-anthropogenic', 'wetcharts-v131-wetlands'],
-    'scale variables': ['x_anthropogenic', 'x_wetlands'],
+    'flux state variable': 'x',
     'variable roles': {'observation': 'mf',
      'observation_error': 'mf_error',
      'minimum_error': 'min_error',
@@ -120,12 +118,9 @@ Inspect labelled state and model context
      'model_error': 'epsilon',
      'observation_repeatability': 'mf_repeatability',
      'observation_variability': 'mf_variability',
-     'flux_scale:anthropogenic': 'x_anthropogenic',
-     'flux_contribution:anthropogenic': 'mu_anthropogenic',
-     'emissions_sensitivity:anthropogenic': 'hx_anthropogenic',
-     'flux_scale:wetlands': 'x_wetlands',
-     'flux_contribution:wetlands': 'mu_wetlands',
-     'emissions_sensitivity:wetlands': 'hx_wetlands',
+     'flux_scale': 'x',
+     'flux_contribution': 'mu',
+     'emissions_sensitivity': 'hx',
      'boundary': 'mu_bc',
      'baseline_scale': 'bc',
      'baseline_sensitivity': 'hbc',
@@ -134,15 +129,18 @@ Inspect labelled state and model context
 Shared-basis preparation represents sensitivity as
 ``H(region, nmeasure, source)``. Source-specific bases may instead use one
 gathered state dimension labelled by ``(source, region_in_source)``. In either
-case, select by the ``source`` label or gathered source level; never infer
-sector identity from axis position. The posterior variables
-``x_anthropogenic`` and ``x_wetlands`` scale their own prior fluxes. Their
-forward contributions add to the modelled pollution concentration, while the
-observation likelihood is shared. See :doc:`rhime` for both supported layouts
-and :doc:`concrete_rhime_model` for the scientific-role mapping.
+case, construction uses one full physical state ``x`` and one two-dimensional
+sensitivity ``hx``. Rectangular inputs are packed into a gathered source/local
+state index for the model; the prepared ``H`` keeps its original layout.
+Select a posterior block by its source label, for example
+``result.trace_group("posterior")["x"].sel(source="wetcharts-v131-wetlands")``;
+never infer sector identity from axis position. The blocks scale their own
+prior fluxes, and ``mu`` gives their combined pollution concentration.
+See :doc:`rhime` for both prepared layouts and :doc:`concrete_rhime_model` for
+the scientific-role mapping.
 
-Use ``az.summary`` as in the standard tutorial for both scale variables and
-inspect their joint posterior. Strong cross-sector correlation or posterior
+Use ``az.summary`` as in the standard tutorial for ``x`` and inspect its joint
+posterior across source blocks. Strong cross-sector correlation or posterior
 behaviour dominated by the priors indicates that the observations do not
 separately identify those sources, even when every array label is correct.
 
