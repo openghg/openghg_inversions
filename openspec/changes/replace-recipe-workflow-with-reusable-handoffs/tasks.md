@@ -523,6 +523,17 @@ scientific warning for readers. A docs-only Slurm rebuild verifies this
 presentation correction; scientific runtime and the passing full suites are
 unchanged. No baseline diagnostics are suppressed.
 
+Final docs-only Slurm **19476310** at `6271669a` reports **308 warnings**, with
+content and multiplicity identical to the previously validated documentation
+and zero introduced diagnostics against devel's 318. An independent review
+confirms short-chain and convergence warnings remain visible, all eight cells
+execute successfully, the downloaded notebook matches the executed notebook,
+and all 62 local links resolve. Comparison/render evidence is retained in
+`docs-warning-comparison-review-final-6271669a.json` and
+`docs-rendered-review-final-6271669a.json` beside the raw Slurm logs. Existing
+Mypy/docs failures remain owned by #881/#679; no validation jobs remain pending.
+The final commit records evidence only; task 2.4 remains unchecked.
+
 The source-order implementation is delivered in stacked PR #891, not duplicated
 here. Its remaining automatic-basis regression coverage is tracked in
 `#891 discussion_r4301612276`; stacked-state module documentation and the
