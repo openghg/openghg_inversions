@@ -258,7 +258,7 @@ def build_rhime_co2_cached_sigma(
     if offset_prior is None and offset_args:
         raise ValueError("offset_args require offset_prior.")
     offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
-    prepared = prepared_inputs.validated()
+    prepared = prepared_inputs
     names = co2_cached_sigma_input_names(
         prepared,
         use_bc=use_bc,

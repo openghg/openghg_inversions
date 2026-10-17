@@ -410,9 +410,6 @@ def test_co2_operations_persists_fixed_mismatch_manifest(
         rhime_inputs = None
         aggregation_error_mode = "dense"
 
-        def validated(self) -> "PreparedInputsStub":
-            return self
-
     _mock_materialization(monkeypatch, lambda *_args, **_kwargs: inputs)
     builder_kwargs: dict[str, Any] = {}
     original_builder = co2_runner.build_co2_model
@@ -502,9 +499,6 @@ def test_co2_operations_derives_default_model_error_alignment(monkeypatch: Any) 
         rhime_inputs = None
         aggregation_error_mode = "dense"
 
-        def validated(self) -> "PreparedInputsStub":
-            return self
-
     materialized_names: list[tuple[str, ...]] = []
 
     def materialize(_prepared: Any, *, variable_names: tuple[str, ...]) -> xr.Dataset:
@@ -542,9 +536,6 @@ def test_co2_operations_selects_boundary_and_offset_once(monkeypatch: Any) -> No
         inv_inputs = inputs
         rhime_inputs = None
         aggregation_error_mode = "dense"
-
-        def validated(self) -> "PreparedInputsStub":
-            return self
 
     materialized_names: list[tuple[str, ...]] = []
     built_models: list[pm.Model] = []
@@ -633,9 +624,6 @@ def test_co2_operations_does_not_auto_select_prepared_baseline(monkeypatch: Any)
         rhime_inputs = None
         aggregation_error_mode = "dense"
 
-        def validated(self) -> "PreparedInputsStub":
-            return self
-
     selected: list[tuple[str, ...]] = []
     built_models: list[pm.Model] = []
 
@@ -680,9 +668,6 @@ def _run_selected_co2_likelihood(
         inv_inputs = inputs
         rhime_inputs = None
         aggregation_error_mode = "dense"
-
-        def validated(self) -> "PreparedInputsStub":
-            return self
 
     _mock_materialization(monkeypatch, lambda *_args, **_kwargs: inputs)
     built_results: list[Any] = []
@@ -828,9 +813,6 @@ def test_co2_operations_resolves_scalar_sigma_cache_before_model(
         rhime_inputs = None
         aggregation_error_mode = "dense"
 
-        def validated(self) -> "PreparedInputsStub":
-            return self
-
     _mock_materialization(monkeypatch, lambda *_args, **_kwargs: inputs)
     load_contexts: list[pm.Model | None] = []
 
@@ -915,9 +897,6 @@ def test_co2_operations_preserves_materialized_fixed_mismatch(monkeypatch: Any) 
         inv_inputs = inputs
         rhime_inputs = None
         aggregation_error_mode = "dense"
-
-        def validated(self) -> "PreparedInputsStub":
-            return self
 
     _mock_materialization(monkeypatch, lambda *_args, **_kwargs: inputs)
     sampled_models: list[pm.Model] = []
@@ -1182,6 +1161,12 @@ def test_enabled_likelihood_priors_share_the_explicit_materialization_boundary(
     built = co2_runner.build_co2_from_materialized(model_inputs, prepared_inputs=prepared, priors=priors, **choices)
     assert variable in built.model.named_vars
     assert built.output_contract.metadata["likelihood"] == kind
+    trace = co2_runner.annotate_co2_trace(
+        xr.DataTree(), built, concentration_units="ppm", **choices,
+    )
+    assert json.loads(trace.attrs["rhime_likelihood_kwargs"])[prior_option]["sigma"] == {
+        "shape": [], "dtype": "float64",
+    }
     assert calls == ["shared"]
 
 

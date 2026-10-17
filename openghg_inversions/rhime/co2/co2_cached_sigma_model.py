@@ -85,19 +85,6 @@ class _CachedAffineTerm:
     output: TensorVariable
 
 
-@dataclass(frozen=True)
-class _CachedLikelihood:
-    """Private likelihood products needed by the matched sampler."""
-
-    target: FixedOuCachedSigmaTarget
-    shared_cache: PytensorMarginalQuadraticCache
-    initial_cache: MarginalQuadraticCache
-    amplitude: TensorVariable
-    states: tuple[TensorVariable, ...]
-    cached_state_logp: TensorVariable
-    initial_values: dict[str, Any]
-
-
 def _materialize_cached_linear_projection(
     prepared: PreparedLinearSensitivity,
     activity: ResolvedStateActivity,
@@ -181,7 +168,7 @@ def _add_cached_likelihood(
     initial_amplitudes: np.ndarray,
     site_amplitude_prior_scale: float,
     output_dim: str,
-) -> _CachedLikelihood:
+) -> Co2CachedSigmaModel:
     """Lower ordered scientific terms once at the cached-likelihood boundary."""
     active_terms = tuple(term for term in terms if term.coefficients is not None)
     if not active_terms:
@@ -250,14 +237,17 @@ def _add_cached_likelihood(
     # initvals. Preserve scientific starts separately for the matched runner.
     for rv in model.free_RVs:
         model.set_initval(rv, None)
-    return _CachedLikelihood(
+    return Co2CachedSigmaModel(
+        model=model,
         target=target,
         shared_cache=shared_cache,
         initial_cache=initial_cache,
         amplitude=amplitude,
         states=tuple(rv for term in terms for rv in term.sampled_rvs),
+        modelled_mean=modelled_mean,
         cached_state_logp=cached_state_logp,
         initial_values=initial_values,
+        site_amplitude_prior_scale=site_amplitude_prior_scale,
     )
 
 
@@ -437,7 +427,7 @@ def build_co2_cached_sigma_model(
         tau_hours,
         site_labels=site_labels,
     )
-    with registered_model() as model:
+    with registered_model():
         state_result = _add_prepared_correlated_lognormal_state_with_activity(
             activity,
             active_state_prior,
@@ -536,7 +526,7 @@ def build_co2_cached_sigma_model(
             mean_expression,
             dims=output_dim,
         )
-        cached = _add_cached_likelihood(
+        return _add_cached_likelihood(
             tuple(terms),
             covariance=covariance,
             modelled_mean=modelled_mean,
@@ -545,21 +535,9 @@ def build_co2_cached_sigma_model(
             site_coord=site_coord,
             site_index=site_index,
             initial_amplitudes=initial_amplitudes,
-            site_amplitude_prior_scale=site_amplitude_prior_scale,
+            site_amplitude_prior_scale=float(site_amplitude_prior_scale),
             output_dim=output_dim,
         )
-    return Co2CachedSigmaModel(
-        model=model,
-        target=cached.target,
-        shared_cache=cached.shared_cache,
-        initial_cache=cached.initial_cache,
-        amplitude=cached.amplitude,
-        states=cached.states,
-        modelled_mean=modelled_mean,
-        cached_state_logp=cached.cached_state_logp,
-        initial_values=cached.initial_values,
-        site_amplitude_prior_scale=float(site_amplitude_prior_scale),
-    )
 
 
 __all__ = [

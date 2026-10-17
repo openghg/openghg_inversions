@@ -20,6 +20,7 @@ from collections.abc import Mapping
 import numpy as np
 import xarray as xr
 
+from openghg_inversions.basis.affine_flux_map_io import load as load_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.postprocessing.countries import Countries
@@ -43,7 +44,7 @@ from openghg_inversions.rhime._stage_checks import PREPARATION_CHECK_NAME, _chec
 from openghg_inversions.serialization import load_trace, reset_serialisation_multiindexes, save_trace
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
-from .co2_affine_output import BoundCo2AffineFluxMap, load_and_bind_affine_flux_map
+from .co2_affine_output import BoundCo2AffineFluxMap, _bind_affine_flux_map, prepared_inputs_content_id
 from .co2_cached_sigma_runner import (
     build_rhime_co2_cached_sigma,
     co2_cached_sigma_input_names,
@@ -267,7 +268,9 @@ def prepare_co2_stage(
     if setup.reconstruction_path is not None:
         from .co2_outputs import validate_co2_outputs
 
-        bound = load_and_bind_affine_flux_map(setup.reconstruction_path, source)
+        bound = _bind_affine_flux_map(
+            load_affine(setup.reconstruction_path), prepared, prepared_inputs_id=prepared_inputs_content_id(source),
+        )
         validate_co2_outputs(setup.output, bound=bound, source_to_sector=setup.source_to_sector)
     manifest = _manifest(setup, "prepare")
     destination = _stage_output_directory(output_dir)
@@ -300,7 +303,10 @@ def _load_prepared(
     _validate_inputs(setup, prepared)
     bound = None
     if setup.reconstruction_path is not None:
-        bound = load_and_bind_affine_flux_map(setup.reconstruction_path, prepared_inputs)
+        bound = _bind_affine_flux_map(
+            load_affine(setup.reconstruction_path), prepared,
+            prepared_inputs_id=prepared_inputs_content_id(prepared_inputs),
+        )
     from .co2_outputs import validate_co2_outputs
 
     validate_co2_outputs(setup.output, bound=bound, source_to_sector=setup.source_to_sector)

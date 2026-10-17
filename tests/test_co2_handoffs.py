@@ -96,6 +96,54 @@ def test_imported_affine_pair_is_referenced_without_copying(tmp_path, extension)
     ).artifact.prepared_inputs_id == artifact.prepared_inputs_id
 
 
+@pytest.mark.parametrize("route", ["import", "full", "replay"])
+def test_affine_routes_load_prepared_inputs_once(tmp_path, monkeypatch, route):
+    from openghg_inversions.rhime.co2 import execution
+    from openghg_inversions.rhime.co2.co2_preparation import Co2PreparedInputs
+
+    prepared, trace = _components_fixture()
+    _, native = _prepared()
+    artifact = produce_bucket_affine_flux_map(prepared, native, prepared_inputs_id="in-memory")
+    manifest = handoffs.save_preparation(
+        prepared, affine_artifact=artifact, output_dir=tmp_path / "prep", **FACTS,
+    )
+    preparation = handoffs.load_preparation(manifest)
+    samples = handoffs.save_samples(
+        manifest, trace, actual_inference={"draws": 3},
+        preparation_generation=preparation.generation, output_dir=tmp_path / "sample",
+    )
+    loads = []
+    original_load = Co2PreparedInputs.load
+
+    def counted_load(path):
+        loads.append(path)
+        return original_load(path)
+
+    monkeypatch.setattr(Co2PreparedInputs, "load", counted_load)
+    if route == "import":
+        handoffs.prepare(
+            prepared_path=preparation.payload, affine_path=preparation.affine_payload,
+            output_dir=tmp_path / "import", **FACTS,
+        )
+    elif route == "full":
+        def model_boundary(**kwargs):
+            raise RuntimeError("model boundary reached")
+
+        monkeypatch.setattr(execution, "materialize_co2_inputs", model_boundary)
+        with pytest.raises(RuntimeError, match="model boundary reached"):
+            execution.run_co2(params={
+                "format_version": 1, "recipe": "co2", "variant": "ordinary",
+                "prepared_inputs": {
+                    "path": str(preparation.payload),
+                    "reconstruction_path": str(preparation.affine_payload), **FACTS,
+                },
+                **_model(), "outputs": {"output_format": "none"},
+            })
+    else:
+        handoffs.load_samples(samples)
+    assert loads == [preparation.payload]
+
+
 def test_replaced_preparation_rejects_saved_generation_before_writing(tmp_path):
     prepared, trace = _components_fixture()
     manifest = handoffs.save_preparation(prepared, output_dir=tmp_path / "prep", **FACTS)

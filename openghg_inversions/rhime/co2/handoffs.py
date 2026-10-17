@@ -19,7 +19,7 @@ import pymc as pm
 import xarray as xr
 
 from openghg_inversions._provenance import installed_ogi_provenance
-from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, save as save_affine
+from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load as load_affine, save as save_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.inference.sampling import RhimeSampler, resolve_sampler
@@ -35,7 +35,7 @@ from openghg_inversions.rhime.sampling import sample_rhime_model
 from openghg_inversions.serialization import load_trace, save_trace
 
 from .co2_affine_output import (
-    load_and_bind_affine_flux_map, prepared_inputs_content_id,
+    _bind_affine_flux_map, load_and_bind_affine_flux_map, prepared_inputs_content_id,
 )
 from .co2_outputs import (
     Co2Output, Co2OutputOptions, make_co2_output, calculate_co2_products, save_co2_products,
@@ -162,7 +162,9 @@ def prepare(
     facts = requested_co2_facts(prepared, start_date=start_date, end_date=end_date, domain=domain)
     companion = Path(affine_path).resolve() if affine_path is not None else None
     if companion is not None:
-        load_and_bind_affine_flux_map(companion, source)
+        _bind_affine_flux_map(
+            load_affine(companion), prepared, prepared_inputs_id=prepared_inputs_content_id(source),
+        )
     destination = start_checkpoint(
         output_dir, "prepare", payloads=(), referenced=(source,) + ((companion,) if companion else ()),
     )
@@ -282,7 +284,10 @@ def load_samples(sample_manifest: str | Path) -> Co2Output:
     trace = load_trace(reference(path, record["posterior"]))
     validate_co2_trace(trace, preparation.prepared)
     bound = (
-        load_and_bind_affine_flux_map(preparation.affine_payload, preparation.payload)
+        _bind_affine_flux_map(
+            load_affine(preparation.affine_payload), preparation.prepared,
+            prepared_inputs_id=prepared_inputs_content_id(preparation.payload),
+        )
         if preparation.affine_payload is not None else None
     )
     result = make_co2_output(

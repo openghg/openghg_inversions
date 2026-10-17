@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import xarray as xr
+from dask.array import Array
 from dask.base import unpack_collections
 
 from openghg_inversions._serialization_codecs import _json_value
@@ -221,7 +222,7 @@ def prepare_co2_scalar_sigma_eigenbasis(
         ValueError: If required CO2 inputs are missing, misaligned, or cannot
             form a valid scalar-sigma base covariance.
     """
-    prepared = prepared_inputs.validated()
+    prepared = prepared_inputs
     names = (
         "mf",
         "mf_error",
@@ -275,9 +276,9 @@ def _resolve_co2_likelihood_kwargs(
 def describe_co2_likelihood_kwargs(value: Any) -> Any:
     """Describe likelihood options without executing borrowed numerical arrays.
 
-    Labelled arrays record their name, dimensions, shape and units. Their
-    consumed numerical values are retained by their scientific component;
-    descriptive-only arrays are not materialized here.
+    Labelled arrays record their name, dimensions, shape and units; bare Dask
+    arrays record shape and dtype. Consumed numerical values are retained by
+    their scientific component; descriptive-only arrays are not materialized here.
     """
     if isinstance(value, xr.DataArray):
         return {
@@ -286,6 +287,8 @@ def describe_co2_likelihood_kwargs(value: Any) -> Any:
             "shape": list(value.shape),
             "units": value.attrs.get("units"),
         }
+    if isinstance(value, Array):
+        return {"shape": list(value.shape), "dtype": str(value.dtype)}
     if isinstance(value, Mapping):
         return {str(key): describe_co2_likelihood_kwargs(item) for key, item in value.items()}
     if isinstance(value, tuple | list):
@@ -364,7 +367,7 @@ def materialize_co2_inputs(
             "likelihood_builder replaces the default model-error options; "
             "pass its options in likelihood_kwargs."
         )
-    prepared = prepared_inputs.validated()
+    prepared = prepared_inputs
     names = co2_model_input_names(
         prepared,
         preserve_prepared_fixed_mismatch=(likelihood_builder is None and fixed_model_mismatch is None),

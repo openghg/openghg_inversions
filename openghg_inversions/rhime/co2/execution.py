@@ -8,14 +8,14 @@ from pathlib import Path
 from typing import Any
 
 from openghg_inversions._provenance import installed_ogi_provenance
-from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact
+from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load as load_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.rhime._stage_artifacts import _validate_filename_component
 from openghg_inversions.rhime.sampling import sample_rhime_model
 
-from .co2_affine_output import _bind_affine_flux_map, load_and_bind_affine_flux_map
+from .co2_affine_output import _bind_affine_flux_map, prepared_inputs_content_id
 from .co2_outputs import (
     Co2Output, Co2OutputOptions, calculate_co2_products, save_co2_products, make_co2_output,
     validate_co2_product_request,
@@ -130,7 +130,9 @@ def run_co2(
     elif affine_path is not None:
         if canonical_inputs is not None or supplied_prepared or source is None:
             raise ValueError("Supplied or new coherent preparation requires its matching affine_artifact.")
-        bound = load_and_bind_affine_flux_map(affine_path, source)
+        bound = _bind_affine_flux_map(
+            load_affine(affine_path), prepared, prepared_inputs_id=prepared_inputs_content_id(source),
+        )
     countries = validate_co2_product_request(
         output, prepared=prepared, bound=bound, source_to_sector=output_choices["source_to_sector"],
     )
