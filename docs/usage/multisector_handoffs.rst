@@ -19,6 +19,7 @@ The synthetic observations replace acquisition from an OpenGHG object store.
 Preparation, sampling, checkpoint serialization and flux reconstruction use the
 production operations. One short chain makes execution observable; it provides
 no evidence of convergence or scientifically adequate posterior uncertainty.
+Sampling cells display PyMC's short-chain messages alongside their results.
 
 .. jupyter-kernel:: python3
    :id: multisector_handoffs
@@ -91,6 +92,7 @@ parameters before constructing the model. Its sample manifest records the
 scientific meaning alongside the posterior samples.
 
 .. jupyter-execute::
+   :stderr:
 
    sampler = RhimeSampler(
        draws=8,
@@ -119,6 +121,7 @@ basis would require a new preparation; see :doc:`staged_workflow` for the
 compatibility boundary.
 
 .. jupyter-execute::
+   :stderr:
 
    student_model = model_options(0.6, student_t=True)
    student_manifest = handoffs.sample(
@@ -195,6 +198,7 @@ Use the second model's choices and the same random seed to compare their flux
 products with replay. This checks execution parity, not convergence.
 
 .. jupyter-execute::
+   :stderr:
 
    config = RhimeConfig.from_params(
        {

@@ -506,6 +506,23 @@ checks pass; the companion script's executable AST is unchanged. Refreshed
 fixed-revision Slurm compatibility/type/rendered-docs evidence follows in the PR;
 this does not close task 2.4.
 
+Slurm **19475933** validates fixed Git checkout `1136977e`: all three complete
+compatibility environments pass (`py312-openghgCur` 830.62 s,
+`py313-openghgCur` 825.53 s, `py312-openghgDev` 533.59 s, including setup).
+Mypy remains **162 errors in 50 files**, with identical normalized diagnostics
+to the prior validated runtime and zero additions against devel's 164/52.
+GitHub tests and docs also pass at `1136977e` (runs `39007837850` and
+`39007837858`). Independent agents checked the type and documentation evidence.
+
+The notebook executes all eight cells during the documentation build; its
+download matches the executed notebook and all **62 local page links** resolve.
+Strict docs reported **311 warnings**: the existing 308 plus three expected
+short-chain stderr messages in sampling cells. Those cells now explicitly
+render stderr with the Jupyter directive's `:stderr:` option, preserving the
+scientific warning for readers. A docs-only Slurm rebuild verifies this
+presentation correction; scientific runtime and the passing full suites are
+unchanged. No baseline diagnostics are suppressed.
+
 The source-order implementation is delivered in stacked PR #891, not duplicated
 here. Its remaining automatic-basis regression coverage is tracked in
 `#891 discussion_r4301612276`; stacked-state module documentation and the
