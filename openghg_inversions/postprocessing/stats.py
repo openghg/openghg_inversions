@@ -7,10 +7,11 @@ NetCDF serialisation.
 """
 
 from collections import namedtuple
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import TypeVar, cast
 
 import arviz as az
+import dask
 import numpy as np
 import scipy
 import xarray as xr
@@ -51,6 +52,41 @@ def _to_dense_dataset(ds: xr.Dataset) -> xr.Dataset:
         coords=ds.coords,
         attrs=ds.attrs,
     )
+
+
+_STATS_MAX_POINTS = 1024
+_STATS_CHUNKS = {"lat": 32, "lon": 32, "latitude": 32, "longitude": 32, "flux_time": 1}
+
+
+def _bounded_chunk_sizes(
+    data: xr.Dataset | xr.DataArray, sample_dims: Iterable[str] = ("draw", "chain")
+) -> dict[str, int]:
+    """Limit non-sample blocks to 1024 points, with spatial sides at most 32.
+
+    Apply these chunks before constructing expensive producers; slicing their
+    already-built outputs cannot bound the producers' original task payloads.
+    Sample dimensions retain their existing chunks and are never tiled.
+    """
+    remaining = _STATS_MAX_POINTS
+    chunks = {}
+    for dim, size in data.sizes.items():
+        if dim not in sample_dims:
+            chunks[dim] = max(1, min(size, _STATS_CHUNKS.get(dim, 128), remaining))
+            remaining = max(1, remaining // chunks[dim])
+    return chunks
+
+
+def _chunk_non_sample_dims(data: XarrayObject, sample_dims: Iterable[str] = ("draw", "chain")) -> XarrayObject:
+    """Bound producer chunks while retaining compatible, already-bounded layouts."""
+    chunks: dict = _bounded_chunk_sizes(data, sample_dims)
+    variables = [data] if isinstance(data, xr.DataArray) else list(data.data_vars.values())
+    for dim, limit in chunks.items():
+        layouts = {value.variable.chunksizes[dim] for value in variables if value.chunks and dim in value.dims}
+        if len(layouts) == 1:
+            layout = next(iter(layouts))
+            if max(layout) <= limit:
+                chunks[dim] = layout
+    return data.chunk(chunks)
 
 
 def _consolidate_sample_dimension(ds: xr.Dataset, sample_dim: str) -> xr.Dataset:
@@ -217,7 +253,11 @@ def hdi(
     hdi_prob: float | Iterable[float] = 0.68,
     sample_dim: str = "draw",
 ) -> xr.Dataset:
-    """Compute highest density intervals with the given probabilities.
+    """Compute exact highest density intervals with bounded non-sample tasks.
+
+    Dask inputs remain lazy and each kernel receives complete samples. Eager
+    and lazy paths use the same ArviZ interval kernel with missing values
+    ignored. Existing upstream producers must already have bounded payloads.
 
     Args:
         ds: Dataset containing samples.
@@ -227,6 +267,11 @@ def hdi(
     Returns:
         Dataset containing the highest density interval bounds.
     """
+    chunks = _bounded_chunk_sizes(ds, (sample_dim,))
+    if any(data.chunks is not None for data in ds.data_vars.values()) or any(
+        ds.sizes[dim] > size for dim, size in chunks.items()
+    ):
+        ds = _chunk_non_sample_dims(ds, (sample_dim,))
     ds = _consolidate_sample_dimension(_to_dense_dataset(ds), sample_dim)
     # handle case of multiple hdi_probs
     if isinstance(hdi_prob, Iterable):
@@ -237,11 +282,26 @@ def hdi(
     @update_attrs(f"hdi_{int(100 * hdi_prob)}_of")
     def calc(data: xr.Dataset, probability: float) -> xr.Dataset:
         """Call ArviZ and narrow its union return type for Dataset input."""
+        if any(value.chunks is not None for value in data.data_vars.values()):
+            # ArviZ's Dataset wrapper has no Dask execution option. Its public
+            # array entry point calls the same exact interval kernel per block.
+            result = xr.apply_ufunc(
+                az.hdi,
+                data,
+                input_core_dims=[[sample_dim]],
+                output_core_dims=[["hdi"]],
+                kwargs={"prob": probability, "axis": -1, "skipna": True},
+                dask="parallelized",
+                output_dtypes=[float],
+                dask_gufunc_kwargs={"output_sizes": {"hdi": 2}},
+            )
+            return result.assign_coords(
+                hdi=xr.DataArray(
+                    ["lower", "upper"], dims="hdi", attrs={"ci_kind": "hdi", "ci_prob": probability}
+                )
+            )
         result = cast(xr.Dataset, az.hdi(data, prob=probability, dim=sample_dim, skipna=True))
         return result.rename({"ci_bound": "hdi"})
-
-    if any(data.chunks is not None for data in ds.data_vars.values()):
-        ds = ds.compute()
 
     return calc(ds, hdi_prob)
 
@@ -279,12 +339,41 @@ def median(ds: xr.Dataset, sample_dim: str = "draw") -> xr.Dataset:
     return ds.median(dim=sample_dim)
 
 
-def calculate_stats(ds: xr.Dataset, stats: Sequence[str] = ("mean", "quantiles"), **kwargs) -> xr.Dataset:
-    """Calculate stats on dataset.
+_BUILTIN_STAT_FUNCTIONS = frozenset((mean, stdev, median, quantiles, mode, mode_kde, hdi))
+
+
+def calculate_stats(
+    ds: xr.Dataset,
+    stats: Sequence[str] = ("mean", "quantiles"),
+    *,
+    _prepare_block: Callable[[xr.Dataset], xr.Dataset] | None = None,
+    **kwargs,
+) -> xr.Dataset:
+    """Calculate statistics, completing one bounded non-sample block at a time.
+
+    Related variables with the same non-sample dimensions and all requested
+    statistics share a computation per block. Sample chunks retain their
+    original reduction order; exact interval kernels receive complete samples.
+    Built-in reductions pool every chain within each block, and convert JAX
+    summaries to NumPy at this reduction boundary.
+    Results are eager (and may retain sparse storage). Borrowed inputs are not
+    changed. Upstream producers must already use bounded non-sample chunks;
+    this boundary limits workspace, not resident inputs or final output size.
+    Compatible bounded source chunks are retained. Inconsistent chunk layouts
+    across related variables may require a source chunk in adjacent blocks.
+    Mixed eager/lazy groups may also split a source block beside a singleton
+    edge to preserve the eager sample-reduction layout.
+    Calls containing a custom registered kernel use the complete dataset so
+    devel's resolved sample arguments and cross-variable operands remain intact;
+    that compatibility
+    fallback does not provide the built-in non-sample workspace bound.
 
     Args:
         ds: dataset to calculate stats on.
         stats: list of stats to calculate.
+        _prepare_block: Internal arithmetic applied after blocking and before
+          statistic kernels. Related operands must have matching non-sample
+          dimensions. Preserve their NumPy or Dask backend and borrowed inputs.
         **kwargs: arguments to pass to stats functions. If a parameter can be passed to a stats function,
           it will be passed. To pass to a specific stats function, use `<stats func name>__<key> = <value>`.
           Note: that is a double underscore. For instance `mode_kde__chunk_dim="country"` would specify `chunk_dim`
@@ -292,35 +381,178 @@ def calculate_stats(ds: xr.Dataset, stats: Sequence[str] = ("mean", "quantiles")
 
     Returns:
         dataset containing all stats calculated on all variables in input dataset.
-        When both chain and draw dimensions are present, every chain is pooled
-        at this reduction boundary.
 
     Raises:
         ValueError: if a statistic in `stats` is not found in the registry.
 
     """
-    sample_dim = kwargs.get("sample_dim", "draw")
-    ds, sample_dim = combine_chain_draw(ds, sample_dim)
-    kwargs = {**kwargs, "sample_dim": sample_dim}
-    stats_datasets = []
+    if not stats:
+        return xr.Dataset()
+
+    # A stat-specific probability overrides the generic argument, including
+    # when both refer to the same one-shot iterable.
+    key = "hdi__hdi_prob" if "hdi__hdi_prob" in kwargs else "hdi_prob"
+    if "hdi" in stats and isinstance(kwargs.get(key), Iterable):
+        kwargs[key] = tuple(kwargs[key])
 
     for stat in stats:
         if stat not in stats_functions:
             raise ValueError(f"Statistic {stat} not available.")
-        sf = stats_functions[stat]
 
-        # get any kwargs that could be passed to this stat
-        sf_kwargs = {k: v for k, v in kwargs.items() if k in sf.params}
+    # Normalize only effective arguments; aliases of one iterator share its
+    # tuple, and a completely overridden generic iterator remains untouched.
+    reduction_iterators = {}
+    for stat in stats:
+        key = f"{stat}__sample_dim" if f"{stat}__sample_dim" in kwargs else "sample_dim"
+        dimensions = kwargs.get(key)
+        if isinstance(dimensions, Iterator) and (
+            key != "sample_dim" or "sample_dim" in stats_functions[stat].params
+        ):
+            identity = id(dimensions)
+            if identity not in reduction_iterators:
+                reduction_iterators[identity] = tuple(dimensions)
+            kwargs[key] = reduction_iterators[identity]
 
-        # add "specific" kwargs of the form `<stat name>__<key>`
-        for k, v in kwargs.items():
-            if k.startswith(f"{stat}__"):
-                sf_kwargs[k.removeprefix(f"{stat}__")] = v
+    if any(
+        all(stats_functions[stat].func is not builtin for builtin in _BUILTIN_STAT_FUNCTIONS)
+        for stat in stats
+    ):
+        with dask.config.set(scheduler="single-threaded"):
+            data = _prepare_block(ds) if _prepare_block is not None else ds
+            return _calculate_stats(data, stats, **kwargs).compute()
 
-        variable_stats = []
-        for name in ds.data_vars:
-            samples = ds[[name]]
-            variable_stats.append(sf.func(samples, **sf_kwargs))
-        stats_datasets.append(xr.merge(variable_stats))
+    # Dask reshape may choose different sample chunks for singleton point
+    # blocks. Retain the original lazy stack's chunk metadata so blocking never
+    # changes the mean/std reduction tree. No source payload is computed here.
+    sample_chunks = {}
+    source_dim = kwargs.get("sample_dim", "draw")
+    sample_dims = {"chain"}
+    if isinstance(source_dim, str) and "chain" in ds.dims and source_dim in ds.dims:
+        sample_dims.add(source_dim)
+        for name, value in ds.data_vars.items():
+            if value.chunks and "chain" in value.dims and source_dim in value.dims:
+                pooled, pooled_dim = combine_chain_draw(value, source_dim)
+                sample_chunks[name] = pooled.variable.chunksizes[pooled_dim]
 
-    return xr.merge(stats_datasets).map(jax_to_numpy)
+    for stat in stats:
+        dimensions = kwargs.get(f"{stat}__sample_dim", kwargs.get("sample_dim", "draw"))
+        if dimensions is None or dimensions is Ellipsis:
+            sample_dims.update(ds.dims)
+        elif isinstance(dimensions, str):
+            sample_dims.add(dimensions)
+        else:
+            sample_dims.update(dimensions)
+    groups: dict[tuple, list] = {}
+    for name, data in ds.data_vars.items():
+        dimensions = tuple(dim for dim in ds.dims if dim in data.dims and dim not in sample_dims)
+        groups.setdefault(dimensions, []).append(name)
+
+    def reduce_blocks(data: xr.Dataset, dimensions: tuple, chunks: dict, markers: list) -> xr.Dataset:
+        if dimensions:
+            dim, *remaining = dimensions
+            if data.sizes[dim] > chunks[dim]:
+                layouts = {value.variable.chunksizes[dim] for value in data.data_vars.values() if value.chunks}
+                layout = next(iter(layouts)) if len(layouts) == 1 else ()
+                # Keep already-bounded shared source chunks intact to avoid
+                # reloading their payload across neighbouring output blocks.
+                if layout and max(layout) <= chunks[dim]:
+                    boundaries = np.cumsum((0, *layout)).tolist()
+                    if any(value.chunks is None for value in data.data_vars.values()):
+                        # Avoid singleton eager blocks anywhere in the layout.
+                        # Prefer whole-source joins; if a full neighbour must be
+                        # split, both slices retain at least two points so its
+                        # Dask reduction keeps the original sample layout too.
+                        index = 0
+                        while index < len(boundaries) - 1:
+                            if boundaries[index + 1] - boundaries[index] == 1:
+                                left = boundaries[index] - boundaries[index - 1] if index else 0
+                                right = (
+                                    boundaries[index + 2] - boundaries[index + 1]
+                                    if index + 2 < len(boundaries) else 0
+                                )
+                                if left and left + 1 <= chunks[dim]:
+                                    del boundaries[index]
+                                    index -= 1
+                                elif right and right + 1 <= chunks[dim]:
+                                    del boundaries[index + 1]
+                                elif left > 3:
+                                    boundaries[index] -= 2
+                                elif right > 3:
+                                    boundaries[index + 1] += 2
+                            index += 1
+                else:
+                    boundaries = [*range(0, data.sizes[dim], chunks[dim]), data.sizes[dim]]
+                    # A singleton edge can turn a strided NumPy sample reduction
+                    # into a contiguous one. Keep at least two points when the
+                    # policy allows, without overlapping or enlarging blocks.
+                    if (
+                        len(boundaries) > 2
+                        and boundaries[-1] - boundaries[-2] == 1
+                        and chunks[dim] > 2
+                    ):
+                        boundaries[-2] -= 1
+                return xr.concat(
+                    [
+                        reduce_blocks(data.isel({dim: slice(start, stop)}), tuple(remaining), chunks, markers)
+                        for start, stop in zip(boundaries[:-1], boundaries[1:])
+                    ],
+                    dim=dim,
+                    combine_attrs="override",
+                )
+            return reduce_blocks(data, tuple(remaining), chunks, markers)
+        if _prepare_block is not None:
+            data = _prepare_block(data)
+        # Joint computation preserves sharing and the Dask sample reduction order.
+        return _calculate_stats(data, stats, _sample_chunks=sample_chunks, **kwargs).drop_vars(
+            markers, errors="ignore"
+        ).compute()
+
+    with dask.config.set(scheduler="single-threaded"):
+        results = []
+        for dimensions, names in groups.items():
+            data = ds[names]
+            # Scalar variables still belong to a dataset with these reduction
+            # dimensions; dropping all of them would make Dataset.mean/std fail.
+            markers = []
+            for dim in sample_dims:
+                if dim in ds.dims and dim not in data.dims:
+                    if dim in ds.coords:
+                        data = data.assign_coords(ds[[dim]].coords)
+                    else:
+                        # An auxiliary carrier supplies only the dimension size,
+                        # not axis labels or an index. Its scalar broadcast view
+                        # allocates no sample-sized payload and is removed before
+                        # computation. Unique keys cannot shadow borrowed names.
+                        marker = object()
+                        markers.append(marker)
+                        data = data.assign_coords(
+                            {marker: (dim, np.broadcast_to(np.uint8(0), (ds.sizes[dim],)))}
+                        )
+            results.append(reduce_blocks(data, dimensions, _bounded_chunk_sizes(data, sample_dims), markers))
+    return xr.merge(results)
+
+
+def _calculate_stats(ds: xr.Dataset, stats: Sequence[str], *, _sample_chunks=None, **kwargs) -> xr.Dataset:
+    """Build devel's statistic kernels, pooling chains only at reduction."""
+    # Devel pools the generic/default sample axis first. Specific overrides
+    # then reduce their requested axes on that pooled dataset, which may refer
+    # to the newly created "sample" dimension or to a non-sample dimension.
+    source_dim = kwargs.get("sample_dim", "draw")
+    if isinstance(source_dim, str) and "chain" in ds.dims and source_dim in ds.dims:
+        ds, sample_dim = combine_chain_draw(ds, source_dim)
+        kwargs = {**kwargs, "sample_dim": sample_dim}
+        if _sample_chunks:
+            for name, value in ds.data_vars.items():
+                layout = _sample_chunks.get(name)
+                if layout:
+                    ds[name] = value.chunk({sample_dim: layout})
+    kwargs = {"sample_dim": "draw", **kwargs}
+    outputs = []
+    for stat in stats:
+        function = stats_functions[stat]
+        options = {key: value for key, value in kwargs.items() if key in function.params}
+        options.update(
+            {key.removeprefix(f"{stat}__"): value for key, value in kwargs.items() if key.startswith(f"{stat}__")}
+        )
+        outputs.append(function.func(ds, **options))
+    return xr.merge(outputs).map(jax_to_numpy)
