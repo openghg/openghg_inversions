@@ -321,9 +321,10 @@ For in-memory sector diagnostics, call
 ``output_format="none"`` still returns the scientific result. Multisector supports
 ``none``, ``inv_out`` and ``paris``; ``basic`` and ``legacy`` are single-sector formats.
 
-The runnable :download:`multisector_handoffs.py
-<../../examples/multisector_handoffs.py>` demonstrates preparation reuse, separate
-model samples, multiple output choices, and comparison with full execution.
+Follow :doc:`multisector_handoffs` for an executable notebook demonstrating
+preparation reuse, separate model samples, multiple output choices and comparison
+with full execution. Its :download:`companion script
+<../../examples/multisector_handoffs.py>` also checks independent model equations.
 
 Readiness and independent diagnosis
 -----------------------------------

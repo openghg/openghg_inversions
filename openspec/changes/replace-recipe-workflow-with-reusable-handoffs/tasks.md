@@ -487,6 +487,32 @@ implementation evidence. Shared deferred-family adapter retirement and cached
 CO2/integrated acceptance remain with #880/OPE-207; no maintainer readability
 acceptance, spec promotion/archive or merge is claimed.
 
+**2026-10-17 review follow-up:** Site-keyed additive-sigma priors now use the
+resolved `SigmaAlignment.site_labels`, including supplied alignments whose
+latent-site order differs from observation order. A reversed `MHD`/`TAC`
+regression verifies that prior scales keep their scientific site meaning;
+validation of missing labels and all supplied values, including dropped sites,
+is preserved. The nine focused additive-sigma checks pass.
+
+The multisector example now has a narrated `jupyter-execute` walkthrough with a
+downloadable notebook and a companion script divided into scientific phases.
+All eight cells execute, including Normal/Student-t preparation reuse, replay
+with current output choices, and native-grid flux parity with full and prepared
+execution. Short chains demonstrate execution, not convergence. All **422 tests
+pass across eight relevant modules**: RHIME construction/runners, multisector
+handoffs and parity, sigma alignment and likelihoods, output reconstruction,
+tutorials and family documentation. Changed-path Ruff, diff and strict OpenSpec
+checks pass; the companion script's executable AST is unchanged. Refreshed
+fixed-revision Slurm compatibility/type/rendered-docs evidence follows in the PR;
+this does not close task 2.4.
+
+The source-order implementation is delivered in stacked PR #891, not duplicated
+here. Its remaining automatic-basis regression coverage is tracked in
+`#891 discussion_r4301612276`; stacked-state module documentation and the
+source-labelled flux-prior representation question are tracked in
+`discussion_r4301612271` and `discussion_r4301612275`. The latter two original
+#887 threads remain open pending their resolution in #891.
+
 ## 3. Ordinary CO2 reusable-handoff adoption
 
 - [ ] 3.1 Resolve owned CO2 phase choices consistently for configured full and
