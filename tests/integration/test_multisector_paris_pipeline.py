@@ -190,26 +190,24 @@ def test_multisector_rhime_pipeline_writes_latest_paris_flux_schema(
         result.basis_functions.flux.sel(source=flux_sources[0], drop=True),
         result.basis_functions.flux.sel(source=flux_sources[1], drop=True),
     )
-    flux = result.outputs["paris_flux"]
-    for state in ("prior", "posterior"):
-        np.testing.assert_allclose(
-            flux[f"flux_total_{state}"],
-            flux[f"flux_ff_{state}"] + flux[f"flux_ocean_{state}"],
-            rtol=1e-6,
-        )
-
     expected_flux_path = tmp_path / "multisector_paris_pipeline_flux_ch4_EUROPE_2019-01-01.nc"
     expected_concentration_path = (
         tmp_path / "multisector_paris_pipeline_conc_ch4_EUROPE_2019-01-01.nc"
     )
     expected_diagnostics_path = tmp_path / "multisector_paris_pipeline2019-01-01_sector_flux_diagnostics.nc"
-    assert result.output_metadata["paris_flux_path"] == str(expected_flux_path)
-    assert result.output_metadata["paris_concentration_path"] == str(expected_concentration_path)
-    assert result.output_metadata["sector_flux_diagnostics_path"] == str(expected_diagnostics_path)
     assert expected_flux_path.is_file()
     assert expected_concentration_path.is_file()
     assert expected_diagnostics_path.is_file()
-    assert "inversion_output_path" not in result.output_metadata
+    assert not list(tmp_path.glob("*inversion_output.nc"))
+    assert result.run_metadata["start_date"] == "2019-01-01"
+    assert result.variable_roles["flux_scale:FF"] == "x_ff"
+    with xr.open_dataset(expected_flux_path) as flux:
+        for state in ("prior", "posterior"):
+            np.testing.assert_allclose(
+                flux[f"flux_total_{state}"],
+                flux[f"flux_ff_{state}"] + flux[f"flux_ocean_{state}"],
+                rtol=1e-6,
+            )
 
     with xr.open_dataset(expected_concentration_path) as concentration:
         assert concentration.attrs["paris_concentration_template_version"] == "v04"

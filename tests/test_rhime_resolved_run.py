@@ -92,16 +92,10 @@ def test_ini_runner_merges_before_one_resolution_and_alias_translation(monkeypat
     configs = []
 
     def resolve(cls, params, *, multisector):
-        if multisector:
-            assert "outputname" not in params
-            assert "emissions_name" not in params
-            assert params["output_name"] == "winning-name"
-            assert params["flux_sources"] == sources
-        else:
-            # The standard request loader groups translated options by owner.
-            assert not any({"outputname", "emissions_name"} & group.keys() for group in params.values())
-            assert params["output"]["output_name"] == "winning-name"
-            assert params["data"]["flux_sources"] == sources
+        # Both request loaders group winning translated options by owner.
+        assert not any({"outputname", "emissions_name"} & group.keys() for group in params.values())
+        assert params["output"]["output_name"] == "winning-name"
+        assert params["data"]["flux_sources"] == sources
         resolved = original_factory(params, multisector=multisector)
         configs.append(resolved)
         return resolved

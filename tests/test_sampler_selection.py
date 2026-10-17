@@ -14,7 +14,6 @@ from openghg_inversions.inference.sampling import RhimeSampler, resolve_sampler
 
 
 RUNNERS = (
-    ("rhime.prepared", "run_rhime_from_prepared_inputs"),
     ("rhime.nested", "run_rhime_nested_from_prepared_inputs"),
     ("rhime.co2.co2_runner", "run_rhime_co2"),
     ("rhime.co2.co2_cached_sigma_runner", "run_rhime_co2_cached_sigma"),

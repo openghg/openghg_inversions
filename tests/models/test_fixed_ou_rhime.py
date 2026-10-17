@@ -13,7 +13,7 @@ from scipy.stats import multivariate_normal
 from openghg_inversions.models.coords import get_coord_registry, registered_model
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.observation_error import resolve_aggregation_error
-from openghg_inversions.rhime.multisector import build_multisector_rhime_model
+from openghg_inversions.rhime.multisector import build_multisector_model
 from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.serialization import load_trace, save_trace
 from openghg_inversions.rhime.specs import RhimeModelSpec, SectorSpec
@@ -273,21 +273,16 @@ def test_standard_recipes_accept_installed_fixed_ou_likelihood(
         dims=("nmeasure", "region"),
         coords={"nmeasure": data.nmeasure, "region": ["r1"]},
     )
-    common = {
-        "observations": data["mf"],
-        "observation_error": data["mf_error"],
-        "aggregation_error": resolve_aggregation_error(data, "none"),
-        "use_bc": False,
-        "likelihood_builder": add_fixed_ou_gaussian_likelihood,
-        "likelihood_kwargs": {"tau_hours": 5.0, "fixed_site_amplitudes": 0.5},
-    }
+    likelihood_kwargs = {"tau_hours": 5.0, "fixed_site_amplitudes": 0.5}
     if multisector:
         source_design = xr.concat(
             [design, 2.0 * design],
             dim=xr.IndexVariable("source", ["ff", "ocean"]),
         )
-        model = build_multisector_rhime_model(
-            source_design,
+        model_spec = RhimeModelSpec(
+            species="ch4",
+            domain="EUROPE",
+            use_bc=False,
             sectors=(
                 SectorSpec(
                     name="fossil fuel",
@@ -302,8 +297,14 @@ def test_standard_recipes_accept_installed_fixed_ou_likelihood(
                     x_prior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
                 ),
             ),
-            **common,
         )
+        model = build_multisector_model(
+            data.assign(H=source_design),
+            model_spec,
+            priors={f"x_{sector.variable_suffix}": sector.x_prior for sector in model_spec.sectors},
+            likelihood_builder=add_fixed_ou_gaussian_likelihood,
+            likelihood_kwargs=likelihood_kwargs,
+        ).model
     else:
         prior = {"pdf": "normal", "mu": 1.0, "sigma": 1.0}
         model_spec = RhimeModelSpec(
@@ -313,7 +314,7 @@ def test_standard_recipes_accept_installed_fixed_ou_likelihood(
         model = build_standard_model(
             data.assign(H=design), model_spec, priors={"x": prior},
             likelihood_builder=add_fixed_ou_gaussian_likelihood,
-            likelihood_kwargs=common["likelihood_kwargs"],
+            likelihood_kwargs=likelihood_kwargs,
         ).model
 
     assert {"y", "epsilon", "ou_site_amplitude", "ou_tau_hours"} <= set(

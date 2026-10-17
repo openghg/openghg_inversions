@@ -331,14 +331,16 @@ class RhimeModelSpec:
         """
         self.validate_recordable()
         if (self.species != data_config.species or self.domain != data_config.domain
-                or tuple(sector.flux_source for sector in self.sectors) != data_config.flux_sources
+                or set(sector.flux_source for sector in self.sectors) != set(data_config.flux_sources)
+                or len(self.sectors) != len(data_config.flux_sources)
                 or (self.use_bc and not data_config.use_bc)):
             raise ValueError("Sample model conflicts with its preparation.")
         record = self.describe(priors=trace_prior_records(trace))
         record.pop("species")
         record.pop("domain")
-        for sector in record["sectors"]:
-            sector.pop("flux_source")
+        if not data_config.split_by_sectors:
+            for sector in record["sectors"]:
+                sector.pop("flux_source")
         return record
 
     @classmethod
@@ -386,10 +388,15 @@ class RhimeModelSpec:
                 values["likelihood"] = settings_type(**likelihood["options"])
             if len(values["sectors"]) != len(data_config.flux_sources):
                 raise ValueError("Saved model sector count conflicts with its preparation.")
-            values["sectors"] = tuple(
-                SectorSpec(**sector, flux_source=source)
-                for sector, source in zip(values["sectors"], data_config.flux_sources, strict=True)
-            )
+            if data_config.split_by_sectors:
+                values["sectors"] = tuple(SectorSpec(**sector) for sector in values["sectors"])
+                if set(sector.flux_source for sector in values["sectors"]) != set(data_config.flux_sources):
+                    raise ValueError("Saved model sources conflict with its preparation.")
+            else:
+                values["sectors"] = tuple(
+                    SectorSpec(**sector, flux_source=source)
+                    for sector, source in zip(values["sectors"], data_config.flux_sources, strict=True)
+                )
             if values["use_bc"] and not data_config.use_bc:
                 raise ValueError("Saved model requires unavailable prepared BC inputs.")
             return cls(**values)
@@ -483,7 +490,10 @@ class RhimeOutputSpec:
 
 @dataclass(frozen=True)
 class RhimeRunSpec:
-    """Top-level run metadata for a RHIME run.
+    """Run metadata retained by nested and CO2 execution.
+
+    Standard and multisector execution pass model, output and data choices
+    separately and do not construct this envelope.
 
     Args:
         start_date: Inclusive inversion start date.
