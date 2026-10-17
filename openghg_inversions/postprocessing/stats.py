@@ -7,7 +7,7 @@ NetCDF serialisation.
 """
 
 from collections import namedtuple
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
 from typing import TypeVar, cast
 
 import arviz as az
@@ -59,8 +59,8 @@ _STATS_CHUNKS = {"lat": 32, "lon": 32, "latitude": 32, "longitude": 32, "flux_ti
 
 
 def _bounded_chunk_sizes(
-    data: xr.Dataset | xr.DataArray, sample_dims: Iterable[str] = ("draw", "chain")
-) -> dict[str, int]:
+    data: xr.Dataset | xr.DataArray, sample_dims: Iterable[Hashable] = ("draw", "chain")
+) -> dict[Hashable, int]:
     """Limit non-sample blocks to 1024 points, with spatial sides at most 32.
 
     Apply these chunks before constructing expensive producers; slicing their
@@ -68,15 +68,18 @@ def _bounded_chunk_sizes(
     Sample dimensions retain their existing chunks and are never tiled.
     """
     remaining = _STATS_MAX_POINTS
+    limits = cast(Mapping[Hashable, int], _STATS_CHUNKS)
     chunks = {}
     for dim, size in data.sizes.items():
         if dim not in sample_dims:
-            chunks[dim] = max(1, min(size, _STATS_CHUNKS.get(dim, 128), remaining))
+            chunks[dim] = max(1, min(size, limits.get(dim, 128), remaining))
             remaining = max(1, remaining // chunks[dim])
     return chunks
 
 
-def _chunk_non_sample_dims(data: XarrayObject, sample_dims: Iterable[str] = ("draw", "chain")) -> XarrayObject:
+def _chunk_non_sample_dims(
+    data: XarrayObject, sample_dims: Iterable[Hashable] = ("draw", "chain")
+) -> XarrayObject:
     """Bound producer chunks while retaining compatible, already-bounded layouts."""
     chunks: dict = _bounded_chunk_sizes(data, sample_dims)
     variables = [data] if isinstance(data, xr.DataArray) else list(data.data_vars.values())
@@ -426,7 +429,7 @@ def calculate_stats(
     # changes the mean/std reduction tree. No source payload is computed here.
     sample_chunks = {}
     source_dim = kwargs.get("sample_dim", "draw")
-    sample_dims = {"chain"}
+    sample_dims: set[Hashable] = {"chain"}
     if isinstance(source_dim, str) and "chain" in ds.dims and source_dim in ds.dims:
         sample_dims.add(source_dim)
         for name, value in ds.data_vars.items():
@@ -443,8 +446,8 @@ def calculate_stats(
         else:
             sample_dims.update(dimensions)
     groups: dict[tuple, list] = {}
-    for name, data in ds.data_vars.items():
-        dimensions = tuple(dim for dim in ds.dims if dim in data.dims and dim not in sample_dims)
+    for name, variable in ds.data_vars.items():
+        dimensions = tuple(dim for dim in ds.dims if dim in variable.dims and dim not in sample_dims)
         groups.setdefault(dimensions, []).append(name)
 
     def reduce_blocks(data: xr.Dataset, dimensions: tuple, chunks: dict, markers: list) -> xr.Dataset:

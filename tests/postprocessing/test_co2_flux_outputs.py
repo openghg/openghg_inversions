@@ -14,6 +14,7 @@ from openghg_inversions.basis.affine_flux_map import AffineFluxMap
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, save
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.postprocessing import co2_flux_outputs, stats
 from openghg_inversions.postprocessing.co2_flux_outputs import (
     co2_country_flux_outputs,
     co2_native_flux_outputs,
@@ -163,8 +164,39 @@ def test_country_products_compose_before_sampling_and_convert_to_annual_co2_mass
     xr.testing.assert_identical(countries.matrix, before)
 
 
+def _observe_summary_execution(monkeypatch):
+    """Observe lazy producer construction and one-point eager summary blocks."""
+    tasks, payloads, blocks = [], [], []
+    completed_tasks = 0
+    calculate = co2_flux_outputs.calculate_stats
+    kernel = stats._calculate_stats
+    monkeypatch.setattr(stats, "_STATS_MAX_POINTS", 1)
+
+    def summarize(data, *args, **kwargs):
+        nonlocal completed_tasks
+        assert len(tasks) == completed_tasks  # Producer construction remains lazy.
+        result = calculate(data, *args, **kwargs)
+        completed_tasks = len(tasks)
+        return result
+
+    def reduce_block(data, *args, **kwargs):
+        points = np.prod([size for dim, size in data.sizes.items() if dim not in ("chain", "draw")])
+        blocks.append(points)
+        assert points == 1
+        return kernel(data, *args, **kwargs)
+
+    def observe(key, value, *args):
+        tasks.append(key)
+        if isinstance(value, (np.ndarray, sparse.COO)):
+            payloads.append(value.size)
+
+    monkeypatch.setattr(co2_flux_outputs, "calculate_stats", summarize)
+    monkeypatch.setattr(stats, "_calculate_stats", reduce_block)
+    return Callback(posttask=observe), tasks, payloads, blocks
+
+
 @pytest.mark.parametrize("chunk_prolongation", [False, True], ids=["eager-sparse", "dask-sparse"])
-def test_sparse_dask_inputs_remain_lazy_and_borrowed(chunk_prolongation):
+def test_sparse_dask_inputs_have_bounded_summaries_and_remain_borrowed(chunk_prolongation, monkeypatch):
     bound, trace, countries = _fixture()
     expected_native = co2_native_flux_outputs(trace, bound)
     expected_country = co2_country_flux_outputs(trace, bound, countries)
@@ -184,13 +216,15 @@ def test_sparse_dask_inputs_remain_lazy_and_borrowed(chunk_prolongation):
     original_u = lazy_u.data
     original_flux = lazy_map.flux.data
     original_state = trace["posterior"].retained_draws.data
-    tasks = []
-    with Callback(pretask=lambda *args: tasks.append(args[0])):
+    observer, tasks, payloads, blocks = _observe_summary_execution(monkeypatch)
+    with observer:
         native = co2_native_flux_outputs(trace, lazy_bound)
         country = co2_country_flux_outputs(trace, lazy_bound, countries)
-    assert tasks == []
-    assert all(isinstance(variable.data, da.Array) for variable in native.data_vars.values())
-    assert all(isinstance(variable.data, da.Array) for variable in country.data_vars.values())
+    assert tasks and blocks
+    # Observe upstream NumPy/sparse producers too: six samples, eight native cells.
+    assert max(payloads) <= 6 * 8
+    assert all(variable.chunks is None for variable in native.data_vars.values())
+    assert all(variable.chunks is None for variable in country.data_vars.values())
     assert lazy_u.data is original_u
     assert lazy_map.flux.data is original_flux
     assert trace["posterior"].retained_draws.data is original_state
@@ -358,7 +392,7 @@ def test_saved_multisource_bucket_preserves_time_and_matches_dense_oracle(tmp_pa
     np.testing.assert_array_equal(country.time, time_scale.time)
 
 
-def test_country_eager_sparse_membership_with_lazy_sparse_prolongation():
+def test_country_eager_sparse_membership_with_lazy_sparse_prolongation(monkeypatch):
     """Ordinary saved bucket maps mix eager countries and Dask prolongation."""
     bound, trace, countries = _fixture()
     expected = co2_country_flux_outputs(trace, bound, countries)
@@ -371,9 +405,12 @@ def test_country_eager_sparse_membership_with_lazy_sparse_prolongation():
     lazy_bound = replace(
         bound, artifact=replace(bound.artifact, affine_map=replace(mapping, prolongation=lazy_u))
     )
-    tasks = []
-    with Callback(pretask=lambda *args: tasks.append(args[0])):
+    original_u = lazy_u.data
+    observer, tasks, payloads, blocks = _observe_summary_execution(monkeypatch)
+    with observer:
         actual = co2_country_flux_outputs(trace, lazy_bound, countries)
-    assert tasks == []
-    assert any(isinstance(value.data, da.Array) for value in actual.data_vars.values())
-    xr.testing.assert_allclose(actual.compute(), expected.compute())
+    assert tasks and blocks
+    assert max(payloads) <= 6 * 8
+    assert all(value.chunks is None for value in actual.data_vars.values())
+    assert lazy_u.data is original_u
+    xr.testing.assert_allclose(actual, expected)

@@ -395,16 +395,21 @@ def _multisector_flux_trace_parts(
         raise ValueError("Sector flux postprocessing requires multisector RHIME outputs.")
 
     sectors = _multisector_output_sectors(inv_out)
-    sector_flux_traces = [
-        _sector_flux_trace_dataset(
-            inv_out,
-            sector,
-            report_flux_on_inversion_grid=report_flux_on_inversion_grid,
-            **({"chunks": chunks} if chunks is not None else {}),
-            **({"trace": scale_traces[sector.variable_suffix]} if scale_traces is not None else {}),
+    sector_flux_traces = []
+    for sector in sectors:
+        reconstruction_args: dict = {}
+        if chunks is not None:
+            reconstruction_args["chunks"] = chunks
+        if scale_traces is not None:
+            reconstruction_args["trace"] = scale_traces[sector.variable_suffix]
+        sector_flux_traces.append(
+            _sector_flux_trace_dataset(
+                inv_out,
+                sector,
+                report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+                **reconstruction_args,
+            )
         )
-        for sector in sectors
-    ]
     total_flux_trace = xr.concat(
         [
             dataset.rename(
