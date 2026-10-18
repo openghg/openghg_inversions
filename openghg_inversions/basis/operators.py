@@ -1077,6 +1077,10 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         if missing:
             raise ValueError(f"Basis state sources are absent from native_layout: {sorted(missing)!r}")
         source_mask = native_sources == state_sources
+        # Apply the chosen native source layout before expansion and contraction.
+        source_chunks = native_layout.variable.chunksizes.get(native_source_dim)
+        if source_chunks:
+            source_mask = source_mask.chunk({native_source_dim: source_chunks})
         result = (base * source_mask).transpose(*native_dims, self.meta.state_dim)
         result = _assign_compatible_native_coordinates(
             result,

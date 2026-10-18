@@ -12,6 +12,8 @@ from typing import TypeVar, cast
 
 import arviz as az
 import dask
+import dask.array as da
+from dask.core import flatten, get_dependencies
 import numpy as np
 import scipy
 import xarray as xr
@@ -132,7 +134,7 @@ def combine_chain_draw(ds: XarrayObject, sample_dim: str = "draw") -> tuple[Xarr
     return combined, combined_dim
 
 
-@register_stat(whole_dataset=True, pointwise=True)
+@register_stat(pointwise=True)
 @add_suffix("quantile")
 @update_attrs("quantile_of")
 def quantiles(
@@ -160,7 +162,7 @@ def quantiles(
     return ds.quantile(q=quantiles, dim=sample_dim).astype("float32")
 
 
-@register_stat(whole_dataset=True, pointwise=True)
+@register_stat(pointwise=True)
 @add_suffix("mode")
 @update_attrs("mode_of")
 def mode(ds: xr.Dataset, sample_dim: str = "draw", thin: int = 1) -> xr.Dataset:
@@ -208,7 +210,7 @@ def mode(ds: xr.Dataset, sample_dim: str = "draw", thin: int = 1) -> xr.Dataset:
     )
 
 
-@register_stat(whole_dataset=True, pointwise=True)
+@register_stat(pointwise=True)
 @add_suffix("mode")
 @update_attrs("mode_of")
 def mode_kde(
@@ -270,7 +272,7 @@ def mode_kde(
     )
 
 
-@register_stat(whole_dataset=True, pointwise=True)
+@register_stat(pointwise=True)
 def hdi(
     ds: xr.Dataset,
     hdi_prob: float | Iterable[float] = 0.68,
@@ -329,7 +331,7 @@ def hdi(
     return calc(ds, hdi_prob)
 
 
-@register_stat(whole_dataset=True, pointwise=True)
+@register_stat(pointwise=True)
 @add_suffix("stdev")
 @update_attrs("standard_deviation_of")
 def stdev(ds: xr.Dataset, sample_dim="draw"):
@@ -337,7 +339,7 @@ def stdev(ds: xr.Dataset, sample_dim="draw"):
     return ds.std(dim=sample_dim)
 
 
-@register_stat(whole_dataset=True, pointwise=True)
+@register_stat(pointwise=True)
 @add_suffix("mean")
 @update_attrs("mean_of")
 def mean(ds: xr.Dataset, sample_dim="draw"):
@@ -345,7 +347,7 @@ def mean(ds: xr.Dataset, sample_dim="draw"):
     return ds.mean(dim=sample_dim)
 
 
-@register_stat(whole_dataset=True, pointwise=True)
+@register_stat(pointwise=True)
 @add_suffix("median")
 @update_attrs("median_of")
 def median(ds: xr.Dataset, sample_dim: str = "draw") -> xr.Dataset:
@@ -362,11 +364,51 @@ def median(ds: xr.Dataset, sample_dim: str = "draw") -> xr.Dataset:
     return ds.median(dim=sample_dim)
 
 
+def _retain_dimensions(
+    data: xr.Dataset, source: xr.Dataset, dimensions: Iterable[Hashable]
+) -> tuple[xr.Dataset, list[Hashable]]:
+    """Retain reduction axes without inventing indexes or allocating sample payloads."""
+    markers: list[Hashable] = []
+    for dim in dimensions:
+        if dim in source.dims and dim not in data.dims:
+            if dim in source.coords:
+                data = data.assign_coords(source[[dim]].coords)
+            else:
+                marker = object()
+                markers.append(marker)
+                data = data.assign_coords({marker: (dim, np.broadcast_to(np.uint8(0), (source.sizes[dim],)))})
+    return data, markers
+
+
+def _used_operands(value: xr.DataArray, operands: Mapping[Hashable, xr.DataArray]) -> set[Hashable]:
+    """Find an output's lazy operands without traversing their source graphs."""
+    names = {array.data.name: key for key, array in operands.items() if array.chunks}
+    graph = value.data.__dask_graph__()
+    dependencies = getattr(graph, "dependencies", None)
+    pending = [value.data.name] if dependencies is not None else list(flatten(value.data.__dask_keys__()))
+    seen = set()
+    used = set()
+    while pending:
+        key = pending.pop()
+        if key in seen:
+            continue
+        seen.add(key)
+        name = key if dependencies is not None else key[0] if isinstance(key, tuple) else key
+        if name in names:
+            used.add(names[name])
+        elif dependencies is not None:
+            pending.extend(dependencies.get(key, ()))
+        else:
+            pending.extend(get_dependencies(graph, key=key))
+    return used
+
+
 def calculate_stats(
     ds: xr.Dataset,
     stats: Sequence[str] = ("mean", "quantiles"),
     *,
     _prepare_block: Callable[[xr.Dataset], xr.Dataset] | None = None,
+    _sample_chunks: Mapping[Hashable, tuple[int, ...]] | None = None,
     **kwargs,
 ) -> xr.Dataset:
     """Calculate statistics, completing one bounded non-sample block at a time.
@@ -384,9 +426,10 @@ def calculate_stats(
     Mixed eager/lazy groups may also split a source block beside a singleton
     edge to preserve the eager sample-reduction layout.
     Statistics are called once per variable unless registered with
-    ``whole_dataset=True``. A request containing a statistic not registered
-    with ``pointwise=True`` is computed on the complete dataset, so it does not
-    receive the non-sample workspace bound.
+    ``whole_dataset=True``, in which case all operands are retained together
+    in each block, including lower-dimensional variables. A request containing
+    a statistic not registered with ``pointwise=True`` is computed on the
+    complete dataset, so it does not receive the non-sample workspace bound.
 
     Args:
         ds: dataset to calculate stats on.
@@ -394,6 +437,7 @@ def calculate_stats(
         _prepare_block: Internal arithmetic applied after blocking and before
           statistic kernels. Use :func:`summarize_derived` rather than
           passing this directly.
+        _sample_chunks: Internal pooled layouts supplied by derived arithmetic.
         **kwargs: arguments to pass to stats functions. If a parameter can be passed to a stats function,
           it will be passed. To pass to a specific stats function, use `<stats func name>__<key> = <value>`.
           Note: that is a double underscore. For instance `mode_kde__chunk_dim="country"` would specify `chunk_dim`
@@ -460,15 +504,23 @@ def calculate_stats(
         else:
             sample_dims.update(dimensions)
     groups: dict[tuple, list] = {}
-    for name, variable in ds.data_vars.items():
-        dimensions = tuple(dim for dim in ds.dims if dim in variable.dims and dim not in sample_dims)
-        groups.setdefault(dimensions, []).append(name)
+    if any(stats_functions[stat].whole_dataset for stat in stats):
+        dimensions = tuple(dim for dim in ds.dims if dim not in sample_dims)
+        groups[dimensions] = list(ds.data_vars)
+    else:
+        for name, variable in ds.data_vars.items():
+            dimensions = tuple(dim for dim in ds.dims if dim in variable.dims and dim not in sample_dims)
+            groups.setdefault(dimensions, []).append(name)
 
     def reduce_blocks(data: xr.Dataset, dimensions: tuple, chunks: dict, markers: list) -> xr.Dataset:
         if dimensions:
             dim, *remaining = dimensions
             if data.sizes[dim] > chunks[dim]:
-                layouts = {value.variable.chunksizes[dim] for value in data.data_vars.values() if value.chunks}
+                layouts = {
+                    value.variable.chunksizes[dim]
+                    for value in data.data_vars.values()
+                    if value.chunks and dim in value.dims
+                }
                 layout = next(iter(layouts)) if len(layouts) == 1 else ()
                 # Keep already-bounded shared source chunks intact to avoid
                 # reloading their payload across neighbouring output blocks.
@@ -514,13 +566,17 @@ def calculate_stats(
                         for start, stop in zip(boundaries[:-1], boundaries[1:])
                     ],
                     dim=dim,
+                    data_vars="minimal",
+                    coords="minimal",
+                    compat="equals",
                     combine_attrs="override",
                 )
             return reduce_blocks(data, tuple(remaining), chunks, markers)
         if _prepare_block is not None:
             data = _prepare_block(data)
         # Joint computation preserves sharing and the Dask sample reduction order.
-        return _calculate_stats(data, stats, _sample_chunks=sample_chunks, **kwargs).drop_vars(
+        layouts = {**sample_chunks, **(_sample_chunks or {})}
+        return _calculate_stats(data, stats, _sample_chunks=layouts, **kwargs).drop_vars(
             markers, errors="ignore"
         ).compute()
 
@@ -528,23 +584,7 @@ def calculate_stats(
         results = []
         for dimensions, names in groups.items():
             data = ds[names]
-            # Scalar variables still belong to a dataset with these reduction
-            # dimensions; dropping all of them would make Dataset.mean/std fail.
-            markers = []
-            for dim in sample_dims:
-                if dim in ds.dims and dim not in data.dims:
-                    if dim in ds.coords:
-                        data = data.assign_coords(ds[[dim]].coords)
-                    else:
-                        # An auxiliary carrier supplies only the dimension size,
-                        # not axis labels or an index. Its scalar broadcast view
-                        # allocates no sample-sized payload and is removed before
-                        # computation. Unique keys cannot shadow borrowed names.
-                        marker = object()
-                        markers.append(marker)
-                        data = data.assign_coords(
-                            {marker: (dim, np.broadcast_to(np.uint8(0), (ds.sizes[dim],)))}
-                        )
+            data, markers = _retain_dimensions(data, ds, sample_dims)
             results.append(reduce_blocks(data, dimensions, _bounded_chunk_sizes(data, sample_dims), markers))
     return xr.merge(results)
 
@@ -559,11 +599,13 @@ def summarize_derived(
 ) -> xr.Dataset:
     """Summarize quantities derived from sampled operands, one bounded block at a time.
 
-    Operands are broadcast together as borrowed views, so a draw-only operand
-    can combine with one that also has non-sample dimensions. The executor
-    slices the broadcast operands into the same bounded non-sample blocks as
-    :func:`calculate_stats` and calls ``derive`` on each block before computing
-    statistics, so derived quantities never exist at full size.
+    Operands are broadcast together as borrowed views and outer-aligned with
+    companions, retaining every indexed label and padding missing values.
+    A draw-only operand can combine with one that also has non-sample dimensions.
+    When every statistic declares ``pointwise=True``, the executor slices the
+    operands into bounded non-sample blocks before calling ``derive``.
+    Otherwise, the custom-statistic compatibility path calls ``derive`` on
+    the complete dataset without this workspace bound.
 
     Args:
         operands: Sampled operands of one derived quantity family, on axes that
@@ -571,15 +613,24 @@ def summarize_derived(
         derive: Scientific arithmetic applied to a dataset of operand blocks,
             named by the keys of ``operands``. It returns the derived variables
             to summarize, preserves the NumPy or Dask backend of its inputs, and
-            treats each non-sample point independently.
+            treats each non-sample point independently. Preserve the sample axes
+            and point geometry; use ordinary arithmetic rather than explicitly
+            rechunking point dimensions. Dataset attributes and coordinates are
+            retained and merged with companion metadata without conflicts.
         stats: Statistics to calculate.
         companions: Other sampled variables summarized unchanged in the same
-            execution, so sources shared with the operands are loaded once.
-            Their names must differ from the derived variables.
+            execution. Related computations share sources within each block;
+            separate blocks or groups, including lower-dimensional companions,
+            can reload shared sources. Their names must differ from the derived
+            variables. Use variable attributes for quantities with different units.
         **kwargs: Statistic arguments, as for :func:`calculate_stats`.
 
     Returns:
         Statistics of the derived variables and companions.
+
+    Raises:
+        ValueError: If derived variables overlap companion names or their
+            Dataset metadata conflicts.
 
     Example:
         Add a draw-only offset to a modelled boundary contribution::
@@ -592,18 +643,49 @@ def summarize_derived(
     """
     # Executor-owned keys keep operands distinct from companions of the same name.
     keys = {name: object() for name in operands}
-    data = xr.Dataset() if companions is None else companions.copy(deep=False)
-    for key, value in zip(keys.values(), xr.broadcast(*operands.values()), strict=True):
-        data[key] = value
+    data = xr.Dataset(dict(zip(keys.values(), xr.broadcast(*operands.values()), strict=True)))
+    if companions is not None:
+        data = xr.merge([data, companions], join="outer", combine_attrs="no_conflicts")
+
+    companion_names = set() if companions is None else set(companions.data_vars)
+    source_dim = kwargs.get("sample_dim", "draw")
+    sample_layouts = {}
+    layout_cache = {}
+    operand_layouts = {}
 
     def prepare(block: xr.Dataset) -> xr.Dataset:
         # Broadcast operands share one group; other groups hold companions only.
         if not any(key in block for key in keys.values()):
             return block
-        derived = derive(xr.Dataset({name: block[key] for name, key in keys.items()}))
-        return block.drop_vars(keys.values()).assign(derived.data_vars)
+        operands = {key: block[key] for key in keys.values()}
+        derived = derive(xr.Dataset({name: operands[key] for name, key in keys.items()}))
+        if companion_names & set(derived.data_vars):
+            raise ValueError("Derived variables and companions must have different names.")
+        if isinstance(source_dim, str):
+            for name, value in derived.data_vars.items():
+                if value.chunks and "chain" in value.dims and source_dim in value.dims:
+                    used = frozenset(_used_operands(value, operands))
+                    if used not in operand_layouts:
+                        # Independent outputs must not inherit unrelated operand chunk layouts.
+                        chunked = xr.Dataset({key: data[key].variable for key in used})
+                        operand_layouts[used] = xr.unify_chunks(chunked)[0].chunksizes
+                    point_chunks = operand_layouts[used]
+                    chunks = tuple(
+                        value.variable.chunksizes[dim]
+                        if dim in ("chain", source_dim) else point_chunks.get(dim, value.variable.chunksizes[dim])
+                        for dim in value.dims
+                    )
+                    cache_key = (value.dims, chunks)
+                    if cache_key not in layout_cache:
+                        # Recover the full-domain reduction tree without deriving full-sized values.
+                        proxy = xr.DataArray(da.empty(tuple(map(sum, chunks)), chunks=chunks), dims=value.dims)
+                        pooled, sample_dim = combine_chain_draw(proxy, source_dim)
+                        layout_cache[cache_key] = pooled.variable.chunksizes[sample_dim]
+                    sample_layouts[name] = layout_cache[cache_key]
+        remaining = block.drop_vars(keys.values())
+        return xr.merge([remaining, derived], join="exact", combine_attrs="no_conflicts")
 
-    return calculate_stats(data, stats, _prepare_block=prepare, **kwargs)
+    return calculate_stats(data, stats, _prepare_block=prepare, _sample_chunks=sample_layouts, **kwargs)
 
 
 def _calculate_stats(ds: xr.Dataset, stats: Sequence[str], *, _sample_chunks=None, **kwargs) -> xr.Dataset:
@@ -631,5 +713,17 @@ def _calculate_stats(ds: xr.Dataset, stats: Sequence[str], *, _sample_chunks=Non
         if function.whole_dataset:
             outputs.append(function.func(ds, **options))
         else:
-            outputs.append(xr.merge([function.func(ds[[name]], **options) for name in ds.data_vars]))
-    return xr.merge(outputs).map(jax_to_numpy)
+            for name in ds.data_vars:
+                data = ds[[name]]
+                markers = []
+                if function.pointwise:
+                    dimensions = options.get("sample_dim", "draw")
+                    if dimensions is None or dimensions is Ellipsis:
+                        dimensions = ds.dims
+                    elif isinstance(dimensions, str):
+                        dimensions = (dimensions,)
+                    data, markers = _retain_dimensions(data, ds, dimensions)
+                outputs.append(function.func(data, **options).drop_vars(markers, errors="ignore"))
+    result = xr.merge(outputs).map(jax_to_numpy, keep_attrs=True)
+    result.attrs = {**ds.attrs, **result.attrs}
+    return result

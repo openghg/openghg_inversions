@@ -513,6 +513,40 @@ def test_pointwise_custom_statistic_keeps_bounded_blocks(monkeypatch):
     xr.testing.assert_allclose(actual.x_rms, np.sqrt((data.x**2).mean("draw")))
 
 
+@pytest.mark.parametrize("lazy", [False, True], ids=["numpy", "dask"])
+def test_whole_dataset_pointwise_statistic_keeps_broadcast_operands(monkeypatch, lazy):
+    """Joint blocks retain draw-only operands without broadcasting their summaries."""
+    monkeypatch.setattr(module, "stats_functions", dict(module.stats_functions))
+    calls = []
+
+    @module.register_stat(whole_dataset=True, pointwise=True)
+    def cross_moment(data, sample_dim="draw"):
+        calls.append(dict(data.sizes))
+        return xr.Dataset(
+            {
+                "cross": (data.x * data.y).mean(sample_dim),
+                "y_custom": data.y.mean(sample_dim),
+            }
+        )
+
+    data = xr.Dataset(
+        {
+            "x": (("chain", "draw", "point"), np.arange(2 * 7 * 300.0).reshape(2, 7, 300)),
+            "y": (("chain", "draw"), np.arange(14.0).reshape(2, 7)),
+            "scalar": ((), 3.0),
+        }
+    )
+    if lazy:
+        data = data.chunk({"chain": 1, "draw": 3, "point": 100})
+    expected = module._calculate_stats(data, ["mean", "cross_moment"]).compute()
+    calls.clear()
+    actual = module.calculate_stats(data, ["mean", "cross_moment"])
+    xr.testing.assert_allclose(actual, expected)
+    assert len(calls) > 1
+    assert all(size["point"] <= 128 for size in calls)
+    assert actual.y_mean.dims == actual.y_custom.dims == actual.scalar_mean.dims == ()
+
+
 def test_undeclared_custom_statistic_uses_complete_dataset(monkeypatch):
     """Custom statistics without a pointwise declaration keep the unrestricted fallback."""
     monkeypatch.setattr(module, "stats_functions", dict(module.stats_functions))
