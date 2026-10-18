@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import xarray as xr
 from openghg.util import cf_ureg, molar_mass  # pyright: ignore[reportPrivateImportUsage]
@@ -11,7 +12,8 @@ from openghg_inversions.array_ops import sparse_xr_dot, to_dense
 from openghg_inversions.basis.affine_flux_map import _in_dimensionless_units
 from openghg_inversions.rhime.co2.co2_affine_output import BoundCo2AffineFluxMap
 
-from .countries import Countries
+from ._basis_products import bounded_affine_flux_map
+from .countries import Countries, _bounded_projection
 from .inversion_output import trace_group
 from .stats import calculate_stats
 
@@ -115,10 +117,12 @@ def co2_native_flux_outputs(trace: xr.DataTree, bound: BoundCo2AffineFluxMap) ->
         ``mol m-2 s-1``. ``flux_total_prior_*`` and ``flux_total_posterior_*``
         summarize source sums. Multisource maps also retain ``flux_prior_*``
         and ``flux_posterior_*`` on their native source axis. Prior and posterior
-        sample axes are reduced independently, pooling all chains. Summaries
-        are computed in bounded non-sample blocks; quantiles retain complete
-        samples within each block. Existing affine producers must already have
-        bounded task payloads. Inputs remain borrowed.
+        sample axes are reduced independently, pooling all chains. Native mean,
+        reference flux and prolongation are chunked within the summary point
+        budget before draws are reconstructed, so eager or lazy inputs give
+        bounded tasks. Summaries are computed in bounded non-sample blocks;
+        quantiles retain complete samples within each block. Inputs remain
+        borrowed.
 
     Raises:
         ValueError: If the recipe, role, samples, native layout, state labels,
@@ -131,6 +135,7 @@ def co2_native_flux_outputs(trace: xr.DataTree, bound: BoundCo2AffineFluxMap) ->
     """
     samples, source_dim, attrs = _output_inputs(trace, bound)
     scale = _flux_unit_scale(bound)
+    bound = replace(bound, artifact=replace(bound.artifact, affine_map=bounded_affine_flux_map(bound.affine_map)))
     outputs = [
         _summarize(
             bound.state_to_flux(state.astype("float64")) * scale,
@@ -167,9 +172,11 @@ def co2_country_flux_outputs(
         ``country_prior_*`` and ``country_posterior_*`` on the source axis.
         Other flux dimensions, such as time, remain in the result. Summaries
         are computed in bounded non-sample blocks. Compact country
-        reference/response arrays use dense chunk payloads; sample chunks for
-        quantiles are consolidated. Existing producers must already have
-        bounded task payloads. Inputs are borrowed.
+        reference/response arrays use dense chunk payloads and are prepared like
+        ordinary country projections, chunking their output dimensions within
+        the summary point budget; sample chunks for quantiles are consolidated.
+        Existing producers must already have bounded task payloads. Inputs are
+        borrowed.
 
     Raises:
         ValueError: If input requirements or exact country-grid alignment fail.
@@ -208,6 +215,8 @@ def co2_country_flux_outputs(
         centred, prolongation = affine._centred_state(state, bound.reference_state)
         if response is None:
             response = to_dense(sparse_xr_dot(weighted_flux, prolongation, dim=["lat", "lon"]))
+            response = _bounded_projection(response, [affine.state_dim])
+            reference = _bounded_projection(reference, [])
         draws = reference + xr.dot(response, centred.astype("float64"), dim=affine.state_dim)
         outputs.append(_summarize(draws, prefix="country", group=group, source_dim=source_dim))
     attrs["annualization"] = "365-day year; grams of CO2, not grams of carbon"

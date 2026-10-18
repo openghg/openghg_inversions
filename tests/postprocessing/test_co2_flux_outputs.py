@@ -414,3 +414,86 @@ def test_country_eager_sparse_membership_with_lazy_sparse_prolongation(monkeypat
     assert all(value.chunks is None for value in actual.data_vars.values())
     assert lazy_u.data is original_u
     xr.testing.assert_allclose(actual, expected)
+
+
+def _grid_fixture(n, *, lazy):
+    """A single-source affine map on an n-by-n grid, with one whole-grid prolongation chunk."""
+    rng = np.random.default_rng(3)
+    coords = {"lat": np.arange(n, dtype=float), "lon": np.arange(n, dtype=float)}
+    mean = xr.DataArray(rng.random((n, n)) + 0.5, dims=("lat", "lon"), coords=coords, attrs={"units": "1"})
+    flux = mean.copy(data=rng.normal(size=(n, n)))
+    flux.attrs = {"units": "mol m-2 s-1"}
+    u = sparse.COO.from_numpy(rng.random((n, n, 3)))
+    prolongation = xr.DataArray(
+        da.from_array(u, chunks=(n, n, 3)) if lazy else u,
+        dims=("lat", "lon", "region"),
+        coords={**coords, "region": ["a", "b", "c"]},
+        attrs={"units": "1"},
+    )
+    reference = xr.DataArray(np.ones(3), dims="region", coords={"region": ["a", "b", "c"]}, attrs={"units": "1"})
+    mapping = AffineFluxMap(mean, flux, prolongation, state_dim="region")
+    bound = BoundCo2AffineFluxMap(
+        AffineFluxMapArtifact(mapping, "grid", {"projection_strategy": "explicit"}, {}), reference
+    )
+    groups = {
+        group: xr.Dataset(
+            {
+                "retained_draws": xr.DataArray(
+                    rng.random((2, 3, 3)),
+                    dims=("chain", "draw", "region"),
+                    coords={"chain": [0, 1], "draw": [0, 1, 2], "region": reference.region},
+                    attrs={"units": "1"},
+                )
+            }
+        )
+        for group in ("prior", "posterior")
+    }
+    groups["/"] = xr.Dataset(
+        attrs={
+            "rhime_model_metadata": json.dumps({"recipe": "co2"}),
+            "rhime_variable_roles": json.dumps({"flux_scale": "retained_draws"}),
+        }
+    )
+    return bound, xr.DataTree.from_dict(groups)
+
+
+@pytest.mark.parametrize("lazy", [False, True], ids=["eager", "dask"])
+def test_native_reconstruction_prepares_bounded_affine_ingredients(lazy):
+    """A 64x64 grid reconstructs draws in 32x32 tiles, not one 4,096-point task."""
+    bound, trace = _grid_fixture(64, lazy=lazy)
+    mapping = bound.affine_map
+    payloads = []
+
+    def observe(key, value, *args):
+        if isinstance(value, (np.ndarray, sparse.COO)):
+            payloads.append(value.size)
+
+    with Callback(posttask=observe):
+        result = co2_native_flux_outputs(trace, bound)
+    # Six pooled samples by at most one 1,024-point tile (dense or sparse prolongation x 3 states).
+    assert max(payloads) <= 6 * 1024 * 3
+    assert bound.affine_map is mapping
+    for group in ("prior", "posterior"):
+        state = trace[group].retained_draws
+        delta = state.values - bound.reference_state.values
+        prolongation = mapping.prolongation.data
+        prolongation = prolongation.compute() if lazy else prolongation
+        draws = mapping.flux.values * (
+            mapping.native_mean.values + np.einsum("lir,cdr->cdli", prolongation.todense(), delta)
+        )
+        np.testing.assert_allclose(result[f"flux_total_{group}_mean"], draws.mean(axis=(0, 1)), rtol=1e-6)
+
+
+def test_country_outputs_share_country_projection_preparation(monkeypatch):
+    """CO2 country responses use the ordinary country projection preparation."""
+    bound, trace, countries = _fixture()
+    prepared = []
+    original = co2_flux_outputs._bounded_projection
+
+    def record(projection, contraction_dims):
+        prepared.append((set(projection.dims), set(contraction_dims)))
+        return original(projection, contraction_dims)
+
+    monkeypatch.setattr(co2_flux_outputs, "_bounded_projection", record)
+    co2_country_flux_outputs(trace, bound, countries)
+    assert ({"country", "native_source", "region"}, {"region"}) in prepared

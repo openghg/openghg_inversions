@@ -526,3 +526,44 @@ def test_undeclared_custom_statistic_uses_complete_dataset(monkeypatch):
     data = xr.Dataset({"x": (("draw", "point"), np.arange(3 * 300, dtype=float).reshape(3, 300))})
     module.calculate_stats(data, ["mean", "rms"])
     assert sizes == [{"draw": 3, "point": 300}]
+
+
+@pytest.mark.parametrize("offset_dims", [(), ("draw",), ("chain", "draw")])
+def test_summarize_derived_combines_broadcast_operands_in_bounded_blocks(monkeypatch, offset_dims):
+    """Derived arithmetic sees bounded operand slices, never a full-size broadcast."""
+    rng = np.random.default_rng(5)
+    boundary = xr.DataArray(rng.normal(size=(2, 7, 300)), dims=("chain", "draw", "nmeasure"))
+    offset = xr.DataArray(rng.normal(size=(2, 7)), dims=("chain", "draw")).isel(
+        {dim: 0 for dim in ("chain", "draw") if dim not in offset_dims}
+    )
+    blocks = []
+
+    def combine(block):
+        blocks.append(dict(block.sizes))
+        return (block.boundary + block.offset).to_dataset(name="baseline")
+
+    actual = module.summarize_derived(
+        {"boundary": boundary, "offset": offset}, combine, stats=["mean", "quantiles"]
+    )
+    expected = module._calculate_stats(
+        (boundary + offset).to_dataset(name="baseline"), ["mean", "quantiles"]
+    ).compute()
+    xr.testing.assert_allclose(actual, expected)
+    assert len(blocks) > 1
+    assert all(block["nmeasure"] <= 128 for block in blocks)
+    assert set(actual.data_vars) == {"baseline_mean", "baseline_quantile"}
+
+
+def test_summarize_derived_keeps_companions_unbroadcast():
+    """A companion may share an operand's name and keeps its own dimensions."""
+    boundary = xr.DataArray(np.arange(2 * 3 * 5.0).reshape(2, 3, 5), dims=("chain", "draw", "nmeasure"))
+    offset = xr.DataArray(np.arange(6.0).reshape(2, 3), dims=("chain", "draw"))
+    actual = module.summarize_derived(
+        {"mu_bc": boundary, "offset": offset},
+        lambda block: (block.mu_bc + block.offset).to_dataset(name="mu_bc"),
+        stats=["mean"],
+        companions=xr.Dataset({"offset": offset}),
+    )
+    assert actual.offset_mean.dims == ()
+    assert actual.offset_mean.item() == offset.mean().item()
+    xr.testing.assert_allclose(actual.mu_bc_mean, (boundary + offset).mean(("chain", "draw")).rename("mu_bc_mean"))

@@ -8,9 +8,12 @@ from dataclasses import replace
 import xarray as xr
 
 from openghg_inversions.array_ops import align_sparse_lat_lon, sparse_xr_dot, to_dense
+from openghg_inversions.basis.affine_flux_map import AffineFluxMap
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.basis.operators import BucketBasisOperator, MultiSourceBucketBasisOperator
 from openghg_inversions.flux_sanitization import copy_flux_nonfinite_attrs, sanitize_flux_nonfinite
+
+from . import stats
 
 BASIS_RECONSTRUCTION_PATH_ATTR = "basis_reconstruction_path"
 BASIS_ARTIFACT_SOURCE_OUTPUT_ATTR = "basis_artifact_source"
@@ -144,20 +147,57 @@ def _operator_region_flux_mean(basis_functions: BasisFunctions, flux: xr.DataArr
     return (weighted_basis.sum(grid_dims) / basis.sum(grid_dims)).fillna(0.0)
 
 
+def _reconstruction_chunks(bounded: bool, chunks: Mapping[str, int] | None) -> Mapping[str, int] | None:
+    """Return the shared spatial/time producer limits, or ``None`` for unbounded reconstruction."""
+    if not bounded:
+        return None
+    return stats._STATS_CHUNKS if chunks is None else chunks
+
+
+def _chunk_bucket_operator(
+    operator: BucketBasisOperator | MultiSourceBucketBasisOperator, chunks: Mapping[str, int | tuple[int, ...]]
+) -> BucketBasisOperator | MultiSourceBucketBasisOperator:
+    """Chunk bucket geometry on its grid, keeping the complete retained-state contraction axis."""
+    return operator.with_chunks(
+        {
+            **{dim: size for dim, size in chunks.items() if dim in operator.meta.grid_dims},
+            operator.meta.state_dim: operator.basis_matrix.variable.chunksizes[operator.meta.state_dim],
+        }
+    )
+
+
 def _chunk_basis_functions(
     basis_functions: BasisFunctions, chunks: Mapping[str, int | tuple[int, ...]]
 ) -> BasisFunctions:
     """Give reconstruction its own chunked geometry without modifying the retained basis."""
     operator = basis_functions.operator
     if isinstance(operator, (BucketBasisOperator, MultiSourceBucketBasisOperator)):
-        operator = operator.with_chunks(
-            {
-                **{dim: size for dim, size in chunks.items() if dim in operator.meta.grid_dims},
-                operator.meta.state_dim: operator.basis_matrix.variable.chunksizes[operator.meta.state_dim],
-            }
-        )
-        return replace(basis_functions, operator=operator)
+        return replace(basis_functions, operator=_chunk_bucket_operator(operator, chunks))
     return basis_functions
+
+
+def bounded_affine_flux_map(affine_map: AffineFluxMap) -> AffineFluxMap:
+    """Prepare affine reconstruction ingredients with bounded native chunks.
+
+    Native mean, reference flux and prolongation share one native layout within
+    the summary point budget, so reconstructing ``F [m + U* (alpha - alpha_ref)]``
+    for any sample axes creates bounded tasks. The retained-state contraction
+    axis stays complete. Eager inputs become lazy; borrowed inputs and their
+    graphs are unchanged.
+    """
+    flux_chunks = stats._bounded_chunk_sizes(affine_map.flux, sample_dims=())
+    native_chunks = {dim: size for dim, size in flux_chunks.items() if dim in affine_map.native_dims}
+    prolongation = affine_map.prolongation
+    if isinstance(prolongation, xr.DataArray):
+        prolongation = prolongation.chunk(native_chunks)
+    else:
+        prolongation = _chunk_bucket_operator(prolongation, native_chunks)
+    return replace(
+        affine_map,
+        native_mean=affine_map.native_mean.chunk(native_chunks),
+        flux=affine_map.flux.chunk(flux_chunks),
+        prolongation=prolongation,
+    )
 
 
 def reconstruct_flux_stats(
@@ -166,6 +206,7 @@ def reconstruct_flux_stats(
     stats_ds: xr.Dataset,
     *,
     report_flux_on_inversion_grid: bool,
+    bounded: bool = True,
     _chunks: Mapping[str, int] | None = None,
 ) -> xr.Dataset:
     """Reconstruct gridded flux statistics using flux retained with the basis.
@@ -179,11 +220,14 @@ def reconstruct_flux_stats(
         report_flux_on_inversion_grid: Apply mean retained flux per basis region
             on the inversion grid when ``True``; otherwise apply retained flux
             on its native grid.
-        _chunks: Internal spatial/time limits applied before reconstruction.
-            Compact state payloads are made dense with outer Dask laziness
-            preserved. Output tiles are densified before assembly. Inversion-grid
-            region means preserve their original spatial reduction and are
-            materialized once at the compact state/time boundary.
+        bounded: Apply the shared spatial/time producer limits to geometry,
+            flux and output tiles before reconstruction. Compact state payloads
+            are made dense with outer Dask laziness preserved. Output tiles are
+            densified before assembly. Inversion-grid region means preserve their
+            original spatial reduction and are materialized once at the compact
+            state/time boundary. ``False`` keeps the inputs' storage, including
+            sparse output, without bounding tasks.
+        _chunks: Override the shared limits, for tests on small grids.
 
     Returns:
         Reconstructed gridded statistics carrying non-finite policy metadata.
@@ -192,6 +236,7 @@ def reconstruct_flux_stats(
         NonFiniteFluxWarning: If old retained flux has no sanitation metadata
             and the lazy zero-fill backstop is applied.
     """
+    _chunks = _reconstruction_chunks(bounded, _chunks)
     retained_flux = sanitize_flux_nonfinite(
         basis_functions.flux,
         context="operator-backed flux reconstruction",
@@ -265,13 +310,17 @@ def reconstruct_scale_factor_stats(
     basis_functions: BasisFunctions,
     stats_ds: xr.Dataset,
     *,
+    bounded: bool = True,
     _chunks: Mapping[str, int] | None = None,
 ) -> xr.Dataset:
-    """Reconstruct scaling summaries, optionally bounding geometry and output tiles.
+    """Reconstruct scaling summaries, bounding geometry and output tiles by default.
 
-    Bounded execution retains the borrowed state and operator graphs. Compact
-    sparse state payloads are made dense, preserving outer Dask laziness.
+    Bounded execution uses the shared spatial/time producer limits and retains
+    the borrowed state and operator graphs. Compact sparse state payloads are
+    made dense, preserving outer Dask laziness. ``_chunks`` overrides the
+    shared limits, for tests on small grids.
     """
+    _chunks = _reconstruction_chunks(bounded, _chunks)
     if _chunks is not None:
         basis_functions = _chunk_basis_functions(basis_functions, _chunks)
         stats_ds = stats_ds.map(to_dense, keep_attrs=True)

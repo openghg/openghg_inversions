@@ -392,8 +392,8 @@ def calculate_stats(
         ds: dataset to calculate stats on.
         stats: list of stats to calculate.
         _prepare_block: Internal arithmetic applied after blocking and before
-          statistic kernels. Related operands must have matching non-sample
-          dimensions. Preserve their NumPy or Dask backend and borrowed inputs.
+          statistic kernels. Use :func:`summarize_derived` rather than
+          passing this directly.
         **kwargs: arguments to pass to stats functions. If a parameter can be passed to a stats function,
           it will be passed. To pass to a specific stats function, use `<stats func name>__<key> = <value>`.
           Note: that is a double underscore. For instance `mode_kde__chunk_dim="country"` would specify `chunk_dim`
@@ -547,6 +547,63 @@ def calculate_stats(
                         )
             results.append(reduce_blocks(data, dimensions, _bounded_chunk_sizes(data, sample_dims), markers))
     return xr.merge(results)
+
+
+def summarize_derived(
+    operands: Mapping[str, xr.DataArray],
+    derive: Callable[[xr.Dataset], xr.Dataset],
+    stats: Sequence[str] = ("mean", "quantiles"),
+    *,
+    companions: xr.Dataset | None = None,
+    **kwargs,
+) -> xr.Dataset:
+    """Summarize quantities derived from sampled operands, one bounded block at a time.
+
+    Operands are broadcast together as borrowed views, so a draw-only operand
+    can combine with one that also has non-sample dimensions. The executor
+    slices the broadcast operands into the same bounded non-sample blocks as
+    :func:`calculate_stats` and calls ``derive`` on each block before computing
+    statistics, so derived quantities never exist at full size.
+
+    Args:
+        operands: Sampled operands of one derived quantity family, on axes that
+            broadcast together. Operands are not summarized themselves.
+        derive: Scientific arithmetic applied to a dataset of operand blocks,
+            named by the keys of ``operands``. It returns the derived variables
+            to summarize, preserves the NumPy or Dask backend of its inputs, and
+            treats each non-sample point independently.
+        stats: Statistics to calculate.
+        companions: Other sampled variables summarized unchanged in the same
+            execution, so sources shared with the operands are loaded once.
+            Their names must differ from the derived variables.
+        **kwargs: Statistic arguments, as for :func:`calculate_stats`.
+
+    Returns:
+        Statistics of the derived variables and companions.
+
+    Example:
+        Add a draw-only offset to a modelled boundary contribution::
+
+            summarize_derived(
+                {"boundary": boundary, "offset": offset},
+                lambda block: (block.boundary + block.offset).to_dataset(name="baseline"),
+                stats=["mean", "quantiles"],
+            )
+    """
+    # Executor-owned keys keep operands distinct from companions of the same name.
+    keys = {name: object() for name in operands}
+    data = xr.Dataset() if companions is None else companions.copy(deep=False)
+    for key, value in zip(keys.values(), xr.broadcast(*operands.values()), strict=True):
+        data[key] = value
+
+    def prepare(block: xr.Dataset) -> xr.Dataset:
+        # Broadcast operands share one group; other groups hold companions only.
+        if not any(key in block for key in keys.values()):
+            return block
+        derived = derive(xr.Dataset({name: block[key] for name, key in keys.items()}))
+        return block.drop_vars(keys.values()).assign(derived.data_vars)
+
+    return calculate_stats(data, stats, _prepare_block=prepare, **kwargs)
 
 
 def _calculate_stats(ds: xr.Dataset, stats: Sequence[str], *, _sample_chunks=None, **kwargs) -> xr.Dataset:

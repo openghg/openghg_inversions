@@ -264,7 +264,7 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
     ) -> xr.Dataset:
         """Record bounded sector reconstruction before total statistics."""
         sector_reconstruction_grids.append(kwargs["report_flux_on_inversion_grid"])
-        assert kwargs["chunks"] == make_outputs._FLUX_STATS_CHUNKS
+        assert kwargs.get("bounded", True) is True
         assert kwargs["trace"] is not None
         return original_sector_reconstruct(output, sector, **kwargs)
 

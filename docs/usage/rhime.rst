@@ -1007,6 +1007,14 @@ and do not inherit the built-in statistics' block memory bound, unless every
 requested statistic is registered with ``pointwise=True``, declaring that each
 non-sample point is reduced independently.
 
+Quantities derived from several sampled variables, such as a baseline formed
+from a modelled boundary contribution and an offset, use ``summarize_derived``
+from ``openghg_inversions.postprocessing.stats``. It broadcasts the operands as
+borrowed views, slices them into the same bounded blocks, and applies the
+arithmetic to each block before computing statistics, so the derived quantity
+never exists at full size. Basis reconstruction applies the shared spatial and
+flux-time chunk limits by default.
+
 Multisector flux products retain the selected compact state samples for the duration
 of the product, preserving their sample chunks and reusing them for grid tiles and
 scale-factor summaries. Full reconstructed grid samples are not retained.

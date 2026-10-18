@@ -13,7 +13,7 @@ import xarray as xr
 from openghg_inversions.array_ops import to_dense
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.postprocessing import make_outputs
-from openghg_inversions.postprocessing import _basis_products
+from openghg_inversions.postprocessing import _basis_products, stats
 from tests.helpers import make_trace
 from openghg_inversions.postprocessing._basis_products import (
     reconstruct_flux_stats,
@@ -84,7 +84,9 @@ def test_reconstruction_keeps_labelled_native_domains_and_borrowed_inputs(
     state_graph = state_data.__dask_graph__()
     before_metadata = basis.operator.state_metadata
     expected = (
-        reconstruct_flux_stats(basis, basis.flux, state, report_flux_on_inversion_grid=inversion_grid)
+        reconstruct_flux_stats(
+            basis, basis.flux, state, report_flux_on_inversion_grid=inversion_grid, bounded=False
+        )
         .map(to_dense, keep_attrs=True)
         .compute(scheduler="single-threaded")
     )
@@ -122,7 +124,7 @@ def test_bounded_conversions_preserve_metadata_independently_of_xarray_defaults(
     )
     with xr.set_options(keep_attrs=keep_attrs):
         expected_flux = (
-            reconstruct_flux_stats(basis, basis.flux, state, report_flux_on_inversion_grid=False)
+            reconstruct_flux_stats(basis, basis.flux, state, report_flux_on_inversion_grid=False, bounded=False)
             .map(to_dense, keep_attrs=True)
             .compute(scheduler="single-threaded")
         )
@@ -134,7 +136,7 @@ def test_bounded_conversions_preserve_metadata_independently_of_xarray_defaults(
             _chunks={"lat": 2, "lon": 3, "flux_time": 1},
         ).compute(scheduler="single-threaded")
         expected_scale = (
-            reconstruct_scale_factor_stats(basis, state)
+            reconstruct_scale_factor_stats(basis, state, bounded=False)
             .map(to_dense, keep_attrs=True)
             .compute(scheduler="single-threaded")
         )
@@ -203,7 +205,7 @@ def test_scale_reconstruction_chunks_geometry_without_computing_borrowed_states(
     with Callback(pretask=lambda key, *args: tasks.append(key)):
         result = reconstruct_scale_factor_stats(basis, state, _chunks={"lat": 2, "lon": 3})
     assert not tasks
-    expected = reconstruct_scale_factor_stats(basis, state).compute().map(to_dense, keep_attrs=True)
+    expected = reconstruct_scale_factor_stats(basis, state, bounded=False).compute().map(to_dense, keep_attrs=True)
     xr.testing.assert_identical(result.compute(), expected)
     assert max(result["mean"].chunksizes["lat"]) == 2
     assert max(result["mean"].chunksizes["lon"]) == 3
@@ -316,7 +318,7 @@ def test_native_tiles_preserve_signed_flux_nan_masks_and_reuse_sources(
     ).chunk({"region": -1})
     state["second"] = state["first"] * 2
     expected = (
-        reconstruct_flux_stats(basis, flux, state, report_flux_on_inversion_grid=False)
+        reconstruct_flux_stats(basis, flux, state, report_flux_on_inversion_grid=False, bounded=False)
         .map(to_dense, keep_attrs=True)
         .compute(scheduler="single-threaded")
     )
@@ -385,8 +387,7 @@ def test_public_padded_hdis_keep_signed_zero_cells(
     original = make_outputs.reconstruct_flux_stats
 
     def unbounded(*args, **kwargs):
-        kwargs.pop("_chunks", None)
-        return original(*args, **kwargs)
+        return original(*args, **kwargs, bounded=False)
 
     with monkeypatch.context() as patch:
         patch.setattr(make_outputs, "reconstruct_flux_stats", unbounded)
@@ -404,7 +405,7 @@ def test_standard_common_postprocessing_keeps_outer_and_inner_separate(
     multisector_postprocessing_inv_out, monkeypatch, grouped
 ):
     """Common views retain independently owned native grids before nested integration."""
-    monkeypatch.setattr(make_outputs, "_FLUX_STATS_CHUNKS", {"lat": 2, "lon": 3, "flux_time": 1})
+    monkeypatch.setattr(stats, "_STATS_CHUNKS", {"lat": 2, "lon": 3, "flux_time": 1})
     products = {}
     for domain in ("outer", "inner"):
         basis = _domain_basis(domain, grouped=grouped)
@@ -427,9 +428,9 @@ def test_standard_common_postprocessing_keeps_outer_and_inner_separate(
         recorded = []
         original = make_outputs.reconstruct_flux_stats
 
-        def record_reconstruction(basis, flux, stats, **kwargs):
-            recorded.append((stats, kwargs.get("_chunks")))
-            return original(basis, flux, stats, **kwargs)
+        def record_reconstruction(basis, flux, state, **kwargs):
+            recorded.append((state, kwargs.get("bounded", True)))
+            return original(basis, flux, state, **kwargs)
 
         with monkeypatch.context() as patch:
             patch.setattr(make_outputs, "reconstruct_flux_stats", record_reconstruction)
@@ -439,7 +440,7 @@ def test_standard_common_postprocessing_keeps_outer_and_inner_separate(
         assert len(recorded) == 1
         assert "draw" not in recorded[0][0].dims
         assert "lat" not in recorded[0][0].dims
-        assert recorded[0][1] == {"lat": 2, "lon": 3, "flux_time": 1}
+        assert recorded[0][1] is True
         xr.testing.assert_identical(products[domain].lat, basis.flux.lat)
         xr.testing.assert_identical(products[domain].lon, basis.flux.lon)
         assert output.domain == domain
@@ -536,7 +537,9 @@ def test_bounded_reconstruction_uses_retained_flux_and_preserves_collision_renam
         },
     )
     expected = (
-        reconstruct_flux_stats(basis, basis.flux, state, report_flux_on_inversion_grid=inversion_grid)
+        reconstruct_flux_stats(
+            basis, basis.flux, state, report_flux_on_inversion_grid=inversion_grid, bounded=False
+        )
         .map(to_dense, keep_attrs=True)
         .compute(scheduler="single-threaded")
     )
@@ -567,7 +570,8 @@ def test_reconstruction_retains_devel_exact_state_order_validation(bounded):
             basis.flux,
             state,
             report_flux_on_inversion_grid=False,
-            _chunks={"lat": 2, "lon": 3, "flux_time": 1} if bounded else None,
+            bounded=bounded,
+            _chunks={"lat": 2, "lon": 3, "flux_time": 1},
         )
 
 
@@ -594,7 +598,7 @@ def test_source_specific_geometry_bounds_native_producers_and_keeps_paired_state
     )
     original_sources = dict(basis.operator._source_matrices)
     expected = (
-        reconstruct_flux_stats(basis, basis.flux, state, report_flux_on_inversion_grid=False)
+        reconstruct_flux_stats(basis, basis.flux, state, report_flux_on_inversion_grid=False, bounded=False)
         .map(to_dense, keep_attrs=True)
         .compute(scheduler="single-threaded")
     )
@@ -619,3 +623,21 @@ def test_source_specific_geometry_bounds_native_producers_and_keeps_paired_state
         assert basis.operator._source_matrices[source] is matrix
     assert basis.operator.source_labels == ("ocean-inventory", "ff-inventory")
     xr.testing.assert_identical(actual.overlap_mask, native.flux.overlap_mask)
+
+
+@pytest.mark.parametrize("inversion_grid", [False, True], ids=["native", "region-mean"])
+def test_reconstruction_owns_shared_chunk_defaults(monkeypatch, inversion_grid):
+    """Callers need no chunk constants; the shared summary policy bounds every product."""
+    monkeypatch.setattr(stats, "_STATS_CHUNKS", {"lat": 2, "lon": 3, "flux_time": 1})
+    basis = _domain_basis("outer")
+    region = basis.operator.basis_matrix.region.values
+    state = xr.Dataset({"mean": ("region", np.arange(len(region), dtype="float32"))}, coords={"region": region})
+    flux = reconstruct_flux_stats(basis, basis.flux, state, report_flux_on_inversion_grid=inversion_grid)
+    scale = reconstruct_scale_factor_stats(basis, state)
+    for product in (flux, scale):
+        assert max(product["mean"].chunksizes["lat"]) == 2
+        assert max(product["mean"].chunksizes["lon"]) == 3
+    unbounded = reconstruct_flux_stats(
+        basis, basis.flux, state, report_flux_on_inversion_grid=inversion_grid, bounded=False
+    )
+    xr.testing.assert_identical(flux.compute(), unbounded.map(to_dense, keep_attrs=True).compute())
