@@ -19,8 +19,10 @@ import xarray as xr
 from openghg_inversions.array_ops import jax_to_numpy, to_dense
 from openghg_inversions.postprocessing.utils import add_suffix, get_parameters, update_attrs
 
-StatsFunction = namedtuple("StatsFunction", ["name", "func", "params"])
-"""Tuple holding a stats function and the parameters it accepts.
+StatsFunction = namedtuple(
+    "StatsFunction", ["name", "func", "params", "whole_dataset", "pointwise"], defaults=(False, False)
+)
+"""Tuple holding a stats function, the parameters it accepts, and its dispatch options.
 
 Storing the parameters the stats function accepts helps with passing
 optional arguments to the stats functions without having to specify
@@ -32,17 +34,35 @@ stats_functions: dict[str, StatsFunction] = {}
 XarrayObject = TypeVar("XarrayObject", xr.Dataset, xr.DataArray)
 
 
-def register_stat(stat: Callable) -> Callable:
+def register_stat(
+    stat: Callable | None = None, *, whole_dataset: bool = False, pointwise: bool = False
+) -> Callable:
     """Decorator function to register stats functions.
+
+    Use as ``@register_stat`` or ``@register_stat(whole_dataset=True, pointwise=True)``.
 
     Args:
         stat: stats function to register
+        whole_dataset: if True, call the statistic once with every variable, so it
+          may combine related variables. By default it is called separately with a
+          single-variable dataset for each variable.
+        pointwise: if True, the statistic declares that each non-sample point is
+          reduced independently. ``calculate_stats`` may then pass it bounded
+          non-sample blocks. A request containing any statistic without this
+          declaration is computed on the complete dataset.
 
     Returns:
-        stat, the input function (no modifications made)
+        stat, the input function (no modifications made), or a decorator when
+        called with options only.
     """
-    stats_functions[stat.__name__] = StatsFunction(stat.__name__, stat, get_parameters(stat))
-    return stat
+
+    def register(func: Callable) -> Callable:
+        stats_functions[func.__name__] = StatsFunction(
+            func.__name__, func, get_parameters(func), whole_dataset, pointwise
+        )
+        return func
+
+    return register if stat is None else register(stat)
 
 
 def _to_dense_dataset(ds: xr.Dataset) -> xr.Dataset:
@@ -112,7 +132,7 @@ def combine_chain_draw(ds: XarrayObject, sample_dim: str = "draw") -> tuple[Xarr
     return combined, combined_dim
 
 
-@register_stat
+@register_stat(whole_dataset=True, pointwise=True)
 @add_suffix("quantile")
 @update_attrs("quantile_of")
 def quantiles(
@@ -140,7 +160,7 @@ def quantiles(
     return ds.quantile(q=quantiles, dim=sample_dim).astype("float32")
 
 
-@register_stat
+@register_stat(whole_dataset=True, pointwise=True)
 @add_suffix("mode")
 @update_attrs("mode_of")
 def mode(ds: xr.Dataset, sample_dim: str = "draw", thin: int = 1) -> xr.Dataset:
@@ -188,7 +208,7 @@ def mode(ds: xr.Dataset, sample_dim: str = "draw", thin: int = 1) -> xr.Dataset:
     )
 
 
-@register_stat
+@register_stat(whole_dataset=True, pointwise=True)
 @add_suffix("mode")
 @update_attrs("mode_of")
 def mode_kde(
@@ -250,7 +270,7 @@ def mode_kde(
     )
 
 
-@register_stat
+@register_stat(whole_dataset=True, pointwise=True)
 def hdi(
     ds: xr.Dataset,
     hdi_prob: float | Iterable[float] = 0.68,
@@ -309,7 +329,7 @@ def hdi(
     return calc(ds, hdi_prob)
 
 
-@register_stat
+@register_stat(whole_dataset=True, pointwise=True)
 @add_suffix("stdev")
 @update_attrs("standard_deviation_of")
 def stdev(ds: xr.Dataset, sample_dim="draw"):
@@ -317,7 +337,7 @@ def stdev(ds: xr.Dataset, sample_dim="draw"):
     return ds.std(dim=sample_dim)
 
 
-@register_stat
+@register_stat(whole_dataset=True, pointwise=True)
 @add_suffix("mean")
 @update_attrs("mean_of")
 def mean(ds: xr.Dataset, sample_dim="draw"):
@@ -325,7 +345,7 @@ def mean(ds: xr.Dataset, sample_dim="draw"):
     return ds.mean(dim=sample_dim)
 
 
-@register_stat
+@register_stat(whole_dataset=True, pointwise=True)
 @add_suffix("median")
 @update_attrs("median_of")
 def median(ds: xr.Dataset, sample_dim: str = "draw") -> xr.Dataset:
@@ -340,9 +360,6 @@ def median(ds: xr.Dataset, sample_dim: str = "draw") -> xr.Dataset:
     """
     ds = _consolidate_sample_dimension(_to_dense_dataset(ds), sample_dim)
     return ds.median(dim=sample_dim)
-
-
-_BUILTIN_STAT_FUNCTIONS = frozenset((mean, stdev, median, quantiles, mode, mode_kde, hdi))
 
 
 def calculate_stats(
@@ -366,10 +383,10 @@ def calculate_stats(
     across related variables may require a source chunk in adjacent blocks.
     Mixed eager/lazy groups may also split a source block beside a singleton
     edge to preserve the eager sample-reduction layout.
-    Calls containing a custom registered kernel use the complete dataset so
-    devel's resolved sample arguments and cross-variable operands remain intact;
-    that compatibility
-    fallback does not provide the built-in non-sample workspace bound.
+    Statistics are called once per variable unless registered with
+    ``whole_dataset=True``. A request containing a statistic not registered
+    with ``pointwise=True`` is computed on the complete dataset, so it does not
+    receive the non-sample workspace bound.
 
     Args:
         ds: dataset to calculate stats on.
@@ -416,10 +433,7 @@ def calculate_stats(
                 reduction_iterators[identity] = tuple(dimensions)
             kwargs[key] = reduction_iterators[identity]
 
-    if any(
-        all(stats_functions[stat].func is not builtin for builtin in _BUILTIN_STAT_FUNCTIONS)
-        for stat in stats
-    ):
+    if not all(stats_functions[stat].pointwise for stat in stats):
         with dask.config.set(scheduler="single-threaded"):
             data = _prepare_block(ds) if _prepare_block is not None else ds
             return _calculate_stats(data, stats, **kwargs).compute()
@@ -557,5 +571,8 @@ def _calculate_stats(ds: xr.Dataset, stats: Sequence[str], *, _sample_chunks=Non
         options.update(
             {key.removeprefix(f"{stat}__"): value for key, value in kwargs.items() if key.startswith(f"{stat}__")}
         )
-        outputs.append(function.func(ds, **options))
+        if function.whole_dataset:
+            outputs.append(function.func(ds, **options))
+        else:
+            outputs.append(xr.merge([function.func(ds[[name]], **options) for name in ds.data_vars]))
     return xr.merge(outputs).map(jax_to_numpy)

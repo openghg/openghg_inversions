@@ -394,11 +394,11 @@ def test_registered_reduction_keeps_devel_arguments_and_complete_dataset(
     assert calls[0]["state"] == 129
 
 
-def test_registered_cross_variable_statistic_receives_all_operands(monkeypatch):
+def test_whole_dataset_statistic_receives_all_operands(monkeypatch):
     monkeypatch.setattr(module, "stats_functions", dict(module.stats_functions))
     calls = []
 
-    @module.register_stat
+    @module.register_stat(whole_dataset=True)
     def cross_moment(data):
         calls.append(tuple(data.data_vars))
         return (data.x * data.y).mean("draw").to_dataset(name="cross_moment")
@@ -441,10 +441,10 @@ def test_scalar_groups_preserve_original_dimension_indexes(coordinate_state, sca
 
 
 def test_custom_kernel_fallback_pools_devel_chains(monkeypatch):
-    """Custom kernels still receive devel's pooled sample axis and all operands."""
+    """Whole-dataset custom kernels receive devel's pooled sample axis and all operands."""
     monkeypatch.setattr(module, "stats_functions", module.stats_functions.copy())
 
-    @module.register_stat
+    @module.register_stat(whole_dataset=True)
     def custom_difference(data, sample_dim="draw"):
         return (data.x - data.y).mean(sample_dim).to_dataset(name="difference")
 
@@ -469,3 +469,60 @@ def test_specific_reduction_override_follows_generic_chain_pooling():
     actual = module.calculate_stats(data, ["mean"], mean__sample_dim="point")
     xr.testing.assert_identical(actual, expected)
     assert actual.sizes == {"sample": 6}
+
+
+def test_custom_statistic_is_called_per_variable_by_default(monkeypatch):
+    """Devel invoked registered statistics once for each single-variable dataset."""
+    monkeypatch.setattr(module, "stats_functions", dict(module.stats_functions))
+    calls = []
+
+    @module.register_stat
+    def data_range(data, sample_dim="draw"):
+        calls.append(tuple(data.data_vars))
+        (name,) = data.data_vars
+        values = data[name]
+        return (values.max(sample_dim) - values.min(sample_dim)).to_dataset(name=f"{name}_range")
+
+    data = xr.Dataset(
+        {
+            "x": (("draw", "point"), np.arange(12.0).reshape(3, 4)),
+            "y": ("draw", [2.0, 5.0, 3.0]),
+        }
+    )
+    actual = module.calculate_stats(data, ["mean", "data_range"])
+    assert sorted(calls) == [("x",), ("y",)]
+    xr.testing.assert_equal(actual.x_range, data.x.max("draw") - data.x.min("draw"))
+    assert actual.y_range.item() == 3.0
+    xr.testing.assert_equal(actual.x_mean, data.x.mean("draw"))
+
+
+def test_pointwise_custom_statistic_keeps_bounded_blocks(monkeypatch):
+    """Declaring per-point independence keeps the built-in block bound."""
+    monkeypatch.setattr(module, "stats_functions", dict(module.stats_functions))
+    sizes = []
+
+    @module.register_stat(pointwise=True)
+    def rms(data, sample_dim="draw"):
+        sizes.append(dict(data.sizes))
+        return np.sqrt((data**2).mean(sample_dim)).rename({name: f"{name}_rms" for name in data.data_vars})
+
+    data = xr.Dataset({"x": (("draw", "point"), np.arange(3 * 300, dtype=float).reshape(3, 300))})
+    actual = module.calculate_stats(data, ["mean", "rms"])
+    assert len(sizes) > 1
+    assert all(size["point"] <= module._bounded_chunk_sizes(data)["point"] for size in sizes)
+    xr.testing.assert_allclose(actual.x_rms, np.sqrt((data.x**2).mean("draw")))
+
+
+def test_undeclared_custom_statistic_uses_complete_dataset(monkeypatch):
+    """Custom statistics without a pointwise declaration keep the unrestricted fallback."""
+    monkeypatch.setattr(module, "stats_functions", dict(module.stats_functions))
+    sizes = []
+
+    @module.register_stat
+    def rms(data, sample_dim="draw"):
+        sizes.append(dict(data.sizes))
+        return np.sqrt((data**2).mean(sample_dim)).rename({name: f"{name}_rms" for name in data.data_vars})
+
+    data = xr.Dataset({"x": (("draw", "point"), np.arange(3 * 300, dtype=float).reshape(3, 300))})
+    module.calculate_stats(data, ["mean", "rms"])
+    assert sizes == [{"draw": 3, "point": 300}]

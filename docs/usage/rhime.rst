@@ -1000,9 +1000,12 @@ samples and reusing its sources across requested summaries and HDI probabilities
 Postprocessing pools all chains and draws at the reduction boundary within each block,
 retaining its statistic kernels and missing-sample handling.
 
-Calls containing a custom registered statistic receive the complete dataset,
-preserving configured reductions and access to related variables. These calls
-do not inherit the built-in statistics' block memory bound.
+Custom statistics registered with ``register_stat`` are called once per variable.
+Register with ``whole_dataset=True`` for a statistic that combines related
+variables. Requests containing a custom statistic run on the complete dataset
+and do not inherit the built-in statistics' block memory bound, unless every
+requested statistic is registered with ``pointwise=True``, declaring that each
+non-sample point is reduced independently.
 
 Multisector flux products retain the selected compact state samples for the duration
 of the product, preserving their sample chunks and reusing them for grid tiles and
