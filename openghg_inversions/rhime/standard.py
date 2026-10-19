@@ -7,64 +7,76 @@ scientist can read or copy this module without reconstructing a pipeline.
 
 from __future__ import annotations
 
+from openghg_inversions.native_flux import resolve_runtime_flux
+from openghg_inversions.basis.support import load_bc_basis
+from openghg_inversions.inference.sampling import resolve_sampler
+from openghg_inversions.basis import prepare_basis
+from openghg_inversions._provenance import installed_ogi_provenance
+from openghg_inversions.rhime.preparation import acquire_merged_data, resolve_basis_inputs
+
 from collections.abc import Mapping
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
-import pymc as pm
+from dask import is_dask_collection
+from dask.base import unpack_collections
+
+import pandas as pd
 import xarray as xr
 
-from openghg_inversions._timing import log_timing, timer_seconds, timer_start
+from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
-from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.models.components import (
     add_linear_component,
     add_offset_component,
 )
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.models.state_activity import StateActivity, prepare_linear_sensitivity
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.models.state_activity import prepare_linear_sensitivity
 from openghg_inversions.observation_error import (
-    AggregationError,
     aggregation_error_input_names,
     resolve_aggregation_error,
 )
 from openghg_inversions.sigma import SigmaAlignment
+from openghg_inversions.model_error import MinErrorConfig
 
 from ._model_building import (
     ForwardModelTerms,
     add_rhime_likelihood,
     builtin_model_build_result,
-    validated_custom_model_build,
 )
 from .builders import (
     RhimeLikelihoodBuilder,
-    RhimeModelBuilder,
-    RhimeModelBuilderContext,
     RhimeModelBuildResult,
-    callable_metadata,
-    validate_model_build_result,
 )
-from .materialization import materialize_pymc_inputs
-from .outputs import RhimeResult, annotate_likelihood_trace, make_standard_rhime_outputs
-from .params import params_from_config, resolve_rhime_options
+
+from .materialization import (
+    _materialize_pymc_inputs_and_priors,
+)
+from .outputs import (
+    make_standard_output,
+    postprocess_standard_outputs,
+    save_standard_artifacts,
+    annotate_sample_trace,
+    validate_standard_output_resources,
+)
+from .params import RhimeConfig
+from .requests import load_params
 from .preparation import (
     assemble_rhime_inputs,
-    build_rhime_basis,
-    build_rhime_sensitivities,
-    filter_rhime_observations,
-    retrieve_or_reload_rhime_data,
-    with_prepared_rhime_sites,
+    build_sensitivities,
+    filter_observations,
+    prepare_observation_errors,
 )
-from .sampling import RhimeSampler, sample_rhime_model
+from .sampling import sample_rhime_model
 from .specs import (
     DEFAULT_BC_PRIOR,
     DEFAULT_OFFSET_PRIOR,
-    DEFAULT_X_PRIOR,
-    LikelihoodSettings,
+    AdditiveSigmaSettings,
     PollutionEventSettings,
     RhimeModelSpec,
-    RhimeRunSpec,
 )
 
 
@@ -74,13 +86,13 @@ _BASELINE_INPUT_NAMES = ("H_bc",)
 
 
 def _require_component_inputs(
-    prepared: RhimePreparedInputs,
+    model_inputs: xr.Dataset,
     names: tuple[str, ...],
     *,
     owner: str,
 ) -> None:
     """Fail before materialization with the selected component named."""
-    missing = [name for name in names if name not in prepared.inv_inputs]
+    missing = [name for name in names if name not in model_inputs]
     if missing:
         raise ValueError(f"{owner} requires prepared input(s) {missing!r}.")
 
@@ -102,13 +114,26 @@ def standard_model_input_names(
         ValueError: If a selected component's required input is absent or its
             aggregation-error representation is ambiguous.
     """
+    return _standard_input_names(prepared.inv_inputs, model_spec)
+
+
+def _standard_input_names(model_inputs: xr.Dataset, model_spec: RhimeModelSpec) -> tuple[str, ...]:
+    """Own selected standard component names and single-sector layout checks."""
+    if len(model_spec.sectors) != 1:
+        raise ValueError("Standard model specs must include exactly one sector.")
     _require_component_inputs(
-        prepared,
+        model_inputs,
         _STANDARD_FLUX_INPUT_NAMES,
         owner="Standard flux component",
     )
+    sensitivity = model_inputs["H"]
+    source = sensitivity.coords.get("source")
+    gathered = any(isinstance(index, pd.MultiIndex) and "source" in index.names
+                   for index in sensitivity.indexes.values())
+    if "source" in sensitivity.dims or (source is not None and gathered):
+        raise ValueError("Standard models require a single-sector prepared H layout.")
     _require_component_inputs(
-        prepared,
+        model_inputs,
         _OBSERVATION_INPUT_NAMES,
         owner="Observation-error component",
     )
@@ -121,24 +146,24 @@ def standard_model_input_names(
     )
     if likelihood_inputs:
         _require_component_inputs(
-            prepared,
+            model_inputs,
             likelihood_inputs,
             owner="Selected built-in likelihood",
         )
         names.extend(likelihood_inputs)
     if model_spec.use_bc:
         _require_component_inputs(
-            prepared,
+            model_inputs,
             _BASELINE_INPUT_NAMES,
             owner="Standard baseline component selected by `use_bc=True`",
         )
         names.extend(_BASELINE_INPUT_NAMES)
     aggregation_names = aggregation_error_input_names(
-        prepared.inv_inputs,
+        model_inputs,
         model_spec.aggregation_error_mode,
     )
     _require_component_inputs(
-        prepared,
+        model_inputs,
         aggregation_names,
         owner=(
             "Aggregation-error component selected by "
@@ -149,76 +174,119 @@ def standard_model_input_names(
     return tuple(names)
 
 
-def build_standard_rhime_model(
-    flux_sensitivity: xr.DataArray,
-    *,
-    observations: xr.DataArray,
-    observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
-    minimum_error: xr.DataArray | None = None,
-    likelihood_settings: LikelihoodSettings | None = None,
-    likelihood_builder: RhimeLikelihoodBuilder | None = None,
-    likelihood_kwargs: Mapping[str, Any] | None = None,
-    boundary_sensitivity: xr.DataArray | None = None,
-    x_prior: PriorArgs | None = None,
-    bc_prior: PriorArgs | None = None,
-    offset_prior: PriorArgs | None = None,
-    add_offset: bool = False,
-    use_bc: bool = True,
-    offset_args: dict | None = None,
-    state_activity: StateActivity | None = None,
-    bc_state_activity: StateActivity | None = None,
-    preserve_legacy_likelihood: bool = False,
-    sigma_alignment: SigmaAlignment | None = None,
-    legacy_unused_sigma_settings: PollutionEventSettings | None = None,
-    legacy_minimum_error_floor: bool = False,
-) -> pm.Model:
-    """Build the concrete standard single-sector RHIME model.
+def _standard_prior_parameters(model_spec: RhimeModelSpec) -> dict[str, PriorArgs]:
+    """Select configured priors for enabled components before state pruning."""
+    priors = {"x": model_spec.sectors[0].x_prior}
+    if model_spec.use_bc and model_spec.bc_prior is not None:
+        priors["bc"] = model_spec.bc_prior
+    if model_spec.add_offset and model_spec.offset_prior is not None:
+        priors["offset_latent"] = model_spec.offset_prior
+    likelihood = model_spec.likelihood
+    if isinstance(likelihood, (PollutionEventSettings, AdditiveSigmaSettings)) and likelihood.sigma_prior is not None:
+        priors["sigma"] = likelihood.sigma_prior
+    if isinstance(likelihood, PollutionEventSettings) and isinstance(likelihood.power, Mapping):
+        priors["power"] = likelihood.power
+    return priors
+
+
+def materialize_standard_inputs(
+    prepared: RhimePreparedInputs,
+    model_spec: RhimeModelSpec,
+) -> tuple[xr.Dataset, dict[str, PriorArgs]]:
+    """Materialize selected standard inputs and enabled priors in one Dask operation.
+
+    The caller owns this explicit PyMC boundary. Preparation and requested model
+    settings stay borrowed; only selected arrays and prior parameters are computed.
+    Construction subsequently decides which state priors survive pruning.
 
     Args:
-        flux_sensitivity: Labelled flux sensitivity matrix.
-        observations: Observed mole fractions.
-        observation_error: Reported observation-error standard deviations.
-        aggregation_error: Validated fixed aggregation-error representation.
-        minimum_error: Optional prepared minimum total-error floor.
-        likelihood_settings: Resolved built-in likelihood settings.
-        likelihood_builder: Optional Python-only custom likelihood.
-        likelihood_kwargs: Options for the custom likelihood.
-        boundary_sensitivity: Optional labelled boundary sensitivity matrix.
-        x_prior: Prior specification for flux scaling factors.
-        bc_prior: Prior specification for boundary-condition scaling factors.
-        offset_prior: Prior specification for optional offsets.
-        add_offset: Whether to include an offset term.
-        use_bc: Whether to include boundary-condition terms.
-        offset_args: Extra keyword arguments for the offset component.
-        state_activity: Optional active/fixed flux-state policy.
-        bc_state_activity: Optional active/fixed boundary-state policy.
-        preserve_legacy_likelihood: Whether to preserve ``run_hbmcmc``'s
-            boundary-only pollution event and unused ``sigma`` variable.
-        sigma_alignment: Optional precomputed mismatch alignment. Ordinary
-            runners derive it from observations.
-        legacy_unused_sigma_settings: Private ``run_hbmcmc`` settings for its
-            historical disconnected sigma variable.
-        legacy_minimum_error_floor: Preserve the historical additive callback's
-            minimum-error floor when inferred model error was disabled.
+        prepared: Borrowed canonical inputs and retained basis.
+        model_spec: Scientific choices selecting the required inputs and priors.
 
     Returns:
-        Built PyMC model.
+        A shallow copy of the prepared Dataset with selected inputs and their
+        coordinates materialized, plus prior parameter mappings keyed by model
+        variable name. Unselected preparation variables remain borrowed and may
+        be lazy; construction decides which selected priors enter the graph.
 
     Raises:
-        KeyError: If required sensitivity inputs are absent.
-        ValueError: If labels, state policies, priors, or canonical likelihood
-            variables are invalid.
-        TypeError: If the likelihood returns the wrong result type.
+        ValueError: If the model has other than one sector or a selected input
+            is missing.
     """
-    x_prior = dict(DEFAULT_X_PRIOR if x_prior is None else x_prior)
-    bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
-    offset_prior = dict(DEFAULT_OFFSET_PRIOR if offset_prior is None else offset_prior)
+    return _materialize_pymc_inputs_and_priors(
+        prepared, variable_names=standard_model_input_names(prepared, model_spec),
+        prior_parameters=_standard_prior_parameters(model_spec),
+    )
+
+
+def build_standard_model(
+    model_inputs: xr.Dataset,
+    model_spec: RhimeModelSpec,
+    *,
+    priors: Mapping[str, PriorArgs],
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    likelihood_kwargs: Mapping[str, Any] | None = None,
+    sigma_alignment: SigmaAlignment | None = None,
+) -> RhimeModelBuildResult:
+    """Construct the standard scientific graph from already materialized values.
+
+    Materialize related inputs and enabled priors together before this call,
+    for example with :func:`materialize_standard_inputs`. The model settings
+    select components; ``priors`` supplies their numerical parameters without
+    replacing those settings. Unrelated lazy input extensions are not consumed.
+
+    Args:
+        model_inputs: Canonical arrays with selected scientific inputs eager.
+        model_spec: Resolved scientific choices for exactly one sector.
+        priors: Eager selected prior mappings keyed by ``x``, ``bc``,
+            ``offset_latent``, ``sigma`` and ``power``. ``x`` is required;
+            omitted unconfigured optional priors use their built-in defaults.
+        likelihood_builder: Optional ordinary custom likelihood callable.
+        likelihood_kwargs: Options expanded only into the custom likelihood.
+        sigma_alignment: Optional precomputed mismatch alignment.
+
+    Returns:
+        Concrete PyMC model and its one validated scientific output contract.
+
+    Raises:
+        ValueError: If selected inputs or prior parameters are lazy, a selected
+            prior mapping or required input is missing, the model has other
+            than one sector, or likelihood choices are inconsistent.
+        TypeError: If the custom likelihood returns an invalid value.
+    """
+    names = _standard_input_names(model_inputs, model_spec)
+    if likelihood_kwargs and likelihood_builder is None:
+        raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
+    missing_priors = _standard_prior_parameters(model_spec).keys() - priors.keys()
+    if missing_priors:
+        raise ValueError(f"Missing materialized prior parameter mappings: {sorted(missing_priors)!r}.")
+    likelihood_settings = model_spec.likelihood
+    lazy_priors, _ = unpack_collections(priors)
+    if any(is_dask_collection(model_inputs[name]) for name in names) or lazy_priors:
+        raise ValueError("Standard model inputs and prior parameters must be materialized before building.")
+
+    timing_start = timer_start()
+    flux_sensitivity = model_inputs["H"]
+    observations = model_inputs["mf"]
+    observation_error = model_inputs["mf_error"]
+    minimum_error = model_inputs.get("min_error")
+    aggregation_error = resolve_aggregation_error(model_inputs, model_spec.aggregation_error_mode)
+
+    use_bc = model_spec.use_bc
+    add_offset = model_spec.add_offset
+    offset_args = model_spec.offset_args
+    sector = model_spec.sectors[0]
+    state_activity = sector.state_activity if sector.state_activity is not None else model_spec.state_activity
+    bc_state_activity = model_spec.bc_state_activity
+
+    x_prior = dict(priors["x"])
+    bc_prior = dict(priors.get("bc", DEFAULT_BC_PRIOR))
+    offset_prior = dict(priors.get("offset_latent", DEFAULT_OFFSET_PRIOR))
 
     prepared_flux = prepare_linear_sensitivity(flux_sensitivity)
     prepared_boundary = (
-        prepare_linear_sensitivity(boundary_sensitivity)
-        if use_bc and boundary_sensitivity is not None
+        prepare_linear_sensitivity(model_inputs["H_bc"])
+        if use_bc
         else None
     )
 
@@ -236,12 +304,7 @@ def build_standard_rhime_model(
         pollution_mean = flux_component.output
 
         boundary_mean = None
-        if use_bc:
-            if boundary_sensitivity is None:
-                raise ValueError(
-                    "Standard baseline component requires `boundary_sensitivity` when `use_bc` is true."
-                )
-            assert prepared_boundary is not None
+        if prepared_boundary is not None:
             boundary_mean = add_linear_component(
                 prepared_boundary,
                 data_name="hbc",
@@ -284,195 +347,129 @@ def build_standard_rhime_model(
             minimum_error=minimum_error,
             output_dim="nmeasure",
             sigma_alignment=sigma_alignment,
-            legacy_pollution_event_baseline=boundary_mean,
-            preserve_legacy_pollution_event=preserve_legacy_likelihood,
-            legacy_unused_sigma_settings=legacy_unused_sigma_settings,
-            legacy_minimum_error_floor=legacy_minimum_error_floor,
+            prior_parameters=priors,
         )
-    return model
-
-
-def build_standard_rhime_model_result(
-    *,
-    prepared: RhimePreparedInputs,
-    model_inputs: xr.Dataset,
-    run_spec: RhimeRunSpec,
-    model_builder: RhimeModelBuilder | None = None,
-    likelihood_builder: RhimeLikelihoodBuilder | None = None,
-    likelihood_kwargs: Mapping[str, Any] | None = None,
-    preserve_legacy_likelihood: bool = False,
-    legacy_unused_sigma_settings: PollutionEventSettings | None = None,
-    legacy_minimum_error_floor: bool = False,
-) -> RhimeModelBuildResult:
-    """Build the standard graph and describe its output roles.
-
-    Args:
-        prepared: Retained prepared-input artifact used by custom builders.
-        model_inputs: Eager canonical arrays for the built-in PyMC graph.
-        run_spec: Resolved model, sampling, and output specification.
-        model_builder: Optional complete-model builder for advanced prepared-
-            input workflows.
-        likelihood_builder: Optional observation-error and distribution builder
-            used with the built-in graph.
-        likelihood_kwargs: Options expanded only into the custom likelihood.
-        preserve_legacy_likelihood: Whether to preserve the historical
-            ``run_hbmcmc`` likelihood graph and pollution-event definition.
-        legacy_unused_sigma_settings: Private compatibility settings for a
-            disconnected historical sigma variable.
-        legacy_minimum_error_floor: Preserve the historical additive callback's
-            minimum-error floor when inferred model error was disabled.
-
-    Returns:
-        Model plus variable roles, supported outputs, and build metadata.
-
-    Raises:
-        ValueError: If both builder extension points are supplied or the built
-            result is inconsistent with the run specification.
-    """
-    if model_builder is not None and likelihood_builder is not None:
-        raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
-    if likelihood_kwargs and likelihood_builder is None:
-        raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
-    timing_start = timer_start()
-    if model_builder is not None:
-        builder_context = RhimeModelBuilderContext(
-            prepared_inputs=prepared,
-            run_spec=run_spec,
-            multisector=False,
-        )
-        result = validated_custom_model_build(model_builder, context=builder_context)
-        validate_model_build_result(result, context=builder_context)
-    else:
-        model_spec = run_spec.model
-        if len(model_spec.sectors) != 1:
-            raise ValueError("Standard RHIME model specs must include exactly one sector.")
-        sector = model_spec.sectors[0]
-        if likelihood_builder is not None and model_spec.likelihood is not None:
-            raise ValueError("A custom likelihood cannot be combined with built-in likelihood settings.")
-        aggregation_error = resolve_aggregation_error(
-            model_inputs,
-            model_spec.aggregation_error_mode,
-        )
-        state_activity = (
-            sector.state_activity if sector.state_activity is not None else model_spec.state_activity
-        )
-        model = build_standard_rhime_model(
-            model_inputs["H"],
-            observations=model_inputs["mf"],
-            observation_error=model_inputs["mf_error"],
-            aggregation_error=aggregation_error,
-            minimum_error=model_inputs.get("min_error"),
-            likelihood_settings=model_spec.likelihood,
-            likelihood_builder=likelihood_builder,
-            likelihood_kwargs=likelihood_kwargs,
-            boundary_sensitivity=model_inputs.get("H_bc"),
-            x_prior=dict(sector.x_prior),
-            state_activity=state_activity,
-            bc_prior=model_spec.bc_prior,
-            bc_state_activity=model_spec.bc_state_activity,
-            offset_prior=model_spec.offset_prior,
-            add_offset=model_spec.add_offset,
-            use_bc=model_spec.use_bc,
-            offset_args=model_spec.offset_args,
-            preserve_legacy_likelihood=preserve_legacy_likelihood,
-            legacy_unused_sigma_settings=legacy_unused_sigma_settings,
-            legacy_minimum_error_floor=legacy_minimum_error_floor,
-        )
-        result = builtin_model_build_result(
-            model,
-            model_spec=run_spec.model,
-            multisector=False,
-            input_names=tuple(str(name) for name in model_inputs.data_vars),
-            preserve_legacy_baseline=preserve_legacy_likelihood,
-        )
+    result = builtin_model_build_result(
+        model, model_spec=model_spec, multisector=False,
+        input_names=tuple(str(name) for name in model_inputs.data_vars),
+    )
     log_timing("rhime.model_build", timer_seconds(timing_start), multisector=False)
     return result
 
 
-def make_standard_rhime_result(
-    *,
-    prepared: RhimePreparedInputs,
-    run_spec: RhimeRunSpec,
-    sampler: RhimeSampler,
-    model_build_result: RhimeModelBuildResult | None = None,
-    output_contract: OutputContract | None = None,
-    idata: xr.DataTree,
-    build_and_sample_seconds: float,
-    model_builder: RhimeModelBuilder | None = None,
-    likelihood_builder: RhimeLikelihoodBuilder | None = None,
-    likelihood_kwargs: Mapping[str, Any] | None = None,
-) -> RhimeResult:
-    """Construct a sampled standard result before output side effects.
+def prepare_standard(
+    merged_data: RhimeMergedData, *,
+    domain: str, start_date: str, flux_sources: tuple[str, ...],
+    averaging_error: bool, filters: Any, basis_algorithm: str | None, nbasis: int,
+    fix_basis_outer_regions: bool, use_bc: bool, bc_freq: str | None,
+    min_error: MinErrorConfig, min_error_options: Mapping[str, bool],
+    basis_inputs: Mapping[str, Any], bc_basis: xr.Dataset | None = None,
+) -> RhimePreparedInputs:
+    """Prepare observations and sensitivities from supplied scientific resources.
 
     Args:
-        prepared: Retained canonical inputs and basis functions.
-        run_spec: Resolved model, output, and run settings.
-        sampler: Sampler configuration used for the trace.
-        model_build_result: Concrete graph and roles, when retained in memory.
-        output_contract: Durable output information for graph-free reconstruction.
-            Defaults to the live build result's contract when supplied.
-        idata: Sampled posterior and predictive groups.
-        build_and_sample_seconds: Combined graph-build and sampling duration.
-        model_builder: Optional complete-model callable used for provenance.
-        likelihood_builder: Optional likelihood callable used for provenance.
-        likelihood_kwargs: Serializable options owned by the likelihood.
+        domain: Domain label for prepared inputs and basis metadata.
+        start_date: Requested start anchoring boundary-condition periods.
+        flux_sources: Ordered source identities; the first weights basis design.
+        averaging_error: Include variability when deriving observation errors.
+        filters: Observation-filter choices interpreted by the filtering owner.
+        basis_algorithm: Selected basis-generation algorithm.
+        nbasis: Requested generated basis size.
+        fix_basis_outer_regions: Keep the supplied outer partition fixed.
+        use_bc: Construct boundary-condition sensitivities.
+        bc_freq: Baked boundary-condition scaling period.
+        min_error: Minimum-error policy interpreted during assembly.
+        min_error_options: Options for the minimum-error calculation.
+        merged_data: Borrowed acquired observations, transport and current flux.
+        basis_inputs: Selected operator path or loaded partition and support maps.
+        bc_basis: Loaded boundary-condition basis, when selected.
+
     Returns:
-        Standard-run result ready for requested output construction.
+        Retained backend-neutral inputs and their current native-flux binding.
     """
-    result = RhimeResult(
-        run_spec=run_spec,
-        model_spec=run_spec.model,
-        output_spec=run_spec.output,
-        inv_inputs=prepared.inv_inputs,
-        idata=idata,
-        sampler=sampler,
-        model=model_build_result.model if model_build_result is not None else None,
-        basis_functions=prepared.basis_functions,
-        model_build_result=model_build_result,
-        output_contract=output_contract,
-        output_metadata={"build_and_sample_seconds": build_and_sample_seconds},
-    )
-    if model_builder is not None:
-        identity = callable_metadata(model_builder)
-        result.output_metadata["model_builder"] = identity
-    if likelihood_builder is not None:
-        identity = callable_metadata(likelihood_builder)
-        result.output_metadata["likelihood_builder"] = identity
-        annotate_likelihood_trace(
-            result.idata,
-            builder_identity=identity,
-            likelihood_kwargs=likelihood_kwargs,
+    preparation_start = timer_start()
+    # Preparation works on per-site datasets; ``merged_data`` stays acquired data.
+    with_errors = prepare_observation_errors(merged_data.site_data, averaging_error=averaging_error)
+    filtered, site_options = filter_observations(with_errors, merged_data.site_options, filters=filters)
+
+    runtime_flux = resolve_runtime_flux(merged_data.flux_data, split_by_sectors=merged_data.split_by_sectors)
+    with timed("rhime.prepare_inputs.basis_build", basis_algorithm=basis_algorithm):
+        basis_functions = prepare_basis(
+            site_data=filtered,
+            runtime_flux=runtime_flux,
+            weighting_flux=merged_data.flux_data[flux_sources[0]]["flux"],
+            domain=domain, start_date=start_date, basis_algorithm=basis_algorithm, nbasis=nbasis,
+            fix_outer_regions=fix_basis_outer_regions,
+            **basis_inputs,
         )
-    if likelihood_kwargs is not None:
-        result.output_metadata["likelihood_kwargs"] = likelihood_kwargs
-    return result
+
+    sensitivities = build_sensitivities(
+        filtered,
+        basis_functions,
+        flux_sources=flux_sources, use_bc=use_bc,
+        bc_basis=bc_basis,
+        multisector=False,
+    )
+
+    prepared = assemble_rhime_inputs(
+        sensitivities,
+        basis_functions,
+        site_options=site_options,
+        domain=domain, start_date=start_date, bc_freq=bc_freq, min_error=min_error,
+        min_error_options=min_error_options, use_bc=use_bc,
+    )
+    log_timing(
+        "rhime.prepare_inputs",
+        timer_seconds(preparation_start),
+        multisector=False,
+        nmeasure=prepared.inv_inputs.sizes.get("nmeasure"),
+        sites=len(prepared.sites),
+        regions=prepared.inv_inputs.sizes.get("region"),
+        sources=prepared.inv_inputs.sizes.get("source"),
+        basis_source=prepared.basis_artifact_source,
+    )
+    return prepared
 
 
-def run_rhime(
+def run_standard(
     *,
     config_file: str | Path | None = None,
+    config: RhimeConfig | None = None,
     merged_data: RhimeMergedData | None = None,
+    prepared: RhimePreparedInputs | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
-    preserve_legacy_likelihood: bool = False,
-    _compatibility_unused_sigma_settings: PollutionEventSettings | None = None,
-    _compatibility_minimum_error_floor: bool = False,
-    compatibility_output_chain: int | None = None,
     **kwargs: Any,
-) -> RhimeResult:
+) -> InversionOutput:
     """Run a standard single-sector RHIME inversion.
 
-    The visible process is resolve → retrieve/reload → filter → basis →
-    sensitivities → assemble → materialize → build → sample → result →
+    The visible process is resolve → acquire or accept supplied data → observation
+    errors → filter → basis → sensitivities → assemble → materialize → build → sample → scientific output →
     requested outputs.
+
+    Selected basis/support files and reporting country files are checked before
+    acquisition, including when merged data is supplied. Basis partitions and
+    support maps are loaded at that boundary. Saved bases are rebound to current
+    flux; ``basis_output_path`` is an exact retained-artifact destination.
+
+    Without supplied data, this runner acquires fresh data. Supplying ``prepared``
+    skips acquisition and preparation and joins the same materialize/build/sample
+    sequence. It cannot be combined with ``merged_data``.
 
     Args:
         config_file: Optional INI configuration file. Values in ``kwargs``
             override values read from this file.
+        config: Complete request from ``RhimeConfig.from_params``.
+            It is used without resolving again and cannot
+            be combined with ``config_file`` or raw run parameters in ``kwargs``.
         merged_data: Optional externally supplied merged scientific data.
-            Passing this borrowed handoff bypasses OpenGHG acquisition and
-            merged-cache I/O, then resumes at the visible filtering stage.
-            The retrieval stage checks its sector layout without mutating it.
+            Passing this borrowed in-memory handoff bypasses OpenGHG acquisition
+            and resumes at observation-error preparation. This may derive error arrays
+            and compute zero-error fallback diagnostics.
+            The acquisition owner checks recorded species, domain, time window,
+            and sector layout without mutating it.
+        prepared: Optional borrowed canonical scientific inputs, including
+            alternative or cached preparation. Bypasses acquisition and preparation.
         likelihood_builder: Optional Python-only callable invoked with a
             completed forward-model mean and explicit error-model inputs in
             the active PyMC model. It must return the canonical observed
@@ -481,14 +478,6 @@ def run_rhime(
             run/model specifications.
         likelihood_kwargs: Options specific to the custom likelihood. Common
             scientific arrays are passed explicitly by the recipe.
-        preserve_legacy_likelihood: Private ``run_hbmcmc`` compatibility
-            switch. Ordinary RHIME callers should leave it false.
-        _compatibility_unused_sigma_settings: Private ``run_hbmcmc`` settings
-            for its historical disconnected sigma variable.
-        _compatibility_minimum_error_floor: Private ``run_hbmcmc`` switch for
-            the historical additive callback's minimum-error floor.
-        compatibility_output_chain: Private ``run_hbmcmc`` compatibility
-            selector for derived outputs. ``None`` uses every chain.
         **kwargs: RHIME run parameters using snake-case names, such as
             ``output_path``, ``output_name``, ``flux_sources``, and
             ``x_prior``. ``species`` names the primary gas or tracer used for
@@ -498,8 +487,10 @@ def run_rhime(
             absent.
 
     Returns:
-        Modern RHIME result containing canonical inputs, a sampled DataTree, specs,
-        output metadata, and generated outputs.
+        Scientific inversion output borrowing the prepared arrays, basis and
+        sampled trace, including when ``output_format="none"``. Product functions
+        consume this object directly; requested files are written before return.
+        Build a model directly with :func:`build_standard_model` for graph checks.
 
     Raises:
         TypeError: If a likelihood builder is not callable or returns the
@@ -511,99 +502,82 @@ def run_rhime(
     """
     if likelihood_kwargs and likelihood_builder is None:
         raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
-    params = (
-        params_from_config(config_file, extra_kwargs=kwargs, normalise=False)
-        if config_file is not None
-        else dict(kwargs)
-    )
-    if likelihood_builder is not None:
-        if params.get("mismatch_model") is not None:
-            raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
-        params["mismatch_model"] = None
-    setup = resolve_rhime_options(params=params, multisector=False)
-    if likelihood_builder is None and setup.run_spec.model.likelihood is None:
+    if prepared is not None and merged_data is not None:
+        raise ValueError("Pass either prepared or merged_data, not both.")
+    setup_start = timer_start()
+    if config is not None:
+        if config_file is not None or kwargs:
+            raise ValueError("Pass either resolved `config` or `config_file`/run parameters, not both.")
+        if config.data.split_by_sectors:
+            raise ValueError("`run_standard` received configuration for a different sector layout.")
+    else:
+        params = load_params(config_file=config_file, overrides=kwargs)
+        config = RhimeConfig.from_params(params, multisector=False)
+    if likelihood_builder is not None and config.model.likelihood is not None:
+        raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
+    sampler = resolve_sampler(config.sampler)
+    log_timing("rhime.runner_setup", timer_seconds(setup_start), multisector=False)
+    if likelihood_builder is None and config.model.likelihood is None:
         raise ValueError("A standard RHIME run requires a built-in or custom likelihood.")
 
-    preparation_start = timer_start()
-    merged = retrieve_or_reload_rhime_data(
-        setup.data_args,
-        multisector=False,
-        merged_data=merged_data,
-    )
-    filtered = filter_rhime_observations(merged, setup.data_args)
-    basis_functions = build_rhime_basis(filtered, setup.data_args)
-    site_data = build_rhime_sensitivities(
-        filtered,
-        basis_functions,
-        setup.data_args,
-        multisector=False,
-    )
-    prepared = assemble_rhime_inputs(filtered, basis_functions, site_data, setup.data_args)
-    log_timing(
-        "rhime.prepare_inputs",
-        timer_seconds(preparation_start),
-        multisector=False,
-        nmeasure=prepared.inv_inputs.sizes.get("nmeasure"),
-        sites=len(prepared.sites),
-        regions=prepared.inv_inputs.sizes.get("region"),
-        sources=prepared.inv_inputs.sizes.get("source"),
-        basis_source=prepared.basis_artifact_source,
-    )
-    run_spec = with_prepared_rhime_sites(setup.run_spec, prepared)
+    validate_standard_output_resources(config.output)
+    # 1. Resolve resources, acquire or validate data, then prepare scientific inputs.
+    if prepared is None:
+        basis_inputs = resolve_basis_inputs(config.data)
+        bc_basis = (
+            load_bc_basis(config.data.bc_basis_paths)
+            if config.data.use_bc and config.data.bc_basis_paths is not None else None
+        )
 
-    model_input_names = list(standard_model_input_names(prepared, run_spec.model))
-    if _compatibility_unused_sigma_settings is not None or _compatibility_minimum_error_floor:
-        _require_component_inputs(
-            prepared,
-            ("min_error",),
-            owner="Legacy run_hbmcmc likelihood compatibility",
+        if merged_data is None:
+            merged_data = acquire_merged_data(config.data)
+        else:
+            merged_data.validate_for_preparation(
+                **config.data.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
+            )
+
+        prepared = prepare_standard(
+            merged_data, basis_inputs=basis_inputs, bc_basis=bc_basis,
+            **config.data.select(
+                "domain", "start_date", "flux_sources", "averaging_error", "filters",
+                "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
+                "min_error", "min_error_options",
+            ),
         )
-        model_input_names.append("min_error")
-    model_inputs = materialize_pymc_inputs(
-        prepared,
-        variable_names=tuple(dict.fromkeys(model_input_names)),
-    )
-    build_and_sample_start = timer_start()
-    legacy_additive_kwargs = (
-        {"legacy_minimum_error_floor": True} if _compatibility_minimum_error_floor else {}
-    )
-    model_build_result = build_standard_rhime_model_result(
-        prepared=prepared,
-        model_inputs=model_inputs,
-        run_spec=run_spec,
-        likelihood_builder=likelihood_builder,
-        likelihood_kwargs=likelihood_kwargs,
-        preserve_legacy_likelihood=preserve_legacy_likelihood,
-        legacy_unused_sigma_settings=_compatibility_unused_sigma_settings,
-        **legacy_additive_kwargs,
-    )
-    idata = sample_rhime_model(
-        model_build_result,
-        setup.sampler,
-    )
-    result = make_standard_rhime_result(
-        prepared=prepared,
-        run_spec=run_spec,
-        sampler=setup.sampler,
-        model_build_result=model_build_result,
-        idata=idata,
-        build_and_sample_seconds=timer_seconds(build_and_sample_start),
-        likelihood_builder=likelihood_builder,
-        likelihood_kwargs=likelihood_kwargs,
-    )
-    output_start = timer_start()
-    if compatibility_output_chain is None:
-        make_standard_rhime_outputs(result=result, prepared=prepared)
     else:
-        make_standard_rhime_outputs(
-            result=result,
-            prepared=prepared,
-            compatibility_output_chain=compatibility_output_chain,
-        )
-    log_timing(
-        "rhime.output_total",
-        timer_seconds(output_start),
-        multisector=False,
-        output_format=run_spec.output.output_format,
+        prepared = prepared.validated()
+
+    if config.data.basis_output_path is not None:
+        Path(config.data.basis_output_path).parent.mkdir(parents=True, exist_ok=True)
+        prepared.basis_functions.save(config.data.basis_output_path)
+
+    # 2. Materialize selected inputs and priors together, then build and sample.
+    model_inputs, priors = materialize_standard_inputs(prepared, config.model)
+    built = build_standard_model(
+        model_inputs, config.model, priors=priors,
+        likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs,
     )
-    return result
+    built.output_contract.validate_requested_output(config.output.output_format)
+
+    posterior = sample_rhime_model(built, sampler)
+    annotate_sample_trace(
+        built, posterior, likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs,
+    )
+
+    # 3. Bind the scientific view, write requested products, then export artifacts.
+    output_start = timer_start()
+    with (timed("rhime.output.inversion_output_create", output_format=config.output.output_format)
+          if config.output.output_format != "none" else nullcontext()):
+        inv_out = make_standard_output(
+            prepared=prepared, model_spec=config.model, posterior=posterior,
+            output_contract=built.output_contract, start_date=config.data.start_date,
+            end_date=config.data.end_date, actual_inference=sampler.describe(),
+            provenance=installed_ogi_provenance(),
+        )
+    postprocess_standard_outputs(inv_out, config.output)
+    save_standard_artifacts(inv_out, config.output)
+    log_timing(
+        "rhime.output_total", timer_seconds(output_start),
+        multisector=False, output_format=config.output.output_format,
+    )
+    return inv_out

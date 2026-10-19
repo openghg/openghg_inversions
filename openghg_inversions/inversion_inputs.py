@@ -11,6 +11,7 @@ import datetime as dt
 from collections.abc import Iterable
 from typing import Any, Literal, TypeAlias
 
+import dask
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -112,22 +113,49 @@ def make_site_names(site_coord: xr.DataArray) -> xr.DataArray:
     return xr.DataArray(site_names, dims=("nsite",), name="site_names")
 
 
+def normalise_frequency(value: str | None) -> Literal["monthly"] | pd.Timedelta | None:
+    """Resolve calendar periods or a positive fixed duration without observations.
+
+    Args:
+        value: ``None`` for one period, ``"monthly"`` for calendar months, or a
+            pandas duration string. Bare units and uppercase ``H`` are accepted.
+
+    Returns:
+        The unchanged single/calendar-period policy or a positive fixed duration.
+
+    Raises:
+        ValueError: If a fixed duration is malformed, nonfinite, zero or negative.
+    """
+    if value is None:
+        return None
+    if value == "monthly":
+        return "monthly"
+    try:
+        if not isinstance(value, str):
+            raise ValueError("expected a frequency string")
+        frequency = f"1{value}" if value.isalpha() else value
+        duration = pd.to_timedelta(frequency.replace("H", "h"))
+        if pd.isna(duration) or duration <= pd.Timedelta(0):
+            raise ValueError("frequency must be positive")
+        return duration
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"Invalid frequency {value!r}; expected 'monthly' or a positive fixed duration.") from exc
+
+
 def make_freq_indicator(
     time: xr.DataArray,
     freq: Literal["monthly"] | str,
     *,
     anchor_time: DatetimeLike | None = None,
 ) -> xr.DataArray:
-    if freq == "monthly":
+    frequency = normalise_frequency(freq)
+    if frequency is None:
+        return xr.zeros_like(time, dtype=int)
+    if frequency == "monthly":
         return time.dt.month - time.min().dt.month + 12 * (time.dt.year - time.min().dt.year)
 
-    # fixed-duration freq strings (e.g. "8d", "12h", "3h")
-    if isinstance(freq, str) and freq.isalpha():
-        freq = f"1{freq}"
-    if isinstance(freq, str):
-        freq = freq.replace("H", "h")
     anchor = np.datetime64(anchor_time) if anchor_time is not None else time.min().values
-    dt = np.timedelta64(pd.to_timedelta(freq).value, "ns")  # robust to xarray dtype
+    dt = np.timedelta64(frequency.value, "ns")  # robust to xarray dtype
     idx = ((time.values.astype("datetime64[ns]") - anchor) // dt).astype(int)
     idx = idx - idx.min()
     return xr.DataArray(idx, coords=time.coords, dims=time.dims)
@@ -151,7 +179,7 @@ def make_sigma_freq(
 def add_min_error(
     ds: xr.Dataset,
     fp_data: dict[str, Any],
-    min_error: str | dict[str, float] | int | float = 0.0,
+    min_error: str | dict[str, float] | int | float | None = 0.0,
     min_error_per_site: bool = True,
 ) -> xr.Dataset:
     """Add a prepared, observation-aligned minimum error to a dataset."""
@@ -177,28 +205,26 @@ def add_site_indicator(ds: xr.Dataset, sort: bool = False) -> xr.Dataset:
 def _drop_nan_and_compute(
     ds: xr.Dataset, drop_nan_from: Iterable[str] = ("H", "H_bc", "mf", "mf_error")
 ) -> xr.Dataset:
-    """Drop NaNs in required inversion variables and materialize core variables.
+    """Materialize related core payloads together, then drop unusable rows.
 
-    This centralizes dataset cleanup for RHIME input construction. It:
-      - drops nmeasure rows with NaNs in required variables (H, H_bc, mf, mf_error)
-      - triggers computation for a selected set of variables so returned dataset
-        is ready for immediate consumption (avoids repeated dask computations)
+    The selected variables become eager before row selection so shared Dask
+    dependencies execute once. Their full pre-selection payloads must fit in
+    memory. Sparse payloads remain sparse; unrelated variables and auxiliary
+    coordinates retain their existing eager or lazy backing. The input dataset
+    is borrowed and is not modified.
 
     Args:
-        ds: Input xarray.Dataset produced by make_inv_inputs logic.
-        drop_nan_from: data variables to drop NaNs from; only data variables present in `ds`
-            will be used.
+        ds: Assembled observation-aligned inversion inputs.
+        drop_nan_from: Variables whose NaNs remove an ``nmeasure`` row.
+            Missing names are ignored. Present names are also materialized.
 
     Returns:
-        xarray.Dataset with NaNs dropped along `nmeasure` based on selected variables,
-            and with certain variables computed.
+        A new dataset with core payloads materialized and rows containing NaNs
+        in the selected variables removed, preserving retained labels/order.
     """
-    # Variables that must not contain NaNs along the nmeasure dim
-    drop_subset: list[str] = [v for v in drop_nan_from if v in ds]
-    if drop_subset:
-        ds = ds.dropna(dim="nmeasure", how="any", subset=drop_subset)
-
-    # Variables we want to ensure are materialized (compute() only these)
+    drop_subset = [v for v in drop_nan_from if v in ds]
+    # Materialize before dropna: its row mask otherwise executes shared sources
+    # separately from the payloads needed by the inversion.
     to_compute: list[str] = [
         "H",
         "H_bc",
@@ -211,10 +237,12 @@ def _drop_nan_and_compute(
         "bc_mod",
         "mf_mod",
     ]
-    to_compute = [v for v in to_compute if v in ds]
-    for var_name in to_compute:
-        computed = ds[var_name].compute()
-        ds[var_name] = (computed.dims, computed.data, computed.attrs)
+    to_compute = list(dict.fromkeys(v for v in [*to_compute, *drop_subset] if v in ds))
+    # Variables exclude auxiliary coordinates, which need not become eager.
+    computed = dask.compute(*(ds[v].variable for v in to_compute))
+    ds = ds.assign(dict(zip(to_compute, computed)))
+    if drop_subset:
+        ds = ds.dropna(dim="nmeasure", how="any", subset=drop_subset)
 
     return ds
 
@@ -296,7 +324,7 @@ def make_inv_inputs(
     fp_data: dict[str, Any],
     sites: list[str] | None = None,
     bc_freq: Literal["monthly"] | str | None = None,
-    min_error: str | dict[str, float] | int | float = 0.0,
+    min_error: str | dict[str, float] | int | float | None = 0.0,
     min_error_per_site: bool = True,
     start_date: DatetimeLike | None = None,
     missing_data_vars: Literal["error", "drop"] = "drop",
@@ -305,7 +333,9 @@ def make_inv_inputs(
 
     The returned dataset contains shared observations, sensitivities, error
     terms, and site alignment metadata. Model-component-specific arrays are
-    constructed by their owning components.
+    constructed by their owning components. Core payloads are materialized
+    together before invalid observations are discarded; the full pre-selection
+    core arrays must fit in memory. Other extension arrays may remain lazy.
 
     Args:
         fp_data: Per-site merged observations and sensitivity data.
@@ -314,7 +344,8 @@ def make_inv_inputs(
             every named site must exist in ``fp_data``.
         bc_freq: Optional frequency used to transform boundary-condition
             sensitivities.
-        min_error: Minimum-error value or calculation configuration.
+        min_error: Minimum-error scalar, site mapping, or calculation method.
+            ``None`` uses a zero scalar floor.
         min_error_per_site: Whether a calculated minimum error varies by site.
         start_date: Optional anchor for fixed-duration boundary-condition
             frequencies.

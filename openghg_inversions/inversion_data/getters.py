@@ -29,6 +29,7 @@ from openghg.types import SearchError
 
 from openghg_inversions import utils
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_flux_nonfinite
+from openghg_inversions.inversion_data._provenance import selected_provenance
 from openghg_inversions.inversion_data._site_options import (
     is_column_observation,
     is_satellite_platform,
@@ -155,6 +156,12 @@ def get_flux_data(
 
         logging.Logger.disabled = False  # resume confusing OpenGHG warnings
 
+        # OpenGHG's public retrieval selects latest, but its typed rewrap loses _version.
+        flux_data.metadata = {
+            **flux_data.metadata,
+            "dataversion": selected_provenance(flux_data, requested_version="latest").dataversion,
+        }
+
         # Preserve source period metadata for downstream post-processing.
         # Variable metadata is more specific and must not be overwritten.
         variable_period = flux_data.data.flux.attrs.get("time_period")
@@ -197,7 +204,12 @@ def get_obs_data(
     stores: str | None | Iterable[str | None] = None,
     keep_variables: list | None = None,
 ) -> ObsData | None:
-    """Try to retrieve obs. data from listed stores."""
+    """Retrieve the first non-empty observation dataset from the listed stores.
+
+    Missing results (``SearchError``, ``None``, or datasets with an empty time
+    dimension) are skipped. Return ``None`` if all stores have missing results.
+    Retrieval ``AttributeError`` exceptions are logged with context and re-raised.
+    """
 
     if is_column_observation(inlet, platform) and max_level is None:
         raise AttributeError(
@@ -265,8 +277,18 @@ def get_obs_data(
             )
             continue  # skip this site
         except AttributeError:
-            print(f"\nNo data found for {site} between {start_date} and {end_date} in store {store}.")
-            continue  # skip this site
+            logger.exception(
+                "Observation retrieval failed for site=%s, species=%s, inlet=%s, "
+                "instrument=%s, store=%s between %s and %s.",
+                site,
+                species,
+                inlet,
+                instrument,
+                store,
+                start_date,
+                end_date,
+            )
+            raise
         else:
             if obs_data is None or obs_data.data.sizes["time"] == 0:
                 print(f"\nNo data found for {site} between {start_date} and {end_date} in store {store}.")
@@ -451,11 +473,17 @@ def get_footprint_to_match(
         fp.data = fp.data.sel(time=fp_idx)
 
     # make FootprintData to return
-    metadata = indexed_footprints[0][1].metadata
+    metadata = dict(indexed_footprints[0][1].metadata)
 
+    identities = [selected_provenance(fp, store, requested_version="latest") for _, fp in indexed_footprints]
+    metadata.update(
+        store=identities[0].store, uuid=identities[0].uuid, dataversion=identities[0].dataversion
+    )
     if len(indexed_footprints) > 1:
         metadata["inlet"] = "varies"
         metadata["height"] = "varies"
+        for name in ("store", "uuid", "dataversion"):
+            metadata[name] = [getattr(identity, name) for identity in identities]
 
     data = xr.concat([fp.data for _, fp in indexed_footprints], dim="time").sortby("time")
 

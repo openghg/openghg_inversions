@@ -59,6 +59,7 @@ from openghg_inversions.models.state_activity import (
     PreparedLinearSensitivity,
     prepare_linear_sensitivity,
 )
+from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.sigma import SigmaAlignment
 
@@ -795,7 +796,7 @@ def build_ramsden_model(
 
     Returns:
         Built PyMC model ready for
-        :class:`~openghg_inversions.rhime.sampling.RhimeSampler`.
+        :class:`~openghg_inversions.inference.sampling.RhimeSampler`.
 
     Raises:
         ValueError: If model metadata, required input variables, source labels,
@@ -926,50 +927,38 @@ def run_ramsden_from_prepared_inputs(
     *,
     prepared_inputs: RamsdenPreparedInputs,
     model_spec: RamsdenModelSpec,
-    sampler: RhimeSampler | None = None,
+    sampler: RhimeSampler | Literal["default"] = "default",
 ) -> RamsdenResult:
     """Build and sample a historical two-gas model from canonical inputs.
 
     Args:
         prepared_inputs: Canonical primary and tracer datasets.
         model_spec: Historical model specification.
-        sampler: Modern RHIME sampling configuration controlling seeds,
-            chains, draws, and predictive output. When omitted, the standard
-            sampler is used with both namespaced gas observations included in
-            posterior predictive sampling.
+        sampler: Sampling configuration or ``"default"``. Omitted or
+            ``"default"`` requests use both namespaced gas observations in
+            posterior predictive sampling. Explicit ``None`` is invalid.
 
     Returns:
         Joint result containing the built model and labelled sampled DataTree.
 
     Raises:
+        TypeError: If the sampler is neither a configuration nor ``"default"``.
         ValueError: If model metadata or prepared inputs are invalid.
 
     Notes:
         This function samples the model and may run multiple chains. It does
         not retrieve data, convert units, or write postprocessed products.
         Sampling exceptions raised by
-        :class:`~openghg_inversions.rhime.sampling.RhimeSampler` are
+        :class:`~openghg_inversions.inference.sampling.RhimeSampler` are
         propagated.
     """
+    sampler = resolve_sampler(sampler)
     model = build_ramsden_model(prepared_inputs, model_spec)
     primary_suffix = _channel_suffix(model_spec.primary)
     tracer_suffix = _channel_suffix(model_spec.tracer)
     predictive_names = (f"y_{primary_suffix}", f"y_{tracer_suffix}")
-    if sampler is None:
-        sampler = RhimeSampler(sample_posterior_predictive=predictive_names)
-    elif sampler.sample_posterior_predictive == ("y",):
-        sampler = RhimeSampler(
-            draws=sampler.draws,
-            burn=sampler.burn,
-            tune=sampler.tune,
-            chains=sampler.chains,
-            nuts_sampler=sampler.nuts_sampler,
-            progressbar=sampler.progressbar,
-            sample_kwargs=sampler.sample_kwargs,
-            sample_prior_predictive=sampler.sample_prior_predictive,
-            sample_posterior_predictive=predictive_names,
-            posterior_predictive_kwargs=sampler.posterior_predictive_kwargs,
-        )
+    if sampler.sample_posterior_predictive == ("y",):
+        sampler.sample_posterior_predictive = predictive_names
     elif isinstance(sampler.sample_posterior_predictive, tuple):
         missing = set(sampler.sample_posterior_predictive) - set(model.named_vars)
         if missing:

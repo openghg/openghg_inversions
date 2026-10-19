@@ -5,9 +5,9 @@ from __future__ import annotations
 from numbers import Integral, Real
 from pathlib import Path
 from typing import Any
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
-import arviz as az
+from openghg_inversions.inference.diagnostics import posterior_summary
 import numpy as np
 
 from openghg_inversions._provenance import installed_ogi_provenance
@@ -15,12 +15,11 @@ from openghg_inversions.serialization import load_trace, reset_serialisation_mul
 
 from ._stage_artifacts import (
     artifact_path as _artifact_path,
-    file_identity as _file_identity,
     write_json as _write_json,
     _output_path,
     _stage_output_directory,
 )
-from ._stage_authentication import _verify_sample_manifest
+from ._stage_authentication import _load_stage_manifest
 
 PREPARATION_CHECK_NAME = "prior-predictive-readiness"
 CONVERGENCE_CHECK_NAME = "sampler-convergence"
@@ -37,7 +36,6 @@ def _check_result(
     artifact_paths: list[str],
     stage: str,
 ) -> dict[str, Any]:
-    stage = _check_stage(stage)
     return {
         "schema_version": CHECK_SCHEMA_VERSION,
         "name": name,
@@ -49,6 +47,77 @@ def _check_result(
         "artifact_paths": artifact_paths,
         "stage": stage,
     }
+
+
+def prior_predictive_check(
+    build: Callable[[], Any],
+    *,
+    draws: int,
+    destination: Path,
+    report: Path,
+    stage: str,
+) -> dict[str, Any]:
+    """Draw prior predictions and write the evidence and a readiness report.
+
+    The old report is invalidated before building or writing evidence, so a
+    failed overwrite cannot leave an earlier successful readiness claim.
+
+    Args:
+        build: Builds the model to check; its readiness errors become a failed check.
+        draws: Positive number of prior-predictive draws.
+        destination: Existing check directory receiving the evidence and report.
+        report: Resolved report path selected and checked by the caller.
+        stage: Validated stage label.
+
+    Returns:
+        The readiness check written to the report.
+
+    Raises:
+        OSError: If writing the evidence or report fails.
+    """
+    report.unlink(missing_ok=True)
+    import pymc as pm
+
+    from openghg_inversions.serialization import save_trace
+
+    try:
+        built = build()
+        with built.model:
+            prior = pm.sample_prior_predictive(draws, built.model)
+    except (KeyError, ValueError) as exc:
+        non_finite, status, artifacts = None, "fail", []
+        message = f"Prior-predictive readiness failed: {type(exc).__name__}: {exc}"
+    else:
+        concentration = built.output_contract.variable_roles.get("concentration")
+        predictive = prior.children.get("prior_predictive")
+        values = [np.asarray(group[name].values) for group in prior.children.values() for name in group.data_vars]
+        non_finite = sum(int(np.size(value) - np.isfinite(value).sum()) for value in values)
+        status = "fail"
+        if predictive is None or concentration not in predictive:
+            message = "Prior prediction is missing the declared concentration draws."
+        elif predictive[concentration].size == 0:
+            message = "Prior prediction contains no concentration draws."
+        elif non_finite:
+            message = f"Prior predictive contains {non_finite} non-finite values."
+        else:
+            status = "pass"
+            message = f"Prior predictive produced {draws} finite draws."
+        prior_path = destination / "prior-predictive.nc"
+        save_trace(prior, prior_path)
+        artifacts = [str(prior_path)]
+    result = _check_result(
+        name=PREPARATION_CHECK_NAME, status=status,
+        measured_values={"draws": draws, "non_finite_values": non_finite},
+        thresholds={"max_non_finite_values": 0}, message=message, artifact_paths=artifacts, stage=stage,
+    )
+    _write_json(report, result)
+    return result
+
+
+def _check_draws(draws: Any) -> None:
+    """Reject non-positive or non-integer prior-predictive draw counts."""
+    if isinstance(draws, bool) or not isinstance(draws, Integral) or draws <= 0:
+        raise ValueError(f"Prior-predictive draws must be a positive integer; got {draws!r}.")
 
 
 def _check_stage(stage: str) -> str:
@@ -94,7 +163,11 @@ def diagnose_rhime_stage(
     max_divergences: int = 0,
     stage: str = "posterior",
 ) -> dict[str, Any]:
-    """Calculate the stable posterior convergence check."""
+    """Calculate convergence from the supplied posterior.
+
+    An optional sample manifest supplies descriptive run context, without
+    authenticating the posterior file.
+    """
     stage = _check_stage(stage)
     _validate_diagnostic_thresholds(
         max_rhat=max_rhat,
@@ -105,16 +178,9 @@ def diagnose_rhime_stage(
     posterior_path = Path(posterior).resolve()
     sample_contract = None
     if sample_manifest is not None:
-        sample_contract = _verify_sample_manifest(sample_manifest, posterior=posterior_path)
+        _, sample_contract = _load_stage_manifest(sample_manifest, stage="sample")
     idata = load_trace(posterior_path)
-    summary = az.summary(
-        idata["posterior"].to_dataset(),
-        kind="diagnostics",
-        fmt="xarray",
-        round_to="none",
-    )
-    if "summary" in summary.dims:
-        summary = summary.rename(summary="metric")
+    summary = posterior_summary(idata["posterior"].to_dataset())
     destination = _stage_output_directory(output_dir)
     summary_path = _output_path(destination, None, "posterior-diagnostics.nc")
     reset_serialisation_multiindexes(summary).to_netcdf(summary_path)
@@ -234,16 +300,11 @@ def diagnose_rhime_stage(
                 "schema_version": 1,
                 "producer": "openghg_inversions",
                 "stage": "diagnose",
-                "configuration_identity": sample_contract["configuration_identity"],
+                "configuration_identity": sample_contract.get("configuration_identity"),
                 "ogi": installed_ogi_provenance(),
-                "input_identities": {"posterior": _file_identity(posterior_path)},
                 "artifacts": {
                     "diagnostics": _artifact_path(summary_path),
                     "check": _artifact_path(check_path),
-                },
-                "artifact_identities": {
-                    "diagnostics": _file_identity(summary_path),
-                    "check": _file_identity(check_path),
                 },
             },
         )

@@ -1,300 +1,284 @@
 Staged RHIME workflows
 ======================
 
-``openghg-inversions`` exposes file-backed stages for schedulers such as
-``openghg-run``. The interface composes the same configuration resolver,
-preparation functions, model recipes, sampler and output functions used by
-the corresponding Python runners. It is not a second scientific configuration
-system, and OpenGHG Inversions does not depend on ``openghg-run``.
+The standard recipe can prepare once, sample compatible models into separate
+locations, and produce different outputs from saved samples. ``run_standard``
+with or without ``prepared=...`` uses the same scientific operations
+as the saved phases: prepare inputs, explicitly materialize selected arrays and
+enabled priors where needed, build one eager model, sample, construct an
+``InversionOutput`` view, then write requested products and exports. Checkpoints
+add loading and saving at those boundaries; full execution needs no intermediate
+saves. Model construction accepts no output configuration and performs no hidden
+materialization.
 
-The supported recipes are ``standard``, ``multisector`` and ``co2``. Recipe
-selection is always explicit with ``--model``.  It is not inferred from
-``species``, ``fp_model`` or ``met_model``: CH4 and CO2 need not use the same
-model, while several F-gases may use the same standard recipe.  The distinct
-CO2 recipe accepts an existing coherent prepared-input artifact and supports
-ordinary and cached fixed-OU execution. Linked CO2/O2 staging remains separate
-follow-up work. See :doc:`co2_model_family` for CO2 prerequisites, commands and
-output capabilities.
+Standard saved phases
+---------------------
 
-Configuration inputs
---------------------
+``prepare`` returns one absolute path to ``prepare-manifest.json``. It references
+prepared numerical inputs and records the ``DataConfig`` that produced them in
+its external option form; ``load_preparation`` returns the prepared inputs and
+that ``DataConfig`` and its generation identifier. The recorded configuration
+is validated exactly as a full-run request is. Retained sites and their averaging
+periods come from the
+numerical artifact, including when acquisition or filtering drops a site.
+Observation errors are established before filtering, then basis construction,
+sensitivities and assembly run in scientific order. No filtered checkpoint is
+written.
 
-For ``--model standard`` and ``--model multisector``, every scientific stage
-except ``diagnose`` accepts exactly one of:
+``sample`` takes that manifest and current model and sampler choices, returning
+one absolute path to ``sample-manifest.json``. A Python ``likelihood_builder``
+(with ``likelihood_kwargs``) may replace the built-in likelihood, as in
+``run_standard``. Compatible graph-time priors and
+likelihoods reuse the preparation. Required BC and minimum-error arrays must be
+available. Omitted model ``use_bc`` inherits the preparation choice; explicit
+``False`` may ignore available BC inputs. A repeated ``bc_freq`` must agree with
+the baked policy, even when the selected model ignores BCs. Changing acquired
+data, filters, basis, native flux or baked numerical policy needs new preparation.
 
-* ``--config /absolute/path/run.ini``, using the existing RHIME INI vocabulary;
-* ``--params-file /absolute/path/ogi-params.json``, containing one JSON object
-  with the same keyword names accepted by ``run_rhime``.
+``load_samples`` decodes the sample manifest to ``InversionOutput``.
+``postprocess`` uses that reader with current output choices, calls
+``postprocess_standard_outputs`` to compute and write requested PARIS or legacy
+products, then calls ``save_standard_artifacts`` for optional exports. It loads
+the recorded model meaning, output contract, inference metadata, prepared inputs
+and samples without building a graph or running inference. It returns
+``InversionOutput`` without a live model or sampler. Missing descriptive metadata stays
+unavailable. Output naming, destination and supported formats can change;
+scientific choices cannot relabel saved samples. Default sampling retains
+scientific ``x``, including when it is a deterministic transform of ``x_latent``.
+Posterior ``sample_kwargs["var_names"]`` overrides are rejected by the sampler;
+intentional posterior-predictive variable selection remains supported.
 
-``--kwargs '{...}'`` can explicitly override either source. The JSON form
-supports ``openghg-run`` cases that do not declare an INI ``CONFIG_FILE``; it
-does not add new scientific keys. The existing ``resolve_rhime_options`` boundary still
-normalizes and validates every value.  The staged commands deliberately do not
-read ambient ``CONFIG_FILE``.  ``OUTPUT_DIR`` is the only automatic path
-default, and the effective ``openghg-run`` ``STAGE`` is the default check-stage
-label.
-Relative filesystem values inside an INI or JSON parameter file are resolved
-against that file's directory, not the process working directory.
+Prior parameters in saved samples describe the priors actually constructed.
+Numerical scalars are retained inline in model metadata. Array-valued parameters
+are registered as model data and saved in the trace's ``constant_data`` group,
+with their scientific dimensions and coordinates; metadata references those
+arrays rather than embedding numerical arrays in JSON. Disabled components
+contribute no prior metadata or references. Modern inversion outputs retain
+records captured by shared prior construction in
+``model_metadata["constructed_priors"]``, keyed by their concrete model variable
+names. Directly constructed PyMC priors are not automatically captured, and
+``Interpolated`` persistence remains excluded. Sector associations use the output
+contract's variable roles, including separate outer and inner state variables
+in nested outputs.
 
-``openghg-run``'s ``EFFECTIVE_CONFIG`` is a stage-specific TOML envelope, not
-an OpenGHG Inversions scientific parameter file, so do not pass it to
-``--params-file``. It remains orchestration provenance. A no-INI campaign
-should explicitly copy or provide a canonical OpenGHG Inversions JSON
-parameter file and pass that path (for example beneath ``SOURCE_DIR`` or
-``RUN_ROOT/scripts``).
+Related lazy prior inputs, including supported zero-dimensional numerical
+inputs and auxiliary coordinates, are materialized together with selected model
+inputs at the explicit caller materialization boundary before construction. An enabled prior may be computed before sensitivity
+evaluation finds that its states have no effect on observations and fixes them
+instead of sampling them; such a prior contributes no constructed-prior record.
+Disabled BC and offset components are excluded before this computation.
+Metadata writing uses the captured scalar values and registered arrays, without
+executing the original caller's lazy prior graph again. Scalar-shaped symbolic
+parameters retain their graph dependencies. Ordinary and reparameterized
+lognormal construction share the same symbolic moment conversion, preserving
+the supplied arithmetic or log-space parameterization in metadata.
+
+Ordinary standard sampling routes attach constructed-prior records and callable
+provenance to the trace once after sampling. When composing these operations
+directly, call the public ``annotate_sample_trace`` with the build
+result and posterior before ``save_samples``; pass the generation returned by
+``load_preparation`` as ``preparation_generation``. The generic sampler does not
+own RHIME scientific metadata. Required array references are checked when saving
+and reloading samples;
+missing values fail before completing a sample handoff or writing products.
+
+A selected saved basis supplies its operator while new preparation binds current
+native flux. Saved preparation and replay retain that flux and do not reacquire
+it. Species-dependent mass conversion belongs to postprocessing.
+
+Relative filesystem values inside an INI or JSON parameter file resolve from
+the invocation working directory, in both full and staged execution. This includes
+resource inputs, ``output_path`` and explicit ``save_trace`` /
+``save_inversion_output`` filenames. Explicit ``--kwargs`` path overrides follow
+the same rule; absolute paths keep their destination.
+Filesystem annotations identify the fields to convert: resolved configuration
+uses ``Path`` values, including tuples of paths, while parameter JSON and stage
+manifests store paths as strings and path collections as JSON arrays. Scientific
+strings such as domain names are unchanged; configuration construction does not
+load scientific resources. Each owner converts its declared fields once; later
+configured execution and identity encoding forward canonical paths.
+
+For file-backed boundary conditions, specify exact files, for example
+``"bc_basis_paths": ["bc/january.nc", "bc/february.nc"]`` in the parameter JSON.
+``prepare`` loads all selected files before acquisition and passes their labelled
+data to sensitivity construction, preserving time combination and alignment.
+Missing or unreadable selected files fail before acquisition. Omit
+``bc_basis_paths`` for NESW: it uses acquired directional contributions without
+reading a BC basis file. Disabled BCs load no BC basis resources. Staged commands
+reject historical ``fp_basis_case``, ``basis_directory``, ``bc_basis_case`` and
+``bc_basis_directory`` options. Use explicit modern paths. During 0.8, only the
+HBMCMC entry route translates those historical selectors after winning overrides;
+on that route, an NESW directory warns that it is unused without any lookup.
+
+
+``country_directory`` is removed in 0.8. Use ``country_file`` for reporting,
+``landsea_path`` for preparation land/sea classes, or ``outer_regions_path`` for
+fixed outer regions. Required preparation maps default to packaged files for the
+exact requested domain; explicit paths win and missing resources fail without
+fallback. Reporting country files remain explicit and independent of these
+preparation defaults. See :doc:`legacy_and_migration` for the migration schedule.
+
+Keep each manifest and its referenced files available for later phases. References
+resolve relative to the declaring manifest; absolute shared-cache references are
+also accepted. No environment variable locates replacement artifacts. Numerical
+files use existing codecs, and manifests use JSON without mandatory content
+hashes or full-configuration equality gates. Missing or malformed files fail at
+loading; incompatible scientific inputs fail at their owning operation.
+
+The public ``load_preparation`` returns ``(prepared, data_config, generation)``.
+External ``save_samples`` calls must supply that exact ``preparation_generation``;
+the writer does not silently bind an old posterior to whichever preparation is
+currently stored at a path.
+
+Each preparation save assigns a generation identifier. A sample manifest records
+that identifier and rejects replay against a replacement preparation at the same
+path. This binds checkpoint generations, not arbitrary payload contents; it does
+not provide content-integrity or tamper detection.
+
+Standard ``output_format="basic"`` returns the scientific view without computing
+an unused summary. For in-memory reporting, call ``basic_output(inv_out,
+country_file=...)`` yourself. PARIS and legacy products require ``output_path``;
+missing destinations fail before sampling in a full run or before loading samples
+in staged postprocessing. ``save_standard_artifacts`` only exports the scientific
+result and trace; it does not compute derived products.
+
+Choose saved artifacts by what you need to reuse:
+
+* Preparation and sample checkpoints preserve phase inputs and execution records.
+  A sample checkpoint references its preparation, so keep that dependency with it.
+* A self-contained ``InversionOutput`` export carries the prepared scientific
+  values, basis and trace needed for later reporting without the checkpoint manifests.
+* A trace export carries sampled variables and diagnostics; it does not replace
+  the prepared inputs and output contract required for scientific reconstruction.
+* An optional basis export preserves the basis for inspection or reuse. It does
+  not contain the observations and posterior of an inversion.
+
+Full execution needs no checkpoints, so these optional exports remain useful.
+Their defaults and formats are unchanged.
+
+Callers choose checkpoint locations and own collision avoidance and run isolation.
+A simple layout is ``run/prepare``, ``run/sample`` and ``run/products``; explicit
+locations are supported, including existing directories. Numerical files are saved
+first and the manifest is written last as the completion marker. A failed payload save
+can leave partial files but no completed manifest. Checkpoint-owned payload and
+manifest targets must stay within the chosen destination and must not alias
+referenced preparation artifacts. Postprocessing uses the same
+product writer and overwrite behaviour as full execution; in-memory products
+require no destination. Normal filesystem errors propagate. Concrete payload and manifest targets are
+checked for redirects outside their destination or aliases to prepared inputs;
+prior-predictive saves use the same target checks. This does not require fresh
+directories or recursive directory scanning.
+``basis_output_path`` is an exact destination and may be outside the checkpoint
+directory. It is resolved at the frontend and forwarded unchanged to the runner's
+optional basis export.
 
 Legacy fixedbasis-style PARIS INIs contain options such as ``nit``, ``nchain``,
-``xprior`` and ``mcmc_type``.  Their translation remains owned by the existing
-``run_hbmcmc`` compatibility path.  Do not copy those aliases into a staged
-JSON file; use canonical RHIME names or first migrate the configuration through
-that existing compatibility boundary.
+``xprior`` and ``mcmc_type``. Fixedbasis policy such as ``nit``, ``nchain`` and
+``mcmc_type`` belongs to the temporary ``run_hbmcmc`` route in 0.8. Modern name
+aliases such as ``xprior`` remain supported at the staged frontend until 0.9
+with deprecation warnings and their existing precedence; prefer ``x_prior`` in
+new files. Translation happens before ``RhimeConfig.from_params``, which accepts
+canonical names only and emits no alias warnings. Migrate fixedbasis policy and
+resource discovery to canonical RHIME options before using staged commands.
+The entire HBMCMC subpackage and its entry points are removed in 0.9.
 
-For ``--model co2``, pass ``--config co2.toml`` using the CO2-family TOML
-vocabulary, or a ``--params-file`` JSON object with the same nested structure.
-The CO2 resolver validates the recipe; the optional ``[outputs]`` table selects
-staged products. Relative artifact paths resolve from the configuration file.
-CO2 stage manifests require an identifiable installed Git revision from a VCS
-installation or source checkout; see :doc:`co2_model_family`.
+Configuration and CLI
+---------------------
 
-Configuration flow
-------------------
+Preparation accepts ``--config run.ini`` or ``--params-file choices.json``.
+Sampling and postprocessing optionally accept either source; a shared full
+configuration contributes only the active phase's choices. JSON can contain
+flat options or ``data``, ``model``, ``sampler`` and ``output`` mappings.
+Unknown names remain errors, while known inactive values are not resolved.
+Explicit ``--kwargs`` overrides for another phase and unsupported names are
+reported together in one error. Raw file options and overrides are combined
+before alias translation; a canonical spelling wins over its deprecated alias. Relative input
+paths resolve from the invocation working directory. ``CONFIG_FILE`` is not an automatic
+source; ``OUTPUT_DIR`` is an optional destination default.
 
-For standard and multisector recipes, the existing RHIME configuration supports
-gas-, site-, transport-, model-, year-, month- and prior-specific choices
-directly:
-
-* ``species``, ``start_date`` and ``end_date`` select gas and period;
-* ``sites`` and the aligned ``averaging_period``, ``inlet``, ``instrument``,
-  ``fp_height``, ``obs_data_level``, ``met_model``, ``platform`` and
-  ``max_level`` values select site-specific observations and footprints;
-* ``fp_model`` selects footprint transport, independently of ``--model``;
-* ``flux_sources`` selects OpenGHG prior flux identities.  Multisector runs may
-  additionally use ``sector_sources`` and ``sector_priors``;
-* ``x_prior``, ``bc_prior``, ``sigma_prior`` and the selected mismatch model
-  define mathematical priors and likelihood policy.
-
-All requested choices and the exact stage-contained preparation choices that
-were executed are written to ``prepare-manifest.json``.  Its
-``configuration_identity`` is a SHA-256 digest of the resolved preparation,
-period, model and prior settings.  Sampling and output-only changes do not
-invalidate reusable prepared inputs; cache locations and preparation artifact
-destinations are likewise excluded because the artifact digest identifies the
-resulting input content.  Consequently a gas, period, site, source, transport
-or prior change produces a different identity.  Downstream scientific commands
-require ``--preparation-manifest`` and reject a mismatched configuration or
-prepared-input content digest before model construction.  Preparation also
-treats every configured site as required and fails with the gas and period
-named if the existing acquisition layer could not produce it.
-
-The manifest also records a content SHA-256 for ``prepared-inputs.nc``.
-``openghg-run``
-independently verifies the declared stage-output directory and records its own
-filesystem identity; the OpenGHG Inversions digest gives scientific consumers
-a compact, direct identity for the prepared handoff.
-
-Commands and artifacts
-----------------------
-
-All paths are explicit and outputs are written below ``--output-dir`` (or
-``openghg-run``'s ``OUTPUT_DIR``). Commands do not depend on the caller's
-working directory and reject pre-existing symlinks beneath a stage output
-directory.
-
-``prepare``
-  Retrieves/reloads merged data, filters observations, constructs basis and
-  sensitivities, assembles canonical inputs, and writes an inspectable
-  ``merged-data/merged-data.nc``, ``prepared-inputs.nc`` and
-  ``prepare-manifest.json``.  It never builds a
-  PyMC graph or samples a posterior.  The NetCDF is a versioned
-  ``RhimePreparedInputs`` artifact and is independently inspectable/loadable.
-  For ``co2``, preparation validates and copies the configured
-  ``Co2PreparedInputs`` artifact and optional bound affine reconstruction,
-  preserving their content identities; it does not acquire observation data.
-
-``prior-predictive``
-  Loads ``--prepared-inputs``, validates its layout against the explicit
-  configuration, builds the selected model, draws from its prior predictive,
-  and writes ``prior-predictive.nc`` plus a readiness CheckResult.  It never
-  runs posterior sampling.  ``--strict`` converts a readiness ``fail`` to a
-  nonzero process exit when a scheduler policy wants that behavior. The
-  readiness result checks construction and finite values; it does not assess
-  scientific plausibility. Follow :doc:`prior_predictive_checking` to inspect
-  the artifact and then sample the posterior from the same prepared data.
-
-``sample``
-  Standard and multisector workflows load the prepared artifact, build the
-  selected model, sample it with the resolved ``RhimeSampler``, and write
-  ``posterior.nc``, ``output-binding.json``, and ``sample-manifest.json``. The sample manifest
-  uses schema version 2 and records the effective sampling configuration and
-  content identities for the posterior, prepared input, and output binding.
-  The binding stores variable roles, supported formats, provenance, and any
-  explicit state-dimension mapping, together with the two numerical artifact
-  identities. Keep the binding beside its sample manifest when moving a run.
-  CO2 writes ``posterior.nc`` and a schema-version-1 sample manifest, retaining
-  saved trace roles and any authenticated affine-reconstruction identity.
-  No family silently invokes preparation.
-
-``diagnose``
-  Loads ``--posterior``, writes ``posterior-diagnostics.nc`` and emits the
-  ``sampler-convergence`` CheckResult.  Scientific failure exits zero by
-  default, keeping scheduler status separate from scientific health.
-  ``--sample-manifest`` authenticates a posterior produced by the staged
-  sampler. It is optional so persisted posteriors from earlier OpenGHG
-  Inversions runs can
-  still be diagnosed.  ``--strict`` is available only for an explicitly
-  chosen process policy.
-
-``postprocess``
-  Standard and multisector workflows load matched prepared inputs, posterior,
-  and the saved output binding, then invoke the existing RHIME output
-  implementation without constructing a PyMC model. A missing, altered, or
-  mismatched binding fails validation; it does not cause a model rebuild.
-  Genuine standard/multisector schema-version-1 sample manifests retain the
-  older graph-building compatibility route because they did not store output
-  bindings. CO2 schema-version-1 replay remains graph-free, using roles in the
-  authenticated saved trace and any separately authenticated affine artifact.
-  CO2 postprocessing rejects other sample-manifest versions before replay.
-  New posterior predictive calculations still require a separate explicit
-  model-building route. The standard/multisector configuration's
-  ``output_format`` controls ``inv_out``, ``basic``, ``paris`` or ``legacy``
-  products; explicit save paths in configuration are replaced so every product
-  remains beneath the stage output directory. For the same
-  reason, staged postprocessing requires safe filename components and both the
-  preparation and sample manifests.  The latter binds the posterior to its
-  prepared-input digest and scientific configuration.  The sampler settings
-  restored into result metadata come from that sample manifest; sampler values
-  in the postprocessing configuration cannot relabel an existing posterior.
-  Modern derived ``basic`` and PARIS products use every retained posterior
-  chain. Derived trace quantities preserve their ``chain`` and ``draw``
-  identity until an explicitly requested statistic or covariance combines the
-  samples. ``postprocess-manifest.json`` is always written; the otherwise
-  in-memory ``basic`` product is written as ``basic.nc``.
-  CO2 supports ``none``, ``basic`` and constrained ``paris`` products. Its
-  native-flux and country outputs require an exact bound affine reconstruction
-  and prior draws, and retain conditional uncertainty scope. The complete
-  supported CO2 contract is documented in :doc:`co2_model_family`.
-
-CheckResult contract
---------------------
-
-Both checks use the schema version 1 understood by ``openghg-run`` and producer
-``openghg_inversions``.  ``--check-output`` chooses the JSON path and
-``--check-stage`` chooses the producing ``openghg-run`` stage name.
-
-``prior-predictive-readiness``
-  Status is ``pass`` when model construction succeeds, prior and
-  prior-predictive variables are produced, and all sampled values are finite.
-  It reports ``draws`` and ``non_finite_values`` against
-  ``max_non_finite_values = 0``.  Construction, input and sampling exceptions
-  become a readable ``fail`` result for standard and multisector recipes. CO2
-  handoff, construction and sampling errors reject the command before a
-  readiness check is written; non-finite predictive values produce a ``fail``
-  check.
-
-.. _staged-convergence-check:
-
-``sampler-convergence``
-  Reports retained chain and draw counts, maximum R-hat and its variable,
-  minimum bulk ESS and its variable, minimum tail ESS and its variable, total
-  divergences, divergences per chain, and labels for unassessable R-hat/ESS
-  elements.  Defaults are maximum R-hat 1.01,
-  minimum bulk ESS 400, minimum tail ESS 400, and maximum divergences 0.
-  Thresholds have CLI options.  The result is ``unknown`` when a signal is not
-  assessable (for example R-hat from one chain), ``fail`` when an available
-  signal exceeds policy, and ``pass`` otherwise.  This is the machine-visible
-  convergence outcome requested by issues #656/#667; ``openghg-run`` does not
-  import ArviZ or PyMC.
-
-Minimal command sequence
-------------------------
-
-The following is a complete run using a canonical JSON parameter file. An INI
-can be substituted with ``--config``. Set ``OGI_PARAMS_FILE`` to the path of
-that OpenGHG Inversions JSON parameter file before running the commands.
+For example, with preparation settings in ``preparation.json``:
 
 .. code-block:: bash
 
-   openghg-inversions prepare \
-     --params-file "$OGI_PARAMS_FILE" --model standard \
-     --output-dir "$OUTPUT_DIR/prepare"
+   rhime prepare --params-file preparation.json --output-dir run/prepare
 
-   openghg-inversions prior-predictive \
-     --params-file "$OGI_PARAMS_FILE" --model standard \
-     --prepared-inputs "$OUTPUT_DIR/prepare/prepared-inputs.nc" \
-     --preparation-manifest "$OUTPUT_DIR/prepare/prepare-manifest.json" \
-     --output-dir "$OUTPUT_DIR/prior-predictive" \
-     --check-output "$OUTPUT_DIR/prior-predictive/prior-ready.json"
+   rhime sample --preparation-manifest run/prepare/prepare-manifest.json \
+     --kwargs '{"x_prior":{"pdf":"normal","mu":1,"sigma":0.2}}' \
+     --output-dir run/model-a
 
-   openghg-run record-check "$RUN_ROOT" \
-     "$OUTPUT_DIR/prior-predictive/prior-ready.json" --strict
+   rhime sample --preparation-manifest run/prepare/prepare-manifest.json \
+     --kwargs '{"x_prior":{"pdf":"normal","mu":1,"sigma":0.5}}' \
+     --output-dir run/model-b
 
-   openghg-inversions sample \
-     --params-file "$OGI_PARAMS_FILE" --model standard \
-     --prepared-inputs "$OUTPUT_DIR/prepare/prepared-inputs.nc" \
-     --preparation-manifest "$OUTPUT_DIR/prepare/prepare-manifest.json" \
-     --output-dir "$OUTPUT_DIR/sample"
+   rhime postprocess --sample-manifest run/model-a/sample-manifest.json \
+     --kwargs '{"output_format":"inv_out"}' --output-dir run/inversion-output
 
-   openghg-inversions diagnose \
-     --posterior "$OUTPUT_DIR/sample/posterior.nc" \
-     --sample-manifest "$OUTPUT_DIR/sample/sample-manifest.json" \
-     --output-dir "$OUTPUT_DIR/diagnose" \
-     --check-output "$OUTPUT_DIR/diagnose/convergence.json"
+   rhime postprocess --sample-manifest run/model-a/sample-manifest.json \
+     --kwargs '{"output_format":"paris","country_file":"/data/countries.nc"}' \
+     --output-dir run/paris
 
-   openghg-run record-check "$RUN_ROOT" \
-     "$OUTPUT_DIR/diagnose/convergence.json"
+``--model standard`` is the default for these commands. A manifest's family must
+match the selected route. Full-run ``rhime run`` choices and aliases are
+unchanged; saved-phase selection does not add CO2 configuration-file support to
+the full-run command.
 
-   openghg-inversions postprocess \
-     --params-file "$OGI_PARAMS_FILE" --model standard \
-     --prepared-inputs "$OUTPUT_DIR/prepare/prepared-inputs.nc" \
-     --preparation-manifest "$OUTPUT_DIR/prepare/prepare-manifest.json" \
-     --posterior "$OUTPUT_DIR/sample/posterior.nc" \
-     --sample-manifest "$OUTPUT_DIR/sample/sample-manifest.json" \
-     --output-dir "$OUTPUT_DIR/postprocess"
+Python callers can use the same handoffs:
 
-``openghg-run`` campaign stages
--------------------------------
+.. code-block:: python
 
-A campaign can place the same commands directly in named stages and declare
-their output directories.  No hand-authored SLURM script is required:
+   from openghg_inversions.rhime import DataConfig, RhimeOutputSpec
+   from openghg_inversions.rhime.stages import prepare, sample, postprocess
 
-.. code-block:: toml
+   preparation = DataConfig.from_params(preparation_options)
+   prepared_manifest = prepare(preparation, output_dir="run/prepare")
+   sample_manifest = sample(
+       prepared_manifest,
+       model={"x_prior": {"pdf": "normal", "mu": 1, "sigma": 0.2}},
+       output_dir="run/model-a",
+   )
+   result = postprocess(
+       sample_manifest,
+       output=RhimeOutputSpec(output_path="run/products"),
+   )
 
-   [[stage]]
-   name = "prepare"
-   command = '''openghg-inversions prepare --config "$CONFIG_FILE" --model standard --output-dir "$OUTPUT_DIR/prepare"'''
-   outputs = ["outputs/prepare"]
+For a runnable synthetic scientific parity example, see
+:download:`standard_handoffs.py <../../examples/standard_handoffs.py>`.
 
-   [[stage]]
-   name = "prior-predictive"
-   depends_on = ["prepare"]
-   command = '''openghg-inversions prior-predictive --config "$CONFIG_FILE" --model standard --prepared-inputs "$OUTPUT_DIR/prepare/prepared-inputs.nc" --preparation-manifest "$OUTPUT_DIR/prepare/prepare-manifest.json" --output-dir "$OUTPUT_DIR/prior-predictive" --check-output "$OUTPUT_DIR/prior-predictive/prior-ready.json" && openghg-run record-check "$RUN_ROOT" "$OUTPUT_DIR/prior-predictive/prior-ready.json"'''
-   outputs = ["outputs/prior-predictive"]
+Readiness and independent diagnosis
+-----------------------------------
 
-   [[stage]]
-   name = "sample"
-   depends_on = ["prior-predictive"]
-   required_checks = ["prior-predictive-readiness"]
-   command = '''openghg-inversions sample --config "$CONFIG_FILE" --model standard --prepared-inputs "$OUTPUT_DIR/prepare/prepared-inputs.nc" --preparation-manifest "$OUTPUT_DIR/prepare/prepare-manifest.json" --output-dir "$OUTPUT_DIR/sample"'''
-   outputs = ["outputs/sample"]
+``rhime prior-predictive --preparation-manifest ... --output-dir ...`` builds
+the selected model and draws prior predictions without posterior inference.
+``--draws`` controls its sample count. Loading and serialization errors
+propagate; supported model/input failures produce a readiness ``fail`` result.
+Readiness checks finite evidence, not scientific plausibility. See
+:doc:`prior_predictive_checking` for interpreting predictions.
 
-   [[stage]]
-   name = "diagnose"
-   depends_on = ["sample"]
-   command = '''openghg-inversions diagnose --posterior "$OUTPUT_DIR/sample/posterior.nc" --sample-manifest "$OUTPUT_DIR/sample/sample-manifest.json" --output-dir "$OUTPUT_DIR/diagnose" --check-output "$OUTPUT_DIR/diagnose/convergence.json" && openghg-run record-check "$RUN_ROOT" "$OUTPUT_DIR/diagnose/convergence.json"'''
-   outputs = ["outputs/diagnose"]
+.. _staged-convergence-check:
 
-   [[stage]]
-   name = "postprocess"
-   depends_on = ["prepare", "sample", "diagnose"]
-   command = '''openghg-inversions postprocess --config "$CONFIG_FILE" --model standard --prepared-inputs "$OUTPUT_DIR/prepare/prepared-inputs.nc" --preparation-manifest "$OUTPUT_DIR/prepare/prepare-manifest.json" --posterior "$OUTPUT_DIR/sample/posterior.nc" --sample-manifest "$OUTPUT_DIR/sample/sample-manifest.json" --output-dir "$OUTPUT_DIR/postprocess"'''
-   outputs = ["outputs/postprocess"]
+``rhime diagnose --posterior posterior.nc --output-dir ...`` independently
+reports maximum R-hat, minimum bulk/tail ESS, divergences and unassessable
+variables. ``--sample-manifest`` optionally supplies descriptive run context.
+Defaults are maximum R-hat 1.01, minimum bulk/tail ESS 400 and zero divergences.
+Available metrics exceeding a threshold yield ``fail``; missing metrics yield
+``unknown`` when none fails; otherwise the result is ``pass``. Neither check
+repairs missing evidence or performs posterior inference. ``--strict`` makes
+``fail`` exit nonzero. Both write schema-version-1 check JSON with producer
+``openghg_inversions``; ``--check-output`` and ``--check-stage`` select its path
+and stage label.
 
-``openghg-run`` owns campaign matrices, selected tasks, dependencies, scheduler
-state, declared-output hashing, continuation manifests, check recording and
-gates. OpenGHG Inversions owns data preparation, model selection, sampling,
-scientific products, check calculations and their threshold policy.
-``STAGE_INPUTS_MANIFEST`` may be used
-by application code to discover continued parent outputs, but it is not needed
-for full-graph submission and is not implicitly interpreted by OpenGHG
-Inversions. The
-predictable explicit paths above work in both modes.
+Other families and migration
+----------------------------
+
+Multisector and CO2 retain their existing staged interfaces pending separate
+handoff adoption. They require explicit ``--model``, a full configuration and
+``--prepared-inputs``/``--preparation-manifest`` for sampling. Postprocessing also
+requires ``--posterior`` and ``--sample-manifest``. Multisector retains its
+configuration restriction and output-binding record. CO2 takes an existing
+coherent preparation; see :doc:`co2_model_family` for its supported outputs.
+Linked CO2/O2 staging remains separate work.
+
+The new standard handoff format replaces historical standard staged envelopes
+and multi-artifact argument lists. Regenerate those handoffs with 0.8, or use the
+original package version to consume them. Existing numerical codecs, scientific
+Python APIs and final product formats retain their contracts.

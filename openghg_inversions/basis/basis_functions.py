@@ -6,7 +6,9 @@ including region and optional source ordering; the flux remains separate so
 the same object can project sensitivities and reconstruct gridded fluxes.
 
 NetCDF and Zarr persistence uses a versioned DataTree with separate ``basis``
-and ``flux`` children. Only namespaced OpenGHG Inversions metadata is retained.
+and ``flux`` children. Only namespaced OpenGHG Inversions metadata is retained,
+encoded in the root ``basis_metadata_json`` attribute. Legacy raw namespaced
+root attributes remain readable; a present JSON attribute must be valid.
 Loading reconstructs the operator and preserves its grid, state, region, and
 source coordinates. A shared flux may omit the source dimension; when source
 labels are present, they must exactly match the operator's labels.
@@ -25,6 +27,7 @@ Example:
 
 from __future__ import annotations
 
+import json
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -34,8 +37,8 @@ from typing import Any, Self, cast
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
-from openghg.analyse._utils import match_dataset_dims, stack_datasets
 
+from openghg_inversions._serialization_codecs import _numpy_scalar_json_default
 from openghg_inversions.array_ops import (
     force_align,
     require_unique_index,
@@ -48,9 +51,11 @@ from openghg_inversions.basis.operators import (
     RegionLabels,
 )
 from openghg_inversions.flux_sanitization import sanitize_flux_nonfinite
-from openghg_inversions.serialization import open_datatree_loaded
+from openghg_inversions.serialization import open_datatree_loaded, save_datatree
+from openghg_inversions.native_flux import _stack_flux_sources_with_alignment
 
 BASIS_METADATA_ATTR_PREFIX = "openghg_inversions:"
+_BASIS_METADATA_JSON_ATTR = "basis_metadata_json"
 BASIS_ARTIFACT_SOURCE_ATTR = f"{BASIS_METADATA_ATTR_PREFIX}basis_artifact_source"
 BASIS_ARTIFACT_PATH_ATTR = f"{BASIS_METADATA_ATTR_PREFIX}basis_artifact_path"
 _BASIS_ARTIFACT_SOURCE_FALLBACK_ATTR = "basis_artifact_source"
@@ -59,20 +64,33 @@ _BASIS_ARTIFACT_PATH_FALLBACK_ATTR = "basis_artifact_path"
 
 @dataclass(frozen=True, slots=True)
 class FluxWeightedBasis:
-    """A thin wrapper pairing a BasisOperator with a flux field.
+    """Pair a grid-to-state operator with a native prior flux field.
 
-    This class is intentionally lightweight: it stores the operator and the flux, and provides
-    constructors that build the appropriate operator from a basis representation.
+    Flux retains its inventory time axis independently of observation-aligned
+    responses passed to :meth:`sensitivity`. Arrays are borrowed; construction
+    preserves lazy flux payloads and does not make independent snapshots.
+    Source-specific operators own source order: indexed flux labels must match
+    their labels and are reordered accordingly.
 
     Attributes:
         operator: Basis operator that owns the state/grid mapping.
-        flux: Representative flux field associated with the basis.
+        flux: Native prior flux on the operator grid. Callers must supply
+            compatible spatial coordinates. May include ``time`` and ``source``.
         metadata: Namespaced metadata carried through DataTree serialization.
+            Values may be JSON scalars (including ``None`` and finite floats),
+            nested lists, or dictionaries with string keys. NumPy counterparts
+            of supported JSON scalars are normalized to Python scalars and
+            tuples to lists when saved.
+            Other values and non-string dictionary keys are rejected.
 
     Notes:
+        - Namespaced metadata is stored in the ``basis_metadata_json`` root
+          attribute. Both loading routes also accept legacy raw namespaced
+          attributes; malformed JSON metadata is rejected when present.
         - A flux with a `source` dimension can still be paired with a `BucketBasisOperator`; in that case
           the same basis is applied to each source when broadcasting occurs in downstream operations.
-        - Alignment/broadcasting details are currently delegated to the operator implementations.
+        - Spatial alignment and broadcasting are enforced by the operations
+          that combine flux, operator geometry, and state.
     """
 
     operator: BasisOperator
@@ -236,34 +254,13 @@ class FluxWeightedBasis:
                 source.
         """
         source_order = list(sources)
-        basis_flat = self.flat_basis()
         flux = self.flux
         if "source" in flux.dims:
             flux = flux.sel(source=source_order)
-
-        if not isinstance(basis_flat, dict):
-            return self.with_flux(flux)
-
-        missing = [source for source in source_order if source not in basis_flat]
-        if missing:
-            raise ValueError(f"BasisFunctions object is missing sources required by this run: {missing}")
-
-        operator_kwargs: dict[str, Any] = {"state_dim": self.operator.meta.state_dim}
-        source_dim = getattr(self.operator, "source_dim", None)
-        region_in_source_dim = getattr(self.operator, "region_in_source_dim", None)
-        if source_dim is not None:
-            operator_kwargs["source_dim"] = source_dim
-        if region_in_source_dim is not None:
-            operator_kwargs["region_in_source_dim"] = region_in_source_dim
-
-        return cast(
-            Self,
-            type(self).from_multi_source_flat_basis(
-                basis_flat={source: basis_flat[source] for source in source_order},
-                flux=flux,
-                operator_kwargs=operator_kwargs,
-                metadata=self.metadata,
-            ),
+        return type(self)(
+            operator=_select_operator_sources(self.operator, source_order),
+            flux=flux,
+            metadata=dict(self.metadata),
         )
 
     @property
@@ -323,11 +320,19 @@ class FluxWeightedBasis:
     def to_datatree(self) -> xr.DataTree:
         """Serialise to a DataTree with `basis` and `flux` groups.
 
+        Root namespaced metadata is encoded as JSON according to the class's
+        metadata contract, normalizing supported NumPy scalars and tuples.
+        Array payloads remain borrowed and lazy.
+
         Returns:
             A DataTree with:
               - `basis`: BasisOperator DataTree (via operator.to_datatree()).
               - `flux`: a Dataset containing the flux DataArray as variable `flux`.
 
+        Raises:
+            TypeError: If namespaced metadata contains unsupported values or
+                non-string dictionary keys.
+            ValueError: If namespaced metadata contains non-finite floats.
         """
         basis_functions = self.validated()
         dt_basis = basis_functions.operator.to_datatree()
@@ -361,36 +366,15 @@ class FluxWeightedBasis:
         Raises:
             KeyError: If required groups are missing.
             ValueError: If the schema/version is unsupported, the flux
-                variable is missing, or stored multi-source flux labels do not
-                match the basis operator.
+                variable is missing, serialized metadata is invalid, or stored
+                multi-source flux labels do not match the basis operator.
         """
-        schema = dt.attrs.get("schema", None)
-        version = dt.attrs.get("schema_version", None)
-        if schema is not None and schema != "openghg_inversions.flux_weighted_basis":
-            raise ValueError(f"Unexpected schema: {schema!r}")
-        if version is not None and int(version) != 1:
-            raise ValueError(f"Unexpected schema_version: {version!r}")
-
-        if "basis" not in dt:
-            raise KeyError("Missing 'basis' group in DataTree.")
-        if "flux" not in dt:
-            raise KeyError("Missing 'flux' group in DataTree.")
-
-        if not isinstance(dt["basis"], xr.DataTree):
-            raise ValueError("'basis' is not an xr.DataTree.")
-
-        operator = BasisOperator.decode_datatree(dt["basis"])  # type: ignore [arg-type]
-
+        metadata = _basis_artifact_metadata(dt)
+        operator = BasisOperator.decode_datatree(cast(xr.DataTree, dt["basis"]))
         ds_flux = dt["flux"].to_dataset()
         if "flux" not in ds_flux:
             raise ValueError("Missing variable 'flux' in dt['flux'] dataset.")
         flux = ds_flux["flux"]
-        metadata: dict[str, Any] = {}
-        for key, value in dt.attrs.items():
-            key = str(key)
-            if key.startswith(BASIS_METADATA_ATTR_PREFIX):
-                metadata[key] = value
-
         return cls(operator=operator, flux=flux, metadata=metadata)
 
     def sensitivity(self, fp_x_flux: xr.DataArray, fillna: bool = True) -> xr.DataArray:
@@ -414,33 +398,38 @@ class FluxWeightedBasis:
 
         Args:
             output_file: Path to a ``.nc`` or ``.zarr`` artifact. NetCDF is used
-                for ``.nc`` paths and Zarr is used for ``.zarr`` paths.
+                for ``.nc`` paths and Zarr is used for ``.zarr`` paths. Suffixes
+                are case-insensitive and the requested path is preserved.
+                Zarr storage lazily regularizes chunks without changing borrowed
+                arrays. Metadata follows the class's JSON value contract.
 
         Raises:
-            ValueError: If ``output_file`` does not end with ``.nc`` or ``.zarr``.
+            TypeError: If retained metadata contains unsupported values or
+                non-string dictionary keys.
+            ValueError: If ``output_file`` does not end with ``.nc`` or ``.zarr``,
+                or retained metadata contains non-finite floats.
         """
         output_file = Path(output_file)
         suffix = output_file.suffix.lower()
-        if suffix == ".nc":
-            self.to_datatree().to_netcdf(output_file)
-        elif suffix == ".zarr":
-            self.to_datatree().to_zarr(output_file)
-        else:
+        if suffix not in (".nc", ".zarr"):
             raise ValueError(f"BasisFunctions artifact path {output_file} must end in '.nc' or '.zarr'.")
+        save_datatree(self.to_datatree(), output_file)
 
     @classmethod
     def load(cls: type[Self], file_path: str | Path) -> Self:
         """Load a basis object saved with ``BasisFunctions.save``.
 
-        The DataTree is loaded while the xarray file context is open, so the
-        returned ``BasisFunctions`` object does not retain references to closed
-        file handles.
+        Both the operator and saved flux payloads are loaded eagerly while the
+        xarray file context is open, so the returned object retains no closed
+        file handles. Use :meth:`reuse_operator` to bind a current native prior
+        without reading the saved flux payloads.
 
         Args:
             file_path: Path to a ``BasisFunctions`` DataTree artifact.
 
         Returns:
-            The reconstructed basis object.
+            The reconstructed operator paired with its saved native prior,
+            preserving the saved state, grid, and source coordinates.
 
         Raises:
             OSError: If the artifact cannot be opened.
@@ -450,6 +439,54 @@ class FluxWeightedBasis:
                 operator state is invalid.
         """
         return cast(Self, cls.from_datatree(open_datatree_loaded(file_path)))
+
+    @classmethod
+    def reuse_operator(cls: type[Self], file_path: str | Path, *, flux: xr.DataArray) -> Self:
+        """Load a saved operator and bind current native prior flux.
+
+        Only the operator subtree is materialized. Saved flux payloads are not
+        read. Runtime sources select and order source-specific partitions;
+        missing sources and incompatible grids fail at this binding boundary.
+        Use :meth:`load` for reconstruction with the saved retained prior.
+
+        Args:
+            file_path: Retained ``.nc`` or ``.zarr`` basis artifact.
+            flux: Borrowed current native prior on the operator grid, optionally
+                with ``time`` and ``source``. Source labels must be unique
+                strings. A source-specific operator must contain each runtime
+                source; unused saved sources are omitted. Spatial coordinates
+                are matched within
+                :func:`~openghg_inversions.array_ops.force_align` tolerances.
+                Dask-backed flux payloads remain lazy.
+
+        Returns:
+            Saved operator and metadata paired with current flux, with
+            non-finite flux values replaced by zero. Runtime source order is
+            retained without changing the operator's scientific dimension names.
+
+        Raises:
+            OSError: If the artifact cannot be opened.
+            KeyError: If a required DataTree group or basis variable is missing.
+            ValueError: If artifact schema, metadata, or operator is invalid, its flux
+                variable is missing, or current flux source labels or spatial
+                coordinates are incompatible.
+        """
+        engine = "zarr" if Path(file_path).suffix.lower() == ".zarr" else None
+        with xr.open_datatree(file_path, engine=engine) as dt:
+            metadata = _basis_artifact_metadata(dt)
+            if "flux" not in dt["flux"].to_dataset():
+                raise ValueError("Missing variable 'flux' in dt['flux'] dataset.")
+            dt["basis"].load()
+            operator = BasisOperator.decode_datatree(cast(xr.DataTree, dt["basis"]))
+        if "source" in flux.dims:
+            operator = _select_operator_sources(operator, _validated_flux_source_labels(flux))
+        flux = force_align(
+            flux,
+            reference=operator.basis_matrix.reset_coords(drop=True),
+            dims=operator.meta.grid_dims,
+        )
+        flux = sanitize_flux_nonfinite(flux, context="retained basis runtime flux")
+        return cls(operator=operator, flux=flux, metadata=metadata)
 
     def state_to_native(self, state: xr.DataArray) -> xr.DataArray:
         """Reconstruct linear native scaling with the coarse-to-fine map (prolongation).
@@ -572,43 +609,37 @@ class FluxWeightedBasis:
         raise TypeError(f"Unexpected type for operator.basis_flat: {type(basis_flat)!r}")
 
 
-def basis_functions_from_fp_all_flat_basis(
+def basis_functions_from_flat_basis(
     *,
-    fp_all: dict,
+    flux: xr.DataArray,
     basis_flat: xr.DataArray | Mapping[str, xr.DataArray],
     metadata: Mapping[str, Any] | None = None,
 ) -> FluxWeightedBasis:
-    """Compatibility adapter that constructs a basis object from flat basis data.
+    """Attach resolved native flux to shared or source-specific flat labels.
 
-    This is also the public handoff for project-owned flat-basis algorithms in
-    copied RHIME runners. A single two-dimensional array defines a shared
-    spatial basis. A source-keyed mapping defines source-specific bases and is
-    restricted and ordered to match runtime flux sources when ``fp_all`` is
-    sector resolved. In both cases the retained flux is reconstructed from the
-    current ``fp_all`` input rather than from the flat-basis producer.
+    Source-specific labels are selected in the flux source order. The caller
+    owns source combination, native time alignment, and spatial compatibility.
+    Constructors validate source labels. Inputs remain borrowed and flux
+    payloads may remain lazy; partition geometry is materialized by the operator.
+    Prepared basis state coordinates use ``region``.
 
     Args:
-        fp_all: Legacy merged-data dictionary containing a ``".flux"`` side
-            channel and optional ``".split_by_sectors"`` flag.
-        basis_flat: Two-dimensional shared flat basis array, or source-keyed
-            two-dimensional flat basis arrays, produced by a compatible basis
-            algorithm or legacy loading path.
-        metadata: Optional namespaced metadata to carry on the basis object.
+        flux: Resolved native prior on the partition grid, optionally with
+            ``time`` and ``source``. Non-finite values are replaced with zero.
+        basis_flat: Shared spatial region labels, or source-keyed partitions.
+            For source-indexed flux, every runtime source must have a partition;
+            extra partitions are omitted and runtime source order is retained.
+            A flux without ``source`` is shared across all supplied partitions.
+        metadata: Optional namespaced metadata retained with the basis object.
 
     Returns:
-        A retained ``BasisFunctions`` object with flux reconstructed from
-        ``fp_all``.
+        Operator paired with the current native prior, ready for projection
+        of observation-aligned responses and gridded flux reconstruction.
 
     Raises:
-        TypeError: If a runtime flux entry or basis input has an unsupported
-            type.
-        ValueError: If runtime flux is missing or inconsistent, a
-            source-specific basis omits a runtime source, or basis labels and
-            dimensions violate the retained-basis contract.
-        xarray.AlignmentError: If basis and current-run flux grids are not
-            physically compatible.
+        ValueError: If source labels are invalid, a runtime source partition is
+            missing, or partition geometry cannot form a valid operator.
     """
-    flux = flux_from_fp_all(fp_all)
     if isinstance(basis_flat, Mapping):
         selected_basis = dict(basis_flat)
         if "source" in flux.dims:
@@ -632,115 +663,30 @@ def basis_functions_from_fp_all_flat_basis(
     )
 
 
-def flux_from_fp_all(fp_all: dict) -> xr.DataArray:
-    """Legacy adapter that builds representative flux from ``fp_all``.
-
-    This compatibility helper attaches current-run flux when loading a legacy
-    flat basis artifact as retained ``BasisFunctions``.
-
-    Args:
-        fp_all: Legacy merged-data dictionary containing ``fp_all[".flux"]`` and
-            optional ``fp_all[".split_by_sectors"]`` metadata.
-
-    Returns:
-        A combined flux array for non-sectoral workflows, or a source-stacked
-        flux array for sectoral workflows. Source-stacked output follows the
-        insertion order of ``fp_all[".flux"]``.
-
-    Raises:
-        ValueError: If ``fp_all[".flux"]`` is missing or empty, or a sectoral
-            source mapping mixes timed and timeless arrays or contains unequal,
-            missing, or duplicate native time coordinates.
-        TypeError: If a flux entry cannot be converted to a ``DataArray``.
-    """
-    if ".flux" not in fp_all or not fp_all[".flux"]:
-        raise ValueError("Cannot construct BasisFunctions object: fp_all['.flux'] is missing or empty.")
-
-    flux_entries = fp_all[".flux"]
-    flux_arrays = {key: _extract_flux_dataarray(value, flux_key=key) for key, value in flux_entries.items()}
-
-    if _is_multi_source_workflow(fp_all):
-        flux = _stack_flux_sources_with_alignment(flux_arrays)
-    else:
-        flux = _combine_flux_sources_like_modelscenario(flux_arrays)
-
-    return sanitize_flux_nonfinite(
-        flux,
-        context="retained basis flux from fp_all",
-        trust_attrs=len(flux_arrays) == 1,
-    )
-
-
 def _serialisable_basis_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
-    """Keep only namespaced metadata that can be stored as DataTree root attributes."""
-    return {key: value for key, value in metadata.items() if str(key).startswith(BASIS_METADATA_ATTR_PREFIX)}
+    """Encode namespaced JSON metadata in one backend-safe root attribute."""
 
+    def require_string_keys(value: Any) -> None:
+        if isinstance(value, dict):
+            if not all(isinstance(key, str) for key in value):
+                raise TypeError("Basis metadata dictionaries must have string keys.")
+            for item in value.values():
+                require_string_keys(item)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                require_string_keys(item)
 
-def _is_multi_source_workflow(fp_all: dict) -> bool:
-    """Interpret legacy ``fp_all`` metadata to determine multi-source mode."""
-    split_by_sectors = fp_all.get(".split_by_sectors")
-    if split_by_sectors is not None:
-        return bool(split_by_sectors)
-
-    flux_entries = fp_all.get(".flux")
-    return isinstance(flux_entries, dict) and len(flux_entries) > 1
-
-
-def _extract_flux_dataarray(flux_entry: object, flux_key: str) -> xr.DataArray:
-    """Extract flux from legacy ``fp_all[".flux"]`` entry containers.
-
-    Args:
-        flux_entry: Legacy flux entry, xarray ``Dataset``, or ``DataArray``.
-        flux_key: Source key used only for error reporting.
-
-    Returns:
-        The ``flux`` DataArray.
-
-    Raises:
-        TypeError: If the entry does not expose a flux DataArray.
-    """
-    flux_entry_data = getattr(flux_entry, "data", None)
-    if isinstance(flux_entry_data, xr.Dataset) and "flux" in flux_entry_data:
-        return flux_entry_data["flux"]
-    if isinstance(flux_entry, xr.Dataset) and "flux" in flux_entry:
-        return flux_entry["flux"]
-    if isinstance(flux_entry, xr.DataArray):
-        return flux_entry
-
-    raise TypeError(
-        "Could not extract a flux DataArray from fp_all['.flux']. "
-        f"Got type {type(flux_entry)!r} for flux entry {flux_key!r}."
-    )
-
-
-def _combine_flux_sources_like_modelscenario(flux_arrays: dict[str, xr.DataArray]) -> xr.DataArray:
-    """Legacy adapter that reproduces ``ModelScenario`` flux combination.
-
-    Args:
-        flux_arrays: Flux arrays keyed by legacy ``fp_all[".flux"]`` source name.
-
-    Returns:
-        A single flux array with non-time grid dimensions aligned and multiple
-        non-sectoral sources summed or time-stacked as ``ModelScenario`` did.
-    """
-    flux_datasets = [
-        arr.rename("flux").to_dataset() if arr.name != "flux" else arr.to_dataset()
-        for arr in flux_arrays.values()
-    ]
-
-    if len(flux_datasets) == 1:
-        return flux_datasets[0]["flux"]
-
-    dims = [dim for dim in flux_datasets[0].dims if dim != "time"]
-    flux_datasets = match_dataset_dims(flux_datasets, dims=dims)
-    if "time" in flux_datasets[0].dims:
-        flux_stacked = stack_datasets(flux_datasets, dim="time", method="ffill")
-    else:
-        flux_stacked = flux_datasets[0]
-        for flux_dataset in flux_datasets[1:]:
-            flux_stacked = flux_stacked + flux_dataset
-
-    return flux_stacked["flux"]
+    retained = {
+        key: value
+        for key, value in metadata.items()
+        if isinstance(key, str) and key.startswith(BASIS_METADATA_ATTR_PREFIX)
+    }
+    require_string_keys(retained)
+    return {
+        _BASIS_METADATA_JSON_ATTR: json.dumps(
+            retained, default=_numpy_scalar_json_default, allow_nan=False
+        )
+    }
 
 
 def _validated_flux_source_labels(flux: xr.DataArray) -> tuple[str, ...]:
@@ -791,115 +737,6 @@ def _reorder_flux_to_operator_sources(flux: xr.DataArray, operator_sources: tupl
     return flux.sel(source=list(operator_sources))
 
 
-def _require_matching_source_time_indexes(
-    flux_arrays: Mapping[str, xr.DataArray],
-) -> None:
-    """Reject source fluxes whose native time axes cannot be stacked safely.
-
-    Sources may all be timeless or may all use the same exact time index.
-    Mixed timed/timeless inputs and unequal indexes require an explicit
-    temporal resampling policy and are therefore rejected here.
-
-    Args:
-        flux_arrays: Source-labelled flux arrays.
-
-    Raises:
-        ValueError: If the mapping is empty, source labels are invalid, or
-            time dimensions/indexes are incompatible.
-    """
-    if not flux_arrays:
-        raise ValueError("Cannot stack an empty source-flux mapping.")
-
-    source_labels = tuple(flux_arrays)
-    if not all(isinstance(source, str) for source in source_labels):
-        raise ValueError("Source-flux mapping labels must all be strings.")
-    if len(set(source_labels)) != len(source_labels):
-        raise ValueError("Source-flux mapping labels must be unique.")
-
-    timed_sources = {source: "time" in flux.dims for source, flux in flux_arrays.items()}
-    if len(set(timed_sources.values())) > 1:
-        raise ValueError(
-            "Cannot stack timed and timeless source fluxes; explicitly align or "
-            "resample every source to a common time index first."
-        )
-    if not any(timed_sources.values()):
-        return
-
-    reference_source = source_labels[0]
-    for source in source_labels:
-        flux = flux_arrays[source]
-        if "time" not in flux.coords or flux["time"].dims != ("time",):
-            raise ValueError(
-                "Cannot stack source fluxes without an explicit one-dimensional time coordinate; "
-                f"source {source!r} has only a positional time dimension."
-            )
-        if not flux.get_index("time").is_unique:
-            raise ValueError(
-                "Cannot stack source fluxes with duplicate time coordinates; "
-                f"source {source!r} must be made unique first."
-            )
-
-    reference_index = flux_arrays[reference_source].get_index("time")
-    unequal_sources = [
-        source
-        for source in source_labels[1:]
-        if not flux_arrays[source].get_index("time").equals(reference_index)
-    ]
-    if unequal_sources:
-        raise ValueError(
-            "Cannot stack source fluxes with unequal time indexes; explicitly "
-            "align or resample every source to a common time index first. "
-            f"Reference source {reference_source!r}; unequal sources {unequal_sources!r}."
-        )
-
-
-def _stack_flux_sources_with_alignment(
-    flux_arrays: Mapping[str, xr.DataArray],
-) -> xr.DataArray:
-    """Stack source fluxes after exact temporal and dimensional validation.
-
-    Args:
-        flux_arrays: Source-labeled arrays in the output source order. Arrays
-            must have identical dimension sets. Timed arrays must all carry the
-            same explicit, unique ``time`` index. Non-time grid coordinates are
-            aligned to the first source without interpolation.
-
-    Returns:
-        Flux with a leading ``source`` dimension in mapping insertion order and
-        all remaining dimensions in the first source's order.
-
-    Raises:
-        ValueError: If the mapping is empty, labels are invalid, dimension sets
-            differ, time coordinates are missing or duplicated, or indexes
-            cannot be aligned exactly.
-    """
-    _require_matching_source_time_indexes(flux_arrays)
-    first_key = next(iter(flux_arrays))
-    reference = flux_arrays[first_key]
-    reference_dims = set(reference.dims)
-    dims_to_align = [dim for dim in reference.dims if dim != "time"]
-
-    aligned_flux = {}
-    for key, arr in flux_arrays.items():
-        if set(arr.dims) != reference_dims:
-            raise ValueError(
-                "Cannot stack source fluxes with different dimensions; "
-                f"reference source {first_key!r} has {reference.dims!r}, "
-                f"source {key!r} has {arr.dims!r}."
-            )
-        aligned_flux[key] = force_align(
-            arr.transpose(*reference.dims),
-            reference=reference,
-            dims=dims_to_align,
-        )
-
-    return xr.concat(
-        [arr.expand_dims({"source": [key]}) for key, arr in aligned_flux.items()],
-        dim="source",
-        join="exact",
-    )
-
-
 def _shuffle_region_labels(basis_flat: xr.DataArray) -> xr.DataArray:
     """Shuffle integer-like region labels for plotting clarity.
 
@@ -929,3 +766,57 @@ def _shuffle_region_labels(basis_flat: xr.DataArray) -> xr.DataArray:
 
 # Friendly alias
 BasisFunctions = FluxWeightedBasis
+
+
+def _basis_artifact_metadata(dt: xr.DataTree) -> dict[str, Any]:
+    """Validate the retained schema and restore namespaced metadata."""
+    schema = dt.attrs.get("schema", None)
+    version = dt.attrs.get("schema_version", None)
+    if schema is not None and schema != "openghg_inversions.flux_weighted_basis":
+        raise ValueError(f"Unexpected schema: {schema!r}")
+    if version is not None and int(version) != 1:
+        raise ValueError(f"Unexpected schema_version: {version!r}")
+
+    if "basis" not in dt:
+        raise KeyError("Missing 'basis' group in DataTree.")
+    if "flux" not in dt:
+        raise KeyError("Missing 'flux' group in DataTree.")
+
+    if not isinstance(dt["basis"], xr.DataTree):
+        raise ValueError("'basis' is not an xr.DataTree.")
+
+    if _BASIS_METADATA_JSON_ATTR in dt.attrs:
+        try:
+            decoded_metadata = json.loads(dt.attrs[_BASIS_METADATA_JSON_ATTR])
+            if not isinstance(decoded_metadata, dict) or not all(
+                key.startswith(BASIS_METADATA_ATTR_PREFIX) for key in decoded_metadata
+            ):
+                raise ValueError("Expected a dictionary of namespaced basis metadata.")
+            # Reject non-finite JSON numbers accepted by Python's decoder.
+            json.dumps(decoded_metadata, allow_nan=False)
+        except (TypeError, ValueError) as error:
+            raise ValueError("Invalid serialized basis metadata JSON.") from error
+        return decoded_metadata
+
+    metadata: dict[str, Any] = {}
+    for key, value in dt.attrs.items():
+        key = str(key)
+        if key.startswith(BASIS_METADATA_ATTR_PREFIX):
+            metadata[key] = value
+
+    return metadata
+
+
+def _select_operator_sources(operator: BasisOperator, sources: Sequence[str]) -> BasisOperator:
+    """Select source-specific partitions while preserving scientific dimensions."""
+    if not isinstance(operator, MultiSourceBucketBasisOperator):
+        return operator
+    missing = [source for source in sources if source not in operator.basis_flat]
+    if missing:
+        raise ValueError(f"BasisFunctions object is missing sources required by this run: {missing}")
+    return MultiSourceBucketBasisOperator(
+        basis_flat={source: operator.basis_flat[source] for source in sources},
+        meta=operator.meta,
+        source_dim=operator.source_dim,
+        region_in_source_dim=operator.region_in_source_dim,
+    )

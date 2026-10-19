@@ -11,12 +11,14 @@ from collections import defaultdict
 from collections.abc import Mapping
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import xarray as xr
 
+from openghg_inversions.postprocessing.contracts import OutputContract
+
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.models.priors import PriorArgs, prior_records
 from openghg_inversions.models.scalar_sigma import (
     ScalarSigmaEigenbasis,
     add_scalar_sigma_eigen_likelihood,
@@ -36,6 +38,7 @@ from openghg_inversions.rhime.builders import (
 )
 from openghg_inversions.rhime.materialization import materialize_pymc_inputs
 from openghg_inversions.rhime.outputs import annotate_likelihood_trace
+from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 from openghg_inversions.sigma import SigmaAlignment
 
@@ -70,8 +73,9 @@ def annotate_co2_trace(
     Returns:
         The annotated trace.
     """
-    roles = dict(built.variable_roles)
-    metadata = dict(built.metadata)
+    trace.attrs["rhime_priors"] = json.dumps(prior_records(built.model))
+    roles = dict(built.output_contract.variable_roles)
+    metadata = dict(built.output_contract.metadata)
     trace.attrs["rhime_variable_roles"] = json.dumps(roles, sort_keys=True)
     trace.attrs["rhime_model_metadata"] = json.dumps(metadata, sort_keys=True)
 
@@ -413,14 +417,16 @@ def build_rhime_co2(
             variable_roles[role] = name
     built = RhimeModelBuildResult(
         model=model,
-        variable_roles=variable_roles,
-        metadata={
-            "recipe": "co2",
-            "kind": "builtin",
-            "prior": "correlated arithmetic-moment lognormal",
-            "basis_artifact_source": getattr(prepared, "basis_artifact_source", "unknown"),
-            "basis_artifact_path": getattr(prepared, "basis_artifact_path", None),
-        },
+        output_contract=OutputContract(
+            variable_roles=variable_roles,
+            metadata={
+                "recipe": "co2",
+                "kind": "builtin",
+                "prior": "correlated arithmetic-moment lognormal",
+                "basis_artifact_source": getattr(prepared, "basis_artifact_source", "unknown"),
+                "basis_artifact_path": getattr(prepared, "basis_artifact_path", None),
+            },
+        ),
     )
     return built
 
@@ -433,7 +439,7 @@ def run_rhime_co2(
     fixed_model_mismatch: float | xr.DataArray | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
-    sampler: RhimeSampler | None = None,
+    sampler: RhimeSampler | Literal["default"] = "default",
     no_model_error: bool = False,
     use_bc: bool = False,
     bc_prior: PriorArgs | None = None,
@@ -468,7 +474,7 @@ def run_rhime_co2(
         likelihood_kwargs: Options passed only to the selected likelihood. For
             the scalar-sigma eigen likelihood, pass an ``eigenbasis_path`` and
             ``sigma_prior``; the cache is loaded before model construction.
-        sampler: Optional RHIME sampler configuration.
+        sampler: Sampler configuration or ``"default"``; explicit ``None`` is invalid.
         no_model_error: If true, omit inferred additive model error.
         use_bc: Whether to include prepared ``H_bc`` boundary sensitivity.
         bc_prior: Optional prior for boundary-condition scaling.
@@ -483,10 +489,12 @@ def run_rhime_co2(
         manifests.
 
     Raises:
+        TypeError: If the sampler is neither a configuration nor ``"default"``.
         ValueError: If model-error options contradict ``no_model_error``, or
             prepared inputs are missing, inconsistent, or fail model
             construction.
     """
+    active_sampler = resolve_sampler(sampler)
     built = build_rhime_co2(
         prepared_inputs=prepared_inputs,
         sigma_alignment=sigma_alignment,
@@ -501,7 +509,7 @@ def run_rhime_co2(
         offset_prior=offset_prior,
         offset_args=offset_args,
     )
-    trace = sample_rhime_model(built, RhimeSampler() if sampler is None else sampler)
+    trace = sample_rhime_model(built, active_sampler)
     trace = annotate_co2_trace(
         trace,
         built,

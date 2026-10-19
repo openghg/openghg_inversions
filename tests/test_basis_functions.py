@@ -10,40 +10,26 @@ from sparse import SparseArray
 
 import openghg_inversions.basis as basis_package
 import openghg_inversions.basis._functions as basis_module
+import openghg_inversions.hbmcmc.legacy_basis as legacy_basis_module
 from openghg_inversions.basis.algorithms import ConnectedComponentSplitStrategy
-from openghg_inversions.basis._functions import (
-    basis,
+from openghg_inversions.basis._functions import _mean_fp_times_mean_flux
+from openghg_inversions.basis.compatibility import basis
+from openghg_inversions.hbmcmc.legacy_basis import (
     basis_functions,
     _flux_fp_from_fp_all,
-    _mean_fp_times_mean_flux,
-)
-from openghg_inversions.basis import (
     basis_weights_from_fp_all,
-    bucket_basis_from_weights,
     bucket_basis_function,
     fixed_outer_regions_basis,
-    load_country_region_classes,
-    load_intem_outer_regions,
-    paired_abs_response_weights,
-    quadtree_basis_from_weights,
     quadtree_basis_function,
-    region_constrained_basis_from_weights,
-    region_constrained_fixed_outer_basis_from_weights,
     region_constrained_basis_function,
-)
-from openghg_inversions.basis._wrapper import (
-    _save_basis,
-    _save_basis_datatree,
-    load_basis_functions,
-    make_basis_functions,
-)
-from openghg_inversions.basis.basis_functions import (
-    BASIS_ARTIFACT_PATH_ATTR,
-    BASIS_ARTIFACT_SOURCE_ATTR,
-    BasisFunctions,
+    load_basis_functions_from_fp_all as load_basis_functions,
+    make_basis_functions_from_fp_all as make_basis_functions,
     basis_functions_from_fp_all_flat_basis,
     flux_from_fp_all,
 )
+from openghg_inversions.basis import (bucket_basis_from_weights, load_country_region_classes, load_intem_outer_regions, paired_abs_response_weights, quadtree_basis_from_weights, region_constrained_basis_from_weights, region_constrained_fixed_outer_basis_from_weights)
+from openghg_inversions.basis.compatibility import (_save_basis, _save_basis_datatree)
+from openghg_inversions.basis.basis_functions import (BASIS_ARTIFACT_PATH_ATTR, BASIS_ARTIFACT_SOURCE_ATTR, BasisFunctions)
 from openghg_inversions.basis.operators import (
     BucketBasisOperator,
     MultiSourceBucketBasisOperator,
@@ -54,7 +40,7 @@ from openghg_inversions.flux_sanitization import (
     NONFINITE_POLICY_ZERO_FILL,
     sanitize_flux_nonfinite,
 )
-from openghg_inversions.inversion_data import data_processing_surface_notracer
+from openghg_inversions.hbmcmc.legacy_data import data_processing_surface_notracer
 
 from helpers import (
     convert_old_multisector_H_to_gathered,
@@ -337,7 +323,7 @@ def test_flux_from_fp_all_sanitizes_nonfinite_multisource():
     assert float(retained_flux.sel(source="b").isel(time=1, lat=1, lon=1)) == 0.0
     metadata = _flux_nonfinite_metadata(retained_flux)
     assert metadata.policy == NONFINITE_POLICY_ZERO_FILL
-    assert metadata.context == "retained basis flux from fp_all"
+    assert metadata.context == "retained basis runtime flux"
     assert metadata.source is None
 
 
@@ -357,7 +343,7 @@ def test_flux_from_fp_all_refreshes_source_stacked_metadata() -> None:
     metadata = _flux_nonfinite_metadata(retained_flux)
 
     assert metadata.policy == NONFINITE_POLICY_ZERO_FILL
-    assert metadata.context == "retained basis flux from fp_all"
+    assert metadata.context == "retained basis runtime flux"
     assert metadata.source is None
 
 
@@ -434,13 +420,13 @@ def test_bucket_basis_from_weights_sanitizes_nonfinite_before_dispatch(monkeypat
         nregion: int,
         bucket: float,
         domain: str,
-        country_directory: str | None = None,
+        landsea_indices: np.ndarray | None = None,
     ) -> np.ndarray:
         """Assert non-finite cells were replaced and normalized before dispatch."""
         assert nregion == 4
         assert bucket == 1
         assert domain == "TEST"
-        assert country_directory == "/tmp/countries"
+        assert landsea_indices is not None
         np.testing.assert_allclose(grid, np.array([[0.0, 0.0], [0.0, 1.0]]))
         return np.arange(1, grid.size + 1).reshape(grid.shape)
 
@@ -451,7 +437,7 @@ def test_bucket_basis_from_weights_sanitizes_nonfinite_before_dispatch(monkeypat
         "2019-01-01",
         "TEST",
         nbasis=4,
-        country_directory="/tmp/countries",
+        landsea_indices=np.ones(weights.shape, dtype=int),
     )
 
     assert basis_func.dims == ("lat", "lon", "time")
@@ -473,16 +459,16 @@ def test_bucket_basis_from_weights_preserves_all_negative_normalization(monkeypa
         nregion: int,
         bucket: float,
         domain: str,
-        country_directory: str | None = None,
+        landsea_indices: np.ndarray | None = None,
     ) -> np.ndarray:
         """Assert all-negative weights are still divided by their maximum."""
-        del nregion, bucket, domain, country_directory
+        del nregion, bucket, domain, landsea_indices
         np.testing.assert_allclose(grid, np.array([[4.0, 2.0], [1.0, 3.0]]))
         return np.arange(1, grid.size + 1).reshape(grid.shape)
 
     monkeypatch.setattr(basis_module, "weighted_algorithm", fake_weighted_algorithm)
 
-    basis_func = bucket_basis_from_weights(weights, "2019-01-01", "TEST")
+    basis_func = bucket_basis_from_weights(weights, "2019-01-01", "TEST", landsea_classes=xr.ones_like(weights, dtype=int))
 
     assert basis_func.dims == ("lat", "lon", "time")
     assert basis_func.attrs["domain"] == "TEST"
@@ -550,7 +536,8 @@ def test_quadtree_and_bucket_basis_from_weights_reject_empty_sanitized_weights(f
     )
 
     with pytest.raises(ValueError, match=message):
-        factory(weights, "2019-01-01", "TEST")
+        kwargs = {"landsea_classes": xr.ones_like(weights, dtype=int)} if factory is bucket_basis_from_weights else {}
+        factory(weights, "2019-01-01", "TEST", **kwargs)
 
 
 def test_region_constrained_basis_from_weights_all_zero_falls_back_to_area():
@@ -743,13 +730,13 @@ def test_bucket_basis_from_weights_matches_fp_all_adapter(monkeypatch):
         nregion: int,
         bucket: float,
         domain: str,
-        country_directory: str | None = None,
+        landsea_indices: np.ndarray | None = None,
     ) -> np.ndarray:
         """Return deterministic labels while recording expected adapter args."""
         assert nregion == 4
         assert bucket == 1
         assert domain == "TEST"
-        assert country_directory == "/tmp/countries"
+        assert landsea_indices is not None
         assert np.isclose(grid.max(), 1.0)
         return np.arange(1, grid.size + 1).reshape(grid.shape)
 
@@ -760,7 +747,7 @@ def test_bucket_basis_from_weights_matches_fp_all_adapter(monkeypatch):
         "2019-01-01",
         "TEST",
         nbasis=4,
-        country_directory="/tmp/countries",
+        landsea_indices=np.ones(weights.shape, dtype=int),
     )
     from_fp_all = bucket_basis_function(
         fp_all,
@@ -768,7 +755,7 @@ def test_bucket_basis_from_weights_matches_fp_all_adapter(monkeypatch):
         "TEST",
         emissions_name=["test-source"],
         nbasis=4,
-        country_directory="/tmp/countries",
+        landsea_indices=np.ones(weights.shape, dtype=int),
     )
 
     xr.testing.assert_equal(from_fp_all, from_weights)
@@ -999,16 +986,13 @@ def test_region_constrained_basis_from_weights_preserves_contrast_score_acceptan
 def test_legacy_basis_function_names_warn(monkeypatch, legacy_name, canonical_name):
     """Legacy compressed basis function names warn and delegate to canonical names."""
     sentinel = object()
-    monkeypatch.setattr(basis_module, canonical_name, lambda *args, **kwargs: sentinel)
+    monkeypatch.setattr(legacy_basis_module, canonical_name, lambda *args, **kwargs: sentinel)
 
     with pytest.warns(DeprecationWarning, match=f"{legacy_name}.*deprecated"):
-        result = getattr(basis_module, legacy_name)("arg", option=True)
+        result = getattr(legacy_basis_module, legacy_name)("arg", option=True)
 
     assert result is sentinel
-    with pytest.warns(DeprecationWarning, match=f"{legacy_name}.*deprecated"):
-        package_result = getattr(basis_package, legacy_name)("arg", option=True)
-
-    assert package_result is sentinel
+    assert not hasattr(basis_package, legacy_name)
 
 
 def test_region_constrained_compressed_name_is_not_exported():
@@ -1290,32 +1274,15 @@ def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, 
     outer_regions.to_netcdf(outer_path)
     seen: dict[str, xr.DataArray] = {}
 
-    def fake_quadtree_basis(
-        fp_all,
-        start_date,
-        domain,
-        emissions_name=None,
-        nbasis=100,
-        country_directory=None,
-        abs_flux=False,
-        mask=None,
-    ):
-        del fp_all, domain, emissions_name, nbasis, country_directory, abs_flux
-        assert mask is not None
-        seen["mask"] = mask
-        inner_mask = mask.where(mask, drop=True)
-        inner = xr.DataArray(
-            [[1, 1], [2, 2]],
-            dims=inner_mask.dims,
-            coords=inner_mask.coords,
-        )
+    def fake_quadtree_basis(weights, start_date, domain, nbasis=100):
+        del domain, nbasis
+        expected_weights = basis_weights_from_fp_all(fp_all, ["total"], mask=outer_regions["region"] == 1)
+        xr.testing.assert_equal(weights, expected_weights)
+        seen["weights"] = weights
+        inner = xr.DataArray([[1, 1], [2, 2]], dims=weights.dims, coords=weights.coords)
         return inner.expand_dims(time=[pd.Timestamp(start_date)], axis=-1)
 
-    monkeypatch.setitem(
-        basis_functions,
-        "quadtree",
-        basis_functions["quadtree"]._replace(algorithm=fake_quadtree_basis),
-    )
+    monkeypatch.setattr(basis_module, "quadtree_basis_from_weights", fake_quadtree_basis)
 
     result = fixed_outer_regions_basis(
         fp_all=fp_all,
@@ -1326,7 +1293,7 @@ def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, 
         outer_regions_path=outer_path,
     )
 
-    xr.testing.assert_equal(seen["mask"], outer_regions["region"] == 1)
+    assert seen["weights"].shape == (2, 2)
     labels = result.squeeze("time", drop=True)
     inner_labels = set(np.unique(labels.values[outer_values == 1]))
     fixed_outer_labels = set(np.unique(labels.values[outer_values != 1]))
@@ -1406,29 +1373,15 @@ def test_fixed_outer_weighted_basis_crops_landsea_mask_to_inner_region(monkeypat
     ).to_netcdf(tmp_path / "country-land-sea_TEST.nc")
     seen: dict[str, np.ndarray] = {}
 
-    def fake_weighted_basis(
-        fp_all,
-        start_date,
-        domain,
-        emissions_name=None,
-        nbasis=100,
-        country_directory=None,
-        abs_flux=False,
-        mask=None,
-        landsea_indices=None,
-    ):
-        del fp_all, domain, emissions_name, nbasis, country_directory, abs_flux
-        assert mask is not None
+    def fake_weighted_basis(weights, start_date, domain, nbasis=100, landsea_classes=None,
+                            landsea_indices=None):
+        del domain, nbasis, landsea_classes
         assert landsea_indices is not None
         seen["landsea"] = landsea_indices
-        inner = xr.ones_like(mask.where(mask, drop=True), dtype=int)
+        inner = xr.ones_like(weights, dtype=int)
         return inner.expand_dims(time=[pd.Timestamp(start_date)], axis=-1)
 
-    monkeypatch.setitem(
-        basis_functions,
-        "weighted",
-        basis_functions["weighted"]._replace(algorithm=fake_weighted_basis),
-    )
+    monkeypatch.setattr(basis_module, "bucket_basis_from_weights", fake_weighted_basis)
 
     result = fixed_outer_regions_basis(
         fp_all=fp_all,
@@ -1717,7 +1670,7 @@ def test_region_constrained_fixed_outer_basis_from_weights_rejects_non_integral_
             "2020-01-01",
             "TEST",
             nbasis=nbasis,
-        )
+         outer_regions=xr.ones_like(weights, dtype=int), region_classes=xr.ones_like(weights, dtype=int))
 
 
 def test_fixed_outer_loaders_use_separate_custom_paths(tmp_path):
@@ -1750,8 +1703,8 @@ def test_fixed_outer_loaders_use_separate_custom_paths(tmp_path):
         "2020-01-01",
         "TEST",
         nbasis=2,
-        country_directory=country_directory,
-        outer_regions_path=outer_regions_path,
+        region_classes=load_country_region_classes("TEST", country_directory),
+        outer_regions=loaded_outer_regions,
         allocation="area",
     ).squeeze("time", drop=True)
 
@@ -2650,7 +2603,7 @@ def test_flux_from_fp_all_rejects_source_only_extra_dimension():
     )
     with_ensemble = reference.expand_dims(ensemble=[0, 1])
 
-    with pytest.raises(ValueError, match="different dimensions"):
+    with pytest.raises(ValueError, match="permuted list"):
         flux_from_fp_all(
             {
                 ".flux": {"a": reference, "b": with_ensemble},
@@ -2837,35 +2790,16 @@ def test_make_basis_functions_records_saved_generated_basis_path(tmp_path):
     """Generated basis saves record the written artifact path on the retained object."""
     basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]]).expand_dims(time=[np.datetime64("2019-01-01")])
     flux = xr.ones_like(basis_flat.isel(time=0, drop=True), dtype=float).rename("flux")
-    fp_all = {".flux": {"emissions": flux}, ".split_by_sectors": False}
+    flux = flux.expand_dims(time=[np.datetime64("2019-01-01")])
+    fp_all = {".flux": {"emissions": flux}, ".split_by_sectors": False,
+              "TEST": xr.ones_like(flux).rename("fp").to_dataset()}
 
-    class StaticBasisAlgorithm:
-        description = "static test basis"
-
-        @staticmethod
-        def algorithm(*args: object, **kwargs: object) -> xr.DataArray:
-            return basis_flat
-
-    old_algorithm = basis_module.basis_functions.get("static_path_test")
-    basis_module.basis_functions["static_path_test"] = StaticBasisAlgorithm
-    try:
-        basis_object = make_basis_functions(
-            fp_all=fp_all,
-            species="ch4",
-            domain="EUROPE",
-            start_date="2019-01-01",
-            emissions_name=["emissions"],
-            nbasis=2,
-            basis_algorithm="static_path_test",
-            outputname="path-check",
-            output_path=str(tmp_path),
-            basis_output_format="datatree",
-        )
-    finally:
-        if old_algorithm is None:
-            del basis_module.basis_functions["static_path_test"]
-        else:
-            basis_module.basis_functions["static_path_test"] = old_algorithm
+    basis_object = make_basis_functions(
+        fp_all=fp_all, species="ch4", domain="EUROPE", start_date="2019-01-01",
+        emissions_name=["emissions"], nbasis=2, basis_algorithm="region_constrained",
+        region_classes=basis_flat.isel(time=0, drop=True),
+        outputname="path-check", output_path=str(tmp_path), basis_output_format="datatree",
+    )
 
     assert basis_object.basis_artifact_source == "generated"
     assert basis_object.basis_artifact_path is not None

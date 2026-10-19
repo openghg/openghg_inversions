@@ -1,13 +1,36 @@
 # `run_rhime` Readability and Modifiability Plan
 
-Status: approved delivery plan, P0 / highest project priority
+> **Historical delivery record (status clarified 12 October 2026).** This roadmap records the readability programme and its original priorities, workstreams, and acceptance gates. It does not prescribe current production architecture or declare unfinished work delivered. The public selector and concrete recipe naming are delivered at the reviewed `devel` revision; later workflow/replay proposals retain their own review and implementation status. Current [development principles](../development/rhime_model_development.rst), [usage guidance](../usage/customising_rhime.rst), reviewed capability specifications, and [owning issues](README.md) supply their respective sources of truth.
+
+## Public naming delivery alongside #764/#776
+
+The public selector is `run(..., model="standard")`, with concrete
+`run_standard`, `run_multisector` and `run_nested` recipes. The `rhime` executable
+shares the existing command set and adds `run --model`; CO2-family Python model
+choices preserve their prepared-input-only contracts. Established runner and shared handoff imports
+and `openghg-inversions` commands remain compatible through 0.9. Shared
+`MergedData`, `PreparedInputs` and preparation names describe shared work, not
+standard-only policy. This selective naming delivery does not perform #776's
+recipe relocation or complete #802 route parity. Preserve procedural recipes
+and do not introduce a universal workflow engine.
+
+> **15 October 2026 supersession (#866).** The compatibility promise above is
+> superseded for the standard Python API: `run_rhime` is removed in 0.8. Use
+> `run_standard(prepared=prepared, config=resolved_config)` for cached standard
+> inputs; `run_rhime_from_prepared_inputs` now supports multisector runs only.
+> The `run-rhime` CLI command remains available. See the
+> [0.8 migration guidance](../usage/legacy_and_migration.rst) for the current
+> contracts; the original programme below remains a historical record.
+
+
+Recorded original status: approved delivery plan, P0 / highest project priority
 Date: 2026-08-15
 Owners: OpenGHG Inversions maintainers
 
 ## Summary
 
-`run_rhime` remains the canonical Python and CLI entry point for ordinary
-RHIME inversions. The immediate priority is to make its implementation a
+`run(..., model="standard")` is the canonical Python selector and `rhime run`
+is the CLI entry point. The concrete `run_standard` implementation remains a
 readable reference workflow that a scientific user can follow, modify, and run
 without reconstructing a framework from prepared inputs, cross-package specs,
 builder contexts, role manifests, and output manifests.
@@ -16,7 +39,8 @@ The target is the locality and code-reading experience of the release-0.6
 workflow, not the historical `fixedbasisMCMC` name or its monolithic
 implementation. OpenGHG Inversions no longer has a meaningful "non-fixed
 basis MCMC" alternative, so `fixedbasisMCMC` remains compatibility vocabulary
-only. New architecture and documentation continue to centre `run_rhime`.
+only. New architecture centres readable concrete recipes behind the small
+public model selector.
 
 This work superseded the assumption that the legacy path could be removed as
 soon as old configs executed through the then-layered `run_rhime`
@@ -68,14 +92,15 @@ was made usable; it is now retired with the direct implementation.
 
 ## Decision
 
-Keep `run_rhime` as the default public API and make it the readable reference
+Use `run(..., model="standard")` as the default public API and keep
+`run_standard` as the readable reference
 implementation of the complete RHIME workflow.
 
-Opening the implementation of `run_rhime` should reveal, in execution order:
+Opening the implementation of `run_standard` should reveal, in execution order:
 
 ```text
 resolve Python/config options
--> retrieve or reload merged data
+-> acquire fresh or accept supplied merged data
 -> filter observations and retain aligned site metadata
 -> load or fit basis functions
 -> construct labelled RHIME inversion inputs
@@ -168,42 +193,78 @@ Old fixedbasis-style INI translation is a time-limited compatibility boundary,
 not the name or conceptual basis of new design. The wrapper always selects
 `run_rhime`; exact direct legacy execution is no longer supported.
 
+### Basis preparation completion (#838)
+
+Modern preparation uses exact input/output artifact paths and resolved labelled
+support maps. Resolve selected files before acquisition; fail for missing
+resources without substituting another domain. `basis.compatibility` alone owns
+deprecated names, case/glob discovery, historical filenames, flat-file adaptation
+and opt-in legacy writing; its adapters call modern operations. Modern scientific
+code must remain understandable without that module.
+
+For devel/0.8, retained modern basis output is the default, revising #360's
+temporary legacy-default policy. Legacy basis output remains explicit opt-in;
+its 0.9 deprecation is not an automatic removal instruction. Caller-specified
+staged `basis_output_path` remains an exact destination. Country reporting maps
+are normally caller-supplied; packaged basis support maps remain selectable.
+
+The analogous BC case/directory convention remains inventoried in
+`build_sensitivities` and `bc_basis_case` / `bc_basis_directory` options; migrating
+it must not absorb BC scientific changes into this slice. Native runtime-flux
+ownership and operator-only reuse are implemented in #839 as described below.
+Acquisition replay remains deferred to #829.
+
 ## Target code shape
 
-The exact names may change during implementation, but the public workflow
-should be approximately this direct:
+The complete runnable recipe is maintained in
+[`examples/rhime_customisation/runner.py`](../../examples/rhime_customisation/runner.py)
+and rendered in
+[`docs/usage/customising_rhime.rst`](../usage/customising_rhime.rst).
+Keep that source executable instead of maintaining another orchestration copy
+in this plan. Its visible order is:
 
-```python
-def run_rhime(
-    *,
-    config_file=None,
-    likelihood_builder=None,
-    **kwargs,
-):
-    options = resolve_rhime_options(config_file=config_file, kwargs=kwargs)
-
-    merged = get_rhime_data(options.data)
-    filtered = filter_rhime_data(merged, options.filters)
-    basis = make_rhime_basis(filtered, options.basis)
-    prepared = assemble_rhime_inputs(filtered, basis, options.model)
-
-    model_inputs = materialize_pymc_inputs(prepared)
-    likelihood, likelihood_options = resolve_likelihood(options.model, likelihood_builder)
-    built_model = build_standard_rhime_model(
-        model_inputs,
-        options.model,
-        likelihood_builder=likelihood,
-        likelihood_kwargs=likelihood_options,
-    )
-    idata = sample_rhime_model(built_model, options.sampling)
-
-    return make_rhime_result(
-        prepared=prepared,
-        built_model=built_model,
-        idata=idata,
-        output=options.output,
-    )
+```text
+read_rhime_ini -> options + winning overrides + recipe extraction
+  -> RhimeConfig.from_params -> RhimeConfig
+  -> resolve selected basis paths/support maps at the application boundary
+  -> RhimeMergedData.from_options with explicit resolved acquisition values
+  -> prepare_observation_errors
+  -> filter_observations
+  -> resolve_runtime_flux once for the current compatible domain/grid context
+  -> select first requested source as weighting_flux
+  -> prepare_basis with runtime_flux, weighting_flux, exact paths and resolved maps
+  -> build_sensitivities
+  -> assemble_rhime_inputs
+  -> RhimeRunSpec from retained prepared sites and resolved model/output choices
+  -> materialize_pymc_inputs
+  -> build_standard_rhime_model_result
+  -> sample_rhime_model
+  -> make_standard_rhime_result
 ```
+
+Preparation functions own scientific work or a meaningful handoff/compatibility
+contract. Uniform stage names, timing and keyword translation alone do not
+justify wrappers. Observation errors are derived before filtering/aggregation;
+nested recipes establish errors on both domains before filtering/time alignment.
+Preserve supplied errors, retained metadata and borrowed data. Shared preparation
+and indexing utilities are not standard-model-specific policy.
+
+Native prior flux is a procedural local resolved from the retained source
+datasets, separate from observation-aligned `fp_x_flux` / `fp_x_flux_sectoral`.
+Nested recipes resolve each domain after its scientific masking. A selected
+artifact uses `BasisFunctions.reuse_operator(path, flux=runtime_flux)`; full
+`BasisFunctions.load` restores saved retained flux for reconstruction. First-source
+weighting and all-source retention remain distinct. No execution reduction is
+claimed from establishing a single native-flux owner. Acquisition replay remains
+deferred to #829.
+
+`RhimeConfig` directly owns acquisition/preparation choices and composes public
+`SiteOptions`, existing model/output specifications and the existing sampler.
+The INI reader returns decoded options. Runners apply overrides and extract
+recipe choices before the same canonical construction used for Python mappings. Canonical
+scientific stages receive only their applicable explicit resolved values.
+Requested configuration stays unchanged when observations or sites are dropped.
+There is no preparation-config class or setup bundle carrying an early run spec.
 
 Configuration parsing may remain separate, but it should perform one clear
 translation at the workflow boundary. It must not determine accepted public
@@ -605,12 +666,12 @@ required sign-off, the 0.7.x line is the final release line with
 
 This priority is complete when:
 
-1. `run_rhime` remains the documented default and visibly narrates the whole
-   workflow.
+1. `run(..., model="standard")` is the documented default, and the concrete
+   `run_standard` recipe visibly narrates the whole workflow.
 2. A complete external-style runner copies only the short orchestration spine,
    imports supported APIs, and runs through normal retrieval and outputs.
 3. An ordinary likelihood variation is a custom Python callable plus one
-   `run_rhime(...)` call, without manual prepared-input/spec assembly.
+   `run(...)` call, without manual prepared-input/spec assembly.
 4. A cookiecutter-generated downstream package demonstrates the same seam
    using only public RHIME APIs.
 5. The default PyMC graph and its output contract have one obvious ownership

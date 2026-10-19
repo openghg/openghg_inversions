@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from openghg_inversions.native_flux import resolve_runtime_flux
+from openghg_inversions.basis.support import load_bc_basis
+from openghg_inversions.inference.sampling import resolve_sampler
+from openghg_inversions.basis import prepare_basis
+
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -11,16 +16,16 @@ import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
 
-from openghg_inversions._timing import log_timing, timer_seconds, timer_start
+from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
-from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.models.components import (
     add_linear_component,
     add_offset_component,
 )
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.models._flux import (
     _namespace_sector_state_coords,
     _prepared_sources,
@@ -39,6 +44,7 @@ from openghg_inversions.observation_error import (
     resolve_aggregation_error,
 )
 from openghg_inversions.sigma import SigmaAlignment
+from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
 from .specs import (
     DEFAULT_BC_PRIOR,
     DEFAULT_OFFSET_PRIOR,
@@ -60,18 +66,26 @@ from .builders import (
     RhimeModelBuilderContext,
     RhimeModelBuildResult,
     callable_metadata,
-    validate_model_build_result,
 )
+
 from .materialization import materialize_pymc_inputs
-from .outputs import RhimeResult, annotate_likelihood_trace, make_multisector_rhime_outputs
-from .params import params_from_config, resolve_rhime_options
+from .outputs import (
+    annotate_sample_trace,
+    RhimeResult,
+    annotate_likelihood_trace,
+    make_multisector_rhime_outputs,
+    validate_output_resources,
+)
+from .ini import read_rhime_ini
+from .params import RhimeConfig
 from .preparation import (
+    acquire_merged_data,
+    resolve_basis_inputs,
+    export_basis,
     assemble_rhime_inputs,
-    build_rhime_basis,
-    build_rhime_sensitivities,
-    filter_rhime_observations,
-    retrieve_or_reload_rhime_data,
-    with_prepared_rhime_sites,
+    build_sensitivities,
+    filter_observations,
+    prepare_observation_errors,
 )
 from .sampling import RhimeSampler, sample_rhime_model
 
@@ -274,6 +288,13 @@ def _prepare_multisector_flux_components(
             active=resolved_activity.active.rename(rename_state),
             fixed_value=resolved_activity.fixed_value.rename(rename_state),
         )
+        prior = {
+            key: _namespace_sector_state_coords(
+                value, variable_suffix=sector.variable_suffix,
+                namespace_state_dim=gathered_layout,
+            ) if isinstance(value, xr.DataArray) and value.ndim else value
+            for key, value in prior.items()
+        }
         components.append((sector, backend_prepared, prior, backend_activity))
     return tuple(components)
 
@@ -527,7 +548,6 @@ def build_multisector_rhime_model_result(
             multisector=True,
         )
         result = validated_custom_model_build(model_builder, context=builder_context)
-        validate_model_build_result(result, context=builder_context)
     else:
         model_spec = run_spec.model
         if likelihood_builder is not None and model_spec.likelihood is not None:
@@ -569,7 +589,7 @@ def make_multisector_rhime_result(
     *,
     prepared: RhimePreparedInputs,
     run_spec: RhimeRunSpec,
-    sampler: RhimeSampler,
+    sampler: RhimeSampler | None,
     model_build_result: RhimeModelBuildResult | None = None,
     output_contract: OutputContract | None = None,
     idata: xr.DataTree,
@@ -583,7 +603,7 @@ def make_multisector_rhime_result(
     Args:
         prepared: Retained source-resolved inputs and basis functions.
         run_spec: Resolved model, output, and run settings.
-        sampler: Sampler configuration used for the trace.
+        sampler: Live sampler used for the trace, or ``None`` during saved replay.
         model_build_result: Concrete graph and roles, when retained in memory.
         output_contract: Durable output information for graph-free reconstruction.
             Defaults to the live build result's contract when supplied.
@@ -625,9 +645,10 @@ def make_multisector_rhime_result(
     return result
 
 
-def run_rhime_multisector(
+def run_multisector(
     *,
     config_file: str | Path | None = None,
+    config: RhimeConfig | None = None,
     merged_data: RhimeMergedData | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
@@ -635,18 +656,31 @@ def run_rhime_multisector(
 ) -> RhimeResult:
     """Run a shared-basis multi-sector RHIME inversion.
 
-    The visible process is resolve → retrieve/reload → filter → basis →
-    sensitivities → assemble → materialize → build → sample → result →
+    The visible process is resolve → acquire or accept supplied data → observation
+    errors → filter → basis → sensitivities → assemble → materialize → build → sample → result →
     requested outputs.
     This module keeps source layout validation and sector-aware outputs beside
     that process instead of hiding them behind standard/multisector branching.
 
+    Selected basis/support files and reporting country files are checked before
+    acquisition, including when merged data is supplied. Basis partitions and
+    support maps are loaded at that boundary. Saved bases are rebound to current
+    flux; ``basis_output_path`` is an exact retained-artifact destination.
+
+    Without supplied merged data, this runner acquires fresh data. Persisted
+    prepared inputs can be reused with
+    :func:`openghg_inversions.rhime.run_rhime_from_prepared_inputs`.
+
     Args:
         config_file: Optional INI configuration file. Values in ``kwargs``
             override values read from this file.
+        config: Complete request from ``RhimeConfig.from_params``.
+            It is used without resolving again and cannot
+            be combined with ``config_file`` or raw run parameters in ``kwargs``.
         merged_data: Optional externally supplied source-resolved merged
-            scientific data. Passing it bypasses OpenGHG acquisition and
-            merged-cache I/O, then resumes at filtering after validation.
+            scientific data. Passing this in-memory handoff bypasses OpenGHG
+            acquisition and resumes at observation-error preparation after validating
+            recorded species, domain, time window, and sector layout.
         likelihood_builder: Optional Python-only callable invoked with a
             completed forward-model mean and explicit error-model inputs in
             the active PyMC model. It must return the canonical observed
@@ -678,34 +712,78 @@ def run_rhime_multisector(
     """
     if likelihood_kwargs and likelihood_builder is None:
         raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
-    params = (
-        params_from_config(config_file, extra_kwargs=kwargs, normalise=False)
-        if config_file is not None
-        else dict(kwargs)
-    )
-    if likelihood_builder is not None:
-        if params.get("mismatch_model") is not None:
+    setup_start = timer_start()
+    if config is not None:
+        if config_file is not None or kwargs:
+            raise ValueError("Pass either resolved `config` or `config_file`/run parameters, not both.")
+        if not config.data.split_by_sectors:
+            raise ValueError("`run_rhime_multisector` received configuration for a different sector layout.")
+    else:
+        params = read_rhime_ini(config_file) if config_file is not None else {}
+        params.update(kwargs)
+        if likelihood_builder is not None and params.get("mismatch_model") is not None:
             raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
-        params["mismatch_model"] = None
-    setup = resolve_rhime_options(params=params, multisector=True)
-    if likelihood_builder is None and setup.run_spec.model.likelihood is None:
+        config = RhimeConfig.from_params(translate_rhime_aliases(params), multisector=True)
+    if likelihood_builder is not None and config.model.likelihood is not None:
+        raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
+    sampler = resolve_sampler(config.sampler)
+    log_timing("rhime.runner_setup", timer_seconds(setup_start), multisector=True)
+    if likelihood_builder is None and config.model.likelihood is None:
         raise ValueError("A multisector RHIME run requires a built-in or custom likelihood.")
 
+    # Read selected scientific resources before expensive data acquisition.
+    validate_output_resources(config.output)
+    basis_inputs = resolve_basis_inputs(config.data)
+    bc_basis = load_bc_basis(config.data.bc_basis_paths) if config.data.use_bc and config.data.bc_basis_paths is not None else None
+
+
+    # 1. Acquire, or check supplied merged data.
     preparation_start = timer_start()
-    merged = retrieve_or_reload_rhime_data(
-        setup.data_args,
-        multisector=True,
-        merged_data=merged_data,
-    )
-    filtered = filter_rhime_observations(merged, setup.data_args)
-    basis_functions = build_rhime_basis(filtered, setup.data_args)
-    site_data = build_rhime_sensitivities(
+    if merged_data is None:
+        merged = acquire_merged_data(config.data)
+    else:
+        merged_data.validate_for_preparation(
+            **config.data.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
+        )
+        merged = merged_data
+
+    # 2. Preparation works on per-site datasets; ``merged`` stays acquired data.
+    with_errors = prepare_observation_errors(merged.site_data, averaging_error=config.data.averaging_error)
+    filtered, site_options = filter_observations(with_errors, merged.site_options, filters=config.data.filters)
+
+    runtime_flux = resolve_runtime_flux(merged.flux_data, split_by_sectors=merged.split_by_sectors)
+    with timed("rhime.prepare_inputs.basis_build", basis_algorithm=config.data.basis_algorithm):
+        basis_functions = prepare_basis(
+            site_data=filtered,
+            runtime_flux=runtime_flux,
+            weighting_flux=merged.flux_data[config.data.flux_sources[0]]["flux"],
+            **config.data.select(
+                "domain", "start_date", "basis_algorithm", "nbasis",
+            ),
+            fix_outer_regions=config.data.fix_basis_outer_regions,
+            **basis_inputs,
+        )
+    basis_functions = export_basis(basis_functions, config.data.basis_output_path)
+
+    sensitivities = build_sensitivities(
         filtered,
         basis_functions,
-        setup.data_args,
+        **config.data.select(
+            "flux_sources", "use_bc",
+        ),
+        bc_basis=bc_basis,
         multisector=True,
     )
-    prepared = assemble_rhime_inputs(filtered, basis_functions, site_data, setup.data_args)
+
+    prepared = assemble_rhime_inputs(
+        sensitivities,
+        basis_functions,
+        site_options=site_options,
+        **config.data.select(
+            "domain", "start_date", "bc_freq", "min_error",
+            "min_error_options", "use_bc",
+        ),
+    )
     log_timing(
         "rhime.prepare_inputs",
         timer_seconds(preparation_start),
@@ -716,8 +794,9 @@ def run_rhime_multisector(
         sources=prepared.inv_inputs.sizes.get("source"),
         basis_source=prepared.basis_artifact_source,
     )
-    run_spec = with_prepared_rhime_sites(setup.run_spec, prepared)
+    run_spec = config.retained_run_spec(prepared)
 
+    # 3. Cross the explicit numerical/backend boundary, then build the graph.
     model_inputs = materialize_pymc_inputs(
         prepared,
         variable_names=multisector_model_input_names(
@@ -733,20 +812,25 @@ def run_rhime_multisector(
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
     )
+    model_build_result.output_contract.validate_requested_output(run_spec.output.output_format)
+    # 4. Inference receives the completed graph and its variable roles.
     idata = sample_rhime_model(
         model_build_result,
-        setup.sampler,
+        sampler,
     )
+    annotate_sample_trace(model_build_result, idata)
+    # 5. Bind the samples to durable scientific output information.
     result = make_multisector_rhime_result(
         prepared=prepared,
         run_spec=run_spec,
-        sampler=setup.sampler,
+        sampler=sampler,
         model_build_result=model_build_result,
         idata=idata,
         build_and_sample_seconds=timer_seconds(build_and_sample_start),
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
     )
+    # 6. The recipe adapter passes scientific views to product writers.
     output_start = timer_start()
     make_multisector_rhime_outputs(result=result, prepared=prepared)
     log_timing(
@@ -756,3 +840,7 @@ def run_rhime_multisector(
         output_format=run_spec.output.output_format,
     )
     return result
+
+
+# Established public import retained through the 0.9 compatibility cycle.
+run_rhime_multisector = run_multisector

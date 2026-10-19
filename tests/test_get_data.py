@@ -15,26 +15,24 @@ from openghg.dataobjects import FluxData
 from openghg.retrieve import get_obs_surface
 from openghg.types import SearchError
 
-import openghg_inversions.inversion_data.get_data as get_data_module
+import openghg_inversions.inversion_data.acquisition as get_data_module
 import openghg_inversions.inversion_data.getters as getters_module
 import openghg_inversions.inversion_data.scenario as scenario_module
 from openghg_inversions.flux_sanitization import FluxNonFiniteMetadata, NonFiniteFluxWarning
 from openghg_inversions.inversion_data._site_options import expand_site_boolean_option, expand_site_option
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
-from openghg_inversions.inversion_data.get_data import (
-    add_obs_error,
-    convert_to_list,
+from openghg_inversions.inversion_data._site_options import convert_to_list
+from openghg_inversions.inversion_data.acquisition import interpolate_flux_to_footprint_grid
+from openghg_inversions.inversion_data.observation_errors import prepare_observation_errors
+from openghg_inversions.hbmcmc.legacy_data import (
     data_processing_surface_notracer,
-    interpolate_flux_to_footprint_grid,
-)
-from openghg_inversions.inversion_data.getters import get_flux_data
-from openghg_inversions.inversion_data.serialise import (
     _save_merged_data,
     datatree_to_fp_all,
     fp_all_from_dataset,
     load_merged_data,
     make_combined_scenario,
 )
+from openghg_inversions.inversion_data.getters import get_flux_data
 
 
 def test_interpolate_flux_to_footprint_grid_uses_nearest_without_mutation() -> None:
@@ -296,7 +294,7 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
         scenario_platforms.append(platform)
         scale = "surface-scale" if platform == "surface" else "satellite-scale"
         mf = xr.DataArray([1.0], dims="time", attrs={"units": "1e-9"})
-        return xr.Dataset({"mf": mf}, attrs={"scale": scale})
+        return xr.Dataset({"mf": mf, "mf_error": xr.ones_like(mf)}, attrs={"scale": scale})
 
     monkeypatch.setattr(get_data_module, "get_flux_data", lambda **kwargs: {})
     monkeypatch.setattr(get_data_module, "get_obs_data", fake_get_obs_data)
@@ -308,7 +306,6 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
 
     monkeypatch.setattr(get_data_module, "get_footprint_data", fake_get_footprint_data)
     monkeypatch.setattr(get_data_module, "merged_scenario_data", fake_merged_scenario_data)
-    monkeypatch.setattr(get_data_module, "add_obs_error", lambda *args, **kwargs: None)
 
     result = data_processing_surface_notracer(
         species="ch4",
@@ -370,6 +367,78 @@ def test_satellite_footprint_retrieval_forwards_temporal_mode(
     assert captured["time_resolved"] is time_resolved
     assert captured["satellite"] == "GOSAT"
     assert captured["obs_region"] == "BRAZIL"
+
+
+@pytest.mark.parametrize(
+    ("platform", "site", "getter"),
+    [
+        (None, "CBW", "get_obs_surface"),
+        ("site-column", "CBW", "get_obs_column"),
+        ("satellite", "GOSAT-BRAZIL", "get_obs_column"),
+    ],
+)
+def test_get_obs_data_reports_unexpected_attribute_error(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    platform: str | None,
+    site: str,
+    getter: str,
+) -> None:
+    """Retrieval bugs retain their traceback and do not silently change sites."""
+    error = AttributeError("missing uncertainty attribute")
+    retrieve = mock.Mock(side_effect=error)
+    monkeypatch.setattr(getters_module, getter, retrieve)
+
+    with pytest.raises(AttributeError) as caught:
+        getters_module.get_obs_data(
+            site=site,
+            species="ch4",
+            inlet="207m",
+            instrument="test-instrument",
+            start_date="2006-01-01",
+            end_date="2007-01-01",
+            platform=platform,
+            max_level=17,
+            stores=["broken-store", "later-store"],
+        )
+
+    assert caught.value is error
+    retrieve.assert_called_once()
+    record = caplog.records[-1]
+    assert record.exc_info[1] is error
+    for context in (site, "ch4", "207m", "test-instrument", "broken-store", "2006-01-01", "2007-01-01"):
+        assert context in record.getMessage()
+
+
+@pytest.mark.parametrize(
+    "missing",
+    [SearchError("No observations"), None, SimpleNamespace(data=xr.Dataset(coords={"time": []}))],
+    ids=["search-error", "none", "empty"],
+)
+@pytest.mark.parametrize("found", [True, False])
+def test_get_obs_data_continues_after_expected_missing_data(
+    monkeypatch: pytest.MonkeyPatch,
+    missing: object,
+    found: bool,
+) -> None:
+    """Expected misses try the next store, returning None only when all miss."""
+    expected = (
+        SimpleNamespace(data=xr.Dataset(coords={"time": [np.datetime64("2006-01-01")]})) if found else None
+    )
+    retrieve = mock.Mock(side_effect=[missing, expected])
+    monkeypatch.setattr(getters_module, "get_obs_surface", retrieve)
+
+    result = getters_module.get_obs_data(
+        site="CBW",
+        species="ch4",
+        inlet="207m",
+        start_date="2006-01-01",
+        end_date="2007-01-01",
+        stores=["missing-store", "later-store"],
+    )
+
+    assert result is expected
+    assert [call.kwargs["store"] for call in retrieve.call_args_list] == ["missing-store", "later-store"]
 
 
 def test_get_obs_data_routes_site_column_platform_to_column_retrieval(
@@ -1117,7 +1186,7 @@ def test_add_obs_error_exceptions_warnings(rept_vals, perc_missing, caplog):
     fp_all = {"TAC": ds}
 
     with pytest.raises(ValueError):
-        add_obs_error(sites=["TAC"], fp_all=fp_all, add_averaging_error=True)
+        prepare_observation_errors(fp_all, averaging_error=True)
 
     # check for WARNING when `mf_error` contains zeros
     # plus INFO suggesting fix
@@ -1128,7 +1197,7 @@ def test_add_obs_error_exceptions_warnings(rept_vals, perc_missing, caplog):
 
     fp_all["TAC"] = ds.chunk(time=n // 3)
 
-    add_obs_error(sites=["TAC"], fp_all=fp_all, add_averaging_error=False)
+    prepare_observation_errors(fp_all, averaging_error=False)
 
     output = caplog.text
     assert f"{perc_missing} percent" in output
@@ -1136,7 +1205,7 @@ def test_add_obs_error_exceptions_warnings(rept_vals, perc_missing, caplog):
 
 
 def test_add_obs_error_without_repeatability(caplog):
-    """Check for logger info if repeatability isn't present and add_averaging_error is True."""
+    """Missing repeatability falls back to variability during preparation."""
     ds = xr.Dataset()
     ds["mf"] = xr.DataArray([1] * 10, dims="time")
     ds["mf_variability"] = xr.DataArray([0] * 10, dims="time")
@@ -1146,7 +1215,7 @@ def test_add_obs_error_without_repeatability(caplog):
     # plus INFO suggesting fix
     caplog.set_level(logging.INFO)
 
-    add_obs_error(sites=["TAC"], fp_all=fp_all, add_averaging_error=True)
+    prepare_observation_errors(fp_all, averaging_error=True)
 
     output = caplog.text
     assert "`mf_repeatability` not present; using `mf_variability` for `mf_error` at site TAC" in output
@@ -1269,6 +1338,7 @@ def test_get_flux_data_preserves_variable_period_over_dataset_period(
         attrs={"time_period": "monthly"},
     )
     flux_data = SimpleNamespace(
+        metadata={},
         data=xr.Dataset({"flux": flux}, attrs={"time_period": "1 year"}),
     )
     monkeypatch.setattr(getters_module, "adjust_flux_start_date", lambda *args: pd.Timestamp("2019-06-01"))
@@ -1303,6 +1373,7 @@ def test_get_flux_data_uses_dataset_period_when_variable_period_is_missing(
         attrs={"time_period": missing_period},
     )
     flux_data = SimpleNamespace(
+        metadata={},
         data=xr.Dataset({"flux": flux}, attrs={"time_period": "monthly"}),
     )
     monkeypatch.setattr(getters_module, "adjust_flux_start_date", lambda *args: pd.Timestamp("2019-01-01"))
@@ -1327,7 +1398,7 @@ def test_get_flux_data_count_mode_audits_original_values(monkeypatch: pytest.Mon
         coords={"time": [np.datetime64("2019-01-01")]},
         name="flux",
     )
-    flux_data = SimpleNamespace(data=xr.Dataset({"flux": flux}, attrs={"time_period": "1 year"}))
+    flux_data = SimpleNamespace(metadata={}, data=xr.Dataset({"flux": flux}, attrs={"time_period": "1 year"}))
     monkeypatch.setattr(getters_module, "adjust_flux_start_date", lambda *args: np.datetime64("2019-01-01"))
     monkeypatch.setattr(getters_module, "get_flux", lambda **kwargs: flux_data)
 

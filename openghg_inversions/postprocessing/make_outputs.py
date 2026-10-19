@@ -3,6 +3,7 @@ from collections.abc import Mapping
 from typing import Literal, NamedTuple, cast
 
 import numpy as np
+import dask
 import pandas as pd
 import xarray as xr
 
@@ -516,6 +517,53 @@ def make_multisector_country_trace_outputs(
     return add_basis_reconstruction_metadata(result, inv_out.basis_functions)
 
 
+def _multisector_flux_mean_parts(
+    inv_out: InversionOutput,
+    sectors: list[OutputSector],
+    stats_args: dict,
+    *,
+    report_flux_on_inversion_grid: bool,
+) -> tuple[list[xr.Dataset], xr.Dataset] | None:
+    """Reduce state traces before reconstruction when missingness permits linear means."""
+    traces = [_sector_scale_trace(inv_out, sector) for sector in sectors]
+    valid_samples = []
+    compatible_samples = []
+    for trace in traces:
+        state_dim = _state_chunk_dim(trace, inv_out)
+        finite = np.isfinite(trace).all(state_dim)
+        valid_samples.append(finite)
+        compatible_samples.append((finite | trace.isnull().all(state_dim)).to_array().all())
+    # Inspect only small state traces, never the retained native flux or reconstructed grids.
+    valid_samples, compatible_samples = dask.compute(valid_samples, compatible_samples)
+    if not all(bool(compatible) for compatible in compatible_samples):
+        # ponytail: partial-state missingness/infinities retain per-draw reconstruction;
+        # extend the reduction only if these traces become a supported memory-critical case.
+        return None
+
+    masks = xr.concat(valid_samples, dim="sector").fillna(False)
+    sample_dims = [dim for dim in ("chain", "draw") if dim in masks.dims]
+    shared = (masks.all("sector") == masks.any("sector")).to_array().all()
+    nonempty = masks.any(["sector", *sample_dims]).to_array().all()
+    if not bool(shared) or not bool(nonempty):
+        return None
+
+    sector_means = []
+    total_contributions = []
+    for sector, trace in zip(sectors, traces, strict=True):
+        mean = calculate_stats(trace, **stats_args)
+        reconstructed = reconstruct_flux_stats(
+            _sector_basis_functions(inv_out, sector, trace),
+            _sector_flux(inv_out, sector),
+            mean,
+            report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+        )
+        reconstructed = rename_by_replacement(reconstructed, "x", "flux")
+        sector_means.append(_rename_sector_flux_vars(reconstructed, sector))
+        total_contributions.append(_rename_sector_flux_vars(reconstructed, sector, total=True))
+    total_mean = xr.concat(total_contributions, dim="sector").sum("sector", min_count=len(sectors))
+    return sector_means, total_mean
+
+
 def make_sector_flux_outputs(
     inv_out: InversionOutput,
     stats: list[str] | None = None,
@@ -523,16 +571,41 @@ def make_sector_flux_outputs(
     include_scale_factors: bool = True,
     report_flux_on_inversion_grid: bool = True,
 ) -> xr.Dataset:
-    """Return multisector flux statistics by sector plus correctly reconstructed total flux statistics."""
-    sectors, sector_flux_traces, total_flux_trace = _multisector_flux_trace_parts(
-        inv_out,
-        report_flux_on_inversion_grid=report_flux_on_inversion_grid,
-    )
-    flux_stats_args = _stats_args_with_defaults(stats, stats_args)
+    """Return sector and total multisector flux statistics.
 
-    outputs = [calculate_stats(total_flux_trace, **flux_stats_args)]
+    Mean-only requests reduce pooled chain/draw state samples before gridded
+    reconstruction, including whole-sample NaN padding. Sector means use their
+    own available samples; totals require every sector in a sample. The shortcut
+    requires shared, nonempty sample masks across sectors. Differing masks,
+    partial-state NaNs or infinities, custom sample dimensions, and other
+    statistics retain per-draw reconstruction. Completed products are materialized
+    as dense NumPy arrays; borrowed inputs are not modified.
+    """
+    flux_stats_args = _stats_args_with_defaults(stats, stats_args)
+    if not inv_out.is_multisector:
+        raise ValueError("Sector flux postprocessing requires multisector RHIME outputs.")
+    sectors = _multisector_output_sectors(inv_out)
+    mean_parts = None
+    if (
+        flux_stats_args.get("stats") == ["mean"]
+        and flux_stats_args.get("sample_dim", "draw") == "draw"
+        and "mean__sample_dim" not in flux_stats_args
+    ):
+        mean_parts = _multisector_flux_mean_parts(
+            inv_out, sectors, flux_stats_args,
+            report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+        )
+    if mean_parts is None:
+        sectors, sector_flux_traces, total_flux_trace = _multisector_flux_trace_parts(
+            inv_out,
+            report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+        )
+        outputs = [calculate_stats(total_flux_trace, **flux_stats_args)]
+    else:
+        sector_flux_traces, total_flux_trace = mean_parts
+        outputs = [total_flux_trace]
     for sector, flux_trace in zip(sectors, sector_flux_traces, strict=True):
-        outputs.append(calculate_stats(flux_trace, **flux_stats_args))
+        outputs.append(calculate_stats(flux_trace, **flux_stats_args) if mean_parts is None else flux_trace)
         if include_scale_factors:
             outputs.append(
                 _sector_scale_factor_stats(

@@ -4,7 +4,7 @@ import importlib
 import re
 from pathlib import Path
 
-from openghg_inversions.rhime.params import resolve_rhime_options
+from openghg_inversions.rhime.params import RhimeConfig
 from openghg_inversions.rhime.specs import PollutionEventSettings
 
 
@@ -165,8 +165,8 @@ def test_nested_reader_path_exposes_transport_grid_boundary() -> None:
     assert "grouped basis regions" in guide
     assert "mu_outer" in guide
     assert "inner_x_prior" in guide
-    assert "inner_fp_basis_case" in guide
-    assert "inner_basis_directory" in guide
+    assert "``basis_path``" in guide
+    assert "``inner_basis_path``" in guide
     assert "inner_basis_output_path" in guide
     assert guide.count('mismatch_model="pollution_event"') == 2
     assert "outer_overlap_masked=True" in guide
@@ -209,8 +209,8 @@ def test_nested_documented_examples_resolve_supported_likelihoods() -> None:
     )
 
     for params in examples:
-        setup = resolve_rhime_options(params=params, multisector=False)
-        assert isinstance(setup.run_spec.model.likelihood, PollutionEventSettings)
+        setup = RhimeConfig.from_params(params=params, multisector=False)
+        assert isinstance(setup.model.likelihood, PollutionEventSettings)
 
 
 def test_moved_recipe_sections_preserve_legacy_fragment_targets() -> None:

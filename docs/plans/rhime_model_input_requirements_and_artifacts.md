@@ -186,23 +186,14 @@ It lets a project provide its own version of a step while reusing the rest of
 the supported workflow. The custom-basis example tracked in OPE-54 should be
 the first executable preparation-stage proof:
 
-```python
-merged = retrieve_or_reload_rhime_data(setup.data_args, multisector=False)
-filtered = filter_rhime_observations(merged, setup.data_args)
-basis = build_project_basis(filtered, setup.data_args)
-sensitivities = build_rhime_sensitivities(
-    filtered,
-    basis,
-    setup.data_args,
-    multisector=False,
-)
-prepared = assemble_rhime_inputs(
-    filtered,
-    basis,
-    sensitivities,
-    setup.data_args,
-)
-```
+The executable source is
+[`examples/rhime_customisation/custom_basis_runner.py`](../../examples/rhime_customisation/custom_basis_runner.py),
+rendered in
+[`docs/usage/customising_rhime.rst`](../usage/customising_rhime.rst).
+It resolves `RhimeConfig`, loads with `RhimeMergedData.from_options`, filters observations,
+substitutes the project basis stage, builds sensitivities and assembles prepared
+inputs. Each package stage receives applicable resolved values explicitly;
+requested configuration remains distinct from the resulting retained run spec.
 
 The example should use tested source and public handoffs. It should show both
 the power and the limit of the escape hatch: the custom stage owns the

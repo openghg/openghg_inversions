@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 import pymc as pm
@@ -11,7 +11,7 @@ from pytensor.tensor.variable import TensorVariable
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.postprocessing.contracts import OutputContract
-from openghg_inversions.rhime.specs import OutputFormat, RhimeRunSpec
+from openghg_inversions.rhime.specs import RhimeRunSpec
 
 
 RhimeLikelihoodBuilder = Callable[..., TensorVariable]
@@ -23,7 +23,7 @@ class RhimeModelBuilderContext:
 
     Ordinary in-tree recipes and components use explicit named scientific
     inputs. This context remains solely for user-owned complete models invoked
-    through ``run_rhime_from_prepared_inputs``; those builders own validation
+    through the multisector ``run_rhime_from_prepared_inputs`` route; those builders own validation
     and materialization of any lazy arrays they consume.
 
     Args:
@@ -42,54 +42,17 @@ class RhimeModelBuilderContext:
 
 @dataclass(frozen=True)
 class RhimeModelBuildResult:
-    """Concrete model and serializable metadata returned by a model builder.
-
-    Custom builders default to supporting sampling-only runs
-    (``output_format="none"``). A builder must explicitly declare additional
-    formats after ensuring that its role manifest and trace satisfy those
-    postprocessing contracts.
+    """Concrete graph and its validated, serializable scientific output contract.
 
     Args:
-        model: Concrete PyMC model for :class:`RhimeSampler`.
-        variable_roles: Semantic role to concrete input/model variable name.
-            Roles such as ``concentration``, ``model_error``, ``flux_scale``,
-            and ``baseline`` let sampling and outputs avoid name inference.
-            Components that do not exist, such as model error in a fixed-error
-            model, should be omitted.
-        supported_output_formats: Output formats the builder declares safe.
-            ``"none"`` always means sampling without RHIME postprocessing.
-        metadata: Additional JSON-serializable builder/provenance metadata.
+        model: Concrete PyMC model for sampling.
+        output_contract: Semantic variable roles, supported output formats and
+            construction metadata. Custom models default to sampling-only
+            capability when constructing an ordinary ``OutputContract``.
     """
 
     model: pm.Model
-    variable_roles: Mapping[str, str]
-    supported_output_formats: tuple[OutputFormat, ...] = ("none",)
-    metadata: Mapping[str, Any] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        """Copy and validate the serializable portion of the result."""
-        if not isinstance(self.model, pm.Model):
-            raise TypeError(
-                f"`RhimeModelBuildResult.model` must be a `pymc.Model`; got {type(self.model).__name__}."
-            )
-
-        contract = self.output_contract
-        object.__setattr__(self, "variable_roles", dict(contract.variable_roles))
-        object.__setattr__(self, "supported_output_formats", contract.supported_output_formats)
-        object.__setattr__(self, "metadata", dict(contract.metadata))
-
-    @property
-    def output_contract(self) -> OutputContract:
-        """Expose durable output information without retaining the model graph."""
-        return OutputContract(
-            variable_roles=self.variable_roles,
-            supported_output_formats=self.supported_output_formats,
-            metadata=self.metadata,
-        )
-
-    def validate_requested_output(self, output_format: str) -> None:
-        """Reject an output this model contract does not support."""
-        self.output_contract.validate_requested_output(output_format)
+    output_contract: OutputContract
 
 
 class RhimeModelBuilder(Protocol):
@@ -121,13 +84,10 @@ def validate_model_build_result(
         )
 
     output_format = context.run_spec.output.output_format
-    if output_format == "none":
-        return
-
-    result.validate_requested_output(output_format)
+    result.output_contract.validate_requested_output(output_format)
 
     available_names = set(result.model.named_vars) | set(context.prepared_inputs.inv_inputs.variables)
-    missing = {role: name for role, name in result.variable_roles.items() if name not in available_names}
+    missing = {role: name for role, name in result.output_contract.variable_roles.items() if name not in available_names}
     if missing:
         details = ", ".join(f"{role}={name!r}" for role, name in sorted(missing.items()))
         raise ValueError(

@@ -46,7 +46,7 @@ paths with values available in your OpenGHG installation.
        end_date="2019-01-08",
        obs_store="user",
        footprint_store="user",
-       emissions_store="user",
+       flux_store="user",
        bc_store="user",
        flux_sources=["ff-inventory", "biosphere-inventory"],
        sector_sources={
@@ -59,7 +59,6 @@ paths with values available in your OpenGHG installation.
        },
        basis_algorithm="weighted",
        nbasis=20,
-       bc_basis_case="NESW",
        output_path="outputs/site_multisector",
        output_name="tac_ch4_multisector",
        output_format="inv_out",
@@ -100,7 +99,7 @@ high-time-resolution footprints.
        start_date="2022-03-31 04:00:00",
        end_date="2022-04-01 04:08:10",
        obs_store="/path/to/oco2_data_store",
-       emissions_store="/path/to/oco2_data_store",
+       flux_store="/path/to/oco2_data_store",
        bc_store="/path/to/oco2_data_store",
        footprint_store="/path/to/oco2_footprint_store",
        flux_sources=["anth", "resp", "gpp_atm"],
@@ -111,12 +110,9 @@ high-time-resolution footprints.
        },
        use_bc=True,
        bc_input="cams",
-       bc_basis_case="NESW",
-       bc_basis_directory="/path/to/bc_basis_functions",
        basis_algorithm="weighted",
-       basis_directory="/path/to/basis_functions",
-       country_directory="/path/to/countries",
-       basis_output_path="outputs/satellite_multisector/basis",
+       landsea_path="/path/to/maps/eastasia-landsea.nc",
+       basis_output_path="outputs/satellite_multisector/basis.nc",
        nbasis=8,
        averaging_error=True,
        min_error=0.0,
@@ -127,6 +123,12 @@ high-time-resolution footprints.
        tune=500,
        chains=2,
    )
+
+``landsea_path`` selects the exact class map used for weighted basis
+construction, and ``basis_output_path`` is the exact retained-artifact destination.
+To reuse a saved basis instead of generating one, select its exact ``basis_path``.
+See :doc:`rhime_configuration` for packaged support-map selection and migration.
+The BC case/directory options above retain their existing compatibility convention.
 
 Set ``time_resolved=False`` to request integrated footprints, or ``None`` to
 leave this metadata unconstrained during the OpenGHG search. For several

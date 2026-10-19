@@ -3,10 +3,12 @@
 import numbers
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import xarray as xr
+
+MinErrorConfig = Literal["percentile", "residual"] | dict[str, float] | None | int | float
 
 
 @dataclass(frozen=True, eq=False, slots=True)
@@ -30,7 +32,7 @@ class MinimumError:
         cls,
         observations: xr.Dataset,
         fp_data: Mapping[str, xr.Dataset],
-        value: str | Mapping[str, float] | int | float = 0.0,
+        value: str | Mapping[str, float] | int | float | None = 0.0,
         *,
         by_site: bool = True,
     ) -> "MinimumError":
@@ -41,6 +43,7 @@ class MinimumError:
                 ``site`` coordinate for per-site values.
             fp_data: Per-site scientific datasets used by calculated methods.
             value: Scalar, per-site mapping, ``"residual"``, or ``"percentile"``.
+                ``None`` uses a zero scalar floor.
             by_site: Whether residual values are calculated separately by site.
 
         Returns:
@@ -59,6 +62,9 @@ class MinimumError:
         sites: tuple[str, ...] = ()
         method: str
         varies_by_site = False
+
+        if value is None:
+            value = 0.0
 
         if isinstance(value, numbers.Real) and not isinstance(value, bool):
             source = np.asarray(float(value))
@@ -126,6 +132,31 @@ class MinimumError:
             "minimum_error_sites": ",".join(sites),
         }
         return cls(data, method, varies_by_site, sites)
+
+
+def normalise_min_error(value: Any) -> float | str | dict[str, float]:
+    """Validate and own minimum-error configuration without observation data.
+
+    Accept ``None`` as zero, a finite nonnegative numeric scalar, a mapping
+    of site labels to such scalars, or the methods ``residual``/``percentile``.
+    Reject booleans and other values with ``ValueError``. Mapping coverage is
+    checked later against retained sites; this boundary copies the mapping.
+    """
+    if value is None:
+        return 0.0
+    if isinstance(value, str):
+        if value not in ("residual", "percentile"):
+            raise ValueError(f"Named `min_error` methods must be 'residual' or 'percentile'; got {value!r}.")
+        return value
+
+    def scalar(item: Any) -> float:
+        if not isinstance(item, numbers.Real) or isinstance(item, bool) or not np.isfinite(item) or item < 0:
+            raise ValueError(f"`min_error` values must be finite nonnegative numbers, got {item!r}.")
+        return float(item)
+
+    if isinstance(value, Mapping):
+        return {site: scalar(item) for site, item in value.items()}
+    return scalar(value)
 
 
 def normalise_min_error_options(options: Mapping[str, Any] | None) -> dict[str, bool]:

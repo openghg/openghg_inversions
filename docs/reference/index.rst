@@ -24,7 +24,10 @@ runner.
 .. autosummary::
    :nosignatures:
 
-   openghg_inversions.rhime.run_rhime
+   openghg_inversions.rhime.run
+   openghg_inversions.rhime.run_standard
+   openghg_inversions.rhime.run_multisector
+   openghg_inversions.rhime.run_nested
    openghg_inversions.rhime.run_rhime_multisector
    openghg_inversions.rhime.run_rhime_nested
    openghg_inversions.rhime.run_rhime_from_prepared_inputs
@@ -34,11 +37,55 @@ runner.
    openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs
    openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs
 
+Resolve a requested RHIME configuration
+---------------------------------------
+
+Inspect standard/multisector choices before data access. Decode an INI with
+``read_rhime_ini``, or start with Python options. Apply overrides and extract
+recipe-specific options, then construct canonical ``RhimeConfig.from_params``.
+Pass the result to the corresponding
+runner's ``config`` argument to reuse the resolved choices. The
+:doc:`configuration guide </usage/rhime_configuration>` explains requested site selectors,
+retained execution metadata and compatibility helpers.
+
+.. autosummary::
+   :nosignatures:
+
+   openghg_inversions.rhime.read_rhime_ini
+   openghg_inversions.rhime.RhimeConfig
+   openghg_inversions.rhime.RhimeConfig.from_params
+   openghg_inversions.rhime.DataConfig
+   openghg_inversions.rhime.DataConfig.from_params
+   openghg_inversions.rhime.DataConfig.select
+   openghg_inversions.inversion_data.SiteOptions
+
+Reuse standard preparation and samples
+--------------------------------------
+
+These standard-route operations share the full runner's scientific preparation
+and output owners. See the :doc:`saved-phase guide </usage/staged_workflow>` for
+manifest lifetime, compatible model changes and graph-free product replay.
+
+.. autosummary::
+   :nosignatures:
+
+   openghg_inversions.rhime.stages.prepare
+   openghg_inversions.rhime.stages.save_preparation
+   openghg_inversions.rhime.stages.load_preparation
+   openghg_inversions.rhime.stages.sample
+   openghg_inversions.rhime.stages.save_samples
+   openghg_inversions.rhime.stages.load_samples
+   openghg_inversions.rhime.stages.postprocess
+   openghg_inversions.rhime.stages.prior_predictive
+
 Run specifications and results
 ------------------------------
 
-These objects describe the model, sampling, and output settings accepted by
-the RHIME runners.
+Standard runners return ``InversionOutput``. ``RhimeResult`` and ``RhimeRunSpec``
+remain compatibility objects for multisector, nested and CO2 recipes until their
+separate handoff adoption. These objects describe model, sampling and output
+choices. The sampler's former ``rhime`` imports remain compatible;
+its implementation is owned by ``inference``.
 
 .. autosummary::
    :nosignatures:
@@ -46,7 +93,7 @@ the RHIME runners.
    openghg_inversions.rhime.RhimeRunSpec
    openghg_inversions.rhime.RhimeModelSpec
    openghg_inversions.rhime.RhimeOutputSpec
-   openghg_inversions.rhime.RhimeSampler
+   openghg_inversions.inference.RhimeSampler
    openghg_inversions.rhime.RhimeResult
    openghg_inversions.rhime.NestedRhimeResult
    openghg_inversions.rhime.SectorSpec
@@ -59,17 +106,40 @@ Prepared inversion data
 
 Use these interfaces to prepare, save, reload, or adapt canonical inputs
 before a separate model run. The
-:doc:`RHIME configuration and prepared-input reference </usage/rhime>`
-documents the expected variables, dimensions, and coordinates.
+:doc:`RHIME terminology and prepared-input reference </usage/rhime>`
+documents the expected variables, dimensions, and coordinates. Acquisition
+mechanics live in ``inversion_data.acquisition``; the prepared
+value and its unchanged version-1 schema live in
+``inversion_data.prepared_inputs``. Import both values from ``openghg_inversions.inversion_data``.
 
 .. autosummary::
    :nosignatures:
 
-   openghg_inversions.inversion_data.RhimeMergedData
-   openghg_inversions.inversion_data.RhimePreparedInputs
-   openghg_inversions.inversion_data.prepare_rhime_inputs
+   openghg_inversions.inversion_data.SiteOptions
+   openghg_inversions.inversion_data.MergedData
+   openghg_inversions.inversion_data.AcquisitionFacts
+   openghg_inversions.inversion_data.InputProvenance
+   openghg_inversions.inversion_data.MergedDataProvenance
+   openghg_inversions.inversion_data.PreparedInputs
    openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray
-   openghg_inversions.inversion_data.load_merged_data
+   openghg_inversions.inversion_data.MergedData.from_options
+   openghg_inversions.inversion_data.MergedData.validate_for_preparation
+   openghg_inversions.inversion_data.MergedData.with_site_data
+   openghg_inversions.rhime.preparation.resolve_basis_inputs
+   openghg_inversions.rhime.preparation.acquire_merged_data
+   openghg_inversions.rhime.preparation.export_basis
+   openghg_inversions.rhime.standard.build_standard_model
+   openghg_inversions.rhime.standard.materialize_standard_inputs
+   openghg_inversions.rhime.standard.prepare_standard
+   openghg_inversions.rhime.postprocess_standard_outputs
+   openghg_inversions.rhime.save_standard_artifacts
+   openghg_inversions.rhime.annotate_sample_trace
+   openghg_inversions.rhime.requests.load_params
+   openghg_inversions.rhime.params.retained_run_spec
+   openghg_inversions.rhime.filter_observations
+   openghg_inversions.rhime.prepare_observation_errors
+   openghg_inversions.rhime.build_sensitivities
+   openghg_inversions.rhime.assemble_inputs
    openghg_inversions.rhime.NestedRhimePreparedInputs
    openghg_inversions.rhime.combine_nested_rhime_inputs
    openghg_inversions.rhime.co2.Co2PreparedInputs
@@ -107,9 +177,17 @@ executed layout example and :doc:`affine native-flux reconstruction
    openghg_inversions.basis.AffineFluxMapArtifact
    openghg_inversions.basis.save_affine_flux_map
    openghg_inversions.basis.load_affine_flux_map
+   openghg_inversions.native_flux.resolve_runtime_flux
+   openghg_inversions.basis.prepare_basis
+   openghg_inversions.basis.basis_functions.FluxWeightedBasis.reuse_operator
+   openghg_inversions.basis.basis_functions.FluxWeightedBasis.load
+   openghg_inversions.basis.packaged_basis_support_path
+   openghg_inversions.basis.load_basis_support_map
+   openghg_inversions.basis.load_basis_partition
    openghg_inversions.basis.make_basis_functions
    openghg_inversions.basis.load_basis_functions
-   openghg_inversions.basis.basis_functions_from_fp_all_flat_basis
+   openghg_inversions.basis.basis_functions_from_flat_basis
+   openghg_inversions.basis.basis_weights_from_data
    openghg_inversions.basis.bucket_basis_from_weights
    openghg_inversions.basis.quadtree_basis_from_weights
    openghg_inversions.basis.region_constrained_basis_from_weights
@@ -187,6 +265,8 @@ and samples; it does not write products. See
 .. autosummary::
    :nosignatures:
 
+   openghg_inversions.rhime.outputs.validate_output_resources
+   openghg_inversions.rhime.validate_standard_output_resources
    openghg_inversions.postprocessing.inversion_output.InversionOutput
    openghg_inversions.postprocessing.contracts.OutputContract
    openghg_inversions.postprocessing.output_views.make_inversion_output
@@ -205,6 +285,22 @@ and samples; it does not write products. See
    openghg_inversions.serialization.open_datatree_loaded
    openghg_inversions.serialization.save_inferencedata
    openghg_inversions.serialization.load_inferencedata
+
+Inference diagnostics and scientific metrics
+--------------------------------------------
+
+Neutral convergence summaries consume posterior samples while preserving
+chain/draw structure. Scientific metrics compare observations with predictions
+at their stated sampling support. The established
+``postprocessing.diagnostics`` module remains an output compatibility adapter;
+calculating a score does not apply a scientific acceptance threshold.
+
+.. autosummary::
+   :nosignatures:
+
+   openghg_inversions.inference.diagnostics.posterior_summary
+   openghg_inversions.postprocessing.metrics.bayes_r2_by_site
+   openghg_inversions.postprocessing.metrics.bayes_r2_by_site_resample
 
 Legacy compatibility APIs
 -------------------------

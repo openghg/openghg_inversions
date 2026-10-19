@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from openghg_inversions.hbmcmc.compatibility import fixedbasis_params_to_rhime
+
 import warnings
 from pathlib import Path
 from typing import Any
@@ -10,7 +12,7 @@ import xarray as xr
 
 import openghg_inversions.hbmcmc.run_hbmcmc as run_hbmcmc
 import openghg_inversions.rhime.standard as rhime_standard
-from openghg_inversions.rhime import PollutionEventSettings
+from openghg_inversions.rhime import AdditiveSigmaSettings, PollutionEventSettings
 from openghg_inversions.sigma import SigmaAlignment
 
 
@@ -64,7 +66,11 @@ def test_fixedbasis_params_to_rhime_translates_legacy_names(tmp_path: Path) -> N
     _fixedbasis_config(config_file)
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    with pytest.warns(DeprecationWarning) as caught:
+        translated = fixedbasis_params_to_rhime(params)
+
+    for alias in ("nit", "nchain", "verbose", "sampler_kwargs"):
+        assert any(alias in str(item.message) for item in caught)
 
     assert translated["output_path"] == "out"
     assert translated["output_name"] == "legacy_run"
@@ -90,12 +96,12 @@ def test_fixedbasis_default_does_not_opt_into_aggregation_error(tmp_path: Path) 
     _fixedbasis_config(config_file)
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
     translated["mismatch_model"] = "pollution_event"
-    setup = run_hbmcmc.resolve_rhime_options(params=translated, multisector=False)
+    setup = run_hbmcmc.RhimeConfig.from_params(translated, multisector=False)
 
     assert "aggregation_error_mode" not in translated
-    assert setup.run_spec.model.aggregation_error_mode == "none"
+    assert setup.model.aggregation_error_mode == "none"
 
 
 def test_additive_sigma_selection_forces_no_aggregation_error(tmp_path: Path) -> None:
@@ -107,7 +113,7 @@ def test_additive_sigma_selection_forces_no_aggregation_error(tmp_path: Path) ->
     params["sigprior"] = {"pdf": "halfnormal", "sigma": 5.0}
     params["sigma_freq"] = "monthly"
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
     options = run_hbmcmc._select_additive_sigma_model_options(params, translated)
 
     assert "likelihood" not in translated
@@ -126,7 +132,7 @@ def test_additive_sigma_fixed_periods_keep_inversion_start_anchor(tmp_path: Path
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
     params.update(likelihood="additive_sigma", sigma_freq="8D")
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
     options = run_hbmcmc._select_additive_sigma_model_options(params, translated)
     site_index = xr.DataArray(
         [0, 0],
@@ -159,7 +165,7 @@ def test_additive_sigma_prior_takes_precedence_over_sigprior(tmp_path: Path) -> 
         "sigma": {"MHD": 5.0, "TAC": 2.0},
     }
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
     options = run_hbmcmc._select_additive_sigma_model_options(params, translated)
 
     assert "additive_sigma_prior" not in translated
@@ -181,7 +187,7 @@ def test_additive_sigma_selection_defaults_to_half_normal(tmp_path: Path) -> Non
     params["likelihood"] = "additive_sigma"
     del params["sigprior"]
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
     options = run_hbmcmc._select_additive_sigma_model_options(params, translated)
 
     assert options == {
@@ -198,7 +204,7 @@ def test_additive_sigma_prior_requires_additive_likelihood(tmp_path: Path) -> No
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
     params["additive_sigma_prior"] = {"pdf": "halfnormal", "sigma": 5.0}
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
 
     with pytest.raises(ValueError, match="requires likelihood='additive_sigma'"):
         run_hbmcmc._select_additive_sigma_model_options(params, translated)
@@ -210,7 +216,7 @@ def test_additive_sigma_selection_rejects_aggregation_error(tmp_path: Path) -> N
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
     params.update(likelihood="additive_sigma", aggregation_error_mode="dense")
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
 
     with pytest.raises(ValueError, match="does not support.*aggregation_error_mode"):
         run_hbmcmc._select_additive_sigma_model_options(params, translated)
@@ -225,8 +231,8 @@ def test_fixedbasis_params_to_rhime_translates_reparameterise_log_normal(tmp_pat
     params["xprior"] = {"pdf": "lognormal", "mean": 1.0, "stdev": 2.0}
     params["bcprior"] = {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0}
 
-    with pytest.warns(FutureWarning, match="reparameterise_log_normal"):
-        translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    with pytest.warns(DeprecationWarning, match="reparameterise_log_normal"):
+        translated = fixedbasis_params_to_rhime(params)
 
     assert translated["x_prior"]["reparameterise"] is True
     assert translated["bc_prior"]["reparameterise"] is True
@@ -239,8 +245,8 @@ def test_fixedbasis_params_to_rhime_translates_calculate_min_error(tmp_path: Pat
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
     params["calculate_min_error"] = "percentile"
 
-    with pytest.warns(FutureWarning, match="calculate_min_error"):
-        translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    with pytest.warns(DeprecationWarning, match="calculate_min_error"):
+        translated = fixedbasis_params_to_rhime(params)
 
     assert translated["min_error"] == "percentile"
     assert "calculate_min_error" not in translated
@@ -265,7 +271,7 @@ def test_fixedbasis_params_to_rhime_rejects_removed_mcmc_route(tmp_path: Path) -
     params["mcmc_type"] = "tdmcmc"
 
     with pytest.raises(ValueError, match="fixed_basis"):
-        run_hbmcmc.fixedbasis_params_to_rhime(params)
+        fixedbasis_params_to_rhime(params)
 
 
 def test_fixedbasis_params_to_rhime_preserves_paris_compatibility_flag(tmp_path: Path) -> None:
@@ -275,7 +281,7 @@ def test_fixedbasis_params_to_rhime_preserves_paris_compatibility_flag(tmp_path:
     params.pop("output_format")
     params["paris_postprocessing"] = True
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
 
     assert translated["output_format"] == "paris"
     assert "paris_postprocessing" not in translated
@@ -289,7 +295,7 @@ def test_fixedbasis_params_to_rhime_preserves_latest_paris_kwargs(tmp_path: Path
     params["paris_postprocessing"] = True
     params["paris_postprocessing_kwargs"] = {"template_version": "latest", "inversion_grid": False}
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
 
     assert translated["output_format"] == "paris"
     assert translated["paris_postprocessing_kwargs"] == {
@@ -305,7 +311,7 @@ def test_fixedbasis_params_to_rhime_forces_legacy_filename_convention(tmp_path: 
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
     params["output_filename_convention"] = "rhime"
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
 
     assert translated["output_filename_convention"] == "legacy"
 
@@ -317,14 +323,14 @@ def test_fixedbasis_params_to_rhime_preserves_explicit_inversion_output_save(tmp
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
     params["save_inversion_output"] = "explicit_inv_out.nc"
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
 
     assert translated["save_inversion_output"] == "explicit_inv_out.nc"
 
 
 @pytest.mark.rhime_contract
 def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Route legacy CLI parameters through run_rhime and copy the effective config."""
+    """Route legacy CLI parameters through run_standard and copy the effective config."""
     config_file = tmp_path / "hbmcmc.ini"
     output_path = tmp_path / "outputs"
     _fixedbasis_config(config_file)
@@ -335,21 +341,22 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
         """Capture translated keyword arguments without running an inversion."""
         seen["run_rhime_kwargs"] = kwargs
 
-    monkeypatch.setattr(run_hbmcmc, "run_rhime", fake_run_rhime)
+    monkeypatch.setattr(run_hbmcmc, "run_standard", fake_run_rhime)
 
-    with pytest.warns(UserWarning, match="--all-chains"):
-        run_hbmcmc.main(
-            [
-                "2020-01-01",
-                "2020-02-01",
-                "-c",
-                str(config_file),
-                "--output-path",
-                str(output_path),
-                "--kwargs",
-                '{"nchain": 2}',
-            ]
-        )
+    assert not hasattr(run_hbmcmc, "resolve_rhime_config")
+
+    run_hbmcmc.main(
+        [
+            "2020-01-01",
+            "2020-02-01",
+            "-c",
+            str(config_file),
+            "--output-path",
+            str(output_path),
+            "--kwargs",
+            '{"nchain": 2}',
+        ]
+    )
 
     copied_config = output_path / "CH4_EUROPE_legacy_run_2020-01-01.ini"
     expected_config = (
@@ -359,35 +366,36 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
         .replace("nchain = 3", "nchain = 2")
     )
     assert copied_config.read_text(encoding="utf-8") == expected_config
-    assert seen["run_rhime_kwargs"]["start_date"] == "2020-01-01"
-    assert seen["run_rhime_kwargs"]["end_date"] == "2020-02-01"
-    assert seen["run_rhime_kwargs"]["output_path"] == str(output_path)
-    assert seen["run_rhime_kwargs"]["chains"] == 2
-    assert seen["run_rhime_kwargs"]["nuts_sampler"] == "numpyro"
-    assert seen["run_rhime_kwargs"]["output_format"] == "legacy"
-    assert seen["run_rhime_kwargs"]["output_filename_convention"] == "legacy"
-    assert seen["run_rhime_kwargs"]["mismatch_model"] == "pollution_event"
-    assert seen["run_rhime_kwargs"]["preserve_legacy_likelihood"] is True
-    assert seen["run_rhime_kwargs"]["compatibility_output_chain"] == 0
+    config = seen["run_rhime_kwargs"]["config"]
+    assert config.data.start_date == "2020-01-01"
+    assert config.data.end_date == "2020-02-01"
+    assert config.output.output_path == output_path
+    assert config.sampler.chains == 2
+    assert config.sampler.nuts_sampler == "numpyro"
+    assert config.output.output_format == "legacy"
+    assert config.output.output_filename_convention == "legacy"
+    assert isinstance(config.model.likelihood, PollutionEventSettings)
+    assert set(seen["run_rhime_kwargs"]) == {"config"}
 
 
-def test_run_hbmcmc_all_chains_is_explicit_opt_in(
+def test_run_hbmcmc_always_routes_all_chains(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The compatibility CLI can use all chains without restoring the old executor."""
+    """The translation CLI forwards its full sampler without selecting a chain."""
     config_file = tmp_path / "hbmcmc.ini"
     _fixedbasis_config(config_file)
     seen: dict[str, Any] = {}
 
     monkeypatch.setattr(run_hbmcmc, "_copy_config_file", lambda *args, **kwargs: None)
-    monkeypatch.setattr(run_hbmcmc, "run_rhime", lambda **kwargs: seen.update(kwargs))
+    monkeypatch.setattr(run_hbmcmc, "run_standard", lambda **kwargs: seen.update(kwargs))
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        run_hbmcmc.main(["-c", str(config_file), "--all-chains"])
+        run_hbmcmc.main(["-c", str(config_file)])
 
     assert not [warning for warning in caught if "chain-0-only" in str(warning.message)]
-    assert seen["compatibility_output_chain"] is None
+    assert set(seen) == {"config"}
+    assert seen["config"].sampler.chains == 3
 
 
 @pytest.mark.rhime_contract
@@ -405,7 +413,7 @@ def test_run_hbmcmc_translated_params_enter_real_rhime(
     def stop_before_external_data(*args: Any, **kwargs: Any) -> None:
         raise ReachedRhimeDataBoundary
 
-    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", stop_before_external_data)
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", stop_before_external_data)
 
     with pytest.raises(ReachedRhimeDataBoundary):
         run_hbmcmc.main(
@@ -418,65 +426,44 @@ def test_run_hbmcmc_translated_params_enter_real_rhime(
         )
 
 
-def test_run_hbmcmc_no_model_error_retains_legacy_unused_sigma(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+@pytest.mark.parametrize("likelihood", [None, "additive_sigma"])
+def test_run_hbmcmc_rejects_no_model_error_before_copy_or_acquisition(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, likelihood: str | None,
 ) -> None:
-    """Historical PEFO no-model-error runs keep their disconnected sigma variable."""
+    """Removed likelihood equations require the 0.7 route before output side effects."""
     config_file = tmp_path / "hbmcmc.ini"
     _fixedbasis_config(config_file)
-    config_file.write_text(
-        config_file.read_text(encoding="utf-8").replace(
-            "[MCMC.OPTIONS]",
-            "[MCMC.OPTIONS]\nno_model_error = True",
-        ),
-        encoding="utf-8",
-    )
-    seen: dict[str, Any] = {}
-    monkeypatch.setattr(run_hbmcmc, "_copy_config_file", lambda *args, **kwargs: None)
-    monkeypatch.setattr(run_hbmcmc, "run_rhime", lambda **kwargs: seen.update(kwargs))
+    additions = "no_model_error = True"
+    if likelihood is not None:
+        additions += f'\nlikelihood = "{likelihood}"'
+    config_file.write_text(config_file.read_text().replace("[MCMC.OPTIONS]", "[MCMC.OPTIONS]\n" + additions))
 
-    run_hbmcmc.main(["-c", str(config_file)])
+    def unexpected(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("Removed compatibility equation reached config copying or acquisition")
 
-    assert seen["mismatch_model"] == "fixed_error"
-    assert seen["preserve_legacy_likelihood"] is True
-    assert "use_minimum_error_floor" not in seen
-    assert seen["_compatibility_minimum_error_floor"] is False
-    assert isinstance(seen["_compatibility_unused_sigma_settings"], PollutionEventSettings)
-    assert seen["_compatibility_unused_sigma_settings"].sigma_prior == {
-        "pdf": "uniform",
-        "lower": 0.1,
-        "upper": 10.0,
-    }
+    monkeypatch.setattr(run_hbmcmc, "_copy_config_file", unexpected)
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", unexpected)
+    with pytest.raises(ValueError, match=r"0\.7"):
+        run_hbmcmc.main(["-c", str(config_file)])
 
 
-def test_run_hbmcmc_additive_no_model_error_uses_fixed_error_with_floor(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+def test_run_hbmcmc_rejects_default_observed_pollution_with_offset_before_copy_or_acquisition(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
-    """Historical additive no-model-error omits sigma but keeps its minimum floor."""
+    """An omitted likelihood still rejects the removed boundary-only PEFO equation."""
     config_file = tmp_path / "hbmcmc.ini"
     _fixedbasis_config(config_file)
-    config_file.write_text(
-        config_file.read_text(encoding="utf-8").replace(
-            "[MCMC.OPTIONS]",
-            '[MCMC.OPTIONS]\nlikelihood = "additive_sigma"\nno_model_error = True',
-        ),
-        encoding="utf-8",
-    )
-    seen: dict[str, Any] = {}
-    monkeypatch.setattr(run_hbmcmc, "_copy_config_file", lambda *args, **kwargs: None)
-    monkeypatch.setattr(run_hbmcmc, "run_rhime", lambda **kwargs: seen.update(kwargs))
+    config_file.write_text(config_file.read_text().replace(
+        "[MCMC.OPTIONS]", "[MCMC.OPTIONS]\nadd_offset = True\npollution_events_from_obs = True",
+    ))
 
-    run_hbmcmc.main(["-c", str(config_file)])
+    def unexpected(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("Removed offset equation reached config copying or acquisition")
 
-    assert seen["mismatch_model"] == "fixed_error"
-    assert "use_minimum_error_floor" not in seen
-    assert seen["_compatibility_minimum_error_floor"] is True
-    assert seen["preserve_legacy_likelihood"] is False
-    assert seen["_compatibility_unused_sigma_settings"] is None
-    assert "_compatibility_likelihood_provenance" not in seen
-    assert "sigma_prior" not in seen
+    monkeypatch.setattr(run_hbmcmc, "_copy_config_file", unexpected)
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", unexpected)
+    with pytest.raises(ValueError, match=r"0\.7"):
+        run_hbmcmc.main(["-c", str(config_file)])
 
 
 def test_run_hbmcmc_main_selects_additive_sigma_from_ini(
@@ -500,17 +487,17 @@ def test_run_hbmcmc_main_selects_additive_sigma_from_ini(
     seen: dict[str, Any] = {}
 
     monkeypatch.setattr(run_hbmcmc, "_copy_config_file", lambda *args, **kwargs: None)
-    monkeypatch.setattr(run_hbmcmc, "run_rhime", lambda **kwargs: seen.update(kwargs))
+    monkeypatch.setattr(run_hbmcmc, "run_standard", lambda **kwargs: seen.update(kwargs))
 
     run_hbmcmc.main(["-c", str(config_file)])
 
     assert "likelihood_builder" not in seen
     assert "likelihood_kwargs" not in seen
-    assert seen["mismatch_model"] == "additive_sigma"
-    assert seen["use_minimum_error_floor"] is True
-    assert seen["sigma_prior"] == {"pdf": "halfnormal", "sigma": {"TAC": 2.0}}
-    assert seen["aggregation_error_mode"] == "none"
-    assert seen["preserve_legacy_likelihood"] is False
+    likelihood = seen["config"].model.likelihood
+    assert isinstance(likelihood, AdditiveSigmaSettings)
+    assert likelihood.use_minimum_error_floor is True
+    assert likelihood.sigma_prior == {"pdf": "halfnormal", "sigma": {"TAC": 2.0}}
+    assert seen["config"].model.aggregation_error_mode == "none"
     assert "_compatibility_likelihood_provenance" not in seen
 
 
@@ -519,8 +506,9 @@ def test_run_hbmcmc_parser_rejects_removed_legacy_fixedbasis_flag(tmp_path: Path
     parser = run_hbmcmc.build_parser()
 
     assert "--legacy-fixedbasis" not in parser.format_help()
-    assert parser.parse_args(["-c", str(tmp_path / "hbmcmc.ini")]).all_chains is False
-    assert parser.parse_args(["-c", str(tmp_path / "hbmcmc.ini"), "--all-chains"]).all_chains is True
+    assert "--all-chains" not in parser.format_help()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["-c", str(tmp_path / "hbmcmc.ini"), "--all-chains"])
     with pytest.raises(SystemExit):
         parser.parse_args(["-c", str(tmp_path / "hbmcmc.ini"), "--legacy-fixedbasis"])
 
@@ -591,7 +579,102 @@ def test_run_hbmcmc_main_checks_country_file_before_copying_or_running(
         raise AssertionError("RHIME should run only after country-file validation.")
 
     monkeypatch.setattr(run_hbmcmc, "_copy_config_file", fail_copy_config_file)
-    monkeypatch.setattr(run_hbmcmc, "run_rhime", fail_run_rhime)
+    monkeypatch.setattr(run_hbmcmc, "run_standard", fail_run_rhime)
 
     with pytest.raises(FileNotFoundError, match="country_file"):
         run_hbmcmc.main(["-c", str(config_file)])
+
+
+def test_sigma_prior_is_validated_before_config_copy(monkeypatch, tmp_path):
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    config_file.write_text(
+        config_file.read_text()
+        .replace('sigprior = {"pdf": "uniform", "lower": 0.1, "upper": 10.0}', 'sigprior = "invalid-prior"')
+    )
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("Invalid sigma prior reached config copying or acquisition")
+
+    monkeypatch.setattr(run_hbmcmc, "_copy_config_file", unexpected)
+    monkeypatch.setattr(run_hbmcmc, "run_standard", unexpected)
+    with pytest.raises(ValueError, match="sigma_prior.*mapping/dict"):
+        run_hbmcmc.main(["-c", str(config_file)])
+
+
+@pytest.mark.parametrize("selection", ["nesw", "file", "override", "disabled"])
+def test_legacy_bc_selection_reaches_real_cli_acquisition(monkeypatch, tmp_path, selection):
+    """The CLI translates only winning BC selectors before modern construction."""
+    import json
+
+    config_file = tmp_path / "legacy.ini"
+    _fixedbasis_config(config_file)
+    resource_dir = tmp_path / "basis"
+    case = "NESW" if selection == "nesw" else "missing"
+    if selection == "file":
+        case = "custom"
+        domain_dir = resource_dir / "EUROPE"
+        domain_dir.mkdir(parents=True)
+        xr.Dataset({"marker": ("time", [7.0])}, coords={
+            "time": [np.datetime64("2019-01-01")], "lat": [50.0], "lon": [0.0],
+        }).to_netcdf(domain_dir / "custom_EUROPE_2019.nc")
+    with config_file.open("a") as stream:
+        stream.write(f'\n[INPUT.BASIS]\nbc_basis_case = "{case}"\nbc_basis_directory = "{resource_dir}"\n')
+    overrides = {"basis_algorithm": "quadtree"}
+    if selection == "override":
+        with config_file.open("a") as stream:
+            stream.write(f'fp_basis_case = "missing"\nbasis_directory = "{resource_dir}"\n')
+        domain_dir = resource_dir / "EUROPE"
+        domain_dir.mkdir(parents=True)
+        xr.Dataset({"basis": (("lat", "lon", "time"), [[[1]]])}, coords={
+            "time": [np.datetime64("2019-01-01")], "lat": [50.0], "lon": [0.0],
+        }).to_netcdf(domain_dir / "replacement_EUROPE_2019.nc")
+        overrides.update(bc_basis_case="NESW", fp_basis_case="replacement")
+    if selection == "disabled":
+        overrides["use_bc"] = False
+    loaded = []
+    actual_loader = rhime_standard.load_bc_basis
+
+    def record_load(paths):
+        data = actual_loader(paths)
+        loaded.append(data)
+        return data
+
+    class ReachedAcquisition(Exception):
+        pass
+
+    def acquisition(**kwargs):
+        assert len(loaded) == (1 if selection == "file" else 0)
+        if loaded:
+            assert loaded[0].marker.item() == 7.0
+        raise ReachedAcquisition
+
+    original_glob = Path.glob
+
+    def no_glob(path, pattern):
+        if selection == "override" and pattern == "replacement_EUROPE*.nc":
+            return original_glob(path, pattern)
+        pytest.fail("Only the winning fp basis may be discovered; NESW and disabled BCs need no files")
+
+    monkeypatch.setattr(rhime_standard, "load_bc_basis", record_load)
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", acquisition)
+    monkeypatch.setattr(run_hbmcmc, "_copy_config_file", lambda *args, **kwargs: None)
+    if selection != "file":
+        monkeypatch.setattr(Path, "glob", no_glob)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with pytest.raises(ReachedAcquisition):
+            run_hbmcmc.main(["-c", str(config_file), "--kwargs", json.dumps(overrides)])
+    if selection in ("nesw", "override"):
+        assert any("directory is unused for NESW" in str(w.message) for w in caught)
+    if selection in ("nesw", "disabled"):
+        assert not resource_dir.exists()
+
+
+def test_legacy_cli_rejects_removed_country_directory_before_execution(monkeypatch, tmp_path):
+    config_file = tmp_path / "legacy.ini"
+    _fixedbasis_config(config_file)
+    monkeypatch.setattr(run_hbmcmc, "run_standard", lambda **kwargs: pytest.fail("must reject before execution"))
+    monkeypatch.setattr(run_hbmcmc, "_copy_config_file", lambda *args, **kwargs: pytest.fail("must reject before writes"))
+    with pytest.raises(ValueError, match="country_directory.*removed in 0.8"):
+        run_hbmcmc.main(["-c", str(config_file), "--kwargs", '{"country_directory": "old"}'])

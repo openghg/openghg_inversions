@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from time import perf_counter
 
 from netCDF4 import Dataset as NetCDFDataset
 import numpy as np
@@ -16,6 +17,7 @@ import xarray as xr
 
 from openghg_inversions.basis.affine_flux_map_io import save as save_affine
 from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.cli import main
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.rhime.co2 import Co2PreparedInputs, prepare_co2_inputs
 from openghg_inversions.rhime.co2.co2_affine_output import (
@@ -124,6 +126,7 @@ def _cli(*arguments: str | Path, success: bool = True) -> subprocess.CompletedPr
     executable = Path(sys.executable).with_name("openghg-inversions")
     environment = os.environ.copy()
     environment.pop("RUN_ROOT", None)
+    started = perf_counter()
     result = subprocess.run(
         [str(executable), *map(str, arguments)],
         text=True,
@@ -131,6 +134,7 @@ def _cli(*arguments: str | Path, success: bool = True) -> subprocess.CompletedPr
         env=environment,
         timeout=240,
     )
+    print(f"Installed CLI {arguments[0]}: {perf_counter() - started:.2f}s")
     if success:
         assert result.returncode == 0, result.stdout + result.stderr
     else:
@@ -138,8 +142,18 @@ def _cli(*arguments: str | Path, success: bool = True) -> subprocess.CompletedPr
     return result
 
 
+def _in_process_cli(*arguments: str | Path) -> None:
+    """Reuse the CLI parser and handlers for checks on the already sampled handoff."""
+    started = perf_counter()
+    main(list(map(str, arguments)))
+    print(f"In-process CLI {arguments[0]}: {perf_counter() - started:.2f}s")
+
+
 @pytest.mark.parametrize("variant", ["ordinary", "cached_fixed_ou"])
-def test_installed_co2_stages_preserve_scientific_and_file_contracts(tmp_path: Path, variant: str) -> None:
+def test_installed_co2_stages_preserve_scientific_and_file_contracts(
+    tmp_path: Path, variant: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("RUN_ROOT", raising=False)
     source, original = _handoff(tmp_path)
     config = _configuration(tmp_path, variant)
     common = ["--model", "co2", "--config", str(config)]
@@ -193,11 +207,10 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(tmp_path: P
     assert len(revision) == 40 and all(character in "0123456789abcdef" for character in revision)
     assert sample_manifest["ogi"] == prepare_manifest["ogi"]
     assert sample_manifest["configuration_identity"] == prepare_manifest["configuration_identity"]
-    assert (
-        sample_manifest["input_identities"]["prepared_inputs"]
-        == prepare_manifest["artifact_identities"]["prepared_inputs"]
-    )
-    _cli(
+    assert "artifact_identities" not in prepare_manifest
+    assert "artifact_identities" not in sample_manifest
+    assert "input_identities" not in sample_manifest
+    _in_process_cli(
         "diagnose",
         "--posterior",
         posterior,
@@ -212,11 +225,9 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(tmp_path: P
     diagnose_manifest = json.loads((tmp_path / "diagnose" / "diagnose-manifest.json").read_text())
     assert diagnose_manifest["ogi"]["revision"] == revision
     assert diagnose_manifest["configuration_identity"] == sample_manifest["configuration_identity"]
-    assert (
-        diagnose_manifest["input_identities"]["posterior"]
-        == sample_manifest["artifact_identities"]["posterior"]
-    )
-    _cli(
+    assert "input_identities" not in diagnose_manifest
+    assert "artifact_identities" not in diagnose_manifest
+    _in_process_cli(
         "postprocess",
         *common,
         *handoff,
@@ -228,10 +239,8 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(tmp_path: P
         tmp_path / "postprocess",
     )
     post = json.loads((tmp_path / "postprocess" / "postprocess-manifest.json").read_text())
-    assert (
-        post["input_identities"]["prepared_inputs"]
-        == prepare_manifest["artifact_identities"]["prepared_inputs"]
-    )
+    assert "input_identities" not in post
+    assert "artifact_identities" not in post
     assert (tmp_path / "postprocess" / "basic.nc").is_file()
     for name in ("native_flux", "country_flux"):
         with xr.open_dataset(tmp_path / "postprocess" / f"{name}.nc") as product:
@@ -247,8 +256,9 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(tmp_path: P
         assert "active_flux_scale_posterior" in components
         assert "residual_posterior" in components
         assert components["predictive_posterior"].attrs["units"] == "ppm"
+    # Installed stages above cover process boundaries; replay uses the same CLI in-process.
     # Replaying saved inputs and posterior must produce identical scientific products.
-    _cli(
+    _in_process_cli(
         "postprocess",
         *common,
         *handoff,
@@ -273,7 +283,7 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(tmp_path: P
             "country_file": str(tmp_path / "countries.nc"),
         }
     }
-    _cli(
+    _in_process_cli(
         "postprocess",
         *common,
         *handoff,
@@ -302,7 +312,7 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(tmp_path: P
             time = time_variable[:]
             bounds = product.variables["time_bnds"][:]
             np.testing.assert_allclose(time, bounds.mean(axis=1))
-    # A same-label artifact with changed observations cannot reuse this posterior.
+    # A different preparation requires its associated affine reconstruction.
     changed = restored.inv_inputs.copy(deep=True)
     changed["mf"].data = changed["mf"].data + 1.0
     unrelated = Co2PreparedInputs(
@@ -311,18 +321,17 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(tmp_path: P
         restored.provenance,
     )
     unrelated.save(tmp_path / "unrelated.nc")
-    failure = _cli(
-        "sample",
-        *common,
-        "--prepared-inputs",
-        tmp_path / "unrelated.nc",
-        "--preparation-manifest",
-        preparation,
-        "--output-dir",
-        tmp_path / "rejected",
-        success=False,
-    )
-    assert "content does not match" in failure.stderr
+    with pytest.raises(ValueError, match="Affine flux prepared-input content identity does not match"):
+        _in_process_cli(
+            "sample",
+            *common,
+            "--prepared-inputs",
+            tmp_path / "unrelated.nc",
+            "--preparation-manifest",
+            preparation,
+            "--output-dir",
+            tmp_path / "rejected",
+        )
     assert not (tmp_path / "rejected" / "posterior.nc").exists()
 
 
@@ -336,3 +345,23 @@ def test_installed_co2_prepare_rejects_unsupported_output_before_writing(tmp_pat
     )
     assert "unsupported" in failure.stderr or "support" in failure.stderr
     assert not destination.exists()
+
+
+def test_co2_overrides_replace_sections_before_file_path_conversion(tmp_path, monkeypatch):
+    from openghg_inversions.rhime.stages import load_stage_params
+
+    file_dir = tmp_path / "config"
+    file_dir.mkdir()
+    source = file_dir / "run.json"
+    source.write_text(json.dumps({
+        "prepared_inputs": {"path": "prepared.nc"},
+        "outputs": {"country_file": None, "reconstruction_path": None},
+    }))
+    monkeypatch.chdir(tmp_path)
+    overrides = {"outputs": {"country_file": "countries.nc"}}
+
+    params = load_stage_params(params_file=source, overrides=overrides, model="co2")
+
+    assert params["prepared_inputs"] == {"path": str(file_dir / "prepared.nc")}
+    assert params["outputs"] == {"country_file": str(tmp_path / "countries.nc")}
+    assert overrides == {"outputs": {"country_file": "countries.nc"}}

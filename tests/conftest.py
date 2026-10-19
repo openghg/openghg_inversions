@@ -352,7 +352,14 @@ test_data_list.append(
 )
 
 ## BC data
-bc_metadata = {"species": "ch4", "bc_input": "cams", "domain": "europe", "store": "inversions_tests"}
+# Both BC fixtures contain a single January field with monthly source coverage.
+bc_metadata = {
+    "species": "ch4",
+    "bc_input": "cams",
+    "domain": "europe",
+    "store": "inversions_tests",
+    "period": "monthly",
+}
 bc_data_path = _raw_data_path / "bc_ch4_europe_cams_2019-01-01_2019-12-31_data.nc"
 test_data_list.append(TestData(standardise_bc, bc_metadata, bc_data_path, "boundary_conditions"))
 
@@ -361,6 +368,7 @@ satellite_bc_metadata = {
     "bc_input": "cams",
     "domain": "southamerica",
     "store": "inversions_tests",
+    "period": "monthly",
 }
 satellite_bc_data_path = _raw_data_path / "satellite" / "bc" / "ch4_SOUTHAMERICA_201601_CAMS-inversion.nc"
 test_data_list.append(

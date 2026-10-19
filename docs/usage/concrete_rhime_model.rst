@@ -1,7 +1,7 @@
 Standard and multisector RHIME models
 =====================================
 
-This page makes the model graph behind :func:`run_rhime` and
+This page makes the model graph behind :func:`run_standard` and
 :func:`run_rhime_multisector` explicit. The advanced CO₂-only and linked
 CO₂/O₂ graphs have their canonical home in :doc:`co2_models`. This page has two
 purposes:
@@ -29,7 +29,7 @@ The current builders
 --------------------
 
 Each recipe directly composes one readable concrete graph. The standard graph
-lives beside :func:`run_rhime` in ``openghg_inversions.rhime.standard``; the
+lives beside :func:`run_standard` in ``openghg_inversions.rhime.standard``; the
 multisector graph lives beside :func:`run_rhime_multisector` in
 ``openghg_inversions.rhime.multisector``:
 
@@ -41,6 +41,13 @@ multisector graph lives beside :func:`run_rhime_multisector` in
    -> total flux contribution, mu
    -> boundary, offset, error, and likelihood components
    -> PyMC model
+
+The standard builder is ``build_standard_model(model_inputs, model_spec,
+priors=...)`` and returns the concrete model plus its output contract. It accepts
+already materialized numerical arrays and prior parameters. Call
+``materialize_standard_inputs(prepared, model_spec)`` explicitly when these may
+be lazy; the helper computes selected inputs and enabled priors together. Builder
+construction does not execute a borrowed lazy graph or consume output choices.
 
 .. _rhime-builder-stability:
 
@@ -300,7 +307,7 @@ helpers:
 
 This example is deliberately concrete and editable. It is suitable when a
 model developer needs to change graph construction directly. It does not
-automatically participate in the complete ``run_rhime`` output pipeline; that
+automatically participate in the complete ``run_standard`` output pipeline; that
 pipeline still selects one of the built-in model builders.
 
 ``prepare_linear_sensitivity`` is the single owning boundary for exact-zero column
@@ -354,7 +361,7 @@ not implemented. They are tracked in
 Alternative models and likelihoods
 ----------------------------------
 
-Direct-Python likelihood builders enter through ``run_rhime``,
+Direct-Python likelihood builders enter through ``run_standard``,
 ``run_rhime_multisector``, or ``run_rhime_from_prepared_inputs``.
 Complete-model builders remain available only at the prepared-input boundary.
 Callables are never read from configuration or stored on ``RhimeModelSpec`` or
@@ -385,9 +392,9 @@ ordinary runner:
 .. code-block:: python
 
    from my_project.likelihoods import likelihood_builder
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.rhime import run_standard
 
-   result = run_rhime(
+   result = run_standard(
        config_file="config.ini",
        mismatch_model=None,
        likelihood_builder=likelihood_builder,
@@ -437,9 +444,9 @@ amplitudes, pass an explicit positive prior:
 .. code-block:: python
 
    from openghg_inversions.models import add_site_sigma_gaussian_likelihood
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.rhime import run_standard
 
-   result = run_rhime(
+   result = run_standard(
        config_file="config.ini",
        mismatch_model=None,
        likelihood_builder=add_site_sigma_gaussian_likelihood,
@@ -465,10 +472,18 @@ Inversions' aggregation-error and Gaussian likelihood machinery.
 Advanced whole-model compatibility boundary
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-A complete model builder is an advanced escape hatch available only through
-``run_rhime_from_prepared_inputs``. It receives a
+A complete model builder is a retained multisector compatibility escape hatch
+available through ``run_rhime_from_prepared_inputs`` when
+``run_spec.split_by_sectors=True``.
+The standard ``run_standard(prepared=..., config=...)`` route accepts alternative
+or cached preparation, then
+uses the same construction, sampling, result and product operations as full and
+saved execution. Its builder takes ``RhimeModelSpec`` without output settings.
+Standard callers must replace ``model_builder`` with ``likelihood_builder`` when
+changing the likelihood, or construct and sample a custom PyMC model directly
+when replacing the complete graph. The retained multisector builder receives a
 ``RhimeModelBuilderContext`` containing the validated ``RhimePreparedInputs``,
-updated ``RhimeRunSpec``, and validated single- versus multi-sector mode, and
+updated ``RhimeRunSpec``, and validated multisector mode, and
 returns a ``RhimeModelBuildResult``. Ordinary standard and multisector recipes
 never construct or consume this context. Complete builders also bypass the
 ordinary recipe-owned materialization step, so they must select, validate, and
@@ -489,6 +504,7 @@ materialize any lazy arrays they consume:
        add_coords,
        registered_model,
    )
+   from openghg_inversions.postprocessing.contracts import OutputContract
 
 
    def complete_model(
@@ -507,20 +523,23 @@ materialize any lazy arrays they consume:
            )
        return RhimeModelBuildResult(
            model=model,
-           variable_roles={
-               "observation": "mf",
-               "observation_error": "mf_error",
-               "concentration": "custom_y",
-           },
-           supported_output_formats=("none", "inv_out"),
-           metadata={
-               "package": "my-rhime-models",
-               "version": version("my-rhime-models"),
-               "model": "complete_model_v1",
-           },
+           output_contract=OutputContract(
+               variable_roles={
+                   "observation": "mf",
+                   "observation_error": "mf_error",
+                   "concentration": "custom_y",
+               },
+               supported_output_formats=("none", "inv_out"),
+               metadata={
+                   "package": "my-rhime-models",
+                   "version": version("my-rhime-models"),
+                   "model": "complete_model_v1",
+               },
+           ),
        )
 
 
+   # prepared and run_spec must describe a multisector run.
    result = run_rhime_from_prepared_inputs(
        prepared_inputs=prepared,
        run_spec=run_spec,
@@ -547,12 +566,11 @@ The compatibility rules are explicit:
   model, is omitted from the role manifest rather than represented by a magic
   name.
 
-The built-in standard and multisector builders produce the same
-``RhimeModelBuildResult`` contract on ``RhimeResult.model_build_result``. Their
-sector roles use keys such as ``flux_scale:FF`` and
-``flux_contribution:FF``. The low-level recipe builders return a plain
-``pm.Model``; the corresponding ``*_model_result`` wrappers add the runner and
-output metadata contract.
+The eager standard builder returns ``RhimeModelBuildResult`` for direct graph
+inspection. The multisector compatibility runner retains that contract on
+``RhimeResult.model_build_result``. Multisector roles use keys such as
+``flux_scale:FF`` and ``flux_contribution:FF``. Deferred-family low-level builders
+retain their existing plain-model and result-wrapper interfaces.
 
 Structurally distinct observation-channel models belong in readable named
 recipes with concrete builders. The active design guidance is

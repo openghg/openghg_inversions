@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import cast
+from typing import Any, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -43,7 +43,7 @@ from openghg_inversions.observation_error import (
     aggregation_error_as_low_rank,
     validate_observation_error_arrays,
 )
-from openghg_inversions.rhime.cached_sigma import PytensorMarginalQuadraticCache
+from openghg_inversions.inference.cached_sigma import PytensorMarginalQuadraticCache
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
 
@@ -55,7 +55,12 @@ OU_SITE_AMPLITUDE = "ou_site_amplitude"
 
 @dataclass(frozen=True)
 class Co2CachedSigmaModel:
-    """Concrete graph plus the numerical objects required by its sampler."""
+    """Observed graph, cached state expression, and scientific starting values.
+
+    ``initial_values`` contains untransformed sampling overrides or PyMC
+    initialization strategies, lifted from graph metadata. The matched runner
+    resolves them separately for construction and each sampling chain.
+    """
 
     model: pm.Model
     target: FixedOuCachedSigmaTarget
@@ -64,6 +69,8 @@ class Co2CachedSigmaModel:
     amplitude: TensorVariable
     states: tuple[TensorVariable, ...]
     modelled_mean: TensorVariable
+    cached_state_logp: TensorVariable
+    initial_values: dict[str, Any]
     site_amplitude_prior_scale: float
 
 
@@ -87,6 +94,8 @@ class _CachedLikelihood:
     initial_cache: MarginalQuadraticCache
     amplitude: TensorVariable
     states: tuple[TensorVariable, ...]
+    cached_state_logp: TensorVariable
+    initial_values: dict[str, Any]
 
 
 def _materialize_cached_linear_projection(
@@ -164,6 +173,7 @@ def _add_cached_likelihood(
     terms: tuple[_CachedAffineTerm, ...],
     *,
     covariance: FixedOuLowRank,
+    modelled_mean: TensorVariable,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
     site_coord: xr.DataArray,
@@ -194,7 +204,7 @@ def _add_cached_likelihood(
     initial_cache = target.refresh(initial_amplitudes)
     shared_cache = PytensorMarginalQuadraticCache(initial_cache)
     add_coords({OU_SITE_DIM: site_coord})
-    add_model_data(observations.transpose(output_dim), "Y")
+    observed = add_model_data(observations.transpose(output_dim), "Y")
     add_model_data(observation_error.transpose(output_dim), "error")
     add_model_data(site_index)
     add_model_data(
@@ -208,7 +218,6 @@ def _add_cached_likelihood(
     amplitude = pm.HalfNormal(
         OU_SITE_AMPLITUDE,
         sigma=float(site_amplitude_prior_scale),
-        initval=pm.floatX(initial_amplitudes),
         dims=OU_SITE_DIM,
     )
     pm.Deterministic(
@@ -219,16 +228,36 @@ def _add_cached_likelihood(
     coefficients = pt.concatenate(
         [cast(TensorVariable, term.coefficients) for term in active_terms]
     )
-    pm.Potential(
-        "cached_fixed_ou_likelihood",
-        shared_cache.log_likelihood(coefficients),
+    cached_state_logp = shared_cache.log_likelihood(coefficients)
+    pm.CustomDist(
+        "y",
+        modelled_mean,
+        amplitude,
+        logp=covariance.logp,
+        random=covariance.random,
+        signature="(n),(s)->(n)",
+        observed=observed,
+        dims=output_dim,
     )
+    model = pm.modelcontext(None)
+    initial_values = {
+        str(rv.name): value
+        for rv, value in model.rvs_to_initial_values.items()
+        if value is not None
+    }
+    initial_values[OU_SITE_AMPLITUDE] = pm.floatX(initial_amplitudes).copy()
+    # PyMC's generic log-likelihood transformation requires default graph
+    # initvals. Preserve scientific starts separately for the matched runner.
+    for rv in model.free_RVs:
+        model.set_initval(rv, None)
     return _CachedLikelihood(
         target=target,
         shared_cache=shared_cache,
         initial_cache=initial_cache,
         amplitude=amplitude,
         states=tuple(rv for term in terms for rv in term.sampled_rvs),
+        cached_state_logp=cached_state_logp,
+        initial_values=initial_values,
     )
 
 
@@ -258,12 +287,13 @@ def build_co2_cached_sigma_model(
     The complete ``co2_flux_contribution`` is the coherent affine sum of the
     fixed prior contribution and flux sensitivity product. Boundary and offset
     terms are then added to form ``modelled_concentration``. The observation
-    likelihood is a normalized cached ``Potential`` over a private
-    concatenation of the active flux, boundary, and offset coefficients. These
-    states remain separate scientific variables and sampler inputs. The
-    returned target owns exact joint likelihood and predictive evaluation
-    after sampling; no independent pointwise likelihood is fabricated in the
-    graph.
+    likelihood is one normalized observed joint Gaussian with exact density
+    and random callbacks. A separate cached quadratic over the active flux,
+    boundary, and offset coefficients supplies efficient state trajectories.
+    These states remain separate scientific variables and sampler inputs.
+    The matched runner supplies the returned scientific initial values through
+    sampling inputs. Observations, designs, activity masks, and covariance are
+    fixed after construction; rebuild the recipe for different inputs.
 
     Args:
         flux_sensitivity: Reduced sensitivity with the output dimension and
@@ -509,6 +539,7 @@ def build_co2_cached_sigma_model(
         cached = _add_cached_likelihood(
             tuple(terms),
             covariance=covariance,
+            modelled_mean=modelled_mean,
             observations=observations,
             observation_error=observation_error,
             site_coord=site_coord,
@@ -525,6 +556,8 @@ def build_co2_cached_sigma_model(
         amplitude=cached.amplitude,
         states=cached.states,
         modelled_mean=modelled_mean,
+        cached_state_logp=cached.cached_state_logp,
+        initial_values=cached.initial_values,
         site_amplitude_prior_scale=float(site_amplitude_prior_scale),
     )
 

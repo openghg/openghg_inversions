@@ -19,7 +19,9 @@ openghg\_inversions.basis
    openghg_inversions.basis.affine_flux_map
    openghg_inversions.basis.affine_flux_map_io
    openghg_inversions.basis.basis_functions
+   openghg_inversions.basis.compatibility
    openghg_inversions.basis.covariance_products
    openghg_inversions.basis.layout
    openghg_inversions.basis.operators
    openghg_inversions.basis.prior_uncertainty
+   openghg_inversions.basis.support

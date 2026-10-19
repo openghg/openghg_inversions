@@ -2,7 +2,7 @@ Multisector RHIME tutorial
 ==========================
 
 This tutorial runs the supported
-:func:`openghg_inversions.rhime.run_rhime_multisector` recipe and inspects its
+:func:`openghg_inversions.rhime.run_multisector` recipe and inspects its
 sector-labelled state and persisted sector/source diagnostics. It uses the
 current production multisector runner.
 
@@ -46,7 +46,7 @@ The supported CLI route differs from the standard tutorial only by subcommand:
 
 .. code-block:: console
 
-   $ pixi run -e dev openghg-inversions run-rhime-multisector \
+   $ pixi run -e dev rhime run --model multisector \
        --config openghg_inversions/rhime/config/multisector_tutorial.ini \
        --output-path outputs
 
@@ -61,12 +61,12 @@ The supported Python route is:
    import os
    from pathlib import Path
 
-   from openghg_inversions.rhime import run_rhime_multisector
+   from openghg_inversions.rhime import run
 
    tutorial_output_path = Path(os.environ.get("OPENGHG_TUTORIAL_OUTPUT_PATH", "outputs"))
    resource = files("openghg_inversions.rhime").joinpath("config/multisector_tutorial.ini")
    with as_file(resource) as config:
-       result = run_rhime_multisector(config_file=config, output_path=tutorial_output_path)
+       result = run(model="multisector", config_file=config, output_path=tutorial_output_path)
 
    {
        "OpenGHG Inversions commit": os.environ.get(
@@ -205,6 +205,12 @@ not another independently inferred state. Keep the sector variables labelled
 when comparing source contributions. The inversion output's provenance has the
 same limits described by the standard tutorial: it retains prepared arrays,
 basis, trace and resolved metadata, but is not an object-store query snapshot.
+
+For ordinary finite traces, sector diagnostics reduce scaling samples before
+reconstructing mean fluxes.
+Requesting total quantiles or standard deviations needs draw-wise fluxes and
+can use much more memory; see :doc:`retained_state_reconstruction` before
+building those products for a large grid.
 
 For a clean-checkout mechanics test, run
 ``uv run pytest tests/test_rhime_tutorials.py -q``. Its multisector case uses

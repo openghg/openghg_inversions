@@ -13,6 +13,7 @@ openghg\_inversions
    openghg_inversions.config
    openghg_inversions.experimental
    openghg_inversions.hbmcmc
+   openghg_inversions.inference
    openghg_inversions.inversion_data
    openghg_inversions.models
    openghg_inversions.postprocessing
@@ -35,6 +36,7 @@ openghg\_inversions
    openghg_inversions.inversion_inputs
    openghg_inversions.model_error
    openghg_inversions.native_covariance
+   openghg_inversions.native_flux
    openghg_inversions.observation_error
    openghg_inversions.serialization
    openghg_inversions.sigma

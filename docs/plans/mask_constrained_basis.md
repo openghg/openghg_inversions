@@ -5,6 +5,26 @@
 This tracks the branch sequence for issues #318, #449, #325, and the split-strategy
 part of #340.
 
+## Current input boundary (#838 / #839)
+
+Modern basis preparation receives explicit native `runtime_flux` and singular
+first-source `weighting_flux`, resolved by the procedural preparation owner.
+Native prior flux remains separate from observation-aligned response arrays.
+Saved-operator reuse binds the current prior without loading saved flux; complete
+`BasisFunctions.load` restoration retains saved flux for reconstruction.
+Preparation accepts exact `basis_path` / `output_path` destinations
+and resolved labelled scientific maps. Select packaged support maps explicitly
+with `packaged_basis_support_path`; read selected files at the application
+preparation boundary, before acquisition or weight computation. Missing requested
+domain resources fail without another-domain fallback. Numerical splitters accept
+arrays and do not discover country directories. Historical `fp_all`, case/glob
+and flat-artifact adapters remain compatibility code calling modern operations.
+
+This completes input isolation for the #452 weights-first work and the bounded
+path/map portion of #454. Grouped-country semantics, richer weight builders and
+acquisition replay (#829) remain separate. The branch inventory below records the
+historical delivery sequence rather than current public naming.
+
 ## Branches
 
 - `codex/basis-prototype-examples`: pushed as a reference branch only. No PR opened.
@@ -58,9 +78,8 @@ be tested without committing to config syntax.
 - Existing land/sea files. This is the smallest usable option because the
   legacy weighted algorithm already uses files such as
   `country-land-sea_{domain}.nc` and `country-EUROPE-UKMO-landsea-2023.nc`.
-  Add a coordinate-preserving loader that returns a `region_classes`
-  `DataArray`, rather than reusing the current NumPy-only
-  `_weighted.load_landsea_indices`. This gives a direct lower-level replacement
+  `load_basis_support_map(path, "country")` returns a coordinate-preserving
+  `DataArray` for the numerical boundary. This gives a direct lower-level replacement
   for "weighted, but constrained by land/sea" and should be easy to test with
   the existing synthetic #318 fixture plus one package land/sea file.
 - Country or region masks from `country_file`. The workflows preserved in

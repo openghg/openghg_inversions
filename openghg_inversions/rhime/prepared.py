@@ -1,24 +1,27 @@
-"""Advanced RHIME entry point for already prepared scientific inputs."""
+"""Retained multisector entry point for already prepared scientific inputs."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 
 from openghg_inversions._timing import timer_seconds, timer_start
 from openghg_inversions.inversion_data import RhimePreparedInputs
-from openghg_inversions.observation_error import (
-    select_aggregation_error_mode,
-)
 
 from .builders import RhimeLikelihoodBuilder, RhimeModelBuilder
 from .materialization import materialize_pymc_inputs
 from .multisector import build_multisector_rhime_model_result, make_multisector_rhime_result
 from .multisector import multisector_model_input_names
-from .outputs import RhimeResult, make_multisector_rhime_outputs, make_standard_rhime_outputs
+from .outputs import (
+    RhimeResult,
+    make_multisector_rhime_outputs,
+    annotate_sample_trace,
+    validate_output_resources,
+)
 from .preparation import with_prepared_rhime_sites
+from openghg_inversions.inference.sampling import resolve_sampler
 from .sampling import RhimeSampler, sample_rhime_model
 from .specs import (
     RhimeRunSpec,
@@ -26,47 +29,55 @@ from .specs import (
     validate_output_format,
     validate_output_path_settings,
 )
-from .standard import (
-    build_standard_rhime_model_result,
-    make_standard_rhime_result,
-    standard_model_input_names,
-)
+
+
+def _require_prepared_layout(prepared: RhimePreparedInputs, *, multisector: bool) -> None:
+    """Check externally supplied sensitivity layout against the selected recipe."""
+    sensitivity = prepared.inv_inputs["H"]
+    source = sensitivity.coords.get("source")
+    state_dims = [dim for dim in sensitivity.dims if dim != "nmeasure"]
+    gathered = (
+        source is not None and len(state_dims) == 1 and source.dims == (state_dims[0],)
+        and isinstance(sensitivity.indexes.get(state_dims[0]), pd.MultiIndex)
+        and "source" in sensitivity.indexes[state_dims[0]].names
+    )
+    if ("source" in sensitivity.dims or gathered) != multisector:
+        raise ValueError("The prepared H layout conflicts with the selected standard/multisector recipe.")
 
 
 def run_rhime_from_prepared_inputs(
     *,
     prepared_inputs: RhimePreparedInputs,
     run_spec: RhimeRunSpec,
-    sampler: RhimeSampler | None = None,
+    sampler: RhimeSampler | Literal["default"] = "default",
     model_builder: RhimeModelBuilder | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
 ) -> RhimeResult:
-    """Build, sample, construct a result, and output a prepared RHIME run.
+    """Run a retained multisector recipe from prepared scientific inputs.
 
-    This advanced route intentionally starts after retrieval, filtering, basis
-    construction, sensitivity construction, and labelled-input assembly. It
-    validates the retained scientific layout before crossing the PyMC
-    materialization boundary.
+    Standard callers use ``run_standard(prepared=..., config=...)`` so prepared
+    and acquired standard execution share the same scientific pipeline.
 
     Args:
-        prepared_inputs: Validated canonical inversion inputs and retained
-            basis functions.
-        run_spec: Resolved model, output, and run settings.
-        sampler: Optional sampler configuration; defaults to ``RhimeSampler``.
-        model_builder: Optional complete-model callable for advanced graphs.
-        likelihood_builder: Optional ordinary likelihood callable used with
-            the built-in graph.
+        prepared_inputs: Borrowed canonical inputs and retained basis functions.
+        run_spec: Multisector model, output and run settings.
+        sampler: Sampler configuration or ``"default"`` for fresh defaults.
+        model_builder: Optional complete multisector model factory.
+        likelihood_builder: Optional custom likelihood for the built-in graph.
         likelihood_kwargs: Options specific to the custom likelihood.
 
     Returns:
-        Sampled result with any requested output products attached.
+        Retained multisector result envelope.
 
     Raises:
-        ValueError: If layouts, extension points, aggregation error, or output
-            settings are inconsistent.
-        TypeError: If an extension point has an invalid callable contract.
+        ValueError: If the layout, extension points or output settings conflict.
+        TypeError: If the sampler or model-builder result has an invalid type.
+        FileNotFoundError: If a selected reporting resource is missing.
     """
+    active_sampler = resolve_sampler(sampler)
+    if not run_spec.split_by_sectors:
+        raise ValueError("Standard prepared execution uses run_standard(prepared=..., config=...).")
     if model_builder is not None and likelihood_builder is not None:
         raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
     if likelihood_kwargs and likelihood_builder is None:
@@ -79,20 +90,7 @@ def run_rhime_from_prepared_inputs(
         raise ValueError(f"`run_spec.model.sectors` must contain at least one sector; found {sector_count}.")
     multisector = sector_count > 1
 
-    sensitivity = prepared_inputs.inv_inputs["H"]
-    source_coord = sensitivity.coords.get("source")
-    state_dims = [str(dim) for dim in sensitivity.dims if dim != "nmeasure"]
-    gathered_source = False
-    if source_coord is not None and len(state_dims) == 1 and source_coord.dims == (state_dims[0],):
-        source_index = sensitivity.indexes.get(state_dims[0])
-        gathered_source = isinstance(source_index, pd.MultiIndex) and "source" in source_index.names
-    prepared_is_multisector = "source" in sensitivity.dims or gathered_source
-    if run_spec.split_by_sectors is not prepared_is_multisector:
-        raise ValueError(
-            "`run_spec.split_by_sectors` must agree with the prepared `H` layout: "
-            f"split_by_sectors={run_spec.split_by_sectors}, "
-            f"multisector source layout present={prepared_is_multisector}."
-        )
+    _require_prepared_layout(prepared_inputs, multisector=run_spec.split_by_sectors)
     if run_spec.split_by_sectors is not multisector:
         raise ValueError(
             "`run_spec.split_by_sectors` must agree with the model sector count: "
@@ -101,21 +99,6 @@ def run_rhime_from_prepared_inputs(
 
     output_spec = run_spec.output
     validate_output_format(output_spec.output_format)
-    if model_builder is None:
-        aggregation_error_mode = select_aggregation_error_mode(
-            prepared_inputs.inv_inputs,
-            run_spec.model.aggregation_error_mode,
-        )
-        if aggregation_error_mode != "none" and output_spec.output_format in {
-            "basic",
-            "paris",
-            "legacy",
-        }:
-            raise ValueError(
-                "RHIME aggregation-error covariance is not yet supported by derived "
-                f"output_format={output_spec.output_format!r}; use 'inv_out' or 'none' until "
-                "the postprocessing reconstruction follow-up lands."
-            )
     validate_output_filename_convention(output_spec.output_filename_convention)
     validate_output_path_settings(
         output_format=output_spec.output_format,
@@ -124,10 +107,12 @@ def run_rhime_from_prepared_inputs(
         save_inversion_output=output_spec.save_inversion_output,
         multisector=multisector,
     )
+    validate_output_resources(output_spec)
     if model_builder is None and likelihood_builder is None and run_spec.model.likelihood is None:
         raise ValueError("A prepared RHIME run requires a model builder or likelihood.")
 
     run_spec = with_prepared_rhime_sites(run_spec, prepared_inputs)
+    build_and_sample_start = timer_start()
     # Complete-model builders historically own canonical, potentially lazy
     # inputs. Only built-in graphs cross the named eager PyMC boundary here.
     model_inputs = (
@@ -135,70 +120,36 @@ def run_rhime_from_prepared_inputs(
         if model_builder is not None
         else materialize_pymc_inputs(
             prepared_inputs,
-            variable_names=(
-                multisector_model_input_names(
-                    prepared_inputs,
-                    run_spec.model,
-                )
-                if multisector
-                else standard_model_input_names(
-                    prepared_inputs,
-                    run_spec.model,
-                )
-            ),
+            variable_names=multisector_model_input_names(prepared_inputs, run_spec.model),
         )
     )
-    active_sampler = RhimeSampler() if sampler is None else sampler
-    build_and_sample_start = timer_start()
-
-    if multisector:
-        model_build_result = build_multisector_rhime_model_result(
-            prepared=prepared_inputs,
-            model_inputs=model_inputs,
-            run_spec=run_spec,
-            model_builder=model_builder,
-            likelihood_builder=likelihood_builder,
-            likelihood_kwargs=likelihood_kwargs,
-        )
-    else:
-        model_build_result = build_standard_rhime_model_result(
-            prepared=prepared_inputs,
-            model_inputs=model_inputs,
-            run_spec=run_spec,
-            model_builder=model_builder,
-            likelihood_builder=likelihood_builder,
-            likelihood_kwargs=likelihood_kwargs,
-        )
+    model_build_result = build_multisector_rhime_model_result(
+        prepared=prepared_inputs,
+        model_inputs=model_inputs,
+        run_spec=run_spec,
+        model_builder=model_builder,
+        likelihood_builder=likelihood_builder,
+        likelihood_kwargs=likelihood_kwargs,
+    )
+    if model_builder is None:
+        model_build_result.output_contract.validate_requested_output(output_spec.output_format)
     idata = sample_rhime_model(
         model_build_result,
         active_sampler,
     )
+    annotate_sample_trace(model_build_result, idata)
     build_and_sample_seconds = timer_seconds(build_and_sample_start)
 
-    if multisector:
-        result = make_multisector_rhime_result(
-            prepared=prepared_inputs,
-            run_spec=run_spec,
-            sampler=active_sampler,
-            model_build_result=model_build_result,
-            idata=idata,
-            build_and_sample_seconds=build_and_sample_seconds,
-            model_builder=model_builder,
-            likelihood_builder=likelihood_builder,
-            likelihood_kwargs=likelihood_kwargs,
-        )
-        make_multisector_rhime_outputs(result=result, prepared=prepared_inputs)
-    else:
-        result = make_standard_rhime_result(
-            prepared=prepared_inputs,
-            run_spec=run_spec,
-            sampler=active_sampler,
-            model_build_result=model_build_result,
-            idata=idata,
-            build_and_sample_seconds=build_and_sample_seconds,
-            model_builder=model_builder,
-            likelihood_builder=likelihood_builder,
-            likelihood_kwargs=likelihood_kwargs,
-        )
-        make_standard_rhime_outputs(result=result, prepared=prepared_inputs)
+    result = make_multisector_rhime_result(
+        prepared=prepared_inputs,
+        run_spec=run_spec,
+        sampler=active_sampler,
+        model_build_result=model_build_result,
+        idata=idata,
+        build_and_sample_seconds=build_and_sample_seconds,
+        model_builder=model_builder,
+        likelihood_builder=likelihood_builder,
+        likelihood_kwargs=likelihood_kwargs,
+    )
+    make_multisector_rhime_outputs(result=result, prepared=prepared_inputs)
     return result

@@ -16,6 +16,7 @@ from openghg_inversions.array_ops import (
     expand_mapping,
     get_xr_dummies,
     iter_multi_index_level_slices,
+    jax_to_numpy,
     require_unique_index,
     same_index,
     select_gathered_data_array,
@@ -58,6 +59,29 @@ def test_to_dense_preserves_lazy_auxiliary_coordinates(sparse_payload: bool) -> 
     assert result.encoding == array.encoding
 
 
+def test_jax_to_numpy_preserves_dataarray_metadata() -> None:
+    """Convert only JAX payloads while preserving xarray metadata and inputs."""
+    jnp = pytest.importorskip("jax.numpy")
+    array = xr.DataArray(
+        jnp.array([1.0, 2.0]),
+        dims="state",
+        coords={"state": ["north", "south"]},
+        name="flux",
+        attrs={"units": "kg"},
+    )
+    original_data = array.data
+
+    result = jax_to_numpy(array)
+
+    assert isinstance(result.data, np.ndarray)
+    assert result.dims == array.dims
+    assert result.name == array.name
+    assert result.attrs == array.attrs
+    np.testing.assert_array_equal(result.state, ["north", "south"])
+    np.testing.assert_array_equal(result.data, [1.0, 2.0])
+    assert array.data is original_data
+
+
 @pytest.mark.parametrize("return_sparse", [False, True])
 def test_get_xr_dummies_accepts_unlabelled_dimension(return_sparse: bool) -> None:
     values = xr.DataArray([0, 1, 0], dims="observation")
@@ -69,6 +93,37 @@ def test_get_xr_dummies_accepts_unlabelled_dimension(return_sparse: bool) -> Non
     np.testing.assert_array_equal(result.category, [0, 1])
     data = result.data.todense() if return_sparse else result.data
     np.testing.assert_array_equal(data, [[1, 0], [0, 1], [1, 0]])
+
+
+def test_to_dense_accepts_mixed_payloads_under_sparse_dask_metadata() -> None:
+    """Sparse metadata may describe either sparse or already dense delayed chunks."""
+    executions = []
+
+    @delayed
+    def chunk(sparse_payload: bool) -> np.ndarray | sparse.COO:
+        executions.append(sparse_payload)
+        values = np.asarray([0, 2], dtype="float32")
+        return sparse.COO.from_numpy(values) if sparse_payload else values
+
+    meta = sparse.COO.from_numpy(np.empty(0, dtype="float32"))
+    payload = da.concatenate([
+        da.from_delayed(chunk(sparse_payload), shape=(2,), dtype="float32", meta=meta)
+        for sparse_payload in (False, True)
+    ])
+    array = xr.DataArray(payload, dims="state", coords={"state": [4, 5, 6, 7]})
+
+    result = to_dense(array)
+
+    assert executions == []
+    assert array.data is payload
+    assert isinstance(array.data._meta, sparse.COO)
+    assert isinstance(result.data._meta, np.ndarray)
+    assert result.chunks == array.chunks == ((2, 2),)
+    assert result.dtype == np.dtype("float32")
+    xr.testing.assert_identical(result.state, array.state)
+    np.testing.assert_array_equal(result.compute().data, np.asarray([0, 2, 0, 2], dtype="float32"))
+    assert sorted(executions) == [False, True]
+    assert array.data is payload
 
 
 def test_unique_index_and_co2_index_comparison_semantics() -> None:

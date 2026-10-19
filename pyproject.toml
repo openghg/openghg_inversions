@@ -75,6 +75,10 @@ local = [
   "pytest",
   "ruff==0.16.0",
 ]
+test = [
+  "pytest",
+  "pytest-xdist",
+]
 uv_dev = [
   "openghg_inversions[jupyter,dev]",
   "sphinx>=4",
@@ -90,6 +94,7 @@ uv_dev = [
 "DOI" = "https://doi.org/10.5281/zenodo.10650595"
 
 [project.scripts]
+rhime = "openghg_inversions.cli:rhime_main"
 openghg-inversions = "openghg_inversions.cli:main"
 
 [tool.pixi.workspace]

@@ -22,7 +22,10 @@ from openghg_inversions.basis.basis_functions import (
 )
 from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
+from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, SiteOptions
+from openghg_inversions.rhime.params import DataConfig, RhimeConfig
+from openghg_inversions.inversion_data import acquisition
+from openghg_inversions.inversion_data import prepared_inputs as prepared_contract
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime import (
     PollutionEventSettings,
@@ -44,7 +47,37 @@ from openghg_inversions.serialization import (
     trace_from_datatree,
     trace_to_datatree,
 )
-from tests.helpers import make_trace
+from tests.helpers import make_trace, prepare_inputs
+
+
+def _standard_config(run_spec, prepared, sampler=None):
+    """Retain scientific fixture choices in the standard runner's request."""
+    return RhimeConfig(
+        data=DataConfig(
+            site_options=SiteOptions.from_inputs(sites=prepared.sites, averaging_period=prepared.averaging_period),
+            species=run_spec.model.species, domain=run_spec.model.domain,
+            start_date=run_spec.start_date, end_date=run_spec.end_date,
+            flux_sources=tuple(sector.flux_source for sector in run_spec.model.sectors),
+            use_bc=run_spec.model.use_bc,
+        ),
+        model=run_spec.model, output=run_spec.output,
+        sampler=sampler or RhimeSampler(),
+    )
+
+
+def test_data_contracts_preserve_legacy_imports_and_prepared_schema() -> None:
+    """Old entry points construct and reopen the same durable scientific value."""
+    assert RhimePreparedInputs is prepared_contract.RhimePreparedInputs
+    assert RhimePreparedInputs is prepared_contract.RhimePreparedInputs
+    assert RhimeMergedData is acquisition.RhimeMergedData
+    prepared = _prepared_inputs()
+    artifact = prepared.to_datatree()
+    assert artifact.attrs["schema"] == prepared_contract.RHIME_PREPARED_INPUTS_SCHEMA
+    assert artifact.attrs["schema_version"] == prepared_contract.RHIME_PREPARED_INPUTS_SCHEMA_VERSION == 1
+
+    restored = prepared_contract.RhimePreparedInputs.from_datatree(artifact)
+    xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)
+    xr.testing.assert_identical(restored.site_metadata, prepared.site_metadata)
 
 
 def _basis_functions() -> BasisFunctions:
@@ -152,7 +185,11 @@ def test_structured_aggregation_error_survives_prepared_input_round_trip(
     xr.testing.assert_identical(loaded.inv_inputs, structured.inv_inputs)
 
 
-def test_derived_outputs_reject_aggregation_error_until_reconstruction_lands() -> None:
+def test_derived_outputs_reject_aggregation_error_until_reconstruction_lands(tmp_path, monkeypatch) -> None:
+    country_file = tmp_path / "country.nc"
+    country_file.touch()
+    monkeypatch.setattr(rhime_standard, "sample_rhime_model",
+                        lambda *args, **kwargs: pytest.fail("sampled unsupported covariance outputs"))
     prepared = _prepared_inputs()
     prepared.inv_inputs["aggregation_error_sd"] = ("nmeasure", [0.2, 0.3])
     model_spec = RhimeModelSpec(
@@ -176,11 +213,11 @@ def test_derived_outputs_reject_aggregation_error_until_reconstruction_lands() -
         sites=prepared.sites,
         averaging_period=prepared.averaging_period,
         model=model_spec,
-        output=RhimeOutputSpec(output_format="basic", save_inversion_output=False),
+        output=RhimeOutputSpec(output_format="basic", save_inversion_output=False, country_file=country_file),
     )
 
-    with pytest.raises(ValueError, match="aggregation-error covariance.*output_format='basic'"):
-        run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+    with pytest.raises(ValueError, match="does not declare output_format='basic' compatible"):
+        rhime_standard.run_standard(prepared=prepared, config=_standard_config(run_spec, prepared))
 
 
 def _multisource_prepared_inputs() -> RhimePreparedInputs:
@@ -454,6 +491,7 @@ def prepared_from_real_route(
 ) -> RhimePreparedInputs:
     """Prepare durable inputs through the real RHIME route and test object store."""
     preparation_args = dict(tac_ch4_data_args)
+    preparation_args["flux_store"] = preparation_args.pop("emissions_store")
     flux_sources = preparation_args.pop("emissions_name")
     preparation_args.update(
         {
@@ -462,10 +500,9 @@ def prepared_from_real_route(
             "basis_algorithm": "quadtree",
             "nbasis": 4,
             "use_bc": True,
-            "bc_basis_directory": default_bc_basis_directory,
         }
     )
-    return prepare_rhime_inputs(**preparation_args)
+    return prepare_inputs(**preparation_args)
 
 
 def test_prepared_inputs_datatree_roundtrip_is_self_contained() -> None:
@@ -487,6 +524,46 @@ def test_prepared_inputs_datatree_roundtrips_nullable_metadata() -> None:
 
     _assert_prepared_identical(restored, prepared)
     assert restored.averaging_period == ("1h", None)
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_prepared_inputs_disk_roundtrip_preserves_nullable_site_strings(tmp_path: Path, suffix: str) -> None:
+    """Missing site strings remain distinct from deliberately empty strings."""
+    original = _prepared_inputs()
+    sites = ("TAC", "MHD", "BSD")
+    inv_inputs = (
+        original.inv_inputs.reset_index("nmeasure")
+        .isel(nmeasure=[0, 1, 0])
+        .assign_coords(site=("nmeasure", list(sites)))
+        .set_index(nmeasure=["site", "time"])
+    )
+    metadata = _site_metadata(sites, ("1h", None, "2h")).assign(
+        instrument=("site", np.asarray(["picarro", None, ""], dtype=object)),
+        latitude=("site", [50.0, np.nan, 51.0]),
+    ).assign_coords(
+        network=("site", np.asarray(["", "null", None], dtype=object)),
+        contact=xr.Variable((), np.asarray(None, dtype=object)),
+    )
+    metadata.instrument.attrs["description"] = "instrument name"
+    prepared = RhimePreparedInputs(inv_inputs, original.basis_functions, metadata)
+    before = prepared.site_metadata.copy(deep=True)
+    path = tmp_path / f"nullable-metadata{suffix}"
+
+    prepared.save(path)
+    restored = RhimePreparedInputs.load(path)
+
+    xr.testing.assert_identical(restored.site_metadata, before)
+    xr.testing.assert_identical(prepared.site_metadata, before)
+    assert restored.site_metadata.instrument.values.tolist() == ["picarro", None, ""]
+
+
+@pytest.mark.parametrize("encoding, value", [("future", '"x"'), ("json_v1", "false"), ("json_v1", "invalid")])
+def test_nullable_site_strings_reject_invalid_encoding(encoding: str, value: str) -> None:
+    metadata = _site_metadata(("TAC",), ("1h",)).assign(instrument=("site", [value]))
+    metadata.instrument.attrs[prepared_contract._SITE_STRING_ENCODING] = encoding
+
+    with pytest.raises(ValueError, match="site metadata"):
+        prepared_contract._site_metadata_from_serialisation(metadata)
 
 
 def test_prepared_inputs_roundtrip_observation_aligned_release_metadata() -> None:
@@ -588,25 +665,26 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         model=model_spec,
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
     )
-    sampled = make_trace()
+    sampled = make_trace(posterior=xr.Dataset({
+        "x": (("chain", "draw", "region"), np.ones((1, 1, loaded.inv_inputs.sizes["region"]))),
+        "bc": (("chain", "draw", "bc_region"), np.ones((1, 1, loaded.inv_inputs.sizes["bc_region"]))),
+    }, coords={"region": loaded.inv_inputs.region, "bc_region": loaded.inv_inputs.bc_region}))
     observed: dict[str, object] = {}
-    original_builder = rhime_standard.build_standard_rhime_model
+    original_builder = rhime_standard.build_standard_model
 
     def fail_preparation(*args: object, **kwargs: object) -> None:
         """Fail if the loaded-input runner attempts data preparation."""
         raise AssertionError("loaded prepared inputs must bypass preparation")
 
     def fake_builder(
-        flux_sensitivity: xr.DataArray,
-        **kwargs: Any,
-    ) -> pm.Model:
-        """Record the loaded builder inputs and build the real canonical graph."""
+        model_inputs: xr.Dataset, spec: RhimeModelSpec, **kwargs: Any,
+    ):
+        """Record the materialized inputs passed to the common eager builder."""
         assert kwargs["likelihood_builder"] is None
-        assert kwargs["likelihood_settings"] is model_spec.likelihood
-        assert kwargs["preserve_legacy_likelihood"] is False
-        observed["builder_inputs"] = flux_sensitivity
-        observed["observations"] = kwargs["observations"]
-        return original_builder(flux_sensitivity, **kwargs)
+        assert spec.likelihood == model_spec.likelihood
+        observed["builder_inputs"] = model_inputs["H"]
+        observed["observations"] = model_inputs["mf"]
+        return original_builder(model_inputs, spec, **kwargs)
 
     def fake_sample(
         self: RhimeSampler,
@@ -619,26 +697,26 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         assert variable_roles["concentration"] == "y"
         return sampled
 
-    def fake_outputs(**kwargs: Any) -> None:
-        """Record the loaded object used for output construction."""
-        observed["output_prepared"] = kwargs["prepared"]
-        kwargs["result"].outputs["loaded"] = True
+    def fake_outputs(inv_out, output_spec):
+        """Record the scientific view passed to derived product construction."""
+        observed["output_prepared"] = inv_out
+        return {}
 
-    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_preparation)
-    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fake_builder)
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fail_preparation)
+    monkeypatch.setattr(rhime_standard, "prepare_standard", fail_preparation)
+    monkeypatch.setattr(rhime_standard, "build_standard_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_prepared, "make_standard_rhime_outputs", fake_outputs)
+    monkeypatch.setattr(rhime_standard, "save_standard_artifacts", fake_outputs)
 
-    result = run_rhime_from_prepared_inputs(
-        prepared_inputs=loaded,
-        run_spec=run_spec,
-        sampler=RhimeSampler(draws=1, tune=1, chains=1),
+    result = rhime_standard.run_standard(
+        prepared=loaded,
+        config=_standard_config(run_spec, loaded, RhimeSampler(draws=1, tune=1, chains=1)),
     )
 
     builder_inputs = observed["builder_inputs"]
     output_prepared = observed["output_prepared"]
     assert isinstance(builder_inputs, xr.DataArray)
-    assert isinstance(output_prepared, RhimePreparedInputs)
+    assert isinstance(output_prepared, InversionOutput)
     xr.testing.assert_identical(builder_inputs, loaded.inv_inputs["H"])
     xr.testing.assert_identical(observed["observations"], loaded.inv_inputs["mf"])
     assert "y" in observed["sample_model"].named_vars
@@ -646,9 +724,9 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
     assert result.basis_functions is output_prepared.basis_functions
     assert result.basis_functions.operator is loaded.basis_functions.operator
     xr.testing.assert_identical(result.basis_functions.flux, loaded.basis_functions.flux)
-    assert result.run_spec.sites == loaded.sites
-    assert result.run_spec.averaging_period == loaded.averaging_period
-    assert result.outputs == {"loaded": True}
+    assert tuple(result.run_metadata["sites"]) == loaded.sites
+    assert tuple(result.run_metadata["averaging_period"]) == loaded.averaging_period
+    assert result is output_prepared
 
 
 def test_trace_datatree_roundtrip_preserves_attrs() -> None:
@@ -1087,23 +1165,21 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         )
     )
     observed: dict[str, Any] = {}
-    original_builder = rhime_standard.build_standard_rhime_model
+    original_builder = rhime_standard.build_standard_model
 
     def fail_preparation(*args: object, **kwargs: object) -> None:
         """Fail if execution attempts to prepare inputs again."""
         raise AssertionError("prepared-input execution must not repeat preparation")
 
     def fake_builder(
-        flux_sensitivity: xr.DataArray,
-        **kwargs: Any,
-    ) -> pm.Model:
-        """Record model-builder inputs and build the real canonical graph."""
+        model_inputs: xr.Dataset, spec: RhimeModelSpec, **kwargs: Any,
+    ):
+        """Record the materialized inputs passed to the common eager builder."""
         assert kwargs["likelihood_builder"] is None
-        assert kwargs["likelihood_settings"] is model_spec.likelihood
-        assert kwargs["preserve_legacy_likelihood"] is False
-        observed["builder_inputs"] = flux_sensitivity
-        observed["observations"] = kwargs["observations"]
-        return original_builder(flux_sensitivity, **kwargs)
+        assert spec.likelihood == model_spec.likelihood
+        observed["builder_inputs"] = model_inputs["H"]
+        observed["observations"] = model_inputs["mf"]
+        return original_builder(model_inputs, spec, **kwargs)
 
     def fake_sample(
         self: RhimeSampler,
@@ -1116,35 +1192,35 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         assert variable_roles["concentration"] == "y"
         return sampled
 
-    def fake_outputs(**kwargs: Any) -> None:
-        """Record output inputs and attach a sentinel product."""
-        observed["output_prepared"] = kwargs["prepared"]
-        observed["output_idata"] = kwargs["result"].idata
-        kwargs["result"].outputs["loaded"] = True
+    def fake_outputs(inv_out, output_spec):
+        """Record the scientific view passed to derived product construction."""
+        observed["output_prepared"] = inv_out
+        observed["output_idata"] = inv_out.trace
+        return {}
 
-    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_preparation)
-    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fake_builder)
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fail_preparation)
+    monkeypatch.setattr(rhime_standard, "prepare_standard", fail_preparation)
+    monkeypatch.setattr(rhime_standard, "build_standard_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_prepared, "make_standard_rhime_outputs", fake_outputs)
+    monkeypatch.setattr(rhime_standard, "save_standard_artifacts", fake_outputs)
 
-    result = run_rhime_from_prepared_inputs(
-        prepared_inputs=loaded,
-        run_spec=run_spec,
-        sampler=RhimeSampler(draws=1, tune=1, chains=1),
+    result = rhime_standard.run_standard(
+        prepared=loaded,
+        config=_standard_config(run_spec, loaded, RhimeSampler(draws=1, tune=1, chains=1)),
     )
 
     builder_inputs = observed["builder_inputs"]
     output_prepared = observed["output_prepared"]
     assert isinstance(builder_inputs, xr.DataArray)
-    assert isinstance(output_prepared, RhimePreparedInputs)
+    assert isinstance(output_prepared, InversionOutput)
     xr.testing.assert_identical(builder_inputs, loaded.inv_inputs["H"])
     xr.testing.assert_identical(observed["observations"], loaded.inv_inputs["mf"])
     assert "y" in observed["sample_model"].named_vars
     assert observed["output_idata"] is sampled
     assert result.inv_inputs is output_prepared.inv_inputs
-    assert result.run_spec.sites == loaded.sites
-    assert result.run_spec.averaging_period == loaded.averaging_period
-    assert result.outputs == {"loaded": True}
+    assert tuple(result.run_metadata["sites"]) == loaded.sites
+    assert tuple(result.run_metadata["averaging_period"]) == loaded.averaging_period
+    assert result is output_prepared
 
 
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])
@@ -1213,7 +1289,7 @@ def test_multisource_order_survives_load_run_and_reconstruction(
     ) -> pm.Model:
         """Record ordered builder inputs and build the real canonical graph."""
         assert kwargs["likelihood_builder"] is None
-        assert kwargs["likelihood_settings"] is model_spec.likelihood
+        assert kwargs["likelihood_settings"] == model_spec.likelihood
         observed["source_order"] = tuple(flux_sensitivity.source.values)
         observed["sectors"] = kwargs["sectors"]
         return original_builder(flux_sensitivity, **kwargs)

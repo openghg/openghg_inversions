@@ -20,7 +20,12 @@ overlap twice. The workflow:
 The two grids are not RHIME emissions sectors or grouped basis regions. A
 sector separates different flux sources on one spatial layout; a nested domain
 separates two transport grids for the same flux source and must retain two
-independent basis operators. See the :doc:`family support summary
+independent basis operators. Native runtime flux is resolved separately for
+each grid, after the outer scientific mask is applied. Each basis binds its
+current native prior; generation uses the first requested source for design
+weights. Reusing a saved operator does not replace either current prior with
+the artifact's saved flux. Observation-aligned response arrays remain separate
+inputs to sensitivity construction. See the :doc:`family support summary
 <nested_domain_model_family>` before using this guide.
 
 Model and state semantics
@@ -78,13 +83,13 @@ RHIME arguments plus the inner-domain options:
        flux_sources=["total-ukghg-edgar7"],
        obs_store="user",
        footprint_store="outer-footprints",
-       emissions_store="outer-emissions",
+       flux_store="outer-emissions",
        inner_footprint_store="inner-footprints",
-       inner_emissions_store="inner-emissions",
+       inner_flux_store="inner-emissions",
        basis_algorithm="weighted",
        nbasis=100,
        fix_basis_outer_regions=True,
-       outer_regions_path="intem_region_definition_EUHROB.nc",
+       outer_regions_path="/data/maps/intem_region_definition_EUHROB.nc",
        # Quadtree is the safe default for a grid without a matching land/sea file.
        inner_basis_algorithm="quadtree",
        inner_nbasis=80,
@@ -101,18 +106,21 @@ RHIME arguments plus the inner-domain options:
 ``inner_domain`` may instead contain the complete OpenGHG domain name, such as
 ``"EUROPE-EUHROB"``. A suffix is prefixed with the outer domain exactly once.
 The outer boundary-condition contribution is retained; an independent inner
-boundary condition is not added. ``outer_regions_path`` is optional; use the
-bundled ``intem_region_definition_EUHROB.nc`` for the EUROPE 6 km nest, whose
-metadata marks label 6 as the inner rectangle. Bare filenames are resolved
-against the packaged basis assets. Migrated legacy configs may still use
+boundary condition is not added. ``outer_regions_path`` selects an exact support
+file. The bundled
+``intem_region_definition_EUHROB.nc`` for the EUROPE 6 km nest marks label 6
+as the inner rectangle. To select it explicitly from Python, use
+``packaged_basis_support_path("outer_regions", "EUHROB")`` from
+``openghg_inversions.basis``. Relative paths name caller files; they do not
+implicitly search packaged assets. Migrated legacy configs may still use
 ``outer_region_definition_file``; RHIME warns and normalizes it to
 ``outer_regions_path``.
 
 When a store contains fine-grid footprints but only a coarser flux product,
-set ``inner_emissions_domain`` to that flux product's domain. RHIME then
+set ``inner_flux_domain`` to that flux product's domain. RHIME then
 interpolates the flux density with nearest neighbours onto the inner footprint
 grid explicitly. For example, the PARIS 6 km footprints use
-``inner_emissions_domain="EUROPE"`` with the shared EUROPE emissions product.
+``inner_flux_domain="EUROPE"`` with the shared EUROPE emissions product.
 
 The EUHROB asset is a coarse-grid fixed-region map: its marked rectangle tells
 the outer-basis algorithm where the nested area lies, while all other labels
@@ -124,7 +132,8 @@ nested-domain outer masking (below) always zeroes the outer footprint response
 and prior flux there before the outer basis is built -- there is nothing left
 for the outer algorithm to subdivide inside that label. ``prepare_nested_rhime_inputs``
 handles this by passing ``allow_empty_inner_region=True`` to
-``fixed_outer_regions_basis`` for the outer domain only: the marked label is
+:func:`~openghg_inversions.basis.fixed_outer_regions_basis_from_data`
+for the outer domain only: the marked label is
 kept as a single fixed region (like every other outer label) instead of
 raising. Outside nested preparation, an empty marked region still raises,
 since it normally signals a mismatched map or missing footprint/flux data.
@@ -139,24 +148,24 @@ Use saved basis files
 ---------------------
 
 Saved outer and inner bases remain separate because each belongs to its own
-native grid. Configure the outer file with ``fp_basis_case`` and
-``basis_directory``. Configure the inner file independently with
-``inner_fp_basis_case`` and ``inner_basis_directory``:
+native grid. Configure the exact outer and inner artifacts independently with
+``basis_path`` and ``inner_basis_path``:
 
 .. code-block:: python
 
    result = run_rhime_nested(
        config_file="nested_rhime.ini",
-       fp_basis_case="outer_basis",
-       basis_directory="/data/basis/outer",
-       inner_fp_basis_case="inner_6km_basis",
-       inner_basis_directory="/data/basis/inner",
+       basis_path="/data/basis/outer.nc",
+       inner_basis_path="/data/basis/inner-6km.zarr",
    )
 
 Do not create one basis artifact spanning both grids. When generating a basis
 instead, ``basis_output_path`` and ``inner_basis_output_path`` save the outer
-and inner artifacts independently. If no inner basis file or algorithm is
-specified, the inner grid uses the quadtree algorithm.
+and inner artifacts at their exact destinations independently.
+``landsea_path`` and ``inner_landsea_path`` select each grid's class map when
+weighted generation needs one; support-map selection fails for missing files
+or unsupported domains before acquisition. If no inner basis file or algorithm
+is specified, the inner grid uses the quadtree algorithm.
 
 The result exposes the ordinary RHIME objects and both native preparations:
 
@@ -182,8 +191,8 @@ and option names must not be repeated between sections.
    [INPUT.NESTED_DOMAIN]
    inner_domain = "6km"
    inner_footprint_store = "inner-footprints"
-   inner_emissions_store = "inner-emissions"
-   inner_emissions_domain = None
+   inner_flux_store = "inner-emissions"
+   inner_flux_domain = None
    inner_basis_algorithm = "quadtree"
    inner_nbasis = 80
    inner_time_tolerance = None
@@ -240,9 +249,9 @@ as lists, even for one synthetic site, so they retain the modern schema shape:
        bc_store="satellite-store",
        obs_store="satellite-store",
        footprint_store="outer-satellite-store",
-       emissions_store="outer-emissions-store",
+       flux_store="outer-emissions-store",
        inner_footprint_store="inner-satellite-store",
-       inner_emissions_store="inner-emissions-store",
+       inner_flux_store="inner-emissions-store",
        mismatch_model="pollution_event",
        output_name="gosat_brazil_nested",
        output_format="none",

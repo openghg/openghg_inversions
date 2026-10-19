@@ -3,28 +3,27 @@
 This copy-and-modify example keeps RHIME's supported acquisition, filtering,
 sensitivity, labelled-input, model, sampling, and output stages.  Only the
 emissions-basis stage is replaced by :func:`build_project_basis`.  The example
-either loads a self-contained retained ``BasisFunctions`` artifact or creates
+either reuses a saved basis operator with current runtime flux or creates
 a guarded region-constrained basis whose regions stay within land/ocean
 classes, remain connected, and satisfy a project eccentricity threshold.
 The verification-games workflow weights that strategy with summed absolute
 cached ``fp_x_flux``. At this earlier runner stage projected sensitivities do
 not exist, so the example deliberately substitutes the public
-``basis_weights_from_fp_all`` field while preserving the guarded strategy and
+``basis_weights_from_data`` field while preserving the guarded strategy and
 class composition.
 
 Use :func:`run_custom_rhime` from Python or :func:`main` from the command line.
 Acquired xarray objects are treated as borrowed.  Generated-basis fitting is
-an explicit eager algorithm boundary, artifact loading materializes the saved
-artifact, and model arrays materialize later at the named PyMC boundary.
+an explicit eager algorithm boundary, operator reuse materializes only the saved
+operator, and model arrays materialize later at the named PyMC boundary.
 """
 
 from __future__ import annotations
 
 import argparse
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 import json
 from pathlib import Path
-from time import perf_counter
 from typing import Any
 
 import numpy as np
@@ -32,9 +31,10 @@ import xarray as xr
 
 from openghg_inversions.basis import (
     BasisFunctions,
-    basis_functions_from_fp_all_flat_basis,
-    basis_weights_from_fp_all,
-    load_country_region_classes,
+    basis_functions_from_flat_basis,
+    basis_weights_from_data,
+    load_basis_support_map,
+    packaged_basis_support_path,
 )
 from openghg_inversions.basis.algorithms import (
     ConnectedComponentPartitionStep,
@@ -45,60 +45,44 @@ from openghg_inversions.basis.algorithms import (
     MaxChildPCAEccentricity,
     region_constrained_basis,
 )
-from openghg_inversions.inversion_data import RhimeMergedData
+from openghg_inversions.native_flux import resolve_runtime_flux
+from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.rhime import (
-    RhimeResult,
+    RhimeConfig,
+    make_standard_output,
+    postprocess_standard_outputs,
+    save_standard_artifacts,
+    annotate_sample_trace,
     assemble_rhime_inputs,
-    build_rhime_sensitivities,
-    build_standard_rhime_model_result,
-    filter_rhime_observations,
-    make_standard_rhime_result,
-    make_standard_rhime_outputs,
-    materialize_pymc_inputs,
-    params_from_config,
-    resolve_rhime_options,
-    retrieve_or_reload_rhime_data,
+    build_sensitivities,
+    filter_observations,
+    prepare_observation_errors,
+    validate_standard_output_resources,
+    read_rhime_ini,
     sample_rhime_model,
-    standard_model_input_names,
-    with_prepared_rhime_sites,
 )
+from openghg_inversions.rhime.standard import build_standard_model, materialize_standard_inputs
+from openghg_inversions.rhime.requests import load_params
+from openghg_inversions.rhime.preparation import acquire_merged_data
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 
 
 DEFAULT_MAX_CHILD_PCA_ECCENTRICITY = 10.0
 
 
-def _land_ocean_classes(
-    *,
-    domain: str,
-    country_directory: str | Path | None = None,
-) -> xr.DataArray:
-    """Reduce the public country grid to the project's land/ocean classes.
-
-    Args:
-        domain: RHIME domain used to select the country grid.
-        country_directory: Optional directory containing the domain country
-            file.
-
-    Returns:
-        An eager object-valued ``(lat, lon)`` class grid preserving the loaded
-        coordinates. Positive country codes are ``land``; null, zero, and
-        negative codes are ``ocean``.
-
-    Raises:
-        FileNotFoundError: If the requested country grid does not exist.
-        KeyError: If the country-grid artifact does not contain ``country``.
-    """
-    country_classes = load_country_region_classes(
-        domain,
-        country_directory,
-    )
-    return xr.where(country_classes > 0, "land", "ocean").astype(object).rename("basis_class")
+def _land_ocean_classes(region_classes: xr.DataArray) -> xr.DataArray:
+    """Reduce borrowed country/class codes to project land/ocean classes."""
+    return xr.where(region_classes > 0, "land", "ocean").astype(object).rename("basis_class")
 
 
 def _guarded_basis(
-    merged: RhimeMergedData,
-    data_args: Mapping[str, Any],
     *,
+    site_data: dict[str, xr.Dataset],
+    runtime_flux: xr.DataArray,
+    weighting_flux: xr.DataArray,
+    domain: str,
+    nbasis: int = 100,
+    region_classes: xr.DataArray,
     max_child_pca_eccentricity: float,
 ) -> BasisFunctions:
     """Build the project's connected, eccentricity-guarded retained basis.
@@ -106,13 +90,15 @@ def _guarded_basis(
     The public weight adapter intentionally materializes a derived 2-D weight
     field from borrowed footprint and flux inputs here. The project then owns
     normalization, class composition, guarded splitting, and conversion of the
-    flat labels to retained ``BasisFunctions`` without mutating ``merged``.
+    flat labels to retained ``BasisFunctions`` without mutating the supplied arrays.
 
     Args:
-        merged: Filtered, borrowed RHIME observations and flux data.
-        data_args: Resolved standard RHIME data and basis options. This stage
-            consumes required ``domain`` and optional ``flux_sources``,
-            ``nbasis``, and ``country_directory``.
+        site_data: Filtered, borrowed site datasets containing footprints.
+        runtime_flux: Resolved native prior flux for every retained source.
+        weighting_flux: Native flux of the first requested source for weights.
+        domain: Model domain recorded on the generated basis.
+        nbasis: Requested number of basis regions.
+        region_classes: Resolved borrowed country/class map.
         max_child_pca_eccentricity: Project limit on each proposed child's
             physical-coordinate PCA eccentricity.
 
@@ -120,15 +106,13 @@ def _guarded_basis(
         Retained basis functions fitted within connected land/ocean regions.
 
     Raises:
-        FileNotFoundError: If the requested country grid does not exist.
-        KeyError: If ``domain`` or country-grid content is missing.
         ValueError: If zero-filled weights do not have a positive finite
             maximum, or geometry, allocation, or guarded splitting is invalid.
     """
     # 1. Turn the filtered footprints and flux into one spatial importance map.
-    weights = basis_weights_from_fp_all(
-        merged.fp_all,
-        data_args.get("flux_sources"),
+    weights = basis_weights_from_data(
+        site_data,
+        weighting_flux,
         abs_flux=True,
     )
     finite_weights = weights.fillna(0.0).astype(np.float64)
@@ -138,10 +122,7 @@ def _guarded_basis(
     normalized_weights = finite_weights / maximum
 
     # 2. Define scientific boundaries that no basis region may cross.
-    region_classes = _land_ocean_classes(
-        domain=data_args["domain"],
-        country_directory=data_args.get("country_directory"),
-    )
+    region_classes = _land_ocean_classes(region_classes)
     geometry = LatLonGridGeometry.from_dataarray(normalized_weights)
     # 3. Compose the split algorithm and its shape/connectivity safeguards.
     strategy = ConnectedComponentSplitStrategy(
@@ -165,7 +146,7 @@ def _guarded_basis(
         region_constrained_basis(
             normalized_weights,
             region_classes,
-            int(data_args.get("nbasis", 100)),
+            nbasis,
             allocation="weight",
             min_regions_per_class=1,
             split_strategy=strategy,
@@ -179,39 +160,47 @@ def _guarded_basis(
         "openghg_inversions:project_basis_connectivity": 1,
         "openghg_inversions:project_basis_max_child_pca_eccentricity": float(max_child_pca_eccentricity),
         "openghg_inversions:project_basis_class_policy": "land_ocean",
-        "openghg_inversions:project_basis_weights": "basis_weights_from_fp_all_abs_flux_normalized",
+        "openghg_inversions:project_basis_weights": "basis_weights_from_data_abs_flux_normalized",
     }
     basis_flat.attrs.update(provenance)
     # 5. Attach the current flux so standard RHIME sensitivity code can use it.
-    return basis_functions_from_fp_all_flat_basis(
-        fp_all=merged.fp_all,
+    return basis_functions_from_flat_basis(
+        flux=runtime_flux,
         basis_flat=basis_flat,
         metadata=provenance,
     )
 
 
 def build_project_basis(
-    merged: RhimeMergedData,
-    data_args: Mapping[str, Any],
     *,
+    site_data: dict[str, xr.Dataset],
+    runtime_flux: xr.DataArray,
+    weighting_flux: xr.DataArray,
+    domain: str,
+    nbasis: int = 100,
+    region_classes: xr.DataArray | None = None,
     project_basis_path: str | Path | None = None,
     max_child_pca_eccentricity: float = DEFAULT_MAX_CHILD_PCA_ECCENTRICITY,
 ) -> BasisFunctions:
     """Return the project-selected retained emissions basis.
 
     Args:
-        merged: Filtered, borrowed RHIME observations and flux data.
-        data_args: Resolved standard RHIME data and basis options.
+        site_data: Filtered, borrowed site datasets containing footprints.
+        runtime_flux: Resolved native prior flux for every retained source.
+        weighting_flux: Native flux of the first requested source for weights.
+        domain: Model domain recorded on the generated basis.
+        nbasis: Requested number of basis regions.
+        region_classes: Resolved borrowed country/class map.
         project_basis_path: Optional ``.nc`` or ``.zarr`` artifact previously
             written by :meth:`BasisFunctions.save`.  The artifact is
-            self-contained, so its serialized operator, metadata, and flux are
-            retained rather than replaced with flux from ``merged``.
+            reused for its operator and metadata; current ``runtime_flux`` is
+            bound without reading the saved flux payload.
         max_child_pca_eccentricity: Project limit passed to the guarded split
             policy when generating a basis. Defaults to ``10`` and is ignored
             when ``project_basis_path`` is supplied.
 
     Returns:
-        Loaded or newly fitted retained basis functions.
+        Reused or newly fitted basis functions bound to current runtime flux.
 
     Raises:
         OSError: If the requested artifact cannot be opened.
@@ -221,15 +210,21 @@ def build_project_basis(
             invalid.
 
     Notes:
-        Loading eagerly materializes the artifact so no open file handle is
-        retained.  Without a path, project basis fitting is the named eager
-        basis-generation boundary.
+        Reuse eagerly materializes the operator subtree and closes the file;
+        current flux keeps its supported lazy representation. Without a path,
+        project basis fitting is the named eager basis-generation boundary.
     """
     if project_basis_path is not None:
-        return BasisFunctions.load(project_basis_path)
+        return BasisFunctions.reuse_operator(project_basis_path, flux=runtime_flux)
+    if region_classes is None:
+        raise ValueError("Generating a project basis requires resolved region_classes.")
     return _guarded_basis(
-        merged,
-        data_args,
+        site_data=site_data,
+        runtime_flux=runtime_flux,
+        weighting_flux=weighting_flux,
+        domain=domain,
+        nbasis=nbasis,
+        region_classes=region_classes,
         max_child_pca_eccentricity=max_child_pca_eccentricity,
     )
 
@@ -240,21 +235,24 @@ def run_custom_rhime(
     project_basis_path: str | Path | None = None,
     max_child_pca_eccentricity: float | None = None,
     **kwargs: Any,
-) -> RhimeResult:
+) -> InversionOutput:
     """Run standard single-sector RHIME with a project-owned basis stage.
 
     Args:
         config_file: Optional RHIME INI configuration file.
-        project_basis_path: Optional self-contained ``BasisFunctions`` artifact
-            to use instead of fitting the project guarded basis.
+        project_basis_path: Optional ``BasisFunctions`` artifact whose operator
+            is reused with current runtime flux instead of fitting. When omitted,
+            the decoded INI option of the same name is used.
         max_child_pca_eccentricity: Optional project split-policy threshold.
             When omitted, the merged config/keyword value is used, falling back
             to ``10``. This option is removed before standard RHIME resolution.
         **kwargs: Standard RHIME option names that override values from
-            ``config_file``.
+            ``config_file``. Built-in ``basis_algorithm`` and ``basis_path``
+            choices are unused by this project basis stage and are discarded
+            before standard configuration resolution.
 
     Returns:
-        The sampled result and any outputs requested by the RHIME options.
+        The sampled scientific view; requested files are written before return.
 
     Raises:
         OSError: If configured artifact, input, or output I/O fails.
@@ -262,15 +260,13 @@ def run_custom_rhime(
             invalid.
 
     Notes:
-        This workflow may retrieve or reload data, may eagerly fit or load a
+        This workflow acquires data, may eagerly fit or load a
         basis, eagerly materializes PyMC model inputs, runs sampling, and writes
-        outputs requested by the resolved RHIME options.
+        outputs requested by the resolved RHIME options. Supported outputs are
+        checked against the built model contract before posterior sampling.
     """
-    params = (
-        params_from_config(config_file, extra_kwargs=kwargs, normalise=False)
-        if config_file is not None
-        else dict(kwargs)
-    )
+    params = read_rhime_ini(config_file) if config_file is not None else {}
+    params.update(kwargs)
     configured_project_basis_path = params.pop("project_basis_path", None)
     if project_basis_path is None:
         project_basis_path = configured_project_basis_path
@@ -280,52 +276,84 @@ def run_custom_rhime(
     )
     if max_child_pca_eccentricity is None:
         max_child_pca_eccentricity = float(configured_eccentricity)
-    setup = resolve_rhime_options(params=params, multisector=False)
+    # The project basis stage owns its algorithm and optional saved artifact.
+    # A built-in algorithm choice is irrelevant to this copied recipe.
+    params.pop("basis_algorithm", None)
+    params.pop("basis_path", None)
+    config = RhimeConfig.from_params(load_params(overrides=params), multisector=False)
+    validate_standard_output_resources(config.output)
+    bc_basis = load_bc_basis(config.data.bc_basis_paths) if config.data.use_bc and config.data.bc_basis_paths is not None else None
 
-    merged = retrieve_or_reload_rhime_data(setup.data_args, multisector=False)
-    filtered = filter_rhime_observations(merged, setup.data_args)
+    # This project selects and loads its scientific class map before acquisition.
+    region_classes = None
+    if project_basis_path is None:
+        class_path = config.data.landsea_path or packaged_basis_support_path("landsea", config.data.domain)
+        region_classes = load_basis_support_map(class_path, "country")
+    if project_basis_path is not None and not Path(project_basis_path).exists():
+        raise FileNotFoundError(project_basis_path)
+    merged = acquire_merged_data(config.data)
 
-    # CUSTOMISATION POINT: the standard runner calls build_rhime_basis here.
-    # This project function either loads a saved basis or composes the guarded
-    # basis-building tools above. Every stage after this call is standard RHIME.
+    # Keep the scientific preparation order visible; ``merged`` stays acquired data.
+    with_errors = prepare_observation_errors(merged.site_data, averaging_error=config.data.averaging_error)
+    filtered, site_options = filter_observations(with_errors, merged.site_options, filters=config.data.filters)
+
+    runtime_flux = resolve_runtime_flux(
+        merged.flux_data, split_by_sectors=merged.split_by_sectors,
+    )
+    weighting_source = config.data.flux_sources[0] if config.data.flux_sources else next(iter(merged.flux_data))
+    weighting_flux = merged.flux_data[weighting_source]["flux"]
+    # Replace only basis construction; subsequent scientific stages stay visible.
     basis_functions = build_project_basis(
-        filtered,
-        dict(setup.data_args),
+        site_data=filtered,
+        runtime_flux=runtime_flux,
+        weighting_flux=weighting_flux,
+        **config.data.select("domain", "nbasis"),
+        region_classes=region_classes,
         project_basis_path=project_basis_path,
         max_child_pca_eccentricity=max_child_pca_eccentricity,
     )
-    site_data = build_rhime_sensitivities(
+    if config.data.basis_output_path is not None:
+        Path(config.data.basis_output_path).parent.mkdir(parents=True, exist_ok=True)
+        basis_functions.save(config.data.basis_output_path)
+
+    sensitivities = build_sensitivities(
         filtered,
         basis_functions,
-        setup.data_args,
+        **config.data.select(
+            "flux_sources", "use_bc",
+        ),
+        bc_basis=bc_basis,
         multisector=False,
     )
-    prepared = assemble_rhime_inputs(filtered, basis_functions, site_data, setup.data_args)
-    run_spec = with_prepared_rhime_sites(setup.run_spec, prepared)
 
-    # Cross the explicit eager PyMC boundary without changing canonical inputs.
-    model_inputs = materialize_pymc_inputs(
-        prepared,
-        variable_names=standard_model_input_names(prepared, run_spec.model),
+    prepared = assemble_rhime_inputs(
+        sensitivities,
+        basis_functions,
+        site_options=site_options,
+        **config.data.select(
+            "domain", "start_date", "bc_freq", "min_error",
+            "min_error_options", "use_bc",
+        ),
     )
-    build_and_sample_start = perf_counter()
-    model_build_result = build_standard_rhime_model_result(
-        prepared=prepared,
-        model_inputs=model_inputs,
-        run_spec=run_spec,
-    )
-    idata = sample_rhime_model(model_build_result, setup.sampler)
 
-    result = make_standard_rhime_result(
-        prepared=prepared,
-        run_spec=run_spec,
-        sampler=setup.sampler,
-        model_build_result=model_build_result,
-        idata=idata,
-        build_and_sample_seconds=perf_counter() - build_and_sample_start,
+    model_inputs, priors = materialize_standard_inputs(prepared, config.model)
+    model_build_result = build_standard_model(
+        model_inputs, config.model, priors=priors,
     )
-    make_standard_rhime_outputs(result=result, prepared=prepared)
-    return result
+    model_build_result.output_contract.validate_requested_output(config.output.output_format)
+
+    idata = sample_rhime_model(model_build_result, config.sampler)
+
+    annotate_sample_trace(model_build_result, idata, likelihood_builder=None)
+    inv_out = make_standard_output(
+        prepared=prepared, model_spec=config.model, posterior=idata,
+        output_contract=model_build_result.output_contract,
+        start_date=config.data.start_date, end_date=config.data.end_date,
+        actual_inference=config.sampler.describe(),
+    )
+    postprocess_standard_outputs(inv_out, config.output)
+    save_standard_artifacts(inv_out, config.output)
+    return inv_out
 
 
 def _json_object(value: str) -> dict[str, Any]:
@@ -350,7 +378,7 @@ def _json_object(value: str) -> dict[str, Any]:
     return parsed
 
 
-def main(argv: Sequence[str] | None = None) -> RhimeResult:
+def main(argv: Sequence[str] | None = None) -> InversionOutput:
     """Parse command-line options and run the custom-basis RHIME workflow.
 
     Args:

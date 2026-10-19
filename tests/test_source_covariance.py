@@ -204,7 +204,8 @@ def test_deserialization_rejects_missing_spatial_coordinates(spatial_dim: str) -
         IndependentSourceCovariance.from_dataset(dataset)
 
 
-def test_source_serialization_preserves_class_label_identity() -> None:
+@pytest.mark.parametrize("storage", ["netcdf", "zarr"])
+def test_source_serialization_preserves_class_label_identity(tmp_path, storage) -> None:
     """Class-blocked source round trips retain typed labels, name, and attributes."""
     covariance, _ = _problem()
     original_component = covariance.source_covariances["z-source"]
@@ -213,8 +214,15 @@ def test_source_serialization_preserves_class_label_identity() -> None:
         dims=("lat", "lon"),
         coords={"lat": original_component.latitude, "lon": original_component.longitude},
         name="surface_class",
-        attrs={"description": "typed test classes", "version": np.int64(2)},
+        attrs={
+            "description": "typed test classes",
+            "version": np.int64(2),
+            "flag_values": np.array([1, 2]),
+            "enabled": np.bool_(False),
+            "details": {"reviewed": True, "version": np.int64(2)},
+        },
     )
+    before = class_labels.copy(deep=True)
     blocked_component = SeparableExponentialCovariance(
         original_component.latitude,
         original_component.longitude,
@@ -230,11 +238,25 @@ def test_source_serialization_preserves_class_label_identity() -> None:
         }
     )
 
-    restored = IndependentSourceCovariance.from_dataset(blocked.to_dataset())
+    encoded = blocked.to_dataset()
+    path = tmp_path / ("covariance.nc" if storage == "netcdf" else "covariance.zarr")
+    if storage == "netcdf":
+        encoded.to_netcdf(path)
+        opened = xr.open_dataset(path)
+    else:
+        encoded.to_zarr(path)
+        opened = xr.open_zarr(path)
+    with opened as saved:
+        restored = IndependentSourceCovariance.from_dataset(saved.load())
 
     restored_labels = restored.source_covariances["z-source"].class_labels
     assert restored_labels is not None
-    xr.testing.assert_identical(restored_labels, class_labels.assign_attrs(version=2))
+    xr.testing.assert_identical(
+        restored_labels, class_labels.assign_attrs(version=2, flag_values=[1, 2], enabled=False)
+    )
+    assert restored_labels.attrs["enabled"] is False
+    xr.testing.assert_identical(class_labels, before)
+    xr.testing.assert_identical(blocked_component.class_labels, before)
 
 
 def test_source_serialization_coordinates_do_not_alias_component_state() -> None:

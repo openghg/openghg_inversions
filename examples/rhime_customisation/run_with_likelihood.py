@@ -2,10 +2,11 @@
 
 This is the preferred low-ceremony customization route. It keeps RHIME's
 complete acquisition-to-output pipeline and changes only the direct-Python
-likelihood callable passed to :func:`openghg_inversions.rhime.run_rhime`.
+likelihood callable passed to :func:`openghg_inversions.rhime.run`.
 Use :func:`run_with_likelihood` from Python or :func:`main` from the command
-line with a normal RHIME configuration. The workflow may retrieve or reload
-data, materializes related model arrays together at the named PyMC boundary,
+line with a normal RHIME configuration. The workflow acquires data or accepts
+supplied in-memory inputs, materializes related model arrays together at the
+named PyMC boundary,
 samples, and writes requested outputs while canonical xarray/Dask inputs remain
 borrowed.
 """
@@ -18,7 +19,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from openghg_inversions.rhime import RhimeResult, run_rhime
+from openghg_inversions.rhime import run
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 
 from .likelihoods import likelihood_builder
 
@@ -27,7 +29,7 @@ def run_with_likelihood(
     *,
     config_file: str | Path | None = None,
     **kwargs: Any,
-) -> RhimeResult:
+) -> InversionOutput:
     """Run standard RHIME with a project-owned Student-t likelihood.
 
     Args:
@@ -36,7 +38,7 @@ def run_with_likelihood(
             ``config_file``.
 
     Returns:
-        The sampled result and any outputs requested by the RHIME options.
+        The sampled scientific view; requested files are written by the runner.
 
     Raises:
         TypeError: If the likelihood builder does not return a PyTensor
@@ -46,12 +48,12 @@ def run_with_likelihood(
             ``epsilon`` variables.
 
     Notes:
-        This workflow may retrieve or reload data, materializes related model
-        arrays together at the named PyMC boundary without mutating canonical
+        This workflow acquires data or accepts supplied in-memory inputs,
+        materializes related model arrays together at the named PyMC boundary without mutating canonical
         prepared inputs, runs sampling, and writes configured outputs.
     """
     kwargs["mismatch_model"] = None
-    return run_rhime(
+    return run(
         config_file=config_file,
         likelihood_builder=likelihood_builder,
         **kwargs,
@@ -80,7 +82,7 @@ def _json_object(value: str) -> dict[str, Any]:
     return parsed
 
 
-def main(argv: Sequence[str] | None = None) -> RhimeResult:
+def main(argv: Sequence[str] | None = None) -> InversionOutput:
     """Parse command-line options and run the customized RHIME workflow.
 
     Args:

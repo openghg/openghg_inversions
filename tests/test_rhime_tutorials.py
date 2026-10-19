@@ -13,10 +13,9 @@ from openghg_inversions.cli import main
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime import (
     RhimeSampler,
-    params_from_config,
-    run_rhime,
-    run_rhime_multisector,
+    run,
 )
+from openghg_inversions.rhime.ini import read_rhime_ini
 from tests.helpers import make_trace
 
 
@@ -56,7 +55,7 @@ def _test_store_overrides(
         "bc_store": tac_ch4_data_args["bc_store"],
         "obs_store": tac_ch4_data_args["obs_store"],
         "footprint_store": tac_ch4_data_args["footprint_store"],
-        "emissions_store": tac_ch4_data_args["emissions_store"],
+        "flux_store": tac_ch4_data_args["emissions_store"],
         "domain": tac_ch4_data_args["domain"],
         "fp_model": tac_ch4_data_args["fp_model"],
         "fp_height": tac_ch4_data_args["fp_height"],
@@ -64,16 +63,15 @@ def _test_store_overrides(
         "met_model": None,
         "flux_sources": tac_ch4_data_args["emissions_name"],
         "bc_input": "cams",
-        "basis_output_path": str(tmp_path),
+        "basis_output_path": str(tmp_path / "basis.nc"),
         "output_path": str(tmp_path),
-        "reload_merged_data": False,
     }
 
 
 def test_packaged_tutorial_configs_are_complete_and_distinct() -> None:
     """Both installed resources parse and describe their intended workflow."""
-    standard = params_from_config(_STANDARD_CONFIG)
-    multisector = params_from_config(_MULTISECTOR_CONFIG)
+    standard = read_rhime_ini(_STANDARD_CONFIG)
+    multisector = read_rhime_ini(_MULTISECTOR_CONFIG)
 
     assert standard["sites"] == ["MHD", "TAC"]
     assert standard["averaging_period"] == ["4h", "4h"]
@@ -113,20 +111,23 @@ def test_standard_tutorial_runs_to_persisted_output(
     monkeypatch.setattr(
         RhimeSampler,
         "sample",
-        lambda self, model, **kwargs: _deterministic_trace(model, ("x", "mu")),
+        lambda self, model, **kwargs: _deterministic_trace(model, ("x", "mu", "bc")),
     )
-    result = run_rhime(
+    result = run(
         config_file=_STANDARD_CONFIG,
         **_test_store_overrides(tac_ch4_data_args, tmp_path),
     )
 
     assert result.inv_inputs["H"].dims == ("region", "nmeasure")
-    assert result.model_build_result is not None
-    assert result.model_build_result.variable_roles["flux_scale"] == "x"
-    output_path = Path(result.output_metadata["inversion_output_path"])
+    assert isinstance(result, InversionOutput)
+    assert result.variable_roles["flux_scale"] == "x"
+    output_path = tmp_path / f"standard_tutorial{result.run_metadata['start_date']}_inversion_output.nc"
     assert output_path.is_file()
     reloaded = InversionOutput.load(output_path)
-    assert reloaded.provenance["contract"] == "modern_rhime_inversion_output"
+    assert reloaded.provenance == result.provenance
+    assert set(reloaded.output_metadata) == {"sampler"}
+    np.testing.assert_array_equal(reloaded.trace["posterior"]["x"], result.trace["posterior"]["x"])
+    assert reloaded.variable_roles == result.variable_roles
     assert reloaded.run_metadata["split_by_sectors"] is False
 
 
@@ -140,7 +141,7 @@ def test_multisector_tutorial_runs_to_sector_diagnostics(
     monkeypatch.setattr(
         RhimeSampler,
         "sample",
-        lambda self, model, **kwargs: _deterministic_trace(model, ("x_ff", "x_ocean")),
+        lambda self, model, **kwargs: _deterministic_trace(model, ("x_ff", "x_ocean", "bc")),
     )
     overrides = _test_store_overrides(tac_ch4_data_args, tmp_path)
     overrides.update(
@@ -156,7 +157,8 @@ def test_multisector_tutorial_runs_to_sector_diagnostics(
             },
         }
     )
-    result = run_rhime_multisector(config_file=_MULTISECTOR_CONFIG, **overrides)
+    result = run(
+        model="multisector",config_file=_MULTISECTOR_CONFIG, **overrides)
 
     assert [sector.name for sector in result.model_spec.sectors] == ["FF", "ocean"]
     assert tuple(result.inv_inputs["H"].source.values) == (
@@ -176,7 +178,7 @@ def test_multisector_tutorial_runs_to_sector_diagnostics(
 @pytest.mark.parametrize(
     ("subcommand", "config", "target"),
     [
-        ("run-rhime", _STANDARD_CONFIG, "openghg_inversions.rhime.run_rhime"),
+        ("run-rhime", _STANDARD_CONFIG, "openghg_inversions.rhime.run_standard"),
         (
             "run-rhime-multisector",
             _MULTISECTOR_CONFIG,

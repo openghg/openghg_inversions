@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Literal
 
 import xarray as xr
+
+from openghg_inversions.postprocessing.contracts import OutputContract
 
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
+from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
 from .co2_cached_sigma_runner import (
-    _append_joint_outputs,
-    _posterior_predictive_requested,
-    _predictive_seed,
     _sampler_for_cached_graph,
 )
 from .co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
@@ -42,7 +42,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     bc_state_activity: Mapping[str, StateActivity] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
-    sampler: RhimeSampler | None = None,
+    sampler: RhimeSampler | Literal["default"] = "default",
     sigma_target_accept: float = 0.8,
     state_target_accept: float = 0.9,
 ) -> xr.DataTree:
@@ -88,11 +88,11 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         offset_args: Per-channel per_site, offset_freq, and drop_first options
             with the ordinary CO2 offset meanings. Requires an offset prior
             for each configured channel; the default is one offset per site.
-        sampler: Optional sampling configuration, defaulting to PyMC. Only the
+        sampler: Sampler configuration or ``"default"`` for PyMC; ``None`` is invalid. Only the
             PyMC backend is supported. Caller-supplied step or target_accept
             controls are rejected because the runner owns both NUTS steps.
             Joint predictive output supports only random_seed in predictive
-            keyword arguments and is drawn from the same numerical target.
+            keyword arguments and uses the exact observed PyMC distribution.
         sigma_target_accept: Target acceptance probability for the amplitude
             NUTS step, defaulting to 0.8.
         state_target_accept: Target acceptance probability for the affine-state
@@ -115,9 +115,10 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             predictive keyword. Label, prior, covariance, and activity errors
             from model construction also propagate.
         TypeError: If channel offset frequency or boolean options have
-            unsupported types.
+            unsupported types, or the sampler is neither a configuration nor
+            ``"default"``.
     """
-    requested_sampler = sampler or RhimeSampler(nuts_sampler="pymc")
+    requested_sampler = resolve_sampler(sampler, nuts_sampler="pymc")
     if requested_sampler.nuts_sampler != "pymc":
         raise ValueError("Linked cached fixed-OU requires nuts_sampler='pymc'.")
     prepared = prepared_inputs
@@ -185,7 +186,13 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         roles["offset_concentration"] = "offset_concentration"
     if boundaries or offset_prior:
         roles["baseline_concentration"] = "baseline_concentration"
-    built = RhimeModelBuildResult(model=cached.model, variable_roles=roles, metadata=metadata)
+    built = RhimeModelBuildResult(
+        model=cached.model,
+        output_contract=OutputContract(
+            variable_roles=roles,
+            metadata=metadata,
+        ),
+    )
     sampling_sampler = _sampler_for_cached_graph(
         requested_sampler,
         cached_model=cached,
@@ -193,13 +200,6 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         state_target_accept=state_target_accept,
     )
     trace = sample_rhime_model(built, sampling_sampler)
-    trace = _append_joint_outputs(
-        trace,
-        cached_model=cached,
-        observations=observations,
-        posterior_predictive=_posterior_predictive_requested(requested_sampler),
-        random_seed=_predictive_seed(requested_sampler),
-    )
     trace = _annotate_co2_o2_trace(trace, built=built)
     trace = _annotate_linked_fixed_ou_trace(trace, observations=observations)
     trace.attrs["rhime_recipe"] = "co2_o2_cached_sigma_fixed_ou"
