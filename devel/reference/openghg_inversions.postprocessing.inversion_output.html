@@ -641,6 +641,7 @@ added by default, but can be changed by specifying sep.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">groups</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('prior',</span> <span class="pre">'prior_predictive',</span> <span class="pre">'posterior',</span> <span class="pre">'posterior_predictive')</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">add_suffix</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">var_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.inversion_output.merge_trace_groups" title="Link to this definition">#</a></dt>
@@ -652,11 +653,14 @@ added by default, but can be changed by specifying sep.</p>
 <li><p><strong>groups</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable" title="(in Python v3.15)"><em>Iterable</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>]</em>) – Exact direct-child group names to merge. Missing groups are
 ignored so posterior-only and prior-only traces remain valid.</p></li>
 <li><p><strong>add_suffix</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – If true, suffix each data variable with its group name.</p></li>
+<li><p><strong>var_names</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable" title="(in Python v3.15)"><em>Iterable</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Exact unsuffixed variable names to select before alignment.
+None selects all variables; groups without a requested variable
+cannot enlarge the selected coordinates.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Dataset containing all variables in the selected groups. Native chain
-and draw dimensions are retained.</p>
+<dd class="field-even"><p>Dataset containing selected variables with outer-join padding. Native
+chain and draw dimensions are retained; borrowed payloads remain lazy.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
@@ -841,8 +845,14 @@ RHIME outputs without exposing model-runner implementation details.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.postprocessing.inversion_output.InversionOutput.trace_dataset">
-<span class="sig-name descname"><span class="pre">trace_dataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">var_roles</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.inversion_output.InversionOutput.trace_dataset" title="Link to this definition">#</a></dt>
-<dd><p>Return prior and posterior trace samples selected by semantic role.</p>
+<span class="sig-name descname"><span class="pre">trace_dataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">var_roles</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">var_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.inversion_output.InversionOutput.trace_dataset" title="Link to this definition">#</a></dt>
+<dd><p>Return selected prior/posterior samples, including predictive groups.</p>
+<p>Select by semantic <code class="docutils literal notranslate"><span class="pre">var_roles</span></code> or exact unsuffixed <code class="docutils literal notranslate"><span class="pre">var_names</span></code>, not
+both; omitting both selects all trace variables. Each direct group is
+filtered before outer alignment. All chains and selected-variable
+missing-draw padding are retained without modifying borrowed inputs or
+computing lazy payloads. Explicit state-dimension mappings apply only
+when variables are selected.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>

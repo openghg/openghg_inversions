@@ -577,9 +577,9 @@ densify their inputs here; product code can still densify final outputs before
 NetCDF serialisation.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.postprocessing.stats.StatsFunction">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">StatsFunction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">func</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.stats.StatsFunction" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">StatsFunction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">func</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">whole_dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pointwise</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.stats.StatsFunction" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a></p>
-<p>Tuple holding a stats function and the parameters it accepts.</p>
+<p>Tuple holding a stats function, the parameters it accepts, and its dispatch options.</p>
 <p>Storing the parameters the stats function accepts helps with passing
 optional arguments to the stats functions without having to specify
 extra parameters for each stats function separately.</p>
@@ -601,18 +601,41 @@ extra parameters for each stats function separately.</p>
 <dd><p>Alias for field number 2</p>
 </dd></dl>
 
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.postprocessing.stats.StatsFunction.pointwise">
+<span class="sig-name descname"><span class="pre">pointwise</span></span><a class="headerlink" href="#openghg_inversions.postprocessing.stats.StatsFunction.pointwise" title="Link to this definition">#</a></dt>
+<dd><p>Alias for field number 4</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.postprocessing.stats.StatsFunction.whole_dataset">
+<span class="sig-name descname"><span class="pre">whole_dataset</span></span><a class="headerlink" href="#openghg_inversions.postprocessing.stats.StatsFunction.whole_dataset" title="Link to this definition">#</a></dt>
+<dd><p>Alias for field number 3</p>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.postprocessing.stats.register_stat">
-<span class="sig-name descname"><span class="pre">register_stat</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">stat</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.stats.register_stat" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">register_stat</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">stat</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">whole_dataset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pointwise</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.stats.register_stat" title="Link to this definition">#</a></dt>
 <dd><p>Decorator function to register stats functions.</p>
+<p>Use as <code class="docutils literal notranslate"><span class="pre">&#64;register_stat</span></code> or <code class="docutils literal notranslate"><span class="pre">&#64;register_stat(whole_dataset=True,</span> <span class="pre">pointwise=True)</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>stat</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.15)"><em>Callable</em></a>) – stats function to register</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>stat</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.15)"><em>Callable</em></a><em> | </em><em>None</em>) – stats function to register</p></li>
+<li><p><strong>whole_dataset</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – if True, call the statistic once with every variable, so it
+may combine related variables. By default it is called separately with a
+single-variable dataset for each variable.</p></li>
+<li><p><strong>pointwise</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – if True, the statistic declares that each non-sample point is
+reduced independently. <code class="docutils literal notranslate"><span class="pre">calculate_stats</span></code> may then pass it bounded
+non-sample blocks. A request containing any statistic without this
+declaration is computed on the complete dataset.</p></li>
+</ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>stat, the input function (no modifications made)</p>
+<dd class="field-even"><p>stat, the input function (no modifications made), or a decorator when
+called with options only.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.15)"><em>Callable</em></a></p>
@@ -707,7 +730,10 @@ if <cite>thin = 2</cite> is passed, then the running time will be roughly half.<
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.postprocessing.stats.hdi">
 <span class="sig-name descname"><span class="pre">hdi</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hdi_prob</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.68</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'draw'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.stats.hdi" title="Link to this definition">#</a></dt>
-<dd><p>Compute highest density intervals with the given probabilities.</p>
+<dd><p>Compute exact highest density intervals with bounded non-sample tasks.</p>
+<p>Dask inputs remain lazy and each kernel receives complete samples. Eager
+and lazy paths use the same ArviZ interval kernel with missing values
+ignored. Existing upstream producers must already have bounded payloads.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -763,13 +789,32 @@ if <cite>thin = 2</cite> is passed, then the running time will be roughly half.<
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.postprocessing.stats.calculate_stats">
-<span class="sig-name descname"><span class="pre">calculate_stats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stats</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('mean',</span> <span class="pre">'quantiles')</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.stats.calculate_stats" title="Link to this definition">#</a></dt>
-<dd><p>Calculate stats on dataset.</p>
+<span class="sig-name descname"><span class="pre">calculate_stats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stats</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('mean',</span> <span class="pre">'quantiles')</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">_prepare_block</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.stats.calculate_stats" title="Link to this definition">#</a></dt>
+<dd><p>Calculate statistics, completing one bounded non-sample block at a time.</p>
+<p>Related variables with the same non-sample dimensions and all requested
+statistics share a computation per block. Sample chunks retain their
+original reduction order; exact interval kernels receive complete samples.
+Built-in reductions pool every chain within each block, and convert JAX
+summaries to NumPy at this reduction boundary.
+Results are eager (and may retain sparse storage). Borrowed inputs are not
+changed. Upstream producers must already use bounded non-sample chunks;
+this boundary limits workspace, not resident inputs or final output size.
+Compatible bounded source chunks are retained. Inconsistent chunk layouts
+across related variables may require a source chunk in adjacent blocks.
+Mixed eager/lazy groups may also split a source block beside a singleton
+edge to preserve the eager sample-reduction layout.
+Statistics are called once per variable unless registered with
+<code class="docutils literal notranslate"><span class="pre">whole_dataset=True</span></code>. A request containing a statistic not registered
+with <code class="docutils literal notranslate"><span class="pre">pointwise=True</span></code> is computed on the complete dataset, so it does not
+receive the non-sample workspace bound.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>ds</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to calculate stats on.</p></li>
 <li><p><strong>stats</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>]</em>) – list of stats to calculate.</p></li>
+<li><p><strong>_prepare_block</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.15)"><em>Callable</em></a><em>[</em><em>[</em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a><em>]</em><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a><em>] </em><em>| </em><em>None</em>) – Internal arithmetic applied after blocking and before
+statistic kernels. Related operands must have matching non-sample
+dimensions. Preserve their NumPy or Dask backend and borrowed inputs.</p></li>
 <li><p><strong>**kwargs</strong> – arguments to pass to stats functions. If a parameter can be passed to a stats function,
 it will be passed. To pass to a specific stats function, use <cite>&lt;stats func name&gt;__&lt;key&gt; = &lt;value&gt;</cite>.
 Note: that is a double underscore. For instance <cite>mode_kde__chunk_dim=”country”</cite> would specify <cite>chunk_dim</cite>
@@ -777,9 +822,7 @@ only for the stats function “mode_kde”.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>dataset containing all stats calculated on all variables in input dataset.
-When both chain and draw dimensions are present, every chain is pooled
-at this reduction boundary.</p>
+<dd class="field-even"><p>dataset containing all stats calculated on all variables in input dataset.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – if a statistic in <cite>stats</cite> is not found in the registry.</p>
@@ -843,6 +886,8 @@ at this reduction boundary.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.stats.StatsFunction.func"><code class="docutils literal notranslate"><span class="pre">StatsFunction.func</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.stats.StatsFunction.name"><code class="docutils literal notranslate"><span class="pre">StatsFunction.name</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.stats.StatsFunction.params"><code class="docutils literal notranslate"><span class="pre">StatsFunction.params</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.stats.StatsFunction.pointwise"><code class="docutils literal notranslate"><span class="pre">StatsFunction.pointwise</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.stats.StatsFunction.whole_dataset"><code class="docutils literal notranslate"><span class="pre">StatsFunction.whole_dataset</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.stats.register_stat"><code class="docutils literal notranslate"><span class="pre">register_stat()</span></code></a></li>

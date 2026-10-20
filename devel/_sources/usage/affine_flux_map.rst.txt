@@ -175,9 +175,11 @@ reconstruction, never by interpolating retained-state quantiles.
 
 Country output first constructs compact country-by-state actions with dense
 chunk payloads, so it does not allocate native-grid-by-draw values. Native output
-explicitly requests grid reconstruction. Dask-backed inputs remain lazy until the caller computes
-or writes the returned product; sample statistics may consolidate sample
-chunks. Neither function mutates the trace or reconstruction inputs.
+explicitly requests grid reconstruction. Shared sample statistics complete bounded
+non-sample blocks and return computed summaries, retaining complete required
+samples within each block. Upstream reconstruction producers must already have
+bounded chunks; blocking their outputs cannot shrink an existing producer task.
+Neither function mutates the trace or reconstruction inputs.
 
 Both products retain prepared-artifact identity, reconstruction provenance and
 ``uncertainty_scope="retained_state_conditional"``. Their intervals exclude

@@ -593,9 +593,10 @@ Native dimensions are
 <code class="docutils literal notranslate"><span class="pre">mol</span> <span class="pre">m-2</span> <span class="pre">s-1</span></code>. <code class="docutils literal notranslate"><span class="pre">flux_total_prior_*</span></code> and <code class="docutils literal notranslate"><span class="pre">flux_total_posterior_*</span></code>
 summarize source sums. Multisource maps also retain <code class="docutils literal notranslate"><span class="pre">flux_prior_*</span></code>
 and <code class="docutils literal notranslate"><span class="pre">flux_posterior_*</span></code> on their native source axis. Prior and posterior
-sample axes are reduced independently, pooling all chains. Results
-remain lazy for Dask inputs; quantiles consolidate sample chunks through
-the existing statistics helper. Inputs remain borrowed.</p>
+sample axes are reduced independently, pooling all chains. Summaries
+are computed in bounded non-sample blocks; quantiles retain complete
+samples within each block. Existing affine producers must already have
+bounded task payloads. Inputs remain borrowed.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the recipe, role, samples, native layout, state labels,
@@ -633,10 +634,11 @@ indexed <code class="docutils literal notranslate"><span class="pre">lat,</span>
 population standard deviation, and 0.159/0.841 quantiles in grams of
 CO2 per fixed 365-day year. Multisource maps additionally retain
 <code class="docutils literal notranslate"><span class="pre">country_prior_*</span></code> and <code class="docutils literal notranslate"><span class="pre">country_posterior_*</span></code> on the source axis.
-Other flux dimensions, such as time, remain in the result. Computation
-stays lazy for Dask inputs. Compact country reference/response arrays
-use dense chunk payloads; sample chunks for quantiles are consolidated.
-Inputs are borrowed.</p>
+Other flux dimensions, such as time, remain in the result. Summaries
+are computed in bounded non-sample blocks. Compact country
+reference/response arrays use dense chunk payloads; sample chunks for
+quantiles are consolidated. Existing producers must already have
+bounded task payloads. Inputs are borrowed.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If input requirements or exact country-grid alignment fail.</p>
