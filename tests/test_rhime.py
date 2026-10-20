@@ -178,7 +178,10 @@ def multisector_model_spec(builder_args: dict[str, Any]) -> RhimeModelSpec:
     return RhimeModelSpec(
         species="ch4",
         domain="EUROPE",
-        sectors=(),
+        sectors=(
+            _sector("total-ukghg-edgar7", prior=builder_args["x_prior"]),
+            _sector("sector-2", prior=builder_args["x_prior"]),
+        ),
         likelihood=PollutionEventSettings(
             sigma_prior=builder_args["sigma_prior"],
             pollution_events_from_obs=builder_args["pollution_events_from_obs"],
