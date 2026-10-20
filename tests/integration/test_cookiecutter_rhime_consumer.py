@@ -59,7 +59,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         averaging_period=("1h",),
         basis_artifact_source="controlled-test-basis",
     )
-    output_contract = OutputContract(
+    output_contract = OutputContract.create(
         variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "inv_out"),
     )
     build_result = SimpleNamespace(output_contract=output_contract)

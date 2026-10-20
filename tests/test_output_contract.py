@@ -11,7 +11,7 @@ from openghg_inversions.postprocessing.contracts import OutputContract
 
 def test_output_contract_roundtrip_copies_roles_and_preserves_explicit_view() -> None:
     roles = {"flux_scale": "inner_scale"}
-    contract = OutputContract(
+    contract = OutputContract.create(
         variable_roles=roles,
         supported_output_formats=("none", "paris"),
         metadata={"recipe": "nested", "source_order": ["fossil", "bio"]},
@@ -39,7 +39,7 @@ def test_output_contract_roundtrip_copies_roles_and_preserves_explicit_view() ->
     ],
 )
 def test_output_contract_rejects_malformed_persisted_metadata(change: dict) -> None:
-    payload = OutputContract(variable_roles={"flux_scale": "x"}).to_dict()
+    payload = OutputContract.create(variable_roles={"flux_scale": "x"}).to_dict()
     payload.update(change)
     with pytest.raises(ValueError):
         OutputContract.from_dict(payload)

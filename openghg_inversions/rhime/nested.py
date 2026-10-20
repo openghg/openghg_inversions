@@ -1171,7 +1171,7 @@ def build_nested_rhime_model(
         roles["offset"] = "offset"
     result = RhimeModelBuildResult(
         model=model,
-        output_contract=OutputContract(
+        output_contract=OutputContract.create(
             variable_roles=roles,
             supported_output_formats=("none", "paris"),
             metadata={

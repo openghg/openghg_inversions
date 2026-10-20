@@ -32,3 +32,15 @@ without restoring the obsolete historical loader, sampler, or output system.
 
    ramsden2022
    ramsden2022_validation
+
+Configuration and checkpoint validation
+----------------------------------------
+
+The Pydantic prototype changes existing configuration and metadata owners on
+its experimental branch. It is documented separately from runnable scientific
+model variants.
+
+.. toctree::
+   :maxdepth: 1
+
+   pydantic_records

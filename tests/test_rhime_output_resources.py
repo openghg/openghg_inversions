@@ -84,7 +84,7 @@ def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monke
         sampled = _standard_stages.save_samples(
             preparation, posterior,
             model=config.model, actual_inference=config.sampler.describe(),
-            output_contract=OutputContract(variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "paris")),
+            output_contract=OutputContract.create(variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "paris")),
             output_dir=tmp_path / "samples",
             preparation_generation=_standard_stages.load_preparation(preparation)[2],
         )

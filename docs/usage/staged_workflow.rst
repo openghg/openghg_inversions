@@ -11,6 +11,11 @@ add loading and saving at those boundaries; full execution needs no intermediate
 saves. Model construction accepts no output configuration and performs no hidden
 materialization.
 
+The :doc:`Pydantic prototype </experimental/pydantic_records>` validates the
+current completion markers and output contracts against typed records. It
+keeps numerical loading, preparation generations and manifest-last publication
+with their existing owners.
+
 Standard saved phases
 ---------------------
 

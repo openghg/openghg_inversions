@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field, fields
+from dataclasses import field, fields
 from pathlib import Path
-from typing import Any, ClassVar, Literal, TYPE_CHECKING, cast, get_args, get_type_hints
+from typing import Annotated, Any, ClassVar, Literal, TYPE_CHECKING, cast, get_args, get_type_hints
+
+from pydantic import BeforeValidator, Field, PlainSerializer, WithJsonSchema, field_validator
+from pydantic.dataclasses import dataclass
+
+from openghg_inversions._record_schema import JsonFloat, RuntimeConfig
 
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.rhime._resources import resolve_resource_paths
@@ -57,7 +62,22 @@ def normalise_optional_mapping(value: Mapping[str, Any] | None) -> dict[str, Any
     return None if value is None else _copy_option_containers(dict(value))
 
 
-@dataclass(frozen=True)
+Name = Annotated[str, Field(pattern=r"\S")]
+def _owned_mapping(value: Any) -> Any:
+    """Own Python containers, letting the selected union validate their type."""
+    return normalise_optional_mapping(value) if isinstance(value, Mapping) else value
+
+
+BorrowedPrior = Annotated[PriorArgs, BeforeValidator(_owned_mapping)]
+BorrowedOptions = Annotated[dict[str, Any], BeforeValidator(_owned_mapping)]
+TemporalAnchor = Annotated[
+    DatetimeLike,
+    WithJsonSchema({"type": "string", "description": "Date or date-time string."}),
+    PlainSerializer(str, return_type=str, when_used="json"),
+]
+
+
+@dataclass(frozen=True, config=RuntimeConfig)
 class PollutionEventSettings:
     """Serializable settings for pollution-event-scaled model error.
 
@@ -72,12 +92,12 @@ class PollutionEventSettings:
         power: Exponent or prior used in pollution-event error scaling.
     """
 
-    sigma_prior: PriorArgs | None = None
+    sigma_prior: BorrowedPrior | None = None
     sigma_freq: str | None = None
     sigma_per_site: bool = True
-    sigma_freq_anchor: DatetimeLike | None = None
+    sigma_freq_anchor: TemporalAnchor | None = None
     pollution_events_from_obs: bool = False
-    power: PriorArgs | float = 1.99
+    power: BorrowedPrior | JsonFloat = 1.99
 
     @property
     def required_prepared_inputs(self) -> tuple[str, ...]:
@@ -85,7 +105,7 @@ class PollutionEventSettings:
         return ("min_error",)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=RuntimeConfig)
 class AdditiveSigmaSettings:
     """Serializable settings for additive model-data-mismatch error.
 
@@ -99,10 +119,10 @@ class AdditiveSigmaSettings:
             error floor.
     """
 
-    sigma_prior: PriorArgs | None = None
+    sigma_prior: BorrowedPrior | None = None
     sigma_freq: str | None = None
     sigma_per_site: bool = True
-    sigma_freq_anchor: DatetimeLike | None = None
+    sigma_freq_anchor: TemporalAnchor | None = None
     use_minimum_error_floor: bool = False
 
     @property
@@ -111,7 +131,7 @@ class AdditiveSigmaSettings:
         return ("min_error",) if self.use_minimum_error_floor else ()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=RuntimeConfig)
 class FixedErrorSettings:
     """Serializable selection of reported observation error only."""
 
@@ -194,7 +214,7 @@ def make_likelihood_settings(
     return settings_type(**options)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=RuntimeConfig)
 class SectorSpec:
     """Configuration for one separately optimised flux sector.
 
@@ -210,14 +230,14 @@ class SectorSpec:
             fixing exactly-zero sensitivity columns to one.
     """
 
-    name: str
-    flux_source: str
-    x_prior: PriorArgs
+    name: Name
+    flux_source: Name
+    x_prior: BorrowedPrior
     variable_suffix: str
     state_activity: StateActivity | None = field(default=None, kw_only=True)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=RuntimeConfig)
 class RhimeModelSpec:
     """Scientific options used by the concrete RHIME model recipes.
 
@@ -255,16 +275,16 @@ class RhimeModelSpec:
     PRIOR_OPTION_NAMES: ClassVar[tuple[str, ...]] = ("x_prior", "bc_prior", "offset_prior")
     MAPPING_OPTION_NAMES: ClassVar[tuple[str, ...]] = ("sector_sources", "offset_args")
 
-    species: str
-    domain: str
-    sectors: tuple[SectorSpec, ...]
+    species: Name
+    domain: Name
+    sectors: Annotated[tuple[SectorSpec, ...], Field(min_length=1)]
     use_bc: bool = True
     likelihood: LikelihoodSettings | None = field(default=None, kw_only=True)
     add_offset: bool = False
     aggregation_error_mode: AggregationErrorMode = field(default="none", kw_only=True)
-    bc_prior: PriorArgs | None = None
-    offset_prior: PriorArgs | None = None
-    offset_args: dict[str, Any] | None = None
+    bc_prior: BorrowedPrior | None = None
+    offset_prior: BorrowedPrior | None = None
+    offset_args: BorrowedOptions | None = None
     bc_state_activity: StateActivity | None = field(default=None, kw_only=True)
     state_activity: StateActivity | None = field(default=None, kw_only=True)
 
@@ -341,7 +361,12 @@ class RhimeModelSpec:
         if not data_config.split_by_sectors:
             for sector in record["sectors"]:
                 sector.pop("flux_source")
-        return record
+        from openghg_inversions._record_schema import validate_json_keys
+        from openghg_inversions._serialization_codecs import _json_value
+        from ._model_records import ModelDescription
+
+        validate_json_keys(record)
+        return ModelDescription.model_validate(_json_value(record)).model_dump(mode="json", exclude_unset=True)
 
     @classmethod
     def from_record(cls, record: Any, *, data_config: DataConfig, trace: Any = None) -> RhimeModelSpec:
@@ -415,7 +440,7 @@ _LIKELIHOOD_SETTINGS = {
 }
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=RuntimeConfig)
 class RhimeOutputSpec:
     """Output settings for a RHIME run.
 
@@ -478,13 +503,19 @@ class RhimeOutputSpec:
             options["paris_postprocessing_kwargs"] = normalise_optional_mapping(options["paris_postprocessing_kwargs"])
         return make_output_spec(multisector=multisector, **options)
 
+    @field_validator("output_path", "country_file", "save_trace", "save_inversion_output", mode="before")
+    @classmethod
+    def resolve_paths(cls, value: Any) -> Any:
+        """Accept explicit path strings at this configuration boundary."""
+        return Path(value).expanduser().resolve() if isinstance(value, str) else value
+
     output_format: OutputFormat = "inv_out"
     output_path: Path | None = None
     output_name: str = "rhime"
     save_trace: Path | bool = False
     save_inversion_output: Path | bool = True
     country_file: Path | None = None
-    paris_postprocessing_kwargs: dict[str, Any] | None = None
+    paris_postprocessing_kwargs: BorrowedOptions | None = None
     output_filename_convention: OutputFilenameConvention = "rhime"
 
 

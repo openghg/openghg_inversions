@@ -25,8 +25,12 @@ from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.inference.sampling import RhimeSampler, describe_recorded_sampler, resolve_sampler
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.rhime._stage_artifacts import (
-    _output_path, check_checkpoint_targets, finish_checkpoint, read_manifest,
+    _output_path, check_checkpoint_targets, finish_checkpoint,
     reference, start_checkpoint, write_json,
+)
+from openghg_inversions.rhime._manifest_records import (
+    Co2PreparationRecord, Co2PreparationWriteRecord, Co2SampleReadRecord, Co2SampleWriteRecord,
+    checkpoint_dict, read_checkpoint,
 )
 from openghg_inversions.rhime._stage_checks import (
     PREPARATION_CHECK_NAME, _check_draws, _check_stage, _check_result,
@@ -70,12 +74,8 @@ class Co2Preparation:
 
 
 def _preparation_record(manifest: str | Path) -> tuple[Path, dict[str, Any]]:
-    path, record = read_manifest(manifest, "openghg_inversions.co2.prepare", (
-        "prepared_inputs", "generation", "start_date", "end_date", "domain",
-    ))
-    if not isinstance(record["generation"], str) or not record["generation"]:
-        raise ValueError(f"CO2 preparation {path} requires a nonempty generation.")
-    return path, record
+    path, record = read_checkpoint(manifest, Co2PreparationRecord)
+    return path, checkpoint_dict(record)
 
 
 def _finish_preparation(
@@ -91,7 +91,7 @@ def _finish_preparation(
     }
     if affine_path is not None:
         record["affine_reconstruction"] = os.path.relpath(affine_path, destination)
-    return finish_checkpoint(destination, "prepare", record)
+    return finish_checkpoint(destination, "prepare", checkpoint_dict(Co2PreparationWriteRecord.model_validate(record)))
 
 
 def save_preparation(
@@ -187,7 +187,9 @@ def load_preparation(manifest: str | Path, *, expected_generation: str | None = 
     payload = reference(path, record["prepared_inputs"])
     prepared = Co2PreparedInputs.load(payload)
     facts = requested_co2_facts(prepared, **{name: record[name] for name in ("start_date", "end_date", "domain")})
-    affine_payload = reference(path, record["affine_reconstruction"]) if "affine_reconstruction" in record else None
+    affine_payload = (
+        reference(path, record["affine_reconstruction"]) if record.get("affine_reconstruction") is not None else None
+    )
     return Co2Preparation(
         prepared=prepared, generation=record["generation"], payload=payload, affine_payload=affine_payload, **facts,
     )
@@ -210,20 +212,21 @@ def save_samples(
     prepared_path = reference(preparation_path, preparation["prepared_inputs"])
     affine_path = (
         reference(preparation_path, preparation["affine_reconstruction"])
-        if "affine_reconstruction" in preparation else None
+        if preparation.get("affine_reconstruction") is not None else None
+    )
+    record = Co2SampleWriteRecord(
+        schema="openghg_inversions.co2.sample", schema_version=1,
+        producer="openghg_inversions", stage="sample", inference_kind="mcmc",
+        preparation=os.path.relpath(preparation_path, Path(output_dir).resolve()),
+        preparation_generation=preparation_generation, posterior="posterior.nc",
+        actual_inference=dict(actual_inference), provenance=installed_ogi_provenance(),
     )
     destination = start_checkpoint(
         output_dir, "sample", payloads=("posterior.nc",),
         referenced=(preparation_path, prepared_path) + ((affine_path,) if affine_path is not None else ()),
     )
     save_trace(trace, destination / "posterior.nc")
-    return finish_checkpoint(destination, "sample", {
-        "schema": "openghg_inversions.co2.sample", "schema_version": 1,
-        "producer": "openghg_inversions", "stage": "sample", "inference_kind": "mcmc",
-        "preparation": os.path.relpath(preparation_path, destination),
-        "preparation_generation": preparation_generation, "posterior": "posterior.nc",
-        "actual_inference": dict(actual_inference), "provenance": installed_ogi_provenance(),
-    })
+    return finish_checkpoint(destination, "sample", checkpoint_dict(record))
 
 
 def sample(
@@ -272,14 +275,9 @@ def load_samples(sample_manifest: str | Path) -> Co2Output:
     installed-version provenance. Original requested dates are taken from the
     preparation, independently of observation extrema or current model settings.
     """
-    path, record = read_manifest(sample_manifest, "openghg_inversions.co2.sample", (
-        "preparation", "preparation_generation", "posterior", "inference_kind",
-    ))
-    if record["inference_kind"] != "mcmc":
-        raise ValueError(f"CO2 samples {path} require inference_kind='mcmc'.")
+    path, typed_record = read_checkpoint(sample_manifest, Co2SampleReadRecord)
+    record = checkpoint_dict(typed_record)
     generation = record["preparation_generation"]
-    if not isinstance(generation, str) or not generation:
-        raise ValueError(f"CO2 samples {path} require a nonempty preparation generation.")
     preparation = load_preparation(reference(path, record["preparation"]), expected_generation=generation)
     trace = load_trace(reference(path, record["posterior"]))
     validate_co2_trace(trace, preparation.prepared)

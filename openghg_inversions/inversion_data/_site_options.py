@@ -4,9 +4,25 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
-from dataclasses import dataclass
 from numbers import Integral
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar, Literal, cast
+
+from pydantic import field_validator
+from pydantic.dataclasses import dataclass
+
+from openghg_inversions._record_schema import JsonFloat, Record, RuntimeConfig
+
+
+class InletSlice(Record):
+    """Explicit JSON representation of a Python inlet slice selector."""
+
+    type: Literal["slice"]
+    start: str | int | JsonFloat | None
+    stop: str | int | JsonFloat | None
+    step: int | None
+
+    def to_slice(self) -> slice:
+        return slice(self.start, self.stop, self.step)
 
 
 def expand_site_option(
@@ -147,7 +163,10 @@ def _normalise_site_inlets(
     length: int,
 ) -> list[str | slice | None]:
     """Normalize inlet selectors, including legacy per-site slice selectors."""
-    normalized = list(expand_site_option(value, nsites=length, name="inlet"))
+    normalized = [
+        InletSlice.model_validate(item).to_slice() if isinstance(item, Mapping) else item
+        for item in expand_site_option(value, nsites=length, name="inlet")
+    ]
     invalid = [item for item in normalized if item is not None and not isinstance(item, str | slice)]
     if invalid:
         raise ValueError(f"`inlet` entries must be strings, slices, or None. Invalid value(s): {invalid!r}.")
@@ -164,7 +183,7 @@ def _normalise_site_booleans(
     return list(expand_site_boolean_option(value, nsites=length, name=name))
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=RuntimeConfig)
 class SiteOptions:
     """Complete selectors sharing one site order.
 
@@ -173,8 +192,8 @@ class SiteOptions:
 
     Direct construction accepts resolved uppercase site labels and aligned
     sequences. It freezes sequences as tuples and checks nonempty unique sites
-    and common lengths; it does not normalize labels or validate selector
-    entries. Use :meth:`from_inputs` to resolve external shorthand.
+    and common lengths and validates selector entries; it does not normalize
+    labels. Use :meth:`from_inputs` to resolve external shorthand.
 
     Args:
         sites: Nonempty unique uppercase observation site labels.
@@ -193,6 +212,12 @@ class SiteOptions:
     Raises:
         ValueError: If sites are empty or duplicated, or field lengths differ.
     """
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def freeze_sequences(cls, value: Any) -> Any:
+        """Own each resolved selector sequence before validating its entries."""
+        return tuple(value) if isinstance(value, (tuple, list)) else value
 
     REQUIRED_INPUT_NAMES: ClassVar[tuple[str, ...]] = ("sites", "averaging_period")
 

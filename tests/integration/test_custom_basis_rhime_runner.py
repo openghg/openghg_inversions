@@ -88,7 +88,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         averaging_period=("1h",),
         basis_artifact_source=basis.basis_artifact_source,
     )
-    output_contract = OutputContract(variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "inv_out"))
+    output_contract = OutputContract.create(variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "inv_out"))
     build_result = SimpleNamespace(output_contract=output_contract)
     idata = xr.DataTree()
     model_inputs = prepared.inv_inputs

@@ -32,7 +32,7 @@ def _saved(tmp_path):
     posterior.attrs["rhime_priors"] = json.dumps({"x": config.model.sectors[0].x_prior})
     sampled = stages.save_samples(
         preparation, posterior, model=config.model, actual_inference=config.sampler.describe(),
-        output_contract=OutputContract(variable_roles={"flux_scale": "x"},
+        output_contract=OutputContract.create(variable_roles={"flux_scale": "x"},
                                        supported_output_formats=("none", "inv_out")),
         output_dir=tmp_path / "samples",
         preparation_generation=stages.load_preparation(preparation)[2],
@@ -191,7 +191,7 @@ def test_saved_model_cannot_duplicate_preparation_facts(tmp_path, name):
     assert "flux_source" not in record["model"]["sectors"][0]
     record["model"][name] = "other"
     sampled.write_text(json.dumps(record))
-    with pytest.raises(ValueError, match="model record"):
+    with pytest.raises(ValueError, match=rf"model\.{name}"):
         stages.load_samples(sampled)
 
 
@@ -226,7 +226,7 @@ def test_prior_readiness_requires_finite_declared_prediction(tmp_path, monkeypat
     from contextlib import nullcontext
     from types import SimpleNamespace
     preparation, _ = _saved(tmp_path)
-    contract = OutputContract(variable_roles={"concentration": "observations"})
+    contract = OutputContract.create(variable_roles={"concentration": "observations"})
     monkeypatch.setattr(stages, "build_standard_model", lambda *a, **k: SimpleNamespace(
         model=nullcontext(), output_contract=contract))
     group = "prior" if evidence == "missing" else "prior_predictive"
@@ -253,7 +253,7 @@ def test_prior_serialization_errors_propagate(tmp_path, monkeypatch, empty):
     from types import SimpleNamespace
     preparation, _ = _saved(tmp_path)
     monkeypatch.setattr(stages, "build_standard_model", lambda *a, **k: SimpleNamespace(
-        model=nullcontext(), output_contract=OutputContract(variable_roles={"concentration": "y"})))
+        model=nullcontext(), output_contract=OutputContract.create(variable_roles={"concentration": "y"})))
     prior = make_trace(prior_predictive=xr.Dataset({"y": (("chain", "draw"), [[1.]])}))
     if empty:
         prior = prior.isel(draw=slice(0, 0))
@@ -401,6 +401,7 @@ def test_saving_samples_ignores_unused_configured_lazy_priors(tmp_path):
 def test_model_record_covers_every_field_or_rejects_it(tmp_path):
     from dataclasses import fields, replace
     from openghg_inversions.rhime.specs import _MODEL_RECORD_FIELDS
+    from openghg_inversions.models.state_activity import StateActivity
 
     recorded = set(_MODEL_RECORD_FIELDS) | {"sectors", "likelihood"}
     rejected = {"state_activity", "bc_state_activity"}
@@ -413,7 +414,7 @@ def test_model_record_covers_every_field_or_rejects_it(tmp_path):
     decoded = RhimeModelSpec.from_record(json.loads(json.dumps(recorded_model)), data_config=data_config)
     assert decoded.sectors[0].x_prior == model.sectors[0].x_prior
     assert decoded.bc_prior is None and decoded.offset_prior is None
-    policy = object()
+    policy = StateActivity()
     preparation, sampled = _saved(tmp_path)
     record = json.loads(sampled.read_text())
     for changed in (replace(model, state_activity=policy), replace(model, bc_state_activity=policy),

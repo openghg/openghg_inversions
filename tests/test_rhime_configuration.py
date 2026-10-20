@@ -736,7 +736,8 @@ def test_canonical_paths_are_forwarded_without_conversion(tmp_path, monkeypatch)
             _request(basis_path=path, bc_basis_paths=paths, country_file=path), multisector=False,
         )
     assert config.data.basis_path is path
-    assert config.data.bc_basis_paths is paths
+    assert config.data.bc_basis_paths == paths
+    assert config.data.bc_basis_paths[0] is paths[0]
     assert config.output.country_file is path
 
 

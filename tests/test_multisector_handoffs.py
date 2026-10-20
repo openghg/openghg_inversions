@@ -40,7 +40,7 @@ def _trace_and_contract(prepared):
         "x_biosphere": {"pdf": "normal", "mu": .9, "sigma": .2},
         "x_fossil": {"pdf": "normal", "mu": 1.1, "sigma": .2},
     })
-    contract = OutputContract(
+    contract = OutputContract.create(
         variable_roles={"flux_scale:biosphere": "x_biosphere", "flux_scale:fossil": "x_fossil"},
         supported_output_formats=("none", "inv_out"),
     )
@@ -122,7 +122,7 @@ def test_wrong_family_fails_before_numerical_load(preparation, monkeypatch):
 def test_direct_wrong_family_fails_before_acquisition(preparation, tmp_path, monkeypatch):
     _, (_, data, _) = preparation
     monkeypatch.setattr(stages, "acquire_merged_data", lambda *a, **k: pytest.fail("acquired data"))
-    with pytest.raises(ValueError, match="split_by_sectors=True"):
+    with pytest.raises(ValueError, match="split_by_sectors"):
         stages.prepare(replace(data, split_by_sectors=False), output_dir=tmp_path / "wrong")
 
 
@@ -176,7 +176,7 @@ def test_readiness_classifies_predictive_evidence(preparation, tmp_path, monkeyp
     prior = make_trace(prior_predictive=xr.Dataset({"y": (("chain", "draw", "nmeasure"), [[values]])}))
     monkeypatch.setattr(stages, "materialize_multisector_inputs", lambda *a: (None, {}))
     monkeypatch.setattr(stages, "build_multisector_model", lambda *a, **k: SimpleNamespace(
-        model=nullcontext(), output_contract=OutputContract(variable_roles={"concentration": "y"})))
+        model=nullcontext(), output_contract=OutputContract.create(variable_roles={"concentration": "y"})))
     monkeypatch.setattr(pymc, "sample_prior_predictive", lambda *a, **k: prior)
     result = stages.prior_predictive(manifest, model=model_options(.2), output_dir=tmp_path / "ready", draws=1)
     assert result["status"] == status
@@ -188,7 +188,7 @@ def test_readiness_serialization_errors_propagate(preparation, tmp_path, monkeyp
     prior = make_trace(prior_predictive=xr.Dataset({"y": (("chain", "draw"), [[1.]])}))
     monkeypatch.setattr(stages, "materialize_multisector_inputs", lambda *a: (None, {}))
     monkeypatch.setattr(stages, "build_multisector_model", lambda *a, **k: SimpleNamespace(
-        model=nullcontext(), output_contract=OutputContract(variable_roles={"concentration": "y"})))
+        model=nullcontext(), output_contract=OutputContract.create(variable_roles={"concentration": "y"})))
     monkeypatch.setattr(pymc, "sample_prior_predictive", lambda *a, **k: prior)
     def fail(*args, **kwargs):
         raise OSError("disk full")

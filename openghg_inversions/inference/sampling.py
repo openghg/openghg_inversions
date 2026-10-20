@@ -19,6 +19,9 @@ from typing import Any, ClassVar, Literal, cast
 import numpy as np
 import pymc as pm
 import xarray as xr
+from pydantic import validate_call
+
+from openghg_inversions._record_schema import RuntimeConfig
 from pymc.util import get_random_generator  # type: ignore[import-untyped]
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
@@ -271,6 +274,7 @@ class RhimeSampler:
     sample_posterior_predictive: bool | tuple[str, ...]
     posterior_predictive_kwargs: dict[str, Any] | None
 
+    @validate_call(config=RuntimeConfig)
     def __init__(
         self,
         *,
@@ -282,7 +286,7 @@ class RhimeSampler:
         progressbar: bool = False,
         sample_kwargs: dict[str, Any] | None = None,
         sample_prior_predictive: bool | int = True,
-        sample_posterior_predictive: bool | Sequence[str] = ("y",),
+        sample_posterior_predictive: bool | str | Sequence[str] = ("y",),
         posterior_predictive_kwargs: dict[str, Any] | None = None,
     ) -> None:
         self.draws = int(draws)

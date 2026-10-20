@@ -594,7 +594,7 @@ def _run_prepared(*, prepared_inputs, config, sampler="default", **kwargs):
 
 def _fixture_output(config, idata, prepared, *, model_spec, multisector=False) -> InversionOutput:
     """Bind a posterior directly to retained scientific context."""
-    contract = OutputContract(
+    contract = OutputContract.create(
         variable_roles={"concentration": "y"},
         supported_output_formats=("none", "inv_out", "basic", "paris", "legacy"),
         metadata={"kind": "builtin"},
@@ -1961,7 +1961,7 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
     )
     build_result = RhimeModelBuildResult(
         model=pm.Model(),
-        output_contract=OutputContract(
+        output_contract=OutputContract.create(
             variable_roles={"concentration": "y"},
         ),
     )
@@ -2746,7 +2746,7 @@ def test_prepared_recipes_share_explicit_scientific_operations(
     calls: list[str] = []
     retained: list[RhimePreparedInputs] = []
     model_inputs = xr.Dataset()
-    build_result = RhimeModelBuildResult(model=pm.Model(), output_contract=OutputContract(
+    build_result = RhimeModelBuildResult(model=pm.Model(), output_contract=OutputContract.create(
         variable_roles={"concentration": "y"},
     ))
     posterior = _minimal_output_idata()
@@ -2905,7 +2905,7 @@ def test_public_rhime_runners_follow_named_stage_order(
     model_inputs = xr.Dataset({"sentinel": xr.DataArray(1)})
     build_result = RhimeModelBuildResult(
         model=pm.Model(),
-        output_contract=OutputContract(
+        output_contract=OutputContract.create(
             variable_roles={"concentration": "y"},
         ),
     )
@@ -3349,7 +3349,7 @@ def test_custom_multisector_model_composes_directly_from_borrowed_inputs(
     inputs = rhime_public.materialize_pymc_inputs(prepared, variable_names=("mf",))
     with models.registered_model(coords={"nmeasure": inputs.nmeasure.values}) as model:
         pm.Normal("custom_y", observed=inputs["mf"].values, dims="nmeasure")
-    built = RhimeModelBuildResult(model=model, output_contract=OutputContract(
+    built = RhimeModelBuildResult(model=model, output_contract=OutputContract.create(
         variable_roles={"observation": "mf", "concentration": "custom_y"},
         supported_output_formats=("none", "inv_out"),
         metadata={"package": "research-models"},
@@ -4587,8 +4587,8 @@ def test_rhime_sampler_rejects_invalid_prior_counts_before_sampling(
         raise AssertionError("An invalid prior count must fail before MCMC")
 
     monkeypatch.setattr(inference_sampling.pm, "sample", forbidden_sample)
-    sampler = RhimeSampler(sample_prior_predictive=prior, sample_posterior_predictive=False)
-    with pytest.raises(ValueError, match="sample_prior_predictive.*non-negative integer"):
+    with pytest.raises(ValueError, match="sample_prior_predictive"):
+        sampler = RhimeSampler(sample_prior_predictive=prior, sample_posterior_predictive=False)
         sampler.sample(pm.Model())
 
 
@@ -8590,7 +8590,7 @@ output_format = "inv_out"
 
     build_result = RhimeModelBuildResult(
         model=pm.Model(),
-        output_contract=OutputContract(
+        output_contract=OutputContract.create(
             variable_roles={"concentration": "y"},
         ),
     )

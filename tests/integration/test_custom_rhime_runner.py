@@ -83,7 +83,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         averaging_period=("1h",),
         basis_artifact_source="test-basis",
     )
-    output_contract = OutputContract(variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "inv_out"))
+    output_contract = OutputContract.create(variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "inv_out"))
     build_result = SimpleNamespace(output_contract=output_contract)
     idata = xr.DataTree()
     model_inputs = prepared.inv_inputs

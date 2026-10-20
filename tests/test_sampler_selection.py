@@ -179,5 +179,5 @@ def test_nested_resolves_configured_sampler_before_prepared_inputs(invalid):
     from tests.test_staged_workflow import _params
 
     config = RhimeConfig.from_params(_params(output_format="none"), multisector=False)
-    with pytest.raises(TypeError, match="Omit the optional sampler argument"):
+    with pytest.raises(ValueError, match="sampler"):
         run_nested(config=replace(config, sampler=invalid), prepared=object())

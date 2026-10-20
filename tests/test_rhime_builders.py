@@ -9,7 +9,7 @@ def test_build_result_retains_one_validated_contract():
     with registered_model() as model:
         pm.Normal("y")
     roles = {"concentration": "y"}
-    contract = OutputContract(variable_roles=roles)
+    contract = OutputContract.create(variable_roles=roles)
     result = RhimeModelBuildResult(model=model, output_contract=contract)
     roles["concentration"] = "changed"
     assert result.output_contract is contract

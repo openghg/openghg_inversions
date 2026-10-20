@@ -18,7 +18,7 @@ from openghg_inversions.basis import prepare_basis
 
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dask import is_dask_collection
 from dask.base import unpack_collections
@@ -229,9 +229,13 @@ def _multisector_input_names(
     return tuple(names)
 
 
+if TYPE_CHECKING:
+    from ._model_records import ModelDescription
+
+
 def _validate_multisector_basis_layout(
     basis_functions: BasisFunctions,
-    model_spec: RhimeModelSpec,
+    model_spec: RhimeModelSpec | ModelDescription,
     inv_inputs: xr.Dataset,
 ) -> None:
     """Require each retained source basis to match its prepared sector design.

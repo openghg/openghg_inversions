@@ -273,7 +273,7 @@ def test_signed_source_preparation_and_saved_replay_preserve_native_sector_and_t
     })
     sampled = stages.save_samples(
         manifest, posterior, model=resolve_model_options(choices, data_config=data),
-        output_contract=OutputContract(
+        output_contract=OutputContract.create(
             variable_roles={"flux_scale:biosphere": "x_biosphere", "flux_scale:fossil": "x_fossil"},
             supported_output_formats=("none", "inv_out"),
         ), actual_inference={"method": "controlled numerical reference", "draws": 2, "chains": 1},

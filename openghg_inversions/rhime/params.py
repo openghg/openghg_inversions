@@ -11,16 +11,21 @@ defaults; scientific callable signatures do not define the external schema.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import MISSING, dataclass, field, fields
+from dataclasses import MISSING, field, fields
 from pathlib import Path
-from typing import Any, get_args, get_type_hints
+from typing import Annotated, Any, Literal, get_args, get_type_hints
 
+from pydantic import Field, field_validator, model_validator
+from pydantic.dataclasses import dataclass
+
+from openghg_inversions._record_schema import JsonFloat, RuntimeConfig
+
+import numpy as np
 import pandas as pd
 
 from openghg_inversions.rhime._resources import resolve_resource_paths
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._site_options import SiteOptions
-from openghg_inversions.model_error import MinErrorConfig
 from openghg_inversions.inversion_inputs import normalise_frequency
 from openghg_inversions.model_error import normalise_min_error, normalise_min_error_options
 from openghg_inversions.models._flux import safe_pymc_name
@@ -42,21 +47,22 @@ from openghg_inversions.rhime.specs import (
 )
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, config=RuntimeConfig)
 class DataConfig:
     """Resolved acquisition and preparation choices, independent of inference.
 
     External options enter through ``from_params``. Ordinary option containers
     are owned; numerical payloads remain borrowed. Direct construction expects
-    resolved values and does not copy or execute scientific work.
+    resolved values, validates their types and layout, and owns ordinary option
+    containers without executing scientific work.
     """
 
     site_options: SiteOptions
-    species: str
-    domain: str
-    start_date: str
-    end_date: str
-    flux_sources: tuple[str, ...]
+    species: Annotated[str, Field(pattern=r"\S")]
+    domain: Annotated[str, Field(pattern=r"\S")]
+    start_date: Annotated[str, Field(pattern=r"\S")]
+    end_date: Annotated[str, Field(pattern=r"\S")]
+    flux_sources: Annotated[tuple[Annotated[str, Field(pattern=r"\S")], ...], Field(min_length=1)]
     split_by_sectors: bool = False
     bc_store: str = "user"
     obs_store: str = "user"
@@ -75,16 +81,37 @@ class DataConfig:
     outer_regions_path: Path | None = None
     bc_input: str | None = None
     basis_algorithm: str | None = "weighted"
-    nbasis: int = 100
+    nbasis: Annotated[int, Field(gt=0)] = 100
     filters: str | list[str | None] | dict[str, str | None | list[str | None]] | None = None
     fix_basis_outer_regions: bool = False
     averaging_error: bool = True
     bc_freq: str | None = None
     basis_output_path: Path | None = None
-    min_error: MinErrorConfig = 0.0
+    min_error: Literal["percentile", "residual"] | dict[str, JsonFloat] | None | int | JsonFloat = 0.0
     min_error_options: dict[str, bool] = field(default_factory=lambda: normalise_min_error_options(None))
     flux_non_finite_check: FluxNonFiniteCheck = "lazy"
 
+
+    @field_validator("min_error", mode="before")
+    @classmethod
+    def resolve_minimum_error(cls, value: Any) -> Any:
+        """Keep the minimum-error policy at its existing numerical owner."""
+        return normalise_min_error(value)
+
+    @field_validator("filters", "min_error_options", mode="before")
+    @classmethod
+    def own_options(cls, value: Any) -> Any:
+        return _copy_option_containers(value)
+
+    @model_validator(mode="after")
+    def validate_layout(self) -> DataConfig:
+        """Require a resolved recipe layout without loading any scientific input."""
+        if len(set(self.flux_sources)) != len(self.flux_sources):
+            raise ValueError("flux_sources must be unique")
+        if self.split_by_sectors != (len(self.flux_sources) > 1):
+            raise ValueError("split_by_sectors must agree with the number of flux_sources")
+        _bc_frequency_policy(self.bc_freq)
+        return self
 
     @classmethod
     def option_names(cls) -> frozenset[str]:
@@ -174,7 +201,7 @@ class DataConfig:
         return params
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, config=RuntimeConfig)
 class RhimeConfig:
     """Complete requested configuration with one authoritative owner per group."""
 
@@ -442,7 +469,9 @@ def normalise_rhime_params(params: Mapping[str, Any]) -> dict[str, Any]:
 def coerce_simple_param_types(params: dict[str, Any]) -> None:
     """Coerce simple scalar options in-place before spec construction."""
     if params.get("output_format") is not None:
-        params["output_format"] = str(params["output_format"]).lower()
+        if not isinstance(params["output_format"], str):
+            raise ValueError(_invalid_config_type_message("output_format", "a string", params["output_format"]))
+        params["output_format"] = params["output_format"].lower()
     for name in RhimeSampler.INTEGER_OPTION_NAMES:
         if name not in params or params[name] is None:
             continue
@@ -451,7 +480,9 @@ def coerce_simple_param_types(params: dict[str, Any]) -> None:
 
 def _coerce_int_option(name: str, value: Any) -> int:
     """Coerce a RHIME integer option while rejecting ambiguous values."""
-    if isinstance(value, bool):
+    if isinstance(value, (np.integer, np.floating)):
+        value = value.item()
+    if type(value) not in (int, float, str):
         raise ValueError(_invalid_config_type_message(name, "an integer", value))
     if isinstance(value, float) and not value.is_integer():
         raise ValueError(_invalid_config_type_message(name, "an integer", value))

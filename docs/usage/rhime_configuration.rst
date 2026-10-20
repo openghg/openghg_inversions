@@ -8,6 +8,11 @@ inversion, start with the :doc:`standard tutorial <rhime_standard_tutorial>` or
 :doc:`RHIME reference <rhime>` describes vocabulary and prepared inputs;
 :doc:`customising_rhime` explains how to adapt the scientific preparation stages.
 
+This prototype validates the existing configuration constructors with Pydantic,
+including ``dataclasses.replace``. Resolution still owns request-dependent
+defaults. See :doc:`/experimental/pydantic_records` for constructor errors and
+generated schemas, and a configuration roundtrip without scientific I/O.
+
 Inspecting the resolved request
 -------------------------------
 

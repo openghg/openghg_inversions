@@ -9,13 +9,16 @@ the user-facing deterministic variable.
 from __future__ import annotations
 
 from collections.abc import Mapping
-import json
 from typing import Any, TypeAlias
 
 import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
+from pydantic import TypeAdapter, ValidationError
+
+from openghg_inversions._record_schema import Record
+from openghg_inversions.models._prior_records import PriorDescription
 from dask import compute
 from pymc.distributions import continuous
 from pytensor.graph.basic import Variable
@@ -257,16 +260,13 @@ def prior_records(model: pm.Model) -> dict[str, PriorArgs]:
 
 
 def trace_prior_records(trace: xr.DataTree) -> dict[str, PriorArgs]:
-    """Read constructed prior metadata and validate its required array references."""
+    """Validate constructed descriptions and required references without executing arrays."""
     try:
-        records = json.loads(trace.attrs["rhime_priors"])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError("Trace requires construction-owned `rhime_priors` containing a JSON mapping.") from exc
-    if not isinstance(records, dict) or any(not isinstance(prior, dict) for prior in records.values()):
-        raise ValueError("Trace `rhime_priors` must map prior names to parameter mappings.")
-    for prior in records.values():
-        for value in prior.values():
-            if isinstance(value, dict) and "data" in value:
-                if "constant_data" not in trace or value["data"] not in trace["constant_data"]:
-                    raise ValueError(f"Missing registered prior data {value['data']!r}.")
-    return records
+        records = TypeAdapter(dict[str, PriorDescription], config=Record.model_config).validate_json(
+            trace.attrs["rhime_priors"],
+        )
+    except (KeyError, TypeError, ValidationError) as exc:
+        raise ValueError("Trace requires construction-owned `rhime_priors` containing valid prior descriptions.") from exc
+    for record in records.values():
+        record.validate_references(trace)
+    return {name: record.model_dump(mode="json") for name, record in records.items()}
