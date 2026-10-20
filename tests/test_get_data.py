@@ -1116,8 +1116,8 @@ def test_add_averaging_error(tac_ch4_data_args):
         fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
         ds1 = fp_all["TAC"]
 
-        tac_ch4_data_args["averagingerror"] = False
-        fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
+        data_args = {**tac_ch4_data_args, "averagingerror": False}
+        fp_all, *_ = data_processing_surface_notracer(**data_args)
         ds2 = fp_all["TAC"]
 
         # check that "mf_error", "mf_repeatability", and "mf_variability" are present
