@@ -12,6 +12,7 @@ import xarray as xr
 from openghg_inversions.inversion_data import SiteOptions
 from openghg_inversions.rhime.nested import (
     _NestedDomainData,
+    _align_domain_sites,
     _inner_measurement_positions,
     align_inner_merged_to_outer_observations,
     mask_outer_merged_for_inner_domain,
@@ -86,3 +87,62 @@ def test_unsorted_site_local_alignment_is_reapplied_after_assembly_drops_rows():
         names=["site", "time"],
     )
     assert _inner_measurement_positions(outer_index, inner_index, time_tolerance=None) == [3, 0]
+
+
+def test_unknown_named_domain_uses_first_site_without_computing_or_mutating():
+    data = _data([50.0, 51.0], [-2.0, -1.0])
+    shifted = data.site_data["B"].assign_coords(lat=data.site_data["B"].lat + 1e-7)
+    shifted.lat.attrs["units"] = "degrees_north"
+    data = replace(data, site_data={"A": data.site_data["A"], "B": shifted})
+    tasks = []
+    with pytest.warns(UserWarning, match="CUSTOM.*retained site 'A'") as notices:
+        with Callback(pretask=lambda key, *_: tasks.append(key)):
+            aligned = _align_domain_sites(data, domain="CUSTOM", label="Inner")
+    assert len(notices) == 1
+    assert not tasks
+    np.testing.assert_array_equal(aligned.site_data["B"].lat, data.site_data["A"].lat)
+    assert aligned.site_data["B"].lat.attrs == {"units": "degrees_north"}
+    assert aligned.site_data["B"].fp.data is shifted.fp.data
+    assert not shifted.lat.equals(aligned.site_data["B"].lat)
+
+
+def test_known_domain_uses_public_normalization_on_actual_datasets(monkeypatch):
+    from openghg_inversions.rhime import nested
+
+    data = _data([50.000001, 51.000001], [-2.0, -1.0])
+    data.site_data["A"].lat.attrs["units"] = "degrees_north"
+    reference = xr.Dataset(coords={"lat": [50.0, 51.0], "lon": [-2.0, -1.0]})
+    calls = []
+
+    def normalize(dataset, domain):
+        calls.append((dataset, domain))
+        return dataset.assign_coords(lat=reference.lat, lon=reference.lon)
+
+    monkeypatch.setattr(nested, "get_domain_info", lambda: {"KNOWN": {}})
+    monkeypatch.setattr(nested, "align_lat_lon", normalize)
+    aligned = _align_domain_sites(data, domain="KNOWN", label="Inner")
+    assert [domain for _, domain in calls] == ["KNOWN", "KNOWN"]
+    for site in data.sites:
+        np.testing.assert_array_equal(aligned.site_data[site].lat, reference.lat)
+        assert aligned.site_data[site].fp.data is data.site_data[site].fp.data
+    assert aligned.site_data["A"].lat.attrs == {"units": "degrees_north"}
+    assert data.site_data["A"].lat[0] == 50.000001
+
+
+def test_public_openghg_domain_normalization_preserves_lazy_payload():
+    from openghg.util import find_domain
+
+    lat, lon, *_ = find_domain("EUROPE")
+    data = _data(lat, lon)
+    shifted = data.site_data["B"].assign_coords(lat=data.site_data["B"].lat + 1e-7)
+    data = replace(data, site_data={"A": data.site_data["A"], "B": shifted})
+    tasks = []
+    with Callback(pretask=lambda key, *_: tasks.append(key)):
+        aligned = _align_domain_sites(data, domain="EUROPE", label="Outer")
+    assert not tasks
+    np.testing.assert_array_equal(aligned.site_data["B"].lat, lat)
+    assert aligned.site_data["B"].fp.data is shifted.fp.data
+    malformed = replace(data, site_data={"A": data.site_data["A"].isel(lat=slice(1, None)),
+                                       "B": shifted})
+    with pytest.raises(ValueError, match="same indexed lat/lon grid"):
+        _align_domain_sites(malformed, domain="EUROPE", label="Outer")

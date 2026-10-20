@@ -7058,7 +7058,7 @@ def test_multisector_paris_options_are_checked_before_output_writes(
     output_spec = replace(config.output, country_file=str(europe_country_file))
 
     inv_out = _fixture_output(config, _minimal_output_idata(), prepared, model_spec=model_spec, multisector=True)
-    with pytest.raises(ValueError, match="Unsupported multi-sector.*unexpected"):
+    with pytest.raises(ValueError, match="Unsupported PARIS.*unexpected"):
         rhime_outputs.postprocess_multisector_outputs(inv_out, output_spec)
     assert not any(tmp_path.iterdir())
 

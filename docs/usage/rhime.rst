@@ -968,6 +968,17 @@ Single-sector ``paris`` keeps the legacy template by default. Pass
 ``paris_postprocessing_kwargs={"template_version": "latest"}`` to write the
 PARIS concentration v04 and flux v03 templates.
 
+Standard, multisector, nested and ordinary CO₂ recipes resolve their PARIS
+choices through shared typed options, including template version, time point
+and optional ``flux_frequency``.
+Set these through the existing ``paris_postprocessing_kwargs`` mapping; omitted
+frequency is inferred from the retained flux. Invalid option names, explicit
+frequencies and incompatible template/time-point choices fail before inference.
+Each recipe retains its own supported defaults and restrictions: multisector
+and CO₂ products require the latest templates, while standard and nested output
+keep the legacy default. Nested output adds the inner country file and cache
+directory; see :doc:`nested_domains`.
+
 PARIS global attributes automatically use the selected prior flux sources and
 metadata read from the footprint files; scripts do not need to pass these
 attributes to ``make_paris_outputs``. A missing footprint model version is

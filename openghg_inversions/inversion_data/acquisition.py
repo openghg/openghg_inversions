@@ -54,43 +54,6 @@ class AcquisitionFacts:
     bc_input: str | None = None
     flux_non_finite_check: FluxNonFiniteCheck | None = None
 
-    def validate_request(
-        self,
-        *,
-        species: str | None = None,
-        domain: str | None = None,
-        start_date: str | None = None,
-        end_date: str | None = None,
-    ) -> None:
-        """Compare supplied request values with known acquisition facts.
-
-        Missing facts and omitted choices remain unknown. Species and domain
-        ignore case; dates compare instants with naive values interpreted as UTC.
-        This checks metadata only and never slices or computes borrowed arrays.
-
-        Raises:
-            ValueError: If a known fact conflicts or a supplied date is invalid.
-        """
-        requested = {
-            "species": species,
-            "domain": domain,
-            "start_date": start_date,
-            "end_date": end_date,
-        }
-        for name, value in requested.items():
-            recorded = getattr(self, name)
-            if value is None or recorded is None or recorded == "unknown":
-                continue
-            if name in {"start_date", "end_date"}:
-                compatible = pd.to_datetime(recorded, utc=True) == pd.to_datetime(value, utc=True)
-            else:
-                compatible = recorded.casefold() == value.casefold()
-            if not compatible:
-                raise ValueError(
-                    f"Merged data has incompatible {name}: acquired {recorded!r}, requested {value!r}. "
-                    "Acquire data for the requested species, domain and window."
-                )
-
 
 @dataclass
 class MergedData:
@@ -191,13 +154,40 @@ class MergedData:
         Recorded selectors and unrelated model choices are not compared.
         Validation reads metadata only and never computes borrowed arrays.
 
+        Args:
+            species: Requested species, compared without case when recorded.
+            domain: Requested transport domain, compared without case when recorded.
+            start_date: Requested start as a date/time string. Naive values mean UTC.
+            end_date: Requested end as a date/time string. Equivalent UTC instants
+                agree even when their string spellings differ.
+            split_by_sectors: Whether preparation expects separate flux sources.
+
+        Returns:
+            None. Compatible data and their borrowed arrays remain unchanged.
+
         Raises:
             ValueError: If a known fact or the source layout conflicts with the
-                requested preparation, or a recorded date is invalid.
+                requested preparation, or a compared recorded/requested date is invalid.
         """
-        self.acquisition.validate_request(
-            species=species, domain=domain, start_date=start_date, end_date=end_date,
-        )
+        requested = {
+            "species": species,
+            "domain": domain,
+            "start_date": start_date,
+            "end_date": end_date,
+        }
+        for name, value in requested.items():
+            recorded = getattr(self.acquisition, name)
+            if recorded is None or recorded == "unknown":
+                continue
+            if name in {"start_date", "end_date"}:
+                compatible = pd.to_datetime(recorded, utc=True) == pd.to_datetime(value, utc=True)
+            else:
+                compatible = recorded.casefold() == value.casefold()
+            if not compatible:
+                raise ValueError(
+                    f"Merged data has incompatible {name}: acquired {recorded!r}, requested {value!r}. "
+                    "Acquire data for the requested species, domain and window."
+                )
         if self.split_by_sectors != split_by_sectors:
             raise ValueError("Merged data has an incompatible split_by_sectors layout.")
 

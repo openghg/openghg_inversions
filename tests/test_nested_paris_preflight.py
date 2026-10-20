@@ -1,13 +1,9 @@
 """Nested reporting fails before acquisition, sampling, or product/cache writes."""
 
 from dataclasses import replace
-import hashlib
 
-import numpy as np
 import pytest
-import xarray as xr
 
-from openghg_inversions._spatial_grid import coordinate_sha256
 from openghg_inversions.postprocessing import nested_paris_outputs as paris
 from openghg_inversions.rhime import nested
 from openghg_inversions.rhime.outputs import validate_nested_output_resources
@@ -114,18 +110,3 @@ def test_nested_preflight_leaves_none_output_and_valid_resources_unchanged(tmp_p
     assert not (tmp_path / "products").exists()
     assert not (tmp_path / "cache").exists()
     assert spec.paris_postprocessing_kwargs == ignored
-
-
-def test_spatial_digest_preserves_existing_artifact_and_cache_identity():
-    coordinates = {
-        "lat": xr.DataArray(np.array([50., 51.], dtype="float32"), dims="lat"),
-        "lon": xr.DataArray(np.array([-2., -1.], dtype="float64"), dims="lon"),
-    }
-    previous = hashlib.sha256()
-    for name, coordinate in coordinates.items():
-        values = coordinate.to_numpy()
-        previous.update(name.encode())
-        previous.update(str(values.dtype).encode())
-        previous.update(str(values.shape).encode())
-        previous.update(np.ascontiguousarray(values).tobytes())
-    assert coordinate_sha256(**coordinates) == previous.hexdigest()

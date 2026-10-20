@@ -97,6 +97,10 @@ def test_nested_inputs_and_priors_compute_shared_graph_once():
 
 
 def test_nested_prepared_runner_samples_and_none_writes_nothing(monkeypatch, tmp_path):
+    # The small synthetic grid is independent of the full OpenGHG domain.
+    monkeypatch.setattr(
+        "openghg_inversions.postprocessing.nested_paris_outputs.get_domain_info", lambda: {},
+    )
     nested = _nested()
     config = RhimeConfig.from_params({
         "species": "ch4", "domain": "EUROPE", "sites": ["TAC"], "averaging_period": ["1h"],
@@ -161,6 +165,9 @@ def test_nested_prepared_runner_samples_and_none_writes_nothing(monkeypatch, tmp
 
     # Reuse that posterior to check the requested PARIS/export route separately.
     monkeypatch.undo()
+    monkeypatch.setattr(
+        "openghg_inversions.postprocessing.nested_paris_outputs.get_domain_info", lambda: {},
+    )
     monkeypatch.setattr("openghg_inversions.rhime.nested.sample_rhime_model", lambda built, sampler: output.outer.trace)
     paris_dir = tmp_path / "paris"
     outer_basis_path = tmp_path / "new-bases" / "outer.nc"

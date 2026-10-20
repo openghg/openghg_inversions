@@ -23,6 +23,7 @@ from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from numbers import Integral
+import warnings
 from pathlib import Path
 from typing import Any, TypeVar, get_type_hints
 
@@ -32,12 +33,12 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 import xarray as xr
+from openghg.util import align_lat_lon, get_domain_info
 
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
-from openghg_inversions._spatial_grid import coordinate_sha256
-from openghg_inversions.array_ops import to_dense
+from openghg_inversions.array_ops import force_align, to_dense
 from ._domain_support import rectangular_extent_mask, remove_domain_overlap
-from openghg_inversions.inversion_data import AcquisitionFacts, RhimeMergedData, RhimePreparedInputs, SiteOptions
+from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, SiteOptions
 from openghg_inversions.models.components import add_linear_component, add_offset_component
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
@@ -127,8 +128,6 @@ class NestedRhimePreparedInputs:
         outer_overlap_mask_extent: Applied inclusive rectangle as latitude minimum,
             latitude maximum, longitude minimum and longitude maximum. Omission
             leaves the actual mask bounds unknown, including for supplied inputs.
-        outer_acquisition: Known original outer retrieval choices. Missing facts
-            remain unknown when this preparation is supplied to another run.
     """
 
     outer: RhimePreparedInputs
@@ -140,7 +139,6 @@ class NestedRhimePreparedInputs:
     outer_overlap_masked: bool = False
     outer_overlap_mask_policy: str = _PREPARED_OVERLAP_MASK_POLICY
     outer_overlap_mask_extent: tuple[float, float, float, float] | None = None
-    outer_acquisition: AcquisitionFacts = field(default_factory=AcquisitionFacts)
 
     def validated(self) -> NestedRhimePreparedInputs:
         """Revalidate both native preparations and rebuild their combination."""
@@ -152,7 +150,6 @@ class NestedRhimePreparedInputs:
             inner_domain_label=self.inner_domain_label,
             outer_overlap_masked=self.outer_overlap_masked,
             outer_overlap_mask_policy=self.outer_overlap_mask_policy,
-            outer_acquisition=self.outer_acquisition,
             outer_overlap_mask_extent=self.outer_overlap_mask_extent,
         )
 
@@ -188,7 +185,7 @@ def _domain_variable_roles(all_roles: Mapping[str, str], *, tag: str) -> dict[st
 
 
 def _grid_identity(prepared: RhimePreparedInputs) -> dict[str, Any]:
-    """Return durable coordinate identity and extent metadata for one grid."""
+    """Return descriptive spatial sizes and extents for one domain."""
     flux = prepared.basis_functions.flux
     missing = [name for name in ("lat", "lon") if name not in flux.coords]
     if missing:
@@ -202,7 +199,6 @@ def _grid_identity(prepared: RhimePreparedInputs) -> dict[str, Any]:
             "minimum": float(np.min(values)),
             "maximum": float(np.max(values)),
         }
-    identity["coordinate_sha256"] = coordinate_sha256(lat=flux["lat"], lon=flux["lon"])
     return identity
 
 
@@ -406,7 +402,6 @@ def combine_nested_rhime_inputs(
     inner_domain_label: str | None = None,
     outer_overlap_masked: bool = False,
     outer_overlap_mask_policy: str = _PREPARED_OVERLAP_MASK_POLICY,
-    outer_acquisition: AcquisitionFacts | None = None,
     outer_overlap_mask_extent: tuple[float, float, float, float] | None = None,
 ) -> NestedRhimePreparedInputs:
     """Combine independently prepared native grids at the sensitivity boundary.
@@ -424,8 +419,6 @@ def combine_nested_rhime_inputs(
     overlapping prepared inputs from being combined silently. Prepared-input
     callers may also provide a more specific ``outer_overlap_mask_policy``;
     otherwise the durable metadata records that the mask was caller supplied.
-    Known original retrieval choices may be supplied as ``outer_acquisition``;
-    omitted facts remain unknown rather than inferred from observation bounds.
     ``outer_overlap_mask_extent`` records the actual applied rectangle, when
     known; it is never inferred from inner basis or flux coordinates.
     """
@@ -518,7 +511,6 @@ def combine_nested_rhime_inputs(
         inner_domain_label=inner_domain_label,
         outer_overlap_masked=True,
         outer_overlap_mask_policy=outer_overlap_mask_policy,
-        outer_acquisition=outer_acquisition if outer_acquisition is not None else AcquisitionFacts(),
         outer_overlap_mask_extent=outer_overlap_mask_extent,
     )
 
@@ -610,9 +602,22 @@ def align_inner_merged_to_outer_observations(
     return inner.with_site_data(site_data, context="Nested-domain time alignment")
 
 
-def _shared_site_grid(data: RhimeMergedData | _NestedDomainData, *, label: str) -> xr.Dataset:
-    """Establish one indexed native spatial grid across retained sites."""
-    grids = []
+def _align_domain_sites(
+    data: RhimeMergedData | _NestedDomainData, *, domain: str | None, label: str,
+) -> _NestedDomainData:
+    """Normalize borrowed site labels to a named domain or its first site."""
+    if not data.sites:
+        raise ValueError("Nested-domain masking requires at least one retained site.")
+    known = domain is not None and domain.upper() in get_domain_info()
+    reference_site = data.sites[0]
+    reference = data.site_data[reference_site]
+    if domain is not None and not known:
+        warnings.warn(
+            f"Nested domain {domain!r} is not in OpenGHG domain definitions; "
+            f"using retained site {reference_site!r} as its spatial reference.",
+            UserWarning, stacklevel=2,
+        )
+    site_data = {}
     for site in data.sites:
         dataset = data.site_data[site]
         for name in ("lat", "lon"):
@@ -620,19 +625,26 @@ def _shared_site_grid(data: RhimeMergedData | _NestedDomainData, *, label: str) 
                 raise ValueError(f"{label} dataset for site {site!r} requires indexed {name!r} coordinates.")
             if dataset.get_index(name).empty:
                 raise ValueError(f"{label} dataset for site {site!r} has empty {name!r} coordinates.")
-        grids.append(xr.Dataset(coords={name: dataset[name].variable for name in ("lat", "lon")}))
-    if not grids:
-        raise ValueError("Nested-domain masking requires at least one retained site.")
-    try:
-        aligned = xr.align(*grids, join="exact", copy=False)
-    except ValueError as exc:
-        raise ValueError(f"{label} nested-domain sites must share the same indexed lat/lon grid.") from exc
-    return aligned[0]
+        try:
+            aligned = align_lat_lon(dataset, domain) if known else force_align(
+                dataset, reference, dims=("lat", "lon"),
+            )
+        except ValueError as exc:
+            raise ValueError(f"{label} nested-domain sites must share the same indexed lat/lon grid.") from exc
+        # OpenGHG replaces coordinate labels without retaining their metadata.
+        aligned = aligned.assign_coords({
+            name: aligned[name].assign_attrs(dataset[name].attrs) for name in ("lat", "lon")
+        })
+        site_data[site] = aligned
+    return _NestedDomainData(site_data, data.flux_data, data.site_options)
 
 
 def mask_outer_merged_for_inner_domain(
     outer: RhimeMergedData | _NestedDomainData,
     inner: RhimeMergedData | _NestedDomainData,
+    *,
+    outer_domain: str | None = None,
+    inner_domain: str | None = None,
 ) -> _NestedDomainData:
     """Mask outer footprint response and prior flux over the inner extent.
 
@@ -640,13 +652,17 @@ def mask_outer_merged_for_inner_domain(
     ``where`` preserves Dask laziness. Acquired ``MergedData`` inputs remain
     borrowed and unmodified; masked values are never wrapped in that type.
     All retained sites must share one grid per domain. The shared inner
-    rectangle is also removed from each retained outer flux grid.
+    rectangle is also removed from each retained outer flux grid. Optional
+    ``outer_domain`` and ``inner_domain`` names select OpenGHG domain definitions;
+    unknown names use the first retained site as the coordinate reference.
     """
     if outer.sites != inner.sites:
         raise ValueError("Masking requires outer and inner merged data aligned to identical sites.")
 
-    outer_grid = _shared_site_grid(outer, label="Outer")
-    inner_grid = _shared_site_grid(inner, label="Inner")
+    outer = _align_domain_sites(outer, domain=outer_domain, label="Outer")
+    inner = _align_domain_sites(inner, domain=inner_domain, label="Inner")
+    outer_grid = outer.site_data[outer.sites[0]]
+    inner_grid = inner.site_data[inner.sites[0]]
     site_mask = rectangular_extent_mask(
         inner_grid, target_lat=outer_grid["lat"], target_lon=outer_grid["lon"],
     )
@@ -894,12 +910,6 @@ def prepare_nested_rhime_inputs(
     """
     if len(flux_sources) != 1:
         raise ValueError("Nested RHIME preparation requires exactly one emissions source.")
-    outer.acquisition.validate_request(domain=domain, start_date=start_date)
-    inner.acquisition.validate_request(
-        domain=inner_domain, start_date=start_date,
-        species=outer.acquisition.species if outer.acquisition.species != "unknown" else None,
-        end_date=outer.acquisition.end_date if outer.acquisition.end_date != "unknown" else None,
-    )
     preparation_start = timer_start()
     outer_data = _NestedDomainData(outer.site_data, outer.flux_data, outer.site_options)
     inner_data = _NestedDomainData(inner.site_data, inner.flux_data, inner.site_options)
@@ -920,6 +930,8 @@ def prepare_nested_rhime_inputs(
     inner_filtered = align_inner_merged_to_outer_observations(
         outer_filtered, inner_data, time_tolerance=time_tolerance,
     )
+    outer_filtered = _align_domain_sites(outer_filtered, domain=domain, label="Outer")
+    inner_filtered = _align_domain_sites(inner_filtered, domain=inner_domain, label="Inner")
     masked_outer = mask_outer_merged_for_inner_domain(outer_filtered, inner_filtered)
     # Masking established one shared footprint grid; basis flux labels may differ.
     inner_grid = inner_filtered.site_data[inner_filtered.sites[0]]
@@ -958,7 +970,6 @@ def prepare_nested_rhime_inputs(
         outer_prepared, inner_prepared, time_tolerance=time_tolerance,
         inner_domain_label=inner_domain, outer_overlap_masked=True,
         outer_overlap_mask_policy=_RETRIEVAL_OVERLAP_MASK_POLICY,
-        outer_acquisition=outer.acquisition,
         outer_overlap_mask_extent=mask_extent,
     )
     log_timing(
@@ -1209,17 +1220,24 @@ def build_nested_rhime_model(
 def _write_nested_paris_outputs(output: NestedOutput, output_spec: RhimeOutputSpec) -> NestedOutput:
     """Write and retain native flux products and one shared concentration product."""
     from openghg_inversions.postprocessing.nested_paris_outputs import make_nested_paris_products
+    from openghg_inversions.postprocessing.paris_options import NestedParisOptions
     from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
     validate_nested_output_resources(output_spec)
     inner_label = output.inner.output_metadata["nested_domain"]["inner_domain"]
-    kwargs = dict(output_spec.paris_postprocessing_kwargs or {})
-    if "country_file_cache_dir" not in kwargs and output_spec.output_path is not None:
-        kwargs["country_file_cache_dir"] = Path(output_spec.output_path) / ".country_cache"
+    params = dict(output_spec.paris_postprocessing_kwargs or {})
+    if output_spec.output_path is not None:
+        params.setdefault("country_file_cache_dir", Path(output_spec.output_path) / ".country_cache")
+    options = NestedParisOptions.from_params(params)
     flux_outer, flux_inner, concentration = make_nested_paris_products(
         output.outer, output.inner, inner_domain_label=inner_label,
         country_file=output_spec.country_file,
-        obs_avg_period=output.outer.run_metadata["averaging_period"][0] or "0h", **kwargs,
+        obs_avg_period=output.outer.run_metadata["averaging_period"][0] or "0h",
+        inner_country_file=options.inner_country_file,
+        time_point=options.time_point, template_version=options.template_version,
+        flux_frequency=options.flux_frequency, report_mode=options.report_mode,
+        inversion_grid=options.inversion_grid, country_selections=options.country_selections,
+        country_file_cache_dir=options.country_file_cache_dir,
     )
     Path(output_spec.output_path).mkdir(parents=True, exist_ok=True)
     products = {"paris_flux": flux_outer, "paris_flux_inner": flux_inner, "paris_concentration": concentration}
@@ -1381,13 +1399,6 @@ def run_nested(
         if inner_domain is not None or nested_options or time_tolerance is not None:
             raise ValueError("Supplied prepared inputs cannot be combined with preparation options.")
         prepared = prepared.validated()
-        prepared.outer_acquisition.validate_request(
-            **config.data.select("species", "domain", "start_date", "end_date"),
-        )
-        for native in (prepared.outer, prepared.inner):
-            source = native.inv_inputs["H"].coords.get("source")
-            if source is not None and str(source.item()) != config.model.sectors[0].flux_source:
-                raise ValueError("Supplied nested inputs have an incompatible emissions source.")
 
     outer_basis = export_basis(prepared.outer.basis_functions, config.data.basis_output_path)
     inner_basis = export_basis(prepared.inner.basis_functions, inner_basis_output_path)

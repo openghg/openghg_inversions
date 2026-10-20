@@ -147,6 +147,8 @@ def test_variability_only_and_missing_components_remain_supported(averaging_erro
 def test_nested_domains_prepare_errors_before_outer_aggregation_and_inner_alignment(monkeypatch):
     from openghg_inversions.rhime import nested, RhimeConfig
 
+    # The error-ordering fixture uses a one-cell synthetic domain.
+    monkeypatch.setattr(nested, "get_domain_info", lambda: {})
     time = pd.date_range("2020-01-01", periods=3, freq="h")
     outer = _merged(xr.Dataset(
         {"mf": ("time", [10.0, 20.0, 30.0]),
