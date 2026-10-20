@@ -10,7 +10,7 @@ from typing import Annotated, Any, ClassVar, Literal, TYPE_CHECKING, cast, get_a
 from pydantic import BeforeValidator, Field, PlainSerializer, WithJsonSchema, field_validator
 from pydantic.dataclasses import dataclass
 
-from openghg_inversions._record_schema import JsonFloat, RuntimeConfig
+from openghg_inversions._record_schema import RuntimeConfig, RuntimeFloat
 
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.rhime._resources import resolve_resource_paths
@@ -97,7 +97,7 @@ class PollutionEventSettings:
     sigma_per_site: bool = True
     sigma_freq_anchor: TemporalAnchor | None = None
     pollution_events_from_obs: bool = False
-    power: BorrowedPrior | JsonFloat = 1.99
+    power: BorrowedPrior | RuntimeFloat = 1.99
 
     @property
     def required_prepared_inputs(self) -> tuple[str, ...]:
@@ -201,16 +201,13 @@ def make_likelihood_settings(
     options = {name: remaining.pop(name) for name in names if name in remaining}
     if settings_type is FixedErrorSettings:
         return FixedErrorSettings()
-    options["sigma_prior"] = normalise_optional_mapping(options.get("sigma_prior"))
-    if options["sigma_prior"] is None:
-        options["sigma_prior"] = dict(
+    if options.get("sigma_prior") is None:
+        options["sigma_prior"] = (
             DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR
             if settings_type is PollutionEventSettings
             else DEFAULT_ADDITIVE_SIGMA_PRIOR
         )
     options.setdefault("sigma_freq_anchor", start_date)
-    if isinstance(options.get("power"), Mapping):
-        options["power"] = normalise_optional_mapping(options["power"])
     return settings_type(**options)
 
 
@@ -336,7 +333,10 @@ class RhimeModelSpec:
             )
 
     def to_record(self, *, trace: Any, data_config: DataConfig) -> dict[str, Any]:
-        """Encode replayable model choices using construction-owned trace priors.
+        """Describe saved model choices using construction-owned trace priors.
+
+        The result is a descriptive ``ModelDescription``, which can contain
+        unused or symbolic priors. It cannot reconstruct executable settings.
 
         Args:
             trace: Sampled trace with explicit constructed-prior metadata.
@@ -367,67 +367,6 @@ class RhimeModelSpec:
 
         validate_json_keys(record)
         return ModelDescription.model_validate(_json_value(record)).model_dump(mode="json", exclude_unset=True)
-
-    @classmethod
-    def from_record(cls, record: Any, *, data_config: DataConfig, trace: Any = None) -> RhimeModelSpec:
-        """Decode :meth:`to_record` output without executing saved callables.
-
-        Args:
-            record: Structural model choices and construction-owned prior records.
-            trace: Saved inference data supplying any referenced ``constant_data``
-                arrays. Scalar-only prior records need no trace lookup.
-            data_config: Preparation configuration supplying species, domain and sources.
-
-        Raises:
-            ValueError: If the record is incomplete, names an unknown likelihood,
-                or references a missing registered prior array.
-        """
-        expected = (set(_MODEL_RECORD_FIELDS) - {"species", "domain"}) | {"sectors", "likelihood"}
-        if not isinstance(record, Mapping) or set(record) != expected:
-            missing = sorted(expected - set(record)) if isinstance(record, Mapping) else sorted(expected)
-            raise ValueError(f"Saved model record must contain exactly {sorted(expected)}; missing {missing}.")
-        def resolve(value: Any) -> Any:
-            if isinstance(value, Mapping):
-                if set(value) == {"data"}:
-                    name = value["data"]
-                    if trace is None or "constant_data" not in trace or name not in trace["constant_data"]:
-                        raise ValueError(f"Missing registered prior data {name!r}.")
-                    return trace["constant_data"][name]
-                return {key: resolve(item) for key, item in value.items()}
-            if isinstance(value, list):
-                return [resolve(item) for item in value]
-            return value
-
-        values = resolve(record)
-        values["species"] = data_config.species
-        values["domain"] = data_config.domain
-        likelihood = values["likelihood"]
-        try:
-            if likelihood is not None:
-                settings_type = _LIKELIHOOD_SETTINGS[likelihood["kind"]]
-                option_names = tuple(setting.name for setting in fields(settings_type))
-                if set(likelihood["options"]) != set(option_names):
-                    raise ValueError(
-                        f"Saved {likelihood['kind']!r} likelihood options must be {sorted(option_names)}."
-                    )
-                values["likelihood"] = settings_type(**likelihood["options"])
-            if len(values["sectors"]) != len(data_config.flux_sources):
-                raise ValueError("Saved model sector count conflicts with its preparation.")
-            if data_config.split_by_sectors:
-                values["sectors"] = tuple(SectorSpec(**sector) for sector in values["sectors"])
-                if set(sector.flux_source for sector in values["sectors"]) != set(data_config.flux_sources):
-                    raise ValueError("Saved model sources conflict with its preparation.")
-            else:
-                values["sectors"] = tuple(
-                    SectorSpec(**sector, flux_source=source)
-                    for sector, source in zip(values["sectors"], data_config.flux_sources, strict=True)
-                )
-            if values["use_bc"] and not data_config.use_bc:
-                raise ValueError("Saved model requires unavailable prepared BC inputs.")
-            return cls(**values)
-        except (KeyError, TypeError) as exc:
-            raise ValueError(f"Saved model record is invalid: {exc}") from exc
-
 
 _MODEL_RECORD_FIELDS = (
     "species", "domain", "use_bc", "add_offset", "aggregation_error_mode",
@@ -499,8 +438,6 @@ class RhimeOutputSpec:
         options = dict(params)
         active_format = options.get("output_format", cls.output_format).lower()
         options.setdefault("save_inversion_output", active_format == "inv_out")
-        if "paris_postprocessing_kwargs" in options:
-            options["paris_postprocessing_kwargs"] = normalise_optional_mapping(options["paris_postprocessing_kwargs"])
         return make_output_spec(multisector=multisector, **options)
 
     @field_validator("output_path", "country_file", "save_trace", "save_inversion_output", mode="before")

@@ -261,8 +261,7 @@ def make_nested_inversion_outputs(
     """
     outputs = []
     for tag, native in (("outer", prepared.outer), ("inner", prepared.inner)):
-        contract = replace(
-            output_contract,
+        contract = output_contract.with_updates(
             variable_roles=_domain_variable_roles(output_contract.variable_roles, tag=tag),
             state_dimension_mapping={
                 "trace": str(output_contract.metadata[f"{tag}_state_dimension"]),

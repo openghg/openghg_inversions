@@ -44,7 +44,7 @@ def test_public_checkpoint_replay_keeps_unused_and_symbolic_prior_descriptions(t
     description = ModelDescription.model_validate(record["model"])
     Draft202012Validator(ModelDescription.model_json_schema()).validate(record["model"])
     assert description.likelihood.options.power is None
-    monkeypatch.setattr(RhimeModelSpec, "from_record", lambda *a, **k: pytest.fail("executable restoration"))
+    monkeypatch.setattr(RhimeModelSpec, "__init__", lambda *a, **k: pytest.fail("executable restoration"))
     restored = stages.load_samples(saved)
     assert restored.model_metadata["constructed_priors"] == priors
     assert restored.model_metadata["sectors"][0]["x_prior"] == priors.get("x")
