@@ -174,15 +174,15 @@ def _check_saved_family(args: argparse.Namespace) -> dict[str, Any] | None:
         return record
     if not isinstance(schema, str):
         raise argparse.ArgumentError(None, "Saved manifest schema must be a string.")
-    if args.model == "co2":
-        stage = "sample" if args.command == "postprocess" else "prepare"
-        if schema != f"openghg_inversions.co2.{stage}":
-            raise argparse.ArgumentError(None, f"Unsupported CO2 manifest schema: {schema!r}.")
     for family in ("standard", "multisector"):
         if schema.startswith(f"openghg_inversions.{family}.") and args.model != family:
             raise ValueError(f"Saved {family} checkpoint does not match --model {args.model!r}.")
     if schema.startswith("openghg_inversions.co2.") and args.model != "co2":
         raise ValueError(f"Saved CO2 checkpoint does not match --model {args.model!r}.")
+    if args.model == "co2":
+        stage = "sample" if args.command == "postprocess" else "prepare"
+        if schema != f"openghg_inversions.co2.{stage}":
+            raise argparse.ArgumentError(None, f"Unsupported CO2 manifest schema: {schema!r}.")
     return record
 
 
