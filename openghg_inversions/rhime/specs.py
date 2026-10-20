@@ -7,10 +7,10 @@ from dataclasses import field, fields
 from pathlib import Path
 from typing import Annotated, Any, ClassVar, Literal, TYPE_CHECKING, cast, get_args, get_type_hints
 
-from pydantic import BeforeValidator, Field, PlainSerializer, WithJsonSchema, field_validator
+from pydantic import BeforeValidator, Field, PlainSerializer, ValidationInfo, WithJsonSchema, field_validator
 from pydantic.dataclasses import dataclass
 
-from openghg_inversions._record_schema import RuntimeConfig, RuntimeFloat
+from openghg_inversions._record_schema import JsonValue, RuntimeConfig, RuntimeFloat, portable_json
 
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.rhime._resources import resolve_resource_paths
@@ -68,8 +68,14 @@ def _owned_mapping(value: Any) -> Any:
     return normalise_optional_mapping(value) if isinstance(value, Mapping) else value
 
 
-BorrowedPrior = Annotated[PriorArgs, BeforeValidator(_owned_mapping)]
-BorrowedOptions = Annotated[dict[str, Any], BeforeValidator(_owned_mapping)]
+BorrowedPrior = Annotated[
+    PriorArgs, BeforeValidator(_owned_mapping),
+    PlainSerializer(portable_json, return_type=dict[str, JsonValue], when_used="json"),
+]
+BorrowedOptions = Annotated[
+    dict[str, Any], BeforeValidator(_owned_mapping),
+    PlainSerializer(portable_json, return_type=dict[str, JsonValue], when_used="json"),
+]
 TemporalAnchor = Annotated[
     DatetimeLike,
     WithJsonSchema({"type": "string", "description": "Date or date-time string."}),
@@ -82,8 +88,16 @@ def _runtime_policy_json(value: StateActivity) -> None:
     raise ValueError("StateActivity is runtime-only; portable configuration requires None.")
 
 
+def _runtime_policy_input(value: object, info: ValidationInfo) -> object:
+    """Keep JSON configuration from constructing Python-only policies."""
+    if info.mode == "json":
+        raise ValueError("StateActivity is runtime-only; portable configuration requires None.")
+    return value
+
+
 RuntimeStateActivity = Annotated[
     StateActivity,
+    BeforeValidator(_runtime_policy_input),
     WithJsonSchema({"not": {}, "description": "Python-only state activity policy; use null in portable configuration."}),
     PlainSerializer(_runtime_policy_json, return_type=None, when_used="json"),
 ]
@@ -468,22 +482,6 @@ class RhimeOutputSpec:
     output_filename_convention: OutputFilenameConvention = "rhime"
 
 
-def validate_output_format(output_format: str) -> None:
-    """Validate a RHIME output-format name.
-
-    Args:
-        output_format: Requested output-format name.
-
-    Raises:
-        ValueError: If the format is unsupported.
-    """
-    valid_formats = {"none", "inv_out", "basic", "paris", "legacy"}
-    if output_format not in valid_formats:
-        raise ValueError(
-            f"Unsupported RHIME output_format {output_format!r}; expected one of {sorted(valid_formats)!r}."
-        )
-
-
 def validate_output_path_settings(
     *,
     output_format: str,
@@ -519,23 +517,6 @@ def validate_output_path_settings(
         raise ValueError("`output_path` is required when saving the RHIME InversionOutput.")
 
 
-def validate_output_filename_convention(output_filename_convention: str) -> None:
-    """Validate an output filename convention.
-
-    Args:
-        output_filename_convention: Requested filename convention.
-
-    Raises:
-        ValueError: If the convention is unsupported.
-    """
-    valid_conventions = {"rhime", "legacy"}
-    if output_filename_convention not in valid_conventions:
-        raise ValueError(
-            "Unsupported RHIME output_filename_convention "
-            f"{output_filename_convention!r}; expected one of {sorted(valid_conventions)!r}."
-        )
-
-
 def make_output_spec(
     *,
     output_format: str = RhimeOutputSpec.output_format,
@@ -569,15 +550,6 @@ def make_output_spec(
     """
     output_format = output_format.lower()
     output_filename_convention = output_filename_convention.lower()
-    validate_output_format(output_format)
-    validate_output_filename_convention(output_filename_convention)
-    validate_output_path_settings(
-        output_format=output_format,
-        output_path=output_path,
-        save_trace=save_trace,
-        save_inversion_output=save_inversion_output,
-        multisector=multisector,
-    )
     options = dict(
         output_format=cast(OutputFormat, output_format),
         output_path=output_path,
@@ -588,4 +560,12 @@ def make_output_spec(
         paris_postprocessing_kwargs=paris_postprocessing_kwargs,
         output_filename_convention=cast(OutputFilenameConvention, output_filename_convention),
     )
-    return RhimeOutputSpec(**resolve_resource_paths(options, annotations=get_type_hints(RhimeOutputSpec), base_dir=Path.cwd()))
+    output = RhimeOutputSpec(**resolve_resource_paths(options, annotations=get_type_hints(RhimeOutputSpec), base_dir=Path.cwd()))
+    validate_output_path_settings(
+        output_format=output.output_format,
+        output_path=output.output_path,
+        save_trace=output.save_trace,
+        save_inversion_output=output.save_inversion_output,
+        multisector=multisector,
+    )
+    return output

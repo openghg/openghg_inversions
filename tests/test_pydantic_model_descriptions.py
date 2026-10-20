@@ -112,7 +112,7 @@ def test_constructed_trace_owns_every_reported_prior_slot():
     assert metadata["likelihood"]["power"] == actual["power"]
 
 
-def test_config_export_rejects_runtime_state_policy_without_computing_it():
+def test_config_json_rejects_runtime_state_policy_without_computing_it():
     import dask
     import dask.array as da
     from openghg_inversions.models.state_activity import StateActivity
@@ -128,9 +128,11 @@ def test_config_export_rejects_runtime_state_policy_without_computing_it():
     policy = StateActivity(active=xr.DataArray(da.from_delayed(mask(), shape=(1,), dtype=bool), dims="region"))
     model = replace(config.model, state_activity=policy)
     adapter = TypeAdapter(RhimeModelSpec)
-    Draft202012Validator(adapter.json_schema(mode="serialization")).validate(
-        json.loads(adapter.dump_json(config.model)),
-    )
+    wire = json.loads(adapter.dump_json(config.model))
+    Draft202012Validator(adapter.json_schema(mode="serialization")).validate(wire)
+    wire["state_activity"] = {"active": False}
+    with pytest.raises(ValidationError, match="StateActivity is runtime-only"):
+        adapter.validate_json(json.dumps(wire))
     with pytest.raises(PydanticSerializationError, match="StateActivity is runtime-only"):
         adapter.dump_json(model)
     assert calls == []

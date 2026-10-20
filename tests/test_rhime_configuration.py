@@ -10,6 +10,7 @@ import dask.array as da
 from dask.callbacks import Callback
 import pytest
 import xarray as xr
+from pydantic import ValidationError
 
 import openghg_inversions.rhime as rhime
 from openghg_inversions.hbmcmc.compatibility import params_from_config
@@ -833,8 +834,9 @@ def test_canonical_configuration_rejects_old_output_formats_without_warnings(out
 
     with warnings.catch_warnings():
         warnings.simplefilter("error", DeprecationWarning)
-        with pytest.raises(ValueError, match="Unsupported RHIME output_format"):
+        with pytest.raises(ValidationError) as caught:
             rhime_params.RhimeConfig.from_params(_request(output_format=output_format), multisector=False)
+    assert caught.value.errors()[0]["loc"] == ("output_format",)
 
 
 def test_configuration_does_not_import_compatibility_owners():
