@@ -174,11 +174,14 @@ and source covariance. Quantiles are calculated after the signed affine
 reconstruction, never by interpolating retained-state quantiles.
 
 Country output first constructs compact country-by-state actions with dense
-chunk payloads, so it does not allocate native-grid-by-draw values. Native output
-explicitly requests grid reconstruction. Shared sample statistics complete bounded
+chunk payloads, so it does not allocate native-grid-by-draw values. Its
+country-by-state actions are prepared like ordinary country projections, with
+output dimensions chunked within the summary point budget. Native output
+explicitly requests grid reconstruction after chunking the native mean,
+reference flux and prolongation within the same budget, so eager or lazy inputs
+reconstruct draws in bounded tiles. Shared sample statistics complete bounded
 non-sample blocks and return computed summaries, retaining complete required
-samples within each block. Upstream reconstruction producers must already have
-bounded chunks; blocking their outputs cannot shrink an existing producer task.
+samples within each block.
 Neither function mutates the trace or reconstruction inputs.
 
 Both products retain prepared-artifact identity, reconstruction provenance and
