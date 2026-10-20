@@ -21,6 +21,14 @@ API requirements. Plans preserve dated proposals, research, and delivery
 history; they do not define current production architecture or feature support.
 See `docs/plans/README.md` for dispositions and owning issues.
 
+## Specification changes
+
+Only change specifications under `openspec/` after conferring with a developer
+and agreeing on the proposed changes. Keep specifications focused on behavioral
+contracts and tolerant of external changes, including changes to dependencies
+and surrounding systems. Do not use them to record every implementation choice
+or incidental detail.
+
 ## Numerical array ownership and execution
 
 Treat xarray objects as borrowed and potentially Dask-backed. Do not mutate

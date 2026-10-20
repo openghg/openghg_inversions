@@ -1,29 +1,10 @@
+import numpy as np
+import pandas as pd
 import pytest
+import xarray as xr
 
 from openghg_inversions.filters import filtering, filtering_functions
 from openghg_inversions.hbmcmc.legacy_data import load_merged_data
-
-
-@pytest.fixture
-def mcmc_args(tmp_path, tac_ch4_data_args, merged_data_dir, merged_data_file_name):
-    mcmc_args = tac_ch4_data_args.copy()
-    mcmc_args.update(
-        {
-            "outputname": "test_run",
-            "outputpath": str(tmp_path),
-            "basis_algorithm": "quadtree",
-            "basis_output_path": str(tmp_path),
-            "nbasis": 4,
-            "nit": 1,
-            "burn": 0,
-            "tune": 0,
-            "nchain": 1,
-            "reload_merged_data": True,
-            "merged_data_dir": merged_data_dir,
-            "merged_data_name": merged_data_file_name,
-        }
-    )
-    return mcmc_args
 
 
 @pytest.fixture
@@ -36,6 +17,43 @@ def merged_data(merged_data_dir, merged_data_file_name):
         merged_data_name=merged_data_file_name,
     )
     return result
+
+
+@pytest.mark.parametrize("longitude", [30.0, -30.0, 330.0])
+@pytest.mark.parametrize("keep_missing", [False, True])
+@pytest.mark.parametrize(
+    "name,east_indices,west_indices",
+    [
+        ("daytime", list(range(9, 14)), list(range(13, 18))),
+        ("daytime9to5", list(range(7, 16)), list(range(11, 20))),
+        ("nighttime", [0, 1, 21, 22, 23], [1, 2, 3, 4, 5]),
+        ("noon", [10], [14]),
+    ],
+)
+def test_solar_filters_preserve_observations(name, east_indices, west_indices, longitude, keep_missing):
+    """Local-hour selection keeps UTC labels and is repeatable on borrowed inputs."""
+    dataset = xr.Dataset(
+        {
+            "mf": ("time", np.arange(24, dtype=float)),
+            "release_lon": ("time", np.full(24, longitude)),
+        },
+        coords={"time": pd.date_range("2020-01-01", periods=24, freq="h")},
+        attrs={"site": "TAC"},
+    )
+    dataset.time.attrs["long_name"] = "UTC observation time"
+    original = dataset.copy(deep=True)
+    inputs = {"TAC": dataset}
+    selected = east_indices if longitude == 30.0 else west_indices
+    expected = original.isel(time=selected)
+    if keep_missing:
+        expected = expected.reindex_like(original)
+
+    result = filtering(inputs, name, keep_missing=keep_missing)
+    repeated = filtering(inputs, name, keep_missing=keep_missing)
+
+    xr.testing.assert_identical(dataset, original)
+    xr.testing.assert_identical(result["TAC"], expected)
+    xr.testing.assert_identical(repeated["TAC"], expected)
 
 
 def test_pblh_filter_error(merged_data):

@@ -5115,26 +5115,6 @@ def test_new_rhime_docs_use_flux_sources_for_examples() -> None:
     assert "Legacy compatibility spelling" in rhime_doc
 
 
-def test_cleanup_plan_records_issue_400_decisions() -> None:
-    """The cleanup plan records current PR decisions without example completions."""
-    plan_doc = Path("docs/plans/clean_up_inversions_refactor.md").read_text(encoding="utf-8")
-
-    assert "PR #434 / Issue #400" in plan_doc
-    assert "#383 / PR #412 merged" not in plan_doc
-    assert "one public concrete `RhimeModelSpec`" in plan_doc
-    assert "Do not split the public API" in plan_doc
-    assert "SemanticModel" in plan_doc
-    assert "RhimeSampler" in plan_doc
-    assert "openghg_inversions.rhime.runner" in plan_doc
-    assert "openghg_inversions.rhime.model_specs" not in plan_doc
-    assert "openghg_inversions.rhime.specs" in plan_doc
-    assert "openghg_inversions.models.rhime" not in plan_doc
-    assert "prior-predictive-only" in plan_doc
-    assert "Deferred Issue #431 data-preparation spec" in plan_doc
-    assert "should not introduce `RhimeDataSpec`" in plan_doc
-    assert "Deferred Issue #383 / Issue #429 output boundary" in plan_doc
-
-
 def _rhime_preparation_args(data_args: dict, flux_sources: list[str], bc_basis_directory: Path) -> dict:
     args = data_args.copy()
     args.pop("emissions_name", None)

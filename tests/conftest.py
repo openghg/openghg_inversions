@@ -7,7 +7,6 @@ from pathlib import Path
 import shutil
 import tempfile
 import time
-from importlib.metadata import version
 from collections.abc import Callable, Iterator
 from unittest.mock import patch
 
@@ -27,7 +26,7 @@ from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_SOURCE_ATTR,
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from tests.helpers import make_trace
 
-_raw_data_path = Path(".").resolve() / "tests/data/"
+_raw_data_path = Path(__file__).resolve().parent / "data"
 _TEST_STORE_DIR_NAME = "openghg_inversions_testing_store"
 _TEST_STORE_READY_MARKER_NAME = "openghg_inversions_testing_store.ready.json"
 _TEST_STORE_LOCK_NAME = "openghg_inversions_testing_store.lock"
@@ -49,14 +48,6 @@ def user_data_path():
 def writable_data_path(tmp_path_factory):
     """Per-run root for test artifacts that are written during pytest."""
     return tmp_path_factory.mktemp("openghg_inversions_test_data")
-
-
-@pytest.fixture(scope="session")
-def openghg_version():
-    try:
-        return tuple(map(int, version("openghg").split(".")))
-    except ValueError:
-        return (1000, 0, 0)
 
 
 @pytest.fixture(scope="session")
@@ -129,15 +120,15 @@ def fake_multisector_basis_functions_matching_country_grid() -> Callable[..., Ba
 
     def _build(country_file: Path, *, coord_offset: float = 0.0) -> BasisFunctions:
         """Build a one-region multisector basis artifact on a test country grid."""
-        country_grid = xr.open_dataset(country_file)
-        lat = country_grid.lat.values + coord_offset
-        lon = country_grid.lon.values + coord_offset
-        basis = xr.DataArray(
-            np.ones((country_grid.sizes["lat"], country_grid.sizes["lon"]), dtype=int),
-            dims=("lat", "lon"),
-            coords={"lat": lat, "lon": lon},
-            name="basis",
-        )
+        with xr.open_dataset(country_file) as country_grid:
+            lat = country_grid.lat.values + coord_offset
+            lon = country_grid.lon.values + coord_offset
+            basis = xr.DataArray(
+                np.ones((country_grid.sizes["lat"], country_grid.sizes["lon"]), dtype=int),
+                dims=("lat", "lon"),
+                coords={"lat": lat, "lon": lon},
+                name="basis",
+            )
         flux = xr.concat(
             [
                 xr.ones_like(basis, dtype=float).expand_dims(source=["ff-inventory"]),
@@ -285,12 +276,6 @@ def country_ds_eastasia(raw_data_path):
     """Provides EUROPE countryfile dataset"""
     ds = xr.load_dataset(raw_data_path / "country_EASTASIA.nc")
     yield ds
-
-
-@pytest.fixture
-def southamerica_country_file(raw_data_path):
-    """Provides path to the SOUTHAMERICA countryfile"""
-    return raw_data_path / "satellite" / "country" / "country_SOUTHAMERICA.nc"
 
 
 @pytest.fixture(scope="session")
@@ -575,32 +560,6 @@ def tac_ch4_data_args(openghg_test_store):
         "emissions_name": ["total-ukghg-edgar7"],
         # "met_model": "ukv",
         "averaging_period": ["1h"],
-    }
-    return data_args
-
-
-@pytest.fixture(scope="module")
-def satellite_ch4_data_args(openghg_test_store):
-    data_args = {
-        "species": "ch4",
-        "sites": ["GOSAT-BRAZIL"],
-        "averaging_period": ["1H"],
-        "start_date": "2016-01-01",
-        "end_date": "2016-02-01",
-        "platform": ["satellite"],
-        "max_level": 17,
-        "bc_store": "inversions_tests",
-        "obs_store": "inversions_tests",
-        "footprint_store": "inversions_tests",
-        "emissions_store": "inversions_tests",
-        "inlet": ["column"],
-        "instrument": [None],
-        "domain": "SOUTHAMERICA",
-        "fp_height": ["column"],
-        "fp_species": "ch4",
-        "fp_model": None,
-        "emissions_name": ["SWAMPS"],
-        # "met_model": "ukv",
     }
     return data_args
 
