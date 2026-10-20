@@ -15,6 +15,7 @@ import pymc
 
 from openghg_inversions import serialization
 from openghg_inversions.rhime import _standard_stages as stages, standard
+from openghg_inversions.rhime._model_records import ModelDescription
 from openghg_inversions.rhime.params import RhimeConfig
 from openghg_inversions.rhime.requests import load_params
 from openghg_inversions.rhime.specs import RhimeModelSpec, RhimeOutputSpec
@@ -32,7 +33,7 @@ def _saved(tmp_path):
     posterior.attrs["rhime_priors"] = json.dumps({"x": config.model.sectors[0].x_prior})
     sampled = stages.save_samples(
         preparation, posterior, model=config.model, actual_inference=config.sampler.describe(),
-        output_contract=OutputContract(variable_roles={"flux_scale": "x"},
+        output_contract=OutputContract.create(variable_roles={"flux_scale": "x"},
                                        supported_output_formats=("none", "inv_out")),
         output_dir=tmp_path / "samples",
         preparation_generation=stages.load_preparation(preparation)[2],
@@ -40,10 +41,8 @@ def _saved(tmp_path):
     return preparation, sampled
 
 
-def _model(sampled):
-    record = json.loads(sampled.read_text())
-    _, data_config, _ = stages.load_preparation(sampled.parent / record["preparation"])
-    return RhimeModelSpec.from_record(record["model"], data_config=data_config)
+def _model():
+    return RhimeConfig.from_params(_params(), multisector=False).model
 
 
 def _contract(sampled):
@@ -191,7 +190,7 @@ def test_saved_model_cannot_duplicate_preparation_facts(tmp_path, name):
     assert "flux_source" not in record["model"]["sectors"][0]
     record["model"][name] = "other"
     sampled.write_text(json.dumps(record))
-    with pytest.raises(ValueError, match="model record"):
+    with pytest.raises(ValueError, match=rf"model\.{name}"):
         stages.load_samples(sampled)
 
 
@@ -226,7 +225,7 @@ def test_prior_readiness_requires_finite_declared_prediction(tmp_path, monkeypat
     from contextlib import nullcontext
     from types import SimpleNamespace
     preparation, _ = _saved(tmp_path)
-    contract = OutputContract(variable_roles={"concentration": "observations"})
+    contract = OutputContract.create(variable_roles={"concentration": "observations"})
     monkeypatch.setattr(stages, "build_standard_model", lambda *a, **k: SimpleNamespace(
         model=nullcontext(), output_contract=contract))
     group = "prior" if evidence == "missing" else "prior_predictive"
@@ -253,7 +252,7 @@ def test_prior_serialization_errors_propagate(tmp_path, monkeypatch, empty):
     from types import SimpleNamespace
     preparation, _ = _saved(tmp_path)
     monkeypatch.setattr(stages, "build_standard_model", lambda *a, **k: SimpleNamespace(
-        model=nullcontext(), output_contract=OutputContract(variable_roles={"concentration": "y"})))
+        model=nullcontext(), output_contract=OutputContract.create(variable_roles={"concentration": "y"})))
     prior = make_trace(prior_predictive=xr.Dataset({"y": (("chain", "draw"), [[1.]])}))
     if empty:
         prior = prior.isel(draw=slice(0, 0))
@@ -289,7 +288,7 @@ def test_failed_sample_save_leaves_no_completed_manifest(tmp_path, monkeypatch):
     monkeypatch.setattr(stages, "save_trace", fail)
     with pytest.raises(OSError, match="disk full"):
         stages.save_samples(
-            preparation, stages.load_trace(sampled.parent / "posterior.nc"), model=_model(sampled),
+            preparation, stages.load_trace(sampled.parent / "posterior.nc"), model=_model(),
             output_contract=OutputContract.from_dict(record["output_contract"]), actual_inference={},
             output_dir=sampled.parent,
             preparation_generation=stages.load_preparation(preparation)[2],
@@ -325,7 +324,7 @@ def test_explicit_latent_only_trace_cannot_complete_handoff_or_replay(tmp_path):
     trace.attrs["rhime_priors"] = "{}"
     with pytest.raises(ValueError, match="reconstruction state.*x"):
         stages.save_samples(
-            preparation, trace, model=_model(sampled),
+            preparation, trace, model=_model(),
             output_contract=OutputContract.from_dict(record["output_contract"]), actual_inference={},
             output_dir=tmp_path / "incomplete",
             preparation_generation=stages.load_preparation(preparation)[2],
@@ -384,7 +383,7 @@ def test_saving_samples_ignores_unused_configured_lazy_priors(tmp_path):
         return np.ones(1)
 
     lazy = xr.DataArray(da.from_delayed(unused(), shape=(1,), dtype=float), dims=("region",))
-    model = _model(sampled)
+    model = _model()
     model = replace(model, bc_prior={"pdf": "normal", "mu": lazy, "sigma": 1.},
                     offset_prior={"pdf": "normal", "mu": lazy, "sigma": 1.})
     saved = stages.save_samples(
@@ -401,6 +400,7 @@ def test_saving_samples_ignores_unused_configured_lazy_priors(tmp_path):
 def test_model_record_covers_every_field_or_rejects_it(tmp_path):
     from dataclasses import fields, replace
     from openghg_inversions.rhime.specs import _MODEL_RECORD_FIELDS
+    from openghg_inversions.models.state_activity import StateActivity
 
     recorded = set(_MODEL_RECORD_FIELDS) | {"sectors", "likelihood"}
     rejected = {"state_activity", "bc_state_activity"}
@@ -410,10 +410,10 @@ def test_model_record_covers_every_field_or_rejects_it(tmp_path):
     trace = make_trace()
     trace.attrs["rhime_priors"] = json.dumps({"x": model.sectors[0].x_prior})
     recorded_model = model.to_record(trace=trace, data_config=data_config)
-    decoded = RhimeModelSpec.from_record(json.loads(json.dumps(recorded_model)), data_config=data_config)
-    assert decoded.sectors[0].x_prior == model.sectors[0].x_prior
+    decoded = ModelDescription.model_validate(json.loads(json.dumps(recorded_model)))
+    assert decoded.sectors[0].x_prior.model_dump() == model.sectors[0].x_prior
     assert decoded.bc_prior is None and decoded.offset_prior is None
-    policy = object()
+    policy = StateActivity()
     preparation, sampled = _saved(tmp_path)
     record = json.loads(sampled.read_text())
     for changed in (replace(model, state_activity=policy), replace(model, bc_state_activity=policy),
@@ -464,7 +464,7 @@ def test_checkpoint_write_targets_cannot_redirect_into_preparation(tmp_path, sta
             stages.save_preparation(prepared, data_config=data, output_dir=destination)
         else:
             stages.save_samples(
-                preparation, result.trace, model=_model(sampled),
+                preparation, result.trace, model=_model(),
                 output_contract=_contract(sampled), actual_inference={},
                 output_dir=destination,
                 preparation_generation=stages.load_preparation(preparation)[2],
@@ -487,7 +487,7 @@ def test_sample_targets_cannot_alias_a_colocated_preparation(tmp_path, target_na
         target.hardlink_to(payload)
     with pytest.raises(ValueError, match="overwrite another checkpoint artifact"):
         stages.save_samples(
-            preparation, result.trace, model=_model(sampled),
+            preparation, result.trace, model=_model(),
             output_contract=_contract(sampled), actual_inference={},
             output_dir=preparation.parent,
             preparation_generation=stages.load_preparation(preparation)[2],
@@ -503,7 +503,7 @@ def test_colocated_checkpoints_ignore_unrelated_symlinks(tmp_path):
     (preparation.parent / "unrelated-link").symlink_to(tmp_path / "absent")
     stages.save_preparation(before, data_config=data, output_dir=preparation.parent)
     stages.save_samples(
-        preparation, result.trace, model=_model(sampled),
+        preparation, result.trace, model=_model(),
         output_contract=_contract(sampled), actual_inference={},
         output_dir=preparation.parent,
         preparation_generation=stages.load_preparation(preparation)[2],
@@ -553,7 +553,7 @@ def test_missing_constructed_priors_cannot_complete_public_save(tmp_path):
     before = sampled.read_bytes()
     with pytest.raises(ValueError, match="rhime_priors"):
         stages.save_samples(
-            preparation, posterior, model=_model(sampled), output_contract=_contract(sampled),
+            preparation, posterior, model=_model(), output_contract=_contract(sampled),
             actual_inference={}, output_dir=sampled.parent,
             preparation_generation=stages.load_preparation(preparation)[2],
         )
@@ -614,7 +614,7 @@ def test_public_sample_writer_requires_original_preparation_generation(tmp_path)
     preparation, sampled = _saved(tmp_path)
     prepared, data, generation = stages.load_preparation(preparation)
     posterior = stages.load_trace(sampled.parent / "posterior.nc")
-    model = _model(sampled)
+    model = _model()
     contract = _contract(sampled)
     stages.save_preparation(prepared, data_config=data, output_dir=preparation.parent)
     with pytest.raises(ValueError, match="was replaced"):

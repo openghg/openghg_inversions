@@ -11,6 +11,7 @@ from uuid import uuid4
 import xarray as xr
 
 from openghg_inversions._provenance import installed_ogi_provenance
+from openghg_inversions._record_schema import validate_json_keys
 from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.inference.sampling import RhimeSampler, resolve_sampler
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
@@ -19,8 +20,11 @@ from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.serialization import load_trace, save_trace
 
 from ._stage_artifacts import (
-    _output_path, check_checkpoint_targets, finish_checkpoint, read_manifest,
+    _output_path, check_checkpoint_targets, finish_checkpoint, json_value,
     reference, start_checkpoint,
+)
+from ._manifest_records import (
+    StandardPreparationRecord, StandardSampleRecord, StandardSampleReadRecord, checkpoint_dict, read_checkpoint,
 )
 from ._stage_checks import _check_draws, _check_stage, prior_predictive_check
 from .builders import RhimeLikelihoodBuilder
@@ -41,19 +45,9 @@ def _require_standard(data_config: DataConfig) -> None:
         raise ValueError("Standard handoffs require `split_by_sectors=False`; use the multisector stages.")
 
 
-def _preparation_record(manifest: str | Path) -> tuple[Path, dict[str, Any]]:
-    """Read a completed preparation and its writer-assigned generation."""
-    path, record = read_manifest(
-        manifest, "openghg_inversions.standard.prepare", ("prepared_inputs", "data", "generation"),
-    )
-    if not isinstance(record["generation"], str) or not record["generation"]:
-        raise ValueError(f"Preparation manifest {path} requires a nonempty generation.")
-    return path, record
-
-
-def _check_generation(manifest: Path, record: Mapping[str, Any], expected: str) -> None:
+def _check_generation(manifest: Path, record: StandardPreparationRecord, expected: str) -> None:
     """Reject a preparation replaced since its inputs were loaded for sampling."""
-    if record["generation"] != expected:
+    if record.generation != expected:
         raise ValueError(f"Preparation {manifest} was replaced; samples require generation {expected!r}.")
 
 
@@ -76,26 +70,29 @@ def save_preparation(
             outside the directory or alias another checkpoint artifact.
     """
     _require_standard(data_config)
+    choices = data_config.to_params()
+    validate_json_keys(choices)
+    record = StandardPreparationRecord(
+        schema="openghg_inversions.standard.prepare", schema_version=1,
+        producer="openghg_inversions", stage="prepare", generation=uuid4().hex,
+        prepared_inputs="prepared-inputs.nc", data=json_value(choices),
+    )
     destination = start_checkpoint(output_dir, "prepare", payloads=("prepared-inputs.nc",))
     prepared.save(destination / "prepared-inputs.nc")
-    return finish_checkpoint(destination, "prepare", {
-        "schema": "openghg_inversions.standard.prepare", "schema_version": 1,
-        "producer": "openghg_inversions", "stage": "prepare", "generation": uuid4().hex,
-        "prepared_inputs": "prepared-inputs.nc", "data": data_config.to_params(),
-    })
+    return finish_checkpoint(destination, "prepare", checkpoint_dict(record))
 
 
 def _load_preparation(
     manifest: str | Path, *, expected_generation: str | None = None,
 ) -> tuple[RhimePreparedInputs, DataConfig, str, Path]:
     """Load numerical inputs and capture the generation from the same manifest."""
-    path, record = _preparation_record(manifest)
+    path, record = read_checkpoint(manifest, StandardPreparationRecord)
     if expected_generation is not None:
         _check_generation(path, record, expected_generation)
-    data_config = DataConfig.from_params(record["data"])
-    payload = reference(path, record["prepared_inputs"])
+    data_config = DataConfig.from_params(record.data)
+    payload = reference(path, record.prepared_inputs)
     prepared = RhimePreparedInputs.load(payload)
-    return prepared, data_config, record["generation"], payload
+    return prepared, data_config, record.generation, payload
 
 
 def load_preparation(manifest: str | Path) -> tuple[RhimePreparedInputs, DataConfig, str]:
@@ -188,23 +185,24 @@ def save_samples(
             was replaced, or concrete targets redirect or alias dependencies.
     """
     output_contract.validate_trace(posterior)
-    preparation_path, preparation = _preparation_record(preparation_manifest)
+    preparation_path, preparation = read_checkpoint(preparation_manifest, StandardPreparationRecord)
     _check_generation(preparation_path, preparation, preparation_generation)
-    data_config = DataConfig.from_params(preparation["data"])
+    data_config = DataConfig.from_params(preparation.data)
     model_record = model.to_record(trace=posterior, data_config=data_config)
+    record = StandardSampleRecord(
+        schema="openghg_inversions.standard.sample", schema_version=1,
+        producer="openghg_inversions", stage="sample",
+        preparation=os.path.relpath(preparation_path, Path(output_dir).resolve()),
+        preparation_generation=preparation.generation, posterior="posterior.nc",
+        output_contract=output_contract.to_dict(), model=model_record,
+        actual_inference=dict(actual_inference), provenance=installed_ogi_provenance(),
+    )
     destination = start_checkpoint(
         output_dir, "sample", payloads=("posterior.nc",),
-        referenced=(preparation_path, reference(preparation_path, preparation["prepared_inputs"])),
+        referenced=(preparation_path, reference(preparation_path, preparation.prepared_inputs)),
     )
     save_trace(posterior, destination / "posterior.nc")
-    return finish_checkpoint(destination, "sample", {
-        "schema": "openghg_inversions.standard.sample", "schema_version": 1,
-        "producer": "openghg_inversions", "stage": "sample",
-        "preparation": os.path.relpath(preparation_path, destination), "preparation_generation": preparation["generation"],
-        "posterior": "posterior.nc", "output_contract": output_contract.to_dict(),
-        "model": model_record, "actual_inference": dict(actual_inference),
-        "provenance": installed_ogi_provenance(),
-    })
+    return finish_checkpoint(destination, "sample", checkpoint_dict(record))
 
 
 def sample(
@@ -271,32 +269,28 @@ def load_samples(sample_manifest: str | Path) -> InversionOutput:
             preparation has been replaced since sampling.
         FileNotFoundError: If a referenced checkpoint is missing.
     """
-    path, record = read_manifest(sample_manifest, "openghg_inversions.standard.sample", (
-        "preparation", "preparation_generation", "posterior", "output_contract", "model",
-        "actual_inference", "provenance",
-    ))
-    preparation_path = reference(path, record["preparation"])
-    if not isinstance(record["preparation_generation"], str) or not record["preparation_generation"]:
-        raise ValueError(f"Sample manifest {path} requires a preparation generation.")
+    path, record = read_checkpoint(sample_manifest, StandardSampleReadRecord)
+    preparation_path = reference(path, record.preparation)
     prepared, data_config, _, _ = _load_preparation(
-        preparation_path, expected_generation=record["preparation_generation"],
+        preparation_path, expected_generation=record.preparation_generation,
     )
-    posterior = load_trace(reference(path, record["posterior"]))
-    output_contract = OutputContract.from_dict(record["output_contract"])
+    posterior = load_trace(reference(path, record.posterior))
+    output_contract = record.output_contract
     output_contract.validate_trace(posterior)
-    model_spec = RhimeModelSpec.from_record(record["model"], trace=posterior, data_config=data_config)
-    inv_out = make_model_output(
+    model_metadata = record.model.to_output_metadata(
+        data_config=data_config, trace=posterior, output_contract=output_contract,
+    )
+    return make_model_output(
         prepared=prepared,
-        model_spec=model_spec,
+        model_metadata=model_metadata,
         posterior=posterior,
         output_contract=output_contract,
         start_date=data_config.start_date,
         end_date=data_config.end_date,
-        actual_inference=record["actual_inference"],
-        provenance=record["provenance"],
+        actual_inference=record.actual_inference,
+        provenance=record.provenance,
         split_by_sectors=data_config.split_by_sectors,
     )
-    return inv_out
 
 
 def postprocess(sample_manifest: str | Path, *, output: RhimeOutputSpec) -> InversionOutput:

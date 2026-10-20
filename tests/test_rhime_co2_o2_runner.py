@@ -57,7 +57,7 @@ def test_trace_annotation_labels_total_marginal_error() -> None:
         parse_prior("scale", {"pdf": "halfnormal", "sigma": 1.0})
     built = RhimeModelBuildResult(
         model=model,
-        output_contract=OutputContract(
+        output_contract=OutputContract.create(
             variable_roles=_CO2_O2_VARIABLE_ROLES,
         ),
     )

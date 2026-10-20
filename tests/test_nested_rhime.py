@@ -397,7 +397,7 @@ def test_nested_model_uses_two_labelled_state_blocks_and_shared_likelihood() -> 
     assert result.output_contract.variable_roles["flux_scale:outer"] == "x_outer"
     assert result.output_contract.variable_roles["flux_scale:inner"] == "x_inner"
     assert result.output_contract.variable_roles["concentration"] == "y"
-    assert result.output_contract.supported_output_formats == ("none", "paris")
+    assert result.output_contract.supported_output_formats == ["none", "paris"]
 
 
 def test_nested_materialization_computes_both_sensitivities_at_named_boundary() -> None:

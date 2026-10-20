@@ -56,7 +56,7 @@ def test_shared_output_view_projects_capabilities_and_basic_is_explicit(monkeypa
     from openghg_inversions.rhime.specs import RhimeOutputSpec
     from tests.test_staged_workflow import _prepared
 
-    contract = OutputContract(variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "basic"))
+    contract = OutputContract.create(variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "basic"))
     inv_out = make_inversion_output(
         prepared=_prepared(), trace=xr.DataTree(), contract=contract,
         run_metadata={"start_date": "2019-01-01"}, model_metadata={"species": "ch4", "domain": "EUROPE"},

@@ -404,7 +404,7 @@ def builtin_model_build_result(
         supported_output_formats = ("none", "inv_out")
     return RhimeModelBuildResult(
         model=model,
-        output_contract=OutputContract(
+        output_contract=OutputContract.create(
             variable_roles=roles, supported_output_formats=supported_output_formats,
             metadata={"kind": "builtin"},
         ),

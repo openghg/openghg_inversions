@@ -354,7 +354,7 @@ def co2_cached_sigma_build_result(
             variable_roles[role] = name
     built = RhimeModelBuildResult(
         model=cached_model.model,
-        output_contract=OutputContract(
+        output_contract=OutputContract.create(
             variable_roles=variable_roles,
             metadata=metadata,
         ),

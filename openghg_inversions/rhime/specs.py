@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field, fields
+from dataclasses import field, fields
 from pathlib import Path
-from typing import Any, ClassVar, Literal, TYPE_CHECKING, cast, get_args, get_type_hints
+from typing import Annotated, Any, ClassVar, Literal, TYPE_CHECKING, cast, get_args, get_type_hints
+
+from pydantic import BeforeValidator, Field, PlainSerializer, ValidationInfo, WithJsonSchema, field_validator
+from pydantic.dataclasses import dataclass
+
+from openghg_inversions._record_schema import JsonValue, RuntimeConfig, RuntimeFloat, portable_json
 
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.rhime._resources import resolve_resource_paths
@@ -57,7 +62,48 @@ def normalise_optional_mapping(value: Mapping[str, Any] | None) -> dict[str, Any
     return None if value is None else _copy_option_containers(dict(value))
 
 
-@dataclass(frozen=True)
+Name = Annotated[str, Field(pattern=r"\S")]
+def _owned_mapping(value: Any) -> Any:
+    """Own Python containers, letting the selected union validate their type."""
+    return normalise_optional_mapping(value) if isinstance(value, Mapping) else value
+
+
+BorrowedPrior = Annotated[
+    PriorArgs, BeforeValidator(_owned_mapping),
+    PlainSerializer(portable_json, return_type=dict[str, JsonValue], when_used="json"),
+]
+BorrowedOptions = Annotated[
+    dict[str, Any], BeforeValidator(_owned_mapping),
+    PlainSerializer(portable_json, return_type=dict[str, JsonValue], when_used="json"),
+]
+TemporalAnchor = Annotated[
+    DatetimeLike,
+    WithJsonSchema({"type": "string", "description": "Date or date-time string."}),
+    PlainSerializer(str, return_type=str, when_used="json"),
+]
+
+
+def _runtime_policy_json(value: StateActivity) -> None:
+    """Reject Python-only policies without inspecting their numerical payloads."""
+    raise ValueError("StateActivity is runtime-only; portable configuration requires None.")
+
+
+def _runtime_policy_input(value: object, info: ValidationInfo) -> object:
+    """Keep JSON configuration from constructing Python-only policies."""
+    if info.mode == "json":
+        raise ValueError("StateActivity is runtime-only; portable configuration requires None.")
+    return value
+
+
+RuntimeStateActivity = Annotated[
+    StateActivity,
+    BeforeValidator(_runtime_policy_input),
+    WithJsonSchema({"not": {}, "description": "Python-only state activity policy; use null in portable configuration."}),
+    PlainSerializer(_runtime_policy_json, return_type=None, when_used="json"),
+]
+
+
+@dataclass(frozen=True, config=RuntimeConfig)
 class PollutionEventSettings:
     """Serializable settings for pollution-event-scaled model error.
 
@@ -72,12 +118,12 @@ class PollutionEventSettings:
         power: Exponent or prior used in pollution-event error scaling.
     """
 
-    sigma_prior: PriorArgs | None = None
+    sigma_prior: BorrowedPrior | None = None
     sigma_freq: str | None = None
     sigma_per_site: bool = True
-    sigma_freq_anchor: DatetimeLike | None = None
+    sigma_freq_anchor: TemporalAnchor | None = None
     pollution_events_from_obs: bool = False
-    power: PriorArgs | float = 1.99
+    power: BorrowedPrior | RuntimeFloat = 1.99
 
     @property
     def required_prepared_inputs(self) -> tuple[str, ...]:
@@ -85,7 +131,7 @@ class PollutionEventSettings:
         return ("min_error",)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=RuntimeConfig)
 class AdditiveSigmaSettings:
     """Serializable settings for additive model-data-mismatch error.
 
@@ -99,10 +145,10 @@ class AdditiveSigmaSettings:
             error floor.
     """
 
-    sigma_prior: PriorArgs | None = None
+    sigma_prior: BorrowedPrior | None = None
     sigma_freq: str | None = None
     sigma_per_site: bool = True
-    sigma_freq_anchor: DatetimeLike | None = None
+    sigma_freq_anchor: TemporalAnchor | None = None
     use_minimum_error_floor: bool = False
 
     @property
@@ -111,7 +157,7 @@ class AdditiveSigmaSettings:
         return ("min_error",) if self.use_minimum_error_floor else ()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=RuntimeConfig)
 class FixedErrorSettings:
     """Serializable selection of reported observation error only."""
 
@@ -181,20 +227,17 @@ def make_likelihood_settings(
     options = {name: remaining.pop(name) for name in names if name in remaining}
     if settings_type is FixedErrorSettings:
         return FixedErrorSettings()
-    options["sigma_prior"] = normalise_optional_mapping(options.get("sigma_prior"))
-    if options["sigma_prior"] is None:
-        options["sigma_prior"] = dict(
+    if options.get("sigma_prior") is None:
+        options["sigma_prior"] = (
             DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR
             if settings_type is PollutionEventSettings
             else DEFAULT_ADDITIVE_SIGMA_PRIOR
         )
     options.setdefault("sigma_freq_anchor", start_date)
-    if isinstance(options.get("power"), Mapping):
-        options["power"] = normalise_optional_mapping(options["power"])
     return settings_type(**options)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=RuntimeConfig)
 class SectorSpec:
     """Configuration for one separately optimised flux sector.
 
@@ -210,14 +253,14 @@ class SectorSpec:
             fixing exactly-zero sensitivity columns to one.
     """
 
-    name: str
-    flux_source: str
-    x_prior: PriorArgs
+    name: Name
+    flux_source: Name
+    x_prior: BorrowedPrior
     variable_suffix: str
-    state_activity: StateActivity | None = field(default=None, kw_only=True)
+    state_activity: RuntimeStateActivity | None = field(default=None, kw_only=True)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=RuntimeConfig)
 class RhimeModelSpec:
     """Scientific options used by the concrete RHIME model recipes.
 
@@ -255,18 +298,18 @@ class RhimeModelSpec:
     PRIOR_OPTION_NAMES: ClassVar[tuple[str, ...]] = ("x_prior", "bc_prior", "offset_prior")
     MAPPING_OPTION_NAMES: ClassVar[tuple[str, ...]] = ("sector_sources", "offset_args")
 
-    species: str
-    domain: str
-    sectors: tuple[SectorSpec, ...]
+    species: Name
+    domain: Name
+    sectors: Annotated[tuple[SectorSpec, ...], Field(min_length=1)]
     use_bc: bool = True
     likelihood: LikelihoodSettings | None = field(default=None, kw_only=True)
     add_offset: bool = False
     aggregation_error_mode: AggregationErrorMode = field(default="none", kw_only=True)
-    bc_prior: PriorArgs | None = None
-    offset_prior: PriorArgs | None = None
-    offset_args: dict[str, Any] | None = None
-    bc_state_activity: StateActivity | None = field(default=None, kw_only=True)
-    state_activity: StateActivity | None = field(default=None, kw_only=True)
+    bc_prior: BorrowedPrior | None = None
+    offset_prior: BorrowedPrior | None = None
+    offset_args: BorrowedOptions | None = None
+    bc_state_activity: RuntimeStateActivity | None = field(default=None, kw_only=True)
+    state_activity: RuntimeStateActivity | None = field(default=None, kw_only=True)
 
     def describe(self, *, priors: Mapping[str, PriorArgs] | None = None) -> dict[str, Any]:
         """Describe structural choices and construction-owned prior parameters.
@@ -316,7 +359,10 @@ class RhimeModelSpec:
             )
 
     def to_record(self, *, trace: Any, data_config: DataConfig) -> dict[str, Any]:
-        """Encode replayable model choices using construction-owned trace priors.
+        """Describe saved model choices using construction-owned trace priors.
+
+        The result is a descriptive ``ModelDescription``, which can contain
+        unused or symbolic priors. It cannot reconstruct executable settings.
 
         Args:
             trace: Sampled trace with explicit constructed-prior metadata.
@@ -341,68 +387,12 @@ class RhimeModelSpec:
         if not data_config.split_by_sectors:
             for sector in record["sectors"]:
                 sector.pop("flux_source")
-        return record
+        from openghg_inversions._record_schema import validate_json_keys
+        from openghg_inversions._serialization_codecs import _json_value
+        from ._model_records import ModelDescription
 
-    @classmethod
-    def from_record(cls, record: Any, *, data_config: DataConfig, trace: Any = None) -> RhimeModelSpec:
-        """Decode :meth:`to_record` output without executing saved callables.
-
-        Args:
-            record: Structural model choices and construction-owned prior records.
-            trace: Saved inference data supplying any referenced ``constant_data``
-                arrays. Scalar-only prior records need no trace lookup.
-            data_config: Preparation configuration supplying species, domain and sources.
-
-        Raises:
-            ValueError: If the record is incomplete, names an unknown likelihood,
-                or references a missing registered prior array.
-        """
-        expected = (set(_MODEL_RECORD_FIELDS) - {"species", "domain"}) | {"sectors", "likelihood"}
-        if not isinstance(record, Mapping) or set(record) != expected:
-            missing = sorted(expected - set(record)) if isinstance(record, Mapping) else sorted(expected)
-            raise ValueError(f"Saved model record must contain exactly {sorted(expected)}; missing {missing}.")
-        def resolve(value: Any) -> Any:
-            if isinstance(value, Mapping):
-                if set(value) == {"data"}:
-                    name = value["data"]
-                    if trace is None or "constant_data" not in trace or name not in trace["constant_data"]:
-                        raise ValueError(f"Missing registered prior data {name!r}.")
-                    return trace["constant_data"][name]
-                return {key: resolve(item) for key, item in value.items()}
-            if isinstance(value, list):
-                return [resolve(item) for item in value]
-            return value
-
-        values = resolve(record)
-        values["species"] = data_config.species
-        values["domain"] = data_config.domain
-        likelihood = values["likelihood"]
-        try:
-            if likelihood is not None:
-                settings_type = _LIKELIHOOD_SETTINGS[likelihood["kind"]]
-                option_names = tuple(setting.name for setting in fields(settings_type))
-                if set(likelihood["options"]) != set(option_names):
-                    raise ValueError(
-                        f"Saved {likelihood['kind']!r} likelihood options must be {sorted(option_names)}."
-                    )
-                values["likelihood"] = settings_type(**likelihood["options"])
-            if len(values["sectors"]) != len(data_config.flux_sources):
-                raise ValueError("Saved model sector count conflicts with its preparation.")
-            if data_config.split_by_sectors:
-                values["sectors"] = tuple(SectorSpec(**sector) for sector in values["sectors"])
-                if set(sector.flux_source for sector in values["sectors"]) != set(data_config.flux_sources):
-                    raise ValueError("Saved model sources conflict with its preparation.")
-            else:
-                values["sectors"] = tuple(
-                    SectorSpec(**sector, flux_source=source)
-                    for sector, source in zip(values["sectors"], data_config.flux_sources, strict=True)
-                )
-            if values["use_bc"] and not data_config.use_bc:
-                raise ValueError("Saved model requires unavailable prepared BC inputs.")
-            return cls(**values)
-        except (KeyError, TypeError) as exc:
-            raise ValueError(f"Saved model record is invalid: {exc}") from exc
-
+        validate_json_keys(record)
+        return ModelDescription.model_validate(_json_value(record)).model_dump(mode="json", exclude_unset=True)
 
 _MODEL_RECORD_FIELDS = (
     "species", "domain", "use_bc", "add_offset", "aggregation_error_mode",
@@ -415,7 +405,7 @@ _LIKELIHOOD_SETTINGS = {
 }
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=RuntimeConfig)
 class RhimeOutputSpec:
     """Output settings for a RHIME run.
 
@@ -474,9 +464,13 @@ class RhimeOutputSpec:
         options = dict(params)
         active_format = options.get("output_format", cls.output_format).lower()
         options.setdefault("save_inversion_output", active_format == "inv_out")
-        if "paris_postprocessing_kwargs" in options:
-            options["paris_postprocessing_kwargs"] = normalise_optional_mapping(options["paris_postprocessing_kwargs"])
         return make_output_spec(multisector=multisector, **options)
+
+    @field_validator("output_path", "country_file", "save_trace", "save_inversion_output", mode="before")
+    @classmethod
+    def resolve_paths(cls, value: Any) -> Any:
+        """Accept explicit path strings at this configuration boundary."""
+        return Path(value).expanduser().resolve() if isinstance(value, str) else value
 
     output_format: OutputFormat = "inv_out"
     output_path: Path | None = None
@@ -484,24 +478,8 @@ class RhimeOutputSpec:
     save_trace: Path | bool = False
     save_inversion_output: Path | bool = True
     country_file: Path | None = None
-    paris_postprocessing_kwargs: dict[str, Any] | None = None
+    paris_postprocessing_kwargs: BorrowedOptions | None = None
     output_filename_convention: OutputFilenameConvention = "rhime"
-
-
-def validate_output_format(output_format: str) -> None:
-    """Validate a RHIME output-format name.
-
-    Args:
-        output_format: Requested output-format name.
-
-    Raises:
-        ValueError: If the format is unsupported.
-    """
-    valid_formats = {"none", "inv_out", "basic", "paris", "legacy"}
-    if output_format not in valid_formats:
-        raise ValueError(
-            f"Unsupported RHIME output_format {output_format!r}; expected one of {sorted(valid_formats)!r}."
-        )
 
 
 def validate_output_path_settings(
@@ -539,23 +517,6 @@ def validate_output_path_settings(
         raise ValueError("`output_path` is required when saving the RHIME InversionOutput.")
 
 
-def validate_output_filename_convention(output_filename_convention: str) -> None:
-    """Validate an output filename convention.
-
-    Args:
-        output_filename_convention: Requested filename convention.
-
-    Raises:
-        ValueError: If the convention is unsupported.
-    """
-    valid_conventions = {"rhime", "legacy"}
-    if output_filename_convention not in valid_conventions:
-        raise ValueError(
-            "Unsupported RHIME output_filename_convention "
-            f"{output_filename_convention!r}; expected one of {sorted(valid_conventions)!r}."
-        )
-
-
 def make_output_spec(
     *,
     output_format: str = RhimeOutputSpec.output_format,
@@ -589,15 +550,6 @@ def make_output_spec(
     """
     output_format = output_format.lower()
     output_filename_convention = output_filename_convention.lower()
-    validate_output_format(output_format)
-    validate_output_filename_convention(output_filename_convention)
-    validate_output_path_settings(
-        output_format=output_format,
-        output_path=output_path,
-        save_trace=save_trace,
-        save_inversion_output=save_inversion_output,
-        multisector=multisector,
-    )
     options = dict(
         output_format=cast(OutputFormat, output_format),
         output_path=output_path,
@@ -608,4 +560,12 @@ def make_output_spec(
         paris_postprocessing_kwargs=paris_postprocessing_kwargs,
         output_filename_convention=cast(OutputFilenameConvention, output_filename_convention),
     )
-    return RhimeOutputSpec(**resolve_resource_paths(options, annotations=get_type_hints(RhimeOutputSpec), base_dir=Path.cwd()))
+    output = RhimeOutputSpec(**resolve_resource_paths(options, annotations=get_type_hints(RhimeOutputSpec), base_dir=Path.cwd()))
+    validate_output_path_settings(
+        output_format=output.output_format,
+        output_path=output.output_path,
+        save_trace=output.save_trace,
+        save_inversion_output=output.save_inversion_output,
+        multisector=multisector,
+    )
+    return output

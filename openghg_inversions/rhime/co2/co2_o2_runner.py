@@ -397,7 +397,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
         metadata["likelihood"] = "joint Gaussian with fixed OU blocks by (species, site)"
     built = RhimeModelBuildResult(
         model=model,
-        output_contract=OutputContract(
+        output_contract=OutputContract.create(
             variable_roles=variable_roles,
             metadata=metadata,
         ),

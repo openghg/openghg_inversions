@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any, Literal
+
+from pydantic import ConfigDict, Field, StringConstraints, field_validator
 
 if TYPE_CHECKING:
     import xarray as xr
 
 
-from openghg_inversions._serialization_codecs import _copy_json_mapping
+from openghg_inversions._record_schema import JsonValue, Record, SchemaVersion
 
 
 _SCHEMA = "openghg_inversions.output_contract"
-_FORMATS = frozenset({"none", "inv_out", "basic", "paris", "legacy"})
+NonemptyString = Annotated[str, StringConstraints(pattern=r"\S")]
+OutputFormat = Literal["none", "inv_out", "basic", "paris", "legacy"]
 
 
 DEFAULT_VARIABLE_ROLES: dict[str, str] = {
@@ -69,61 +71,82 @@ def resolve_predictive_names(
     return list(dict.fromkeys(resolved))
 
 
-@dataclass(frozen=True)
-class OutputContract:
+class OutputContract(Record):
     """Bind scientific roles and a selected state axis to durable model data.
 
-    Args:
-        variable_roles: Nonempty mapping of nonempty scientific role strings to
-            nonempty variable names in samples or prepared data.
-        supported_output_formats: Supported writer names from ``none``, ``inv_out``,
-            ``basic``, ``paris`` and ``legacy``. Must include ``none``.
-        metadata: Finite JSON-compatible builder identity and scientific provenance.
-        state_dimension_mapping: Optional explicit ``trace`` and ``basis`` state
-            dimensions for one output view over the shared posterior. Must be empty
-            or contain exactly these two keys with nonempty string values.
+    All fields are required when validating a saved contract. Use :meth:`create`
+    for a new contract with runtime defaults. Metadata owns its ordinary JSON
+    containers; this value carries no numerical arrays or callable objects.
 
-    Raises:
-        ValueError: A role, format, metadata value or dimension mapping violates
-            the constraints above.
+    Args:
+        variable_roles: Nonempty scientific role-to-array-name mapping. Roles
+            identify quantities such as flux scaling or concentration; values
+            name the corresponding posterior or prepared-input arrays.
+        supported_output_formats: Products this scientific view supports.
+            Every contract includes ``none``; other supported names are
+            ``inv_out``, ``basic``, ``paris`` and ``legacy``.
+        metadata: Finite JSON builder identity and scientific provenance.
+        state_dimension_mapping: Empty, or exactly ``trace`` and ``basis``
+            mapped to the nonempty state-axis names used by a selected output
+            view. The mapping connects posterior states to their basis operator.
     """
 
-    variable_roles: Mapping[str, str]
-    supported_output_formats: tuple[str, ...] = ("none",)
-    metadata: Mapping[str, Any] = field(default_factory=dict)
-    state_dimension_mapping: Mapping[str, str] = field(default_factory=dict)
+    model_config = ConfigDict(serialize_by_alias=True)
 
-    def __post_init__(self) -> None:
-        """Validate and copy metadata without touching numerical arrays."""
-        if not isinstance(self.variable_roles, Mapping) or not self.variable_roles:
-            raise ValueError("OutputContract.variable_roles must be a non-empty mapping.")
-        roles = dict(self.variable_roles)
-        if any(not isinstance(value, str) or not value.strip() for pair in roles.items() for value in pair):
-            raise ValueError("OutputContract.variable_roles requires non-empty string roles and names.")
-        if not isinstance(self.supported_output_formats, (tuple, list)) or any(
-            not isinstance(value, str) or value not in _FORMATS for value in self.supported_output_formats
-        ):
-            raise ValueError("OutputContract.supported_output_formats contains unsupported values.")
-        formats = tuple(dict.fromkeys(self.supported_output_formats))
-        if "none" not in formats:
-            raise ValueError("OutputContract.supported_output_formats must include 'none'.")
-        if not isinstance(self.metadata, Mapping):
-            raise ValueError("OutputContract.metadata must be a JSON-compatible mapping.")
-        metadata = _copy_json_mapping(self.metadata, "OutputContract.metadata")
-        if not isinstance(self.state_dimension_mapping, Mapping):
-            raise ValueError("OutputContract.state_dimension_mapping must be a mapping.")
-        dimensions = dict(self.state_dimension_mapping)
-        if dimensions and (
-            set(dimensions) != {"trace", "basis"}
-            or any(not isinstance(value, str) or not value.strip() for value in dimensions.values())
-        ):
-            raise ValueError(
-                "State-dimension mappings require exactly the non-empty keys 'trace' and 'basis'."
-            )
-        object.__setattr__(self, "variable_roles", roles)
-        object.__setattr__(self, "supported_output_formats", formats)
-        object.__setattr__(self, "metadata", metadata)
-        object.__setattr__(self, "state_dimension_mapping", dimensions)
+    schema_name: Literal["openghg_inversions.output_contract"] = Field(alias="schema")
+    schema_version: SchemaVersion
+    variable_roles: Annotated[
+        dict[NonemptyString, NonemptyString],
+        Field(min_length=1, json_schema_extra={"propertyNames": {"pattern": r"\S"}}),
+    ]
+    supported_output_formats: Annotated[
+        list[OutputFormat], Field(min_length=1, json_schema_extra={"contains": {"const": "none"}}),
+    ]
+    metadata: dict[str, JsonValue]
+    state_dimension_mapping: Annotated[
+        dict[Literal["trace", "basis"], NonemptyString],
+        Field(json_schema_extra={"oneOf": [{"maxProperties": 0}, {"required": ["trace", "basis"]}]}),
+    ]
+
+    @field_validator("supported_output_formats")
+    @classmethod
+    def _require_none(cls, values: list[OutputFormat]) -> list[OutputFormat]:
+        if "none" not in values:
+            raise ValueError("supported_output_formats must include 'none'")
+        return list(dict.fromkeys(values))
+
+    @field_validator("state_dimension_mapping")
+    @classmethod
+    def _require_both_dimensions(cls, values: dict[str, str]) -> dict[str, str]:
+        if values and set(values) != {"trace", "basis"}:
+            raise ValueError("State-dimension mappings require both 'trace' and 'basis'")
+        return values
+
+    @classmethod
+    def create(
+        cls, *, variable_roles: Mapping[str, str],
+        supported_output_formats: tuple[OutputFormat, ...] | list[OutputFormat] = ("none",),
+        metadata: Mapping[str, JsonValue] | None = None,
+        state_dimension_mapping: Mapping[str, str] | None = None,
+    ) -> OutputContract:
+        """Create scientific output meaning with runtime defaults.
+
+        The default view supports ``none`` with empty metadata and no explicit
+        state-axis mapping. Supplied mapping containers are owned. Loading a
+        saved contract requires every field instead of applying these defaults.
+        """
+        return cls(
+            schema=_SCHEMA, schema_version=1, variable_roles=dict(variable_roles),
+            supported_output_formats=(list(supported_output_formats)
+                                      if isinstance(supported_output_formats, tuple) else supported_output_formats),
+            metadata={} if metadata is None else dict(metadata),
+            state_dimension_mapping={} if state_dimension_mapping is None else dict(state_dimension_mapping),
+        )
+
+    def with_updates(self, **changes: Any) -> OutputContract:
+        """Validate a new output view and own its JSON containers."""
+        current = self.model_dump(mode="python", by_alias=True, warnings=False)
+        return type(self).model_validate(current | changes)
 
     def validate_requested_output(self, output_format: str) -> None:
         """Reject a writer that the bound scientific contract does not support."""
@@ -140,12 +163,6 @@ class OutputContract:
         Predictive evidence is optional. A contract advertising products must
         retain its declared flux scales, boundary scales and observation offsets
         in the posterior, even when the current invocation requests no products.
-
-        Args:
-            trace: Externally supplied or loaded samples to validate.
-
-        Raises:
-            ValueError: If a declared reconstruction state is absent from the posterior.
         """
         if set(self.supported_output_formats) == {"none"}:
             return
@@ -159,38 +176,11 @@ class OutputContract:
             raise ValueError(f"Trace is missing output-contract reconstruction state(s): {missing!r}.")
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a versioned JSON value with no numerical payload or callable."""
-        return {
-            "schema": _SCHEMA,
-            "schema_version": 1,
-            "variable_roles": dict(self.variable_roles),
-            "supported_output_formats": list(self.supported_output_formats),
-            "metadata": dict(self.metadata),
-            "state_dimension_mapping": dict(self.state_dimension_mapping),
-        }
+        """Validate current metadata before projecting it into a versioned JSON value."""
+        current = self.model_dump(mode="python", by_alias=True, warnings=False)
+        return type(self).model_validate(current).model_dump(mode="json", by_alias=True)
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> OutputContract:
         """Load the exact supported schema, rejecting incomplete or unknown data."""
-        expected = {
-            "schema",
-            "schema_version",
-            "variable_roles",
-            "supported_output_formats",
-            "metadata",
-            "state_dimension_mapping",
-        }
-        if not isinstance(value, Mapping) or set(value) != expected:
-            raise ValueError("Output contract has missing or unexpected fields.")
-        if (
-            value["schema"] != _SCHEMA
-            or type(value["schema_version"]) is not int
-            or value["schema_version"] != 1
-        ):
-            raise ValueError("Output contract has an unsupported schema or schema_version.")
-        return cls(
-            variable_roles=value["variable_roles"],
-            supported_output_formats=value["supported_output_formats"],
-            metadata=value["metadata"],
-            state_dimension_mapping=value["state_dimension_mapping"],
-        )
+        return cls.model_validate(value)

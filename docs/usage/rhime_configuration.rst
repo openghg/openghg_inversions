@@ -8,6 +8,11 @@ inversion, start with the :doc:`standard tutorial <rhime_standard_tutorial>` or
 :doc:`RHIME reference <rhime>` describes vocabulary and prepared inputs;
 :doc:`customising_rhime` explains how to adapt the scientific preparation stages.
 
+This prototype validates the existing configuration constructors with Pydantic,
+including ``dataclasses.replace``. Resolution still owns request-dependent
+defaults. See :doc:`/experimental/pydantic_records` for constructor errors and
+generated schemas, and a configuration roundtrip without scientific I/O.
+
 Inspecting the resolved request
 -------------------------------
 
@@ -27,6 +32,17 @@ The returned ``RhimeConfig`` is the complete requested configuration:
 * ``sampler`` is the existing ``RhimeSampler`` with resolved sampling settings.
   It executes inference only when supplied a completed model. Its implementation
   lives in ``inference.sampling``; the established RHIME imports remain valid.
+  All declared settings are supported in the configured frontend, including
+  ``sample_prior_predictive`` and ``sample_posterior_predictive``.
+
+``RhimeConfig.to_dict()`` and ``RhimeConfig.from_dict()`` roundtrip portable
+nested current choices, including the configured sampler, paths and inlet
+slices. ``RhimeConfig.json_schema()`` describes this JSON representation.
+Direct construction and JSON reading also permit an omitted or null sampler for
+serialization-only configurations. Live execution rejects it before acquisition
+or preparation; ``from_params`` always resolves a real sampler. Runtime-only
+policies, array-valued priors and opaque sampler options cannot be exported.
+See :doc:`/experimental/pydantic_records` for the runnable example and limits.
 
 Sampler options cannot override model-owned coordinates: ``coords`` and ``dims``
 inside ``sample_kwargs["idata_kwargs"]`` or
@@ -121,10 +137,10 @@ stays available until that last step: changing sites or averaging periods before
 resolution expands the final values together. The resulting ``config`` can be
 passed to a runner without resolving again.
 
-``RhimeConfig.from_params`` is the single construction entry point; the former
+``RhimeConfig.from_params`` is the external request-resolution entry point; the former
 ``resolve_rhime_config`` wrapper has been removed. Runner frontends, including
 ``run_standard`` and staged commands, translate supported deprecated names before
-calling this constructor. They emit ``DeprecationWarning`` on devel and in 0.8;
+calling this resolver. They emit ``DeprecationWarning`` on devel and in 0.8;
 these aliases are removed in 0.9. For names such as ``xprior`` and ``outputname``,
 canonical names take precedence. Flux keyword deprecations follow the stricter
 rules below. Canonical inputs emit no warning. Configuration construction has no
@@ -379,8 +395,8 @@ choices change.
 
 The configuration record is frozen; its existing mapping and sampler members
 remain mutable. Resolution leaves caller options unchanged, and retained-site
-selection leaves the requested configuration unchanged. Configuration
-serialization and an INI writer are deferred to
+selection leaves the requested configuration unchanged. This prototype exports
+portable resolved choices with ``RhimeConfig.to_dict()``; INI writing remains tracked by
 `Issue 814 <https://github.com/openghg/openghg_inversions/issues/814>`_.
 Standard saved sampling checks scientific compatibility with preparation,
 allowing compatible model choices to change without full-configuration equality.

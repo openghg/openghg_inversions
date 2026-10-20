@@ -19,6 +19,7 @@ import pytest
 import xarray as xr
 from dask.callbacks import Callback
 from pymc.util import get_state_from_generator
+from pydantic import ValidationError
 
 from examples.rhime_customisation import likelihoods as example_likelihoods
 import openghg_inversions.inversion_data.acquisition as acquisition_module
@@ -177,7 +178,10 @@ def multisector_model_spec(builder_args: dict[str, Any]) -> RhimeModelSpec:
     return RhimeModelSpec(
         species="ch4",
         domain="EUROPE",
-        sectors=(),
+        sectors=(
+            _sector("total-ukghg-edgar7", prior=builder_args["x_prior"]),
+            _sector("sector-2", prior=builder_args["x_prior"]),
+        ),
         likelihood=PollutionEventSettings(
             sigma_prior=builder_args["sigma_prior"],
             pollution_events_from_obs=builder_args["pollution_events_from_obs"],
@@ -594,7 +598,7 @@ def _run_prepared(*, prepared_inputs, config, sampler="default", **kwargs):
 
 def _fixture_output(config, idata, prepared, *, model_spec, multisector=False) -> InversionOutput:
     """Bind a posterior directly to retained scientific context."""
-    contract = OutputContract(
+    contract = OutputContract.create(
         variable_roles={"concentration": "y"},
         supported_output_formats=("none", "inv_out", "basic", "paris", "legacy"),
         metadata={"kind": "builtin"},
@@ -1961,7 +1965,7 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
     )
     build_result = RhimeModelBuildResult(
         model=pm.Model(),
-        output_contract=OutputContract(
+        output_contract=OutputContract.create(
             variable_roles={"concentration": "y"},
         ),
     )
@@ -1992,8 +1996,7 @@ def test_configured_surface_excludes_internal_composed_values() -> None:
         with pytest.raises(ValueError, match=name):
             rhime_params.validate_supported_params({name: object()})
     for name in ("sample_prior_predictive", "sample_posterior_predictive"):
-        with pytest.raises(ValueError, match=name):
-            rhime_params.validate_supported_params({name: True})
+        rhime_params.validate_supported_params({name: True})
 
 
 def test_build_multisector_model_preserves_sector_priors_in_joint_state(
@@ -2746,7 +2749,7 @@ def test_prepared_recipes_share_explicit_scientific_operations(
     calls: list[str] = []
     retained: list[RhimePreparedInputs] = []
     model_inputs = xr.Dataset()
-    build_result = RhimeModelBuildResult(model=pm.Model(), output_contract=OutputContract(
+    build_result = RhimeModelBuildResult(model=pm.Model(), output_contract=OutputContract.create(
         variable_roles={"concentration": "y"},
     ))
     posterior = _minimal_output_idata()
@@ -2905,7 +2908,7 @@ def test_public_rhime_runners_follow_named_stage_order(
     model_inputs = xr.Dataset({"sentinel": xr.DataArray(1)})
     build_result = RhimeModelBuildResult(
         model=pm.Model(),
-        output_contract=OutputContract(
+        output_contract=OutputContract.create(
             variable_roles={"concentration": "y"},
         ),
     )
@@ -3349,7 +3352,7 @@ def test_custom_multisector_model_composes_directly_from_borrowed_inputs(
     inputs = rhime_public.materialize_pymc_inputs(prepared, variable_names=("mf",))
     with models.registered_model(coords={"nmeasure": inputs.nmeasure.values}) as model:
         pm.Normal("custom_y", observed=inputs["mf"].values, dims="nmeasure")
-    built = RhimeModelBuildResult(model=model, output_contract=OutputContract(
+    built = RhimeModelBuildResult(model=model, output_contract=OutputContract.create(
         variable_roles={"observation": "mf", "concentration": "custom_y"},
         supported_output_formats=("none", "inv_out"),
         metadata={"package": "research-models"},
@@ -3885,33 +3888,19 @@ def test_prepared_recipes_validate_output_before_execution(
 
 
 def test_prepared_standard_rejects_empty_model() -> None:
-    """Prepared runs reject model specifications without a sector."""
-    model_spec, output_spec, config = _minimal_output_specs(output_format="none")
-    config = _fixture_config(
-        config.data.start_date,
-        config.data.end_date,
-        config.data.site_options.sites,
-        config.data.site_options.averaging_period,
-        RhimeModelSpec(species=model_spec.species, domain=model_spec.domain, sectors=(), likelihood=PollutionEventSettings(), use_bc=False),
-        output_spec,
-    )
-    prepared = RhimePreparedInputs(
-        inv_inputs=_minimal_output_inv_inputs(),
-        basis_functions=_fake_basis_functions(),
-        site_metadata=_prepared_site_metadata(),
-    )
-
-    with pytest.raises(ValueError, match="exactly one (?:model )?sector"):
-        _run_prepared(prepared_inputs=prepared, config=config)
-
-
+    """An empty model fails during configuration construction, before preparation."""
+    with pytest.raises(ValidationError, match="sectors"):
+        RhimeModelSpec(
+            species="ch4", domain="EUROPE", sectors=(),
+            likelihood=PollutionEventSettings(), use_bc=False,
+        )
 
 
 def test_unreleased_sampling_compatibility_shims_are_absent() -> None:
     """Unreleased same-branch sampling names are not public API."""
     assert not hasattr(rhime_public, "RhimeSamplingSpec")
     assert not hasattr(rhime_sampling, "RhimeSamplingSpec")
-    with pytest.raises(TypeError, match="nit"):
+    with pytest.raises(ValidationError, match="nit"):
         RhimeSampler(nit=7)  # type: ignore[call-arg]
 
 
@@ -4587,8 +4576,8 @@ def test_rhime_sampler_rejects_invalid_prior_counts_before_sampling(
         raise AssertionError("An invalid prior count must fail before MCMC")
 
     monkeypatch.setattr(inference_sampling.pm, "sample", forbidden_sample)
-    sampler = RhimeSampler(sample_prior_predictive=prior, sample_posterior_predictive=False)
-    with pytest.raises(ValueError, match="sample_prior_predictive.*non-negative integer"):
+    with pytest.raises(ValueError, match="sample_prior_predictive"):
+        sampler = RhimeSampler(sample_prior_predictive=prior, sample_posterior_predictive=False)
         sampler.sample(pm.Model())
 
 
@@ -6625,7 +6614,7 @@ def test_run_rhime_rejects_unsupported_output_format(tmp_path: Path) -> None:
         "output_format": "definitely-not-supported",
     }
 
-    with pytest.raises(ValueError, match="Unsupported RHIME output_format"):
+    with pytest.raises(ValidationError, match="output_format"):
         run_standard(**args)
 
 
@@ -6642,7 +6631,7 @@ def test_run_rhime_can_validate_output_format_without_output_path() -> None:
         "output_format": "definitely-not-supported",
     }
 
-    with pytest.raises(ValueError, match="Unsupported RHIME output_format"):
+    with pytest.raises(ValidationError, match="output_format"):
         run_standard(**args)
 
 
@@ -8016,7 +8005,7 @@ def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter
     product = basic_output(bundle, country_file=output_spec.country_file)
     assert product["ok"].item() == 1
     assert captured["inv_out"] is bundle
-    assert captured["country_file"] == str(europe_country_file)
+    assert captured["country_file"] == europe_country_file
 
 
 def test_standard_products_and_archived_trace_use_all_chains(
@@ -8099,7 +8088,7 @@ def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter
 
     assert isinstance(bundle, InversionOutput)
     assert captured["inv_out"] is bundle
-    assert captured["country_file"] == str(europe_country_file)
+    assert captured["country_file"] == europe_country_file
     assert captured["domain"] == "EUROPE"
     assert captured["obs_avg_period"] == "1h"
     assert bundle.model_metadata["footprint_provenance"]["TAC"] == {
@@ -8570,7 +8559,7 @@ output_format = "inv_out"
 
     build_result = RhimeModelBuildResult(
         model=pm.Model(),
-        output_contract=OutputContract(
+        output_contract=OutputContract.create(
             variable_roles={"concentration": "y"},
         ),
     )

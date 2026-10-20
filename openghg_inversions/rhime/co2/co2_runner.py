@@ -534,7 +534,7 @@ def build_co2_from_materialized(
         resolved_offset_args = {"offset_freq": frequency, "drop_first": drop_first, "per_site": per_site}
     built = RhimeModelBuildResult(
         model=model,
-        output_contract=OutputContract(
+        output_contract=OutputContract.create(
             variable_roles=variable_roles,
             metadata={
                 "recipe": "co2",

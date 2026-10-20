@@ -10,6 +10,7 @@ import dask.array as da
 from dask.callbacks import Callback
 import pytest
 import xarray as xr
+from pydantic import ValidationError
 
 import openghg_inversions.rhime as rhime
 from openghg_inversions.hbmcmc.compatibility import params_from_config
@@ -736,7 +737,8 @@ def test_canonical_paths_are_forwarded_without_conversion(tmp_path, monkeypatch)
             _request(basis_path=path, bc_basis_paths=paths, country_file=path), multisector=False,
         )
     assert config.data.basis_path is path
-    assert config.data.bc_basis_paths is paths
+    assert config.data.bc_basis_paths == paths
+    assert config.data.bc_basis_paths[0] is paths[0]
     assert config.output.country_file is path
 
 
@@ -832,8 +834,9 @@ def test_canonical_configuration_rejects_old_output_formats_without_warnings(out
 
     with warnings.catch_warnings():
         warnings.simplefilter("error", DeprecationWarning)
-        with pytest.raises(ValueError, match="Unsupported RHIME output_format"):
+        with pytest.raises(ValidationError) as caught:
             rhime_params.RhimeConfig.from_params(_request(output_format=output_format), multisector=False)
+    assert caught.value.errors()[0]["loc"] == ("output_format",)
 
 
 def test_configuration_does_not_import_compatibility_owners():

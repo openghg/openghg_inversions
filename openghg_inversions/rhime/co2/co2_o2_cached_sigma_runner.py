@@ -188,7 +188,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         roles["baseline_concentration"] = "baseline_concentration"
     built = RhimeModelBuildResult(
         model=cached.model,
-        output_contract=OutputContract(
+        output_contract=OutputContract.create(
             variable_roles=roles,
             metadata=metadata,
         ),

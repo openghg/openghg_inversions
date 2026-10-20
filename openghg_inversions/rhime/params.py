@@ -11,16 +11,24 @@ defaults; scientific callable signatures do not define the external schema.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import MISSING, dataclass, field, fields
+from dataclasses import MISSING, field, fields
+import json
 from pathlib import Path
-from typing import Any, get_args, get_type_hints
+from typing import Annotated, Any, Literal, get_args, get_type_hints
 
+from pydantic import BeforeValidator, Field, JsonValue, TypeAdapter, field_validator, model_serializer, model_validator
+from pydantic.dataclasses import dataclass
+
+from openghg_inversions._record_schema import (
+    JsonFloat, RuntimeConfig, normalize_runtime_scalar, portable_json,
+)
+
+import numpy as np
 import pandas as pd
 
 from openghg_inversions.rhime._resources import resolve_resource_paths
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._site_options import SiteOptions
-from openghg_inversions.model_error import MinErrorConfig
 from openghg_inversions.inversion_inputs import normalise_frequency
 from openghg_inversions.model_error import normalise_min_error, normalise_min_error_options
 from openghg_inversions.models._flux import safe_pymc_name
@@ -38,25 +46,25 @@ from openghg_inversions.rhime.specs import (
     LIKELIHOOD_PRIOR_OPTION_NAMES,
     _copy_option_containers,
     make_likelihood_settings as _make_likelihood_settings,
-    normalise_optional_mapping,
 )
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, config=RuntimeConfig)
 class DataConfig:
     """Resolved acquisition and preparation choices, independent of inference.
 
     External options enter through ``from_params``. Ordinary option containers
     are owned; numerical payloads remain borrowed. Direct construction expects
-    resolved values and does not copy or execute scientific work.
+    resolved values, validates their types and layout, and owns ordinary option
+    containers without executing scientific work.
     """
 
     site_options: SiteOptions
-    species: str
-    domain: str
-    start_date: str
-    end_date: str
-    flux_sources: tuple[str, ...]
+    species: Annotated[str, Field(pattern=r"\S")]
+    domain: Annotated[str, Field(pattern=r"\S")]
+    start_date: Annotated[str, Field(pattern=r"\S")]
+    end_date: Annotated[str, Field(pattern=r"\S")]
+    flux_sources: Annotated[tuple[Annotated[str, Field(pattern=r"\S")], ...], Field(min_length=1)]
     split_by_sectors: bool = False
     bc_store: str = "user"
     obs_store: str = "user"
@@ -75,16 +83,61 @@ class DataConfig:
     outer_regions_path: Path | None = None
     bc_input: str | None = None
     basis_algorithm: str | None = "weighted"
-    nbasis: int = 100
+    nbasis: Annotated[int, Field(gt=0), BeforeValidator(normalize_runtime_scalar)] = 100
     filters: str | list[str | None] | dict[str, str | None | list[str | None]] | None = None
     fix_basis_outer_regions: bool = False
     averaging_error: bool = True
     bc_freq: str | None = None
     basis_output_path: Path | None = None
-    min_error: MinErrorConfig = 0.0
-    min_error_options: dict[str, bool] = field(default_factory=lambda: normalise_min_error_options(None))
+    min_error: Literal["percentile", "residual"] | dict[str, JsonFloat] | None | int | JsonFloat = 0.0
+    min_error_options: dict[str, bool] = field(default_factory=dict)
     flux_non_finite_check: FluxNonFiniteCheck = "lazy"
 
+
+    @field_validator("min_error", mode="before")
+    @classmethod
+    def resolve_minimum_error(cls, value: Any) -> Any:
+        """Keep the minimum-error policy at its existing numerical owner."""
+        if isinstance(value, Mapping):
+            value = {key: normalize_runtime_scalar(item) for key, item in value.items()}
+            numbers = value.values()
+        elif value is None or isinstance(value, str):
+            numbers = ()
+        else:
+            value = normalize_runtime_scalar(value)
+            numbers = (value,)
+        if any(type(item) not in (int, float) for item in numbers):
+            raise ValueError("min_error must contain numeric scalars, without array or object conversion")
+        return normalise_min_error(value)
+
+    @field_validator("filters", mode="before")
+    @classmethod
+    def own_options(cls, value: Any) -> Any:
+        return _copy_option_containers(value)
+
+    @field_validator("min_error_options", mode="before")
+    @classmethod
+    def _resolve_minimum_error_options(cls, value: Any) -> dict[str, bool]:
+        return normalise_min_error_options(value)
+
+    @model_validator(mode="after")
+    def validate_layout(self) -> DataConfig:
+        """Require a resolved recipe layout without loading any scientific input."""
+        if len(set(self.flux_sources)) != len(self.flux_sources):
+            raise ValueError("flux_sources must be unique")
+        if self.split_by_sectors != (len(self.flux_sources) > 1):
+            raise ValueError("split_by_sectors must agree with the number of flux_sources")
+        _bc_frequency_policy(self.bc_freq)
+        return self
+
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler: Any, info: Any):
+        if info.mode != "json":
+            return handler(self)
+        values = {field.name: getattr(self, field.name) for field in fields(self)}
+        for name in ("filters", "min_error", "min_error_options"):
+            values[name] = portable_json(values[name])
+        return handler(type(self)(**values))
 
     @classmethod
     def option_names(cls) -> frozenset[str]:
@@ -148,14 +201,10 @@ class DataConfig:
         if (remaining.get("basis_path") is None and remaining.get("basis_partition_path") is None
                 and remaining.get("basis_partition_paths") is None and basis_algorithm not in allowed):
             raise ValueError(f"`basis_algorithm` must be one of {allowed!r}; got {basis_algorithm!r}.")
-        _bc_frequency_policy(remaining.get("bc_freq", cls.bc_freq))
         remaining["sites"] = as_list(remaining["sites"])
         site_options = SiteOptions.from_inputs(**{
             f.name: remaining.pop(f.name) for f in fields(SiteOptions) if f.name in remaining
         })
-        remaining["filters"] = _copy_option_containers(remaining.get("filters", cls.filters))
-        remaining["min_error"] = normalise_min_error(remaining.get("min_error", cls.min_error))
-        remaining["min_error_options"] = normalise_min_error_options(remaining.get("min_error_options"))
         remaining["split_by_sectors"] = multisector
         return cls(site_options=site_options, flux_sources=tuple(flux_sources), **remaining)
 
@@ -174,14 +223,40 @@ class DataConfig:
         return params
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, config=RuntimeConfig)
 class RhimeConfig:
     """Complete requested configuration with one authoritative owner per group."""
 
     data: DataConfig
     model: RhimeModelSpec
     output: RhimeOutputSpec
-    sampler: RhimeSampler
+    sampler: RhimeSampler | None = None
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        """Export portable resolved choices without acquisition or numerical work.
+
+        A null sampler is valid for configuration-only export. Live execution
+        still requires a configured sampler or an explicit default request.
+        Runtime-only policies and opaque prior/sampler values raise an error.
+        """
+        return TypeAdapter(type(self)).dump_python(self, mode="json", warnings="error")
+
+    @classmethod
+    def from_dict(cls, value: dict[str, JsonValue]) -> RhimeConfig:
+        """Read portable current choices without scientific work.
+
+        This accepts the nested representation emitted by :meth:`to_dict`; flat
+        or grouped external requests continue to use :meth:`from_params`.
+        Omitted optional current settings use their declared constructor defaults;
+        this is not a decoder for historical scientific checkpoint metadata.
+        """
+        native = portable_json(value)
+        return TypeAdapter(cls).validate_json(json.dumps(native, allow_nan=False))
+
+    @classmethod
+    def json_schema(cls) -> dict[str, Any]:
+        """Describe the portable resolved-configuration JSON representation."""
+        return TypeAdapter(cls).json_schema(mode="serialization")
 
     @classmethod
     def supported_option_names(cls) -> frozenset[str]:
@@ -297,9 +372,6 @@ def resolve_sampler_options(params: Mapping[str, Any]) -> RhimeSampler:
     unknown = sorted(set(remaining) - set(RhimeSampler.CONFIG_OPTION_NAMES))
     if unknown:
         raise ValueError(f"Unsupported sampler parameter(s): {unknown!r}")
-    for name in RhimeSampler.MAPPING_OPTION_NAMES:
-        if name in remaining:
-            remaining[name] = normalise_optional_mapping(remaining[name])
     return RhimeSampler(**remaining)
 
 
@@ -362,14 +434,14 @@ def resolve_model_options(params: Mapping[str, Any], *, data_config: DataConfig)
     sector_priors = remaining.pop("sector_priors", None)
     if sector_priors is not None:
         sector_priors = {str(name): prior for name, prior in sector_priors.items()}
-    bc_prior = normalise_optional_mapping(remaining.pop("bc_prior", None))
+    bc_prior = remaining.pop("bc_prior", None)
     if use_bc and bc_prior is None:
-        bc_prior = dict(DEFAULT_BC_PRIOR)
+        bc_prior = DEFAULT_BC_PRIOR
     add_offset = remaining.pop("add_offset", RhimeModelSpec.add_offset)
-    offset_prior = normalise_optional_mapping(remaining.pop("offset_prior", None))
+    offset_prior = remaining.pop("offset_prior", None)
     if add_offset and offset_prior is None:
-        offset_prior = dict(DEFAULT_OFFSET_PRIOR)
-    offset_args = normalise_optional_mapping(remaining.pop("offset_args", None))
+        offset_prior = DEFAULT_OFFSET_PRIOR
+    offset_args = remaining.pop("offset_args", None)
     aggregation = remaining.pop("aggregation_error_mode", RhimeModelSpec.aggregation_error_mode)
     if aggregation not in get_args(AggregationErrorMode):
         raise ValueError(f"Invalid `aggregation_error_mode`: {aggregation!r}.")
@@ -442,7 +514,11 @@ def normalise_rhime_params(params: Mapping[str, Any]) -> dict[str, Any]:
 def coerce_simple_param_types(params: dict[str, Any]) -> None:
     """Coerce simple scalar options in-place before spec construction."""
     if params.get("output_format") is not None:
-        params["output_format"] = str(params["output_format"]).lower()
+        if not isinstance(params["output_format"], str):
+            raise ValueError(_invalid_config_type_message("output_format", "a string", params["output_format"]))
+        params["output_format"] = params["output_format"].lower()
+    if "power" in params:
+        params["power"] = normalize_runtime_scalar(params["power"])
     for name in RhimeSampler.INTEGER_OPTION_NAMES:
         if name not in params or params[name] is None:
             continue
@@ -451,7 +527,9 @@ def coerce_simple_param_types(params: dict[str, Any]) -> None:
 
 def _coerce_int_option(name: str, value: Any) -> int:
     """Coerce a RHIME integer option while rejecting ambiguous values."""
-    if isinstance(value, bool):
+    if isinstance(value, (np.integer, np.floating)):
+        value = value.item()
+    if type(value) not in (int, float, str):
         raise ValueError(_invalid_config_type_message(name, "an integer", value))
     if isinstance(value, float) and not value.is_integer():
         raise ValueError(_invalid_config_type_message(name, "an integer", value))
@@ -502,9 +580,6 @@ def validate_rhime_param_types(params: Mapping[str, Any]) -> None:
     )
     for mapping_name in mapping_names:
         _validate_mapping_option(params, mapping_name)
-
-    if "min_error_options" in params:
-        normalise_min_error_options(params["min_error_options"])
 
     if "power" in params and params["power"] is not None:
         power = params["power"]
@@ -642,7 +717,7 @@ def _make_model_spec(
             SectorSpec(
                 name=name,
                 flux_source=source,
-                x_prior=_copy_option_containers(dict(prior)),
+                x_prior=prior,
                 variable_suffix=suffix,
             )
         )

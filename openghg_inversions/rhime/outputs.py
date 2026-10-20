@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import asdict, replace
+from dataclasses import asdict
 import json
 from pathlib import Path
 from typing import Any
@@ -478,7 +478,8 @@ def annotate_sample_trace(
 def make_model_output(
     *,
     prepared: RhimePreparedInputs,
-    model_spec: RhimeModelSpec,
+    model_spec: RhimeModelSpec | None = None,
+    model_metadata: Mapping[str, Any] | None = None,
     posterior: xr.DataTree,
     output_contract: OutputContract,
     start_date: str,
@@ -491,7 +492,9 @@ def make_model_output(
 
     Args:
         prepared: Retained scientific inputs and basis.
-        model_spec: Model choices used for sampling.
+        model_spec: Model choices used for sampling in a live run.
+        model_metadata: Already validated descriptive metadata from a saved handoff.
+            This route does not reconstruct executable configuration.
         posterior: Sampler-produced or externally validated trace with prior metadata.
         output_contract: Constructed model roles and supported products.
         start_date: Requested inversion start, independently of retained observations.
@@ -504,26 +507,29 @@ def make_model_output(
     Returns:
         A scientific view borrowing the prepared arrays and trace, without writing files.
     """
-    priors = trace_prior_records(posterior)
-    model_metadata = model_spec.describe(priors=priors)
-    model_metadata["constructed_priors"] = priors
-    if model_metadata["likelihood"] is not None:
-        model_metadata["likelihood"] = model_metadata["likelihood"]["options"]
-    for name in ("state_activity", "bc_state_activity"):
-        policy = getattr(model_spec, name)
-        model_metadata[name] = None if policy is None else asdict(policy)
-    for sector, record in zip(model_spec.sectors, model_metadata["sectors"], strict=True):
-        role = "flux_scale" if len(model_spec.sectors) == 1 else f"flux_scale:{sector.name}"
-        variable = output_contract.variable_roles.get(role)
-        if variable is not None and variable in priors:
-            record["x_prior"] = priors[variable]
-        record["state_activity"] = None if sector.state_activity is None else asdict(sector.state_activity)
+    if model_metadata is None:
+        if model_spec is None:
+            raise ValueError("Provide model_spec or validated saved model_metadata.")
+        priors = trace_prior_records(posterior)
+        model_metadata = model_spec.describe(priors=priors)
+        model_metadata["constructed_priors"] = priors
+        if model_metadata["likelihood"] is not None:
+            model_metadata["likelihood"] = model_metadata["likelihood"]["options"]
+        for name in ("state_activity", "bc_state_activity"):
+            policy = getattr(model_spec, name)
+            model_metadata[name] = None if policy is None else asdict(policy)
+        for sector, record in zip(model_spec.sectors, model_metadata["sectors"], strict=True):
+            role = "flux_scale" if len(model_spec.sectors) == 1 else f"flux_scale:{sector.name}"
+            variable = output_contract.variable_roles.get(role)
+            if variable is not None and variable in priors:
+                record["x_prior"] = priors[variable]
+            record["state_activity"] = None if sector.state_activity is None else asdict(sector.state_activity)
     metadata = dict(output_contract.metadata)
     for attr, key in (("rhime_likelihood_builder", "likelihood_builder"),
                       ("rhime_likelihood_kwargs", "likelihood_kwargs")):
         if attr in posterior.attrs:
             metadata[key] = json.loads(posterior.attrs[attr])
-    contract = replace(output_contract, metadata=metadata) if metadata != output_contract.metadata else output_contract
+    contract = output_contract.with_updates(metadata=metadata) if metadata != output_contract.metadata else output_contract
     return make_inversion_output(
         prepared=prepared,
         trace=posterior,
