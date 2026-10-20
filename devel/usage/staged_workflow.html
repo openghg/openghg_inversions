@@ -662,9 +662,9 @@ rhime<span class="w"> </span>postprocess<span class="w"> </span>--sample-manifes
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">standard</span></code> is the default for these commands. A manifest’s family must
-match the selected route. Full-run <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span></code> choices and aliases are
-unchanged; saved-phase selection does not add CO2 configuration-file support to
-the full-run command.</p>
+match the selected route. Ordinary CO₂ configured full execution is available
+through <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span> <span class="pre">--model</span> <span class="pre">co2</span></code>; see <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for its
+prepared-input configuration.</p>
 <p>Python callers can use the same handoffs:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">DataConfig</span><span class="p">,</span> <span class="n">RhimeOutputSpec</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.stages</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare</span><span class="p">,</span> <span class="n">sample</span><span class="p">,</span> <span class="n">postprocess</span>
@@ -756,12 +756,41 @@ For in-memory sector diagnostics, call
 preparation reuse, separate model samples, multiple output choices and comparison
 with full execution. Its <a class="reference download internal" download="" href="../_downloads/8e75f4384736dcc972ca5321305c6b91/multisector_handoffs.py"><code class="xref download docutils literal notranslate"><span class="pre">companion</span> <span class="pre">script</span></code></a> also checks independent model equations.</p>
 </section>
+<section id="ordinary-co2-handoffs">
+<h2>Ordinary CO₂ handoffs<a class="headerlink" href="#ordinary-co2-handoffs" title="Link to this heading">#</a></h2>
+<p>Ordinary CO₂ uses its own coherent preparation and conditional affine output
+meaning. <code class="docutils literal notranslate"><span class="pre">run_co2</span></code> and its saved phases call the same preparation,
+materialization, construction, sampling and product operations; full execution
+requires no manifests. <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span> <span class="pre">--model</span> <span class="pre">co2</span></code> consumes the configured model,
+sampler and output request; <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run-co2</span></code> remains an alias. Python
+<code class="docutils literal notranslate"><span class="pre">rhime.run(model=&quot;co2&quot;,</span> <span class="pre">config_file=&quot;co2.toml&quot;)</span></code> selects the same <code class="docutils literal notranslate"><span class="pre">run_co2</span></code>
+entry point and returns the scientific <code class="docutils literal notranslate"><span class="pre">Co2Output</span></code> view. This route requires
+prepared inputs or caller-supplied canonical inputs with a coherent reduction;
+configured acquisition and native-reduction construction are separate work.</p>
+<p><code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">sample</span> <span class="pre">--model</span> <span class="pre">co2</span> <span class="pre">--preparation-manifest</span> <span class="pre">...</span></code> consumes one preparation
+handoff and current inference choices. Compatible BC/offset priors or supported
+mismatch choices reuse preparation; changing defining native priors, covariance,
+operators or projection requires a coherent new preparation. Requested dates
+remain separate from retained observation extrema, including for imported pairs.</p>
+<p><code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">postprocess</span> <span class="pre">--model</span> <span class="pre">co2</span> <span class="pre">--sample-manifest</span> <span class="pre">...</span></code> loads saved scientific
+meaning and provenance without constructing a graph or sampling. It returns a
+<code class="docutils literal notranslate"><span class="pre">Co2Output</span></code> scientific view with <code class="docutils literal notranslate"><span class="pre">sampler=None</span></code> and supports the same
+concentration and conditional native/country products as full execution.
+Missing imported request facts must be supplied explicitly. See
+<a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for configuration, readiness/diagnosis, affine
+compatibility and the distinct cached-CO₂ boundary, and
+<a class="reference download internal" download="" href="../_downloads/9b5fde691f83b7ffe1ac2fa12eaa650f/co2_handoffs.py"><code class="xref download docutils literal notranslate"><span class="pre">co2_handoffs.py</span></code></a> for an executable
+full/saved scientific comparison. Linked CO₂/O₂ and nested workflows are separate.</p>
+</section>
 <section id="readiness-and-independent-diagnosis">
 <h2>Readiness and independent diagnosis<a class="headerlink" href="#readiness-and-independent-diagnosis" title="Link to this heading">#</a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">prior-predictive</span> <span class="pre">--preparation-manifest</span> <span class="pre">...</span> <span class="pre">--output-dir</span> <span class="pre">...</span></code> builds
 the selected model and draws prior predictions without posterior inference.
 <code class="docutils literal notranslate"><span class="pre">--draws</span></code> controls its sample count. Loading and serialization errors
-propagate; supported model/input failures produce a readiness <code class="docutils literal notranslate"><span class="pre">fail</span></code> result.
+propagate; for standard and multisector, supported model/input failures produce
+a readiness <code class="docutils literal notranslate"><span class="pre">fail</span></code> result. Ordinary CO₂ construction and inference errors
+propagate; evaluated missing, empty or non-finite predictive evidence produces
+a failed check.
 Select <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">multisector</span></code> for prior predictions from a multisector preparation
 manifest. Python callers use <code class="docutils literal notranslate"><span class="pre">multisector_stages.prior_predictive</span></code> with current
 model choices and the same likelihood seam as sampling.
@@ -770,6 +799,8 @@ Readiness checks finite evidence, not scientific plausibility. See
 <p id="staged-convergence-check"><code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">diagnose</span> <span class="pre">--posterior</span> <span class="pre">posterior.nc</span> <span class="pre">--output-dir</span> <span class="pre">...</span></code> independently
 reports maximum R-hat, minimum bulk/tail ESS, divergences and unassessable
 variables. <code class="docutils literal notranslate"><span class="pre">--sample-manifest</span></code> optionally supplies descriptive run context.
+For a current sample manifest, omit <code class="docutils literal notranslate"><span class="pre">--posterior</span></code> to use its recorded posterior
+reference; an explicit posterior path takes precedence.
 Defaults are maximum R-hat 1.01, minimum bulk/tail ESS 400 and zero divergences.
 Available metrics exceeding a threshold yield <code class="docutils literal notranslate"><span class="pre">fail</span></code>; missing metrics yield
 <code class="docutils literal notranslate"><span class="pre">unknown</span></code> when none fails; otherwise the result is <code class="docutils literal notranslate"><span class="pre">pass</span></code>. Neither check
@@ -780,11 +811,13 @@ and stage label.</p>
 </section>
 <section id="other-families-and-migration">
 <h2>Other families and migration<a class="headerlink" href="#other-families-and-migration" title="Link to this heading">#</a></h2>
-<p>CO2 retains its existing staged interface pending separate handoff adoption.
+<p>Cached CO2 retains its existing staged interface pending separate handoff adoption.
 It requires explicit <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2</span></code>, a full configuration and
 <code class="docutils literal notranslate"><span class="pre">--prepared-inputs</span></code>/<code class="docutils literal notranslate"><span class="pre">--preparation-manifest</span></code> for sampling. Postprocessing also
-requires <code class="docutils literal notranslate"><span class="pre">--posterior</span></code> and <code class="docutils literal notranslate"><span class="pre">--sample-manifest</span></code>. CO2 takes an existing
-coherent preparation; see <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for its supported outputs.
+requires <code class="docutils literal notranslate"><span class="pre">--posterior</span></code> and <code class="docutils literal notranslate"><span class="pre">--sample-manifest</span></code>. Ordinary CO2 uses the
+manifest-only interface described above; cached CO2 takes an existing coherent
+preparation through its separate interface. See <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for
+supported CO2 outputs.
 Linked CO2/O2 staging remains separate work.</p>
 <p>The new standard and multisector handoff formats replace their historical staged
 envelopes and multi-artifact argument lists. For multisector, replace
@@ -850,6 +883,7 @@ multisector prepared-input entry point and retained custom-builder boundary.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#standard-saved-phases">Standard saved phases</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuration-and-cli">Configuration and CLI</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#multisector-saved-phases">Multisector saved phases</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#ordinary-co2-handoffs">Ordinary CO₂ handoffs</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#readiness-and-independent-diagnosis">Readiness and independent diagnosis</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#other-families-and-migration">Other families and migration</a></li>
 </ul>

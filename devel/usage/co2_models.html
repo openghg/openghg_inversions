@@ -469,7 +469,7 @@
                   
   <section id="co2-model-recipes">
 <h1>CO₂ model recipes<a class="headerlink" href="#co2-model-recipes" title="Link to this heading">#</a></h1>
-<p>This page describes the scientific graphs and current prepared-input replay
+<p>This page describes the scientific graphs and current prepared-input execution
 seams for the CO₂-only and linked CO₂/O₂ recipes. Start with the
 <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> support matrix before using these
 interfaces.</p>
@@ -505,13 +505,16 @@ mismatch <code class="docutils literal notranslate"><span class="pre">sigma</spa
 \[R = C_{agg} + \operatorname{diag}
     (s_y^2 + s_{fixed}^2 + \sigma^2).\]</div>
 <p>The lower-level builder adds inferred <code class="docutils literal notranslate"><span class="pre">sigma</span></code> only when the caller supplies a
-<code class="docutils literal notranslate"><span class="pre">sigma_alignment</span></code>. The public <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_co2" title="openghg_inversions.rhime.run_rhime_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_rhime_co2()</span></code></a>
-runner creates a site-specific alignment over one shared time period by
+<code class="docutils literal notranslate"><span class="pre">sigma_alignment</span></code>. The scientific construction operation
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.co2_runner.html#openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized" title="openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized"><code class="xref py py-func docutils literal notranslate"><span class="pre">build_co2_from_materialized()</span></code></a>
+creates a site-specific alignment over one shared time period by
 default, and uses an independent HalfNormal prior with <code class="docutils literal notranslate"><span class="pre">sigma=1.0</span></code> in the
 observations’ concentration units unless <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code> overrides it. Override
 <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code> when that scale is inappropriate for the observation units or
 scientific application. Set <code class="docutils literal notranslate"><span class="pre">no_model_error=True</span></code> to disable this inferred
-term.</p>
+term.
+Configured ordinary execution selects these options through the <code class="docutils literal notranslate"><span class="pre">likelihood</span></code>
+section, including <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code> and <code class="docutils literal notranslate"><span class="pre">no_model_error</span></code>.</p>
 <p>The CO₂ runner does not consume <code class="docutils literal notranslate"><span class="pre">min_error</span></code> or apply a minimum-error floor.
 Other recipes and components own their own floor settings; for example, the
 standard additive-sigma likelihood can opt into <code class="docutils literal notranslate"><span class="pre">min_error</span></code> explicitly.
@@ -566,27 +569,27 @@ conditions, offsets, and outer flux remain distinct scientific terms. Sector
 combinations are likewise a general state-grouping choice rather than an
 outer-region model option.</p>
 </section>
-<section id="run-the-ordinary-prepared-input-co2-runner">
-<h3>Run the ordinary prepared-input CO2 runner<a class="headerlink" href="#run-the-ordinary-prepared-input-co2-runner" title="Link to this heading">#</a></h3>
-<p>The model builder accepts explicit scientific arrays rather than a dataset.
-For durable prepared artifacts, <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_co2" title="openghg_inversions.rhime.run_rhime_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_co2()</span></code></a>
-is the public replay seam. It accepts only a
-<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a> artifact, validates
-and materializes its selected arrays, resolves its declared aggregation-error
-representation, calls the explicit builder, samples, and stores a JSON
-variable-role and model-provenance manifest on the returned xarray
-<code class="docutils literal notranslate"><span class="pre">DataTree</span></code>.
-The artifact, rather than a runner argument, owns whether aggregation error is
-stored as an exact dense covariance or as a low-rank-plus-diagonal (LRPD)
-approximation. A prepared <code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch</span></code> is preserved when the
-runner argument is <code class="docutils literal notranslate"><span class="pre">None</span></code>; an explicit scalar or labelled vector overrides
-it. Persist gathered-state traces with
-<a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_trace" title="openghg_inversions.serialization.save_trace"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_trace()</span></code></a>, which uses the
-same MultiIndex-safe boundary as standard and multisector RHIME outputs.
-The current prepared-input runner does not accept or construct an
-outer-specific object. It constructs the complete retained prior from the
-prepared arithmetic mean and covariance, then forwards the prepared activity
-policy to the builder.</p>
+<section id="compose-ordinary-co2-scientific-operations">
+<h3>Compose ordinary CO2 scientific operations<a class="headerlink" href="#compose-ordinary-co2-scientific-operations" title="Link to this heading">#</a></h3>
+<p>The concrete model builder accepts explicit scientific arrays. For durable
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a>, scientific callers can
+compose <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.co2_runner.html#openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs" title="openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">materialize_co2_inputs()</span></code></a>,
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.co2_runner.html#openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized" title="openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized"><code class="xref py py-func docutils literal notranslate"><span class="pre">build_co2_from_materialized()</span></code></a>,
+<a class="reference internal" href="../reference/openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.sample_rhime_model" title="openghg_inversions.rhime.sampling.sample_rhime_model"><code class="xref py py-func docutils literal notranslate"><span class="pre">sample_rhime_model()</span></code></a> and
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.annotate_co2_trace" title="openghg_inversions.rhime.co2.annotate_co2_trace"><code class="xref py py-func docutils literal notranslate"><span class="pre">annotate_co2_trace()</span></code></a> to retain the annotated
+inference <code class="docutils literal notranslate"><span class="pre">DataTree</span></code> directly. The example below shows these visible steps.
+Configured callers use <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_co2" title="openghg_inversions.rhime.co2.run_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_co2()</span></code></a>, which
+returns a scientific view with the trace and requested products.</p>
+<p>The artifact owns whether aggregation error is stored as an exact dense
+covariance or a low-rank-plus-diagonal (LRPD) approximation. A prepared
+<code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch</span></code> is preserved when the construction option is <code class="docutils literal notranslate"><span class="pre">None</span></code>;
+an explicit scalar or labelled vector overrides it. Materialization selects
+related inputs and enabled priors together; eager construction forms the complete
+retained prior from the prepared arithmetic mean and covariance and forwards the
+prepared activity policy. Persist traces with
+<a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_trace" title="openghg_inversions.serialization.save_trace"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_trace()</span></code></a>, which preserves their
+groups and observation/state MultiIndexes. Product replay uses saved scientific
+meaning without repeating construction or sampling.</p>
 <p>Set <code class="docutils literal notranslate"><span class="pre">use_bc=True</span></code> to select <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> from the prepared artifact and add its
 boundary contribution. <code class="docutils literal notranslate"><span class="pre">bc_prior</span></code> overrides the default labelled boundary
 scaling prior, while <code class="docutils literal notranslate"><span class="pre">bc_state_activity</span></code> can mark boundary states as active
@@ -600,8 +603,8 @@ likelihood, and sampled outputs.
 The location and scale parameters in <code class="docutils literal notranslate"><span class="pre">offset_prior</span></code> use the observations’
 concentration units.</p>
 </section>
-<section id="configure-prepared-input-replay-from-toml">
-<h3>Configure prepared-input replay from TOML<a class="headerlink" href="#configure-prepared-input-replay-from-toml" title="Link to this heading">#</a></h3>
+<section id="configure-prepared-input-execution-from-toml">
+<h3>Configure prepared-input execution from TOML<a class="headerlink" href="#configure-prepared-input-execution-from-toml" title="Link to this heading">#</a></h3>
 <p>The CO2 family provides three installed TOML templates:
 <code class="docutils literal notranslate"><span class="pre">co2.toml</span></code>, <code class="docutils literal notranslate"><span class="pre">co2_cached_sigma.toml</span></code>, and <code class="docutils literal notranslate"><span class="pre">co2_o2.toml</span></code>. Use
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.co2_config_templates" title="openghg_inversions.rhime.co2.co2_config_templates"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.co2_config_templates()</span></code></a> to discover their
@@ -610,19 +613,20 @@ resource. The templates configure the existing prepared-input Python seams.
 The CO2-only templates also underpin <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2</span></code> staged commands; see
 <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for the staged output table and complete command
 sequence. Linked CO2/O2 templates remain Python-only.</p>
-<p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.load_co2_family_config" title="openghg_inversions.rhime.co2.load_co2_family_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.load_co2_family_config()</span></code></a> reads TOML, while
-<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.resolve_co2_family_config" title="openghg_inversions.rhime.co2.resolve_co2_family_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.resolve_co2_family_config()</span></code></a> accepts an
-ordinary mapping and returns a frozen
-<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2RunSetup" title="openghg_inversions.rhime.co2.Co2RunSetup"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2RunSetup</span></code></a> or
-<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2RunSetup" title="openghg_inversions.rhime.co2.Co2O2RunSetup"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2O2RunSetup</span></code></a>. Keeping parsing separate
-from resolution makes the scientific choices independent of the file format.
-The setup identifies the runner and contains explicit <code class="docutils literal notranslate"><span class="pre">preparation_kwargs</span></code>,
-<code class="docutils literal notranslate"><span class="pre">runner_kwargs</span></code>, and <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeSampler" title="openghg_inversions.rhime.RhimeSampler"><code class="xref py py-class docutils literal notranslate"><span class="pre">RhimeSampler</span></code></a> values;
-it does not retain an ambient configuration mapping. After preparing or
-loading the appropriate artifact, <code class="docutils literal notranslate"><span class="pre">setup.runner_arguments(prepared)</span></code> binds
-it to the exact arguments accepted by <code class="docutils literal notranslate"><span class="pre">setup.runner</span></code>. For the linked recipe,
-this step expands the two configured error scalars over the labelled joint
-observation axis and verifies its species and unit labels.</p>
+<p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.load_co2_family_config" title="openghg_inversions.rhime.co2.load_co2_family_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.load_co2_family_config()</span></code></a> reads TOML. Ordinary
+CO₂ uses <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_co2" title="openghg_inversions.rhime.co2.run_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_co2()</span></code></a> or the Python/CLI model
+selector. Preparation, model, sampler and output values are resolved at their
+concrete owners; saved sampling accepts decoded model/likelihood choices and one
+separate sampler. Native-resolution acquisition and coherent-reduction construction
+are separate from this configured prepared-input route.</p>
+<p>Cached and linked recipes retain
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.resolve_co2_family_config" title="openghg_inversions.rhime.co2.resolve_co2_family_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.resolve_co2_family_config()</span></code></a>, which accepts a
+mapping and returns <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2RunSetup" title="openghg_inversions.rhime.co2.Co2RunSetup"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2RunSetup</span></code></a> or
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2RunSetup" title="openghg_inversions.rhime.co2.Co2O2RunSetup"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2O2RunSetup</span></code></a>. Those setups retain their
+explicit runner binding. For linked data, <code class="docutils literal notranslate"><span class="pre">setup.runner_arguments(prepared)</span></code>
+expands configured independent errors over the joint observation axis and checks
+species/unit labels. The ordinary branch of that resolver is retired; use
+<code class="docutils literal notranslate"><span class="pre">run_co2</span></code> or the concrete scientific operations above.</p>
 <p>For example, the ordinary TOML settings:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">format_version</span> <span class="o">=</span> <span class="mi">1</span>
 <span class="n">recipe</span> <span class="o">=</span> <span class="s2">"co2"</span>
@@ -630,6 +634,9 @@ observation axis and verifies its species and unit labels.</p>
 
 <span class="p">[</span><span class="n">prepared_inputs</span><span class="p">]</span>
 <span class="n">path</span> <span class="o">=</span> <span class="s2">"co2-coherent-dense.zarr"</span>
+<span class="n">start_date</span> <span class="o">=</span> <span class="s2">"2020-01-01"</span>
+<span class="n">end_date</span> <span class="o">=</span> <span class="s2">"2020-02-01"</span>
+<span class="n">domain</span> <span class="o">=</span> <span class="s2">"EUROPE"</span>
 
 <span class="p">[</span><span class="n">likelihood</span><span class="p">]</span>
 <span class="n">kind</span> <span class="o">=</span> <span class="s2">"additive_sigma"</span>
@@ -642,44 +649,22 @@ observation axis and verifies its species and unit labels.</p>
 <span class="n">nuts_sampler</span> <span class="o">=</span> <span class="s2">"numpyro"</span>
 </pre></div>
 </div>
-<p>resolve to the same scientific runner choices as this direct Python call:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeSampler</span><span class="p">,</span> <span class="n">run_rhime_co2</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">Co2PreparedInputs</span>
+<p>can execute through the canonical configured runner:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_co2</span>
 
-<span class="n">prepared</span> <span class="o">=</span> <span class="n">Co2PreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"co2-coherent-dense.zarr"</span><span class="p">)</span>
-<span class="n">idata</span> <span class="o">=</span> <span class="n">run_rhime_co2</span><span class="p">(</span>
-    <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
-    <span class="n">sigma_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"halfnormal"</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.75</span><span class="p">},</span>
-    <span class="n">sampler</span><span class="o">=</span><span class="n">RhimeSampler</span><span class="p">(</span>
-        <span class="n">draws</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
-        <span class="n">tune</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
-        <span class="n">chains</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
-        <span class="n">nuts_sampler</span><span class="o">=</span><span class="s2">"numpyro"</span><span class="p">,</span>
-    <span class="p">),</span>
-<span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">run_co2</span><span class="p">(</span><span class="n">config_file</span><span class="o">=</span><span class="s2">"my-co2.toml"</span><span class="p">)</span>
+<span class="n">idata</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">idata</span>  <span class="c1"># The complete annotated inference DataTree.</span>
 </pre></div>
 </div>
-<p>The resolved ordinary setup can execute that same call through its explicit
-binding method:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">Co2PreparedInputs</span><span class="p">,</span>
-    <span class="n">load_co2_family_config</span><span class="p">,</span>
-    <span class="n">resolve_co2_family_config</span><span class="p">,</span>
-<span class="p">)</span>
-
-<span class="n">config</span> <span class="o">=</span> <span class="n">load_co2_family_config</span><span class="p">(</span><span class="s2">"my-co2.toml"</span><span class="p">)</span>
-<span class="n">setup</span> <span class="o">=</span> <span class="n">resolve_co2_family_config</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
-<span class="n">prepared</span> <span class="o">=</span> <span class="n">Co2PreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">setup</span><span class="o">.</span><span class="n">preparation_kwargs</span><span class="p">[</span><span class="s2">"path"</span><span class="p">])</span>
-<span class="n">idata</span> <span class="o">=</span> <span class="n">setup</span><span class="o">.</span><span class="n">runner</span><span class="p">(</span><span class="o">**</span><span class="n">setup</span><span class="o">.</span><span class="n">runner_arguments</span><span class="p">(</span><span class="n">prepared</span><span class="p">))</span>
-</pre></div>
-</div>
-<p><code class="docutils literal notranslate"><span class="pre">prepared_inputs.path</span></code> and <code class="docutils literal notranslate"><span class="pre">likelihood.eigenbasis_path</span></code> become ordinary
-<code class="docutils literal notranslate"><span class="pre">pathlib.Path</span></code> values. Relative values are interpreted from the process
-working directory, not from the directory containing the TOML file. Use
-absolute paths when the run may start from another directory. The staged CLI
-resolves these paths relative to the configuration file before invoking this
-resolver.</p>
-<p>The resolver deliberately supports a closed matrix rather than arbitrary
+<p>Equivalently, <code class="docutils literal notranslate"><span class="pre">rhime.run(model=&quot;co2&quot;,</span> <span class="pre">config_file=&quot;my-co2.toml&quot;)</span></code> selects the
+same runner. Output choices remain separate from the scientific trace.
+<code class="docutils literal notranslate"><span class="pre">prepared_inputs.path</span></code>, <code class="docutils literal notranslate"><span class="pre">prepared_inputs.reconstruction_path</span></code> and
+<code class="docutils literal notranslate"><span class="pre">likelihood.eigenbasis_path</span></code> become ordinary <code class="docutils literal notranslate"><span class="pre">pathlib.Path</span></code> values.
+Relative values are interpreted from the process working directory, not the
+directory containing the ordinary TOML file. Use absolute paths when the run
+may start from another directory. The retained cached staged interface keeps its
+existing configuration-file-relative path behavior.</p>
+<p>Configuration deliberately supports a closed matrix rather than arbitrary
 callable imports:</p>
 <div class="pst-scrollable-table-container"><table class="table">
 <colgroup>
@@ -698,7 +683,7 @@ callable imports:</p>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">co2</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">ordinary</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">run_rhime_co2</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">run_co2</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">additive_sigma</span></code>, <code class="docutils literal notranslate"><span class="pre">site_sigma</span></code>, <code class="docutils literal notranslate"><span class="pre">fixed_ou</span></code>, or <code class="docutils literal notranslate"><span class="pre">scalar_sigma</span></code>
 likelihood; boundary conditions and offsets are available.</p></td>
 </tr>
@@ -724,8 +709,10 @@ runner-owned PyMC sampler; one shared channel-unit label.</p></td>
 </table>
 </div>
 <p>For <code class="docutils literal notranslate"><span class="pre">variant</span> <span class="pre">=</span> <span class="pre">&quot;ordinary&quot;</span></code>, the <code class="docutils literal notranslate"><span class="pre">[likelihood]</span></code> table accepts these closed
-forms. Scalar-or-site-map values use either one positive number or an inline
-table such as <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">MHD</span> <span class="pre">=</span> <span class="pre">24.0,</span> <span class="pre">TAC</span> <span class="pre">=</span> <span class="pre">12.0</span> <span class="pre">}</span></code>.</p>
+forms. Scalar-or-site-map values use one number or an inline table such as
+<code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">MHD</span> <span class="pre">=</span> <span class="pre">24.0,</span> <span class="pre">TAC</span> <span class="pre">=</span> <span class="pre">12.0</span> <span class="pre">}</span></code>; the component-specific sign constraints are below.
+Site maps validate every supplied value, including entries for dropped sites,
+require retained-site coverage, then select retained labels.</p>
 <div class="pst-scrollable-table-container"><table class="table" id="id1">
 <caption><span class="caption-text">Ordinary CO2 likelihood configuration</span><a class="headerlink" href="#id1" title="Link to this table">#</a></caption>
 <colgroup>
@@ -987,7 +974,10 @@ Pass <code class="docutils literal notranslate"><span class="pre">aggregation_er
 unresolved covariance:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_co2_inputs</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime_co2</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2.co2_runner</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">annotate_co2_trace</span><span class="p">,</span> <span class="n">materialize_co2_inputs</span><span class="p">,</span> <span class="n">build_co2_from_materialized</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.sampling</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeSampler</span><span class="p">,</span> <span class="n">sample_rhime_model</span>
 
 <span class="n">canonical_inputs</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"base-prepared-inputs.zarr"</span><span class="p">)</span>
 <span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_co2_inputs</span><span class="p">(</span>
@@ -997,8 +987,7 @@ unresolved covariance:</p>
 <span class="p">)</span>
 <span class="n">prepared</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"co2-coherent-dense.zarr"</span><span class="p">)</span>
 
-<span class="n">idata</span> <span class="o">=</span> <span class="n">run_rhime_co2</span><span class="p">(</span>
-    <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
+<span class="n">model</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
     <span class="n">use_bc</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
     <span class="n">bc_prior</span><span class="o">=</span><span class="p">{</span>
         <span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"truncatednormal"</span><span class="p">,</span>
@@ -1009,13 +998,17 @@ unresolved covariance:</p>
     <span class="n">offset_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"normal"</span><span class="p">,</span> <span class="s2">"mu"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">},</span>
     <span class="n">offset_args</span><span class="o">=</span><span class="p">{</span><span class="s2">"per_site"</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
 <span class="p">)</span>
+<span class="n">inputs</span><span class="p">,</span> <span class="n">priors</span> <span class="o">=</span> <span class="n">materialize_co2_inputs</span><span class="p">(</span><span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span> <span class="o">**</span><span class="n">model</span><span class="p">)</span>
+<span class="n">built</span> <span class="o">=</span> <span class="n">build_co2_from_materialized</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span> <span class="n">priors</span><span class="o">=</span><span class="n">priors</span><span class="p">,</span> <span class="o">**</span><span class="n">model</span><span class="p">)</span>
+<span class="n">idata</span> <span class="o">=</span> <span class="n">sample_rhime_model</span><span class="p">(</span><span class="n">built</span><span class="p">,</span> <span class="n">RhimeSampler</span><span class="p">())</span>
+<span class="n">annotate_co2_trace</span><span class="p">(</span><span class="n">idata</span><span class="p">,</span> <span class="n">built</span><span class="p">,</span> <span class="n">concentration_units</span><span class="o">=</span><span class="n">prepared</span><span class="o">.</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"mf"</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"units"</span><span class="p">])</span>
 </pre></div>
 </div>
 <p>Reload a durable artifact with
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs.load" title="openghg_inversions.rhime.co2.Co2PreparedInputs.load"><code class="xref py py-meth docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.Co2PreparedInputs.load()</span></code></a>. The loaded
-artifact retains the selected representation, so replay does not require or
+artifact retains the selected representation, so construction does not require or
 accept <code class="docutils literal notranslate"><span class="pre">aggregation_error_mode</span></code>.</p>
-<p>The CO2 builder and prepared-input runner also accept one ordinary
+<p>The ordinary scientific construction operations also accept one
 <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> with explicit <code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code>. This selects
 package components such as
 <a class="reference internal" href="../reference/openghg_inversions.models.fixed_ou.html#openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood" title="openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood()</span></code></a> and
@@ -1042,7 +1035,7 @@ diagonal covariance. It also differs from the
 site amplitudes for a time-correlated OU covariance and owns a matched sampler
 with an accepted-state runtime cache. The scalar-sigma cache is instead an
 external numerical preparation artifact used through the ordinary
-<code class="docutils literal notranslate"><span class="pre">run_rhime_co2</span></code> likelihood seam.</p>
+scientific construction seam.</p>
 <p>Prepare and save that artifact once from the same prepared CO2 inputs that
 sampling will use:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">save_scalar_sigma_eigenbasis</span>
@@ -1056,17 +1049,26 @@ sampling will use:</p>
 <span class="n">save_scalar_sigma_eigenbasis</span><span class="p">(</span><span class="s2">"scalar-sigma-eigenbasis.nc"</span><span class="p">,</span> <span class="n">eigenbasis</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>Select the package likelihood through the CO2 runner:</p>
+<p>Select the package likelihood through the scientific operations:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">add_scalar_sigma_eigen_likelihood</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime_co2</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2.co2_runner</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">annotate_co2_trace</span><span class="p">,</span> <span class="n">materialize_co2_inputs</span><span class="p">,</span> <span class="n">build_co2_from_materialized</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.sampling</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeSampler</span><span class="p">,</span> <span class="n">sample_rhime_model</span>
 
-<span class="n">trace</span> <span class="o">=</span> <span class="n">run_rhime_co2</span><span class="p">(</span>
-    <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
+<span class="n">model</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
     <span class="n">likelihood_builder</span><span class="o">=</span><span class="n">add_scalar_sigma_eigen_likelihood</span><span class="p">,</span>
     <span class="n">likelihood_kwargs</span><span class="o">=</span><span class="p">{</span>
         <span class="s2">"eigenbasis_path"</span><span class="p">:</span> <span class="s2">"scalar-sigma-eigenbasis.nc"</span><span class="p">,</span>
         <span class="s2">"sigma_prior"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"halfnormal"</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.75</span><span class="p">},</span>
     <span class="p">},</span>
+<span class="p">)</span>
+<span class="n">inputs</span><span class="p">,</span> <span class="n">priors</span> <span class="o">=</span> <span class="n">materialize_co2_inputs</span><span class="p">(</span><span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span> <span class="o">**</span><span class="n">model</span><span class="p">)</span>
+<span class="n">built</span> <span class="o">=</span> <span class="n">build_co2_from_materialized</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span> <span class="n">priors</span><span class="o">=</span><span class="n">priors</span><span class="p">,</span> <span class="o">**</span><span class="n">model</span><span class="p">)</span>
+<span class="n">trace</span> <span class="o">=</span> <span class="n">sample_rhime_model</span><span class="p">(</span><span class="n">built</span><span class="p">,</span> <span class="n">RhimeSampler</span><span class="p">())</span>
+<span class="n">annotate_co2_trace</span><span class="p">(</span>
+    <span class="n">trace</span><span class="p">,</span> <span class="n">built</span><span class="p">,</span> <span class="n">concentration_units</span><span class="o">=</span><span class="n">prepared</span><span class="o">.</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"mf"</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"units"</span><span class="p">],</span>
+    <span class="n">likelihood_builder</span><span class="o">=</span><span class="n">model</span><span class="p">[</span><span class="s2">"likelihood_builder"</span><span class="p">],</span> <span class="n">likelihood_kwargs</span><span class="o">=</span><span class="n">model</span><span class="p">[</span><span class="s2">"likelihood_kwargs"</span><span class="p">],</span>
 <span class="p">)</span>
 </pre></div>
 </div>
@@ -1628,8 +1630,8 @@ The joint likelihood must not be treated as pointwise observation densities.</p>
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-coherent-reduction-model">CO2 coherent-reduction model</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-grouped-inner-and-outer-states">CO2 grouped inner and outer states</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#run-the-ordinary-prepared-input-co2-runner">Run the ordinary prepared-input CO2 runner</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#configure-prepared-input-replay-from-toml">Configure prepared-input replay from TOML</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#compose-ordinary-co2-scientific-operations">Compose ordinary CO2 scientific operations</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#configure-prepared-input-execution-from-toml">Configure prepared-input execution from TOML</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-the-global-scalar-sigma-co2-likelihood">Run the global scalar-sigma CO2 likelihood</a></li>

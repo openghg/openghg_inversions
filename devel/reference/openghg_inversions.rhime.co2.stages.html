@@ -59,7 +59,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="openghg_inversions.rhime.api" href="openghg_inversions.rhime.api.html" />
-    <link rel="prev" title="openghg_inversions.rhime.co2.configuration" href="openghg_inversions.rhime.co2.configuration.html" />
+    <link rel="prev" title="openghg_inversions.rhime.co2.handoffs" href="openghg_inversions.rhime.co2.handoffs.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="devel" />
@@ -461,6 +461,8 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html">openghg_inversions.rhime.co2.co2_preparation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html">openghg_inversions.rhime.co2.co2_runner</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html">openghg_inversions.rhime.co2.configuration</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4 current active"><a class="current reference internal" href="#">openghg_inversions.rhime.co2.stages</a></li>
 </ul>
 </details></li>
@@ -573,7 +575,7 @@
                   
   <section id="module-openghg_inversions.rhime.co2.stages">
 <span id="openghg-inversions-rhime-co2-stages"></span><h1>openghg_inversions.rhime.co2.stages<a class="headerlink" href="#module-openghg_inversions.rhime.co2.stages" title="Link to this heading">#</a></h1>
-<p>File-backed stages for the concrete ordinary and cached CO2 recipes.</p>
+<p>Retained file-backed stages for the cached CO2 recipe.</p>
 <p>Preparation accepts the public coherent handoff, or canonical observations
 and a coherent reduction supplied directly through the Python API. Campaign
 discovery stays with the caller. Saved handoffs are copied byte-for-byte so
@@ -598,7 +600,7 @@ their affine reconstruction binding remains valid.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.stages.resolve_co2_stage_setup">
 <span class="sig-name descname"><span class="pre">resolve_co2_stage_setup</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.stages.resolve_co2_stage_setup" title="Link to this definition">#</a></dt>
-<dd><p>Resolve CO2 settings and output capabilities independently of saved draws.</p>
+<dd><p>Resolve retained cached CO2 stage settings independently of saved draws.</p>
 <p>Output consumers validate the actual trace’s required draws. Current
 sampler settings do not restrict products from a completed invocation.</p>
 <dl class="field-list simple">
@@ -662,7 +664,7 @@ science or output requests fail before creating the destination.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.stages.sample_co2_stage">
 <span class="sig-name descname"><span class="pre">sample_co2_stage</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">setup</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">preparation_manifest</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.stages.sample_co2_stage" title="Link to this definition">#</a></dt>
-<dd><p>Sample with the public ordinary or matched cached runner, then save canonically.</p>
+<dd><p>Sample with the matched cached runner, then save canonically.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>
@@ -706,12 +708,12 @@ science or output requests fail before creating the destination.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="openghg_inversions.rhime.co2.configuration.html"
+       href="openghg_inversions.rhime.co2.handoffs.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">openghg_inversions.rhime.co2.configuration</p>
+        <p class="prev-next-title">openghg_inversions.rhime.co2.handoffs</p>
       </div>
     </a>
     <a class="right-next"

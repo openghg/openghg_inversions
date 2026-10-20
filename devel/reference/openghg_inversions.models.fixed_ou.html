@@ -461,6 +461,8 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html">openghg_inversions.rhime.co2.co2_preparation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html">openghg_inversions.rhime.co2.co2_runner</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html">openghg_inversions.rhime.co2.configuration</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html">openghg_inversions.rhime.co2.stages</a></li>
 </ul>
 </details></li>
@@ -770,7 +772,10 @@ an explicit prior in the observations’ concentration units. A positive OU
 term may make a singular fixed base valid. Fixed amplitudes must produce
 strictly positive generalized base-plus-OU mode variances before the
 low-rank update. <code class="docutils literal notranslate"><span class="pre">sigma_alignment</span></code> may explicitly map a labelled joint
-observation axis to species/site groups; by default groups are sites.</p>
+observation axis to species/site groups; by default groups are sites.
+Site mappings must cover the retained labels. Every supplied amplitude
+must be numeric, finite and non-negative, and every supplied time scale
+must be numeric, finite and positive, including entries for dropped sites.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><em>TensorVariable</em></p>

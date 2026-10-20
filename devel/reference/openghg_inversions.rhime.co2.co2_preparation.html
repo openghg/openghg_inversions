@@ -461,6 +461,8 @@
 <li class="toctree-l4 current active"><a class="current reference internal" href="#">openghg_inversions.rhime.co2.co2_preparation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html">openghg_inversions.rhime.co2.co2_runner</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html">openghg_inversions.rhime.co2.configuration</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html">openghg_inversions.rhime.co2.stages</a></li>
 </ul>
 </details></li>
@@ -647,17 +649,6 @@ artifacts include approximation diagnostics.</p></li>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.validated">
-<span class="sig-name descname"><span class="pre">validated</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.validated" title="Link to this definition">#</a></dt>
-<dd><p>Return this structurally validated frozen wrapper.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.15)"><em>Self</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.to_datatree">
 <span class="sig-name descname"><span class="pre">to_datatree</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.to_datatree" title="Link to this definition">#</a></dt>
 <dd><p>Build the versioned in-memory serialization tree.</p>
@@ -804,6 +795,34 @@ runners.</p>
 </dl>
 </dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_preparation.requested_co2_facts">
+<span class="sig-name descname"><span class="pre">requested_co2_facts</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">start_date</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">end_date</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">recorded_facts</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_preparation.requested_co2_facts" title="Link to this definition">#</a></dt>
+<dd><p>Return authoritative requested facts without inferring observation extrema.</p>
+<p>Explicit values fill missing provenance facts. Repeated facts must agree;
+dates compare by timestamp meaning. <code class="docutils literal notranslate"><span class="pre">recorded_facts</span></code> supplies declared
+configuration or handoff facts alongside numerical preparation provenance;
+all claims must agree. Only start/end dates and domain are consumed.
+Imported preparations missing facts require explicit caller values;
+observation extrema cannot recover the original requested window.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
 </section>
 
 
@@ -861,7 +880,6 @@ runners.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.averaging_period"><code class="docutils literal notranslate"><span class="pre">Co2PreparedInputs.averaging_period</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.basis_artifact_source"><code class="docutils literal notranslate"><span class="pre">Co2PreparedInputs.basis_artifact_source</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.basis_artifact_path"><code class="docutils literal notranslate"><span class="pre">Co2PreparedInputs.basis_artifact_path</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.validated"><code class="docutils literal notranslate"><span class="pre">Co2PreparedInputs.validated()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.to_datatree"><code class="docutils literal notranslate"><span class="pre">Co2PreparedInputs.to_datatree()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.from_datatree"><code class="docutils literal notranslate"><span class="pre">Co2PreparedInputs.from_datatree()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.save"><code class="docutils literal notranslate"><span class="pre">Co2PreparedInputs.save()</span></code></a></li>
@@ -869,6 +887,7 @@ runners.</p>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_preparation.prepare_co2_inputs"><code class="docutils literal notranslate"><span class="pre">prepare_co2_inputs()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_preparation.requested_co2_facts"><code class="docutils literal notranslate"><span class="pre">requested_co2_facts()</span></code></a></li>
 </ul>
   </nav></div>
 

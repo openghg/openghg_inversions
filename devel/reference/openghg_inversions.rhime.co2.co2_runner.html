@@ -461,6 +461,8 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html">openghg_inversions.rhime.co2.co2_preparation</a></li>
 <li class="toctree-l4 current active"><a class="current reference internal" href="#">openghg_inversions.rhime.co2.co2_runner</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html">openghg_inversions.rhime.co2.configuration</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html">openghg_inversions.rhime.co2.stages</a></li>
 </ul>
 </details></li>
@@ -573,13 +575,23 @@
                   
   <section id="module-openghg_inversions.rhime.co2.co2_runner">
 <span id="openghg-inversions-rhime-co2-co2-runner"></span><h1>openghg_inversions.rhime.co2.co2_runner<a class="headerlink" href="#module-openghg_inversions.rhime.co2.co2_runner" title="Link to this heading">#</a></h1>
-<p>Run the CO2 recipe from its dedicated prepared-input artifact.</p>
-<p>The runner selects and jointly materializes only the declared scientific
-arrays, constructs the readable CO2 model, samples it, and annotates the
-result. It also owns preparation of the optional scalar-sigma eigenbasis.</p>
+<p>Materialize, construct and annotate the concrete CO2 scientific model.</p>
+<p>These explicit operations share numerical meaning between configured full
+execution and saved inference. Saved product replay does not construct a model.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_runner.annotate_co2_trace">
-<span class="sig-name descname"><span class="pre">annotate_co2_trace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trace</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">built</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">concentration_units</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_runner.annotate_co2_trace" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">annotate_co2_trace</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">trace</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">built</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">concentration_units</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">likelihood_builder</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">likelihood_kwargs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_runner.annotate_co2_trace" title="Link to this definition">#</a></dt>
 <dd><p>Persist CO2 scientific roles and units on prior or posterior output.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -588,6 +600,9 @@ result. It also owns preparation of the optional scalar-sigma eigenbasis.</p>
 <li><p><strong>built</strong> (<a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="openghg_inversions.rhime.builders.RhimeModelBuildResult"><em>RhimeModelBuildResult</em></a>) – Concrete model with the CO2 variable-role and provenance mapping.</p></li>
 <li><p><strong>concentration_units</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Observation concentration units, or <code class="docutils literal notranslate"><span class="pre">None</span></code> to
 omit concentration-unit attributes.</p></li>
+<li><p><strong>likelihood_builder</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.15)"><em>Callable</em></a><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional component whose identity is descriptive
+provenance, never executable replay instructions.</p></li>
+<li><p><strong>likelihood_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Component options described without computing arrays.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -600,8 +615,62 @@ omit concentration-unit attributes.</p></li>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_runner.build_rhime_co2">
-<span class="sig-name descname"><span class="pre">build_rhime_co2</span></span><span class="sig-paren">(</span>
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized">
+<span class="sig-name descname"><span class="pre">build_co2_from_materialized</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">model_inputs</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">priors</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sigma_alignment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sigma_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">fixed_model_mismatch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">likelihood_builder</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">likelihood_kwargs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">no_model_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">offset_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">offset_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized" title="Link to this definition">#</a></dt>
+<dd><p>Construct the CO2 model from explicitly materialized scientific inputs.</p>
+<p><code class="docutils literal notranslate"><span class="pre">prepared_inputs</span></code> supplies aggregation mode and descriptive provenance.
+<code class="docutils literal notranslate"><span class="pre">priors</span></code> supplies selected eager numerical parameters under the graph names
+returned by <a class="reference internal" href="#openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs" title="openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">materialize_co2_inputs()</span></code></a>. Prior arguments in the model
+choices select components, but their borrowed numerical values are not used.
+This operation performs construction only; saved replay never calls it.
+Remaining model choices have the semantics documented by
+<a class="reference internal" href="#openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs" title="openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">materialize_co2_inputs()</span></code></a>. A configured scalar-sigma eigenbasis is
+loaded and checked against observations, error and aggregation covariance
+before its likelihood is constructed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model_inputs</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Selected scientific arrays already materialized together.</p></li>
+<li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs" title="openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs"><em>Co2PreparedInputs</em></a>) – Preparation supplying aggregation mode and provenance.</p></li>
+<li><p><strong>priors</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em><em>]</em>) – Materialized prior parameters under their concrete graph names.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Constructed model with scientific variable roles and bounded metadata.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If selected inputs or numerical priors remain lazy, or
+    scientific components reject the supplied choices.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="openghg_inversions.rhime.builders.RhimeModelBuildResult"><em>RhimeModelBuildResult</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs">
+<span class="sig-name descname"><span class="pre">materialize_co2_inputs</span></span><span class="sig-paren">(</span>
 
 <dl>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
@@ -619,53 +688,48 @@ omit concentration-unit attributes.</p></li>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
-<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_runner.build_rhime_co2" title="Link to this definition">#</a></dt>
-<dd><p>Materialize and build the CO2 coherent-reduction model without sampling.</p>
-<p>This callable is the public production replay seam for an already
-validated <code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code> artifact. It alone unpacks the
-prepared dataset and constructs the complete retained prior; the model
-builder receives named scientific values.</p>
-<p><code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch=None</span></code> preserves a prepared fixed-mismatch field if
-present, otherwise omits the term. An explicit scalar or labelled vector
-overrides prepared data. By default, inferred model error varies by site
-over one shared time period. An explicit <code class="docutils literal notranslate"><span class="pre">sigma_alignment</span></code> overrides
-that alignment; <code class="docutils literal notranslate"><span class="pre">no_model_error=True</span></code> disables inferred model error.</p>
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs" title="Link to this definition">#</a></dt>
+<dd><p>Jointly materialize selected CO2 inputs, enabled priors and fixed mismatch.</p>
+<p>Return selected scientific arrays and prior parameters keyed by their graph
+variables: <code class="docutils literal notranslate"><span class="pre">sigma</span></code>, <code class="docutils literal notranslate"><span class="pre">bc</span></code>, <code class="docutils literal notranslate"><span class="pre">offset_latent</span></code>, <code class="docutils literal notranslate"><span class="pre">sigma_site</span></code>,
+<code class="docutils literal notranslate"><span class="pre">ou_site_amplitude</span></code> or <code class="docutils literal notranslate"><span class="pre">sigma_global</span></code>. Explicit labelled fixed mismatch
+is installed in the returned Dataset. Construction consumes these numerical
+values separately from the unchanged model choices. Unselected arrays and
+arbitrary custom likelihood options remain borrowed and uncomputed.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs" title="openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs"><em>Co2PreparedInputs</em></a>) – Validated coherent-reduction inputs for the CO2
-recipe.</p></li>
-<li><p><strong>sigma_alignment</strong> (<a class="reference internal" href="openghg_inversions.sigma.html#openghg_inversions.sigma.SigmaAlignment" title="openghg_inversions.sigma.SigmaAlignment"><em>SigmaAlignment</em></a><em> | </em><em>None</em>) – Optional grouping policy for inferred additive model
-error. The default is derived from the prepared site indicator.</p></li>
-<li><p><strong>sigma_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional prior arguments for inferred additive model
-error.</p></li>
-<li><p><strong>fixed_model_mismatch</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional known scalar or labelled mismatch
-standard deviation. When omitted, a prepared value is preserved.</p></li>
-<li><p><strong>likelihood_builder</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.15)"><em>Callable</em></a><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional ordinary likelihood component replacing
-the default additive-sigma likelihood.</p></li>
-<li><p><strong>likelihood_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Options passed only to the selected likelihood. For
-the scalar-sigma eigen likelihood, pass an <code class="docutils literal notranslate"><span class="pre">eigenbasis_path</span></code> and
-<code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code>; the cache is loaded before model construction.</p></li>
-<li><p><strong>no_model_error</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – If true, omit inferred additive model error.</p></li>
-<li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether to include prepared <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> boundary sensitivity.</p></li>
-<li><p><strong>bc_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional prior for boundary-condition scaling.</p></li>
-<li><p><strong>bc_state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional active/fixed boundary-state policy.</p></li>
-<li><p><strong>offset_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional prior for an offset component. When omitted, no
-offset is added.</p></li>
-<li><p><strong>offset_args</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional offset settings: <code class="docutils literal notranslate"><span class="pre">offset_freq</span></code>, <code class="docutils literal notranslate"><span class="pre">drop_first</span></code>,
-and <code class="docutils literal notranslate"><span class="pre">per_site</span></code>.</p></li>
+<li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs" title="openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs"><em>Co2PreparedInputs</em></a>) – Borrowed coherent-reduction preparation.</p></li>
+<li><p><strong>sigma_alignment</strong> (<a class="reference internal" href="openghg_inversions.sigma.html#openghg_inversions.sigma.SigmaAlignment" title="openghg_inversions.sigma.SigmaAlignment"><em>SigmaAlignment</em></a><em> | </em><em>None</em>) – Additive-error grouping; omitted grouping is derived
+from the retained observation sites during construction.</p></li>
+<li><p><strong>sigma_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional additive-error prior; omitted parameters use the
+component defaults.</p></li>
+<li><p><strong>fixed_model_mismatch</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Known concentration standard deviation, either a
+scalar or an exactly aligned observation vector. Omission retains
+a prepared mismatch field when present.</p></li>
+<li><p><strong>likelihood_builder</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.15)"><em>Callable</em></a><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Ordinary component replacing additive-error options.</p></li>
+<li><p><strong>likelihood_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Selected component options. Built-in numerical
+priors participate in this boundary; custom components own any
+additional numerical option materialization.</p></li>
+<li><p><strong>no_model_error</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Omit inferred additive error; cannot accompany a sigma
+prior, grouping or replacement likelihood.</p></li>
+<li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Include prepared boundary sensitivity.</p></li>
+<li><p><strong>bc_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional boundary-scale prior, enabled only with <code class="docutils literal notranslate"><span class="pre">use_bc</span></code>.</p></li>
+<li><p><strong>bc_state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional boundary active/fixed-state policy.</p></li>
+<li><p><strong>offset_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional prior enabling concentration offsets.</p></li>
+<li><p><strong>offset_args</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Offset frequency, <code class="docutils literal notranslate"><span class="pre">per_site</span></code> and <code class="docutils literal notranslate"><span class="pre">drop_first</span></code> settings.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Concrete model with CO2 variable roles and serializable provenance.</p>
+<dd class="field-even"><p>Borrowed Dataset copy with selected arrays eager, plus eager prior
+parameters. The preparation and supplied parameter mappings are unchanged.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If model-error options contradict <code class="docutils literal notranslate"><span class="pre">no_model_error</span></code>, or
-    prepared inputs are missing, inconsistent, or fail model
-    construction.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If model choices conflict, required prepared arrays are
+    absent, or a labelled mismatch does not align exactly.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="openghg_inversions.rhime.builders.RhimeModelBuildResult"><em>RhimeModelBuildResult</em></a></p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)">tuple</a>[<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>, <a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]]]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -730,83 +794,6 @@ materialized together before the dense eigendecomposition.</p>
 </dl>
 </dd></dl>
 
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_runner.run_rhime_co2">
-<span class="sig-name descname"><span class="pre">run_rhime_co2</span></span><span class="sig-paren">(</span>
-
-<dl>
-<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">sigma_alignment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">sigma_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">fixed_model_mismatch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">likelihood_builder</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">likelihood_kwargs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'default'</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">no_model_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">bc_state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">offset_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">offset_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-</dl>
-
-<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_runner.run_rhime_co2" title="Link to this definition">#</a></dt>
-<dd><p>Materialize, build, and sample the CO2 coherent-reduction model.</p>
-<p>This callable is the public production replay seam for an already
-validated <code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code> artifact. It delegates labelled input
-materialization and retained-prior construction to <a class="reference internal" href="#openghg_inversions.rhime.co2.co2_runner.build_rhime_co2" title="openghg_inversions.rhime.co2.co2_runner.build_rhime_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">build_rhime_co2()</span></code></a>,
-then samples and annotates the resulting graph.</p>
-<p><code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch=None</span></code> preserves a prepared fixed-mismatch field if
-present, otherwise omits the term. An explicit scalar or labelled vector
-overrides prepared data. By default, inferred model error varies by site
-over one shared time period. An explicit <code class="docutils literal notranslate"><span class="pre">sigma_alignment</span></code> overrides
-that alignment; <code class="docutils literal notranslate"><span class="pre">no_model_error=True</span></code> disables inferred model error.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs" title="openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs"><em>Co2PreparedInputs</em></a>) – Validated coherent-reduction inputs for the CO2
-recipe.</p></li>
-<li><p><strong>sigma_alignment</strong> (<a class="reference internal" href="openghg_inversions.sigma.html#openghg_inversions.sigma.SigmaAlignment" title="openghg_inversions.sigma.SigmaAlignment"><em>SigmaAlignment</em></a><em> | </em><em>None</em>) – Optional grouping policy for inferred additive model
-error. The default is derived from the prepared site indicator.</p></li>
-<li><p><strong>sigma_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional prior arguments for inferred additive model
-error.</p></li>
-<li><p><strong>fixed_model_mismatch</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional known scalar or labelled mismatch
-standard deviation. When omitted, a prepared value is preserved.</p></li>
-<li><p><strong>likelihood_builder</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.15)"><em>Callable</em></a><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional ordinary likelihood component replacing
-the default additive-sigma likelihood.</p></li>
-<li><p><strong>likelihood_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Options passed only to the selected likelihood. For
-the scalar-sigma eigen likelihood, pass an <code class="docutils literal notranslate"><span class="pre">eigenbasis_path</span></code> and
-<code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code>; the cache is loaded before model construction.</p></li>
-<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><em>RhimeSampler</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'default'</em><em>]</em>) – Sampler configuration or <code class="docutils literal notranslate"><span class="pre">&quot;default&quot;</span></code>; explicit <code class="docutils literal notranslate"><span class="pre">None</span></code> is invalid.</p></li>
-<li><p><strong>no_model_error</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – If true, omit inferred additive model error.</p></li>
-<li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether to include prepared <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> boundary sensitivity.</p></li>
-<li><p><strong>bc_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional prior for boundary-condition scaling.</p></li>
-<li><p><strong>bc_state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional active/fixed boundary-state policy.</p></li>
-<li><p><strong>offset_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional prior for an offset component. When omitted, no
-offset is added.</p></li>
-<li><p><strong>offset_args</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional offset settings: <code class="docutils literal notranslate"><span class="pre">offset_freq</span></code>, <code class="docutils literal notranslate"><span class="pre">drop_first</span></code>,
-and <code class="docutils literal notranslate"><span class="pre">per_site</span></code>.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Sampled DataTree annotated with the CO2 variable-role and model
-manifests.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.15)"><strong>TypeError</strong></a> – If the sampler is neither a configuration nor <code class="docutils literal notranslate"><span class="pre">&quot;default&quot;</span></code>.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If model-error options contradict <code class="docutils literal notranslate"><span class="pre">no_model_error</span></code>, or
-    prepared inputs are missing, inconsistent, or fail model
-    construction.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
 </section>
 
 
@@ -857,10 +844,10 @@ manifests.</p>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_runner.annotate_co2_trace"><code class="docutils literal notranslate"><span class="pre">annotate_co2_trace()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_runner.build_rhime_co2"><code class="docutils literal notranslate"><span class="pre">build_rhime_co2()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized"><code class="docutils literal notranslate"><span class="pre">build_co2_from_materialized()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs"><code class="docutils literal notranslate"><span class="pre">materialize_co2_inputs()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_runner.co2_model_input_names"><code class="docutils literal notranslate"><span class="pre">co2_model_input_names()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_runner.prepare_co2_scalar_sigma_eigenbasis"><code class="docutils literal notranslate"><span class="pre">prepare_co2_scalar_sigma_eigenbasis()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_runner.run_rhime_co2"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2()</span></code></a></li>
 </ul>
   </nav></div>
 

@@ -461,6 +461,8 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html">openghg_inversions.rhime.co2.co2_preparation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html">openghg_inversions.rhime.co2.co2_runner</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html">openghg_inversions.rhime.co2.configuration</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html">openghg_inversions.rhime.co2.stages</a></li>
 </ul>
 </details></li>
@@ -570,9 +572,10 @@
                   
   <section id="module-openghg_inversions.rhime.stages">
 <span id="openghg-inversions-rhime-stages"></span><h1>openghg_inversions.rhime.stages<a class="headerlink" href="#module-openghg_inversions.rhime.stages" title="Link to this heading">#</a></h1>
-<p>Standard numerical handoffs and retained CO2 staged entry points.</p>
+<p>Standard numerical handoffs and retained cached CO2 staged entry points.</p>
 <p>Multisector handoffs live in <a class="reference internal" href="openghg_inversions.rhime.multisector_stages.html#module-openghg_inversions.rhime.multisector_stages" title="openghg_inversions.rhime.multisector_stages"><code class="xref py py-mod docutils literal notranslate"><span class="pre">multisector_stages</span></code></a>. Each concrete recipe
-owns its scientific execution; the old multisector envelope is retired.</p>
+owns its scientific execution; the old multisector envelope is retired.
+Ordinary CO2 uses <code class="docutils literal notranslate"><span class="pre">co2.handoffs</span></code> and rejects these retained envelope wrappers.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.stages.prepare">
 <span class="sig-name descname"><span class="pre">prepare</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_config</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">merged_data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.stages.prepare" title="Link to this definition">#</a></dt>
@@ -829,7 +832,7 @@ without constructing a model or applying output policy.</p>
 
 <dl>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">posterior</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">posterior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">sample_manifest</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">check_output</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -841,9 +844,11 @@ without constructing a model or applying output policy.</p>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.stages.diagnose_rhime_stage" title="Link to this definition">#</a></dt>
-<dd><p>Calculate convergence from the supplied posterior.</p>
+<dd><p>Calculate convergence from a posterior path or current sample manifest.</p>
 <p>An optional sample manifest supplies descriptive run context, without
-authenticating the posterior file.</p>
+authenticating the posterior file. When <code class="docutils literal notranslate"><span class="pre">posterior</span></code> is omitted, resolve
+its reference beside the sample manifest. Diagnosis needs no preparation,
+model construction or inference; explicit posterior paths take precedence.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>

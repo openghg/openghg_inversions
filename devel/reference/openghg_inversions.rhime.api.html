@@ -461,6 +461,8 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html">openghg_inversions.rhime.co2.co2_preparation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html">openghg_inversions.rhime.co2.co2_runner</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html">openghg_inversions.rhime.co2.configuration</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html">openghg_inversions.rhime.co2.stages</a></li>
 </ul>
 </details></li>
@@ -582,14 +584,15 @@
 <code class="docutils literal notranslate"><span class="pre">co2_cached_sigma</span></code>, <code class="docutils literal notranslate"><span class="pre">co2_o2</span></code> or <code class="docutils literal notranslate"><span class="pre">co2_o2_cached_sigma</span></code>.</p></li>
 <li><p><strong>**kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>) – Forwarded unchanged to the selected recipe. Standard,
 multisector and nested accept their existing INI/Python inputs.
-CO2-family recipes require their respective <code class="docutils literal notranslate"><span class="pre">prepared_inputs</span></code>;
+Ordinary CO2 accepts its configured prepared-input product request.
+Cached and linked CO2-family recipes require <code class="docutils literal notranslate"><span class="pre">prepared_inputs</span></code>;
 selection does not add acquisition or checkpoint routes.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>The selected recipe’s scientific result. Standard and multisector return
-InversionOutput; nested retains its result record, and CO2-family recipes
-return an inference DataTree.</p>
+InversionOutput, ordinary CO2 returns Co2Output, nested retains its result
+record, and cached/linked CO2 recipes return an inference DataTree.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
