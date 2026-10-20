@@ -2084,6 +2084,7 @@ dependencies = [
     { name = "scipy" },
     { name = "sparse" },
     { name = "xarray" },
+    { name = "xarray-validate" },
 ]
 
 [package.optional-dependencies]
@@ -2154,6 +2155,7 @@ requires-dist = [
     { name = "sparse" },
     { name = "towncrier", marker = "extra == 'dev'", specifier = ">=24.8" },
     { name = "xarray", specifier = ">=2025.6.0" },
+    { name = "xarray-validate", specifier = "==0.0.5" },
 ]
 provides-extras = ["jupyter", "dev"]
 
@@ -3527,6 +3529,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f1/10/ef474494a7f2102ec4c02352c723fa282c6237b600565eb82ee354291211/xarray_einstats-0.9.1.tar.gz", hash = "sha256:39b373deed43592c41d3fbf8863af62e19e01c1ae553ae5ff059a8df78d995c6", size = 33327, upload-time = "2025-06-18T15:53:28.499Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/17/8b/ed2f0f49385c3d7739cd4699954add26e8f09a372a0c3f04f2bde32fcea2/xarray_einstats-0.9.1-py3-none-any.whl", hash = "sha256:777339524e85d066f2ef9ed1e3a3fb63aead4c1065fd1406f30dfa4de58ce063", size = 39043, upload-time = "2025-06-18T15:53:24.088Z" },
+]
+
+[[package]]
+name = "xarray-validate"
+version = "0.0.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "attrs" },
+    { name = "numpy" },
+    { name = "xarray" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/57/93/fb3553bde135147e2ffbff76135663ab003deb23aed44a3a22ea38d15378/xarray_validate-0.0.5.tar.gz", hash = "sha256:b5dde34f5e8dbe7aa92d64d8c7c36c345848355b479be379224ac34d3e0c625a", size = 279495, upload-time = "2026-01-04T21:02:34.91Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cc/11/88c4bb44dff0e8003c4781190a8e598caf7fa95a27d1f1e0e2f16dcbb333/xarray_validate-0.0.5-py3-none-any.whl", hash = "sha256:4d472b40d1063c5b4f2f56097b57551380dc06393da4a480d9ca85fd3cf0f2a9", size = 19263, upload-time = "2026-01-04T21:02:33.409Z" },
 ]
 
 [[package]]
