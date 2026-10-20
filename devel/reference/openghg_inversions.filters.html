@@ -690,7 +690,7 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.filters.daytime">
 <span class="sig-name descname"><span class="pre">daytime</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.daytime" title="Link to this definition">#</a></dt>
-<dd><p>Subset during daytime hours (11:00-15:00).</p>
+<dd><p>Subset local solar hours 11 through 15, preserving observation timestamps.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -710,7 +710,7 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.filters.daytime9to5">
 <span class="sig-name descname"><span class="pre">daytime9to5</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.daytime9to5" title="Link to this definition">#</a></dt>
-<dd><p>Subset during daytime hours (9:00-17:00).</p>
+<dd><p>Subset local solar hours 9 through 17, preserving observation timestamps.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -730,7 +730,7 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.filters.nighttime">
 <span class="sig-name descname"><span class="pre">nighttime</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.nighttime" title="Link to this definition">#</a></dt>
-<dd><p>Subset during nighttime hours (23:00 - 03:00).</p>
+<dd><p>Subset local solar hours 23 through 3, preserving observation timestamps.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -750,7 +750,7 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.filters.noon">
 <span class="sig-name descname"><span class="pre">noon</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.noon" title="Link to this definition">#</a></dt>
-<dd><p>Select only 12pm data.</p>
+<dd><p>Select local solar hour 12, preserving observation timestamps.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
