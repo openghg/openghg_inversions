@@ -991,3 +991,22 @@ passes 70 tests. Conversion uses the already imported PyMC module's identical
 21 coordinate registration/reuse checks pass. No numeric algorithm is changed.
 The narrowed retry covers only #886/#891; #887's passing suites are retained.
 Maintainer review and final retry evidence remain open; nothing is merged.
+
+
+Final stack retry evidence — 20 October 2026: Slurm 19553508_0 at #886
+`b0182e14` and 19553508_1 at #891 `ed6316c3` both pass the complete locked
+Python 3.12 and 3.13 suites. The fresh job-local TMPDIR removes the fixture lock
+failures. #891's corrected canonical-state persistence assertions pass in both
+complete suites. Mypy is 163/50 files on both heads versus baseline 166/52:
+no introduced diagnostic after accounting for the existing CO2 PyMC stub
+warning's move from stages to handoffs; the extra pytensorf import diagnostic
+is gone. Combined job exits remain nonzero only for existing typing debt.
+Docs retain the completed first-array evidence (308/303/303 versus 318, no
+increased message content/multiplicity); no rendered documentation changed in
+the retry. #887's complete-suite and GitHub CI passes at `4462ecd6` are retained.
+Remote devel still equals `fd279807`; all three remote heads match these
+validated revisions, are non-draft and merge without conflicts in stack order
+#887 → #886 → #891. Final local summaries are preserved with the job logs.
+Subsequent evidence-only commits change no runtime behavior. No jobs remain
+pending. Review threads, readability/design acceptance and the programme's
+merged-delivery gates remain open; nothing is merged or archived.
