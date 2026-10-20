@@ -465,8 +465,9 @@ def test_cli_run_rhime_nested_passes_config(monkeypatch, tmp_path: Path) -> None
 
 
 @pytest.mark.parametrize("deprecated", [False, True])
+@pytest.mark.parametrize("output_format", ["none", "paris"])
 def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
-    monkeypatch, capsys, deprecated,
+    monkeypatch, capsys, deprecated, output_format, tmp_path,
 ) -> None:
     basis = _basis([50.0], [-2.0], np.array([[1]]))
     prepared = _prepared(
@@ -475,6 +476,8 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
         basis=basis,
     )
     merged = from_legacy_fp_all(fp_all={"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, site_options=_site_options())
+    country = tmp_path / "country.nc"
+    country.touch()
     setup = RhimeConfig.from_params(params={
             "species": "ch4",
             "sites": ["TAC"],
@@ -488,7 +491,9 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
             "use_bc": True,
             "basis_algorithm": "weighted",
             "nbasis": 100,
-            "output_format": "none",
+            "output_format": output_format,
+            "country_file": country,
+            "output_path": tmp_path / "outputs",
         }, multisector=False)
     retrieval_args: list[dict[str, object]] = []
     preparation_configs: list[dict[str, object]] = []
@@ -518,10 +523,20 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
     class BeforeSampling(Exception):
         pass
 
-    def before_sampling(*args, **kwargs):
+    def before_sampling(combined, *args, **kwargs):
+        assert combined.basis_artifact_path is None
         raise BeforeSampling
 
     monkeypatch.setattr(nested_module, "materialize_nested_inputs", before_sampling)
+    original_prepare = nested_module.prepare_nested_rhime_inputs
+    prepared_nested = []
+
+    def prepare(*args, **kwargs):
+        result = original_prepare(*args, **kwargs)
+        prepared_nested.append(result)
+        return result
+
+    monkeypatch.setattr(nested_module, "prepare_nested_rhime_inputs", prepare)
     from contextlib import nullcontext
 
     selectors = ({"inner_emissions_store": "inner-flux", "inner_emissions_domain": "EUROPE"}
@@ -546,8 +561,37 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
     assert preparation_configs[1]["nbasis"] == 40
     assert preparation_configs[0]["basis_algorithm"] == "weighted"
     assert preparation_configs[1]["basis_algorithm"] == "quadtree"
+    assert preparation_configs[1]["basis_inputs"].get("basis_path") is None
+    assert preparation_configs[1]["basis_inputs"].get("basis_partition") is None
+    assert prepared_nested[0].outer_overlap_mask_policy == nested_module._RETRIEVAL_OVERLAP_MASK_POLICY
 
     assert setup.data.nbasis == 100
+
+
+@pytest.mark.parametrize("output_format", ["none", "basic", "paris"])
+def test_inner_data_config_is_reusable_independently_of_reporting(tmp_path, output_format):
+    from tests.test_staged_workflow import _params
+
+    config = RhimeConfig.from_params(_params(output_format=output_format), multisector=False)
+    inner = nested_module.inner_data_config(config.data, inner_domain="6km")
+    assert inner.domain == "EUROPE-6km"
+    assert inner.footprint_store == config.data.footprint_store
+    assert inner.flux_store == config.data.flux_store
+    assert inner.nbasis == config.data.nbasis
+    assert inner.basis_algorithm == "quadtree"
+    assert inner.basis_path is None
+    assert inner.basis_partition_paths is None
+    assert inner.basis_output_path is None
+    assert inner.use_bc is False
+    assert inner.bc_input is None and inner.bc_basis_paths is None
+    explicit = nested_module.inner_data_config(
+        config.data, inner_domain="EUROPE-6km", inner_nbasis=40,
+        inner_basis_path=tmp_path / "inner.nc", inner_basis_output_path=tmp_path / "export.nc",
+    )
+    assert explicit.domain == inner.domain
+    assert explicit.nbasis == 40
+    assert explicit.basis_path == tmp_path / "inner.nc"
+    assert explicit.basis_output_path == tmp_path / "export.nc"
 
 
 def test_nested_automatic_basis_budget_uses_bounded_sensitivity_share() -> None:

@@ -490,5 +490,6 @@ def export_basis(basis_functions: BasisFunctions, path: str | Path | None) -> Ba
     """
     if path is None:
         return basis_functions
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
     basis_functions.save(path)
     return basis_functions.with_metadata({BASIS_ARTIFACT_PATH_ATTR: str(path)})

@@ -97,7 +97,18 @@ in place of ``run_rhime_nested_from_prepared_inputs``. The returned
 views of one trace; use ``result.outer.trace`` to inspect samples and each view's
 ``basis_functions`` for its native grid. ``NestedRhimeResult`` and its
 ``RhimeResult`` forwarding envelope are removed. CLI entry points and supported
-nested INI options retain their behavior.
+nested INI option spellings remain accepted.
+
+The nested CLI now saves both native ``InversionOutput`` artifacts through the
+standard writer. Their ``output_metadata`` no longer copies ``output_format``,
+``output_path``, ``output_name``, ``save_trace`` or ``save_inversion_output``;
+their ``provenance`` records package ``version``, ``revision`` and ``dirty``
+status instead of the former ``contract``, ``compatibility_issue`` and
+``basis_representation`` markers. Saving emits
+``TIMING rhime.output.inversion_output_save`` log lines and validates
+``output_name`` and ``start_date`` as filename components. The scientific
+arrays, native grids and nested overlap metadata retain their meanings.
+Requested basis exports retain their destination receipts in both native views.
 
 Use ``materialize_nested_inputs(nested.combined, config.model)`` and pass the
 returned Dataset and ``priors`` to the single ``build_nested_rhime_model``.
@@ -108,7 +119,10 @@ resource loading and optional basis exports. Explicit product construction uses
 ``make_nested_paris_products(result.outer, result.inner, ...)`` instead of the
 removed ``make_nested_paris_outputs`` result adapter. Configured PARIS runs now
 require ``output_path`` before sampling; use that direct product function for
-in-memory products. See :doc:`nested_domains`.
+in-memory products. Runs that write PARIS products retain those datasets in
+``result.products`` and all written destinations in ``result.paths``.
+``inner_data_config`` exposes the same inner configuration derivation used by
+the full runner for callers preparing their own handoff. See :doc:`nested_domains`.
 
 ``RhimeModelBuildResult`` now takes only ``model`` and ``output_contract``.
 Move its former ``variable_roles``, ``supported_output_formats`` and ``metadata``

@@ -253,7 +253,18 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
 
     monkeypatch.setattr(module, "prepare_basis", prepare)
     monkeypatch.setattr(module, "build_sensitivities", sensitivities)
-    if route in {"standard", "multisector", "staged"}:
+    exported_bases = []
+    if route == "nested":
+        original_export = module.export_basis
+
+        def export(basis, path):
+            result = original_export(basis, path)
+            exported_bases.append(result)
+            return result
+
+        monkeypatch.setattr(module, "export_basis", export)
+        monkeypatch.setattr(module, "mask_outer_merged_for_inner_domain", lambda outer, inner: outer)
+    if route in {"standard", "multisector", "staged", "nested"}:
         # Scientific preparation completes before runners and staged handoffs
         # export the basis and use the prepared inputs.
         from openghg_inversions.rhime import _standard_stages
@@ -269,7 +280,8 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
         def after_preparation(*args, **kwargs):
             captured.append(args[0].basis_functions)  # the prepared inputs
             raise AfterBasis
-        monkeypatch.setattr(module, f"materialize_{'multisector' if route == 'multisector' else 'standard'}_inputs",
+        model_family = route if route in {"multisector", "nested"} else "standard"
+        monkeypatch.setattr(module, f"materialize_{model_family}_inputs",
                             after_preparation)
         monkeypatch.setattr(_standard_stages, "save_preparation", after_preparation)
     config = RhimeConfig.from_params(options, multisector=route == "multisector")
@@ -277,10 +289,11 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
         if route == "staged":
             _standard_stages.prepare(config.data, output_dir="runs/prepared")
         elif route == "nested":
-            module._prepare_one_domain(
-                merged, basis_inputs=resolve_basis_inputs(config.data),
-                **config.data.select("domain", "start_date", "flux_sources", "basis_algorithm", "nbasis",
-                    "fix_basis_outer_regions", "use_bc", "bc_freq", "min_error", "min_error_options"),
+            module.run_nested(
+                config=config, inner_domain="6km", inner_nbasis=4,
+                inner_basis_path=config.data.basis_path,
+                inner_basis_partition_path=config.data.basis_partition_path,
+                inner_basis_output_path=f"runs/prepared/inner_basis{suffix}" if suffix else None,
             )
         elif route == "example":
             module.run_custom_rhime(**options)
@@ -291,18 +304,34 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
     assert sources["a"].flux.data is borrowed
     assert config.data.basis_output_path == (tmp_path / options["basis_output_path"] if suffix else None)
     if route in {"standard", "multisector", "staged", "example"}:
-        # An explicit export preserves scientific basis payloads and acquisition
-        # metadata rather than attaching a destination receipt.
+        # Exported payloads remain borrowed; standard records its destination.
         assert captured[0].operator is captured[1].operator
         assert captured[0].flux.data is captured[1].flux.data
-        assert captured[1].metadata == original_metadata[0]
-        assert captured[1].basis_artifact_path == (str(tmp_path / "input.nc") if selection == "reused" else None)
+        expected_receipt = (
+            str(tmp_path / options["basis_output_path"]) if route == "standard" and suffix
+            else str(tmp_path / "input.nc") if selection == "reused" else None
+        )
+        assert captured[1].basis_artifact_path == expected_receipt
+        assert captured[0].metadata == original_metadata[0]
     if route == "nested":
-        assert captured[0] is captured[1]
-        assert not list((tmp_path / "runs/prepared").glob("basis*"))
-        return
+        assert len(exported_bases) == 2
+        for index, label in enumerate(("basis", "inner_basis")):
+            original = captured[index]
+            exported_basis = exported_bases[index]
+            assert original.operator is exported_basis.operator
+            assert original.flux.data is exported_basis.flux.data
+            assert original.metadata == original_metadata[index]
+            expected = (
+                str(tmp_path / f"runs/prepared/{label}{suffix}") if suffix
+                else str(tmp_path / "input.nc") if selection == "reused" else None
+            )
+            assert exported_basis.basis_artifact_path == expected
+            if suffix:
+                restored = BasisFunctions.load(expected)
+                xr.testing.assert_equal(restored.flat_basis(), original.flat_basis())
+                xr.testing.assert_equal(restored.flux, original.flux)
     if suffix is None:
-        if route not in {"standard", "multisector", "staged"}:
+        if route not in {"standard", "multisector", "staged", "nested"}:
             assert captured[0] is captured[1]
         assert not list((tmp_path / "runs/prepared").glob("basis*"))
         return

@@ -10,6 +10,7 @@ import xarray as xr
 from scipy.stats import norm
 
 from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.rhime.nested import (
     build_nested_rhime_model,
     combine_nested_rhime_inputs,
@@ -107,7 +108,13 @@ def test_nested_prepared_runner_samples_and_none_writes_nothing(monkeypatch, tmp
     }, multisector=False)
     sampler = RhimeSampler(draws=3, tune=3, burn=0, chains=1, nuts_sampler="pymc",
         sample_prior_predictive=3, sample_kwargs={"cores": 1, "random_seed": 42})
-    config = replace(config, sampler=sampler)
+    config = replace(
+        config, sampler=sampler,
+        model=replace(config.model, sectors=(
+            replace(config.model.sectors[0], state_activity=StateActivity(fixed_value=11.)),
+        )),
+    )
+    inner_policy = StateActivity(fixed_value=7.)
 
     def forbidden(*args, **kwargs):
         raise AssertionError("Prepared execution must bypass acquisition/preparation and all output writers")
@@ -116,10 +123,13 @@ def test_nested_prepared_runner_samples_and_none_writes_nothing(monkeypatch, tmp
     monkeypatch.setattr("openghg_inversions.rhime.nested.prepare_nested_rhime_inputs", forbidden)
     monkeypatch.setattr("openghg_inversions.rhime.nested._write_nested_paris_outputs", forbidden)
     monkeypatch.setattr("openghg_inversions.rhime.nested.save_inversion_output", forbidden)
-    output = run_nested(config=config, prepared=nested)
+    output = run_nested(config=config, prepared=nested, inner_state_activity=inner_policy)
     assert output.outer.trace is output.inner.trace
     assert output.outer.trace["posterior"].sizes["draw"] == 3
     assert output.outer.trace["posterior_predictive"]["y"].sizes["nmeasure"] == 2
+    assert output.outer.model_metadata["sectors"][0]["state_activity"]["fixed_value"] == 11.
+    assert output.inner.model_metadata["sectors"][0]["state_activity"]["fixed_value"] == 7.
+    assert output.inner.model_metadata["state_activity"]["fixed_value"] == 7.
     assert list(tmp_path.iterdir()) == []
     path = tmp_path / "inner.nc"
     output.inner.save(path)
@@ -153,12 +163,20 @@ def test_nested_prepared_runner_samples_and_none_writes_nothing(monkeypatch, tmp
     monkeypatch.undo()
     monkeypatch.setattr("openghg_inversions.rhime.nested.sample_rhime_model", lambda built, sampler: output.outer.trace)
     paris_dir = tmp_path / "paris"
-    paris_config = replace(config, output=replace(
-        config.output, output_format="paris", output_path=paris_dir, country_file=country_file,
-        paris_postprocessing_kwargs={"template_version": "latest", "inversion_grid": False,
-                                     "country_selections": None, "country_file_cache_dir": tmp_path / "countries"},
-    ))
-    written = run_nested(config=paris_config, prepared=nested)
+    outer_basis_path = tmp_path / "new-bases" / "outer.nc"
+    inner_basis_path = tmp_path / "new-bases" / "inner.zarr"
+    paris_config = replace(
+        config, data=replace(config.data, basis_output_path=outer_basis_path),
+        output=replace(
+            config.output, output_format="paris", output_path=paris_dir, country_file=country_file,
+            paris_postprocessing_kwargs={"template_version": "latest", "inversion_grid": False,
+                                         "country_selections": None, "country_file_cache_dir": tmp_path / "countries"},
+        ),
+    )
+    written = run_nested(
+        config=paris_config, prepared=nested, inner_basis_output_path=inner_basis_path,
+        inner_state_activity=inner_policy,
+    )
     assert len(list(paris_dir.glob("*_flux_*.nc"))) == 2
     assert len(list(paris_dir.glob("*_conc_*.nc"))) == 1
     assert len(list(paris_dir.glob("*inversion_output*.nc"))) == 2
@@ -168,6 +186,44 @@ def test_nested_prepared_runner_samples_and_none_writes_nothing(monkeypatch, tmp
     xr.testing.assert_equal(restored_outer.trace["posterior"], written.outer.trace["posterior"])
     xr.testing.assert_equal(restored_inner.trace["posterior"], written.inner.trace["posterior"])
     np.testing.assert_array_equal(restored_inner.flux.lat, [50., 50.5])
+    assert restored_outer.basis_functions.basis_artifact_path == str(outer_basis_path)
+    assert restored_inner.basis_functions.basis_artifact_path == str(inner_basis_path)
+    assert restored_outer.model_metadata["sectors"][0]["state_activity"]["fixed_value"] == 11.
+    assert restored_inner.model_metadata["sectors"][0]["state_activity"]["fixed_value"] == 7.
+    assert restored_inner.model_metadata["state_activity"]["fixed_value"] == 7.
+    assert nested.outer.basis_functions.basis_artifact_path is None
+    assert nested.inner.basis_functions.basis_artifact_path is None
+    assert set(written.products) == {"paris_flux", "paris_flux_inner", "paris_concentration"}
+    assert set(written.paths) == {
+        "paris_flux_path", "paris_flux_inner_path", "paris_concentration_path",
+        "inversion_output_path", "inversion_output_inner_path", "trace_path",
+    }
+    assert all(path.exists() for path in written.paths.values())
+    assert written.products["paris_concentration"].sizes["index"] == 2
+    assert set(restored_outer.provenance) == {"version", "revision", "dirty"}
+    assert not {"output_format", "output_path", "output_name", "save_trace", "save_inversion_output"} & (
+        restored_outer.output_metadata.keys()
+    )
+
+
+@pytest.mark.parametrize("destination", [True, "custom.nc", "custom.zarr"])
+def test_nested_artifact_suffix_uses_shared_writer_paths(tmp_path, destination):
+    from types import SimpleNamespace
+    from openghg_inversions.rhime.outputs import save_inversion_output
+    from openghg_inversions.rhime.specs import RhimeOutputSpec
+
+    saved = []
+    output = SimpleNamespace(run_metadata={"start_date": "2019-01-01"}, save=saved.append)
+    selected = destination if destination is True else tmp_path / destination
+    spec = RhimeOutputSpec(
+        output_format="inv_out", output_name="nested", output_path=tmp_path,
+        save_inversion_output=selected, save_trace=False,
+    )
+    outer = save_inversion_output(output, spec)
+    inner = save_inversion_output(output, spec, suffix="_inner")
+    path = outer["inversion_output_path"]
+    assert inner["inversion_output_inner_path"] == path.with_name(f"{path.stem}_inner{path.suffix}")
+    assert saved == [path, inner["inversion_output_inner_path"]]
 
 
 @pytest.mark.parametrize("override", [{}, {"inner_x_prior": None}])

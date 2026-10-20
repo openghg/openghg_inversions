@@ -111,6 +111,7 @@ owned by ``inference``.
    openghg_inversions.rhime.RhimeResult
    openghg_inversions.rhime.NestedOutput
    openghg_inversions.rhime.materialize_nested_inputs
+   openghg_inversions.rhime.inner_data_config
    openghg_inversions.rhime.build_nested_rhime_model
    openghg_inversions.rhime.make_nested_inversion_outputs
    openghg_inversions.rhime.SectorSpec

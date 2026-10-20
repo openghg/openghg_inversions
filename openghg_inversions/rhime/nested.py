@@ -21,7 +21,7 @@ from openghg_inversions.rhime._resources import resolve_resource_paths
 from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import hashlib
 from numbers import Integral
 from pathlib import Path
@@ -44,6 +44,7 @@ from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.model_error import MinErrorConfig
 from openghg_inversions.models.state_activity import StateActivity, prepare_linear_sensitivity
 from openghg_inversions.observation_error import (
+    aggregation_error_input_names,
     resolve_aggregation_error,
 )
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
@@ -52,8 +53,8 @@ from ._model_building import ForwardModelTerms, add_rhime_likelihood
 from .builders import RhimeLikelihoodBuilder, RhimeModelBuildResult
 from .materialization import _materialize_pymc_inputs_and_priors
 from .outputs import (
-    make_model_output, validate_output_resources, annotate_sample_trace, save_inversion_output,
-    _define_derived_output_filename, _resolve_output_path,
+    make_model_output, validate_nested_output_resources, annotate_sample_trace, save_inversion_output,
+    _define_derived_output_filename,
 )
 from .ini import read_rhime_ini
 from .params import DataConfig, RhimeConfig
@@ -61,6 +62,7 @@ from .preparation import (
     acquire_merged_data,
     assemble_rhime_inputs,
     build_sensitivities,
+    export_basis,
     filter_observations,
     prepare_observation_errors,
 )
@@ -72,11 +74,12 @@ from .specs import (
     RhimeModelSpec,
     RhimeOutputSpec,
 )
-from .standard import standard_model_input_names, _standard_input_names, _standard_prior_parameters
+from .standard import standard_model_input_names, _standard_prior_parameters
 
 __all__ = [
     "NestedRhimePreparedInputs",
     "NestedOutput",
+    "inner_data_config",
     "build_nested_rhime_model",
     "align_inner_merged_to_outer_observations",
     "combine_nested_rhime_inputs",
@@ -152,10 +155,14 @@ class NestedOutput:
     Attributes:
         outer: Masked outer-grid flux view, also owning shared concentrations.
         inner: Native inner-grid flux view with its own state-axis mapping.
+        products: Computed PARIS datasets, when requested.
+        paths: Written product and artifact destinations.
     """
 
     outer: InversionOutput
     inner: InversionOutput
+    products: dict[str, xr.Dataset] = field(default_factory=dict)
+    paths: dict[str, Path] = field(default_factory=dict)
 
 
 def _domain_variable_roles(all_roles: Mapping[str, str], *, tag: str) -> dict[str, str]:
@@ -233,6 +240,7 @@ def make_nested_inversion_outputs(
     end_date: str,
     actual_inference: Mapping[str, Any] | None = None,
     provenance: Mapping[str, Any] | None = None,
+    inner_state_activity: StateActivity | None = None,
 ) -> NestedOutput:
     """Bind one posterior to each native grid without computing or writing arrays.
 
@@ -246,6 +254,7 @@ def make_nested_inversion_outputs(
         end_date: Requested inversion end.
         actual_inference: Description of inference that ran.
         provenance: Package provenance; omission records the installed package.
+        inner_state_activity: Activity policy used for the inner state.
 
     Returns:
         Two views borrowing their native arrays and the same posterior.
@@ -260,8 +269,12 @@ def make_nested_inversion_outputs(
                 "basis": native.basis_functions.operator.meta.state_dim,
             },
         )
+        native_model_spec = model_spec if tag == "outer" else replace(
+            model_spec, state_activity=inner_state_activity,
+            sectors=(replace(model_spec.sectors[0], state_activity=inner_state_activity),),
+        )
         output = make_model_output(
-            prepared=native, model_spec=model_spec, posterior=posterior,
+            prepared=native, model_spec=native_model_spec, posterior=posterior,
             output_contract=contract, start_date=start_date, end_date=end_date,
             actual_inference=actual_inference, provenance=provenance, split_by_sectors=False,
         )
@@ -672,6 +685,58 @@ def _inner_domain_name(outer_domain: str, inner_domain: str) -> str:
     return inner if inner == outer or inner.startswith(f"{outer}-") else f"{outer}-{inner}"
 
 
+def inner_data_config(
+    outer_data: DataConfig,
+    *,
+    inner_domain: str,
+    inner_footprint_store: str | None = None,
+    inner_flux_store: str | None = None,
+    inner_flux_domain: str | None = None,
+    inner_basis_algorithm: str | None = None,
+    inner_nbasis: int | None = None,
+    inner_basis_path: str | Path | None = None,
+    inner_basis_partition_path: str | Path | None = None,
+    inner_basis_partition_paths: Sequence[str | Path] | None = None,
+    inner_landsea_path: str | Path | None = None,
+    inner_outer_regions_path: str | Path | None = None,
+    inner_basis_output_path: str | Path | None = None,
+) -> DataConfig:
+    """Resolve the native inner acquisition and basis choices from an outer request.
+
+    Stores and the basis target inherit outer values when omitted. The inner
+    basis defaults to quadtree, has independent resources and no boundary
+    component. Relative resource paths resolve from the current directory.
+    An omitted ``inner_nbasis`` still means automatic total-budget allocation
+    when passed to :func:`prepare_nested_rhime_inputs`.
+
+    Returns:
+        A new configuration without mutating ``outer_data`` or opening files.
+        Use :func:`~openghg_inversions.rhime.preparation.resolve_basis_inputs`
+        to load its selected resources.
+    """
+    basis_options = resolve_resource_paths(
+        {
+            "domain": _inner_domain_name(outer_data.domain, inner_domain),
+            "basis_path": inner_basis_path,
+            "basis_partition_path": inner_basis_partition_path,
+            "basis_partition_paths": inner_basis_partition_paths,
+            "landsea_path": inner_landsea_path,
+            "outer_regions_path": inner_outer_regions_path,
+            "basis_output_path": inner_basis_output_path,
+        },
+        annotations=get_type_hints(DataConfig), base_dir=Path.cwd(),
+    )
+    return replace(
+        outer_data, **basis_options,
+        footprint_store=inner_footprint_store or outer_data.footprint_store,
+        flux_store=inner_flux_store or outer_data.flux_store,
+        flux_domain=inner_flux_domain,
+        use_bc=False, bc_input=None, bc_basis_paths=None, fix_basis_outer_regions=False,
+        basis_algorithm=inner_basis_algorithm if inner_basis_algorithm is not None else "quadtree",
+        nbasis=outer_data.nbasis if inner_nbasis is None else inner_nbasis,
+    )
+
+
 def _prepare_one_domain(
     merged: _NestedDomainData, *,
     domain: str, start_date: str, flux_sources: tuple[str, ...],
@@ -956,15 +1021,15 @@ def build_nested_rhime_model(
 
     Raises:
         ValueError: Selected inputs or priors are lazy, required priors are absent,
-            state dimensions coincide, or model/likelihood choices conflict.
+            or state dimensions coincide. Input availability and model choices
+            belong to materialization and the runner respectively.
     """
-    names = (*_standard_input_names(model_inputs, model_spec), "H_inner")
-    if "H_inner" not in model_inputs:
-        raise ValueError("Nested inner flux component requires prepared input 'H_inner'.")
-    if likelihood_builder is not None and model_spec.likelihood is not None:
-        raise ValueError("A custom likelihood cannot be combined with built-in likelihood settings.")
-    if likelihood_kwargs and likelihood_builder is None:
-        raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
+    names = ["H", "H_inner", "mf", "mf_error"]
+    if model_spec.likelihood is not None:
+        names.extend(model_spec.likelihood.required_prepared_inputs)
+    if model_spec.use_bc:
+        names.append("H_bc")
+    names.extend(aggregation_error_input_names(model_inputs, model_spec.aggregation_error_mode))
     required = (_standard_prior_parameters(model_spec).keys() - {"x"}) | {"x_outer", "x_inner"}
     missing = required - priors.keys()
     if missing:
@@ -1124,11 +1189,12 @@ def build_nested_rhime_model(
     return result
 
 
-def _write_nested_paris_outputs(output: NestedOutput, output_spec: RhimeOutputSpec) -> None:
-    """Write native flux products and one shared concentration product."""
+def _write_nested_paris_outputs(output: NestedOutput, output_spec: RhimeOutputSpec) -> NestedOutput:
+    """Write and retain native flux products and one shared concentration product."""
     from openghg_inversions.postprocessing.nested_paris_outputs import make_nested_paris_products
     from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
+    validate_nested_output_resources(output_spec)
     inner_label = output.inner.output_metadata["nested_domain"]["inner_domain"]
     kwargs = dict(output_spec.paris_postprocessing_kwargs or {})
     if "country_file_cache_dir" not in kwargs and output_spec.output_path is not None:
@@ -1139,19 +1205,24 @@ def _write_nested_paris_outputs(output: NestedOutput, output_spec: RhimeOutputSp
         obs_avg_period=output.outer.run_metadata["averaging_period"][0] or "0h", **kwargs,
     )
     Path(output_spec.output_path).mkdir(parents=True, exist_ok=True)
-    for product, domain, suffix in (
-        (flux_outer, output.outer.domain, "flux"),
-        (flux_inner, inner_label, "flux"),
-        (concentration, output.outer.domain, "conc"),
+    products = {"paris_flux": flux_outer, "paris_flux_inner": flux_inner, "paris_concentration": concentration}
+    paths = {}
+    for name, domain, suffix in (
+        ("paris_flux", output.outer.domain, "flux"),
+        ("paris_flux_inner", inner_label, "flux"),
+        ("paris_concentration", output.outer.domain, "conc"),
     ):
         path = _define_derived_output_filename(
             output_spec, species=output.outer.species, domain=domain,
             output_name=f"{output_spec.output_name}_{suffix}",
             start_date=output.outer.run_metadata["start_date"], ext=".nc",
         )
+        product = products[name]
         write_netcdf_preserving_bounds_attrs(
             product, path, unlimited_dims=["index" if "index" in product.dims else "time"],
         )
+        paths[f"{name}_path"] = Path(path)
+    return replace(output, products=products, paths=paths)
 
 
 _NESTED_PARAMETER_NAMES = frozenset(
@@ -1242,6 +1313,10 @@ def run_nested(
     if inner_x_prior is not None and not isinstance(inner_x_prior, Mapping):
         raise ValueError("`inner_x_prior` must be a prior mapping/dict or None.")
     time_tolerance = nested_options.pop("inner_time_tolerance", None)
+    inner_basis_output_path = resolve_resource_paths(
+        {"basis_output_path": nested_options.pop("inner_basis_output_path", None)},
+        annotations=get_type_hints(DataConfig), base_dir=Path.cwd(),
+    )["basis_output_path"]
 
     if likelihood_builder is not None and params.get("mismatch_model") is not None:
         raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
@@ -1257,36 +1332,14 @@ def run_nested(
     sampler = resolve_sampler(config.sampler)
     if likelihood_builder is None and config.model.likelihood is None:
         raise ValueError("A nested RHIME run requires a built-in or custom likelihood.")
-    if config.output.output_format not in ("none", "paris"):
-        raise ValueError("`run_rhime_nested` currently requires output_format='none' or 'paris'.")
-    validate_output_resources(config.output)
-    if config.output.output_format == "paris" and config.output.output_path is None:
-        raise ValueError("`output_path` is required for nested PARIS products.")
+    validate_nested_output_resources(config.output)
     if prepared is None:
         if inner_domain is None:
             raise ValueError("`run_rhime_nested` requires `inner_domain`.")
         outer_data = config.data
-        inner_domain_name = _inner_domain_name(outer_data.domain, inner_domain)
-        inner_nbasis = nested_options.pop("inner_nbasis", None)
-        inner_basis_options = resolve_resource_paths(
-            {
-                "domain": inner_domain_name,
-                **{name: nested_options.pop(f"inner_{name}", None) for name in (
-                    "basis_path", "basis_partition_path", "basis_partition_paths", "landsea_path",
-                    "outer_regions_path", "basis_output_path",
-                )},
-            },
-            annotations=get_type_hints(DataConfig), base_dir=Path.cwd(),
-        )
-        inner_algorithm = nested_options.pop("inner_basis_algorithm", None)
-        inner_data = replace(
-            outer_data, **inner_basis_options,
-            footprint_store=nested_options.pop("inner_footprint_store", None) or outer_data.footprint_store,
-            flux_store=nested_options.pop("inner_flux_store", None) or outer_data.flux_store,
-            flux_domain=nested_options.pop("inner_flux_domain", None),
-            use_bc=False, bc_input=None, bc_basis_paths=None, fix_basis_outer_regions=False,
-            basis_algorithm=inner_algorithm if inner_algorithm is not None else "quadtree",
-            nbasis=inner_nbasis if inner_nbasis is not None else outer_data.nbasis,
+        inner_data = inner_data_config(
+            outer_data, inner_domain=inner_domain, inner_basis_output_path=inner_basis_output_path,
+            **nested_options,
         )
         outer_basis_inputs = resolve_basis_inputs(outer_data)
         inner_basis_inputs = resolve_basis_inputs(inner_data)
@@ -1303,22 +1356,23 @@ def run_nested(
                 "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
                 "min_error", "min_error_options",
             ),
-            inner_domain=inner_domain_name, inner_basis_algorithm=inner_data.basis_algorithm,
-            inner_nbasis=inner_nbasis, outer_basis_inputs=outer_basis_inputs,
+            inner_domain=inner_data.domain, inner_basis_algorithm=inner_data.basis_algorithm,
+            inner_nbasis=nested_options.get("inner_nbasis"), outer_basis_inputs=outer_basis_inputs,
             inner_basis_inputs=inner_basis_inputs, bc_basis=bc_basis, time_tolerance=time_tolerance,
         )
-        for native, destination in (
-            (prepared.outer, outer_data.basis_output_path),
-            (prepared.inner, inner_data.basis_output_path),
-        ):
-            if destination is not None:
-                Path(destination).parent.mkdir(parents=True, exist_ok=True)
-                native.basis_functions.save(destination)
     else:
         if inner_domain is not None or nested_options or time_tolerance is not None:
             raise ValueError("Supplied prepared inputs cannot be combined with preparation options.")
         prepared = prepared.validated()
 
+    outer_basis = export_basis(prepared.outer.basis_functions, config.data.basis_output_path)
+    inner_basis = export_basis(prepared.inner.basis_functions, inner_basis_output_path)
+    prepared = replace(
+        prepared,
+        outer=replace(prepared.outer, basis_functions=outer_basis),
+        inner=replace(prepared.inner, basis_functions=inner_basis),
+        combined=replace(prepared.combined, basis_functions=outer_basis),
+    )
     model_inputs, priors = materialize_nested_inputs(
         prepared.combined, config.model, inner_x_prior=inner_x_prior,
     )
@@ -1336,19 +1390,17 @@ def run_nested(
         output_contract=built.output_contract, start_date=config.data.start_date,
         end_date=config.data.end_date, actual_inference=sampler.describe(),
         provenance=installed_ogi_provenance(),
+        inner_state_activity=inner_state_activity,
     )
     if config.output.output_format == "paris":
-        _write_nested_paris_outputs(output, config.output)
-        save_inversion_output(output.outer, config.output)
-        inner_path = _resolve_output_path(
-            config.output.save_inversion_output, config.output.output_path,
-            f"{config.output.output_name}{config.data.start_date}_inversion_output.nc",
+        output = _write_nested_paris_outputs(output, config.output)
+        paths = save_inversion_output(output.outer, config.output)
+        paths.update(save_inversion_output(
+            output.inner, replace(config.output, save_trace=False), suffix="_inner",
+        ))
+        output = replace(
+            output, paths={**output.paths, **paths},
         )
-        if inner_path is not None:
-            save_inversion_output(
-                output.inner, replace(config.output, save_trace=False,
-                    save_inversion_output=inner_path.with_name(f"{inner_path.stem}_inner{inner_path.suffix}")),
-            )
     return output
 
 

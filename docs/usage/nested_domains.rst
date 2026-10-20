@@ -165,6 +165,10 @@ native grid. Configure the exact outer and inner artifacts independently with
 Do not create one basis artifact spanning both grids. When generating a basis
 instead, ``basis_output_path`` and ``inner_basis_output_path`` save the outer
 and inner artifacts at their exact destinations independently.
+These exports also run with ``run_nested(config=config, prepared=nested,
+inner_basis_output_path=...)``. Each returned native basis and its saved
+``InversionOutput`` retain the export destination as provenance; the borrowed
+prepared inputs remain unchanged.
 ``landsea_path`` and ``inner_landsea_path`` select each grid's class map when
 weighted generation needs one; support-map selection fails for missing files
 or unsupported domains before acquisition. If no inner basis file or algorithm
@@ -310,6 +314,16 @@ required. For direct graph inspection, call ``materialize_nested_inputs`` on
 ``nested.combined`` and ``config.model``, then pass its returned Dataset and
 ``priors`` to ``build_nested_rhime_model`` with the same model specification.
 
+To prepare the two domains yourself, first call
+``inner_data_config(config.data, inner_domain="6km", ...)`` from
+``openghg_inversions.rhime``. This is the same configuration step used by the
+full runner: it inherits the outer stores, resolves independent inner basis
+paths, defaults to quadtree, and disables the inner boundary component. Pass
+the outer and inner configurations to ``resolve_basis_inputs`` and
+``acquire_merged_data``, then pass the acquired data and resolved basis inputs
+to ``prepare_nested_rhime_inputs``. Keep ``inner_nbasis=None`` at preparation
+when requesting automatic total-budget allocation.
+
 Omitting ``outer_overlap_masked=True`` raises rather than silently combining
 two ordinary overlapping sensitivity matrices. The retrieval-backed
 ``run_rhime_nested`` path performs the mask before preparation and supplies
@@ -349,10 +363,16 @@ trace is unchanged. This produces three products:
 
 ``run_rhime_nested`` requires ``output_path`` for PARIS and writes all three, using the
 inner domain's label (e.g. ``EUROPE-6km``) in the inner flux file's name.
+The returned ``NestedOutput.products`` retains ``paris_flux``,
+``paris_flux_inner`` and ``paris_concentration`` so Python callers can inspect
+the products without reconstructing them. ``NestedOutput.paths`` records the
+corresponding ``paris_*_path`` destinations and any written
+``inversion_output_path``, ``inversion_output_inner_path`` and ``trace_path``.
 When inversion-output artifacts are requested, each domain view also retains
 its actual outer/inner identity, coordinate-grid fingerprints and extents,
 the explicit trace-to-basis state-dimension mapping, and the outer overlap
 mask policy. These fields survive an ``InversionOutput`` save/load round trip.
+The inner view records its own state-activity policy.
 Use ``make_nested_paris_products(result.outer, result.inner,
 inner_domain_label="EUROPE-6km", country_file=...)`` for explicit product
 construction from these views. The scientific result contains no live PyMC

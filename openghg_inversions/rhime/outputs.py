@@ -90,6 +90,15 @@ def validate_multisector_output_resources(output_spec: RhimeOutputSpec) -> None:
         raise ValueError("`output_path` is required for multisector PARIS products.")
 
 
+def validate_nested_output_resources(output_spec: RhimeOutputSpec) -> None:
+    """Check nested reporting resources and destinations before doing work."""
+    if output_spec.output_format not in ("none", "paris"):
+        raise ValueError("`run_rhime_nested` currently requires output_format='none' or 'paris'.")
+    validate_output_resources(output_spec)
+    if output_spec.output_format == "paris" and output_spec.output_path is None:
+        raise ValueError("`output_path` is required for nested PARIS products.")
+
+
 @dataclass
 class RhimeResult:
     """Runtime envelope retained for deferred CO2 consumers.
@@ -689,7 +698,9 @@ def make_model_output(
     )
 
 
-def save_inversion_output(inv_out: InversionOutput, output_spec: RhimeOutputSpec) -> None:
+def save_inversion_output(
+    inv_out: InversionOutput, output_spec: RhimeOutputSpec, *, suffix: str = "",
+) -> dict[str, Path]:
     """Export the scientific result and trace without computing derived products.
 
     Args:
@@ -697,15 +708,23 @@ def save_inversion_output(inv_out: InversionOutput, output_spec: RhimeOutputSpec
         output_spec: Resolved export choices. ``inv_out`` defaults to exporting the
             scientific result; ``none`` writes nothing. Explicit paths retain
             their destinations and existing files follow normal overwrite behavior.
+        suffix: Optional suffix appended to each resolved artifact stem, including
+            explicit destinations. For example, ``"_inner"`` selects the inner view.
+
+    Returns:
+        Written artifact paths keyed by ``inversion_output{suffix}_path`` and
+        ``trace{suffix}_path``. Disabled exports are absent.
 
     Raises:
         ValueError: If filenames or destinations are invalid.
         OSError: If an artifact cannot be written.
     """
     if output_spec.output_format == "none":
-        return
+        return {}
     if not output_spec.save_inversion_output and not output_spec.save_trace:
-        return
+        return {}
+    if suffix:
+        _validate_filename_component("suffix", suffix)
     for name, value in (("output_name", output_spec.output_name),
                         ("start_date", inv_out.run_metadata["start_date"])):
         _validate_filename_component(name, value)
@@ -716,11 +735,17 @@ def save_inversion_output(inv_out: InversionOutput, output_spec: RhimeOutputSpec
         f"{stem}_inversion_output.nc",
     )
     trace_path = _resolve_output_path(output_spec.save_trace, output_spec.output_path, f"{stem}_trace.nc")
+    paths = {}
     if inversion_path is not None:
+        inversion_path = inversion_path.with_name(f"{inversion_path.stem}{suffix}{inversion_path.suffix}")
         inversion_path.parent.mkdir(parents=True, exist_ok=True)
         with timed("rhime.output.inversion_output_save", path=inversion_path):
             inv_out.save(inversion_path)
+        paths[f"inversion_output{suffix}_path"] = inversion_path
     if trace_path is not None:
+        trace_path = trace_path.with_name(f"{trace_path.stem}{suffix}{trace_path.suffix}")
         trace_path.parent.mkdir(parents=True, exist_ok=True)
         with timed("rhime.output.trace_save", path=trace_path):
             save_trace(inv_out.trace, trace_path)
+        paths[f"trace{suffix}_path"] = trace_path
+    return paths

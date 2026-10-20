@@ -55,6 +55,7 @@ from .multisector import (
 from .nested import (
     NestedRhimePreparedInputs,
     NestedOutput,
+    inner_data_config,
     materialize_nested_inputs,
     make_nested_inversion_outputs,
     align_inner_merged_to_outer_observations,
@@ -128,6 +129,7 @@ __all__ = [
     "RhimeLikelihoodBuilder",
     "NestedRhimePreparedInputs",
     "NestedOutput",
+    "inner_data_config",
     "materialize_nested_inputs",
     "make_nested_inversion_outputs",
     "RhimeModelBuildResult",
