@@ -8,7 +8,7 @@ their affine reconstruction binding remains valid.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, fields, replace
 from hashlib import sha256
 import json
 from numbers import Integral
@@ -174,7 +174,9 @@ def effective_co2_configuration(setup: Co2StageSetup) -> dict[str, Any]:
             "runner": callable_metadata(setup.recipe.runner),
             "runner_kwargs": kwargs,
             "preparation": setup.recipe.preparation_kwargs,
-            "sampler": {name: getattr(setup.recipe.sampler, name) for name in setup.recipe.sampler.__slots__},
+            "sampler": {
+                field.name: getattr(setup.recipe.sampler, field.name) for field in fields(setup.recipe.sampler)
+            },
             "output": asdict(setup.output),
             "reconstruction_path": setup.reconstruction_path,
             "source_to_sector": setup.source_to_sector,

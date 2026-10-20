@@ -5,12 +5,16 @@ from dataclasses import replace
 import json
 from pathlib import Path
 
+import dask
+import dask.array as da
+import numpy as np
 import pytest
 import xarray as xr
 
 from openghg_inversions.rhime.co2 import Co2PreparedInputs
 from openghg_inversions.rhime.co2.stages import (
     co2_configuration_identity,
+    effective_co2_configuration,
     prepare_co2_stage,
     resolve_co2_stage_setup,
 )
@@ -72,6 +76,68 @@ def test_identity_ignores_transport_output_and_sampling_but_binds_science(tmp_pa
     assert co2_configuration_identity(resolve_co2_stage_setup(relocated)) == first
     relocated["likelihood"]["tau_hours"] = 12.0
     assert co2_configuration_identity(resolve_co2_stage_setup(relocated)) != first
+
+
+def test_cached_configuration_records_all_sampler_fields_with_existing_array_encoding(tmp_path):
+    from openghg_inversions.inference.sampling import RhimeSampler
+
+    setup = resolve_co2_stage_setup(_config(tmp_path / "unopened.nc"))
+    original_identity = co2_configuration_identity(setup)
+    sampler = RhimeSampler(
+        draws=17, burn=2, tune=13, chains=1, progressbar=True,
+        sample_kwargs={"random_seed": np.array([7])}, sample_prior_predictive=0,
+        sample_posterior_predictive=("y", "concentration"),
+        posterior_predictive_kwargs={"random_seed": None},
+    )
+    configured = replace(setup, recipe=replace(setup.recipe, sampler=sampler))
+    recorded = effective_co2_configuration(configured)["sampler"]
+    assert recorded == {
+        "draws": 17, "burn": 2, "tune": 13, "chains": 1, "nuts_sampler": "pymc",
+        "progressbar": True, "sample_kwargs": {"random_seed": [7]},
+        "sample_prior_predictive": 0, "sample_posterior_predictive": ["y", "concentration"],
+        "posterior_predictive_kwargs": {"random_seed": None},
+    }
+    assert co2_configuration_identity(configured) == original_identity
+    assert isinstance(sampler.sample_kwargs["random_seed"], np.ndarray)
+
+
+def test_cached_sampler_projection_never_deepcopies_or_stringifies_opaque_runtime_options(tmp_path):
+    from openghg_inversions.inference.sampling import RhimeSampler
+
+    class OpaqueRuntime:
+        def __deepcopy__(self, memo):
+            pytest.fail("stage metadata must not deepcopy opaque runtime options")
+
+        def __str__(self):
+            pytest.fail("stage metadata must not stringify opaque runtime options")
+
+    setup = resolve_co2_stage_setup(_config(tmp_path / "unopened.nc"))
+    opaque = OpaqueRuntime()
+    sampler = RhimeSampler(sample_kwargs={"step": opaque})
+    configured = replace(setup, recipe=replace(setup.recipe, sampler=sampler))
+    with pytest.raises(TypeError, match="OpaqueRuntime.*not JSON serializable"):
+        effective_co2_configuration(configured)
+    assert sampler.sample_kwargs["step"] is opaque
+
+
+def test_cached_sampler_projection_rejects_bare_lazy_arrays_without_execution(tmp_path):
+    from openghg_inversions.inference.sampling import RhimeSampler
+
+    executed = []
+
+    @dask.delayed
+    def payload():
+        executed.append("executed")
+        return np.array([7])
+
+    lazy = da.from_delayed(payload(), shape=(1,), dtype=int)
+    setup = resolve_co2_stage_setup(_config(tmp_path / "unopened.nc"))
+    sampler = RhimeSampler(sample_kwargs={"random_seed": lazy})
+    configured = replace(setup, recipe=replace(setup.recipe, sampler=sampler))
+    with pytest.raises(TypeError, match="Array.*not JSON serializable"):
+        effective_co2_configuration(configured)
+    assert sampler.sample_kwargs["random_seed"] is lazy
+    assert executed == []
 
 
 def test_invalid_cached_site_mapping_has_no_destination(tmp_path):
