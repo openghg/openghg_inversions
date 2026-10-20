@@ -95,21 +95,38 @@ from openghg_inversions.hbmcmc.legacy_data import (
 
 
 @pytest.fixture(scope="module")
-def rhime_inv_inputs(
-    mhd_and_tac_ch4_data_args: dict[str, Any],
-    default_bc_basis_directory: Path,
-) -> xr.Dataset:
-    data_args = dict(mhd_and_tac_ch4_data_args)
-    data_args["flux_store"] = data_args.pop("emissions_store")
-    flux_sources = data_args.pop("emissions_name")
-    prepared = prepare_inputs(
-        **data_args,
-        output_name="test-rhime-inputs",
-        flux_sources=flux_sources,
-        bc_freq="3h",
-        min_error=0.0,
+def rhime_inv_inputs() -> xr.Dataset:
+    """Provide labelled builder inputs spanning two sites and sigma periods."""
+    nmeasure = pd.MultiIndex.from_product(
+        [
+            ["MHD", "TAC"],
+            pd.to_datetime(["2019-01-01T00:00", "2019-01-01T01:00", "2019-01-01T04:00"]),
+        ],
+        names=["site", "time"],
     )
-    return prepared.inv_inputs
+    return xr.Dataset(
+        {
+            "H": (
+                ("region", "nmeasure"),
+                [[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [2.0, 3.0, 5.0, 7.0, 11.0, 13.0]],
+                {"units": "ppm"},
+            ),
+            "H_bc": (
+                ("bc_region", "nmeasure"),
+                [[0.25, 0.5, 0.75, 1.0, 1.25, 1.5], [1.5, 1.0, 0.5, 1.25, 0.75, 0.25]],
+                {"units": "ppm"},
+            ),
+            "mf": ("nmeasure", [10.0, 11.0, 12.0, 13.0, 14.0, 15.0], {"units": "ppm"}),
+            "mf_error": ("nmeasure", [0.2, 0.3, 0.4, 0.5, 0.6, 0.7], {"units": "ppm"}),
+            "min_error": ("nmeasure", [0.0, 0.01, 0.02, 0.03, 0.04, 0.05], {"units": "ppm"}),
+            "site_indicator": ("nmeasure", [0, 0, 0, 1, 1, 1]),
+        },
+        coords={
+            "region": [0, 1],
+            "bc_region": ["north", "south"],
+            **xr.Coordinates.from_pandas_multiindex(nmeasure, "nmeasure"),
+        },
+    )
 
 
 def _flux_nonfinite_metadata(data: xr.DataArray | xr.Dataset) -> FluxNonFiniteMetadata:
@@ -1320,12 +1337,6 @@ def test_build_rhime_model_accepts_global_scalar_offset(
     assert model["offset"].eval().shape == (rhime_inv_inputs.sizes["nmeasure"],)
 
 
-def test_modern_inv_inputs_omit_component_owned_sigma_index(rhime_inv_inputs: xr.Dataset) -> None:
-    """Modern inversion inputs omit component-owned sigma period indexes."""
-    assert "sigma_freq_index" not in rhime_inv_inputs
-    assert "sigma_period_index" not in rhime_inv_inputs
-
-
 @pytest.mark.rhime_contract
 def test_build_multisector_model_contains_expected_variables(
     multisector_inv_inputs: xr.Dataset,
@@ -2033,7 +2044,12 @@ def test_build_multisector_model_preserves_sector_priors_in_joint_state(
     ocean = prior["x"].sel(source="sector-2")
     assert np.all((ff >= 1.0) & (ff <= 2.0))
     assert np.all((ocean >= 10.0) & (ocean <= 11.0))
-    np.testing.assert_allclose(prior["mu"], prior["x"].values @ model["hx"].get_value().T)
+    # Independent PyTensor and NumPy float32 accumulations can differ by a few ULPs.
+    np.testing.assert_allclose(
+        prior["mu"],
+        prior["x"].values @ model["hx"].get_value().T,
+        rtol=5e-7 if prior["mu"].dtype == np.float32 else 1e-7,
+    )
 
 
 def test_build_multisector_model_selects_sources_by_label(
@@ -5103,7 +5119,7 @@ def test_new_rhime_docs_use_flux_sources_for_examples() -> None:
     assert "Legacy compatibility spelling" in rhime_doc
 
 
-def _rhime_preparation_args(data_args: dict, flux_sources: list[str], bc_basis_directory: Path) -> dict:
+def _rhime_preparation_args(data_args: dict, flux_sources: list[str]) -> dict:
     args = data_args.copy()
     args.pop("emissions_name", None)
     args["flux_store"] = args.pop("emissions_store")
@@ -5294,14 +5310,11 @@ def test_multisector_runner_rejects_shared_basis_h_layout_mismatch() -> None:
 
 
 @pytest.mark.rhime_contract
-def test_canonical_preparation_single_sector(
-    tac_ch4_data_args, default_bc_basis_directory
-) -> None:
+def test_canonical_preparation_single_sector(tac_ch4_data_args) -> None:
     """Characterize canonical preparation as a single-sector public contract."""
     args = _rhime_preparation_args(
         tac_ch4_data_args,
         tac_ch4_data_args["emissions_name"],
-        default_bc_basis_directory,
     )
     prepared = prepare_inputs(**args)
 
@@ -5310,17 +5323,17 @@ def test_canonical_preparation_single_sector(
     assert isinstance(prepared.basis_functions, BasisFunctions)
     assert prepared.sites == ("TAC",)
     assert "source" not in prepared.inv_inputs["H"].dims
+    assert "sigma_freq_index" not in prepared.inv_inputs
+    assert "sigma_period_index" not in prepared.inv_inputs
     for legacy_attr in ("fp_all", "fp_data", "basis", "flux", "basis_objects"):
         assert not hasattr(prepared, legacy_attr)
 
 
 @pytest.mark.rhime_contract
-def test_canonical_preparation_multisector_keeps_source_dimension(
-    tac_ch4_data_args, default_bc_basis_directory
-) -> None:
+def test_canonical_preparation_multisector_keeps_source_dimension(tac_ch4_data_args) -> None:
     """Characterize source-preserving multi-sector preparation."""
     flux_sources = ["total-ukghg-edgar7", "total-ukghg-edgar7-shuffled"]
-    args = _rhime_preparation_args(tac_ch4_data_args, flux_sources, default_bc_basis_directory)
+    args = _rhime_preparation_args(tac_ch4_data_args, flux_sources)
     args["split_by_sectors"] = True
 
     prepared = prepare_inputs(**args)
@@ -8223,34 +8236,34 @@ def test_supported_parameter_validation_accepts_sigma_per_site(tmp_path: Path) -
     rhime_params.validate_supported_params(args)
 
 
-def test_run_rhime_rejects_multiple_flux_sources(tac_ch4_data_args, tmp_path: Path) -> None:
-    args = tac_ch4_data_args.copy()
-    args.update(
-        {
-            "flux_sources": ["a", "b"],
-            "output_path": str(tmp_path),
-            "output_name": "test",
-        }
-    )
-    args.pop("emissions_name")
-
+def test_run_rhime_rejects_multiple_flux_sources() -> None:
     with pytest.raises(ValueError, match="exactly one flux source"):
-        run_standard(**args)
+        run_standard(
+            species="ch4",
+            sites=["TAC"],
+            averaging_period="1h",
+            domain="EUROPE",
+            start_date="2019-01-01",
+            end_date="2019-01-02",
+            flux_sources=["a", "b"],
+            output_name="test",
+            output_format="none",
+        )
 
 
-def test_run_rhime_multisector_rejects_single_flux_source(tac_ch4_data_args, tmp_path: Path) -> None:
-    args = tac_ch4_data_args.copy()
-    args.update(
-        {
-            "flux_sources": ["total-ukghg-edgar7"],
-            "output_path": str(tmp_path),
-            "output_name": "test",
-        }
-    )
-    args.pop("emissions_name")
-
+def test_run_rhime_multisector_rejects_single_flux_source() -> None:
     with pytest.raises(ValueError, match="at least two flux sources"):
-        run_rhime_multisector(**args)
+        run_rhime_multisector(
+            species="ch4",
+            sites=["TAC"],
+            averaging_period="1h",
+            domain="EUROPE",
+            start_date="2019-01-01",
+            end_date="2019-01-02",
+            flux_sources=["total-ukghg-edgar7"],
+            output_name="test",
+            output_format="none",
+        )
 
 
 @pytest.mark.rhime_contract
@@ -8260,7 +8273,6 @@ def test_run_rhime_api_smoke(
     capsys: pytest.CaptureFixture[str],
     tac_ch4_data_args: dict[str, Any],
     tmp_path: Path,
-    default_bc_basis_directory: Path,
     custom_likelihood: bool,
 ) -> None:
     """Run default and custom likelihoods through acquisition and output round-trip."""
@@ -8393,7 +8405,6 @@ def test_run_rhime_multisector_api_smoke(
     monkeypatch: pytest.MonkeyPatch,
     tac_ch4_data_args: dict[str, Any],
     tmp_path: Path,
-    default_bc_basis_directory: Path,
     custom_likelihood: bool,
 ) -> None:
     """Exercise default and custom likelihoods through the multi-sector API."""

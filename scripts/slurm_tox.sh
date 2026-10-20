@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=ogi-tox
 #SBATCH --time=01:00:00
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=24G
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=16G
 #SBATCH --output=slurm-tox-%j.out
 
 set -euo pipefail
@@ -34,7 +34,11 @@ export UV_CACHE_DIR=${UV_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/uv}
 # The shared cache and node-local tox directory are on different filesystems.
 # Copies are expected here and disappear with TOX_WORK_DIR at job exit.
 export UV_LINK_MODE=copy
-export PYTEST_XDIST_WORKERS=${PYTEST_XDIST_WORKERS:-2}
+export PYTEST_XDIST_WORKERS=${PYTEST_XDIST_WORKERS:-0}
+export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-1}
+export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}
+# Managed interpreters include the development headers required by PyTensor.
+export UV_PYTHON_PREFERENCE=${UV_PYTHON_PREFERENCE:-managed}
 export MPLCONFIGDIR="$tox_work_dir/matplotlib"
 # Keep scientific settings while replacing inherited cache paths with local scratch.
 IFS=',' read -r -a pytensor_flags <<< "${PYTENSOR_FLAGS:-}"
@@ -45,4 +49,4 @@ for flag in "${pytensor_flags[@]}"; do
 done
 
 cd "$repo_root"
-uvx --from 'tox>=4.24' --with tox-uv tox --workdir "$TOX_WORK_DIR" -p --parallel-no-spinner "$@"
+uvx --from 'tox>=4.24' --with tox-uv tox --workdir "$TOX_WORK_DIR" "$@"

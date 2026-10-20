@@ -80,8 +80,17 @@ existing environment. Submit the required CI environments with
 `sbatch scripts/slurm_tox.sh`, passing tox arguments after the script name
 (for example, `sbatch scripts/slurm_tox.sh -e py312-openghgCur,py313-openghgCur`).
 The runner builds tox environments on node-local storage and removes them when
-the job exits. Each tox environment gets its own temporary directory so parallel
-environments do not share test-data locks. The runner preserves scientific
+the job exits. It runs tox environments and pytest serially by default, with
+one numerical thread per process. Explicit tox `-p` and `PYTEST_XDIST_WORKERS`
+overrides enable concurrency; budget their combined memory within the Slurm
+allocation. Each tox environment gets its own temporary directory.
+Real-data fixtures use a fresh store per pytest invocation, shared by that run's
+local workers, with separate ground and satellite stores.
+
+The runner prefers uv-managed Python installations, which include development
+headers. Set `UV_PYTHON_PREFERENCE` explicitly to override this choice. Scientific
+tox environments report their resolved interpreter and check its headers and
+configured C++ compiler before pytest. The runner preserves scientific
 `PYTENSOR_FLAGS` settings while replacing `base_compiledir` with a node-local
 cache; tox forwards those flags and the selected numerical thread limits.
 
