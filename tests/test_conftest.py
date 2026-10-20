@@ -4,8 +4,6 @@ import pytest
 
 from openghg.retrieve import search
 
-pytestmark = pytest.mark.usefixtures("openghg_test_store")
-
 
 def _test_fixture_module():
     """Return pytest's loaded test fixture module."""
@@ -51,7 +49,7 @@ def test_openghg_test_store_rebuilds_unmarked_store(monkeypatch, tmp_path):
     assert len(standardise_calls) == 1
 
 
-def test_default_session_fixture():
+def test_default_session_fixture(session_config_mocker):
     """The default session fixture should mock `read_local_config`
     so that the object store path is set to:
 
@@ -68,18 +66,18 @@ def test_default_session_fixture():
     assert conf["object_store"]["inversions_tests"]["permissions"] == "r"
 
 
-def test_obs_in_test_store():
+def test_obs_in_test_store(openghg_test_store):
     results = search(site="tac", species="ch4", data_type="surface", store="inversions_tests")
     assert results
 
 
-def test_footprints_in_test_store():
+def test_footprints_in_test_store(openghg_test_store):
     results = search(site="tac", data_type="footprints")
     assert results
 
 
 @pytest.mark.parametrize("domain, year", [("europe", 2019), ("southamerica", 2016)])
-def test_bc_in_test_store(domain, year):
+def test_bc_in_test_store(openghg_test_store, domain, year):
     """Single-time BC fixtures retain January coverage after ingestion."""
     results = search(
         species="ch4", data_type="boundary_conditions", domain=domain, store="inversions_tests"
@@ -96,6 +94,6 @@ def test_bc_in_test_store(domain, year):
         assert boundary_conditions.data.attrs[key] == value
 
 
-def test_flux_in_test_store():
+def test_flux_in_test_store(openghg_test_store):
     results = search(species="ch4", data_type="flux")
     assert results
