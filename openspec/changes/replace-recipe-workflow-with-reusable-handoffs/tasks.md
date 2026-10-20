@@ -965,3 +965,29 @@ not acceptance of this integration. Maintainer readability/design acceptance,
 merged delivery and programme completion are not claimed. The sector-labelled
 flux-prior API review question remains explicitly discussed on #891; no generic
 workflow or configuration framework is added during conflict resolution.
+
+
+Stack Slurm terminal evidence, 20 October 2026: array 19553048 checked
+#887 `4462ecd6`, #886 `b0182e14` and #891 `8ab3cbc3` against baseline
+`fd279807`/19553052. #887 passes both full locked Python suites and GitHub
+CI tests/docs (39391518767/39391518431). Its Mypy count is 164 versus baseline
+166, with no added normalized diagnostics. #886 reports 163 (the existing
+PyMC missing-stubs diagnostic moves to its new handoff owner). #891 reports
+164, including one additional missing-stubs import for `pymc.pytensorf`.
+Docs report 308/303/303 versus baseline 318: no increased diagnostic message
+content or multiplicity; two existing TensorVariable warnings appear under
+new `multisector_stages` reference ownership. Existing type/docs debt remains
+#881/#679; these are not clean type/docs passes.
+
+#886's two suites reach 3283 passes/eight skips each, with 69 fixture setup
+errors caused by the shared test-store lock timeout. Retry uses a fresh
+job-local TMPDIR instead of reusing a node's per-user /tmp test-store path.
+#891 reaches 3391 passes/eight skips each; its only two failures are obsolete
+per-sector variable assertions in the xarray-input adapter persistence tests.
+Those now assert the canonical stacked `x`/`hx`/`mu` roles and compare eager
+sensitivity values with the loaded labelled inputs. The complete adapter file
+passes 70 tests. Conversion uses the already imported PyMC module's identical
+`pytensorf.convert_data` function, avoiding a separate untyped-module import;
+21 coordinate registration/reuse checks pass. No numeric algorithm is changed.
+The narrowed retry covers only #886/#891; #887's passing suites are retained.
+Maintainer review and final retry evidence remain open; nothing is merged.

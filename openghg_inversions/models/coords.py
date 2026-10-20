@@ -19,7 +19,6 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 import xarray as xr
-from pymc.pytensorf import convert_data
 from pytensor.tensor.sharedvar import TensorSharedVariable
 from pytensor.tensor.variable import TensorVariable
 
@@ -53,7 +52,7 @@ def add_model_data(data: xr.DataArray, name: str | None = None) -> TensorVariabl
             raise ValueError(f"Model variable {name!r} already exists and is not registered data.")
         if model.named_vars_to_dims.get(existing.name, ()) != dims:
             raise ValueError(f"Conflicting model data registration for {name!r}: dimensions differ.")
-        values = convert_data(materialized.values)
+        values = pm.pytensorf.convert_data(materialized.values)
         current = cast(TensorSharedVariable, existing).get_value(borrow=True)
         if current.dtype != values.dtype or not np.array_equal(current, values):
             raise ValueError(f"Conflicting model data registration for {name!r}: dtype or values differ.")

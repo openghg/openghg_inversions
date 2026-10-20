@@ -948,5 +948,8 @@ def test_unequal_source_regions_round_trip_and_execute(
     assert tuple(result.run_metadata["sites"]) == ("TAC", "MHD")
     assert tuple(result.run_metadata["averaging_period"]) == ("2h", "1h")
     assert len(models) == 1
-    assert {"x_ocean", "x_ff", "bc", "mu_bc", "y"}.issubset(models[0].named_vars)
+    assert {"x", "hx", "mu", "bc", "mu_bc", "y"}.issubset(models[0].named_vars)
+    assert result.variable_name("flux_scale") == "x"
+    np.testing.assert_allclose(models[0]["hx"].get_value(),
+                               loaded.inv_inputs.H.transpose("nmeasure", "region"))
     xr.testing.assert_identical(result.basis_functions.flux, loaded.basis_functions.flux)
