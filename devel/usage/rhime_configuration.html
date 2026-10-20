@@ -764,16 +764,12 @@ request. Conflicts, including changed acquisition windows, raise without
 relabeling or selecting observations. Recorded selectors remain authoritative;
 unknown historical facts stay unknown. See <a class="reference internal" href="customising_rhime.html"><span class="doc">Customising RHIME</span></a> for
 in-memory acquisition and <a class="reference internal" href="rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a> for saving and loading prepared inputs.</p>
-<p>The requested configuration contains no acquired/prepared handoff or
-<code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code>.
+<p>The requested configuration contains no acquired/prepared handoff.
 Merged and prepared handoffs describe the sites retained by acquisition and
-filtering. Cached CO2 runners still create an execution
-<code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> after preparation: it combines those retained sites and periods
-with the requested date bounds and resolved model/output choices. If only TAC
-remains from a TAC/MHD request, the configuration continues to name both sites while the run
-specification names TAC. Standard, multisector and nested execution bind retained sites
-and periods directly into the scientific output without constructing a run
-specification. A supplied compatible merged handoff keeps its own
+filtering. If only TAC remains from a TAC/MHD request, the configuration
+continues to name both sites while the prepared handoff names TAC. Runners bind
+retained sites and periods into scientific outputs and pass model and output
+choices separately. A supplied compatible merged handoff keeps its own
 authoritative site options. The <a class="reference internal" href="rhime.html"><span class="doc">prepared-input API</span></a> remains independent of <code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code>.</p>
 </section>
 <section id="forwarding-resolved-values-in-custom-runners">

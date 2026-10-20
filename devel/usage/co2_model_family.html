@@ -687,7 +687,7 @@ when changed. Full-configuration equality and callable representations do not
 decide scientific compatibility.</p>
 <p>Replay loads saved trace roles, inference provenance and affine associations.
 It performs no acquisition, preparation, model construction or inference, and
-returns <code class="docutils literal notranslate"><span class="pre">Co2Output</span></code> with <code class="docutils literal notranslate"><span class="pre">sampler=None</span></code>. Missing descriptive facts remain
+returns <code class="docutils literal notranslate"><span class="pre">Co2Output</span></code> without a live sampler. Missing descriptive facts remain
 unavailable. Records include package version and Git revision/checkout status
 when available; unavailable VCS facts are <code class="docutils literal notranslate"><span class="pre">null</span></code> and do not prevent execution.</p>
 <p><code class="docutils literal notranslate"><span class="pre">prior-predictive</span> <span class="pre">--strict</span></code> exits unsuccessfully for a failed readiness check;
@@ -720,11 +720,11 @@ and country products carry <code class="docutils literal notranslate"><span clas
 they exclude unresolved native-state posterior uncertainty tracked in OPE-68.</p>
 <p><code class="docutils literal notranslate"><span class="pre">Co2Output</span></code> borrows the preparation and complete annotated trace DataTree,
 retaining separate prior, posterior, predictive and diagnostic groups with
-their own coordinates. It also retains the original requested window, optional
+their own coordinates. Ordinary CO2 retains the original requested window, optional
 bound affine reconstruction, in-memory products and descriptive provenance.
-It carries no writing policy or live sampler; <code class="docutils literal notranslate"><span class="pre">sampler</span></code> is <code class="docutils literal notranslate"><span class="pre">None</span></code> for both
-live and replay results. Concentration products deliberately use a derived
-Dataset with separate prior sample axes; this does not flatten the original trace.</p>
+It carries no writing policy or live sampler field. Concentration products
+deliberately use a derived Dataset with separate prior sample axes; this does not
+flatten the original trace.</p>
 <p>Pass <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.co2_outputs.html#openghg_inversions.rhime.co2.co2_outputs.Co2OutputOptions" title="openghg_inversions.rhime.co2.co2_outputs.Co2OutputOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.co2_outputs.Co2OutputOptions</span></code></a> to
 calculation and export operations. Its ordinary CO₂ fields are
 <code class="docutils literal notranslate"><span class="pre">output_format</span></code> (<code class="docutils literal notranslate"><span class="pre">none</span></code>, <code class="docutils literal notranslate"><span class="pre">basic</span></code> or <code class="docutils literal notranslate"><span class="pre">paris</span></code>), <code class="docutils literal notranslate"><span class="pre">output_path</span></code>,
@@ -755,6 +755,12 @@ multiplicative <code class="docutils literal notranslate"><span class="pre">Inve
 ordinary handoff format. Use <code class="docutils literal notranslate"><span class="pre">likelihood.kind</span> <span class="pre">=</span> <span class="pre">&quot;fixed_ou&quot;</span></code>, a positive
 <code class="docutils literal notranslate"><span class="pre">tau_hours</span></code>, <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior_scale</span></code> and <code class="docutils literal notranslate"><span class="pre">sampling.nuts_sampler</span> <span class="pre">=</span> <span class="pre">&quot;pymc&quot;</span></code>
 for that existing route. Preserve its original configuration and matched files.
+Cached postprocessing also returns <code class="docutils literal notranslate"><span class="pre">Co2Output</span></code>, with its matched preparation,
+trace and optional affine reconstruction. Its reporting window remains the
+first observed day through the day after the final observation. Cached stage
+products retain their literal filenames such as <code class="docutils literal notranslate"><span class="pre">basic.nc</span></code> and
+<code class="docutils literal notranslate"><span class="pre">concentration_components.nc</span></code> and their postprocess manifest. Recorded sampler
+settings are descriptive provenance and do not construct a sampler during replay.
 Linked CO₂/O₂ staged routing remains separate in OPE-165; nested workflows are
 outside these CO₂ commands.</p>
 </section>

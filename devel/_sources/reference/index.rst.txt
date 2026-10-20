@@ -94,8 +94,8 @@ Run specifications and results
 ------------------------------
 
 Standard and multisector runners return ``InversionOutput``, including prepared
-execution and graph-free saved replay. ``RhimeResult`` and ``RhimeRunSpec`` remain
-only for deferred CO2 consumers. Nested execution returns ``NestedOutput``
+execution and graph-free saved replay. Ordinary and cached CO2 postprocessing
+use ``Co2Output``. Nested execution returns ``NestedOutput``
 with two native ``InversionOutput`` views borrowing one trace. Model choices,
 inference and output policy have separate owners.
 The sampler's former ``rhime`` imports remain compatible; its implementation is
@@ -104,11 +104,9 @@ owned by ``inference``.
 .. autosummary::
    :nosignatures:
 
-   openghg_inversions.rhime.RhimeRunSpec
    openghg_inversions.rhime.RhimeModelSpec
    openghg_inversions.rhime.RhimeOutputSpec
    openghg_inversions.inference.RhimeSampler
-   openghg_inversions.rhime.RhimeResult
    openghg_inversions.rhime.NestedOutput
    openghg_inversions.rhime.materialize_nested_inputs
    openghg_inversions.rhime.inner_data_config
@@ -152,7 +150,6 @@ value and its unchanged version-1 schema live in
    openghg_inversions.rhime.postprocess_standard_outputs
    openghg_inversions.rhime.annotate_sample_trace
    openghg_inversions.rhime.requests.load_params
-   openghg_inversions.rhime.params.retained_run_spec
    openghg_inversions.rhime.filter_observations
    openghg_inversions.rhime.prepare_observation_errors
    openghg_inversions.rhime.build_sensitivities
@@ -301,8 +298,10 @@ and samples; it does not write products. See
    openghg_inversions.postprocessing.output_views.make_inversion_output
    openghg_inversions.postprocessing.co2_flux_outputs.co2_native_flux_outputs
    openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs
-   openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_result
-   openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_outputs
+   openghg_inversions.rhime.co2.co2_outputs.make_co2_output
+   openghg_inversions.rhime.co2.co2_outputs.validate_co2_product_request
+   openghg_inversions.rhime.co2.co2_outputs.calculate_co2_products
+   openghg_inversions.rhime.co2.co2_outputs.save_co2_products
    openghg_inversions.rhime.co2.co2_outputs.reconstruct_co2_concentrations
    openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs
    openghg_inversions.postprocessing.linked_paris_outputs.reconstruct_co2_o2_concentrations

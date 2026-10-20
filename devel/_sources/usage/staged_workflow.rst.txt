@@ -357,13 +357,22 @@ remain separate from retained observation extrema, including for imported pairs.
 
 ``rhime postprocess --model co2 --sample-manifest ...`` loads saved scientific
 meaning and provenance without constructing a graph or sampling. It returns a
-``Co2Output`` scientific view with ``sampler=None`` and supports the same
+``Co2Output`` scientific view without a live sampler and supports the same
 concentration and conditional native/country products as full execution.
 Missing imported request facts must be supplied explicitly. See
 :doc:`co2_model_family` for configuration, readiness/diagnosis, affine
 compatibility and the distinct cached-CO₂ boundary, and
 :download:`co2_handoffs.py <../../examples/co2_handoffs.py>` for an executable
 full/saved scientific comparison. Linked CO₂/O₂ and nested workflows are separate.
+
+The separate cached fixed-OU postprocessing route also returns ``Co2Output``.
+It keeps the existing matched-file arguments, observed-day reporting window
+and stage product filenames described in :doc:`co2_model_family`. Products use
+the shared CO2 writer; replay writes no additional standalone trace.
+Manifest output settings now use ``Co2OutputOptions`` fields. The manifest
+records the completed sampling configuration, while returned output metadata
+contains its available five-field sampler description and saved provenance;
+see :doc:`legacy_and_migration`.
 
 Readiness and independent diagnosis
 -----------------------------------

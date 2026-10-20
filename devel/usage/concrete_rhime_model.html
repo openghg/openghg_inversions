@@ -978,7 +978,8 @@ provide its own reconstruction and product functions rather than reuse an
 incompatible contract. Direct construction does not make a custom graph
 recordable by the package’s saved multisector sampling operation.</p>
 <p>Nested construction also accepts explicit model inputs and materialized priors;
-see <a class="reference internal" href="nested_domains.html"><span class="doc">Run a nested-domain RHIME inversion</span></a>. <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> remains for deferred CO2 consumers.</p>
+see <a class="reference internal" href="nested_domains.html"><span class="doc">Run a nested-domain RHIME inversion</span></a>. Model construction takes scientific choices directly;
+the former <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> execution envelope is removed.</p>
 <p>Structurally distinct observation-channel models belong in readable named
 recipes with concrete builders. The active design guidance is
 <a class="reference internal" href="../development/rhime_model_development.html"><span class="doc">Developing RHIME models</span></a>; the retired semantic-model work

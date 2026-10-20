@@ -105,8 +105,9 @@ shared handoff/assembly names listed here remain aliases to their implementation
 ``run_rhime_nested`` is ``run_nested``. No argument conversion or warning is
 added to these aliases. Shared ``MergedData`` and ``PreparedInputs`` retain the
 ``RhimeMergedData`` and ``RhimePreparedInputs`` aliases and unchanged serialized
-schemas. ``assemble_inputs`` and ``with_prepared_sites`` retain their former
-``assemble_rhime_inputs`` and ``with_prepared_rhime_sites`` imports.
+schemas. ``assemble_inputs`` retains its former ``assemble_rhime_inputs`` import.
+The obsolete ``with_prepared_sites`` and ``with_prepared_rhime_sites`` run-spec
+helpers are removed; use the retained sites on the prepared handoff directly.
 
 Package naming, the recipe-module relocation proposed in #764/#776 and complete
 workflow parity remain separate changes.

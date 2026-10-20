@@ -557,8 +557,9 @@ shared handoff/assembly names listed here remain aliases to their implementation
 <code class="docutils literal notranslate"><span class="pre">run_rhime_nested</span></code> is <code class="docutils literal notranslate"><span class="pre">run_nested</span></code>. No argument conversion or warning is
 added to these aliases. Shared <code class="docutils literal notranslate"><span class="pre">MergedData</span></code> and <code class="docutils literal notranslate"><span class="pre">PreparedInputs</span></code> retain the
 <code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code> and <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> aliases and unchanged serialized
-schemas. <code class="docutils literal notranslate"><span class="pre">assemble_inputs</span></code> and <code class="docutils literal notranslate"><span class="pre">with_prepared_sites</span></code> retain their former
-<code class="docutils literal notranslate"><span class="pre">assemble_rhime_inputs</span></code> and <code class="docutils literal notranslate"><span class="pre">with_prepared_rhime_sites</span></code> imports.</p>
+schemas. <code class="docutils literal notranslate"><span class="pre">assemble_inputs</span></code> retains its former <code class="docutils literal notranslate"><span class="pre">assemble_rhime_inputs</span></code> import.
+The obsolete <code class="docutils literal notranslate"><span class="pre">with_prepared_sites</span></code> and <code class="docutils literal notranslate"><span class="pre">with_prepared_rhime_sites</span></code> run-spec
+helpers are removed; use the retained sites on the prepared handoff directly.</p>
 <p>Package naming, the recipe-module relocation proposed in #764/#776 and complete
 workflow parity remain separate changes.</p>
 </section>

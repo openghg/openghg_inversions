@@ -576,6 +576,20 @@
 <p>This layer consumes a model; it does not acquire data, select a scientific
 recipe, construct reconstruction bindings, or write products.</p>
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.inference.sampling.describe_recorded_sampler">
+<span class="sig-name descname"><span class="pre">describe_recorded_sampler</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">recorded</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inference.sampling.describe_recorded_sampler" title="Link to this definition">#</a></dt>
+<dd><p>Normalize available inference metadata without constructing a sampler.</p>
+<p>Only the fields returned by <code class="docutils literal notranslate"><span class="pre">RhimeSampler.describe</span></code> are retained.
+Missing fields stay absent; an invalid known value makes the description
+unavailable without preventing scientific replay.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)">int</a> | <a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.inference.sampling.resolve_sampler">
 <span class="sig-name descname"><span class="pre">resolve_sampler</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sampler</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">default_options</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inference.sampling.resolve_sampler" title="Link to this definition">#</a></dt>
 <dd><p>Resolve a live request into an invocation-owned sampler.</p>
@@ -738,6 +752,7 @@ variable named <code class="docutils literal notranslate"><span class="pre">y</s
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inference.sampling.describe_recorded_sampler"><code class="docutils literal notranslate"><span class="pre">describe_recorded_sampler()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inference.sampling.resolve_sampler"><code class="docutils literal notranslate"><span class="pre">resolve_sampler()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inference.sampling.RhimeSampler"><code class="docutils literal notranslate"><span class="pre">RhimeSampler</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inference.sampling.RhimeSampler.describe"><code class="docutils literal notranslate"><span class="pre">RhimeSampler.describe()</span></code></a></li>

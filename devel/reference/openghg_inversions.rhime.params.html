@@ -702,30 +702,6 @@ must agree with the selected <code class="docutils literal notranslate"><span cl
 
 </dd></dl>
 
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.params.retained_run_spec">
-<span class="sig-name descname"><span class="pre">retained_run_spec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.params.retained_run_spec" title="Link to this definition">#</a></dt>
-<dd><p>Compose the sites retained by preparation with the requested dates and choices.</p>
-<p>Nested execution retains this transitional run envelope. Standard and
-multisector pass separate choices and prepared inputs directly.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>data</strong> (<a class="reference internal" href="#openghg_inversions.rhime.params.DataConfig" title="openghg_inversions.rhime.params.DataConfig"><em>DataConfig</em></a>) – Data choices that produced <code class="docutils literal notranslate"><span class="pre">prepared</span></code>.</p></li>
-<li><p><strong>prepared</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs"><em>PreparedInputs</em></a>) – Prepared inputs whose retained sites and averaging periods are recorded.</p></li>
-<li><p><strong>model</strong> (<a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeModelSpec" title="openghg_inversions.rhime.specs.RhimeModelSpec"><em>RhimeModelSpec</em></a>) – Resolved model choices.</p></li>
-<li><p><strong>output</strong> (<a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeOutputSpec" title="openghg_inversions.rhime.specs.RhimeOutputSpec"><em>RhimeOutputSpec</em></a>) – Requested output choices.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The run specification used by model construction, results and products.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeRunSpec" title="openghg_inversions.rhime.specs.RhimeRunSpec"><em>RhimeRunSpec</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.params.RhimeConfig">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RhimeConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampler</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.params.RhimeConfig" title="Link to this definition">#</a></dt>
@@ -765,17 +741,6 @@ BC inputs available. Flat options retain their established precedence.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.rhime.params.RhimeConfig" title="openghg_inversions.rhime.params.RhimeConfig"><em>RhimeConfig</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.params.RhimeConfig.retained_run_spec">
-<span class="sig-name descname"><span class="pre">retained_run_spec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.params.RhimeConfig.retained_run_spec" title="Link to this definition">#</a></dt>
-<dd><p>Compose retained sites with this request; see <a class="reference internal" href="#openghg_inversions.rhime.params.retained_run_spec" title="openghg_inversions.rhime.params.retained_run_spec"><code class="xref py py-func docutils literal notranslate"><span class="pre">retained_run_spec()</span></code></a>.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeRunSpec" title="openghg_inversions.rhime.specs.RhimeRunSpec"><em>RhimeRunSpec</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1015,11 +980,9 @@ inputs; repeated temporal or source facts must agree with the data configuration
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.params.DataConfig.to_params"><code class="docutils literal notranslate"><span class="pre">DataConfig.to_params()</span></code></a></li>
 </ul>
 </li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.params.retained_run_spec"><code class="docutils literal notranslate"><span class="pre">retained_run_spec()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.params.RhimeConfig"><code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.params.RhimeConfig.supported_option_names"><code class="docutils literal notranslate"><span class="pre">RhimeConfig.supported_option_names()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.params.RhimeConfig.from_params"><code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.params.RhimeConfig.retained_run_spec"><code class="docutils literal notranslate"><span class="pre">RhimeConfig.retained_run_spec()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.params.option_groups"><code class="docutils literal notranslate"><span class="pre">option_groups()</span></code></a></li>

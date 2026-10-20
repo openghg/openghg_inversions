@@ -68,8 +68,9 @@ not a completed implementation or required artifact contract.
   with omission selecting a fresh recipe-appropriate default per invocation.
   Isolate mutable settings, preserve supported container values and reject coordinate
   overrides once at sampler construction. Trust the resolved sampler thereafter.
-  Replay results use `sampler=None` and recorded descriptive metadata, without
-  manufacturing default settings or requiring another sampler-settings class.
+  Replay results have no live sampler field and use recorded descriptive metadata,
+  normalized without sampler construction, manufactured defaults or another
+  sampler-settings class.
 - Return one absolute manifest path from preparation and sampling. Reuse compatible
   graph-time priors/likelihoods through scientific checks rather than full-config
   equality. Preserve coherent CO2 reduction and affine association constraints.

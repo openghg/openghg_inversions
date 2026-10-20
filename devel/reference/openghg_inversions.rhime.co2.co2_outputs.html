@@ -593,13 +593,13 @@
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_outputs.Co2Output" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Borrowed CO2 scientific output and its requested reporting window.</p>
-<p><code class="docutils literal notranslate"><span class="pre">bound</span></code> preserves conditional affine reconstruction rather than standard
+<p>Borrowed CO2 scientific output and its reporting window.</p>
+<p>Ordinary execution retains requested dates; cached stages retain the observed
+day range. <code class="docutils literal notranslate"><span class="pre">bound</span></code> preserves conditional affine reconstruction rather than standard
 multiplicative flux scaling. <code class="docutils literal notranslate"><span class="pre">idata</span></code> remains the borrowed full DataTree,
 including distinct sample groups and their coordinates. Inference provenance
 remains descriptive in <code class="docutils literal notranslate"><span class="pre">output_metadata</span></code>; no live sampler or writing policy
-belongs to this scientific view. <code class="docutils literal notranslate"><span class="pre">sampler=None</span></code> explicitly represents the
-absent inference object required by the replay contract. Products remain accessible in
+belongs to this scientific view. Products remain accessible in
 <code class="docutils literal notranslate"><span class="pre">outputs</span></code>. Reporting choices are supplied to calculation/export operations.</p>
 <dl class="field-list simple">
 </dl>
@@ -620,7 +620,7 @@ absent inference object required by the replay contract. Products remain accessi
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_outputs.Co2OutputOptions" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Ordinary CO2 concentration and conditional-flux reporting choices.</p>
+<p>Ordinary and cached CO2 concentration and conditional-flux reporting choices.</p>
 <p><code class="docutils literal notranslate"><span class="pre">none</span></code> suppresses products and exports; <code class="docutils literal notranslate"><span class="pre">basic</span></code> retains scientific
 summaries, and <code class="docutils literal notranslate"><span class="pre">paris</span></code> adds supported latest-template products. With no
 output directory products remain in memory. <code class="docutils literal notranslate"><span class="pre">save_trace</span></code> exports the full
@@ -631,7 +631,7 @@ Paths resolve from the invocation directory, without loading resources.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_outputs.Co2OutputOptions.from_params">
 <span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_outputs.Co2OutputOptions.from_params" title="Link to this definition">#</a></dt>
-<dd><p>Resolve only supported ordinary CO2 product and export options.</p>
+<dd><p>Resolve supported CO2 product and export options.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.rhime.co2.co2_outputs.Co2OutputOptions" title="openghg_inversions.rhime.co2.co2_outputs.Co2OutputOptions"><em>Co2OutputOptions</em></a></p>
@@ -687,16 +687,19 @@ prior draws when a product requires them. All products are constructed before
 any destination is opened. Basic
 summaries preserve independent prior and posterior counts. Native/country
 products use the supplied exact affine map; PARIS reports their conditional
-scope. Files use the ordinary RHIME naming convention. Full component
-draws remain available in <code class="docutils literal notranslate"><span class="pre">result.outputs['concentration_components']</span></code>.</p>
+scope. Full component draws remain available in <code class="docutils literal notranslate"><span class="pre">result.outputs['concentration_components']</span></code>.</p>
 <dl class="field-list simple">
 </dl>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_outputs.save_co2_products">
-<span class="sig-name descname"><span class="pre">save_co2_products</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">result</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_outputs.save_co2_products" title="Link to this definition">#</a></dt>
-<dd><p>Export calculated products and the optional trace through existing naming policy.</p>
+<span class="sig-name descname"><span class="pre">save_co2_products</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">result</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">product_paths</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_outputs.save_co2_products" title="Link to this definition">#</a></dt>
+<dd><p>Export products and the optional trace, using explicit paths for staged outputs.</p>
+<p>Without <code class="docutils literal notranslate"><span class="pre">product_paths</span></code>, output options determine the ordinary filenames
+and full concentration-component draws remain in memory. Explicit paths
+select the products to export and preserve the cached stage filenames.
+Both routes use the same MultiIndex-aware product codecs.</p>
 <dl class="field-list simple">
 </dl>
 </dd></dl>
@@ -727,12 +730,7 @@ when products consume the completed trace.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_outputs.validate_co2_output_spec">
 <span class="sig-name descname"><span class="pre">validate_co2_output_spec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_spec</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">has_reconstruction</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_outputs.validate_co2_output_spec" title="Link to this definition">#</a></dt>
-<dd><p>Reject unsupported CO2 requests before constructing or writing products.</p>
-<p>Basic products may report concentrations and states without native
-reconstruction. PARIS requires a bound affine reconstruction and supports
-latest templates, native grids, means, and midpoint flux timestamps only.
-The standard multiplicative inversion-output and legacy formats cannot
-represent coherent affine CO2 reconstruction.</p>
+<dd><p>Require affine reconstruction when country or PARIS flux is requested.</p>
 <dl class="field-list simple">
 </dl>
 </dd></dl>
@@ -749,42 +747,6 @@ represent coherent affine CO2 reconstruction.</p>
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_outputs.validate_co2_source_mapping">
 <span class="sig-name descname"><span class="pre">validate_co2_source_mapping</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bound</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mapping</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_outputs.validate_co2_source_mapping" title="Link to this definition">#</a></dt>
 <dd><p>Require a complete native-source mapping before reporting sector sums.</p>
-<dl class="field-list simple">
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_result">
-<span class="sig-name descname"><span class="pre">make_co2_rhime_result</span></span><span class="sig-paren">(</span>
-
-<dl>
-<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">run_spec</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">sampler</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">model_build_result</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">idata</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">build_and_sample_seconds</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>,</dd>
-</dl>
-
-<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_result" title="Link to this definition">#</a></dt>
-<dd><p>Join a retained cached-stage posterior with its validated preparation.</p>
-<p>The cached caller supplies the matched trace and preparation. The adapter borrows
-those scientific inputs without rebuilding a graph or serializing.
-An in-memory runner may additionally retain its existing model build.
-Passing <code class="docutils literal notranslate"><span class="pre">sampler=None</span></code> retains no live sampler; saved-output orchestration
-supplies recorded descriptive values in <code class="docutils literal notranslate"><span class="pre">result.output_metadata[&quot;sampler&quot;]</span></code>.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.outputs.html#openghg_inversions.rhime.outputs.RhimeResult" title="openghg_inversions.rhime.outputs.RhimeResult"><em>RhimeResult</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_outputs">
-<span class="sig-name descname"><span class="pre">make_co2_rhime_outputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">result</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_to_sector</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_outputs" title="Link to this definition">#</a></dt>
-<dd><p>Calculate and export CO2 products for the retained cached-stage adapter.</p>
 <dl class="field-list simple">
 </dl>
 </dd></dl>
@@ -868,8 +830,6 @@ Absent optional baseline components are zero. Inputs remain borrowed.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_outputs.validate_co2_output_spec"><code class="docutils literal notranslate"><span class="pre">validate_co2_output_spec()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_outputs.validate_co2_outputs"><code class="docutils literal notranslate"><span class="pre">validate_co2_outputs()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_outputs.validate_co2_source_mapping"><code class="docutils literal notranslate"><span class="pre">validate_co2_source_mapping()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_result"><code class="docutils literal notranslate"><span class="pre">make_co2_rhime_result()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_outputs"><code class="docutils literal notranslate"><span class="pre">make_co2_rhime_outputs()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_outputs.reconstruct_co2_concentrations"><code class="docutils literal notranslate"><span class="pre">reconstruct_co2_concentrations()</span></code></a></li>
 </ul>
   </nav></div>

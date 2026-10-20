@@ -1061,13 +1061,13 @@ omitted facts remain absent rather than being inferred.</p></li>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.Co2Output" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Borrowed CO2 scientific output and its requested reporting window.</p>
-<p><code class="docutils literal notranslate"><span class="pre">bound</span></code> preserves conditional affine reconstruction rather than standard
+<p>Borrowed CO2 scientific output and its reporting window.</p>
+<p>Ordinary execution retains requested dates; cached stages retain the observed
+day range. <code class="docutils literal notranslate"><span class="pre">bound</span></code> preserves conditional affine reconstruction rather than standard
 multiplicative flux scaling. <code class="docutils literal notranslate"><span class="pre">idata</span></code> remains the borrowed full DataTree,
 including distinct sample groups and their coordinates. Inference provenance
 remains descriptive in <code class="docutils literal notranslate"><span class="pre">output_metadata</span></code>; no live sampler or writing policy
-belongs to this scientific view. <code class="docutils literal notranslate"><span class="pre">sampler=None</span></code> explicitly represents the
-absent inference object required by the replay contract. Products remain accessible in
+belongs to this scientific view. Products remain accessible in
 <code class="docutils literal notranslate"><span class="pre">outputs</span></code>. Reporting choices are supplied to calculation/export operations.</p>
 <dl class="field-list simple">
 </dl>
@@ -2486,8 +2486,6 @@ by the sampler. No artifact is written to disk.</p>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html#openghg_inversions.rhime.co2.co2_outputs.validate_co2_output_spec"><code class="docutils literal notranslate"><span class="pre">validate_co2_output_spec()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html#openghg_inversions.rhime.co2.co2_outputs.validate_co2_outputs"><code class="docutils literal notranslate"><span class="pre">validate_co2_outputs()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html#openghg_inversions.rhime.co2.co2_outputs.validate_co2_source_mapping"><code class="docutils literal notranslate"><span class="pre">validate_co2_source_mapping()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html#openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_result"><code class="docutils literal notranslate"><span class="pre">make_co2_rhime_result()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html#openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_outputs"><code class="docutils literal notranslate"><span class="pre">make_co2_rhime_outputs()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html#openghg_inversions.rhime.co2.co2_outputs.reconstruct_co2_concentrations"><code class="docutils literal notranslate"><span class="pre">reconstruct_co2_concentrations()</span></code></a></li>
 </ul>
 </li>

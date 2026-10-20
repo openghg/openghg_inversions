@@ -940,42 +940,6 @@ Format and filename-convention values are case-insensitive.</p></li>
 
 </dd></dl>
 
-<dl class="py class">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.specs.RhimeRunSpec">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RhimeRunSpec</span></span><span class="sig-paren">(</span>
-
-<dl>
-<dd><em class="sig-param"><span class="n"><span class="pre">start_date</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">end_date</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">sites</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">averaging_period</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">output</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">split_by_sectors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
-</dl>
-
-<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.specs.RhimeRunSpec" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Run metadata retained by nested and CO2 execution.</p>
-<p>Standard and multisector execution pass model, output and data choices
-separately and do not construct this envelope.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>start_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Inclusive inversion start date.</p></li>
-<li><p><strong>end_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Exclusive inversion end date.</p></li>
-<li><p><strong>sites</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><em>...</em><em>]</em>) – Sites included after data preparation and filtering.</p></li>
-<li><p><strong>averaging_period</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em><em>, </em><em>...</em><em>]</em>) – Observation averaging period per retained site.</p></li>
-<li><p><strong>model</strong> (<a class="reference internal" href="#openghg_inversions.rhime.specs.RhimeModelSpec" title="openghg_inversions.rhime.specs.RhimeModelSpec"><em>RhimeModelSpec</em></a>) – Mathematical model specification.</p></li>
-<li><p><strong>output</strong> (<a class="reference internal" href="#openghg_inversions.rhime.specs.RhimeOutputSpec" title="openghg_inversions.rhime.specs.RhimeOutputSpec"><em>RhimeOutputSpec</em></a>) – Output settings.</p></li>
-<li><p><strong>split_by_sectors</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether flux data were prepared in sector-resolved
-mode. Single-sector and multi-sector RHIME are runner/model modes;
-this flag records the prepared data layout.</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.specs.validate_output_format">
 <span class="sig-name descname"><span class="pre">validate_output_format</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_format</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.specs.validate_output_format" title="Link to this definition">#</a></dt>
@@ -1157,7 +1121,6 @@ this flag records the prepared data layout.</p></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.RhimeOutputSpec.from_params"><code class="docutils literal notranslate"><span class="pre">RhimeOutputSpec.from_params()</span></code></a></li>
 </ul>
 </li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.RhimeRunSpec"><code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.validate_output_format"><code class="docutils literal notranslate"><span class="pre">validate_output_format()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.validate_output_path_settings"><code class="docutils literal notranslate"><span class="pre">validate_output_path_settings()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.validate_output_filename_convention"><code class="docutils literal notranslate"><span class="pre">validate_output_filename_convention()</span></code></a></li>

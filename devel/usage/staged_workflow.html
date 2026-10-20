@@ -783,13 +783,21 @@ operators or projection requires a coherent new preparation. Requested dates
 remain separate from retained observation extrema, including for imported pairs.</p>
 <p><code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">postprocess</span> <span class="pre">--model</span> <span class="pre">co2</span> <span class="pre">--sample-manifest</span> <span class="pre">...</span></code> loads saved scientific
 meaning and provenance without constructing a graph or sampling. It returns a
-<code class="docutils literal notranslate"><span class="pre">Co2Output</span></code> scientific view with <code class="docutils literal notranslate"><span class="pre">sampler=None</span></code> and supports the same
+<code class="docutils literal notranslate"><span class="pre">Co2Output</span></code> scientific view without a live sampler and supports the same
 concentration and conditional native/country products as full execution.
 Missing imported request facts must be supplied explicitly. See
 <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for configuration, readiness/diagnosis, affine
 compatibility and the distinct cached-CO₂ boundary, and
 <a class="reference download internal" download="" href="../_downloads/9b5fde691f83b7ffe1ac2fa12eaa650f/co2_handoffs.py"><code class="xref download docutils literal notranslate"><span class="pre">co2_handoffs.py</span></code></a> for an executable
 full/saved scientific comparison. Linked CO₂/O₂ and nested workflows are separate.</p>
+<p>The separate cached fixed-OU postprocessing route also returns <code class="docutils literal notranslate"><span class="pre">Co2Output</span></code>.
+It keeps the existing matched-file arguments, observed-day reporting window
+and stage product filenames described in <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a>. Products use
+the shared CO2 writer; replay writes no additional standalone trace.
+Manifest output settings now use <code class="docutils literal notranslate"><span class="pre">Co2OutputOptions</span></code> fields. The manifest
+records the completed sampling configuration, while returned output metadata
+contains its available five-field sampler description and saved provenance;
+see <a class="reference internal" href="legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a>.</p>
 </section>
 <section id="readiness-and-independent-diagnosis">
 <h2>Readiness and independent diagnosis<a class="headerlink" href="#readiness-and-independent-diagnosis" title="Link to this heading">#</a></h2>

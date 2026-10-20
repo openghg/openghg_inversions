@@ -728,9 +728,26 @@ rather than read <code class="docutils literal notranslate"><span class="pre">x_
 when scientific sector names differ from inventory names. Existing current-format
 built-in sample handoffs with <code class="docutils literal notranslate"><span class="pre">x_&lt;suffix&gt;</span></code> state names remain readable. This
 does not restore the retired historical staged-envelope format.</p>
-<p>Standard, multisector and nested execution no longer construct <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code>
-or return <code class="docutils literal notranslate"><span class="pre">RhimeResult</span></code>. These shared types remain only for the cached CO2
-recipe until its consumers migrate. Remove multisector
+<p><code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> and <code class="docutils literal notranslate"><span class="pre">RhimeResult</span></code> are removed after their final cached CO2
+consumer migrates to <code class="docutils literal notranslate"><span class="pre">Co2Output</span></code>. Cached postprocessing retains the prepared
+inputs on <code class="docutils literal notranslate"><span class="pre">result.prepared</span></code>, the trace on <code class="docutils literal notranslate"><span class="pre">result.idata</span></code>, calculated products
+on <code class="docutils literal notranslate"><span class="pre">result.outputs</span></code> and conditional affine reconstruction on <code class="docutils literal notranslate"><span class="pre">result.bound</span></code>.
+It retains no live model or sampler. CLI stage filenames are retained; manifest
+output settings now use the <code class="docutils literal notranslate"><span class="pre">Co2OutputOptions</span></code> fields, without the retired
+<code class="docutils literal notranslate"><span class="pre">save_inversion_output</span></code> and <code class="docutils literal notranslate"><span class="pre">output_filename_convention</span></code> keys. Cached products
+use the same writer as ordinary CO2 products.
+The <code class="docutils literal notranslate"><span class="pre">make_co2_rhime_result</span></code> and <code class="docutils literal notranslate"><span class="pre">make_co2_rhime_outputs</span></code> adapters,
+<code class="docutils literal notranslate"><span class="pre">retained_run_spec</span></code> and <code class="docutils literal notranslate"><span class="pre">with_prepared_sites</span></code> helpers, and
+<code class="docutils literal notranslate"><span class="pre">with_prepared_rhime_sites</span></code> alias are removed. Copied CO2 runners use
+<code class="docutils literal notranslate"><span class="pre">make_co2_output</span></code>, <code class="docutils literal notranslate"><span class="pre">validate_co2_product_request</span></code>, <code class="docutils literal notranslate"><span class="pre">calculate_co2_products</span></code>
+and <code class="docutils literal notranslate"><span class="pre">save_co2_products</span></code> with separate <code class="docutils literal notranslate"><span class="pre">Co2OutputOptions</span></code>.</p>
+<p>Replay <code class="docutils literal notranslate"><span class="pre">output_metadata[&quot;sampler&quot;]</span></code> retains available <code class="docutils literal notranslate"><span class="pre">draws</span></code>, <code class="docutils literal notranslate"><span class="pre">burn</span></code>,
+<code class="docutils literal notranslate"><span class="pre">tune</span></code>, <code class="docutils literal notranslate"><span class="pre">chains</span></code> and <code class="docutils literal notranslate"><span class="pre">nuts_sampler</span></code> values from completed inference.
+Missing or invalid descriptions are <code class="docutils literal notranslate"><span class="pre">{}</span></code>; partial descriptions stay partial
+without selecting current defaults. Cached <code class="docutils literal notranslate"><span class="pre">output_metadata[&quot;provenance&quot;]</span></code>
+comes from the sample manifest. The former <code class="docutils literal notranslate"><span class="pre">build_and_sample_seconds</span></code> replay
+placeholder is removed: replay does not measure the earlier inference duration.</p>
+<p>Remove multisector
 calls to <code class="docutils literal notranslate"><span class="pre">make_multisector_rhime_result</span></code> and <code class="docutils literal notranslate"><span class="pre">make_multisector_rhime_outputs</span></code>.
 Use <code class="docutils literal notranslate"><span class="pre">build_multisector_model</span></code>, <code class="docutils literal notranslate"><span class="pre">make_model_output</span></code>, and the explicit
 product/export calls above. For a custom complete model, pass selected eager
