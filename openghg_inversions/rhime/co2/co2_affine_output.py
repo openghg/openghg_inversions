@@ -147,18 +147,6 @@ def _bind_affine_flux_map(
     elif isinstance(affine_map.prolongation, BucketBasisOperator):
         if not isinstance(basis.operator, BucketBasisOperator):
             raise ValueError("Affine bucket representation differs from prepared basis.")
-    return BoundCo2AffineFluxMap(artifact, reference)
-
-
-def load_and_bind_affine_flux_map(
-    reconstruction_path: str | Path,
-    prepared_inputs_path: str | Path,
-) -> BoundCo2AffineFluxMap:
-    """Load both saved artifacts and verify the prepared artifact's content ID."""
-    prepared_inputs_id = prepared_inputs_content_id(prepared_inputs_path)
-    prepared = Co2PreparedInputs.load(prepared_inputs_path)
-    artifact = load(reconstruction_path)
-    bound = _bind_affine_flux_map(artifact, prepared, prepared_inputs_id=prepared_inputs_id)
     operator = artifact.affine_map.prolongation
     prepared_operator = prepared.basis_functions.operator
     if isinstance(operator, MultiSourceBucketBasisOperator):
@@ -184,7 +172,18 @@ def load_and_bind_affine_flux_map(
             xr.testing.assert_equal(artifact.affine_map.flux, prepared_flux)
         except AssertionError as exc:
             raise ValueError("Affine bucket flux differs from prepared basis flux.") from exc
-    return bound
+    return BoundCo2AffineFluxMap(artifact, reference)
+
+
+def load_and_bind_affine_flux_map(
+    reconstruction_path: str | Path,
+    prepared_inputs_path: str | Path,
+) -> BoundCo2AffineFluxMap:
+    """Load both saved artifacts and verify their numerical binding and content ID."""
+    prepared_inputs_id = prepared_inputs_content_id(prepared_inputs_path)
+    prepared = Co2PreparedInputs.load(prepared_inputs_path)
+    artifact = load(reconstruction_path)
+    return _bind_affine_flux_map(artifact, prepared, prepared_inputs_id=prepared_inputs_id)
 
 
 def _artifact(

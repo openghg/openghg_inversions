@@ -1,7 +1,8 @@
-"""Standard numerical handoffs and retained CO2 staged entry points.
+"""Standard numerical handoffs and retained cached CO2 staged entry points.
 
 Multisector handoffs live in :mod:`.multisector_stages`. Each concrete recipe
 owns its scientific execution; the old multisector envelope is retired.
+Ordinary CO2 uses ``co2.handoffs`` and rejects these retained envelope wrappers.
 """
 
 from __future__ import annotations

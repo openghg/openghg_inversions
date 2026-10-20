@@ -118,7 +118,7 @@ def build_co2_o2_cached_sigma_model(
         tau_hours,
         site_labels=tuple(str(label) for label in site_coord.values),
     )
-    with registered_model() as model:
+    with registered_model():
         state = _add_prepared_correlated_lognormal_state_with_activity(
             activity,
             active_prior,
@@ -179,7 +179,7 @@ def build_co2_o2_cached_sigma_model(
             sum(term.output for term in terms),
             dims=output_dim,
         )
-        cached = _add_cached_likelihood(
+        return _add_cached_likelihood(
             tuple(terms),
             covariance=covariance,
             modelled_mean=mean,
@@ -191,15 +191,3 @@ def build_co2_o2_cached_sigma_model(
             site_amplitude_prior_scale=site_amplitude_prior_scale,
             output_dim=output_dim,
         )
-    return Co2CachedSigmaModel(
-        model=model,
-        target=cached.target,
-        shared_cache=cached.shared_cache,
-        initial_cache=cached.initial_cache,
-        amplitude=cached.amplitude,
-        states=cached.states,
-        modelled_mean=mean,
-        cached_state_logp=cached.cached_state_logp,
-        initial_values=cached.initial_values,
-        site_amplitude_prior_scale=site_amplitude_prior_scale,
-    )

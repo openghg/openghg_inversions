@@ -342,10 +342,6 @@ class Co2PreparedInputs:
         """Return the provenance-only basis artifact path."""
         return self.rhime_inputs.basis_artifact_path
 
-    def validated(self) -> Self:
-        """Return this structurally validated frozen wrapper."""
-        return self
-
     def to_datatree(self) -> xr.DataTree:
         """Build the versioned in-memory serialization tree.
 
@@ -466,6 +462,49 @@ class Co2PreparedInputs:
             ValueError: If schema metadata or scientific contents are invalid.
         """
         return cls.from_datatree(open_datatree_loaded(file_path))
+
+
+def requested_co2_facts(
+    prepared: Co2PreparedInputs, *, start_date: str | None = None,
+    end_date: str | None = None, domain: str | None = None,
+    recorded_facts: Mapping[str, object] | None = None,
+) -> dict[str, str]:
+    """Return authoritative requested facts without inferring observation extrema.
+
+    Explicit values fill missing provenance facts. Repeated facts must agree;
+    dates compare by timestamp meaning. ``recorded_facts`` supplies declared
+    configuration or handoff facts alongside numerical preparation provenance;
+    all claims must agree. Only start/end dates and domain are consumed.
+    Imported preparations missing facts require explicit caller values;
+    observation extrema cannot recover the original requested window.
+    """
+    supplied = {"start_date": start_date, "end_date": end_date, "domain": domain}
+    facts: dict[str, str] = {}
+    for name, value in supplied.items():
+        for claim in (prepared.provenance.get(name), (recorded_facts or {}).get(name), value):
+            if claim is None:
+                continue
+            if not isinstance(claim, str) or not claim.strip():
+                raise ValueError(f"CO2 preparation requires explicit requested facts: {[name]!r}.")
+            if name in facts:
+                recorded = facts[name]
+                equivalent = (
+                    pd.Timestamp(claim) == pd.Timestamp(recorded)
+                    if name in {"start_date", "end_date"} else claim == recorded
+                )
+                if not equivalent:
+                    raise ValueError(
+                        f"CO2 requested {name} conflicts with preparation or declared request: {claim!r} != {recorded!r}."
+                    )
+            else:
+                facts[name] = claim
+    missing = [name for name in supplied if name not in facts]
+    if missing:
+        raise ValueError(f"CO2 preparation requires explicit requested facts: {missing!r}.")
+    start, end = pd.Timestamp(facts["start_date"]), pd.Timestamp(facts["end_date"])
+    if pd.isna(start) or pd.isna(end) or start >= end:
+        raise ValueError("CO2 requested start_date must precede a valid end_date.")
+    return facts
 
 
 def prepare_co2_inputs(
@@ -699,6 +738,7 @@ def prepare_co2_inputs(
     if declared_strategy is not None and declared_strategy != reduction.projection_strategy:
         raise ValueError("CO2 provenance projection_strategy conflicts with the coherent reduction.")
     metadata["projection_strategy"] = reduction.projection_strategy
+    metadata["aggregation_error_rank"] = aggregation_error_rank
     if approximation is not None:
         metadata["aggregation_error"] = dict(approximation.diagnostics)
     return Co2PreparedInputs(
@@ -717,4 +757,5 @@ __all__ = [
     "CO2_PREPARED_INPUTS_SCHEMA_VERSION",
     "Co2PreparedInputs",
     "prepare_co2_inputs",
+    "requested_co2_facts",
 ]

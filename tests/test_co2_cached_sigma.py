@@ -886,9 +886,6 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
         rhime_inputs = None
         aggregation_error_mode = "dense"
 
-        def validated(self) -> "PreparedInputsStub":
-            return self
-
     selected: list[tuple[str, ...]] = []
 
     def materialize(_prepared: Any, *, variable_names: tuple[str, ...]) -> xr.Dataset:
@@ -1017,9 +1014,6 @@ def test_cached_runner_rejects_generic_target_accept() -> None:
     class PreparedInputsStub:
         inv_inputs = _inputs()
         aggregation_error_mode = "dense"
-
-        def validated(self) -> "PreparedInputsStub":
-            return self
 
     prepared = PreparedInputsStub()
     prepared.rhime_inputs = cast(Any, prepared)

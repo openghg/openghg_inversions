@@ -1,4 +1,4 @@
-"""File-backed stages for the concrete ordinary and cached CO2 recipes.
+"""Retained file-backed stages for the cached CO2 recipe.
 
 Preparation accepts the public coherent handoff, or canonical observations
 and a coherent reduction supplied directly through the Python API. Campaign
@@ -18,12 +18,11 @@ from typing import Any, cast
 from collections.abc import Mapping
 
 import numpy as np
-import pymc as pm
 import xarray as xr
 
+from openghg_inversions.basis.affine_flux_map_io import load as load_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import RhimePreparedInputs
-from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.rhime.builders import callable_metadata
 from openghg_inversions.rhime.outputs import RhimeResult
@@ -45,15 +44,13 @@ from openghg_inversions.rhime._stage_checks import PREPARATION_CHECK_NAME, _chec
 from openghg_inversions.serialization import load_trace, reset_serialisation_multiindexes, save_trace
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
-from .co2_affine_output import BoundCo2AffineFluxMap, load_and_bind_affine_flux_map
+from .co2_affine_output import BoundCo2AffineFluxMap, _bind_affine_flux_map, prepared_inputs_content_id
 from .co2_cached_sigma_runner import (
     build_rhime_co2_cached_sigma,
     co2_cached_sigma_input_names,
-    run_rhime_co2_cached_sigma,
     sample_co2_cached_prior_predictive,
 )
 from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs
-from .co2_runner import annotate_co2_trace, build_rhime_co2, co2_model_input_names
 from .configuration import Co2RunSetup, resolve_co2_family_config
 
 
@@ -123,11 +120,17 @@ def resolve_co2_stage_paths(params: Mapping[str, Any], *, base_dir: Path) -> dic
 
 
 def resolve_co2_stage_setup(params: Mapping[str, Any]) -> Co2StageSetup:
-    """Resolve CO2 settings and output capabilities independently of saved draws.
+    """Resolve retained cached CO2 stage settings independently of saved draws.
 
     Output consumers validate the actual trace's required draws. Current
     sampler settings do not restrict products from a completed invocation.
     """
+    if params.get("variant") == "ordinary":
+        raise ValueError(
+            "Ordinary CO2 no longer uses the staged envelope. Use co2.handoffs.prepare, "
+            "sample and postprocess with one preparation or sample manifest, or "
+            "co2.run_co2 for configured full execution."
+        )
     from .co2_outputs import validate_co2_output_spec
 
     options = dict(params)
@@ -224,15 +227,7 @@ def _validate_inputs(setup: Co2StageSetup, prepared: Co2PreparedInputs) -> None:
     if setup.output.country_file:
         countries = Countries.from_file(country_file=setup.output.country_file)
         xr.align(prepared.basis_functions.flux, countries.matrix, join="exact", copy=False)
-    if setup.recipe.runner is run_rhime_co2_cached_sigma:
-        co2_cached_sigma_input_names(prepared, use_bc=bool(options.get("use_bc", False)))
-    else:
-        co2_model_input_names(
-            prepared,
-            use_bc=bool(options.get("use_bc", False)),
-            preserve_prepared_fixed_mismatch="likelihood_builder" not in options
-            and "fixed_model_mismatch" not in options,
-        )
+    co2_cached_sigma_input_names(prepared, use_bc=bool(options.get("use_bc", False)))
 
 
 def prepare_co2_stage(
@@ -273,7 +268,9 @@ def prepare_co2_stage(
     if setup.reconstruction_path is not None:
         from .co2_outputs import validate_co2_outputs
 
-        bound = load_and_bind_affine_flux_map(setup.reconstruction_path, source)
+        bound = _bind_affine_flux_map(
+            load_affine(setup.reconstruction_path), prepared, prepared_inputs_id=prepared_inputs_content_id(source),
+        )
         validate_co2_outputs(setup.output, bound=bound, source_to_sector=setup.source_to_sector)
     manifest = _manifest(setup, "prepare")
     destination = _stage_output_directory(output_dir)
@@ -306,7 +303,10 @@ def _load_prepared(
     _validate_inputs(setup, prepared)
     bound = None
     if setup.reconstruction_path is not None:
-        bound = load_and_bind_affine_flux_map(setup.reconstruction_path, prepared_inputs)
+        bound = _bind_affine_flux_map(
+            load_affine(setup.reconstruction_path), prepared,
+            prepared_inputs_id=prepared_inputs_content_id(prepared_inputs),
+        )
     from .co2_outputs import validate_co2_outputs
 
     validate_co2_outputs(setup.output, bound=bound, source_to_sector=setup.source_to_sector)
@@ -330,19 +330,10 @@ def prior_predictive_co2_stage(
     prepared, _ = _load_prepared(setup, prepared_inputs, preparation_manifest)
     seed = dict(setup.recipe.sampler.sample_kwargs or {}).get("random_seed")
     kwargs = dict(cast(Mapping[str, Any], setup.recipe.runner_kwargs))
-    if setup.recipe.runner is run_rhime_co2_cached_sigma:
-        kwargs.pop("sigma_target_accept", None)
-        kwargs.pop("state_target_accept", None)
-        cached = build_rhime_co2_cached_sigma(prepared_inputs=prepared, **kwargs)
-        prior = sample_co2_cached_prior_predictive(cached, prepared, draws=draws, random_seed=seed)
-    else:
-        built = build_rhime_co2(prepared_inputs=prepared, **kwargs)
-        with built.model:
-            prior = pm.sample_prior_predictive(draws, random_seed=seed)
-        registry = get_coord_registry(built.model)
-        if registry is not None:
-            prior = restore_inferencedata_coords(prior, registry)
-        annotate_co2_trace(prior, built, concentration_units=prepared.inv_inputs["mf"].attrs.get("units"))
+    kwargs.pop("sigma_target_accept", None)
+    kwargs.pop("state_target_accept", None)
+    cached = build_rhime_co2_cached_sigma(prepared_inputs=prepared, **kwargs)
+    prior = sample_co2_cached_prior_predictive(cached, prepared, draws=draws, random_seed=seed)
     values = [np.asarray(group[name].values) for group in prior.children.values() for name in group.data_vars]
     non_finite = sum(int(value.size - np.isfinite(value).sum()) for value in values)
     manifest = _manifest(setup, "prior-predictive")
@@ -372,7 +363,7 @@ def sample_co2_stage(
     preparation_manifest: str | Path,
     output_dir: str | Path,
 ) -> dict[str, Any]:
-    """Sample with the public ordinary or matched cached runner, then save canonically."""
+    """Sample with the matched cached runner, then save canonically."""
     prepared, _ = _load_prepared(setup, prepared_inputs, preparation_manifest)
     manifest = _manifest(setup, "sample")
     trace = setup.recipe.runner(**setup.recipe.runner_arguments(prepared))
