@@ -221,12 +221,13 @@ def validate_co2_reporting_inputs(
     if output.output_format == "paris" and output.country_file is None:
         raise ValueError("CO2 PARIS outputs require an explicit outputs.country_file.")
     options = _co2_paris_options(output.paris_postprocessing_kwargs) if output.output_format == "paris" else None
+    country_selections = (
+        options.country_selections if options is not None
+        else (output.paris_postprocessing_kwargs or {}).get("country_selections")
+    )
     countries = Countries.from_file(
         country_file=output.country_file,
-        country_selections=(
-            options.country_selections if options is not None
-            else (output.paris_postprocessing_kwargs or {}).get("country_selections")
-        ),
+        country_selections=list(country_selections) if country_selections is not None else None,
     )
     if bound is None:
         raise ValueError("CO2 country flux outputs require a bound affine reconstruction.")

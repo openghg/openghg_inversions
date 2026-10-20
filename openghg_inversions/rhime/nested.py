@@ -626,7 +626,7 @@ def _align_domain_sites(
             if dataset.get_index(name).empty:
                 raise ValueError(f"{label} dataset for site {site!r} has empty {name!r} coordinates.")
         try:
-            aligned = align_lat_lon(dataset, domain) if known else force_align(
+            aligned = align_lat_lon(dataset, domain) if known and domain is not None else force_align(
                 dataset, reference, dims=("lat", "lon"),
             )
         except ValueError as exc:
