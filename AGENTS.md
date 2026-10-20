@@ -84,6 +84,8 @@ the job exits. It runs tox environments and pytest serially by default, with
 one numerical thread per process. Explicit tox `-p` and `PYTEST_XDIST_WORKERS`
 overrides enable concurrency; budget their combined memory within the Slurm
 allocation. Each tox environment gets its own temporary directory.
+Real-data fixtures use a fresh store per pytest invocation, shared by that run's
+local workers, with separate ground and satellite stores.
 
 The runner prefers uv-managed Python installations, which include development
 headers. Set `UV_PYTHON_PREFERENCE` explicitly to override this choice. Scientific
