@@ -58,7 +58,7 @@ observations' concentration units unless ``sigma_prior`` overrides it. Override
 ``sigma_prior`` when that scale is inappropriate for the observation units or
 scientific application. Set ``no_model_error=True`` to disable this inferred
 term.
-Configured ordinary execution selects these options through the ``likelihood``
+Configured execution selects these options through the ``likelihood``
 section, including ``sigma_prior`` and ``no_model_error``.
 
 The CO₂ runner does not consume ``min_error`` or apply a minimum-error floor.
@@ -72,8 +72,9 @@ installed staged commands and supported outputs; broader scientific acceptance
 remains tracked in `OPE-79 <https://linear.app/openghg-inversions/issue/OPE-79>`_.
 
 For the matched fixed-tau Ornstein--Uhlenbeck (OU) likelihood with independently
-inferred site amplitudes, use :ref:`the package-supported cached-sigma CO2 runner
-<co2-cached-sigma-recipe>`.
+inferred site amplitudes, configure ``likelihood.kind = "fixed_ou"`` and
+``site_amplitude_prior``. ``run_co2`` automatically selects the
+:ref:`matched cached implementation <co2-cached-sigma-recipe>`.
 
 .. _co2-grouped-states:
 
@@ -179,7 +180,7 @@ The CO2-only templates also underpin ``--model co2`` staged commands; see
 :doc:`co2_model_family` for the staged output table and complete command
 sequence. Linked CO2/O2 templates remain Python-only.
 
-:func:`openghg_inversions.rhime.co2.load_co2_family_config` reads TOML. Ordinary
+:func:`openghg_inversions.rhime.co2.load_co2_family_config` reads TOML.
 CO₂ uses :func:`~openghg_inversions.rhime.co2.run_co2` or the Python/CLI model
 selector. Preparation, model, sampler and output values are resolved at their
 concrete owners; saved sampling accepts decoded model/likelihood choices and one
@@ -215,7 +216,6 @@ For example, the ordinary TOML settings::
    draws = 1000
    tune = 1000
    chains = 4
-   nuts_sampler = "numpyro"
 
 can execute through the canonical configured runner::
 
@@ -223,6 +223,23 @@ can execute through the canonical configured runner::
 
    result = run_co2(config_file="my-co2.toml")
    idata = result.idata  # The complete annotated inference DataTree.
+
+The likelihood determines inference: fixed OU with inferred independent site
+amplitudes uses the matched cached update; fixed OU with fixed amplitudes,
+``site_sigma``, ``scalar_sigma`` and additive mismatch retain their PyMC
+implementations. Configured CO₂ does not accept ``sampling.nuts_sampler``.
+``draws``, ``tune``, ``chains`` and ``random_seed`` remain configurable.
+For example, replace the likelihood section with:
+
+.. code-block:: toml
+
+   [likelihood]
+   kind = "fixed_ou"
+   tau_hours = { MHD = 24.0, TAC = 18.0 }
+   site_amplitude_prior = { pdf = "gamma", alpha = 2.0, beta = 3.0 }
+
+The model can infer amplitudes even when every flux and baseline coefficient
+is fixed. In that case the matched update has no state NUTS step.
 
 Equivalently, ``rhime.run(model="co2", config_file="my-co2.toml")`` selects the
 same runner. Output choices remain separate from the scientific trace.
@@ -353,10 +370,11 @@ uses NumPyro, while both linked OU routes default to and require PyMC.
      - ``4``
      - Positive integer.
    * - ``nuts_sampler``
-     - ``"pymc"``
+     - Chosen from the likelihood
      - ``"numpyro"`` for fixed error; ``"pymc"`` for OU
-     - One of ``"pymc"``, ``"nutpie"``, ``"numpyro"``, or ``"blackjax"``;
-       cached variants and linked ``fixed_ou`` require ``"pymc"``.
+     - Configured ``run_co2`` rejects this option. The retained cached stage
+       interface requires ``"pymc"``. Linked configuration accepts supported
+       backends, with ``"pymc"`` required for ``fixed_ou``.
    * - ``progressbar``
      - ``false``
      - ``false``

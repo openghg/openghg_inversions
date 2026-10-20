@@ -54,7 +54,6 @@ def _ordinary() -> dict[str, object]:
             "draws": 20,
             "tune": 10,
             "chains": 2,
-            "nuts_sampler": "numpyro",
             "target_accept": 0.95,
             "random_seed": 42,
         },
@@ -115,7 +114,7 @@ def test_ordinary_configuration_matches_explicit_scientific_arguments() -> None:
     }
     assert resolve_co2_preparation(config, require_path=True)["prepared_path"] == Path("prepared.zarr").resolve()
     assert resolve_co2_sampler(config) == RhimeSampler(
-        draws=20, tune=10, chains=2, nuts_sampler="numpyro",
+        draws=20, tune=10, chains=2, nuts_sampler="pymc",
         sample_kwargs={"target_accept": 0.95, "random_seed": 42},
         posterior_predictive_kwargs={"random_seed": 42},
     )
@@ -630,7 +629,7 @@ def test_prior_seed_consumes_only_its_owned_sampling_option() -> None:
     assert resolve_co2_prior_seed(config) == 42
     assert resolve_co2_prior_seed({}) is None
     assert resolve_co2_prior_seed({"sampling": {"draws": -1}}) is None
-    with pytest.raises(ValueError, match="sampling.draws"):
+    with pytest.raises(ValueError, match="sampling.nuts_sampler"):
         resolve_co2_sampler(config)
 
 

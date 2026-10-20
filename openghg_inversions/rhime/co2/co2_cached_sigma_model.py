@@ -16,7 +16,6 @@ from pymc.initial_point import make_initial_point_fn
 from pytensor.graph.traversal import graph_inputs
 from pytensor.tensor.variable import TensorVariable
 
-from openghg_inversions.array_ops import expand_mapping
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.cached_sigma import (
     FixedOuCachedSigmaTarget,
@@ -32,7 +31,11 @@ from openghg_inversions.models.components import (
     prepare_active_correlated_lognormal_prior,
 )
 from openghg_inversions.models.coords import add_coords, registered_model
-from openghg_inversions.models.fixed_ou import FixedOuLowRank, prepare_fixed_ou_low_rank
+from openghg_inversions.models.fixed_ou import (
+    FixedOuLowRank,
+    prepare_fixed_ou_low_rank,
+    _site_values as fixed_ou_site_values,
+)
 from openghg_inversions.models.priors import PriorArgs, parse_prior
 from openghg_inversions.models.state_activity import (
     PreparedLinearSensitivity,
@@ -145,16 +148,9 @@ def _site_values(
 ) -> np.ndarray | None:
     if value is None:
         return None
-    if isinstance(value, Mapping):
-        values = np.asarray(
-            expand_mapping(value, site_coord, name=OU_SITE_AMPLITUDE).values,
-            dtype=np.float64,
-        )
-    else:
-        values = np.full(site_coord.size, value, dtype=np.float64)
-    if not np.isfinite(values).all() or np.any(values <= 0.0):
-        raise ValueError("Initial site amplitudes must be finite and strictly positive.")
-    return values
+    return fixed_ou_site_values(
+        value, site_coord.size, "Initial site amplitudes", positive=True, coordinate=site_coord,
+    )
 
 
 def _add_cached_likelihood(
@@ -172,11 +168,6 @@ def _add_cached_likelihood(
 ) -> Co2CachedSigmaModel:
     """Lower ordered scientific terms once at the cached-likelihood boundary."""
     active_terms = tuple(term for term in terms if term.coefficients is not None)
-    if not active_terms:
-        raise ValueError(
-            "The cached-sigma recipe requires at least one active flux, "
-            "boundary, or offset coefficient."
-        )
     target = FixedOuCachedSigmaTarget(
         prepared=covariance,
         observations=np.asarray(
@@ -187,7 +178,10 @@ def _add_cached_likelihood(
             [term.fixed_contribution for term in terms],
             axis=0,
         ),
-        design=np.column_stack([term.active_design for term in active_terms]),
+        design=(
+            np.column_stack([term.active_design for term in active_terms])
+            if active_terms else np.empty((observations.size, 0))
+        ),
     )
     add_coords({OU_SITE_DIM: site_coord})
     amplitude_prior = dict(site_amplitude_prior)
@@ -236,8 +230,9 @@ def _add_cached_likelihood(
         pt.sqrt(covariance.marginal_variance(amplitude)),
         dims=output_dim,
     )
-    coefficients = pt.concatenate(
-        [cast(TensorVariable, term.coefficients) for term in active_terms]
+    coefficients = (
+        pt.concatenate([cast(TensorVariable, term.coefficients) for term in active_terms])
+        if active_terms else pt.as_tensor_variable(np.empty(0))
     )
     cached_state_logp = shared_cache.log_likelihood(coefficients)
     pm.CustomDist(
@@ -361,8 +356,7 @@ def build_co2_cached_sigma_model(
             priors, or activity policies are invalid; if boundary options are
             supplied without ``boundary_sensitivity``; or if non-default
             offset options are supplied without ``offset_prior``. Also raised
-            for incompatible global-offset options or a model without active
-            affine coefficients.
+            for incompatible global-offset options.
     """
     if boundary_sensitivity is None and (
         bc_prior is not None or bc_state_activity is not None
@@ -444,7 +438,9 @@ def build_co2_cached_sigma_model(
         + aggregation_diagonal,
         np.asarray(observations.coords["time"].compute().values),
         np.asarray(site_index.values, dtype=np.int64),
-        tau_hours,
+        fixed_ou_site_values(
+            tau_hours, site_coord.size, "tau_hours", positive=True, coordinate=site_coord,
+        ),
         site_labels=site_labels,
     )
     with registered_model():

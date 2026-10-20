@@ -57,6 +57,30 @@ Hierarchical amplitude priors and sampled OU timescales are outside this scope.
 - **THEN** construction warns and records the effective direct LogNormal representation
 - **AND** the physical prior and caller-owned configuration remain unchanged
 
+### Requirement: CO2 inference follows scientific choices
+
+Configured CO2 full execution and shared saved inference SHALL choose their
+implementation from the scientific likelihood and amplitude policy. Fixed OU
+timescales with inferred independent positive site amplitudes SHALL use the
+matched cached update, without a public algorithm switch or silent fallback.
+Sampling lengths, chains and seeds SHALL remain configurable. Unsupported
+sampler substitutions SHALL fail before loading or materializing scientific
+inputs. Prior readiness SHALL resolve only its own scientific and seed choices.
+
+#### Scenario: All affine coefficients are fixed
+
+- **WHEN** fixed-OU amplitudes are inferred while all flux and baseline
+  coefficients are fixed
+- **THEN** the matched amplitude update remains available
+- **AND** no empty state NUTS step is constructed
+- **AND** the complete fixed concentration mean remains in the likelihood
+
+#### Scenario: Dropped-site options are validated before selection
+
+- **WHEN** OU timescales or initial amplitudes include entries for dropped sites
+- **THEN** every supplied entry is validated before selecting retained labels
+- **AND** valid extras are allowed while missing retained-site coverage fails
+
 ### Requirement: Canonical scientific execution across supported routes
 
 Equivalent supported full, prepared-input and staged routes SHALL reuse their
@@ -86,7 +110,7 @@ Runners SHALL consume the resource-I/O contract's save and resource-resolution
 boundary supplied by #868.
 Direct scientific customization, signatures and numerical returns SHALL retain
 their contracts except for the explicit 0.8 standard API/result and eager-builder
-migrations, the sampler-default migration below, the maintainer-approved ordinary CO2
+migrations, the sampler-default migration below, the maintainer-approved CO2
 runner/selector reset to `run_co2`,
 #868's removal of the basis-preparation export argument, and the preparation
 steps' change from `MergedData` to per-site datasets and `SiteOptions`;

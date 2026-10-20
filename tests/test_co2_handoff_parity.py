@@ -1,4 +1,5 @@
 """Real coherent CO2 full/staged/replay products and independent equations."""
+from openghg_inversions.rhime.co2 import inference as co2_inference
 
 from dataclasses import replace
 import json
@@ -181,9 +182,9 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
     monkeypatch.setattr(co2_runner, "materialize_co2_inputs", forbidden)
     monkeypatch.setattr(co2_runner, "materialize_pymc_inputs", forbidden)
     monkeypatch.setattr(handoffs, "prepare_co2_inputs", forbidden)
-    monkeypatch.setattr(handoffs, "materialize_co2_inputs", forbidden)
-    monkeypatch.setattr(handoffs, "build_co2_from_materialized", forbidden)
-    monkeypatch.setattr(handoffs, "sample_rhime_model", forbidden)
+    monkeypatch.setattr(co2_inference, "materialize_co2_inputs", forbidden)
+    monkeypatch.setattr(co2_inference, "build_co2_from_materialized", forbidden)
+    monkeypatch.setattr(co2_inference, "sample_rhime_model", forbidden)
     monkeypatch.setattr(execution, "run_co2", forbidden)
     replay = handoffs.postprocess(
         samples, output=Co2OutputOptions(
@@ -206,7 +207,6 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
 def test_configured_full_uses_output_policy_before_sampling(tmp_path, monkeypatch):
     """Unsupported output choices fail before expensive scientific execution."""
     from openghg_inversions.rhime.co2 import run_co2
-    from openghg_inversions.rhime.co2 import execution
 
     _, _, prepared, affine, countries = synthetic_inputs(tmp_path)
     params = configuration(tmp_path / "unsupported", countries)
@@ -215,8 +215,8 @@ def test_configured_full_uses_output_policy_before_sampling(tmp_path, monkeypatc
     def forbidden(*args, **kwargs):
         raise AssertionError("Unsupported output must fail before model construction")
 
-    monkeypatch.setattr(execution, "materialize_co2_inputs", forbidden)
-    monkeypatch.setattr(execution, "build_co2_from_materialized", forbidden)
+    monkeypatch.setattr(co2_inference, "materialize_co2_inputs", forbidden)
+    monkeypatch.setattr(co2_inference, "build_co2_from_materialized", forbidden)
     with pytest.raises(ValueError, match="support"):
         run_co2(params=params, prepared=prepared, affine_artifact=affine)
     assert not (tmp_path / "unsupported").exists()
@@ -236,8 +236,8 @@ def test_affine_basic_requires_prior_draws_before_materialization(tmp_path, monk
     def forbidden(*args, **kwargs):
         raise AssertionError("Missing affine prior draws must fail before materialization or sampling")
 
-    monkeypatch.setattr(execution, "materialize_co2_inputs", forbidden)
-    monkeypatch.setattr(execution, "sample_rhime_model", forbidden)
+    monkeypatch.setattr(co2_inference, "materialize_co2_inputs", forbidden)
+    monkeypatch.setattr(co2_inference, "sample_rhime_model", forbidden)
     with pytest.raises(ValueError, match="prior draws|prior.*flux_scale|sample_prior_predictive"):
         execution.run_co2(params=params, prepared=prepared, affine_artifact=affine)
     assert not (tmp_path / "rejected").exists()
@@ -275,7 +275,7 @@ def test_configured_concentration_only_basic_accepts_no_prior_draws(tmp_path, mo
         sampled.append(built)
         return trace
 
-    monkeypatch.setattr(execution, "sample_rhime_model", reference_draws)
+    monkeypatch.setattr(co2_inference, "sample_rhime_model", reference_draws)
     result = execution.run_co2(params=params, prepared=prepared)
     assert len(sampled) == 1
     assert result.idata is trace
@@ -310,8 +310,8 @@ def test_full_rejects_supplied_preparation_with_an_unrelated_saved_affine_pair(t
     def forbidden(*args, **kwargs):
         raise AssertionError("A conflicting prepared/affine pair must fail before inference")
 
-    monkeypatch.setattr(execution, "sample_rhime_model", forbidden)
-    monkeypatch.setattr(execution, "materialize_co2_inputs", forbidden)
+    monkeypatch.setattr(co2_inference, "sample_rhime_model", forbidden)
+    monkeypatch.setattr(co2_inference, "materialize_co2_inputs", forbidden)
     with pytest.raises(ValueError, match="prepar|affine|source"):
         execution.run_co2(params=params, prepared=supplied)
     assert not (tmp_path / "rejected").exists()
@@ -330,8 +330,8 @@ def test_full_rejects_bucket_affine_flux_mismatch_before_inference(tmp_path, mon
     def forbidden(*args, **kwargs):
         raise AssertionError("An incompatible bucket flux must fail before inference")
 
-    monkeypatch.setattr(execution, "sample_rhime_model", forbidden)
-    monkeypatch.setattr(execution, "materialize_co2_inputs", forbidden)
+    monkeypatch.setattr(co2_inference, "sample_rhime_model", forbidden)
+    monkeypatch.setattr(co2_inference, "materialize_co2_inputs", forbidden)
     with pytest.raises(ValueError, match="flux"):
         execution.run_co2(params=params, prepared=prepared, affine_artifact=altered)
     assert not (tmp_path / "rejected").exists()

@@ -443,7 +443,8 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
     At the start of each sweep, the sigma step evaluates ``modelled_mean`` at
     the current state point. It then updates sigma and refreshes the quadratic
     for the value returned by that transition before the following stock NUTS
-    step jointly updates ``states``.
+    step jointly updates ``states``. With no active states, the sweep contains
+    only the amplitude step.
 
     Observed models require an explicit ``cached_state_logp`` expression. The
     state function combines this quadratic with the model's free-variable
@@ -467,6 +468,8 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
         model=model,
         rng=sigma_rng,
     )
+    if not states:
+        return pm.CompoundStep([sigma_step])
     state_function = None
     if cached_state_logp is not None:
         state_values = get_value_vars_from_user_vars(list(states), model)

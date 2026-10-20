@@ -116,7 +116,7 @@ def configuration(destination: Path, countries: Path) -> dict:
             "offset": {"prior": {"pdf": "normal", "mu": 0., "sigma": .1}, "per_site": True,
                        "drop_first": False},
         },
-        "sampling": {"draws": 12, "tune": 12, "chains": 1, "nuts_sampler": "pymc",
+        "sampling": {"draws": 12, "tune": 12, "chains": 1,
                      "progressbar": False, "random_seed": 126, "sample_prior_predictive": 8,
                      "sample_posterior_predictive": True},
         "outputs": {"output_format": "basic", "output_name": "co2",

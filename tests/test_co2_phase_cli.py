@@ -1,4 +1,5 @@
 """Ordinary CO2 phases consume their own choices and one scientific handoff."""
+from openghg_inversions.rhime.co2 import inference as co2_inference
 
 import json
 
@@ -73,7 +74,7 @@ def test_configured_full_rejects_mismatched_country_grid_before_materialization(
     def forbidden(*args, **kwargs):
         raise AssertionError("Reporting incompatibility must fail before model materialization")
 
-    monkeypatch.setattr(execution, "materialize_co2_inputs", forbidden)
+    monkeypatch.setattr(co2_inference, "materialize_co2_inputs", forbidden)
     with pytest.raises(ValueError, match="align"):
         execution.run_co2(params=params, prepared=prepared, affine_artifact=affine)
     assert not (tmp_path / "products").exists()
@@ -134,7 +135,7 @@ def test_phase_rejects_unsupported_format_versions(version):
 
 def test_partial_component_override_preserves_the_other_choices():
     original = {"sampling": {"draws": 30, "tune": 11, "chains": 2, "random_seed": 73,
-                             "sample_prior_predictive": 8, "nuts_sampler": "numpyro"},
+                             "sample_prior_predictive": 8},
                 "outputs": {"output_format": "basic", "output_name": "retained", "save_trace": "trace.nc"}}
     override = {"sampling": {"draws": 10}, "outputs": {"output_name": "later"}}
     loaded = load_co2_params(params=original, overrides=override)
@@ -191,7 +192,7 @@ def test_full_rejects_positional_date_conflicts_with_imported_request(tmp_path, 
     def forbidden(*args, **kwargs):
         raise AssertionError("Conflicting request facts must fail before inference")
 
-    monkeypatch.setattr(execution, "materialize_co2_inputs", forbidden)
+    monkeypatch.setattr(co2_inference, "materialize_co2_inputs", forbidden)
     with pytest.raises(ValueError, match="requested|conflict|start_date"):
         execution.run_co2(params=params, prepared=prepared, **claims)
     assert not (tmp_path / "rejected").exists()

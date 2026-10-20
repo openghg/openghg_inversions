@@ -87,6 +87,7 @@ def _configuration(directory: Path, variant: str) -> Path:
         if variant == "ordinary"
         else 'kind = "fixed_ou"\ntau_hours = 24.0\nsite_amplitude_prior = {pdf = "halfnormal", sigma = 0.3}'
     )
+    sampler_backend = 'nuts_sampler = "pymc"' if variant == "cached_fixed_ou" else ""
     path = directory / f"{variant}.toml"
     path.write_text(
         f'''format_version = 1
@@ -111,7 +112,7 @@ drop_first = false
 draws = 12
 tune = 12
 chains = 2
-nuts_sampler = "pymc"
+{sampler_backend}
 progressbar = false
 random_seed = 126
 sample_prior_predictive = 8

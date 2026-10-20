@@ -31,7 +31,6 @@ from openghg_inversions.rhime._stage_artifacts import (
 from openghg_inversions.rhime._stage_checks import (
     PREPARATION_CHECK_NAME, _check_draws, _check_stage, _check_result,
 )
-from openghg_inversions.rhime.sampling import sample_rhime_model
 from openghg_inversions.serialization import load_trace, save_trace
 
 from .co2_affine_output import (
@@ -44,8 +43,8 @@ from .co2_outputs import (
 from .co2_preparation import (
     Co2PreparedInputs, prepare_co2_inputs, requested_co2_facts,
 )
-from .co2_runner import (
-    annotate_co2_trace, materialize_co2_inputs, build_co2_from_materialized,
+from .inference import (
+    annotate_co2_inference, build_co2_inference, sample_co2_inference, validate_co2_inference,
 )
 from .configuration import resolve_co2_model
 
@@ -239,26 +238,15 @@ def sample(
     configured sampling choices. Direct runner trace returns remain unchanged.
     """
     active_sampler = resolve_sampler(sampler)
-    preparation = load_preparation(preparation_manifest)
     model_options = resolve_co2_model(model)
+    validate_co2_inference(model_options, active_sampler)
+    preparation = load_preparation(preparation_manifest)
     check_checkpoint_targets(
         Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),
         referenced=(Path(preparation_manifest).resolve(), preparation.payload)
         + ((preparation.affine_payload,) if preparation.affine_payload else ()),
     )
-    model_inputs, priors = materialize_co2_inputs(
-        prepared_inputs=preparation.prepared, **model_options,
-    )
-    built = build_co2_from_materialized(
-        model_inputs, prepared_inputs=preparation.prepared,
-        priors=priors, **model_options,
-    )
-    trace = sample_rhime_model(built, active_sampler)
-    annotate_co2_trace(
-        trace, built, concentration_units=preparation.prepared.inv_inputs["mf"].attrs.get("units"),
-        likelihood_builder=model_options.get("likelihood_builder"),
-        likelihood_kwargs=model_options.get("likelihood_kwargs"),
-    )
+    trace = sample_co2_inference(preparation.prepared, model_options, active_sampler)
     return save_samples(
         preparation_manifest, trace, actual_inference=active_sampler.describe(), preparation_generation=preparation.generation,
         output_dir=output_dir,
@@ -336,7 +324,7 @@ def prior_predictive(
     _check_draws(draws)
     stage = _check_stage(stage)
     preparation = load_preparation(preparation_manifest)
-    model_options = resolve_co2_model(model)
+    model_options = resolve_co2_model(model, prior_only=True)
     destination = Path(output_dir).resolve()
     report = _output_path(destination, check_output, "prior-predictive-readiness.json")
     check_checkpoint_targets(
@@ -345,23 +333,13 @@ def prior_predictive(
         + ((preparation.affine_payload,) if preparation.affine_payload else ()),
     )
     report.unlink(missing_ok=True)
-    model_inputs, priors = materialize_co2_inputs(
-        prepared_inputs=preparation.prepared, **model_options,
-    )
-    built = build_co2_from_materialized(
-        model_inputs, prepared_inputs=preparation.prepared,
-        priors=priors, **model_options,
-    )
+    built, cached = build_co2_inference(preparation.prepared, model_options)
     with built.model:
         prior = pm.sample_prior_predictive(draws, random_seed=random_seed)
     registry = get_coord_registry(built.model)
     if registry is not None:
         prior = restore_inferencedata_coords(prior, registry)
-    annotate_co2_trace(
-        prior, built, concentration_units=preparation.prepared.inv_inputs["mf"].attrs.get("units"),
-        likelihood_builder=model_options.get("likelihood_builder"),
-        likelihood_kwargs=model_options.get("likelihood_kwargs"),
-    )
+    annotate_co2_inference(prior, built, preparation.prepared, model_options, cached)
     concentration = built.output_contract.variable_roles.get("concentration")
     predictive = prior.children.get("prior_predictive")
     values = [np.asarray(group[name].values) for group in prior.children.values() for name in group.data_vars]

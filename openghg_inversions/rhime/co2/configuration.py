@@ -460,7 +460,7 @@ def _model(value: object) -> dict[str, Any]:
     return result
 
 
-def _ordinary_likelihood(value: object) -> dict[str, Any]:
+def _ordinary_likelihood(value: object, *, matched_ou: bool = False) -> dict[str, Any]:
     options = _table(value, "likelihood")
     kind = _string(_take(options, "kind", "likelihood"), "likelihood.kind")
     result: dict[str, Any] = {}
@@ -532,6 +532,17 @@ def _ordinary_likelihood(value: object) -> dict[str, Any]:
             raise ValueError(
                 "fixed_ou requires exactly one of fixed_site_amplitudes or site_amplitude_prior."
             )
+        if matched_ou and "site_amplitude_prior" in kwargs:
+            for name in ("initial_site_amplitudes", "sigma_target_accept", "state_target_accept"):
+                if name not in options:
+                    continue
+                if name == "initial_site_amplitudes":
+                    kwargs[name] = _number_or_mapping(options.pop(name), f"likelihood.{name}", positive=True)
+                else:
+                    target = _number(options.pop(name), f"likelihood.{name}")
+                    if not 0.0 < target < 1.0:
+                        raise ValueError(f"likelihood.{name} must be between zero and one.")
+                    kwargs[name] = target
         result.update(
             likelihood_builder=add_fixed_ou_gaussian_likelihood,
             likelihood_kwargs=_frozen(kwargs),
@@ -730,13 +741,14 @@ def resolve_co2_family_config(
     raise ValueError("config.recipe must be 'co2' or 'co2_o2'.")
 
 
-def resolve_co2_model(config: Mapping[str, object]) -> dict[str, Any]:
+def resolve_co2_model(config: Mapping[str, object], *, prior_only: bool = False) -> dict[str, Any]:
     """Resolve ordinary CO2 model choices independently of preparation and outputs.
 
     Args:
         config: Component or full configuration. Only optional ``model`` and
             required ``likelihood`` sections are consumed. File frontends own
             envelope validation; direct model choices require no header.
+        prior_only: Ignore inferred-OU posterior tuning controls for prior predictions.
 
     Returns:
         Scientific construction keywords. Scalar-sigma eigenbasis paths resolve
@@ -747,7 +759,11 @@ def resolve_co2_model(config: Mapping[str, object]) -> dict[str, Any]:
     """
     options = _table(config, "config")
     model = _model(options.get("model", {}))
-    likelihood = _ordinary_likelihood(_take(options, "likelihood", "config"))
+    likelihood_options = _table(_take(options, "likelihood", "config"), "likelihood")
+    if prior_only and likelihood_options.get("kind") == "fixed_ou" and "site_amplitude_prior" in likelihood_options:
+        for name in ("sigma_target_accept", "state_target_accept"):
+            likelihood_options.pop(name, None)
+    likelihood = _ordinary_likelihood(likelihood_options, matched_ou=True)
     likelihood_kwargs = likelihood.get("likelihood_kwargs", {})
     if "eigenbasis_path" in likelihood_kwargs:
         likelihood["likelihood_kwargs"] = {
@@ -758,11 +774,12 @@ def resolve_co2_model(config: Mapping[str, object]) -> dict[str, Any]:
 
 
 def resolve_co2_sampler(config: Mapping[str, object]) -> RhimeSampler:
-    """Resolve ordinary CO2 sampling choices without touching other components.
+    """Resolve CO2 sampling choices, choosing the backend from the likelihood.
 
     Args:
         config: Component or full configuration with an optional ``sampling``
-            section. No preparation, model or file-envelope fields are required.
+            section. The likelihood kind and inferred OU amplitude choice select
+            the backend; no preparation, model or file-envelope fields are required.
 
     Returns:
         A fresh sampler with validated ordinary CO2 options.
@@ -770,7 +787,15 @@ def resolve_co2_sampler(config: Mapping[str, object]) -> RhimeSampler:
     Raises:
         ValueError: If supplied sampling choices are unsupported.
     """
-    return _sampling(_table(config, "config").get("sampling", {}), cached=False)
+    options = _table(config, "config")
+    sampling = _table(options.get("sampling", {}), "sampling")
+    if "nuts_sampler" in sampling:
+        raise ValueError("Configured CO2 selects its sampler from the likelihood; remove sampling.nuts_sampler.")
+    likelihood = options.get("likelihood", {})
+    kind = likelihood.get("kind") if isinstance(likelihood, Mapping) else None
+    cached = kind == "fixed_ou" and "site_amplitude_prior" in likelihood
+    sampling["nuts_sampler"] = "pymc"
+    return _sampling(sampling, cached=cached)
 
 
 __all__ = [
