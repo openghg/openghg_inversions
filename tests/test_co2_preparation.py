@@ -490,7 +490,7 @@ def test_reloaded_truncated_low_rank_artifact_drives_cached_runner_selection(
         run_rhime_co2_cached_sigma(
             prepared_inputs=restored,
             tau_hours=24.0,
-            site_amplitude_prior_scale=0.75,
+            site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
         )
 
     selected = received["aggregation_error"]

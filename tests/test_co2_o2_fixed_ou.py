@@ -119,7 +119,7 @@ def _dense(kwargs, amplitudes, tau):
 def test_linked_native_joint_predictions_and_density_ignore_poisoned_cache():
     kwargs = _kwargs(_prepared(), interleaved=True, native_multiindex=True)
     tau = {"co2:A": 6.0, "o2:A": 8.0, "o2:B": 2.0}
-    cached = build_co2_o2_cached_sigma_model(**kwargs, tau_hours=tau, site_amplitude_prior_scale=0.8)
+    cached = build_co2_o2_cached_sigma_model(**kwargs, tau_hours=tau, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8})
     assert not cached.model.potentials
     assert [rv.name for rv in cached.model.observed_RVs] == ["y"]
     covariance = _dense(kwargs, np.zeros(3), tau)
@@ -138,7 +138,7 @@ def test_linked_stock_cached_covariance_logp_and_gradients_match_dense(interleav
     cached = build_co2_o2_cached_sigma_model(
         **kwargs,
         tau_hours=tau,
-        site_amplitude_prior_scale=0.8,
+        site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8},
         initial_site_amplitudes=dict(zip(alignment.site_labels.values, sigma)),
     )
     stock = build_co2_o2_model(
@@ -207,8 +207,8 @@ def test_linked_stock_cached_covariance_logp_and_gradients_match_dense(interleav
 
 def test_linked_cache_accept_reject_order_and_chain_locality(monkeypatch):
     kwargs = _kwargs(_prepared())
-    first = build_co2_o2_cached_sigma_model(**kwargs, tau_hours=6.0, site_amplitude_prior_scale=0.8)
-    second = build_co2_o2_cached_sigma_model(**kwargs, tau_hours=6.0, site_amplitude_prior_scale=0.8)
+    first = build_co2_o2_cached_sigma_model(**kwargs, tau_hours=6.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8})
+    second = build_co2_o2_cached_sigma_model(**kwargs, tau_hours=6.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8})
     sampler = _sampler_for_cached_graph(
         RhimeSampler(nuts_sampler="pymc"),
         cached_model=first,
@@ -252,7 +252,7 @@ def test_linked_ou_rejects_unsupported_backend_before_sampling(cached):
         if cached
         else run_rhime_co2_o2_from_prepared_inputs
     )
-    options = {"site_amplitude_prior_scale": 0.8} if cached else {"fixed_site_amplitudes": 0.8}
+    options = {"site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.8}} if cached else {"fixed_site_amplitudes": 0.8}
     with pytest.raises(ValueError, match="nuts_sampler='pymc'"):
         runner(
             prepared_inputs=prepared,
@@ -284,11 +284,7 @@ def test_linked_sampling_serializes_group_labels_and_joint_outputs(tmp_path, cac
         if cached
         else run_rhime_co2_o2_from_prepared_inputs
     )
-    options = (
-        {"site_amplitude_prior_scale": 0.8}
-        if cached
-        else {"site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.8}}
-    )
+    options = {"site_amplitude_prior": {"pdf": "uniform", "lower": 0.1, "upper": 1.5}}
     trace = runner(
         prepared_inputs=prepared,
         tau_hours={"co2:A": 6.0, "o2:A": 8.0, "o2:B": 2.0},
@@ -390,7 +386,7 @@ def test_cached_affine_design_includes_fixed_pruned_boundary_and_channel_offsets
         offset_prior={channel: {"pdf": "normal", "mu": 0.1, "sigma": 0.2} for channel in boundaries},
         offset_args={channel: {"per_site": native_multiindex} for channel in boundaries},
     )
-    cached = build_co2_o2_cached_sigma_model(**kwargs, tau_hours=6.0, site_amplitude_prior_scale=0.8)
+    cached = build_co2_o2_cached_sigma_model(**kwargs, tau_hours=6.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8})
     stock = build_co2_o2_model(
         **kwargs, tau_hours=6.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8}
     )
@@ -436,6 +432,11 @@ def test_cached_affine_design_includes_fixed_pruned_boundary_and_channel_offsets
             varied[name] += shift
         amplitudes = np.linspace(0.3 + shift / 10, 0.9, cached.target.n_group)
         varied["ou_site_amplitude_log__"] = np.log(amplitudes)
+        varied = {
+            str(value.name): np.asarray(varied[str(value.name)], dtype=value.dtype)
+            for value in cached.model.value_vars
+        }
+        amplitudes = np.exp(varied["ou_site_amplitude_log__"].astype(np.float64))
         cached.shared_cache.update(cached.target.refresh(amplitudes))
         state_step._logp_dlogp_func.set_extra_values(varied)
         actual, gradient = state_step._logp_dlogp_func(DictToArrayBijection.map(
@@ -450,10 +451,11 @@ def test_cached_affine_design_includes_fixed_pruned_boundary_and_channel_offsets
         expected = prior + multivariate_normal.logpdf(
             kwargs["observations"].values, mean=mean_fn(varied), cov=_dense(kwargs, amplitudes, tau),
         )
-        np.testing.assert_allclose(actual, expected, atol=1e-8)
-        np.testing.assert_allclose(actual, public_logp(varied), atol=1e-8)
-        np.testing.assert_allclose(actual, stock_logp(varied), atol=1e-8)
-        np.testing.assert_allclose(gradient, public_gradient(varied), atol=1e-8)
+        tolerance = 2e-6 if pytensor.config.floatX == "float32" else 1e-8
+        np.testing.assert_allclose(actual, expected, rtol=tolerance, atol=tolerance)
+        np.testing.assert_allclose(actual, public_logp(varied), rtol=tolerance, atol=tolerance)
+        np.testing.assert_allclose(actual, stock_logp(varied), rtol=tolerance, atol=tolerance)
+        np.testing.assert_allclose(gradient, public_gradient(varied), rtol=tolerance, atol=tolerance)
     assert [rv.name for rv in cached.states] == [
         "flux_scaling_latent",
         "co2_bc_active",

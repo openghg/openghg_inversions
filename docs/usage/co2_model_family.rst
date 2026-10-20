@@ -301,7 +301,7 @@ Cached CO₂ handoff adoption remains separate. Its existing
 ``--prepared-inputs``, ``--preparation-manifest``, ``--posterior`` and
 ``--sample-manifest`` arguments where applicable. It does not consume the new
 ordinary handoff format. Use ``likelihood.kind = "fixed_ou"``, a positive
-``tau_hours``, ``site_amplitude_prior_scale`` and ``sampling.nuts_sampler = "pymc"``
+``tau_hours``, ``site_amplitude_prior`` and ``sampling.nuts_sampler = "pymc"``
 for that existing route. Preserve its original configuration and matched files.
 Cached postprocessing also returns ``Co2Output``, with its matched preparation,
 trace and optional affine reconstruction. Its reporting window remains the

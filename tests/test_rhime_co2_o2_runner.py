@@ -92,7 +92,7 @@ def _replay(cached: bool):
             co2_o2_cached_sigma_runner,
             co2_o2_cached_sigma_runner.run_rhime_co2_o2_cached_sigma_from_prepared_inputs,
             "build_co2_o2_cached_sigma_model",
-            {"tau_hours": 24.0, "site_amplitude_prior_scale": 1.0},
+            {"tau_hours": 24.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.0}},
         )
     return co2_o2_runner, run_rhime_co2_o2_from_prepared_inputs, "build_co2_o2_model", {}
 

@@ -41,6 +41,27 @@ existing owners; no capability promotion or archive is authorized by this amendm
 
 ## Why
 
+### CO2 amendment approved on 20 October 2026
+
+The maintainer approved OPE-214's implementation stack, OPE-219 → OPE-220 →
+OPE-221. Configure scientific likelihoods and independent positive amplitude
+priors; fixed OU with inferred amplitudes selects its matched cached inference
+automatically, without a public cached variant, sampler-algorithm switch or
+silent fallback. Generalize the current HalfNormal-only amplitude implementation
+using the model's prior density and transform in the conditional sampler.
+One configured `run_co2` returns the merged `Co2Output`; migrate and remove
+redundant cached selectors/runners without CO2 0.7-to-0.8 compatibility aliases.
+Retain concrete scientific construction/inference operations.
+
+Ordinary handoffs (#886) and shared-envelope retirement (#900) are merged in
+`b87f315f`. Reuse their preparation, requested facts, persistence and product
+owners. The 17 October common-carrier recommendation was considered; another
+carrier migration is unnecessary for this scope. Linked numerical callers migrate
+where shared inference changes, but linked staged adoption remains OPE-165.
+This amendment does not complete or archive the handoff programme.
+
+### Original motivation
+
 Full and saved recipe routes still couple scientific preparation to later model
 choices and require callers to reconcile configuration, numerical paths and
 manifests. Replace the OPE-207 proposal accepted in [#787](https://github.com/openghg/openghg_inversions/pull/787)

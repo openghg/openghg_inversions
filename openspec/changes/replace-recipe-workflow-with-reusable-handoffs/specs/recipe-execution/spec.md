@@ -25,6 +25,32 @@ preparation foundations do not establish completion of the phase APIs or handoff
 
 ## ADDED Requirements
 
+### Requirement: Matched fixed-OU amplitude priors
+
+The matched cached CO2 fixed-OU model SHALL accept the existing supported
+independent positive-prior families through `site_amplitude_prior`. The
+conditional amplitude update SHALL use the scientific model's prior density,
+transform and Jacobian, including bounded positive distributions, without a
+second independently specified prior. It SHALL retain sigma-then-state ordering,
+the accepted-cache lifecycle and native correlated prior/posterior prediction.
+Hierarchical amplitude priors and sampled OU timescales are outside this scope.
+
+#### Scenario: A non-HalfNormal amplitude prior uses the matched update
+
+- **WHEN** a supported independent positive amplitude prior is supplied
+- **THEN** the scientific graph, conditional sampler and prior prediction use
+  that same distribution
+- **AND** transformed conditional values and gradients agree with an independent
+  density calculation, with the Jacobian included exactly once
+- **AND** physical amplitudes used to refresh the cache follow the model transform
+
+#### Scenario: Bounded amplitude initialization
+
+- **WHEN** a bounded positive prior supplies default or explicit initial amplitudes
+- **THEN** initialization has finite positive physical amplitudes, finite
+  transformed values and finite prior density
+- **AND** invalid endpoints or out-of-support starts fail before inference
+
 ### Requirement: Canonical scientific execution across supported routes
 
 Equivalent supported full, prepared-input and staged routes SHALL reuse their

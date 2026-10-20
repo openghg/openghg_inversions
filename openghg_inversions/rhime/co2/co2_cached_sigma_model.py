@@ -11,6 +11,8 @@ from numpy.typing import NDArray
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
+from pymc.initial_point import make_initial_point_fn
+from pytensor.graph.traversal import graph_inputs
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.array_ops import expand_mapping
@@ -30,7 +32,7 @@ from openghg_inversions.models.components import (
 )
 from openghg_inversions.models.coords import add_coords, registered_model
 from openghg_inversions.models.fixed_ou import FixedOuLowRank, prepare_fixed_ou_low_rank
-from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.models.priors import PriorArgs, parse_prior, positive_prior_args
 from openghg_inversions.models.state_activity import (
     PreparedLinearSensitivity,
     ResolvedStateActivity,
@@ -71,7 +73,6 @@ class Co2CachedSigmaModel:
     modelled_mean: TensorVariable
     cached_state_logp: TensorVariable
     initial_values: dict[str, Any]
-    site_amplitude_prior_scale: float
 
 
 @dataclass(frozen=True)
@@ -140,11 +141,10 @@ def _site_values(
     value: float | Mapping[str, float] | None,
     *,
     site_coord: xr.DataArray,
-    default: float,
-) -> np.ndarray:
+) -> np.ndarray | None:
     if value is None:
-        values = np.full(site_coord.size, default, dtype=np.float64)
-    elif isinstance(value, Mapping):
+        return None
+    if isinstance(value, Mapping):
         values = np.asarray(
             expand_mapping(value, site_coord, name=OU_SITE_AMPLITUDE).values,
             dtype=np.float64,
@@ -165,8 +165,8 @@ def _add_cached_likelihood(
     observation_error: xr.DataArray,
     site_coord: xr.DataArray,
     site_index: xr.DataArray,
-    initial_amplitudes: np.ndarray,
-    site_amplitude_prior_scale: float,
+    initial_amplitudes: np.ndarray | None,
+    site_amplitude_prior: PriorArgs,
     output_dim: str,
 ) -> Co2CachedSigmaModel:
     """Lower ordered scientific terms once at the cached-likelihood boundary."""
@@ -188,9 +188,30 @@ def _add_cached_likelihood(
         ),
         design=np.column_stack([term.active_design for term in active_terms]),
     )
+    add_coords({OU_SITE_DIM: site_coord})
+    amplitude_prior = positive_prior_args(site_amplitude_prior)
+    if amplitude_prior["pdf"] == "lognormal":
+        # The matched sampler already works in the prior's unconstrained coordinates.
+        amplitude_prior["reparameterise"] = False
+    amplitude = parse_prior(OU_SITE_AMPLITUDE, amplitude_prior, dims=OU_SITE_DIM)
+    model = pm.modelcontext(None)
+    amplitude_value = model.rvs_to_values[amplitude]
+    physical_amplitude = model.replace_rvs_by_values([amplitude])[0]
+    amplitude_logp = model.logp(vars=[amplitude], jacobian=True)
+    dependencies = set(graph_inputs([physical_amplitude, amplitude_logp]))
+    if any(value in dependencies for value in model.value_vars if value is not amplitude_value):
+        raise ValueError("Cached amplitudes require independent priors without other free variables.")
+    overrides = {} if initial_amplitudes is None else {amplitude: pm.floatX(initial_amplitudes)}
+    point = make_initial_point_fn(model=model, overrides=overrides, return_transformed=True)(seed=0)
+    eta = point[str(amplitude_value.name)]
+    initial_amplitudes, prior_density = model.compile_fn(
+        [physical_amplitude, amplitude_logp], inputs=[amplitude_value],
+    )({str(amplitude_value.name): eta})
+    if (not np.isfinite(eta).all() or not np.isfinite(prior_density)
+            or not np.isfinite(initial_amplitudes).all() or np.any(initial_amplitudes <= 0.0)):
+        raise ValueError("Initial site amplitudes must be strictly positive with finite transformed point and prior density.")
     initial_cache = target.refresh(initial_amplitudes)
     shared_cache = PytensorMarginalQuadraticCache(initial_cache)
-    add_coords({OU_SITE_DIM: site_coord})
     observed = add_model_data(observations.transpose(output_dim), "Y")
     add_model_data(observation_error.transpose(output_dim), "error")
     add_model_data(site_index)
@@ -201,11 +222,6 @@ def _add_cached_likelihood(
             coords={OU_SITE_DIM: site_coord},
             name="ou_tau_hours",
         )
-    )
-    amplitude = pm.HalfNormal(
-        OU_SITE_AMPLITUDE,
-        sigma=float(site_amplitude_prior_scale),
-        dims=OU_SITE_DIM,
     )
     pm.Deterministic(
         "epsilon",
@@ -247,7 +263,6 @@ def _add_cached_likelihood(
         modelled_mean=modelled_mean,
         cached_state_logp=cached_state_logp,
         initial_values=initial_values,
-        site_amplitude_prior_scale=site_amplitude_prior_scale,
     )
 
 
@@ -260,7 +275,7 @@ def build_co2_cached_sigma_model(
     observation_error: xr.DataArray,
     aggregation_error: AggregationError,
     tau_hours: float | Mapping[str, float],
-    site_amplitude_prior_scale: float,
+    site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary_sensitivity: xr.DataArray | None = None,
@@ -301,11 +316,11 @@ def build_co2_cached_sigma_model(
             squared concentration units.
         tau_hours: Fixed OU decorrelation time in hours. A scalar applies to
             every site; a mapping must cover every observed site label.
-        site_amplitude_prior_scale: Scale of the independent HalfNormal site-
-            amplitude priors, in the observations' concentration units.
+        site_amplitude_prior: Independent positive prior specification for site
+            amplitudes, in the observations' concentration units.
         initial_site_amplitudes: Optional positive initial amplitude in the
             same units, supplied as one scalar or a mapping covering every
-            observed site. Defaults to ``site_amplitude_prior_scale``.
+            observed site. Defaults to the prior support point.
         state_activity: Optional labelled active/fixed policy for retained flux
             states. Fixed values are dimensionless flux scalings.
         boundary_sensitivity: Optional atmospheric boundary-condition
@@ -349,8 +364,6 @@ def build_co2_cached_sigma_model(
         offset_freq is not None or offset_drop_first or not offset_per_site
     ):
         raise ValueError("Non-default offset options require offset_prior.")
-    if not np.isfinite(site_amplitude_prior_scale) or site_amplitude_prior_scale <= 0.0:
-        raise ValueError("`site_amplitude_prior_scale` must be finite and strictly positive.")
     validate_observation_error_arrays(
         observations,
         observation_error,
@@ -366,7 +379,6 @@ def build_co2_cached_sigma_model(
     initial_amplitudes = _site_values(
         initial_site_amplitudes,
         site_coord=site_coord,
-        default=float(site_amplitude_prior_scale),
     )
     prepared_flux = prepare_linear_sensitivity(
         flux_sensitivity,
@@ -537,7 +549,7 @@ def build_co2_cached_sigma_model(
             site_coord=site_coord,
             site_index=site_index,
             initial_amplitudes=initial_amplitudes,
-            site_amplitude_prior_scale=float(site_amplitude_prior_scale),
+            site_amplitude_prior=site_amplitude_prior,
             output_dim=output_dim,
         )
 

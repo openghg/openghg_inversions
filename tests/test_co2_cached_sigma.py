@@ -160,8 +160,8 @@ def _build(*, state_activity: StateActivity | None = None, inputs: xr.Dataset | 
         observation_error=inputs["mf_error"],
         aggregation_error=resolve_aggregation_error(inputs, "dense"),
         tau_hours={"AAA": 3.0, "BBB": 7.0},
-        site_amplitude_prior_scale=0.75,
-        initial_site_amplitudes={"BBB": 0.4, "unused": 9.0, "AAA": 0.3},
+        site_amplitude_prior=kwargs.pop("site_amplitude_prior", {"pdf": "halfnormal", "sigma": 0.75}),
+        initial_site_amplitudes=kwargs.pop("initial_site_amplitudes", {"BBB": 0.4, "unused": 9.0, "AAA": 0.3}),
         state_activity=state_activity,
         **kwargs,
     )
@@ -178,7 +178,6 @@ def _compound(cached):
         model=cached.model, sigma=cached.amplitude, states=cached.states,
         modelled_mean=cached.modelled_mean, target=cached.target,
         shared_cache=cached.shared_cache, initial_cache=cached.initial_cache,
-        prior_scale=cached.site_amplitude_prior_scale,
         cached_state_logp=cached.cached_state_logp, initial_point=_initial_point(cached),
         rng=np.random.default_rng(769),
     )
@@ -406,7 +405,7 @@ def test_cached_boundary_and_default_site_offset_match_dense_oracle_at_varied_po
         observation_error=inputs["mf_error"],
         aggregation_error=resolve_aggregation_error(inputs, "dense"),
         tau_hours={"AAA": 3.0, "BBB": 7.0},
-        site_amplitude_prior_scale=0.75,
+        site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
         initial_site_amplitudes={"AAA": 0.3, "BBB": 0.4},
         state_activity=StateActivity(
             active=xr.DataArray(
@@ -597,7 +596,7 @@ def test_cached_offset_modes_match_completed_mean_and_dense_likelihood(
         observation_error=inputs["mf_error"],
         aggregation_error=resolve_aggregation_error(inputs, "dense"),
         tau_hours={"AAA": 3.0, "BBB": 7.0},
-        site_amplitude_prior_scale=0.75,
+        site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
         offset_prior=offset_prior,
         offset_per_site=offset_per_site,
         offset_freq=offset_freq,
@@ -681,7 +680,7 @@ def test_cached_all_fixed_flux_uses_other_active_component(
         observation_error=inputs["mf_error"],
         aggregation_error=resolve_aggregation_error(inputs, "dense"),
         tau_hours={"AAA": 3.0, "BBB": 7.0},
-        site_amplitude_prior_scale=0.75,
+        site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
         state_activity=StateActivity(active=False, fixed_value=fixed_flux),
         **kwargs,
     )
@@ -738,7 +737,7 @@ def test_cached_rejects_model_without_active_affine_coefficients() -> None:
             observation_error=inputs["mf_error"],
             aggregation_error=resolve_aggregation_error(inputs, "dense"),
             tau_hours={"AAA": 3.0, "BBB": 7.0},
-            site_amplitude_prior_scale=0.75,
+            site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
             state_activity=StateActivity(active=False),
         )
 
@@ -770,7 +769,7 @@ def test_cached_state_dimensions_include_boundary_and_offset_coefficients(
         observation_error=inputs["mf_error"],
         aggregation_error=resolve_aggregation_error(inputs, "dense"),
         tau_hours={"AAA": 3.0, "BBB": 7.0},
-        site_amplitude_prior_scale=0.75,
+        site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
         state_activity=StateActivity(active=np.asarray([True, False])),
         boundary_sensitivity=inputs["H_bc"],
         bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
@@ -921,7 +920,7 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     result = run_rhime_co2_cached_sigma(
         prepared_inputs=cast(Any, PreparedInputsStub()),
         tau_hours={"AAA": 3.0, "BBB": 7.0},
-        site_amplitude_prior_scale=0.75,
+        site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
         initial_site_amplitudes=0.4,
         sampler=sampler,
         sigma_target_accept=0.82,
@@ -1025,7 +1024,7 @@ def test_cached_runner_rejects_generic_target_accept() -> None:
         run_rhime_co2_cached_sigma(
             prepared_inputs=cast(Any, prepared),
             tau_hours={"AAA": 3.0, "BBB": 7.0},
-            site_amplitude_prior_scale=0.75,
+            site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
             sampler=RhimeSampler(sample_kwargs={"target_accept": 0.95}),
         )
 
@@ -1060,3 +1059,41 @@ def test_cached_sampler_honors_disabled_likelihood_and_posterior_prediction():
     assert "posterior_predictive" not in trace.children
     assert trace.prior_predictive.y.shape == (1, 4, 4)
     assert trace.posterior.sizes["draw"] == 2
+
+
+@pytest.mark.parametrize("initial, expected", [(None, [0.8, 0.8]), (0.4, [0.4, 0.4]), ({"AAA": 0.3, "BBB": 0.7}, [0.3, 0.7])])
+def test_bounded_amplitude_prior_resolves_support_point_and_explicit_starts(initial, expected):
+    cached = _build(site_amplitude_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.5}, initial_site_amplitudes=initial)
+    np.testing.assert_allclose(cached.initial_cache.sigma, expected)
+    point = _initial_point(cached)
+    assert "ou_site_amplitude_interval__" in point
+    assert np.isfinite(point["ou_site_amplitude_interval__"]).all()
+    assert np.isfinite(cached.model.compile_logp()(point))
+    assert all(value is None for value in cached.model.rvs_to_initial_values.values())
+
+
+@pytest.mark.parametrize("initial", [0.1, 1.5, 1.6, 0.0, float("nan")])
+def test_bounded_amplitude_prior_rejects_invalid_or_endpoint_start(initial):
+    with pytest.raises(ValueError, match="Initial site amplitudes"):
+        _build(site_amplitude_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.5}, initial_site_amplitudes=initial)
+
+
+@pytest.mark.parametrize("parameter", [0.7, np.array([0.6, 0.8]), xr.DataArray([0.8, 0.6], dims="ou_site", coords={"ou_site": ["BBB", "AAA"]})])
+def test_cached_positive_prior_uses_scalar_positional_and_labelled_parameters(parameter):
+    from openghg_inversions.models.priors import prior_records
+
+    cached = _build(site_amplitude_prior={"pdf": "gamma", "alpha": 2.0, "beta": parameter}, initial_site_amplitudes=None)
+    expected_beta = np.array([0.7, 0.7]) if np.ndim(parameter) == 0 else np.array([0.6, 0.8])
+    np.testing.assert_allclose(cached.initial_cache.sigma, 2.0 / expected_beta)
+    assert prior_records(cached.model)["ou_site_amplitude"]["pdf"] == "gamma"
+
+
+def test_cached_lognormal_normalizes_optional_reparameterization_without_mutating_prior():
+    from openghg_inversions.models.priors import prior_records
+
+    prior = {"pdf": "lognormal", "mean": 0.7, "stdev": 0.3, "reparameterise": True}
+    cached = _build(site_amplitude_prior=prior, initial_site_amplitudes=None)
+    assert prior["reparameterise"] is True
+    assert cached.amplitude in cached.model.free_RVs
+    assert prior_records(cached.model)["ou_site_amplitude"]["reparameterise"] is False
+    assert np.isfinite(cached.model.compile_logp()(_initial_point(cached)))

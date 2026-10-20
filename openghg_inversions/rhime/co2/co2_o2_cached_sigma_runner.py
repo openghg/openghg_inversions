@@ -34,7 +34,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     prepared_inputs: Co2O2PreparedInputs,
     independent_error_sd: xr.DataArray | None = None,
     tau_hours: float | Mapping[str, float],
-    site_amplitude_prior_scale: float,
+    site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     use_bc: Mapping[str, bool] | None = None,
@@ -69,7 +69,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         tau_hours: Finite positive fixed OU timescale in hours, applied to each
             species/site group. A mapping uses co2:SITE and o2:SITE keys and
             must cover every observed group.
-        site_amplitude_prior_scale: Finite positive HalfNormal scale for the
+        site_amplitude_prior: Independent positive prior specification for the
             independent species/site OU amplitudes, in concentration units.
         initial_site_amplitudes: Optional finite positive starting amplitudes,
             in concentration units. A scalar applies to every group; mappings
@@ -148,7 +148,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         retained_prior=prepared.retained_prior,
         independent_error_sd=error,
         tau_hours=tau_hours,
-        site_amplitude_prior_scale=site_amplitude_prior_scale,
+        site_amplitude_prior=site_amplitude_prior,
         initial_site_amplitudes=initial_site_amplitudes,
         state_activity=state_activity,
         boundary_sensitivity=boundaries,

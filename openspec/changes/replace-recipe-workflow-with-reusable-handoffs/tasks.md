@@ -713,10 +713,20 @@ included. Nothing is merged.
 
 ## 4. Cached CO2 reusable-handoff adoption
 
+- [ ] 4.0 OPE-219: replace HalfNormal-only amplitude scale arguments with the
+  existing independent positive-prior specification. Derive the conditional
+  density/Jacobian and physical amplitude transform from the scientific model;
+  preserve sigma-then-state ordering, accepted-cache updates and prediction.
+  Cover all supported positive families, bounded initialization/transforms,
+  independent conditional density/gradient references, representative posterior
+  moments and linked numerical callers. Deliver affected tests, docs and release note.
 - [ ] 4.1 Connect the ordinary CO2 handoff/result conventions to the matched cached
   construction/inference operation. Verify required backend, sigma-then-state step
   order and accepted-cache lifecycle; reject unsupported generic sampler/tuning
-  substitutions before expensive work. Preserve the existing direct cached runner.
+  substitutions before expensive work. OPE-220 makes scientific model choices
+  select inference automatically and unifies configured execution through
+  `run_co2`/`Co2Output`; migrate and remove redundant cached public selectors and
+  runners without compatibility aliases. OPE-221 adopts the shared saved handoffs.
 - [ ] 4.2 Validate cached per-site initialization and OU time scales as positive,
   requiring retained coverage after checking all supplied values. Verify compatible
   mismatch changes reuse numerical preparation while dependent runtime caches are

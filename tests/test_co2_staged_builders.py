@@ -71,7 +71,7 @@ def test_unsampled_builders_and_correlated_cached_prior(monkeypatch: Any, tmp_pa
     cached = build_rhime_co2_cached_sigma(
         prepared_inputs=prepared,
         tau_hours=4.0,
-        site_amplitude_prior_scale=0.5,
+        site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.5},
     )
     trace = sample_co2_cached_prior_predictive(
         cached, prepared, draws=2000, random_seed=917,

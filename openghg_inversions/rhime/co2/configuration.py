@@ -574,9 +574,9 @@ def _cached_likelihood(value: object) -> dict[str, Any]:
             "likelihood.tau_hours",
             positive=True,
         ),
-        "site_amplitude_prior_scale": _number(
-            _take(options, "site_amplitude_prior_scale", "likelihood"),
-            "likelihood.site_amplitude_prior_scale",
+        "site_amplitude_prior": _prior(
+            _take(options, "site_amplitude_prior", "likelihood"),
+            "likelihood.site_amplitude_prior",
             positive=True,
         ),
     }

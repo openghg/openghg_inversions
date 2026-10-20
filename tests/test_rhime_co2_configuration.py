@@ -210,7 +210,7 @@ def test_boundary_offset_and_cached_variant_lower_to_runner_arguments() -> None:
     config["likelihood"] = {
         "kind": "fixed_ou",
         "tau_hours": {"MHD": 24.0},
-        "site_amplitude_prior_scale": 1.5,
+        "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.5},
         "initial_site_amplitudes": 0.5,
         "sigma_target_accept": 0.82,
         "state_target_accept": 0.91,
@@ -226,7 +226,7 @@ def test_boundary_offset_and_cached_variant_lower_to_runner_arguments() -> None:
         "offset_prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.1},
         "offset_args": {"offset_freq": "monthly", "per_site": True, "drop_first": True},
         "tau_hours": {"MHD": 24.0},
-        "site_amplitude_prior_scale": 1.5,
+        "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.5},
         "initial_site_amplitudes": 0.5,
         "sigma_target_accept": 0.82,
         "state_target_accept": 0.91,
@@ -409,7 +409,7 @@ def test_cached_variant_rejects_generic_sampler_controls() -> None:
     config["likelihood"] = {
         "kind": "fixed_ou",
         "tau_hours": 24.0,
-        "site_amplitude_prior_scale": 1.0,
+        "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.0},
     }
     config["sampling"] = {"nuts_sampler": "pymc", "target_accept": 0.9}
 
@@ -440,7 +440,7 @@ def test_cached_variant_rejects_unsupported_posterior_predictive_names() -> None
     config["likelihood"] = {
         "kind": "fixed_ou",
         "tau_hours": 24.0,
-        "site_amplitude_prior_scale": 1.0,
+        "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.0},
     }
     config["sampling"] = {
         "nuts_sampler": "pymc",
@@ -653,3 +653,20 @@ def test_envelope_validation_does_not_resolve_unowned_sections() -> None:
 def test_preparation_owner_rejects_invalid_or_unknown_options(prepared: object) -> None:
     with pytest.raises((TypeError, ValueError), match="prepared_inputs"):
         resolve_co2_preparation({"prepared_inputs": prepared})
+
+
+@pytest.mark.parametrize("prior", [
+    {"pdf": "halfnormal", "sigma": 0.8},
+    {"pdf": "halfstudentt", "nu": 4.0, "sigma": 0.8},
+    {"pdf": "exponential", "lam": 1.5},
+    {"pdf": "gamma", "alpha": 2.0, "beta": 3.0},
+    {"pdf": "lognormal", "mean": 0.7, "stdev": 0.3},
+    {"pdf": "uniform", "lower": 0.1, "upper": 1.5},
+])
+def test_cached_configuration_accepts_positive_prior_families(prior):
+    config = _ordinary()
+    config["variant"] = "cached_fixed_ou"
+    config["sampling"] = {"nuts_sampler": "pymc"}
+    config["likelihood"] = {"kind": "fixed_ou", "tau_hours": 24.0, "site_amplitude_prior": prior}
+    setup = resolve_co2_family_config(config)
+    assert setup.runner_kwargs["site_amplitude_prior"] == prior

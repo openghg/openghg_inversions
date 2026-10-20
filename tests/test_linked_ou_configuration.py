@@ -28,7 +28,7 @@ def _config(*, cached: bool = False) -> dict:
             "kind": "fixed_ou",
             "tau_hours": {"co2:MHD": 24.0, "o2:MHD": 12.0},
             **(
-                {"site_amplitude_prior_scale": 0.5, "initial_site_amplitudes": 0.2}
+                {"site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.5}, "initial_site_amplitudes": 0.2}
                 if cached
                 else {"fixed_site_amplitudes": {"co2:MHD": 0.4, "o2:MHD": 0.6}}
             ),
