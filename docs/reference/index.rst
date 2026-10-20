@@ -31,7 +31,6 @@ runner.
    openghg_inversions.rhime.run_rhime_multisector
    openghg_inversions.rhime.run_rhime_nested
    openghg_inversions.rhime.co2.run_co2
-   openghg_inversions.rhime.co2.run_rhime_co2_cached_sigma
    openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs
    openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs
 
@@ -94,7 +93,7 @@ Run specifications and results
 ------------------------------
 
 Standard and multisector runners return ``InversionOutput``, including prepared
-execution and graph-free saved replay. Ordinary and cached CO2 postprocessing
+execution and graph-free saved replay. All CO2 postprocessing
 use ``Co2Output``. Nested execution returns ``NestedOutput``
 with two native ``InversionOutput`` views borrowing one trace. Model choices,
 inference and output policy have separate owners.
@@ -166,7 +165,6 @@ value and its unchanged version-1 schema live in
    openghg_inversions.rhime.co2.prepared_inputs_content_id
    openghg_inversions.rhime.co2.Co2O2PreparedInputs
    openghg_inversions.rhime.co2.prepare_co2_inputs
-   openghg_inversions.rhime.co2.stages.prepare_co2_stage
    openghg_inversions.rhime.co2.handoffs.prepare
    openghg_inversions.rhime.co2.handoffs.save_preparation
    openghg_inversions.rhime.co2.handoffs.load_preparation

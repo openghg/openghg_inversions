@@ -287,14 +287,25 @@ when scientific sector names differ from inventory names. Existing current-forma
 built-in sample handoffs with ``x_<suffix>`` state names remain readable. This
 does not restore the retired historical staged-envelope format.
 
-``RhimeRunSpec`` and ``RhimeResult`` are removed after their final cached CO2
-consumer migrates to ``Co2Output``. Cached postprocessing retains the prepared
-inputs on ``result.prepared``, the trace on ``result.idata``, calculated products
-on ``result.outputs`` and conditional affine reconstruction on ``result.bound``.
-It retains no live model or sampler. CLI stage filenames are retained; manifest
-output settings now use the ``Co2OutputOptions`` fields, without the retired
-``save_inversion_output`` and ``output_filename_convention`` keys. Cached products
-use the same writer as ordinary CO2 products.
+``RhimeRunSpec`` and ``RhimeResult`` are removed. All configured CO2 likelihoods
+use ``run_co2`` (or ``rhime.run(model="co2")``) and return ``Co2Output``:
+prepared inputs on ``result.prepared``, the complete trace on ``result.idata``,
+calculated products on ``result.outputs`` and conditional affine reconstruction
+on ``result.bound``. Replay retains no live model or sampler.
+
+Replace ``run_rhime_co2_cached_sigma`` and ``model="co2_cached_sigma"`` with
+``run_co2`` and a ``fixed_ou`` likelihood containing ``site_amplitude_prior``.
+Remove CO2 ``variant`` and ``sampling.nuts_sampler`` settings. The likelihood
+selects the matched cached sampler automatically. Use a supported positive-prior
+table rather than ``site_amplitude_prior_scale``. The packaged example is now
+``co2_fixed_ou.toml``.
+
+All CO2 stages use the shared preparation/sample manifests, original requested
+dates/domain, and shared product naming. Sampling consumes one preparation
+manifest; postprocessing consumes one sample manifest plus current output choices.
+Regenerate retired cached-stage envelopes; there is no compatibility adapter.
+Output settings use ``Co2OutputOptions`` fields, without the retired
+``save_inversion_output`` and ``output_filename_convention`` keys.
 The ``make_co2_rhime_result`` and ``make_co2_rhime_outputs`` adapters,
 ``retained_run_spec`` and ``with_prepared_sites`` helpers, and
 ``with_prepared_rhime_sites`` alias are removed. Copied CO2 runners use
@@ -304,7 +315,7 @@ and ``save_co2_products`` with separate ``Co2OutputOptions``.
 Replay ``output_metadata["sampler"]`` retains available ``draws``, ``burn``,
 ``tune``, ``chains`` and ``nuts_sampler`` values from completed inference.
 Missing or invalid descriptions are ``{}``; partial descriptions stay partial
-without selecting current defaults. Cached ``output_metadata["provenance"]``
+without selecting current defaults. ``output_metadata["provenance"]``
 comes from the sample manifest. The former ``build_and_sample_seconds`` replay
 placeholder is removed: replay does not measure the earlier inference duration.
 

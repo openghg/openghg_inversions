@@ -1,4 +1,4 @@
-"""Scientific output adapters for the ordinary and cached CO2 recipes."""
+"""Scientific output adapters for the CO2 recipe."""
 
 from __future__ import annotations
 
@@ -34,8 +34,8 @@ from .co2_preparation import Co2PreparedInputs, _require_equivalent_units
 class Co2Output:
     """Borrowed CO2 scientific output and its reporting window.
 
-    Ordinary execution retains requested dates; cached stages retain the observed
-    day range. ``bound`` preserves conditional affine reconstruction rather than standard
+    Execution retains the original requested
+    reporting window. ``bound`` preserves conditional affine reconstruction rather than standard
     multiplicative flux scaling. ``idata`` remains the borrowed full DataTree,
     including distinct sample groups and their coordinates. Inference provenance
     remains descriptive in ``output_metadata``; no live sampler or writing policy
@@ -125,7 +125,7 @@ def _validate_co2_paris_options(kwargs: Mapping | None) -> None:
 
 @dataclass(frozen=True)
 class Co2OutputOptions:
-    """Ordinary and cached CO2 concentration and conditional-flux reporting choices.
+    """CO2 concentration and conditional-flux reporting choices.
 
     ``none`` suppresses products and exports; ``basic`` retains scientific
     summaries, and ``paris`` adds supported latest-template products. With no
@@ -547,31 +547,27 @@ def calculate_co2_products(
 
 def save_co2_products(
     result: Co2Output, *, output: Co2OutputOptions,
-    product_paths: Mapping[str, Path] | None = None,
 ) -> None:
-    """Export products and the optional trace, using explicit paths for staged outputs.
+    """Export configured products and the optional trace.
 
-    Without ``product_paths``, output options determine the ordinary filenames
-    and full concentration-component draws remain in memory. Explicit paths
-    select the products to export and preserve the cached stage filenames.
-    Both routes use the same MultiIndex-aware product codecs.
+    Full concentration-component draws remain available in memory. Product
+    filenames follow the configured RHIME naming convention.
     """
     if output.output_format == "none":
         return
     domain = result.domain
     start_date = result.start_date
-    if product_paths is None:
-        product_paths = {
-            name: _define_output_filename(
-                output.output_path, "co2", domain, f"{output.output_name}_{name}", start_date,
-                filename_convention="rhime",
-            )
-            for name in result.outputs if name != "concentration_components"
-        } if output.output_path is not None else {}
+    product_paths = {
+        name: _define_output_filename(
+            output.output_path, "co2", domain, f"{output.output_name}_{name}", start_date,
+            filename_convention="rhime",
+        )
+        for name in result.outputs if name != "concentration_components"
+    } if output.output_path is not None else {}
     for name, path in product_paths.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         product = result.outputs[name]
-        if name in {"basic", "concentration_components"}:
+        if name == "basic":
             save_datatree(xr.DataTree(reset_serialisation_multiindexes(product)), path)
         else:
             write_netcdf_preserving_bounds_attrs(product, path)

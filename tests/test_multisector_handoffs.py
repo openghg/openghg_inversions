@@ -267,12 +267,6 @@ def test_prepare_cli_resolves_data_without_other_phase_choices(tmp_path, monkeyp
     assert merged.split_by_sectors
 
 
-def test_multisector_facade_names_concrete_replacement(tmp_path):
-    from openghg_inversions.rhime import stages as facade
-    with pytest.raises(ValueError, match=r"multisector_stages\.prepare"):
-        facade.prepare_rhime_stage(setup=None, model="multisector", output_dir=tmp_path)
-
-
 @pytest.mark.parametrize("corruption", ["schema", "version", "generation", "missing_posterior", "contract"])
 def test_invalid_sample_cannot_fall_back_to_graph(preparation, tmp_path, monkeypatch, corruption):
     sampled = _save_sample(tmp_path, preparation)

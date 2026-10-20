@@ -97,23 +97,20 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
         "   * - Outputs and postprocessing\n", 1
     )[0]
     workflow = " ".join(workflow.split())
-    assert "Ordinary ``--model co2``" in workflow and "manifest" in workflow
-    assert "Cached fixed-OU" in workflow and "separate staged interface" in workflow
+    assert "``--model co2`` phases" in workflow and "manifest" in workflow
+    assert "including inferred fixed OU" in workflow
     assert "Not supported by the staged CLI" in workflow
-    ordinary, cached = family.split("Cached and linked boundaries\n", 1)
-    assert "rhime run --model co2" in ordinary
-    assert "``rhime run-co2`` remains an alias" in ordinary
-    assert "run_co2" in ordinary
+    co2, linked = family.split("Linked boundary\n", 1)
+    assert "rhime run --model co2" in co2
+    assert "``rhime run-co2`` remains an alias" in co2
+    assert "run_co2" in co2
     for stage in ("prepare", "prior-predictive", "sample", "postprocess"):
-        assert f"rhime {stage} --model co2" in ordinary
-    assert "rhime diagnose --posterior" in ordinary
-    assert ordinary.count("--preparation-manifest run/prepare/prepare-manifest.json") == 2
-    assert ordinary.count("--sample-manifest run/sample/sample-manifest.json") == 2
-    assert "--prepared-inputs run/" not in ordinary
-    assert '``variant = "cached_fixed_ou"``' in cached
-    assert "--prepared-inputs" in cached and "--posterior" in cached
-    assert "ordinary handoff format" in cached
-    assert "Linked CO₂/O₂" in cached and "OPE-165" in cached
+        assert f"rhime {stage} --model co2" in co2
+    assert "rhime diagnose --posterior" in co2
+    assert co2.count("--preparation-manifest run/prepare/prepare-manifest.json") == 2
+    assert co2.count("--sample-manifest run/sample/sample-manifest.json") == 2
+    assert "--prepared-inputs run/" not in co2
+    assert "Linked CO₂/O₂" in linked and "OPE-165" in linked
     assert "packaged TOML template" in family
     assert "scientist acceptance" in family
     assert "Scientist acceptance remains future work" in family
@@ -123,13 +120,13 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "aggregation_error_covariance" in recipes
     assert "Unit conversion is caller-owned" in recipes
     assert ".. _co2-cached-sigma-recipe:" in recipes
-    assert "Compose ordinary CO2 scientific operations" in recipes
+    assert "Compose CO2 scientific operations" in recipes
     assert "Configure prepared-input execution from TOML" in recipes
     assert "load_co2_family_config" in recipes
     assert "resolve_co2_family_config" in recipes
-    assert "co2_cached_sigma.toml" in recipes
+    assert "co2_fixed_ou.toml" in recipes
     assert "Relative values are interpreted from the process" in recipes
-    assert "Ordinary CO2 likelihood configuration" in recipes
+    assert "CO2 likelihood configuration" in recipes
     assert "Exactly one of ``fixed_site_amplitudes``" in recipes
     assert "Sampling configuration" in recipes
     assert "Non-negative integer strictly less than ``draws``" in recipes
@@ -148,8 +145,8 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "build_co2_from_materialized" in recipes
     assert "annotate_co2_trace" in recipes
     assert "idata = run_rhime_co2(" not in recipes
-    assert "idata = run_rhime_co2_cached_sigma(" in recipes
-    assert recipes.count("use_bc=True") >= 2
+    assert "run_rhime_co2_cached_sigma(" not in recipes
+    assert "``[model.boundary]``" in recipes
     assert "Channel-labelled boundary sensitivities, priors and activity" in family
     assert "independent global, site, or site-by-period offsets" in family
     assert "= \\mathtt{co2\\_flux\\_contribution}" in recipes

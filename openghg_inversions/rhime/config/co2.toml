@@ -2,7 +2,6 @@
 # Replace this path with an artifact written by Co2PreparedInputs.save().
 format_version = 1
 recipe = "co2"
-variant = "ordinary"
 
 [prepared_inputs]
 path = "prepared-co2.zarr"

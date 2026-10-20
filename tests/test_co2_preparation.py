@@ -22,7 +22,7 @@ from openghg_inversions.rhime.co2 import (
     co2_cached_sigma_runner,
     co2_runner,
     prepare_co2_scalar_sigma_eigenbasis,
-    run_rhime_co2_cached_sigma,
+    build_rhime_co2_cached_sigma,
 )
 
 
@@ -487,7 +487,7 @@ def test_reloaded_truncated_low_rank_artifact_drives_cached_runner_selection(
     )
 
     with pytest.raises(ModelBoundaryReached):
-        run_rhime_co2_cached_sigma(
+        build_rhime_co2_cached_sigma(
             prepared_inputs=restored,
             tau_hours=24.0,
             site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},

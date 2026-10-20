@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 import copy
 import json
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 import pymc as pm
 from pymc.initial_point import convert_str_to_rv_dict, make_initial_point_fn  # type: ignore[import-untyped]
@@ -29,8 +29,7 @@ from openghg_inversions.observation_error import (
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.inference.cached_sigma import make_cached_sigma_compound_step
 from openghg_inversions.rhime.materialization import materialize_pymc_inputs
-from openghg_inversions.inference.sampling import resolve_sampler
-from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
+from openghg_inversions.rhime.sampling import RhimeSampler
 
 from .co2_cached_sigma_model import (
     OU_SITE_AMPLITUDE,
@@ -399,106 +398,9 @@ def sample_co2_cached_prior_predictive(
     )
 
 
-def run_rhime_co2_cached_sigma(
-    *,
-    prepared_inputs: Co2PreparedInputs,
-    tau_hours: float | Mapping[str, float],
-    site_amplitude_prior: PriorArgs,
-    initial_site_amplitudes: float | Mapping[str, float] | None = None,
-    sampler: RhimeSampler | Literal["default"] = "default",
-    sigma_target_accept: float = 0.8,
-    state_target_accept: float = 0.9,
-    use_bc: bool = False,
-    bc_prior: PriorArgs | None = None,
-    bc_state_activity: StateActivity | None = None,
-    offset_prior: PriorArgs | None = None,
-    offset_args: Mapping[str, Any] | None = None,
-) -> xr.DataTree:
-    """Run the package-supported CO2 fixed-OU cached-amplitude recipe.
-
-    The graph and sampler are a matched pair: site amplitudes are updated first
-    using the exact conditional likelihood, the state-likelihood quadratic is rebuilt
-    for the values returned by that transition, and stock PyMC NUTS then
-    updates the correlated flux and optional boundary and offset states against
-    that cache. ``use_bc=False`` leaves a prepared boundary
-    field unselected and preserves the no-boundary route. An offset is added
-    only when ``offset_prior`` is supplied. ``sigma_target_accept`` and
-    ``state_target_accept`` tune the two sampler steps independently.
-
-    Args:
-        prepared_inputs: Coherent-reduction inputs containing ``H``,
-            ``alpha_prior_mean``, ``alpha_prior_covariance``,
-            ``fixed_prior_contribution``, ``mf``, and ``mf_error``. Observations
-            must have aligned ``site`` and ``time`` coordinates. The selected
-            aggregation-error representation must also be present.
-        tau_hours: Fixed OU decorrelation time in hours. A scalar applies to
-            every site; a mapping must cover every observed site label.
-        site_amplitude_prior: Independent positive prior for site amplitudes,
-            in the observations' concentration units.
-        initial_site_amplitudes: Optional positive initial amplitude in the
-            same units, supplied as one scalar or a mapping covering every
-            observed site. Defaults to the prior support point.
-        sampler: Sampler configuration or ``"default"``; explicit ``None`` is invalid. This recipe requires PyMC,
-            constructs its own step, and supports only ``random_seed`` in
-            ``posterior_predictive_kwargs``.
-        sigma_target_accept: NUTS target acceptance probability for the site-
-            amplitude transition.
-        state_target_accept: NUTS target acceptance probability for the joint
-            flux, boundary, and offset state transition.
-        use_bc: Whether to include prepared ``H_bc`` boundary sensitivity.
-        bc_prior: Optional prior for boundary-condition scaling.
-        bc_state_activity: Optional active/fixed boundary-state policy.
-        offset_prior: Optional prior for an offset component. When omitted, no
-            offset is added.
-        offset_args: Optional offset settings: ``offset_freq``, ``drop_first``,
-            and ``per_site``.
-
-    Returns:
-        Sampled DataTree with the normalized joint log likelihood as one
-        value per complete observation vector and, when requested, correlated
-        joint prior- and posterior-predictive vectors. A true prior-predictive
-        setting uses the retained posterior draw count; an integer requests
-        exactly that many prior draws.
-
-    Raises:
-        TypeError: If the sampler is neither a configuration nor ``"default"``.
-        ValueError: If prepared arrays, labels, numerical inputs, or model
-            construction are invalid; if a site mapping is incomplete; or if
-            the sampler is not PyMC, supplies ``step`` or generic
-            ``target_accept``, or has unsupported predictive keywords.
-    """
-    requested_sampler = resolve_sampler(sampler)
-    validate_cached_co2_sampler(requested_sampler)
-    cached_model = build_rhime_co2_cached_sigma(
-        prepared_inputs=prepared_inputs,
-        tau_hours=tau_hours,
-        site_amplitude_prior=site_amplitude_prior,
-        initial_site_amplitudes=initial_site_amplitudes,
-        use_bc=use_bc,
-        bc_prior=bc_prior,
-        bc_state_activity=bc_state_activity,
-        offset_prior=offset_prior,
-        offset_args=offset_args,
-    )
-    built = co2_cached_sigma_build_result(cached_model, prepared_inputs)
-    sampling_sampler = _sampler_for_cached_graph(
-        requested_sampler,
-        cached_model=cached_model,
-        sigma_target_accept=sigma_target_accept,
-        state_target_accept=state_target_accept,
-    )
-    trace = sample_rhime_model(built, sampling_sampler)
-    return _annotate_cached_co2_trace(
-        trace,
-        built,
-        concentration_units=prepared_inputs.inv_inputs["mf"].attrs.get("units"),
-    )
-
-
 __all__ = [
     "build_rhime_co2_cached_sigma",
     "co2_cached_sigma_build_result",
     "co2_cached_sigma_input_names",
-    "run_rhime_co2_cached_sigma",
     "sample_co2_cached_prior_predictive",
 ]

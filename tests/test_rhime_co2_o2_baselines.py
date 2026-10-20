@@ -83,11 +83,11 @@ def test_boundary_fixed_and_active_state_reconstructs_exact_joint_sum(channels):
             var_names=[var.name for var in model.free_RVs + model.deterministics],
         )
     trace = restore_inferencedata_coords(trace, get_coord_registry(model))
-    expected = np.zeros((1, 3, 5))
+    expected = np.zeros((1, 3, 5), dtype=trace.prior.modelled_concentration.dtype)
     for channel in channels:
         scale = trace.prior[f"{channel}_bc"].values
         np.testing.assert_array_equal(scale[..., 1], 2.0)
-        contribution = scale @ prepared.boundary_sensitivity[channel].values.T
+        contribution = scale @ prepared.boundary_sensitivity[channel].values.astype(scale.dtype).T
         selected = slice(0, 2) if channel == "co2" else slice(2, 5)
         expected[..., selected] += contribution
         padded = np.zeros_like(expected)
@@ -95,8 +95,11 @@ def test_boundary_fixed_and_active_state_reconstructs_exact_joint_sum(channels):
         np.testing.assert_allclose(trace.prior[f"{channel}_mu_bc"], padded)
         assert trace.prior[f"{channel}_bc"][f"{channel}_boundary"].values.tolist() == ["north", "south"]
     np.testing.assert_allclose(trace.prior.baseline_concentration, expected)
-    flux = trace.prior.co2_o2_flux_contribution + trace.constant_data.fixed_prior_contribution
-    np.testing.assert_allclose(trace.prior.modelled_concentration, flux + expected)
+    # Follow the float32 graph's addition order before the coherent affine intercept.
+    signal = trace.prior.co2_o2_flux_contribution + expected
+    np.testing.assert_allclose(
+        trace.prior.modelled_concentration, signal + trace.constant_data.fixed_prior_contribution
+    )
     np.testing.assert_allclose(
         trace.constant_data.aggregation_error_covariance, prepared.aggregation_error.covariance
     )

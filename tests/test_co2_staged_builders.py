@@ -62,8 +62,7 @@ def test_unsampled_builders_and_correlated_cached_prior(monkeypatch: Any, tmp_pa
                                 ))
         else:
             monkeypatch.setattr(module, "materialize_pymc_inputs", materialize)
-        if module is co2_cached_sigma_runner:
-            monkeypatch.setattr(module, "sample_rhime_model", unexpected_sampling)
+    monkeypatch.setattr(pm, "sample", unexpected_sampling)
     prepared = cast(Any, Prepared())
     inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, no_model_error=True)
     ordinary = build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, no_model_error=True)

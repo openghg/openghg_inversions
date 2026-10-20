@@ -2,10 +2,10 @@
 # Replace this path with an artifact written by Co2PreparedInputs.save().
 format_version = 1
 recipe = "co2"
-variant = "ordinary"
 
 [prepared_inputs]
 path = "prepared-co2.zarr"
+# Preserve the original requested window after filtering.
 start_date = "2020-01-01"
 end_date = "2020-02-01"
 domain = "EUROPE"

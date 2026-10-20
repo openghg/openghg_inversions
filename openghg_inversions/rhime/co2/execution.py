@@ -1,4 +1,4 @@
-"""Configured ordinary CO2 execution and independently resolved phase choices."""
+"""Configured CO2 execution and independently resolved phase choices."""
 
 from __future__ import annotations
 
@@ -72,7 +72,7 @@ def run_co2(
     reduction: CoherentGaussianReduction | None = None, affine_artifact: AffineFluxMapArtifact | None = None,
     aggregation_error_rank: int | None = 512,
 ) -> Co2Output:
-    """Prepare or load ordinary CO2 inputs, sample and create requested products.
+    """Prepare or load CO2 inputs, sample and create requested products.
 
     This configured product entry point consumes ``model``, ``likelihood``,
     ``sampling`` and ``outputs`` without intermediate manifests. Trace-only
@@ -92,8 +92,6 @@ def run_co2(
     options = load_co2_params(config_file=config_file, params_file=params_file, params=params, overrides=overrides)
     if output_path is not None:
         options["outputs"] = {**options.get("outputs", {}), "output_path": Path(output_path).expanduser().resolve()}
-    if options.get("variant", "ordinary") != "ordinary":
-        raise ValueError("run_co2 requires variant='ordinary'; cached execution has its own runner.")
     preparation = resolve_co2_preparation(options)
     model = resolve_co2_model(options)
     sampling = _resolve_co2_sampling(options, model=model)

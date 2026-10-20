@@ -1,4 +1,4 @@
-"""Compare ordinary CO2 full execution with saved scientific handoffs.
+"""Compare inferred fixed-OU CO2 full execution with saved scientific handoffs.
 
 Run ``python -m examples.co2_handoffs /tmp/co2-handoffs``. The synthetic
 observations, coherent reduction, signed native fluxes, sampling and products
@@ -108,7 +108,7 @@ def synthetic_inputs(destination: Path) -> tuple:
 def configuration(destination: Path, countries: Path) -> dict:
     """Select explicit inference, requested-window and output choices."""
     return {
-        "format_version": 1, "recipe": "co2", "variant": "ordinary",
+        "format_version": 1, "recipe": "co2",
         "prepared_inputs": {"start_date": START_DATE, "end_date": END_DATE, "domain": "EUROPE"},
         "likelihood": {"kind": "additive_sigma", "no_model_error": True, "fixed_model_mismatch": 0.0},
         "model": {
@@ -132,6 +132,10 @@ def run_example(destination: Path) -> None:
 
     canonical, reduction, prepared, affine, countries = synthetic_inputs(destination)
     params = configuration(destination / "full", countries)
+    params["likelihood"] = {
+        "kind": "fixed_ou", "tau_hours": 24.0,
+        "site_amplitude_prior": {"pdf": "gamma", "alpha": 2.0, "beta": 3.0},
+    }
     manifest = handoffs.save_preparation(
         prepared, output_dir=destination / "prepare", start_date=START_DATE,
         end_date=END_DATE, domain="EUROPE", affine_artifact=affine,
@@ -155,7 +159,7 @@ def run_example(destination: Path) -> None:
     alternative = deepcopy(params)
     alternative["model"]["boundary"]["prior"]["sigma"] = .2
     alternative["model"]["offset"]["prior"]["mu"] = .05
-    alternative["likelihood"]["fixed_model_mismatch"] = .15
+    alternative["likelihood"]["tau_hours"] = 18.0
     changed_model = {name: alternative[name] for name in ("model", "likelihood")}
     other_samples = handoffs.sample(
         manifest, model=changed_model, sampling=params["sampling"], output_dir=destination / "alternative-sample",

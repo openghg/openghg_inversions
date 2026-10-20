@@ -218,7 +218,7 @@ For example, with preparation settings in ``preparation.json``:
      --output-dir run/paris
 
 ``--model standard`` is the default for these commands. A manifest's family must
-match the selected route. Ordinary CO₂ configured full execution is available
+match the selected route. CO₂ configured full execution is available
 through ``rhime run --model co2``; see :doc:`co2_model_family` for its
 prepared-input configuration.
 
@@ -336,10 +336,10 @@ state variables remain readable at the output boundary. A saved canonical
 This compatibility does not restore historical staged envelopes or add alias
 variables to new graphs.
 
-Ordinary CO₂ handoffs
----------------------
+CO₂ handoffs
+------------
 
-Ordinary CO₂ uses its own coherent preparation and conditional affine output
+CO₂ uses its own coherent preparation and conditional affine output
 meaning. ``run_co2`` and its saved phases call the same preparation,
 materialization, construction, sampling and product operations; full execution
 requires no manifests. ``rhime run --model co2`` consumes the configured model,
@@ -361,18 +361,14 @@ meaning and provenance without constructing a graph or sampling. It returns a
 concentration and conditional native/country products as full execution.
 Missing imported request facts must be supplied explicitly. See
 :doc:`co2_model_family` for configuration, readiness/diagnosis, affine
-compatibility and the distinct cached-CO₂ boundary, and
+compatibility, and
 :download:`co2_handoffs.py <../../examples/co2_handoffs.py>` for an executable
 full/saved scientific comparison. Linked CO₂/O₂ and nested workflows are separate.
 
-The separate cached fixed-OU postprocessing route also returns ``Co2Output``.
-It keeps the existing matched-file arguments, observed-day reporting window
-and stage product filenames described in :doc:`co2_model_family`. Products use
-the shared CO2 writer; replay writes no additional standalone trace.
-Manifest output settings now use ``Co2OutputOptions`` fields. The manifest
-records the completed sampling configuration, while returned output metadata
-contains its available five-field sampler description and saved provenance;
-see :doc:`legacy_and_migration`.
+All supported CO2 likelihoods, including fixed OU with inferred amplitudes,
+use these handoffs. Replay uses the completed inference description and saved
+provenance; it does not select current sampler defaults. See
+:doc:`legacy_and_migration` for retired entry points.
 
 Readiness and independent diagnosis
 -----------------------------------
@@ -381,7 +377,7 @@ Readiness and independent diagnosis
 the selected model and draws prior predictions without posterior inference.
 ``--draws`` controls its sample count. Loading and serialization errors
 propagate; for standard and multisector, supported model/input failures produce
-a readiness ``fail`` result. Ordinary CO₂ construction and inference errors
+a readiness ``fail`` result. CO₂ construction and inference errors
 propagate; evaluated missing, empty or non-finite predictive evidence produces
 a failed check.
 Select ``--model multisector`` for prior predictions from a multisector preparation
@@ -408,13 +404,6 @@ and stage label.
 Other families and migration
 ----------------------------
 
-Cached CO2 retains its existing staged interface pending separate handoff adoption.
-It requires explicit ``--model co2``, a full configuration and
-``--prepared-inputs``/``--preparation-manifest`` for sampling. Postprocessing also
-requires ``--posterior`` and ``--sample-manifest``. Ordinary CO2 uses the
-manifest-only interface described above; cached CO2 takes an existing coherent
-preparation through its separate interface. See :doc:`co2_model_family` for
-supported CO2 outputs.
 Linked CO2/O2 staging remains separate work.
 
 The new standard and multisector handoff formats replace their historical staged

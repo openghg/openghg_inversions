@@ -29,7 +29,7 @@ def test_unknown_model_rejected():
         run(model="missing")
 
 
-@pytest.mark.parametrize("model", ["co2_cached_sigma", "co2_o2", "co2_o2_cached_sigma"])
+@pytest.mark.parametrize("model", ["co2_o2", "co2_o2_cached_sigma"])
 def test_carbon_recipes_require_their_actual_prepared_inputs(model):
     with pytest.raises(TypeError, match="prepared_inputs"):
         run(model=model)
@@ -99,7 +99,7 @@ def test_removed_ordinary_runner_names_have_no_compatibility_aliases():
     from openghg_inversions.rhime import co2
     from openghg_inversions import rhime
 
-    for name in ("run_rhime_co2", "build_rhime_co2", "run_co2_from_config"):
+    for name in ("run_rhime_co2", "build_rhime_co2", "run_co2_from_config", "run_rhime_co2_cached_sigma", "Co2RunSetup"):
         assert not hasattr(co2, name)
         assert not hasattr(rhime, name)
 
@@ -111,3 +111,8 @@ def test_retired_run_envelopes_and_site_helpers_have_no_public_exports():
         assert not hasattr(rhime, name)
         assert name not in rhime.__all__
     assert not hasattr(RhimeConfig, "retained_run_spec")
+
+
+def test_retired_cached_selector_has_no_compatibility_alias():
+    with pytest.raises(ValueError, match="Unknown model 'co2_cached_sigma'"):
+        run(model="co2_cached_sigma")
