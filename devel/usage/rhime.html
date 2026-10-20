@@ -592,7 +592,14 @@ operator; it does not rename arbitrary state axes to <code class="docutils liter
 <p><code class="docutils literal notranslate"><span class="pre">source</span></code> remains the OpenGHG retrieval identity; sector names and priors live
 in the model specification and select <code class="docutils literal notranslate"><span class="pre">H</span></code> by source label. Source-coordinate
 order therefore does not determine sector routing. The current builder
-supports one distinct source and one independent state vector per sector.
+supports one distinct source and one independent prior block per sector in a
+single full physical state <code class="docutils literal notranslate"><span class="pre">x</span></code>. Its two-dimensional model sensitivity <code class="docutils literal notranslate"><span class="pre">hx</span></code>
+uses the matching retained entries of that state to produce the combined flux
+concentration contribution <code class="docutils literal notranslate"><span class="pre">mu</span></code>. Rectangular sensitivity inputs are packed
+into a gathered source/local state index for construction only; prepared inputs and basis artifacts retain
+their existing layouts. Select source blocks from <code class="docutils literal notranslate"><span class="pre">x</span></code> by label. The first
+requested <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> entry still supplies basis weighting, independently
+of sector declaration order.
 Rectangular legacy inputs may carry <code class="docutils literal notranslate"><span class="pre">source_region_count(source)</span></code> so padded
 layouts can be rejected; modern preparation does not create that compatibility
 metadata.</p>

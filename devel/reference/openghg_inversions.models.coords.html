@@ -592,11 +592,13 @@ stored separately so they can later be restored onto sampled trace groups.</p>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The registered tensor, or the existing variable with the same name.</p>
+<dd class="field-even"><p>The registered tensor, reusing existing model data only when dimensions,
+backend dtype and values, and supplied scientific coordinates agree.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If neither an explicit name nor <code class="docutils literal notranslate"><span class="pre">data.name</span></code> is available.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If neither an explicit name nor <code class="docutils literal notranslate"><span class="pre">data.name</span></code> is available,
+    or an existing name has incompatible data or coordinates.</p></li>
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#RuntimeError" title="(in Python v3.15)"><strong>RuntimeError</strong></a> – If the model lacks the coordinate registry installed by
     <a class="reference internal" href="#openghg_inversions.models.coords.registered_model" title="openghg_inversions.models.coords.registered_model"><code class="xref py py-func docutils literal notranslate"><span class="pre">registered_model()</span></code></a>.</p></li>
 </ul>

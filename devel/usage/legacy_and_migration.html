@@ -690,6 +690,13 @@ records from <code class="docutils literal notranslate"><span class="pre">result
 <code class="docutils literal notranslate"><span class="pre">postprocessing.make_outputs.make_sector_flux_outputs</span></code>. Copied runners call
 <code class="docutils literal notranslate"><span class="pre">postprocess_multisector_outputs(result,</span> <span class="pre">output_spec)</span></code> for requested products,
 then <code class="docutils literal notranslate"><span class="pre">save_inversion_output(result,</span> <span class="pre">output_spec)</span></code> for exports.</p>
+<p>New standard and multisector models expose one full physical <code class="docutils literal notranslate"><span class="pre">x</span></code>, sensitivity
+<code class="docutils literal notranslate"><span class="pre">hx</span></code> and combined flux concentration contribution <code class="docutils literal notranslate"><span class="pre">mu</span></code>. Multisector callers
+select a source-labelled block from <code class="docutils literal notranslate"><span class="pre">result.trace_group(&quot;posterior&quot;)[&quot;x&quot;]</span></code>
+rather than read <code class="docutils literal notranslate"><span class="pre">x_&lt;sector&gt;</span></code> variables; use the saved sector/source mapping
+when scientific sector names differ from inventory names. Existing current-format
+built-in sample handoffs with <code class="docutils literal notranslate"><span class="pre">x_&lt;suffix&gt;</span></code> state names remain readable. This
+does not restore the retired historical staged-envelope format.</p>
 <p>Standard and multisector execution no longer construct <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> or
 return <code class="docutils literal notranslate"><span class="pre">RhimeResult</span></code>. These shared types remain only for the deferred nested
 and cached CO2 recipes until their own consumers migrate. Remove multisector

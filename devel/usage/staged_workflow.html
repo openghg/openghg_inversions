@@ -699,11 +699,15 @@ exports. Caller-owned xarray and Dask arrays remain borrowed until explicit
 materialization or serialization boundaries.</p>
 <p>Resolve preparation with <code class="docutils literal notranslate"><span class="pre">DataConfig.from_params(options,</span> <span class="pre">multisector=True)</span></code>.
 Keep <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> ordered. At sampling, supply <code class="docutils literal notranslate"><span class="pre">sector_sources</span></code> to map
-scientific sector names to those source labels. Each sector uses a distinct prepared source;
-its scaling and concentration-contribution roles are saved with the samples.
+scientific sector names to those source labels. Each sector uses a distinct
+prepared source and keeps its own prior block in the full sampled <code class="docutils literal notranslate"><span class="pre">x</span></code> state.
+The saved roles are <code class="docutils literal notranslate"><span class="pre">flux_scale:</span> <span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">emissions_sensitivity:</span> <span class="pre">hx</span></code> and
+<code class="docutils literal notranslate"><span class="pre">flux_contribution:</span> <span class="pre">mu</span></code>; source labels and recorded sector associations select
+blocks for reporting.
 Both rectangular shared-basis and source-labelled gathered layouts retain their
 scientific interpretation. Preparation retains all source fluxes; the first
-requested source supplies basis weighting. Retained sites and their averaging
+requested source supplies basis weighting, independently of sector declaration
+order. Retained sites and their averaging
 periods come from the prepared numerical inputs, even when a requested site is
 dropped. Original requested dates remain the inversion window for later products.</p>
 <p>Sampling can change <code class="docutils literal notranslate"><span class="pre">sector_priors</span></code> or a compatible Python
@@ -755,6 +759,11 @@ For in-memory sector diagnostics, call
 <p>Follow <a class="reference internal" href="multisector_handoffs.html"><span class="doc">Reuse a multisector preparation</span></a> for an executable notebook demonstrating
 preparation reuse, separate model samples, multiple output choices and comparison
 with full execution. Its <a class="reference download internal" download="" href="../_downloads/8e75f4384736dcc972ca5321305c6b91/multisector_handoffs.py"><code class="xref download docutils literal notranslate"><span class="pre">companion</span> <span class="pre">script</span></code></a> also checks independent model equations.</p>
+<p>Existing current-format built-in samples declaring <code class="docutils literal notranslate"><span class="pre">x_&lt;suffix&gt;</span></code> per-sector
+state variables remain readable at the output boundary. A saved canonical
+<code class="docutils literal notranslate"><span class="pre">flux_scale</span></code> role is authoritative: missing or incompatible <code class="docutils literal notranslate"><span class="pre">x</span></code> cannot fall back to old variables.
+This compatibility does not restore historical staged envelopes or add alias
+variables to new graphs.</p>
 </section>
 <section id="ordinary-co2-handoffs">
 <h2>Ordinary CO₂ handoffs<a class="headerlink" href="#ordinary-co2-handoffs" title="Link to this heading">#</a></h2>

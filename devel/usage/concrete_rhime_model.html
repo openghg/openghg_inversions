@@ -772,26 +772,36 @@ forward operator without constructing a second prior.</p>
 </section>
 <section id="multisector-model">
 <h2>Multisector model<a class="headerlink" href="#multisector-model" title="Link to this heading">#</a></h2>
-<p>For the current shared-basis multisector model, each sector has an independent
-state and forward contribution:</p>
+<p>The multisector model uses one full physical state, with an independent prior
+for each source block:</p>
 <div class="math notranslate nohighlight">
 \[\begin{split}x_s &amp;\sim p_s, \\
-\mu_s &amp;= H_s x_s, \\
-\mu &amp;= \sum_s \mu_s.\end{split}\]</div>
-<p>If the normalized PyMC suffix for sector <code class="docutils literal notranslate"><span class="pre">s</span></code> is <code class="docutils literal notranslate"><span class="pre">ff</span></code>, its variables are
-<code class="docutils literal notranslate"><span class="pre">x_ff</span></code> and <code class="docutils literal notranslate"><span class="pre">mu_ff</span></code> and its sensitivity data is <code class="docutils literal notranslate"><span class="pre">hx_ff</span></code>. Source values select
-the corresponding <code class="docutils literal notranslate"><span class="pre">H</span></code> slices; sector names provide model identities. They
-are not required to be the same strings.</p>
-<p>Every sector state and every reparameterization-generated latent must have a
-unique backend name. Concrete composition relies on PyMC to reject duplicate
-generated names.</p>
+x &amp;= \operatorname{concat}_s x_s, \\
+H &amp;= [H_1\; H_2\; \cdots], \\
+\mu &amp;= H x.\end{split}\]</div>
+<p>Standard and multisector expose the same physical <code class="docutils literal notranslate"><span class="pre">x</span></code>, two-dimensional
+sensitivity data <code class="docutils literal notranslate"><span class="pre">hx</span></code> and combined flux contribution <code class="docutils literal notranslate"><span class="pre">mu</span></code>. Multisector
+<code class="docutils literal notranslate"><span class="pre">x</span></code> carries a gathered source/local-state index, including when sources have
+different region counts. Source values select the corresponding input blocks;
+sector names identify their priors and reporting labels. They are not required
+to be the same strings. Rectangular preparation is packed only for construction,
+without changing the retained preparation or basis.
+Registered <code class="docutils literal notranslate"><span class="pre">hx</span></code> may omit structurally zero columns; the shared linear operation
+selects <code class="docutils literal notranslate"><span class="pre">x</span></code> entries for the columns retained in <code class="docutils literal notranslate"><span class="pre">hx</span></code>. Use complete prepared
+source blocks with their matching full-state blocks when reconstructing the
+scientific forward equation directly.</p>
+<p>Private prior variables and reparameterization-generated latents may still
+have source-block names, and their construction-owned prior records retain the
+sector associations. New models do not add separate <code class="docutils literal notranslate"><span class="pre">x_ff</span></code>, <code class="docutils literal notranslate"><span class="pre">hx_ff</span></code> or
+<code class="docutils literal notranslate"><span class="pre">mu_ff</span></code> full-state aliases for reporting. Every private prior and generated
+latent still needs a unique backend name; PyMC rejects duplicate names.</p>
 </section>
 <section id="names-and-generated-names">
 <h2>Names and generated names<a class="headerlink" href="#names-and-generated-names" title="Link to this heading">#</a></h2>
 <p>PyMC model variables currently share one flat effective namespace. A prior can
 create more names than the requested base name. In particular, a
-reparameterized lognormal requested as <code class="docutils literal notranslate"><span class="pre">x_ff</span></code> creates both <code class="docutils literal notranslate"><span class="pre">x_ff</span></code> and
-<code class="docutils literal notranslate"><span class="pre">x_ff_latent</span></code>.</p>
+reparameterized lognormal prior requested as <code class="docutils literal notranslate"><span class="pre">scale</span></code> creates both <code class="docutils literal notranslate"><span class="pre">scale</span></code>
+and <code class="docutils literal notranslate"><span class="pre">scale_latent</span></code>.</p>
 <p>Both names should be treated as reserved for that prior. No data variable,
 other state, forward-term deterministic, or total should use either name. PyMC
 enforces this during concrete composition. The shared observation-component
@@ -958,9 +968,11 @@ constructs its alignment from those observations.</p>
 <p>A copied builder should use <code class="docutils literal notranslate"><span class="pre">registered_model()</span></code> before <code class="docutils literal notranslate"><span class="pre">add_coords</span></code> or
 public model components so inference can restore MultiIndexes and auxiliary
 scientific coordinates. Keep the output contract consistent with the graph:
-multisector roles include <code class="docutils literal notranslate"><span class="pre">flux_scale:FF</span></code> and <code class="docutils literal notranslate"><span class="pre">flux_contribution:FF</span></code> for a
-sector named <code class="docutils literal notranslate"><span class="pre">FF</span></code>. Omit roles for absent terms. The flux reconstruction and
-products shown here require the existing multiplicative sector-state meaning,
+standard and multisector roles include <code class="docutils literal notranslate"><span class="pre">flux_scale:</span> <span class="pre">x</span></code>,
+<code class="docutils literal notranslate"><span class="pre">emissions_sensitivity:</span> <span class="pre">hx</span></code> and <code class="docutils literal notranslate"><span class="pre">flux_contribution:</span> <span class="pre">mu</span></code>. Multisector
+sector/source metadata selects blocks from the full state. Omit roles for absent
+terms. The flux reconstruction and products shown here require the existing
+multiplicative sector-state meaning,
 retained basis and source mappings. A model that changes those meanings must
 provide its own reconstruction and product functions rather than reuse an
 incompatible contract. Direct construction does not make a custom graph

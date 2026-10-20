@@ -473,8 +473,8 @@ flux components independently. Surface-site and satellite inversions use the
 same public runner and model. They differ only in their observation and
 footprint acquisition options.</p>
 <p>Use <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_multisector" title="openghg_inversions.rhime.run_rhime_multisector"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_multisector()</span></code></a> when every flux
-component should have its own scaling state. The <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> values are
-the OpenGHG <code class="docutils literal notranslate"><span class="pre">source</span></code> metadata used for retrieval. Optional
+component should have its own scaling prior within the full state. The
+<code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> values are the OpenGHG <code class="docutils literal notranslate"><span class="pre">source</span></code> metadata used for retrieval. Optional
 <code class="docutils literal notranslate"><span class="pre">sector_sources</span></code> entries give those sources shorter model-facing names.</p>
 <section id="before-running">
 <h2>Before running<a class="headerlink" href="#before-running" title="Link to this heading">#</a></h2>
@@ -617,16 +617,21 @@ slice per requested flux source. Satellite inputs should also contain finite
 <code class="docutils literal notranslate"><span class="pre">satellite_column_bc_scale</span></code> attribute records that column scaling was
 applied. Column runs retain <code class="docutils literal notranslate"><span class="pre">mf_prior_factor</span></code> and, when supplied,
 <code class="docutils literal notranslate"><span class="pre">mf_prior_upper_level_factor</span></code> in <code class="docutils literal notranslate"><span class="pre">inv_inputs</span></code>.</p>
-<p>The posterior contains one sector scaling variable per sanitized sector name,
-for example <code class="docutils literal notranslate"><span class="pre">x_anth</span></code>, <code class="docutils literal notranslate"><span class="pre">x_resp</span></code>, and <code class="docutils literal notranslate"><span class="pre">x_gpp_atm</span></code>. Use the semantic mapping
-instead of constructing names in downstream code:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">roles</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">variable_roles</span>
+<p>The posterior contains one full scaling variable, <code class="docutils literal notranslate"><span class="pre">x</span></code>, on a gathered state
+coordinate carrying the source and local state labels. Its blocks retain their
+sector-specific priors. Use the scientific role to find the variable and the
+recorded source association to select a sector:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">scales</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">trace_group</span><span class="p">(</span><span class="s2">"posterior"</span><span class="p">)[</span><span class="n">result</span><span class="o">.</span><span class="n">variable_name</span><span class="p">(</span><span class="s2">"flux_scale"</span><span class="p">)]</span>
 <span class="k">for</span> <span class="n">sector</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">model_metadata</span><span class="p">[</span><span class="s2">"sectors"</span><span class="p">]:</span>
-    <span class="n">role</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"flux_scale:</span><span class="si">{</span><span class="n">sector</span><span class="p">[</span><span class="s1">'name'</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span>
-    <span class="n">variable</span> <span class="o">=</span> <span class="n">roles</span><span class="p">[</span><span class="n">role</span><span class="p">]</span>
-    <span class="nb">print</span><span class="p">(</span><span class="n">sector</span><span class="p">[</span><span class="s2">"name"</span><span class="p">],</span> <span class="n">result</span><span class="o">.</span><span class="n">trace_group</span><span class="p">(</span><span class="s2">"posterior"</span><span class="p">)[</span><span class="n">variable</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">())</span>
+    <span class="n">block</span> <span class="o">=</span> <span class="n">scales</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="n">sector</span><span class="p">[</span><span class="s2">"flux_source"</span><span class="p">],</span> <span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">sector</span><span class="p">[</span><span class="s2">"name"</span><span class="p">],</span> <span class="n">block</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">())</span>
 </pre></div>
 </div>
+<p>The model uses one two-dimensional sensitivity <code class="docutils literal notranslate"><span class="pre">hx</span></code> and one total flux
+concentration contribution <code class="docutils literal notranslate"><span class="pre">mu</span></code>. Rectangular prepared <code class="docutils literal notranslate"><span class="pre">H</span></code> is packed only
+for model construction; the prepared inputs and retained basis remain unchanged.
+The first requested <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> entry supplies automatic basis weighting.
+Changing the order of <code class="docutils literal notranslate"><span class="pre">sector_sources</span></code> does not change that preparation choice.</p>
 <p>The returned value is the modern, serializable scientific result, including with
 <code class="docutils literal notranslate"><span class="pre">output_format=&quot;none&quot;</span></code>. <code class="docutils literal notranslate"><span class="pre">output_format=&quot;inv_out&quot;</span></code> requests its file export;
 <code class="docutils literal notranslate"><span class="pre">save_inversion_output</span></code> and <code class="docutils literal notranslate"><span class="pre">save_trace</span></code> control optional exports. Current

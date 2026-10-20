@@ -654,9 +654,10 @@ sensitivity preparation and cannot be disabled as an activity policy.</p>
 <span class="sig-name descname"><span class="pre">prepare_linear_sensitivity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sensitivity</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'nmeasure'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.state_activity.prepare_linear_sensitivity" title="Link to this definition">#</a></dt>
 <dd><p>Remove exact-zero columns once and retain their full-state mapping.</p>
 <p>This is the eager inspection boundary for a labelled sensitivity matrix. The
-returned sensitivity keeps borrowed array data and contains only nonzero
-columns; <code class="docutils literal notranslate"><span class="pre">removed</span></code> retains the complete scientific state coordinate and
-auxiliary state metadata for reconstruction and provenance.</p>
+returned sensitivity borrows the matrix payload when all columns are retained;
+otherwise it selects only nonzero columns. <code class="docutils literal notranslate"><span class="pre">removed</span></code> retains the complete
+scientific state coordinate and auxiliary state metadata for reconstruction
+and provenance.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.models.state_activity.PreparedLinearSensitivity" title="openghg_inversions.models.state_activity.PreparedLinearSensitivity"><em>PreparedLinearSensitivity</em></a></p>

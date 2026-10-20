@@ -572,7 +572,14 @@
                   
   <section id="module-openghg_inversions.rhime.multisector">
 <span id="openghg-inversions-rhime-multisector"></span><h1>openghg_inversions.rhime.multisector<a class="headerlink" href="#module-openghg_inversions.rhime.multisector" title="Link to this heading">#</a></h1>
-<p>Readable scientific recipe for a source-resolved multisector RHIME inversion.</p>
+<p>Source-resolved RHIME recipe using one stacked flux state.</p>
+<p>Independent sector priors and activity policies populate one full flux state
+<code class="docutils literal notranslate"><span class="pre">x</span></code>. Sectors identify sampled state components; acquisition sources identify
+inventories and responses. Their current one-to-one <code class="docutils literal notranslate"><span class="pre">sector_sources</span></code> mapping
+binds each sector prior to its sensitivity columns. The saved state retains its
+<code class="docutils literal notranslate"><span class="pre">source</span></code> coordinate, so select a sector’s state using its mapped source with
+<code class="docutils literal notranslate"><span class="pre">x.sel(source=...)</span></code>. The gathered sensitivity <code class="docutils literal notranslate"><span class="pre">hx</span></code> maps the full state to
+pollution <code class="docutils literal notranslate"><span class="pre">mu</span></code>; output roles retain local basis labels for native flux products.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.multisector.multisector_model_input_names">
 <span class="sig-name descname"><span class="pre">multisector_model_input_names</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_spec</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.multisector.multisector_model_input_names" title="Link to this definition">#</a></dt>
@@ -636,9 +643,9 @@ Unselected arrays and the original preparation remain borrowed and lazy.</p>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.multisector.build_multisector_model" title="Link to this definition">#</a></dt>
 <dd><p>Construct the multisector graph from already materialized values.</p>
-<p>The sector loop selects each source, resolves its active/fixed states and
-adds its flux contribution. Those contributions are then summed before
-adding boundary conditions, offsets and the observation likelihood.</p>
+<p>Source-prior blocks populate one labelled full state. The shared standard
+recipe applies one gathered sensitivity, then adds boundary conditions,
+offsets and the observation likelihood.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">

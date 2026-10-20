@@ -618,9 +618,7 @@ an existing compatible uv environment.</p>
     <span class="p">],</span>
     <span class="s2">"H dimensions"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H"</span><span class="p">]</span><span class="o">.</span><span class="n">dims</span><span class="p">,</span>
     <span class="s2">"source labels"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H"</span><span class="p">]</span><span class="o">.</span><span class="n">source</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">tolist</span><span class="p">(),</span>
-    <span class="s2">"scale variables"</span><span class="p">:</span> <span class="nb">sorted</span><span class="p">(</span>
-        <span class="n">name</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">trace_group</span><span class="p">(</span><span class="s2">"posterior"</span><span class="p">)</span><span class="o">.</span><span class="n">data_vars</span> <span class="k">if</span> <span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"x_"</span><span class="p">)</span>
-    <span class="p">),</span>
+    <span class="s2">"flux state variable"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">variable_name</span><span class="p">(</span><span class="s2">"flux_scale"</span><span class="p">),</span>
     <span class="s2">"variable roles"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">model_metadata</span><span class="p">[</span><span class="s2">"variable_roles"</span><span class="p">],</span>
 <span class="p">}</span>
 </pre></div>
@@ -631,7 +629,7 @@ an existing compatible uv environment.</p>
   ('wetlands', 'wetcharts-v131-wetlands')],
  'H dimensions': ('region', 'nmeasure', 'source'),
  'source labels': ['edgar-v80-anthropogenic', 'wetcharts-v131-wetlands'],
- 'scale variables': ['x_anthropogenic', 'x_wetlands'],
+ 'flux state variable': 'x',
  'variable roles': {'observation': 'mf',
   'observation_error': 'mf_error',
   'minimum_error': 'min_error',
@@ -639,12 +637,9 @@ an existing compatible uv environment.</p>
   'model_error': 'epsilon',
   'observation_repeatability': 'mf_repeatability',
   'observation_variability': 'mf_variability',
-  'flux_scale:anthropogenic': 'x_anthropogenic',
-  'flux_contribution:anthropogenic': 'mu_anthropogenic',
-  'emissions_sensitivity:anthropogenic': 'hx_anthropogenic',
-  'flux_scale:wetlands': 'x_wetlands',
-  'flux_contribution:wetlands': 'mu_wetlands',
-  'emissions_sensitivity:wetlands': 'hx_wetlands',
+  'flux_scale': 'x',
+  'flux_contribution': 'mu',
+  'emissions_sensitivity': 'hx',
   'boundary': 'mu_bc',
   'baseline_scale': 'bc',
   'baseline_sensitivity': 'hbc',
@@ -656,14 +651,17 @@ an existing compatible uv environment.</p>
 <p>Shared-basis preparation represents sensitivity as
 <code class="docutils literal notranslate"><span class="pre">H(region,</span> <span class="pre">nmeasure,</span> <span class="pre">source)</span></code>. Source-specific bases may instead use one
 gathered state dimension labelled by <code class="docutils literal notranslate"><span class="pre">(source,</span> <span class="pre">region_in_source)</span></code>. In either
-case, select by the <code class="docutils literal notranslate"><span class="pre">source</span></code> label or gathered source level; never infer
-sector identity from axis position. The posterior variables
-<code class="docutils literal notranslate"><span class="pre">x_anthropogenic</span></code> and <code class="docutils literal notranslate"><span class="pre">x_wetlands</span></code> scale their own prior fluxes. Their
-forward contributions add to the modelled pollution concentration, while the
-observation likelihood is shared. See <a class="reference internal" href="rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a> for both supported layouts
-and <a class="reference internal" href="concrete_rhime_model.html"><span class="doc">Standard and multisector RHIME models</span></a> for the scientific-role mapping.</p>
-<p>Use <code class="docutils literal notranslate"><span class="pre">az.summary</span></code> as in the standard tutorial for both scale variables and
-inspect their joint posterior. Strong cross-sector correlation or posterior
+case, construction uses one full physical state <code class="docutils literal notranslate"><span class="pre">x</span></code> and one two-dimensional
+sensitivity <code class="docutils literal notranslate"><span class="pre">hx</span></code>. Rectangular inputs are packed into a gathered source/local
+state index for the model; the prepared <code class="docutils literal notranslate"><span class="pre">H</span></code> keeps its original layout.
+Select a posterior block by its source label, for example
+<code class="docutils literal notranslate"><span class="pre">result.trace_group(&quot;posterior&quot;)[&quot;x&quot;].sel(source=&quot;wetcharts-v131-wetlands&quot;)</span></code>;
+never infer sector identity from axis position. The blocks scale their own
+prior fluxes, and <code class="docutils literal notranslate"><span class="pre">mu</span></code> gives their combined pollution concentration.
+See <a class="reference internal" href="rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a> for both prepared layouts and <a class="reference internal" href="concrete_rhime_model.html"><span class="doc">Standard and multisector RHIME models</span></a> for
+the scientific-role mapping.</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">az.summary</span></code> as in the standard tutorial for <code class="docutils literal notranslate"><span class="pre">x</span></code> and inspect its joint
+posterior across source blocks. Strong cross-sector correlation or posterior
 behaviour dominated by the priors indicates that the observations do not
 separately identify those sources, even when every array label is correct.</p>
 </section>
