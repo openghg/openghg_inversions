@@ -214,8 +214,8 @@ def test_stacked_trace_restores_flux_labels_and_boundary_auxiliary_coordinates(
             expected[expected.get_level_values("source") == source].droplevel("source"),
         )
     for name in boundary_coords:
-        assert restored.coords[name].dims == ("bc_region",)
-        np.testing.assert_array_equal(restored.coords[name], [10, 20])
+        assert restored.coords[f"bc_{name}"].dims == ("bc_region",)
+        np.testing.assert_array_equal(restored.coords[f"bc_{name}"], [10, 20])
     full_sensitivity = (h.to_numpy() if layout == "gathered"
                         else np.column_stack([h.sel(source=source) for source in h.source.values]))
     np.testing.assert_allclose(restored["mu"], restored["x"].values @ full_sensitivity.T)

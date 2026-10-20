@@ -1,4 +1,4 @@
-"""A model-only gathered-axis rename survives trace persistence and source selection."""
+"""Boundary coordinate qualification preserves gathered flux labels through persistence."""
 
 from dataclasses import replace
 
@@ -13,7 +13,7 @@ from openghg_inversions.rhime.specs import FixedErrorSettings, RhimeModelSpec, S
 from openghg_inversions.serialization import load_trace, save_trace
 
 
-def test_renamed_gathered_state_roundtrip_preserves_canonical_source_blocks(
+def test_boundary_qualification_roundtrip_preserves_canonical_source_blocks(
     tmp_path, fake_source_specific_multisector_basis_functions, multisector_postprocessing_inv_out,
 ):
     basis = fake_source_specific_multisector_basis_functions()
@@ -44,13 +44,13 @@ def test_renamed_gathered_state_roundtrip_preserves_canonical_source_blocks(
     assert registry is not None
     trace = restore_inferencedata_coords(trace, registry)
     state_dim = model.named_vars_to_dims["x"][0]
-    assert state_dim != "state"
-    path = tmp_path / "renamed-state.nc"
+    assert state_dim == "state"
+    path = tmp_path / "boundary-qualified-state.nc"
     save_trace(trace, path)
     reloaded = load_trace(path)
     assert reloaded["prior"]["x"].get_index(state_dim).equals(index)
-    assert reloaded["prior"].coords["state"].dims == ("bc_region",)
-    np.testing.assert_array_equal(reloaded["prior"].coords["state"], [10, 20])
+    assert reloaded["prior"].coords["bc_state"].dims == ("bc_region",)
+    np.testing.assert_array_equal(reloaded["prior"].coords["bc_state"], [10, 20])
     output = multisector_postprocessing_inv_out(basis)
     output = replace(output, trace=reloaded, model_metadata={
         **output.model_metadata, "variable_roles": {"flux_scale": "x"},

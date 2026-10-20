@@ -36,7 +36,7 @@ from openghg_inversions.models.components import (
     apply_linear_sensitivity,
 )
 from openghg_inversions.models._flux import _stack_multisector_sensitivity
-from openghg_inversions.models.coords import registered_model
+from openghg_inversions.models.coords import component_coords, registered_model
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.models.state_activity import prepare_linear_sensitivity, resolve_state_activity
@@ -292,8 +292,13 @@ def _build_independent_rhime_model(
     source_sensitivity = model_inputs["H"]
     flux_sensitivity = source_sensitivity
     if multisector:
-        other_inputs = model_inputs[[name for name in model_inputs.data_vars if name != "H"]]
-        coordinate_names = set(other_inputs.dims) | set(other_inputs.coords)
+        coordinate_names = set()
+        for name, array in model_inputs.data_vars.items():
+            if name == "H":
+                continue
+            registered_array = component_coords(array, "bc" if name == "H_bc" else None)
+            coordinate_names.update(registered_array.dims)
+            coordinate_names.update(registered_array.coords)
         # Flux prior coordinates are registered under private source namespaces.
         flux_prior_names = {f"x_{sector.variable_suffix}" for sector in model_spec.sectors}
         for name, parameters in priors.items():
@@ -301,8 +306,9 @@ def _build_independent_rhime_model(
                 continue
             for value in parameters.values():
                 if isinstance(value, xr.DataArray):
-                    coordinate_names.update(value.dims)
-                    coordinate_names.update(value.coords)
+                    registered_value = component_coords(value, "bc" if name == "bc" else None)
+                    coordinate_names.update(registered_value.dims)
+                    coordinate_names.update(registered_value.coords)
         flux_sensitivity = _stack_multisector_sensitivity(source_sensitivity, reserved_names=coordinate_names)
     observations = model_inputs["mf"]
     observation_error = model_inputs["mf_error"]
@@ -359,6 +365,7 @@ def _build_independent_rhime_model(
                 output_dim="nmeasure",
                 compute_deterministic=True,
                 state_activity=bc_state_activity,
+                coordinate_owner="bc",
             ).output
 
         offset = None

@@ -28,6 +28,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, cast
 
+from dask import compute
 import numpy as np
 import pandas as pd
 import pymc as pm
@@ -38,7 +39,7 @@ from pytensor.tensor.variable import TensorVariable
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.array_ops import select_gathered_data_array
 from openghg_inversions.inversion_inputs import make_freq_indicator, make_site_indicator
-from openghg_inversions.models.coords import add_coords, add_model_data as add_model_data
+from openghg_inversions.models.coords import add_coords, add_model_data as add_model_data, component_coords
 from openghg_inversions.models._flux import _namespace_sector_state_coords
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.models.state_activity import (
@@ -154,6 +155,7 @@ def add_linear_component(
     state_activity: StateActivity | None = None,
     output_dim: str = "nmeasure",
     compute_deterministic: bool = True,
+    coordinate_owner: str | None = None,
 ) -> LinearComponentResult:
     """Add one independent labelled linear component.
 
@@ -167,6 +169,8 @@ def add_linear_component(
         output_dim: Observation/output dimension name.
         compute_deterministic: Whether to wrap the aligned output in
             ``pm.Deterministic``.
+        coordinate_owner: Explicit namespace for registered state coordinates;
+            scientific inputs and activity policies retain their local names.
 
         state_activity: Optional active/fixed policy over the full scientific
             state. ``None`` samples every retained column.
@@ -182,13 +186,16 @@ def add_linear_component(
             f"not {output_dim!r}."
         )
     activity = resolve_state_activity(prepared.removed, state_activity)
-    vector = add_state_vector(activity, prior_args=prior_args, var_name=var_name)
+    vector = add_state_vector(
+        activity, prior_args=prior_args, var_name=var_name, coordinate_owner=coordinate_owner,
+    )
     output = apply_linear_sensitivity(
         prepared,
         vector.state,
         data_name=data_name,
         output_name=output_name,
         compute_deterministic=compute_deterministic,
+        coordinate_owner=coordinate_owner,
     )
     data = cast(TensorVariable, pm.modelcontext(None)[data_name])
     return LinearComponentResult(
@@ -208,9 +215,12 @@ def apply_linear_sensitivity(
     data_name: str,
     output_name: str,
     compute_deterministic: bool = True,
+    coordinate_owner: str | None = None,
 ) -> TensorVariable:
-    """Apply a prepared sensitivity to an already-built full state vector."""
-    h = add_model_data(prepared.sensitivity, data_name)
+    """Apply a prepared sensitivity using its state's explicit coordinate owner."""
+    h = add_model_data(component_coords(
+        prepared.sensitivity, coordinate_owner, observation_dim=prepared.output_dim,
+    ), data_name)
     output = pt.dot(h, state[prepared.retained_indices])
     if compute_deterministic:
         output = pm.Deterministic(output_name, output, dims=prepared.output_dim)
@@ -305,6 +315,7 @@ def add_state_vector(
     /,
     prior_args: dict[str, Any],
     var_name: str,
+    coordinate_owner: str | None = None,
 ) -> StateVectorResult:
     """Construct an active/fixed state graph from a resolved activity contract.
 
@@ -320,6 +331,7 @@ def add_state_vector(
         prior_args: Prior specification. Distribution parameters may be scalar,
             full-state arrays, or labelled state ``DataArray`` objects.
         var_name: Name of the full user-facing state vector.
+        coordinate_owner: Optional namespace for registered state coordinates.
 
     Returns:
         The effective latent, full state vector, and supplied activity.
@@ -337,12 +349,17 @@ def add_state_vector(
         would not rebuild the latent state layout. Call this helper inside an
         active ``pm.Model`` context.
     """
-    state_dim = activity.state_dim
-    state_coord = activity.zero_sensitivity.coords[state_dim]
-    add_coords(activity.zero_sensitivity.coords, model_dims=(state_dim,))
+    owned_zero = component_coords(activity.zero_sensitivity, coordinate_owner)
+    state_dim = str(owned_zero.dims[0])
+    state_coord = owned_zero.coords[state_dim]
+    add_coords(owned_zero.coords, model_dims=(state_dim,))
+    parameters = {
+        name: component_coords(value, coordinate_owner) if isinstance(value, xr.DataArray) else value
+        for name, value in active_prior_args(prior_args, activity, select_active=False).items()
+    }
 
     if activity.n_active == activity.n_state:
-        state = parse_prior(var_name, active_prior_args(prior_args, activity, select_active=False), dims=state_dim)
+        state = parse_prior(var_name, parameters, dims=state_dim)
         return StateVectorResult(
             latent=get_model_latent(state, var_name),
             state=state,
@@ -350,11 +367,11 @@ def add_state_vector(
         )
 
     add_model_data(
-        activity.active.rename(f"{var_name}_is_active"),
+        component_coords(activity.active, coordinate_owner).rename(f"{var_name}_is_active"),
         f"{var_name}_is_active",
     )
     fixed_value = add_model_data(
-        activity.fixed_value.rename(f"{var_name}_fixed_value"),
+        component_coords(activity.fixed_value, coordinate_owner).rename(f"{var_name}_fixed_value"),
         f"{var_name}_fixed_value",
     )
     active_indices = activity.active_indices
@@ -365,7 +382,7 @@ def add_state_vector(
         add_coords(active_coords, model_dims=(active_dim,))
         active_state = parse_prior(
             f"{var_name}_active",
-            active_prior_args(prior_args, activity, select_active=False),
+            parameters,
             dims=active_dim,
             active_indices=active_indices,
             record_name=var_name,
@@ -615,7 +632,12 @@ def prepare_active_correlated_lognormal_prior(
     *,
     var_name: str,
 ) -> CorrelatedLognormalPrior | None:
-    """Align and subset one correlated prior for active-state construction."""
+    """Align and subset one correlated prior for active-state construction.
+
+    This eager graph-construction boundary materializes the prior and activity
+    coordinate datasets together before comparing auxiliary labels. Borrowed
+    inputs remain unchanged and shared Dask coordinate tasks run once.
+    """
     state_dim = activity.state_dim
     if prior.state_dim != state_dim:
         raise ValueError(
@@ -628,6 +650,10 @@ def prepare_active_correlated_lognormal_prior(
         raise ValueError(
             "Correlated LogNormal prior labels must exactly match state-activity labels in the same order."
         )
+    prior_coords, activity_coords = compute(
+        mean.coords.to_dataset(), activity.zero_sensitivity.coords.to_dataset(),
+    )
+    xr.merge([prior_coords, activity_coords], join="exact", compat="equals")
     if activity.n_active == 0:
         return None
     if activity.n_active == activity.n_state:

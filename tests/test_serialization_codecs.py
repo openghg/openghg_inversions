@@ -324,3 +324,25 @@ def test_source_dispatch_does_not_compute_lazy_source_coordinates() -> None:
     assert isinstance(result.coords["lazy_equal"].data, da.Array)
     assert result.coords["lazy_equal"].data is rhs.coords["lazy_equal"].data
     assert result.coords["lazy_equal"].dims == ("native_source", "observation")
+
+
+@pytest.mark.parametrize("suffix", ["nc", "zarr"])
+def test_trace_multiindex_coordinate_attributes_survive_storage(tmp_path: Path, suffix: str) -> None:
+    """Boundary ownership metadata survives persisted MultiIndex coordinates."""
+    from openghg_inversions.serialization import load_trace, save_trace
+
+    index = pd.MultiIndex.from_tuples([("ocean", "a"), ("land", "b")],
+                                     names=["bc_source", "bc_region"])
+    original = xr.Dataset(
+        {"x": ("bc_state", [1., 2.])},
+        coords=xr.Coordinates.from_pandas_multiindex(index, "bc_state"),
+    )
+    for name, local in [("bc_state", "state"),
+                        ("bc_source", "source"), ("bc_region", "region")]:
+        original[name].attrs = {"rhime_component": "bc", "rhime_local_name": local}
+    before = original.copy(deep=True)
+    path = tmp_path / f"owned-trace.{suffix}"
+    save_trace(xr.DataTree.from_dict({"posterior": original}), path)
+    restored = load_trace(path).posterior.to_dataset()
+    xr.testing.assert_identical(restored, original)
+    xr.testing.assert_identical(original, before)

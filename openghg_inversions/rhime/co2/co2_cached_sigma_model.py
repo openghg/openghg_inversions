@@ -470,12 +470,14 @@ def build_co2_cached_sigma_model(
                 boundary_activity,
                 prior_args=dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior),
                 var_name="bc",
+                coordinate_owner="bc",
             )
             boundary_output = apply_linear_sensitivity(
                 prepared_boundary,
                 boundary_result.state,
                 data_name="hbc",
                 output_name="mu_bc",
+                coordinate_owner="bc",
                 compute_deterministic=True,
             )
             boundary_active = boundary_result.activity.active_indices

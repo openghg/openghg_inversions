@@ -105,7 +105,11 @@ def normalise_declared_multiindex(
     # Install the index explicitly so xarray does not rely on deprecated
     # implicit pandas.MultiIndex promotion.
     result = ds.drop_vars(list(levels))
-    return result.assign_coords(xr.Coordinates.from_pandas_multiindex(multiindex, dim))
+    result = result.assign_coords(xr.Coordinates.from_pandas_multiindex(multiindex, dim))
+    for name in (dim, *levels):
+        if name in ds.coords:
+            result.coords[name].attrs = dict(ds.coords[name].attrs)
+    return result
 
 
 def _normalise_cf_multiindex_names(index_names: str | Iterable[str]) -> tuple[str, ...]:
@@ -522,6 +526,10 @@ def encode_multiindexes_for_storage(ds: xr.Dataset) -> xr.Dataset:
         dim_name = str(dim)
         level_names = _validate_multiindex(index, dim=dim_name)
         result = result.reset_index(dim)
+        if ds.coords[dim].attrs:
+            result = result.assign_coords({
+                dim: xr.DataArray(np.arange(ds.sizes[dim]), dims=dim, attrs=dict(ds.coords[dim].attrs)),
+            })
         records.append(
             {
                 "dim": dim_name,

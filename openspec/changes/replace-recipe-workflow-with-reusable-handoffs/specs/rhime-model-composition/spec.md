@@ -92,3 +92,38 @@ introducing a generic execution framework or an optional representation switch.
   retained-state-conditional reconstruction remain unchanged
 - **AND** common labelled state representation does not substitute independent
   source scaling or standard multiplicative reconstruction for the affine map
+
+
+### Requirement: Boundary state coordinates do not collide with flux metadata
+
+Built-in standard, multisector, nested, ordinary and cached CO2 construction
+SHALL qualify boundary state dimensions, MultiIndex levels and state-dependent
+auxiliaries with `bc_`, preserving names that already have that prefix. Linked
+CO2/O2 SHALL retain its existing `co2_` and `o2_` boundary prefixes. Flux state
+names, source labels, supplied `sector` auxiliaries and gathered-state packing
+SHALL retain their existing behavior. This regression fix SHALL NOT introduce
+flux qualification, a source/sector identity redesign or inverse output renaming.
+
+Borrowed input arrays SHALL retain their local names and numerical payloads.
+Saved trace groups SHALL retain qualified boundary labels and coordinate
+ownership metadata. Within-component label disagreements and conflicting
+ownership metadata on a registered name SHALL be rejected. Observation and
+scalar coordinates SHALL remain shared; conflicting scalar values SHALL raise
+an explicit shared-coordinate error.
+
+#### Scenario: Flux and boundary priors carry different source metadata
+
+- **WHEN** a flux state and a boundary prior use the same local auxiliary name
+  with different dimensions or labels
+- **THEN** both scientific coordinate sets survive model construction and saved
+  trace restoration under distinct boundary-qualified names
+- **AND** existing `region`, `source`, `bc_region` and linked-channel trace names
+  remain unchanged where they already identify the corresponding state
+
+#### Scenario: Correlated activity validation consumes lazy auxiliaries
+
+- **WHEN** correlated-prior and activity coordinates are compared before selecting
+  active, fixed or partially active states
+- **THEN** the eager correlated-state preparation boundary SHALL explicitly
+  materialize both coordinate datasets together before label comparison
+- **AND** shared Dask tasks SHALL run once without mutating borrowed inputs
