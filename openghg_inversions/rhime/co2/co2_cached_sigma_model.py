@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import Any, cast
+from warnings import warn
 
 import numpy as np
 from numpy.typing import NDArray
@@ -191,7 +192,13 @@ def _add_cached_likelihood(
     add_coords({OU_SITE_DIM: site_coord})
     amplitude_prior = positive_prior_args(site_amplitude_prior)
     if amplitude_prior["pdf"] == "lognormal":
-        # The matched sampler already works in the prior's unconstrained coordinates.
+        if amplitude_prior.get("reparameterise", False):
+            warn(
+                "Cached amplitude LogNormal priors use the log transform; "
+                "reparameterise=True is normalized to False without changing the physical prior.",
+                UserWarning,
+                stacklevel=2,
+            )
         amplitude_prior["reparameterise"] = False
     amplitude = parse_prior(OU_SITE_AMPLITUDE, amplitude_prior, dims=OU_SITE_DIM)
     model = pm.modelcontext(None)

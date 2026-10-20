@@ -1122,7 +1122,8 @@ LogNormal and Uniform amplitude priors with non-negative support, and fixed
 positive OU timescales. The conditional amplitude update derives its prior density
 and transform Jacobian from the scientific graph, including the interval transform
 for a bounded Uniform prior. The matched sampler uses a direct LogNormal variable
-even when ``reparameterise`` is requested; the distribution is unchanged.
+and warns when an explicit ``reparameterise = true`` request is normalized to
+that construction; the physical distribution is unchanged.
 Sampled tau and hierarchical amplitude priors are not supported.
 The route is PyMC-only because it constructs and owns a PyMC ``CompoundStep``.
 The ordinary stock-PyMC fixed-OU likelihood above remains an independent

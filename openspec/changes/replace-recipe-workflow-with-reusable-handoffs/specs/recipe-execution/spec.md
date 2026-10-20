@@ -51,6 +51,12 @@ Hierarchical amplitude priors and sampled OU timescales are outside this scope.
   transformed values and finite prior density
 - **AND** invalid endpoints or out-of-support starts fail before inference
 
+#### Scenario: Explicit LogNormal reparameterisation on the matched route
+
+- **WHEN** a matched amplitude prior explicitly requests `reparameterise=true`
+- **THEN** construction warns and records the effective direct LogNormal representation
+- **AND** the physical prior and caller-owned configuration remain unchanged
+
 ### Requirement: Canonical scientific execution across supported routes
 
 Equivalent supported full, prepared-input and staged routes SHALL reuse their

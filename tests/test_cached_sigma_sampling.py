@@ -19,6 +19,12 @@ from openghg_inversions.inference.cached_sigma import (
 )
 
 
+@pytest.fixture(params=["float32", "float64"])
+def graph_precision(request):
+    with pytensor.config.change_flags(floatX=request.param):
+        yield request.param
+
+
 def _target() -> FixedOuCachedSigmaTarget:
     prepared = prepare_fixed_ou_low_rank(
         factor=np.array([[0.20], [-0.10], [0.15], [0.05]]),
@@ -42,6 +48,17 @@ def _target() -> FixedOuCachedSigmaTarget:
         fixed_contribution=np.array([0.1, 0.0, -0.1, 0.2]),
         design=np.array([[0.7], [0.2], [0.9], [-0.3]]),
     )
+
+
+def _dense_covariance(target, amplitude):
+    times = np.array([0.0, 0.0, 1.0, 2.0])
+    covariance = target.prepared.factor @ target.prepared.factor.T + np.diag(target.prepared.diagonal_variance)
+    for site, tau in enumerate([5.0, 7.0]):
+        rows = np.flatnonzero(target.prepared.site_index == site)
+        covariance[np.ix_(rows, rows)] += amplitude[site] ** 2 * np.exp(
+            -np.abs(times[rows, None] - times[None, rows]) / tau
+        )
+    return covariance
 
 
 def _step_context(
@@ -183,17 +200,11 @@ def test_observed_spawn_chains_preserve_shared_cache_and_generic_joint_density()
     assert int(first.sample_stats.cache_refreshes.sum()) > 0
     shared.update(target.refresh([3.0, 3.0]))
     exact = model.compile_logp(vars=[model["y"]])
-    times = np.array([0.0, 0.0, 1.0, 2.0])
     expected_values = np.empty((2, 4))
     for chain in range(2):
         for draw in range(4):
             amplitude = first.posterior.sigma_site.values[chain, draw]
-            covariance = target.prepared.factor @ target.prepared.factor.T + np.diag(target.prepared.diagonal_variance)
-            for site, tau in enumerate([5.0, 7.0]):
-                rows = np.flatnonzero(target.prepared.site_index == site)
-                covariance[np.ix_(rows, rows)] += amplitude[site] ** 2 * np.exp(
-                    -np.abs(times[rows, None] - times[None, rows]) / tau
-                )
+            covariance = _dense_covariance(target, amplitude)
             expected = multivariate_normal.logpdf(
                 target.observations, mean=first.posterior.modelled_mean.values[chain, draw], cov=covariance,
             )
@@ -538,18 +549,21 @@ def test_compound_sampler_matches_independent_dense_posterior_moments(family) ->
     {"pdf": "lognormal", "mean": 0.7, "stdev": 0.3, "reparameterise": True},
     {"pdf": "uniform", "lower": 0.1, "upper": 1.5},
 ])
-def test_conditional_density_and_gradient_match_independent_positive_prior(prior):
+def test_conditional_density_and_gradient_match_independent_positive_prior(prior, graph_precision):
     from scipy import stats
     from scipy.special import expit
     from openghg_inversions.models.priors import parse_prior
 
     target = _target()
-    initial = np.array([0.4, 0.7])
+    initial = np.array([0.4, 0.7], dtype=graph_precision)
     initial_cache = target.refresh(initial)
     shared = PytensorMarginalQuadraticCache(initial_cache)
     prior = dict(prior)
     # The matched recipe uses the original LogNormal RV and its log transform.
     prior["reparameterise"] = False
+    # Keep scalar parameter constants at the selected precision, including folded log normalizers.
+    prior = {key: pt.constant(value, dtype=graph_precision) if key not in {"pdf", "reparameterise"} else value
+             for key, value in prior.items()}
     with pm.Model() as model:
         state = pm.Normal("state", shape=1)
         amplitude = parse_prior("sigma_site", prior, shape=2)
@@ -563,6 +577,8 @@ def test_conditional_density_and_gradient_match_independent_positive_prior(prior
     residual = target.observations - target.fixed_contribution - target.design[:, 0]
     step.likelihood_op.install_residual(residual)
     value_name = step.sigma_value_name
+    assert point[value_name].dtype == graph_precision
+    assert step.conditional_sigma.dtype == graph_precision
     logp = step.conditional_model.compile_logp()
     dlogp = step.conditional_model.compile_dlogp()
     family = prior["pdf"]
@@ -581,6 +597,7 @@ def test_conditional_density_and_gradient_match_independent_positive_prior(prior
         distribution = stats.uniform(loc=0.1, scale=1.4)
 
     def expected(eta):
+        eta = np.asarray(eta, dtype=np.float64)
         if family == "uniform":
             physical = 0.1 + 1.4 * expit(eta)
             jacobian = np.log(1.4) + np.log(expit(eta)) + np.log(expit(-eta))
@@ -590,18 +607,21 @@ def test_conditional_density_and_gradient_match_independent_positive_prior(prior
         prior_density = distribution.logpdf(physical).sum()
         if family == "halfstudentt":
             prior_density += 2 * np.log(2.0)
-        return target.evaluate_from_residual(residual, physical).log_likelihood + prior_density + jacobian.sum()
+        return multivariate_normal.logpdf(residual, cov=_dense_covariance(target, physical)) + prior_density + jacobian.sum()
 
+    tolerance = max(1e-10, 16 * np.finfo(graph_precision).eps)
     for eta in (point[value_name], np.array([-0.7, 0.2]), np.array([1.0, -1.5])):
-        np.testing.assert_allclose(logp({value_name: eta}), expected(eta), atol=1e-10)
+        eta = np.asarray(eta, dtype=graph_precision)
+        np.testing.assert_allclose(logp({value_name: eta}), expected(eta), rtol=max(tolerance, 1e-7), atol=tolerance)
         gradient = np.array([
             (expected(eta + np.eye(2)[axis] * 1e-5) - expected(eta - np.eye(2)[axis] * 1e-5)) / 2e-5
             for axis in range(2)
         ])
-        np.testing.assert_allclose(dlogp({value_name: eta}), gradient, atol=1e-7)
+        np.testing.assert_allclose(dlogp({value_name: eta}), gradient, rtol=max(tolerance, 1e-7), atol=max(tolerance, 1e-7))
 
 
-def test_bounded_prior_cache_uses_interval_inverse_transform(monkeypatch):
+@pytest.mark.parametrize("bounded", [False, True])
+def test_prior_cache_uses_inverse_transform(monkeypatch, graph_precision, bounded):
     from scipy.special import expit
 
     target = _target()
@@ -609,7 +629,8 @@ def test_bounded_prior_cache_uses_interval_inverse_transform(monkeypatch):
     shared = PytensorMarginalQuadraticCache(initial_cache)
     with pm.Model() as model:
         state = pm.Normal("state", shape=1)
-        amplitude = pm.Uniform("sigma_site", lower=0.1, upper=1.5, shape=2)
+        amplitude = (pm.Uniform("sigma_site", lower=0.1, upper=1.5, shape=2) if bounded else
+                     pm.HalfNormal("sigma_site", sigma=0.75, shape=2, initval=pm.floatX([0.8, 0.8])))
         mean = target.fixed_contribution + target.design @ state
     point = model.initial_point()
     step = PymcCachedSigmaNutsStep(
@@ -617,10 +638,23 @@ def test_bounded_prior_cache_uses_interval_inverse_transform(monkeypatch):
         modelled_mean=mean, initial_point=point, model=model,
     )
     name = step.sigma_value_name
-    proposed = np.array([-2.0, 1.0])
+    proposed = np.array([-2.0, 1.0], dtype=graph_precision)
     monkeypatch.setattr(step.nuts_step, "step", lambda _: ({name: proposed}, _nuts_stats()))
     updated, stats = step.step(point)
-    np.testing.assert_allclose(step.current_cache.sigma, 0.1 + 1.4 * expit(proposed))
+    physical = 0.1 + 1.4 * expit(proposed.astype(float)) if bounded else np.exp(proposed.astype(float))
+    tolerance = max(1e-12, 8 * np.finfo(graph_precision).eps)
+    np.testing.assert_allclose(step.current_cache.sigma, physical, rtol=tolerance)
+    shared_logp = pytensor.function([state], shared.log_likelihood(state))
+    for state_value in (-0.5, 1.2):
+        coefficients = np.array([state_value], dtype=graph_precision)
+        expected = multivariate_normal.logpdf(
+            target.observations, mean=target.fixed_contribution + target.design @ coefficients,
+            cov=_dense_covariance(target, physical),
+        )
+        np.testing.assert_allclose(step.current_cache.log_likelihood(coefficients), expected, rtol=tolerance)
+        np.testing.assert_allclose(shared_logp(coefficients), expected, rtol=tolerance)
+    np.testing.assert_array_equal(updated[name], proposed)
+    assert updated[name].dtype == graph_precision
     assert stats[0]["cache_refreshes"] == 1
     _, stats = step.step(updated)
     assert stats[0]["cache_refreshes"] == 0

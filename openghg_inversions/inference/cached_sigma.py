@@ -32,10 +32,10 @@ from pymc.step_methods.state import dataclass_state
 from pymc.util import RandomGenerator, get_random_generator, get_value_vars_from_user_vars
 from pytensor.gradient import DisconnectedType, grad_not_implemented
 from pytensor.graph.basic import Apply, Variable
-from pytensor.graph.traversal import graph_inputs
 from pytensor.graph.op import Op, OutputStorageType
-from pytensor.tensor.variable import TensorVariable
 from pytensor.graph.replace import clone_replace
+from pytensor.graph.traversal import graph_inputs
+from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.models.cached_sigma import (
     FixedOuCachedSigmaTarget,
@@ -234,7 +234,9 @@ class PymcCachedSigmaNutsStep(BlockedStep):
                 f"expected {(target.n_group,)}."
             )
         outer_sigma_rv = outer_model.values_to_rvs[value_vars[0]]
+        # The conditional density needs the physical prior and its transform Jacobian.
         prior_logp = outer_model.logp(vars=[outer_sigma_rv], jacobian=True)
+        # Reuse PyMC's inverse transform for both log and bounded interval coordinates.
         physical_sigma = outer_model.replace_rvs_by_values([sigma])[0]
         dependencies = set(graph_inputs([prior_logp, physical_sigma]))
         if any(value in dependencies for value in outer_model.value_vars if value is not value_vars[0]):
@@ -274,6 +276,7 @@ class PymcCachedSigmaNutsStep(BlockedStep):
 
         point_dtype = initial_eta.dtype
         self.likelihood_op = _PytensorSigmaLikelihoodOp(target)
+        # Isolate amplitude NUTS from the outer state graph and observed likelihood.
         with pm.Model(model=None) as conditional_model:
             conditional_sigma = pm.Flat(
                 sigma_value_name, shape=target.n_group, dtype=point_dtype.name,

@@ -1092,8 +1092,9 @@ def test_cached_lognormal_normalizes_optional_reparameterization_without_mutatin
     from openghg_inversions.models.priors import prior_records
 
     prior = {"pdf": "lognormal", "mean": 0.7, "stdev": 0.3, "reparameterise": True}
-    cached = _build(site_amplitude_prior=prior, initial_site_amplitudes=None)
-    assert prior["reparameterise"] is True
+    with pytest.warns(UserWarning, match="reparameterise=True.*False.*physical prior"):
+        cached = _build(site_amplitude_prior=prior, initial_site_amplitudes=None)
+    assert prior == {"pdf": "lognormal", "mean": 0.7, "stdev": 0.3, "reparameterise": True}
     assert cached.amplitude in cached.model.free_RVs
-    assert prior_records(cached.model)["ou_site_amplitude"]["reparameterise"] is False
+    assert prior_records(cached.model)["ou_site_amplitude"] == {**prior, "reparameterise": False}
     assert np.isfinite(cached.model.compile_logp()(_initial_point(cached)))

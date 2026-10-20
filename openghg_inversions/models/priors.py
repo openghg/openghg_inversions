@@ -205,6 +205,25 @@ def parse_prior(
     # Compute whole labelled arrays together, including lazy auxiliaries.
     values = compute(*params.values())
     params = dict(zip(params, values, strict=True))
+    if pdf == "uniform":
+        lower, upper = params.get("lower", 0.0), params.get("upper", 1.0)
+        for bound in (lower, upper):
+            if not isinstance(bound, Variable) and not np.isfinite(bound).all():
+                raise ValueError("Uniform prior bounds must be finite.")
+        if not isinstance(lower, Variable) and not isinstance(upper, Variable):
+            bounds = []
+            for bound in (lower, upper):
+                if isinstance(bound, xr.DataArray):
+                    if active_indices is not None and bound.ndim:
+                        bound = bound.to_numpy()[active_indices]
+                    elif dims and set(bound.dims).issubset(dims):
+                        bound = bound.transpose(*(dim for dim in dims if dim in bound.dims))
+                        bound = bound.to_numpy().reshape(tuple(bound.sizes.get(dim, 1) for dim in dims))
+                    else:
+                        bound = bound.to_numpy()
+                bounds.append(bound)
+            if not np.all(bounds[0] < bounds[1]):
+                raise ValueError("Uniform prior lower bound must be less than upper bound.")
     record: PriorArgs = {"pdf": pdf}
     for key, value in params.items():
         if key == "reparameterise":
