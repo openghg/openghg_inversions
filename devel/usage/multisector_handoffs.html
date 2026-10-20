@@ -1,0 +1,2176 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Reuse a multisector preparation &#8212; OpenGHG Inversions</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67" />
+
+    <script src="../_static/documentation_options.js?v=1dba82e2"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/thebelab-helper.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/multisector_handoffs';</script>
+    <script>
+        DOCUMENTATION_OPTIONS.theme_version = '0.21.0';
+        DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://openghg.github.io/openghg_inversions/versions.json';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = 'devel';
+        DOCUMENTATION_OPTIONS.show_version_warning_banner =
+            false;
+        </script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Prior predictive checking tutorial" href="prior_predictive_checking.html" />
+    <link rel="prev" title="Staged RHIME workflows" href="staged_workflow.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="devel" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+<aside class="bd-header-announcement" aria-label="Announcement">
+  <div class="bd-header-announcement__content">Unreleased development documentation; use <a href="https://openghg.github.io/openghg_inversions/stable/">stable</a> for supported releases. <a href="https://openghg.github.io/openghg_inversions/versions/">All documentation versions</a>.</div>
+</aside>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">OpenGHG Inversions</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../development/index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/index.html">
+    API reference
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item">
+<div class="version-switcher__container dropdown pst-js-only">
+  <button id="pst-version-switcher-button-2"
+    type="button"
+    class="version-switcher__button btn btn-sm dropdown-toggle"
+    data-bs-toggle="dropdown"
+    aria-haspopup="listbox"
+    aria-controls="pst-version-switcher-list-2"
+    aria-label="Version switcher list"
+  >
+    Choose version  <!-- this text may get changed later by javascript -->
+    <span class="caret"></span>
+  </button>
+  <div id="pst-version-switcher-list-2"
+    class="version-switcher__menu dropdown-menu list-group-flush py-0"
+    role="listbox" aria-labelledby="pst-version-switcher-button-2">
+    <!-- dropdown will be populated by javascript on page load -->
+  </div>
+</div></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../development/index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/index.html">
+    API reference
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item">
+<div class="version-switcher__container dropdown pst-js-only">
+  <button id="pst-version-switcher-button-3"
+    type="button"
+    class="version-switcher__button btn btn-sm dropdown-toggle"
+    data-bs-toggle="dropdown"
+    aria-haspopup="listbox"
+    aria-controls="pst-version-switcher-list-3"
+    aria-label="Version switcher list"
+  >
+    Choose version  <!-- this text may get changed later by javascript -->
+    <span class="caret"></span>
+  </button>
+  <div id="pst-version-switcher-list-3"
+    class="version-switcher__menu dropdown-menu list-group-flush py-0"
+    role="listbox" aria-labelledby="pst-version-switcher-button-3">
+    <!-- dropdown will be populated by javascript on page load -->
+  </div>
+</div></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar">
+  <svg class="pst-icon" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Install and set up OpenGHG Inversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
+<li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="multisector_inversions.html">Site and satellite multisector inversions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME terminology and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_configuration.html">Advanced RHIME configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
+<li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="nested_domain_model_family.html">Nested-domain model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="nested_domains.html">Run a nested-domain RHIME inversion</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Reuse a multisector preparation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="prior_predictive_checking.html">Prior predictive checking tutorial</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="retained_state_reconstruction.html">Linear retained-state reconstruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="affine_flux_map.html">Affine native-flux reconstruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="legacy_and_migration.html">Migrate from HBMCMC to RHIME</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
+    
+    
+    <li class="breadcrumb-item"><a href="running_and_validating.html" class="nav-link">Running and validating inversions</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Reuse a multisector preparation</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="reuse-a-multisector-preparation">
+<h1>Reuse a multisector preparation<a class="headerlink" href="#reuse-a-multisector-preparation" title="Link to this heading">#</a></h1>
+<p>This executable walkthrough prepares a small two-source inversion once, samples
+it with two different priors and likelihoods, and replays the saved samples with
+new output choices. It then compares replayed flux products with full and
+prepared-input execution. Read <a class="reference internal" href="staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> for artifact lifetime and
+compatibility rules, or <a class="reference internal" href="rhime_multisector_tutorial.html"><span class="doc">Multisector RHIME tutorial</span></a> for an inversion using
+OpenGHG data.</p>
+<p>You can <a class="reference download internal" download="" href="../_downloads/ad07a8f6c230d075d04e78e41cc52dd2/multisector_handoffs.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">download</span> <span class="pre">this</span> <span class="pre">walkthrough</span> <span class="pre">as</span> <span class="pre">a</span> <span class="pre">notebook</span></code></a>. Run it from an OpenGHG Inversions source checkout with
+the package and Jupyter installed. The synthetic data and model declarations
+come from <a class="reference download internal" download="" href="../_downloads/8e75f4384736dcc972ca5321305c6b91/multisector_handoffs.py"><code class="xref download docutils literal notranslate"><span class="pre">examples/multisector_handoffs.py</span></code></a>; that script also checks the model’s
+log density against independent equations.</p>
+<p>The synthetic observations replace acquisition from an OpenGHG object store.
+Preparation, sampling, checkpoint serialization and flux reconstruction use the
+production operations. One short chain makes execution observable; it provides
+no evidence of convergence or scientifically adequate posterior uncertainty.
+Sampling cells display PyMC’s short-chain messages alongside their results.</p>
+<section id="set-up-two-source-fields">
+<h2>Set up two source fields<a class="headerlink" href="#set-up-two-source-fields" title="Link to this heading">#</a></h2>
+<p>The fixture supplies four concentration observations, two distinct native flux
+fields, source-resolved transport responses, and a saved one-region operator.
+Its scientific sector names, <code class="docutils literal notranslate"><span class="pre">biosphere</span></code> and <code class="docutils literal notranslate"><span class="pre">fossil</span></code>, refer to the acquired
+sources <code class="docutils literal notranslate"><span class="pre">supplemental</span></code> and <code class="docutils literal notranslate"><span class="pre">inventory</span></code>. Keeping these labels explicit lets
+reporting retain both associations.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">replace</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tempfile</span><span class="w"> </span><span class="kn">import</span> <span class="n">TemporaryDirectory</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+
+<span class="c1"># Also allow execution from the documentation's usage directory.</span>
+<span class="n">repository</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span>
+    <span class="n">path</span> <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="p">(</span><span class="n">Path</span><span class="o">.</span><span class="n">cwd</span><span class="p">(),</span> <span class="o">*</span><span class="n">Path</span><span class="o">.</span><span class="n">cwd</span><span class="p">()</span><span class="o">.</span><span class="n">parents</span><span class="p">)</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">path</span> <span class="o">/</span> <span class="s2">"examples"</span> <span class="o">/</span> <span class="s2">"multisector_handoffs.py"</span><span class="p">)</span><span class="o">.</span><span class="n">is_file</span><span class="p">()</span>
+<span class="p">)</span>
+<span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">repository</span><span class="p">))</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">examples.multisector_handoffs</span><span class="w"> </span><span class="kn">import</span> <span class="n">model_options</span><span class="p">,</span> <span class="n">synthetic_inputs</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">examples.rhime_cookiecutter.my_inversion.likelihoods</span><span class="w"> </span><span class="kn">import</span> <span class="n">likelihood_builder</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.postprocessing.make_outputs</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_sector_flux_outputs</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">multisector_stages</span> <span class="k">as</span> <span class="n">handoffs</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.multisector</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_multisector</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.params</span><span class="w"> </span><span class="kn">import</span> <span class="n">DataConfig</span><span class="p">,</span> <span class="n">RhimeConfig</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.sampling</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeSampler</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.specs</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeOutputSpec</span>
+
+<span class="n">workspace</span> <span class="o">=</span> <span class="n">TemporaryDirectory</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">"multisector-handoffs-"</span><span class="p">)</span>
+<span class="n">destination</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">workspace</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+<span class="n">merged</span><span class="p">,</span> <span class="n">options</span><span class="p">,</span> <span class="n">flux</span><span class="p">,</span> <span class="n">responses</span><span class="p">,</span> <span class="n">observations</span> <span class="o">=</span> <span class="n">synthetic_inputs</span><span class="p">(</span><span class="n">destination</span><span class="p">)</span>
+<span class="p">{</span><span class="s2">"acquired sources"</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">merged</span><span class="o">.</span><span class="n">flux_data</span><span class="p">),</span> <span class="s2">"sectors"</span><span class="p">:</span> <span class="n">model_options</span><span class="p">(</span><span class="mf">0.2</span><span class="p">)[</span><span class="s2">"sector_sources"</span><span class="p">]}</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>{'acquired sources': ['inventory', 'supplemental'],
+ 'sectors': {'biosphere': 'supplemental', 'fossil': 'inventory'}}
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="prepare-once">
+<h2>Prepare once<a class="headerlink" href="#prepare-once" title="Link to this heading">#</a></h2>
+<p>Preparation establishes observation errors, binds the operator to the current
+native flux fields, constructs sensitivities and assembles labelled model
+inputs. It does not select a prior or build a probability graph. The manifest
+records the acquisition and preparation choices needed by later phases.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">data</span> <span class="o">=</span> <span class="n">DataConfig</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span><span class="n">options</span><span class="p">,</span> <span class="n">multisector</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">preparation_manifest</span> <span class="o">=</span> <span class="n">handoffs</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span>
+    <span class="n">data</span><span class="p">,</span>
+    <span class="n">merged_data</span><span class="o">=</span><span class="n">merged</span><span class="p">,</span>
+    <span class="n">output_dir</span><span class="o">=</span><span class="n">destination</span> <span class="o">/</span> <span class="s2">"prepared"</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">prepared</span><span class="p">,</span> <span class="n">recorded_data</span><span class="p">,</span> <span class="n">generation</span> <span class="o">=</span> <span class="n">handoffs</span><span class="o">.</span><span class="n">load_preparation</span><span class="p">(</span><span class="n">preparation_manifest</span><span class="p">)</span>
+<span class="n">prepared</span><span class="o">.</span><span class="n">inv_inputs</span><span class="p">[[</span><span class="s2">"mf"</span><span class="p">,</span> <span class="s2">"mf_error"</span><span class="p">,</span> <span class="s2">"H"</span><span class="p">]]</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>TIMING rhime.prepare_inputs.obs_filtering seconds=0.000007 maxrss_kb=647660 sites=1 filters=false
+Computing basis took 0.025928258895874023s.
+TIMING rhime.prepare_inputs.basis_build seconds=0.025995 maxrss_kb=647660 basis_algorithm=weighted
+</pre></div>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>TIMING rhime.prepare_inputs.footprint_sensitivity seconds=0.318365 maxrss_kb=647660 site=TAC nmeasure=4 state_size=1 sources=2
+TIMING rhime.prepare_inputs.footprint_sensitivity_total seconds=0.318625 maxrss_kb=647660 sites=1
+TIMING rhime.prepare_inputs.make_inv_inputs seconds=0.029196 maxrss_kb=647660 sites=1
+TIMING rhime.prepare_inputs.prepared_dims seconds=0.000000 maxrss_kb=647660 nmeasure=4 sites=1 sources=2 basis_source=datatree
+TIMING rhime.prepare_inputs seconds=0.402626 maxrss_kb=647660 multisector=true nmeasure=4 sites=1 sources=2 basis_source=datatree
+</pre></div>
+</div>
+<div class="output text_html"><div><svg style="position: absolute; width: 0; height: 0; overflow: hidden">
+<defs>
+<symbol id="icon-database" viewBox="0 0 32 32">
+<path d="M16 0c-8.837 0-16 2.239-16 5v4c0 2.761 7.163 5 16 5s16-2.239 16-5v-4c0-2.761-7.163-5-16-5z"></path>
+<path d="M16 17c-8.837 0-16-2.239-16-5v6c0 2.761 7.163 5 16 5s16-2.239 16-5v-6c0 2.761-7.163 5-16 5z"></path>
+<path d="M16 26c-8.837 0-16-2.239-16-5v6c0 2.761 7.163 5 16 5s16-2.239 16-5v-6c0 2.761-7.163 5-16 5z"></path>
+</symbol>
+<symbol id="icon-file-text2" viewBox="0 0 32 32">
+<path d="M28.681 7.159c-0.694-0.947-1.662-2.053-2.724-3.116s-2.169-2.030-3.116-2.724c-1.612-1.182-2.393-1.319-2.841-1.319h-15.5c-1.378 0-2.5 1.121-2.5 2.5v27c0 1.378 1.122 2.5 2.5 2.5h23c1.378 0 2.5-1.122 2.5-2.5v-19.5c0-0.448-0.137-1.23-1.319-2.841zM24.543 5.457c0.959 0.959 1.712 1.825 2.268 2.543h-4.811v-4.811c0.718 0.556 1.584 1.309 2.543 2.268zM28 29.5c0 0.271-0.229 0.5-0.5 0.5h-23c-0.271 0-0.5-0.229-0.5-0.5v-27c0-0.271 0.229-0.5 0.5-0.5 0 0 15.499-0 15.5 0v7c0 0.552 0.448 1 1 1h7v19.5z"></path>
+<path d="M23 26h-14c-0.552 0-1-0.448-1-1s0.448-1 1-1h14c0.552 0 1 0.448 1 1s-0.448 1-1 1z"></path>
+<path d="M23 22h-14c-0.552 0-1-0.448-1-1s0.448-1 1-1h14c0.552 0 1 0.448 1 1s-0.448 1-1 1z"></path>
+<path d="M23 18h-14c-0.552 0-1-0.448-1-1s0.448-1 1-1h14c0.552 0 1 0.448 1 1s-0.448 1-1 1z"></path>
+</symbol>
+</defs>
+</svg>
+<style>/* CSS stylesheet for displaying xarray objects in notebooks */
+
+:root {
+  --xr-font-color0: var(
+    --jp-content-font-color0,
+    var(--pst-color-text-base rgba(0, 0, 0, 1))
+  );
+  --xr-font-color2: var(
+    --jp-content-font-color2,
+    var(--pst-color-text-base, rgba(0, 0, 0, 0.54))
+  );
+  --xr-font-color3: var(
+    --jp-content-font-color3,
+    var(--pst-color-text-base, rgba(0, 0, 0, 0.38))
+  );
+  --xr-border-color: var(
+    --jp-border-color2,
+    hsl(from var(--pst-color-on-background, white) h s calc(l - 10))
+  );
+  --xr-disabled-color: var(
+    --jp-layout-color3,
+    hsl(from var(--pst-color-on-background, white) h s calc(l - 40))
+  );
+  --xr-background-color: var(
+    --jp-layout-color0,
+    var(--pst-color-on-background, white)
+  );
+  --xr-background-color-row-even: var(
+    --jp-layout-color1,
+    hsl(from var(--pst-color-on-background, white) h s calc(l - 5))
+  );
+  --xr-background-color-row-odd: var(
+    --jp-layout-color2,
+    hsl(from var(--pst-color-on-background, white) h s calc(l - 15))
+  );
+}
+
+html[theme="dark"],
+html[data-theme="dark"],
+body[data-theme="dark"],
+body.vscode-dark {
+  --xr-font-color0: var(
+    --jp-content-font-color0,
+    var(--pst-color-text-base, rgba(255, 255, 255, 1))
+  );
+  --xr-font-color2: var(
+    --jp-content-font-color2,
+    var(--pst-color-text-base, rgba(255, 255, 255, 0.54))
+  );
+  --xr-font-color3: var(
+    --jp-content-font-color3,
+    var(--pst-color-text-base, rgba(255, 255, 255, 0.38))
+  );
+  --xr-border-color: var(
+    --jp-border-color2,
+    hsl(from var(--pst-color-on-background, #111111) h s calc(l + 10))
+  );
+  --xr-disabled-color: var(
+    --jp-layout-color3,
+    hsl(from var(--pst-color-on-background, #111111) h s calc(l + 40))
+  );
+  --xr-background-color: var(
+    --jp-layout-color0,
+    var(--pst-color-on-background, #111111)
+  );
+  --xr-background-color-row-even: var(
+    --jp-layout-color1,
+    hsl(from var(--pst-color-on-background, #111111) h s calc(l + 5))
+  );
+  --xr-background-color-row-odd: var(
+    --jp-layout-color2,
+    hsl(from var(--pst-color-on-background, #111111) h s calc(l + 15))
+  );
+}
+
+.xr-wrap {
+  display: block !important;
+  min-width: 300px;
+  max-width: 700px;
+  line-height: 1.6;
+  padding-bottom: 4px;
+}
+
+.xr-text-repr-fallback {
+  /* fallback to plain text repr when CSS is not injected (untrusted notebook) */
+  display: none;
+}
+
+.xr-header {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.xr-header {
+  border-bottom: solid 1px var(--xr-border-color);
+  margin-bottom: 4px;
+}
+
+.xr-header > div,
+.xr-header > ul {
+  display: inline;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.xr-obj-type,
+.xr-obj-name {
+  margin-left: 2px;
+  margin-right: 10px;
+}
+
+.xr-obj-type,
+.xr-group-box-contents > label {
+  color: var(--xr-font-color2);
+  display: block;
+}
+
+.xr-sections {
+  padding-left: 0 !important;
+  display: grid;
+  grid-template-columns: 150px auto auto 1fr 0 20px 0 20px;
+  margin-block-start: 0;
+  margin-block-end: 0;
+}
+
+.xr-section-item {
+  display: contents;
+}
+
+.xr-section-item > input,
+.xr-group-box-contents > input,
+.xr-array-wrap > input {
+  display: block;
+  opacity: 0;
+  height: 0;
+  margin: 0;
+}
+
+.xr-section-item > input + label,
+.xr-var-item > input + label {
+  color: var(--xr-disabled-color);
+}
+
+.xr-section-item > input:enabled + label,
+.xr-var-item > input:enabled + label,
+.xr-array-wrap > input:enabled + label,
+.xr-group-box-contents > input:enabled + label {
+  cursor: pointer;
+  color: var(--xr-font-color2);
+}
+
+.xr-section-item > input:focus-visible + label,
+.xr-var-item > input:focus-visible + label,
+.xr-array-wrap > input:focus-visible + label,
+.xr-group-box-contents > input:focus-visible + label {
+  outline: auto;
+}
+
+.xr-section-item > input:enabled + label:hover,
+.xr-var-item > input:enabled + label:hover,
+.xr-array-wrap > input:enabled + label:hover,
+.xr-group-box-contents > input:enabled + label:hover {
+  color: var(--xr-font-color0);
+}
+
+.xr-section-summary {
+  grid-column: 1;
+  color: var(--xr-font-color2);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.xr-section-summary > em {
+  font-weight: normal;
+}
+
+.xr-span-grid {
+  grid-column-end: -1;
+}
+
+.xr-section-summary > span {
+  display: inline-block;
+  padding-left: 0.3em;
+}
+
+.xr-group-box-contents > input:checked + label > span {
+  display: inline-block;
+  padding-left: 0.6em;
+}
+
+.xr-section-summary-in:disabled + label {
+  color: var(--xr-font-color2);
+}
+
+.xr-section-summary-in + label:before {
+  display: inline-block;
+  content: "►";
+  font-size: 11px;
+  width: 15px;
+  text-align: center;
+}
+
+.xr-section-summary-in:disabled + label:before {
+  color: var(--xr-disabled-color);
+}
+
+.xr-section-summary-in:checked + label:before {
+  content: "▼";
+}
+
+.xr-section-summary-in:checked + label > span {
+  display: none;
+}
+
+.xr-section-summary,
+.xr-section-inline-details,
+.xr-group-box-contents > label {
+  padding-top: 4px;
+}
+
+.xr-section-inline-details {
+  grid-column: 2 / -1;
+}
+
+.xr-section-details {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  margin-bottom: 5px;
+}
+
+.xr-section-summary-in ~ .xr-section-details {
+  display: none;
+}
+
+.xr-section-summary-in:checked ~ .xr-section-details {
+  display: contents;
+}
+
+.xr-children {
+  display: inline-grid;
+  grid-template-columns: 100%;
+  grid-column: 1 / -1;
+  padding-top: 4px;
+}
+
+.xr-group-box {
+  display: inline-grid;
+  grid-template-columns: 0px 30px auto;
+}
+
+.xr-group-box-vline {
+  grid-column-start: 1;
+  border-right: 0.2em solid;
+  border-color: var(--xr-border-color);
+  width: 0px;
+}
+
+.xr-group-box-hline {
+  grid-column-start: 2;
+  grid-row-start: 1;
+  height: 1em;
+  width: 26px;
+  border-bottom: 0.2em solid;
+  border-color: var(--xr-border-color);
+}
+
+.xr-group-box-contents {
+  grid-column-start: 3;
+  padding-bottom: 4px;
+}
+
+.xr-group-box-contents > label::before {
+  content: "📂";
+  padding-right: 0.3em;
+}
+
+.xr-group-box-contents > input:checked + label::before {
+  content: "📁";
+}
+
+.xr-group-box-contents > input:checked + label {
+  padding-bottom: 0px;
+}
+
+.xr-group-box-contents > input:checked ~ .xr-sections {
+  display: none;
+}
+
+.xr-group-box-contents > input + label > span {
+  display: none;
+}
+
+.xr-group-box-ellipsis {
+  font-size: 1.4em;
+  font-weight: 900;
+  color: var(--xr-font-color2);
+  letter-spacing: 0.15em;
+  cursor: default;
+}
+
+.xr-array-wrap {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 20px auto;
+}
+
+.xr-array-wrap > label {
+  grid-column: 1;
+  vertical-align: top;
+}
+
+.xr-preview {
+  color: var(--xr-font-color3);
+}
+
+.xr-array-preview,
+.xr-array-data {
+  padding: 0 5px !important;
+  grid-column: 2;
+}
+
+.xr-array-data,
+.xr-array-in:checked ~ .xr-array-preview {
+  display: none;
+}
+
+.xr-array-in:checked ~ .xr-array-data,
+.xr-array-preview {
+  display: inline-block;
+}
+
+.xr-dim-list {
+  display: inline-block !important;
+  list-style: none;
+  padding: 0 !important;
+  margin: 0;
+}
+
+.xr-dim-list li {
+  display: inline-block;
+  padding: 0;
+  margin: 0;
+}
+
+.xr-dim-list:before {
+  content: "(";
+}
+
+.xr-dim-list:after {
+  content: ")";
+}
+
+.xr-dim-list li:not(:last-child):after {
+  content: ",";
+  padding-right: 5px;
+}
+
+.xr-has-index {
+  font-weight: bold;
+}
+
+.xr-var-list,
+.xr-var-item {
+  display: contents;
+}
+
+.xr-var-item > div,
+.xr-var-item label,
+.xr-var-item > .xr-var-name span {
+  background-color: var(--xr-background-color-row-even);
+  border-color: var(--xr-background-color-row-odd);
+  margin-bottom: 0;
+  padding-top: 2px;
+}
+
+.xr-var-item > .xr-var-name:hover span {
+  padding-right: 5px;
+}
+
+.xr-var-list > li:nth-child(odd) > div,
+.xr-var-list > li:nth-child(odd) > label,
+.xr-var-list > li:nth-child(odd) > .xr-var-name span {
+  background-color: var(--xr-background-color-row-odd);
+  border-color: var(--xr-background-color-row-even);
+}
+
+.xr-var-name {
+  grid-column: 1;
+}
+
+.xr-var-dims {
+  grid-column: 2;
+}
+
+.xr-var-dtype {
+  grid-column: 3;
+  text-align: right;
+  color: var(--xr-font-color2);
+}
+
+.xr-var-preview {
+  grid-column: 4;
+}
+
+.xr-index-preview {
+  grid-column: 2 / 5;
+  color: var(--xr-font-color2);
+}
+
+.xr-var-name,
+.xr-var-dims,
+.xr-var-dtype,
+.xr-preview,
+.xr-attrs dt {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 10px;
+}
+
+.xr-var-name:hover,
+.xr-var-dims:hover,
+.xr-var-dtype:hover,
+.xr-attrs dt:hover {
+  overflow: visible;
+  width: auto;
+  z-index: 1;
+}
+
+.xr-var-attrs,
+.xr-var-data,
+.xr-index-data {
+  display: none;
+  border-top: 2px dotted var(--xr-background-color);
+  padding-bottom: 20px !important;
+  padding-top: 10px !important;
+}
+
+.xr-var-attrs-in + label,
+.xr-var-data-in + label,
+.xr-index-data-in + label {
+  padding: 0 1px;
+}
+
+.xr-var-attrs-in:checked ~ .xr-var-attrs,
+.xr-var-data-in:checked ~ .xr-var-data,
+.xr-index-data-in:checked ~ .xr-index-data {
+  display: block;
+}
+
+.xr-var-data > table {
+  float: right;
+}
+
+.xr-var-data > pre,
+.xr-index-data > pre,
+.xr-var-data > table > tbody > tr {
+  background-color: transparent !important;
+}
+
+.xr-var-name span,
+.xr-var-data,
+.xr-index-name div,
+.xr-index-data,
+.xr-attrs {
+  padding-left: 25px !important;
+}
+
+.xr-attrs,
+.xr-var-attrs,
+.xr-var-data,
+.xr-index-data {
+  grid-column: 1 / -1;
+}
+
+dl.xr-attrs {
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: 125px auto;
+}
+
+.xr-attrs dt,
+.xr-attrs dd {
+  padding: 0;
+  margin: 0;
+  float: left;
+  padding-right: 10px;
+  width: auto;
+}
+
+.xr-attrs dt {
+  font-weight: normal;
+  grid-column: 1;
+}
+
+.xr-attrs dt:hover span {
+  display: inline-block;
+  background: var(--xr-background-color);
+  padding-right: 10px;
+}
+
+.xr-attrs dd {
+  grid-column: 2;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.xr-icon-database,
+.xr-icon-file-text2,
+.xr-no-icon {
+  display: inline-block;
+  vertical-align: middle;
+  width: 1em;
+  height: 1.5em !important;
+  stroke-width: 0;
+  stroke: currentColor;
+  fill: currentColor;
+}
+
+.xr-var-attrs-in:checked + label > .xr-icon-file-text2,
+.xr-var-data-in:checked + label > .xr-icon-database,
+.xr-index-data-in:checked + label > .xr-icon-database {
+  color: var(--xr-font-color0);
+  filter: drop-shadow(1px 1px 5px var(--xr-font-color2));
+  stroke-width: 0.8px;
+}
+</style><pre class='xr-text-repr-fallback'>&lt;xarray.Dataset&gt; Size: 344B
+Dimensions:   (nmeasure: 4, state: 1, source: 2)
+Coordinates:
+  * nmeasure  (nmeasure) object 32B MultiIndex
+  * site      (nmeasure) &lt;U3 48B &#x27;TAC&#x27; &#x27;TAC&#x27; &#x27;TAC&#x27; &#x27;TAC&#x27;
+  * time      (nmeasure) datetime64[ns] 32B 2019-01-02 2019-01-03 ... 2019-01-05
+  * state     (state) int64 8B 0
+  * source    (source) &lt;U12 96B &#x27;inventory&#x27; &#x27;supplemental&#x27;
+Data variables:
+    mf        (nmeasure) float64 32B 1.3 1.15 1.28 1.4
+    mf_error  (nmeasure) float64 32B 0.1 0.1 0.1 0.1
+    H         (state, nmeasure, source) float64 64B 1.0 0.2 0.5 ... 0.4 1.2 0.1</pre><div class='xr-wrap' style='display:none'><div class='xr-header'><div class='xr-obj-type'>xarray.Dataset</div></div><ul class='xr-sections'><li class='xr-section-item'><input id='section-ae3b37ff-7f0b-4e5f-aa0d-d0403b4c9488' class='xr-section-summary-in' type='checkbox' disabled /><label for='section-ae3b37ff-7f0b-4e5f-aa0d-d0403b4c9488' class='xr-section-summary'>Dimensions:</label><div class='xr-section-inline-details'><ul class='xr-dim-list'><li><span class='xr-has-index'>nmeasure</span>: 4</li><li><span class='xr-has-index'>state</span>: 1</li><li><span class='xr-has-index'>source</span>: 2</li></ul></div></li><li class='xr-section-item'><input id='section-62a94273-323c-41bf-93bc-fccacabb83fc' class='xr-section-summary-in' type='checkbox' checked /><label for='section-62a94273-323c-41bf-93bc-fccacabb83fc' class='xr-section-summary' title='Expand/collapse section'>Coordinates: <span>(5)</span></label><div class='xr-section-inline-details'></div><div class='xr-section-details'><ul class='xr-var-list'><li class='xr-var-item'><div class='xr-var-name'><span class='xr-has-index'>nmeasure</span></div><div class='xr-var-dims'>(nmeasure)</div><div class='xr-var-dtype'>object</div><div class='xr-var-preview xr-preview'>MultiIndex</div><input id='attrs-96372fc1-08fb-4a38-a22a-6bd4ed4e586b' class='xr-var-attrs-in' type='checkbox' disabled><label for='attrs-96372fc1-08fb-4a38-a22a-6bd4ed4e586b' title='Show/Hide attributes'><svg class='icon xr-icon-file-text2'><use xlink:href='#icon-file-text2'></use></svg></label><input id='data-d913c733-ed40-4a3c-bb64-3d55649d879a' class='xr-var-data-in' type='checkbox'><label for='data-d913c733-ed40-4a3c-bb64-3d55649d879a' title='Show/Hide data repr'><svg class='icon xr-icon-database'><use xlink:href='#icon-database'></use></svg></label><div class='xr-var-attrs'><dl class='xr-attrs'></dl></div><div class='xr-var-data'><pre>[4 values with dtype=object]</pre></div></li><li class='xr-var-item'><div class='xr-var-name'><span class='xr-has-index'>site</span></div><div class='xr-var-dims'>(nmeasure)</div><div class='xr-var-dtype'>&lt;U3</div><div class='xr-var-preview xr-preview'>&#x27;TAC&#x27; &#x27;TAC&#x27; &#x27;TAC&#x27; &#x27;TAC&#x27;</div><input id='attrs-22855b2d-dd27-4ef8-90cf-3a22b0d9c620' class='xr-var-attrs-in' type='checkbox' disabled><label for='attrs-22855b2d-dd27-4ef8-90cf-3a22b0d9c620' title='Show/Hide attributes'><svg class='icon xr-icon-file-text2'><use xlink:href='#icon-file-text2'></use></svg></label><input id='data-6aee598c-1ade-4500-abb4-4f1b20b4c52d' class='xr-var-data-in' type='checkbox'><label for='data-6aee598c-1ade-4500-abb4-4f1b20b4c52d' title='Show/Hide data repr'><svg class='icon xr-icon-database'><use xlink:href='#icon-database'></use></svg></label><div class='xr-var-attrs'><dl class='xr-attrs'></dl></div><div class='xr-var-data'><pre>[4 values with dtype=&lt;U3]</pre></div></li><li class='xr-var-item'><div class='xr-var-name'><span class='xr-has-index'>time</span></div><div class='xr-var-dims'>(nmeasure)</div><div class='xr-var-dtype'>datetime64[ns]</div><div class='xr-var-preview xr-preview'>2019-01-02 ... 2019-01-05</div><input id='attrs-18fa7afe-2b77-4b77-916e-50a08468ac9d' class='xr-var-attrs-in' type='checkbox' disabled><label for='attrs-18fa7afe-2b77-4b77-916e-50a08468ac9d' title='Show/Hide attributes'><svg class='icon xr-icon-file-text2'><use xlink:href='#icon-file-text2'></use></svg></label><input id='data-8bdef728-636c-4f37-8dde-4aa928801033' class='xr-var-data-in' type='checkbox'><label for='data-8bdef728-636c-4f37-8dde-4aa928801033' title='Show/Hide data repr'><svg class='icon xr-icon-database'><use xlink:href='#icon-database'></use></svg></label><div class='xr-var-attrs'><dl class='xr-attrs'></dl></div><div class='xr-var-data'><pre>[4 values with dtype=datetime64[ns]]</pre></div></li><li class='xr-var-item'><div class='xr-var-name'><span class='xr-has-index'>state</span></div><div class='xr-var-dims'>(state)</div><div class='xr-var-dtype'>int64</div><div class='xr-var-preview xr-preview'>0</div><input id='attrs-38266174-c20b-44a3-b052-6e106eeafd97' class='xr-var-attrs-in' type='checkbox' disabled><label for='attrs-38266174-c20b-44a3-b052-6e106eeafd97' title='Show/Hide attributes'><svg class='icon xr-icon-file-text2'><use xlink:href='#icon-file-text2'></use></svg></label><input id='data-87ad0a87-e1f4-4fcc-be7e-4ddd68b5accd' class='xr-var-data-in' type='checkbox'><label for='data-87ad0a87-e1f4-4fcc-be7e-4ddd68b5accd' title='Show/Hide data repr'><svg class='icon xr-icon-database'><use xlink:href='#icon-database'></use></svg></label><div class='xr-var-attrs'><dl class='xr-attrs'></dl></div><div class='xr-var-data'><pre>array([0])</pre></div></li><li class='xr-var-item'><div class='xr-var-name'><span class='xr-has-index'>source</span></div><div class='xr-var-dims'>(source)</div><div class='xr-var-dtype'>&lt;U12</div><div class='xr-var-preview xr-preview'>&#x27;inventory&#x27; &#x27;supplemental&#x27;</div><input id='attrs-a4d049ee-6446-42f2-9524-d344691cb58f' class='xr-var-attrs-in' type='checkbox' disabled><label for='attrs-a4d049ee-6446-42f2-9524-d344691cb58f' title='Show/Hide attributes'><svg class='icon xr-icon-file-text2'><use xlink:href='#icon-file-text2'></use></svg></label><input id='data-69a5eec7-745d-4aca-a1d0-29ae7dfb7772' class='xr-var-data-in' type='checkbox'><label for='data-69a5eec7-745d-4aca-a1d0-29ae7dfb7772' title='Show/Hide data repr'><svg class='icon xr-icon-database'><use xlink:href='#icon-database'></use></svg></label><div class='xr-var-attrs'><dl class='xr-attrs'></dl></div><div class='xr-var-data'><pre>array([&#x27;inventory&#x27;, &#x27;supplemental&#x27;], dtype=&#x27;&lt;U12&#x27;)</pre></div></li></ul></div></li><li class='xr-section-item'><input id='section-73dbd6df-191f-4480-b55e-5793fd1d6816' class='xr-section-summary-in' type='checkbox' checked /><label for='section-73dbd6df-191f-4480-b55e-5793fd1d6816' class='xr-section-summary' title='Expand/collapse section'>Data variables: <span>(3)</span></label><div class='xr-section-inline-details'></div><div class='xr-section-details'><ul class='xr-var-list'><li class='xr-var-item'><div class='xr-var-name'><span>mf</span></div><div class='xr-var-dims'>(nmeasure)</div><div class='xr-var-dtype'>float64</div><div class='xr-var-preview xr-preview'>1.3 1.15 1.28 1.4</div><input id='attrs-a473e23d-f399-4004-aef4-4cf41300e252' class='xr-var-attrs-in' type='checkbox' ><label for='attrs-a473e23d-f399-4004-aef4-4cf41300e252' title='Show/Hide attributes'><svg class='icon xr-icon-file-text2'><use xlink:href='#icon-file-text2'></use></svg></label><input id='data-1511e512-f2d5-4d72-9d15-a41bb3d2e1d5' class='xr-var-data-in' type='checkbox'><label for='data-1511e512-f2d5-4d72-9d15-a41bb3d2e1d5' title='Show/Hide data repr'><svg class='icon xr-icon-database'><use xlink:href='#icon-database'></use></svg></label><div class='xr-var-attrs'><dl class='xr-attrs'><dt><span>units :</span></dt><dd>ppm</dd></dl></div><div class='xr-var-data'><pre>array([1.3 , 1.15, 1.28, 1.4 ])</pre></div></li><li class='xr-var-item'><div class='xr-var-name'><span>mf_error</span></div><div class='xr-var-dims'>(nmeasure)</div><div class='xr-var-dtype'>float64</div><div class='xr-var-preview xr-preview'>0.1 0.1 0.1 0.1</div><input id='attrs-4387cb01-cd66-4905-98d8-23634485c13e' class='xr-var-attrs-in' type='checkbox' ><label for='attrs-4387cb01-cd66-4905-98d8-23634485c13e' title='Show/Hide attributes'><svg class='icon xr-icon-file-text2'><use xlink:href='#icon-file-text2'></use></svg></label><input id='data-7c9b20fc-5748-471e-8adb-413e6fcefa25' class='xr-var-data-in' type='checkbox'><label for='data-7c9b20fc-5748-471e-8adb-413e6fcefa25' title='Show/Hide data repr'><svg class='icon xr-icon-database'><use xlink:href='#icon-database'></use></svg></label><div class='xr-var-attrs'><dl class='xr-attrs'><dt><span>long_name :</span></dt><dd>_error</dd><dt><span>units :</span></dt><dd>ppm</dd></dl></div><div class='xr-var-data'><pre>array([0.1, 0.1, 0.1, 0.1])</pre></div></li><li class='xr-var-item'><div class='xr-var-name'><span>H</span></div><div class='xr-var-dims'>(state, nmeasure, source)</div><div class='xr-var-dtype'>float64</div><div class='xr-var-preview xr-preview'>1.0 0.2 0.5 0.7 0.8 0.4 1.2 0.1</div><input id='attrs-3757ab04-51f1-43c5-a1dc-4f86d711a8d5' class='xr-var-attrs-in' type='checkbox' disabled><label for='attrs-3757ab04-51f1-43c5-a1dc-4f86d711a8d5' title='Show/Hide attributes'><svg class='icon xr-icon-file-text2'><use xlink:href='#icon-file-text2'></use></svg></label><input id='data-6e347ed2-4e6b-4ae6-8043-86caa17584b6' class='xr-var-data-in' type='checkbox'><label for='data-6e347ed2-4e6b-4ae6-8043-86caa17584b6' title='Show/Hide data repr'><svg class='icon xr-icon-database'><use xlink:href='#icon-database'></use></svg></label><div class='xr-var-attrs'><dl class='xr-attrs'></dl></div><div class='xr-var-data'><pre>array([[[1. , 0.2],
+        [0.5, 0.7],
+        [0.8, 0.4],
+        [1.2, 0.1]]])</pre></div></li></ul></div></li></ul></div></div></div></div>
+</div>
+</section>
+<section id="sample-a-normal-model">
+<h2>Sample a Normal model<a class="headerlink" href="#sample-a-normal-model" title="Link to this heading">#</a></h2>
+<p>Each sector has a Normal scaling prior. The first model uses prior standard
+deviation 0.2 and an independent Normal likelihood with fixed observation
+errors. Sampling explicitly materializes the selected prepared arrays and prior
+parameters before constructing the model. Its sample manifest records the
+scientific meaning alongside the posterior samples.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sampler</span> <span class="o">=</span> <span class="n">RhimeSampler</span><span class="p">(</span>
+    <span class="n">draws</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+    <span class="n">tune</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+    <span class="n">chains</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+    <span class="n">sample_kwargs</span><span class="o">=</span><span class="p">{</span><span class="s2">"cores"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"random_seed"</span><span class="p">:</span> <span class="mi">42</span><span class="p">},</span>
+    <span class="n">sample_prior_predictive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">sample_posterior_predictive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">normal_model</span> <span class="o">=</span> <span class="n">model_options</span><span class="p">(</span><span class="mf">0.2</span><span class="p">)</span>
+<span class="n">normal_manifest</span> <span class="o">=</span> <span class="n">handoffs</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span>
+    <span class="n">preparation_manifest</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="n">normal_model</span><span class="p">,</span>
+    <span class="n">sampler</span><span class="o">=</span><span class="n">sampler</span><span class="p">,</span>
+    <span class="n">output_dir</span><span class="o">=</span><span class="n">destination</span> <span class="o">/</span> <span class="s2">"normal"</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>TIMING rhime.model_inputs_materialize seconds=0.001704 maxrss_kb=647660 variables=H,mf,mf_error coordinates=
+</pre></div>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">Only 8 samples per chain. Reliable r-hat and ESS diagnostics require longer chains for accurate estimate.
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">Initializing NUTS using jitter+adapt_diag...
+</pre>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>TIMING rhime.model_build seconds=0.090181 maxrss_kb=647660 multisector=true
+</pre></div>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">Sequential sampling (1 chains in 1 job)
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">NUTS: [x_biosphere, x_fossil]
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">Sampling 1 chain for 8 tune and 8 draw iterations (8 + 8 draws total) took 0 seconds.
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">The number of samples is too small to check convergence reliably.
+</pre>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>TIMING rhime.sampler.pm_sample seconds=10.814307 maxrss_kb=647660 draws=8 tune=8 chains=1 nuts_sampler=pymc
+TIMING rhime.sampler.sample_stats seconds=0.000000 maxrss_kb=647660 n_steps_mean=12.000000 n_steps_max=15.000000 tree_depth_mean=3.625000 tree_depth_max=4.000000 step_size_mean=0.024416 acceptance_rate_mean=0.968719 divergences=0
+TIMING rhime.sampler.burn_slicing seconds=0.006192 maxrss_kb=647660 burn=0
+TIMING rhime.sampler.coord_restore seconds=0.007765 maxrss_kb=647660 restored=true
+TIMING rhime.sampler_total seconds=10.828886 maxrss_kb=647660 draws=8 burn=0 tune=8 chains=1 nuts_sampler=pymc
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="change-the-prior-and-likelihood">
+<h2>Change the prior and likelihood<a class="headerlink" href="#change-the-prior-and-likelihood" title="Link to this heading">#</a></h2>
+<p>The second model widens both prior standard deviations to 0.6 and replaces the
+observation likelihood with the example’s independent Student-t likelihood
+(four degrees of freedom). Both changes belong to model construction, so they
+reuse the same preparation. Changing transport, native flux, filters or the
+basis would require a new preparation; see <a class="reference internal" href="staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> for the
+compatibility boundary.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">student_model</span> <span class="o">=</span> <span class="n">model_options</span><span class="p">(</span><span class="mf">0.6</span><span class="p">,</span> <span class="n">student_t</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">student_manifest</span> <span class="o">=</span> <span class="n">handoffs</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span>
+    <span class="n">preparation_manifest</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="n">student_model</span><span class="p">,</span>
+    <span class="n">sampler</span><span class="o">=</span><span class="n">sampler</span><span class="p">,</span>
+    <span class="n">likelihood_builder</span><span class="o">=</span><span class="n">likelihood_builder</span><span class="p">,</span>
+    <span class="n">output_dir</span><span class="o">=</span><span class="n">destination</span> <span class="o">/</span> <span class="s2">"student"</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="stderr docutils container">
+<pre class="stderr literal-block">Only 8 samples per chain. Reliable r-hat and ESS diagnostics require longer chains for accurate estimate.
+</pre>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>TIMING rhime.model_inputs_materialize seconds=0.001632 maxrss_kb=647660 variables=H,mf,mf_error coordinates=
+TIMING rhime.model_build seconds=0.029363 maxrss_kb=647660 multisector=true
+</pre></div>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">Initializing NUTS using jitter+adapt_diag...
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">Sequential sampling (1 chains in 1 job)
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">NUTS: [x_biosphere, x_fossil]
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">Sampling 1 chain for 8 tune and 8 draw iterations (8 + 8 draws total) took 0 seconds.
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">The number of samples is too small to check convergence reliably.
+</pre>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>TIMING rhime.sampler.pm_sample seconds=4.806081 maxrss_kb=647660 draws=8 tune=8 chains=1 nuts_sampler=pymc
+TIMING rhime.sampler.sample_stats seconds=0.000000 maxrss_kb=647660 n_steps_mean=5.250000 n_steps_max=7.000000 tree_depth_mean=2.625000 tree_depth_max=3.000000 step_size_mean=0.047678 acceptance_rate_mean=0.862313 divergences=0
+TIMING rhime.sampler.burn_slicing seconds=0.006151 maxrss_kb=647660 burn=0
+TIMING rhime.sampler.coord_restore seconds=0.007891 maxrss_kb=647660 restored=true
+TIMING rhime.sampler_total seconds=4.820743 maxrss_kb=647660 draws=8 burn=0 tune=8 chains=1 nuts_sampler=pymc
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="replay-with-current-output-choices">
+<h2>Replay with current output choices<a class="headerlink" href="#replay-with-current-output-choices" title="Link to this heading">#</a></h2>
+<p>Postprocessing loads each saved posterior and its original scientific context
+without constructing a graph or sampling again. <code class="docutils literal notranslate"><span class="pre">output_format=&quot;none&quot;</span></code>
+returns the scientific output for analysis. The same samples can also be saved
+as a self-contained inversion output at a new destination. These reporting
+choices do not change the original source associations, prior flux or requested
+time window.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">normal</span> <span class="o">=</span> <span class="n">handoffs</span><span class="o">.</span><span class="n">postprocess</span><span class="p">(</span>
+    <span class="n">normal_manifest</span><span class="p">,</span>
+    <span class="n">output</span><span class="o">=</span><span class="n">RhimeOutputSpec</span><span class="p">(</span><span class="n">output_format</span><span class="o">=</span><span class="s2">"none"</span><span class="p">),</span>
+<span class="p">)</span>
+<span class="n">student</span> <span class="o">=</span> <span class="n">handoffs</span><span class="o">.</span><span class="n">postprocess</span><span class="p">(</span>
+    <span class="n">student_manifest</span><span class="p">,</span>
+    <span class="n">output</span><span class="o">=</span><span class="n">RhimeOutputSpec</span><span class="p">(</span><span class="n">output_format</span><span class="o">=</span><span class="s2">"none"</span><span class="p">),</span>
+<span class="p">)</span>
+<span class="n">exported</span> <span class="o">=</span> <span class="n">handoffs</span><span class="o">.</span><span class="n">postprocess</span><span class="p">(</span>
+    <span class="n">student_manifest</span><span class="p">,</span>
+    <span class="n">output</span><span class="o">=</span><span class="n">RhimeOutputSpec</span><span class="p">(</span>
+        <span class="n">output_format</span><span class="o">=</span><span class="s2">"inv_out"</span><span class="p">,</span>
+        <span class="n">output_name</span><span class="o">=</span><span class="s2">"student-replay"</span><span class="p">,</span>
+        <span class="n">output_path</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">destination</span> <span class="o">/</span> <span class="s2">"exports"</span><span class="p">),</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+<span class="k">assert</span> <span class="n">student</span><span class="o">.</span><span class="n">trace</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">exported</span><span class="o">.</span><span class="n">trace</span><span class="p">)</span>
+<span class="n">student</span><span class="o">.</span><span class="n">run_metadata</span><span class="p">[</span><span class="s2">"start_date"</span><span class="p">],</span> <span class="n">student</span><span class="o">.</span><span class="n">run_metadata</span><span class="p">[</span><span class="s2">"end_date"</span><span class="p">]</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>TIMING rhime.output.multisector_diagnostics seconds=0.194706 maxrss_kb=647660
+TIMING rhime.output.multisector_diagnostics_netcdf_write seconds=0.008308 maxrss_kb=647660 path=/home/runner/work/openghg_inversions/openghg_inversions/source/.tox/docs-full/tmp/multisector-handoffs-flo7_h9j/exports/student-replay2019-01-01_sector_flux_diagnostics.nc
+TIMING rhime.output.inversion_output_save seconds=0.077714 maxrss_kb=647660 path=/home/runner/work/openghg_inversions/openghg_inversions/source/.tox/docs-full/tmp/multisector-handoffs-flo7_h9j/exports/student-replay2019-01-01_inversion_output.nc
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>('2019-01-01', '2019-02-01')
+</pre></div>
+</div>
+</div>
+</div>
+<p>Compute flux products explicitly. The source-resolved products retain the native
+inventories’ spatial patterns; total flux includes both sources. With so few
+draws, differences between these two models are illustrative and must not be
+interpreted as a sensitivity analysis.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">normal_flux</span> <span class="o">=</span> <span class="n">make_sector_flux_outputs</span><span class="p">(</span>
+    <span class="n">normal</span><span class="p">,</span>
+    <span class="n">stats</span><span class="o">=</span><span class="p">[</span><span class="s2">"mean"</span><span class="p">],</span>
+    <span class="n">report_flux_on_inversion_grid</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">student_flux</span> <span class="o">=</span> <span class="n">make_sector_flux_outputs</span><span class="p">(</span>
+    <span class="n">student</span><span class="p">,</span>
+    <span class="n">stats</span><span class="o">=</span><span class="p">[</span><span class="s2">"mean"</span><span class="p">],</span>
+    <span class="n">report_flux_on_inversion_grid</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">xr</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span>
+    <span class="p">[</span><span class="n">normal_flux</span><span class="p">,</span> <span class="n">student_flux</span><span class="p">],</span>
+    <span class="n">dim</span><span class="o">=</span><span class="n">xr</span><span class="o">.</span><span class="n">IndexVariable</span><span class="p">(</span><span class="s2">"model"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"Normal"</span><span class="p">,</span> <span class="s2">"Student-t"</span><span class="p">]),</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html"><div><svg style="position: absolute; width: 0; height: 0; overflow: hidden">
+<defs>
+<symbol id="icon-database" viewBox="0 0 32 32">
+<path d="M16 0c-8.837 0-16 2.239-16 5v4c0 2.761 7.163 5 16 5s16-2.239 16-5v-4c0-2.761-7.163-5-16-5z"></path>
+<path d="M16 17c-8.837 0-16-2.239-16-5v6c0 2.761 7.163 5 16 5s16-2.239 16-5v-6c0 2.761-7.163 5-16 5z"></path>
+<path d="M16 26c-8.837 0-16-2.239-16-5v6c0 2.761 7.163 5 16 5s16-2.239 16-5v-6c0 2.761-7.163 5-16 5z"></path>
+</symbol>
+<symbol id="icon-file-text2" viewBox="0 0 32 32">
+<path d="M28.681 7.159c-0.694-0.947-1.662-2.053-2.724-3.116s-2.169-2.030-3.116-2.724c-1.612-1.182-2.393-1.319-2.841-1.319h-15.5c-1.378 0-2.5 1.121-2.5 2.5v27c0 1.378 1.122 2.5 2.5 2.5h23c1.378 0 2.5-1.122 2.5-2.5v-19.5c0-0.448-0.137-1.23-1.319-2.841zM24.543 5.457c0.959 0.959 1.712 1.825 2.268 2.543h-4.811v-4.811c0.718 0.556 1.584 1.309 2.543 2.268zM28 29.5c0 0.271-0.229 0.5-0.5 0.5h-23c-0.271 0-0.5-0.229-0.5-0.5v-27c0-0.271 0.229-0.5 0.5-0.5 0 0 15.499-0 15.5 0v7c0 0.552 0.448 1 1 1h7v19.5z"></path>
+<path d="M23 26h-14c-0.552 0-1-0.448-1-1s0.448-1 1-1h14c0.552 0 1 0.448 1 1s-0.448 1-1 1z"></path>
+<path d="M23 22h-14c-0.552 0-1-0.448-1-1s0.448-1 1-1h14c0.552 0 1 0.448 1 1s-0.448 1-1 1z"></path>
+<path d="M23 18h-14c-0.552 0-1-0.448-1-1s0.448-1 1-1h14c0.552 0 1 0.448 1 1s-0.448 1-1 1z"></path>
+</symbol>
+</defs>
+</svg>
+<style>/* CSS stylesheet for displaying xarray objects in notebooks */
+
+:root {
+  --xr-font-color0: var(
+    --jp-content-font-color0,
+    var(--pst-color-text-base rgba(0, 0, 0, 1))
+  );
+  --xr-font-color2: var(
+    --jp-content-font-color2,
+    var(--pst-color-text-base, rgba(0, 0, 0, 0.54))
+  );
+  --xr-font-color3: var(
+    --jp-content-font-color3,
+    var(--pst-color-text-base, rgba(0, 0, 0, 0.38))
+  );
+  --xr-border-color: var(
+    --jp-border-color2,
+    hsl(from var(--pst-color-on-background, white) h s calc(l - 10))
+  );
+  --xr-disabled-color: var(
+    --jp-layout-color3,
+    hsl(from var(--pst-color-on-background, white) h s calc(l - 40))
+  );
+  --xr-background-color: var(
+    --jp-layout-color0,
+    var(--pst-color-on-background, white)
+  );
+  --xr-background-color-row-even: var(
+    --jp-layout-color1,
+    hsl(from var(--pst-color-on-background, white) h s calc(l - 5))
+  );
+  --xr-background-color-row-odd: var(
+    --jp-layout-color2,
+    hsl(from var(--pst-color-on-background, white) h s calc(l - 15))
+  );
+}
+
+html[theme="dark"],
+html[data-theme="dark"],
+body[data-theme="dark"],
+body.vscode-dark {
+  --xr-font-color0: var(
+    --jp-content-font-color0,
+    var(--pst-color-text-base, rgba(255, 255, 255, 1))
+  );
+  --xr-font-color2: var(
+    --jp-content-font-color2,
+    var(--pst-color-text-base, rgba(255, 255, 255, 0.54))
+  );
+  --xr-font-color3: var(
+    --jp-content-font-color3,
+    var(--pst-color-text-base, rgba(255, 255, 255, 0.38))
+  );
+  --xr-border-color: var(
+    --jp-border-color2,
+    hsl(from var(--pst-color-on-background, #111111) h s calc(l + 10))
+  );
+  --xr-disabled-color: var(
+    --jp-layout-color3,
+    hsl(from var(--pst-color-on-background, #111111) h s calc(l + 40))
+  );
+  --xr-background-color: var(
+    --jp-layout-color0,
+    var(--pst-color-on-background, #111111)
+  );
+  --xr-background-color-row-even: var(
+    --jp-layout-color1,
+    hsl(from var(--pst-color-on-background, #111111) h s calc(l + 5))
+  );
+  --xr-background-color-row-odd: var(
+    --jp-layout-color2,
+    hsl(from var(--pst-color-on-background, #111111) h s calc(l + 15))
+  );
+}
+
+.xr-wrap {
+  display: block !important;
+  min-width: 300px;
+  max-width: 700px;
+  line-height: 1.6;
+  padding-bottom: 4px;
+}
+
+.xr-text-repr-fallback {
+  /* fallback to plain text repr when CSS is not injected (untrusted notebook) */
+  display: none;
+}
+
+.xr-header {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.xr-header {
+  border-bottom: solid 1px var(--xr-border-color);
+  margin-bottom: 4px;
+}
+
+.xr-header > div,
+.xr-header > ul {
+  display: inline;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.xr-obj-type,
+.xr-obj-name {
+  margin-left: 2px;
+  margin-right: 10px;
+}
+
+.xr-obj-type,
+.xr-group-box-contents > label {
+  color: var(--xr-font-color2);
+  display: block;
+}
+
+.xr-sections {
+  padding-left: 0 !important;
+  display: grid;
+  grid-template-columns: 150px auto auto 1fr 0 20px 0 20px;
+  margin-block-start: 0;
+  margin-block-end: 0;
+}
+
+.xr-section-item {
+  display: contents;
+}
+
+.xr-section-item > input,
+.xr-group-box-contents > input,
+.xr-array-wrap > input {
+  display: block;
+  opacity: 0;
+  height: 0;
+  margin: 0;
+}
+
+.xr-section-item > input + label,
+.xr-var-item > input + label {
+  color: var(--xr-disabled-color);
+}
+
+.xr-section-item > input:enabled + label,
+.xr-var-item > input:enabled + label,
+.xr-array-wrap > input:enabled + label,
+.xr-group-box-contents > input:enabled + label {
+  cursor: pointer;
+  color: var(--xr-font-color2);
+}
+
+.xr-section-item > input:focus-visible + label,
+.xr-var-item > input:focus-visible + label,
+.xr-array-wrap > input:focus-visible + label,
+.xr-group-box-contents > input:focus-visible + label {
+  outline: auto;
+}
+
+.xr-section-item > input:enabled + label:hover,
+.xr-var-item > input:enabled + label:hover,
+.xr-array-wrap > input:enabled + label:hover,
+.xr-group-box-contents > input:enabled + label:hover {
+  color: var(--xr-font-color0);
+}
+
+.xr-section-summary {
+  grid-column: 1;
+  color: var(--xr-font-color2);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.xr-section-summary > em {
+  font-weight: normal;
+}
+
+.xr-span-grid {
+  grid-column-end: -1;
+}
+
+.xr-section-summary > span {
+  display: inline-block;
+  padding-left: 0.3em;
+}
+
+.xr-group-box-contents > input:checked + label > span {
+  display: inline-block;
+  padding-left: 0.6em;
+}
+
+.xr-section-summary-in:disabled + label {
+  color: var(--xr-font-color2);
+}
+
+.xr-section-summary-in + label:before {
+  display: inline-block;
+  content: "►";
+  font-size: 11px;
+  width: 15px;
+  text-align: center;
+}
+
+.xr-section-summary-in:disabled + label:before {
+  color: var(--xr-disabled-color);
+}
+
+.xr-section-summary-in:checked + label:before {
+  content: "▼";
+}
+
+.xr-section-summary-in:checked + label > span {
+  display: none;
+}
+
+.xr-section-summary,
+.xr-section-inline-details,
+.xr-group-box-contents > label {
+  padding-top: 4px;
+}
+
+.xr-section-inline-details {
+  grid-column: 2 / -1;
+}
+
+.xr-section-details {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  margin-bottom: 5px;
+}
+
+.xr-section-summary-in ~ .xr-section-details {
+  display: none;
+}
+
+.xr-section-summary-in:checked ~ .xr-section-details {
+  display: contents;
+}
+
+.xr-children {
+  display: inline-grid;
+  grid-template-columns: 100%;
+  grid-column: 1 / -1;
+  padding-top: 4px;
+}
+
+.xr-group-box {
+  display: inline-grid;
+  grid-template-columns: 0px 30px auto;
+}
+
+.xr-group-box-vline {
+  grid-column-start: 1;
+  border-right: 0.2em solid;
+  border-color: var(--xr-border-color);
+  width: 0px;
+}
+
+.xr-group-box-hline {
+  grid-column-start: 2;
+  grid-row-start: 1;
+  height: 1em;
+  width: 26px;
+  border-bottom: 0.2em solid;
+  border-color: var(--xr-border-color);
+}
+
+.xr-group-box-contents {
+  grid-column-start: 3;
+  padding-bottom: 4px;
+}
+
+.xr-group-box-contents > label::before {
+  content: "📂";
+  padding-right: 0.3em;
+}
+
+.xr-group-box-contents > input:checked + label::before {
+  content: "📁";
+}
+
+.xr-group-box-contents > input:checked + label {
+  padding-bottom: 0px;
+}
+
+.xr-group-box-contents > input:checked ~ .xr-sections {
+  display: none;
+}
+
+.xr-group-box-contents > input + label > span {
+  display: none;
+}
+
+.xr-group-box-ellipsis {
+  font-size: 1.4em;
+  font-weight: 900;
+  color: var(--xr-font-color2);
+  letter-spacing: 0.15em;
+  cursor: default;
+}
+
+.xr-array-wrap {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 20px auto;
+}
+
+.xr-array-wrap > label {
+  grid-column: 1;
+  vertical-align: top;
+}
+
+.xr-preview {
+  color: var(--xr-font-color3);
+}
+
+.xr-array-preview,
+.xr-array-data {
+  padding: 0 5px !important;
+  grid-column: 2;
+}
+
+.xr-array-data,
+.xr-array-in:checked ~ .xr-array-preview {
+  display: none;
+}
+
+.xr-array-in:checked ~ .xr-array-data,
+.xr-array-preview {
+  display: inline-block;
+}
+
+.xr-dim-list {
+  display: inline-block !important;
+  list-style: none;
+  padding: 0 !important;
+  margin: 0;
+}
+
+.xr-dim-list li {
+  display: inline-block;
+  padding: 0;
+  margin: 0;
+}
+
+.xr-dim-list:before {
+  content: "(";
+}
+
+.xr-dim-list:after {
+  content: ")";
+}
+
+.xr-dim-list li:not(:last-child):after {
+  content: ",";
+  padding-right: 5px;
+}
+
+.xr-has-index {
+  font-weight: bold;
+}
+
+.xr-var-list,
+.xr-var-item {
+  display: contents;
+}
+
+.xr-var-item > div,
+.xr-var-item label,
+.xr-var-item > .xr-var-name span {
+  background-color: var(--xr-background-color-row-even);
+  border-color: var(--xr-background-color-row-odd);
+  margin-bottom: 0;
+  padding-top: 2px;
+}
+
+.xr-var-item > .xr-var-name:hover span {
+  padding-right: 5px;
+}
+
+.xr-var-list > li:nth-child(odd) > div,
+.xr-var-list > li:nth-child(odd) > label,
+.xr-var-list > li:nth-child(odd) > .xr-var-name span {
+  background-color: var(--xr-background-color-row-odd);
+  border-color: var(--xr-background-color-row-even);
+}
+
+.xr-var-name {
+  grid-column: 1;
+}
+
+.xr-var-dims {
+  grid-column: 2;
+}
+
+.xr-var-dtype {
+  grid-column: 3;
+  text-align: right;
+  color: var(--xr-font-color2);
+}
+
+.xr-var-preview {
+  grid-column: 4;
+}
+
+.xr-index-preview {
+  grid-column: 2 / 5;
+  color: var(--xr-font-color2);
+}
+
+.xr-var-name,
+.xr-var-dims,
+.xr-var-dtype,
+.xr-preview,
+.xr-attrs dt {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 10px;
+}
+
+.xr-var-name:hover,
+.xr-var-dims:hover,
+.xr-var-dtype:hover,
+.xr-attrs dt:hover {
+  overflow: visible;
+  width: auto;
+  z-index: 1;
+}
+
+.xr-var-attrs,
+.xr-var-data,
+.xr-index-data {
+  display: none;
+  border-top: 2px dotted var(--xr-background-color);
+  padding-bottom: 20px !important;
+  padding-top: 10px !important;
+}
+
+.xr-var-attrs-in + label,
+.xr-var-data-in + label,
+.xr-index-data-in + label {
+  padding: 0 1px;
+}
+
+.xr-var-attrs-in:checked ~ .xr-var-attrs,
+.xr-var-data-in:checked ~ .xr-var-data,
+.xr-index-data-in:checked ~ .xr-index-data {
+  display: block;
+}
+
+.xr-var-data > table {
+  float: right;
+}
+
+.xr-var-data > pre,
+.xr-index-data > pre,
+.xr-var-data > table > tbody > tr {
+  background-color: transparent !important;
+}
+
+.xr-var-name span,
+.xr-var-data,
+.xr-index-name div,
+.xr-index-data,
+.xr-attrs {
+  padding-left: 25px !important;
+}
+
+.xr-attrs,
+.xr-var-attrs,
+.xr-var-data,
+.xr-index-data {
+  grid-column: 1 / -1;
+}
+
+dl.xr-attrs {
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: 125px auto;
+}
+
+.xr-attrs dt,
+.xr-attrs dd {
+  padding: 0;
+  margin: 0;
+  float: left;
+  padding-right: 10px;
+  width: auto;
+}
+
+.xr-attrs dt {
+  font-weight: normal;
+  grid-column: 1;
+}
+
+.xr-attrs dt:hover span {
+  display: inline-block;
+  background: var(--xr-background-color);
+  padding-right: 10px;
+}
+
+.xr-attrs dd {
+  grid-column: 2;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.xr-icon-database,
+.xr-icon-file-text2,
+.xr-no-icon {
+  display: inline-block;
+  vertical-align: middle;
+  width: 1em;
+  height: 1.5em !important;
+  stroke-width: 0;
+  stroke: currentColor;
+  fill: currentColor;
+}
+
+.xr-var-attrs-in:checked + label > .xr-icon-file-text2,
+.xr-var-data-in:checked + label > .xr-icon-database,
+.xr-index-data-in:checked + label > .xr-icon-database {
+  color: var(--xr-font-color0);
+  filter: drop-shadow(1px 1px 5px var(--xr-font-color2));
+  stroke-width: 0.8px;
+}
+</style><pre class='xr-text-repr-fallback'>&lt;xarray.Dataset&gt; Size: 432B
+Dimensions:                           (model: 2, flux_time: 1, lat: 2, lon: 2)
+Coordinates:
+  * model                             (model) &lt;U9 72B &#x27;Normal&#x27; &#x27;Student-t&#x27;
+  * flux_time                         (flux_time) datetime64[ns] 8B 2019-01-01
+  * lat                               (lat) float64 16B 50.0 51.0
+  * lon                               (lon) float64 16B -2.0 -1.0
+Data variables:
+    flux_total_posterior_mean         (model, flux_time, lat, lon) float64 64B ...
+    flux_biosphere_posterior_mean     (model, flux_time, lat, lon) float64 64B ...
+    flux_fossil_posterior_mean        (model, flux_time, lat, lon) float64 64B ...
+    scaling_biosphere_posterior_mean  (model, lat, lon) float64 64B 0.9288 .....
+    scaling_fossil_posterior_mean     (model, lat, lon) float64 64B 1.083 ......
+Attributes: (12/14)
+    created_at:                          2026-10-20T12:26:43.311587+00:00
+    creation_library:                    ArviZ
+    creation_library_version:            1.3.1
+    creation_library_language:           Python
+    inference_library:                   pymc
+    inference_library_version:           6.3.2
+    ...                                  ...
+    tuning_steps:                        8
+    burn:                                0
+    openghg_inversions:non_finite_flux:  {&quot;checked&quot;:&quot;not_counted&quot;,&quot;context&quot;:&quot;...
+    basis_reconstruction_path:           operator-backed
+    basis_artifact_source:               loaded-datatree
+    basis_artifact_path:                 /home/runner/work/openghg_inversions...</pre><div class='xr-wrap' style='display:none'><div class='xr-header'><div class='xr-obj-type'>xarray.Dataset</div></div><ul class='xr-sections'><li class='xr-section-item'><input id='section-00de74ce-0aa9-4df3-b1ff-a439f60a8d9f' class='xr-section-summary-in' type='checkbox' disabled /><label for='section-00de74ce-0aa9-4df3-b1ff-a439f60a8d9f' class='xr-section-summary'>Dimensions:</label><div class='xr-section-inline-details'><ul class='xr-dim-list'><li><span class='xr-has-index'>model</span>: 2</li><li><span class='xr-has-index'>flux_time</span>: 1</li><li><span class='xr-has-index'>lat</span>: 2</li><li><span class='xr-has-index'>lon</span>: 2</li></ul></div></li><li class='xr-section-item'><input id='section-ef7f9c50-7a63-4b21-b4db-672b029b7273' class='xr-section-summary-in' type='checkbox' checked /><label for='section-ef7f9c50-7a63-4b21-b4db-672b029b7273' class='xr-section-summary' title='Expand/collapse section'>Coordinates: <span>(4)</span></label><div class='xr-section-inline-details'></div><div class='xr-section-details'><ul class='xr-var-list'><li class='xr-var-item'><div class='xr-var-name'><span class='xr-has-index'>model</span></div><div class='xr-var-dims'>(model)</div><div class='xr-var-dtype'>&lt;U9</div><div class='xr-var-preview xr-preview'>&#x27;Normal&#x27; &#x27;Student-t&#x27;</div><input id='attrs-62769ac8-1e32-465e-92ad-90cbed6c00f2' class='xr-var-attrs-in' type='checkbox' disabled><label for='attrs-62769ac8-1e32-465e-92ad-90cbed6c00f2' title='Show/Hide attributes'><svg class='icon xr-icon-file-text2'><use xlink:href='#icon-file-text2'></use></svg></label><input id='data-74934753-d3d2-497f-8801-b377899e39cc' class='xr-var-data-in' type='checkbox'><label for='data-74934753-d3d2-497f-8801-b377899e39cc' title='Show/Hide data repr'><svg class='icon xr-icon-database'><use xlink:href='#icon-database'></use></svg></label><div class='xr-var-attrs'><dl class='xr-attrs'></dl></div><div class='xr-var-data'><pre>array([&#x27;Normal&#x27;, &#x27;Student-t&#x27;], dtype=&#x27;&lt;U9&#x27;)</pre></div></li><li class='xr-var-item'><div class='xr-var-name'><span class='xr-has-index'>flux_time</span></div><div class='xr-var-dims'>(flux_time)</div><div class='xr-var-dtype'>datetime64[ns]</div><div class='xr-var-preview xr-preview'>2019-01-01</div><input id='attrs-e09ba8a0-4894-40b5-866e-150807ff2980' class='xr-var-attrs-in' type='checkbox' disabled><label for='attrs-e09ba8a0-4894-40b5-866e-150807ff2980' title='Show/Hide attributes'><svg class='icon xr-icon-file-text2'><use xlink:href='#icon-file-text2'></use></svg></label><input id='data-3a40dd21-e309-48bb-91dd-a0ca8c0a3cf7' class='xr-var-data-in' type='checkbox'><label for='data-3a40dd21-e309-48bb-91dd-a0ca8c0a3cf7' title='Show/Hide data repr'><svg class='icon xr-icon-database'><use xlink:href='#icon-database'></use></svg></label><div class='xr-var-attrs'><dl class='xr-attrs'></dl></div><div class='xr-var-data'><pre>array([&#x27;2019-01-01T00:00:00.000000000&#x27;], dtype=&#x27;datetime64[ns]&#x27;)</pre></div></li><li class='xr-var-item'><div class='xr-var-name'><span class='xr-has-index'>lat</span></div><div class='xr-var-dims'>(lat)</div><div class='xr-var-dtype'>float64</div><div class='xr-var-preview xr-preview'>50.0 51.0</div><input id='attrs-667c88be-3fa8-4405-b14f-95f4b21af7cf' class='xr-var-attrs-in' type='checkbox' disabled><label for='attrs-667c88be-3fa8-4405-b14f-95f4b21af7cf' title='Show/Hide attributes'><svg class='icon xr-icon-file-text2'><use xlink:href='#icon-file-text2'></use></svg></label><input id='data-7650f95f-8d81-449d-8c8e-ffa2555fa0bd' class='xr-var-data-in' type='checkbox'><label for='data-7650f95f-8d81-449d-8c8e-ffa2555fa0bd' title='Show/Hide data repr'><svg class='icon xr-icon-database'><use xlink:href='#icon-database'></use></svg></label><div class='xr-var-attrs'><dl class='xr-attrs'></dl></div><div class='xr-var-data'><pre>array([50., 51.])</pre></div></li><li class='xr-var-item'><div class='xr-var-name'><span class='xr-has-index'>lon</span></div><div class='xr-var-dims'>(lon)</div><div class='xr-var-dtype'>float64</div><div class='xr-var-preview xr-preview'>-2.0 -1.0</div><input id='attrs-b3b71e27-a576-45ab-acd2-62e4e2daa5d6' class='xr-var-attrs-in' type='checkbox' disabled><label for='attrs-b3b71e27-a576-45ab-acd2-62e4e2daa5d6' title='Show/Hide attributes'><svg class='icon xr-icon-file-text2'><use xlink:href='#icon-file-text2'></use></svg></label><input id='data-2c2dc53e-3093-423c-b076-387ddf43237b' class='xr-var-data-in' type='checkbox'><label for='data-2c2dc53e-3093-423c-b076-387ddf43237b' title='Show/Hide data repr'><svg class='icon xr-icon-database'><use xlink:href='#icon-database'></use></svg></label><div class='xr-var-attrs'><dl class='xr-attrs'></dl></div><div class='xr-var-data'><pre>array([-2., -1.])</pre></div></li></ul></div></li><li class='xr-section-item'><input id='section-fb452bda-d04e-4e23-8fcc-9104dec07c6c' class='xr-section-summary-in' type='checkbox' checked /><label for='section-fb452bda-d04e-4e23-8fcc-9104dec07c6c' class='xr-section-summary' title='Expand/collapse section'>Data variables: <span>(5)</span></label><div class='xr-section-inline-details'></div><div class='xr-section-details'><ul class='xr-var-list'><li class='xr-var-item'><div class='xr-var-name'><span>flux_total_posterior_mean</span></div><div class='xr-var-dims'>(model, flux_time, lat, lon)</div><div class='xr-var-dtype'>float64</div><div class='xr-var-preview xr-preview'>1.361 3.28 5.198 ... 5.347 4.732</div><input id='attrs-c2cac315-51ce-44d9-9b5a-99b125d3af89' class='xr-var-attrs-in' type='checkbox' ><label for='attrs-c2cac315-51ce-44d9-9b5a-99b125d3af89' title='Show/Hide attributes'><svg class='icon xr-icon-file-text2'><use xlink:href='#icon-file-text2'></use></svg></label><input id='data-5916ab8d-94ef-44c0-80db-c3948ca1c7a9' class='xr-var-data-in' type='checkbox'><label for='data-5916ab8d-94ef-44c0-80db-c3948ca1c7a9' title='Show/Hide data repr'><svg class='icon xr-icon-database'><use xlink:href='#icon-database'></use></svg></label><div class='xr-var-attrs'><dl class='xr-attrs'><dt><span>long_name :</span></dt><dd>flux total posterior mean</dd><dt><span>units :</span></dt><dd>mol m-2 s-1</dd></dl></div><div class='xr-var-data'><pre>array([[[[1.36125004, 3.27980294],
+         [5.19835584, 4.70192968]]],
+
+
+       [[[1.38269566, 3.36464544],
+         [5.34659521, 4.73177717]]]])</pre></div></li><li class='xr-var-item'><div class='xr-var-name'><span>flux_biosphere_posterior_mean</span></div><div class='xr-var-dims'>(model, flux_time, lat, lon)</div><div class='xr-var-dtype'>float64</div><div class='xr-var-preview xr-preview'>0.2787 1.115 1.951 ... 2.097 0.3995</div><input id='attrs-9018a061-ee0a-4741-bd46-02ebebea0b8f' class='xr-var-attrs-in' type='checkbox' ><label for='attrs-9018a061-ee0a-4741-bd46-02ebebea0b8f' title='Show/Hide attributes'><svg class='icon xr-icon-file-text2'><use xlink:href='#icon-file-text2'></use></svg></label><input id='data-215c8c57-4514-43e6-849e-af8c512c1e64' class='xr-var-data-in' type='checkbox'><label for='data-215c8c57-4514-43e6-849e-af8c512c1e64' title='Show/Hide data repr'><svg class='icon xr-icon-database'><use xlink:href='#icon-database'></use></svg></label><div class='xr-var-attrs'><dl class='xr-attrs'><dt><span>long_name :</span></dt><dd>biosphere flux posterior mean</dd><dt><span>units :</span></dt><dd>mol m-2 s-1</dd></dl></div><div class='xr-var-data'><pre>array([[[[0.27865143, 1.11460572],
+         [1.95056   , 0.37153524]]],
+
+
+       [[[0.29962706, 1.19850822],
+         [2.09738939, 0.39950274]]]])</pre></div></li><li class='xr-var-item'><div class='xr-var-name'><span>flux_fossil_posterior_mean</span></div><div class='xr-var-dims'>(model, flux_time, lat, lon)</div><div class='xr-var-dtype'>float64</div><div class='xr-var-preview xr-preview'>1.083 2.165 3.248 ... 3.249 4.332</div><input id='attrs-61770a85-6b8a-48f1-bbf2-db154d361bea' class='xr-var-attrs-in' type='checkbox' ><label for='attrs-61770a85-6b8a-48f1-bbf2-db154d361bea' title='Show/Hide attributes'><svg class='icon xr-icon-file-text2'><use xlink:href='#icon-file-text2'></use></svg></label><input id='data-3c71ee6d-d797-46b4-8ef3-030a2b14b54c' class='xr-var-data-in' type='checkbox'><label for='data-3c71ee6d-d797-46b4-8ef3-030a2b14b54c' title='Show/Hide data repr'><svg class='icon xr-icon-database'><use xlink:href='#icon-database'></use></svg></label><div class='xr-var-attrs'><dl class='xr-attrs'><dt><span>long_name :</span></dt><dd>fossil flux posterior mean</dd><dt><span>units :</span></dt><dd>mol m-2 s-1</dd></dl></div><div class='xr-var-data'><pre>array([[[[1.08259861, 2.16519722],
+         [3.24779583, 4.33039444]]],
+
+
+       [[[1.08306861, 2.16613722],
+         [3.24920582, 4.33227443]]]])</pre></div></li><li class='xr-var-item'><div class='xr-var-name'><span>scaling_biosphere_posterior_mean</span></div><div class='xr-var-dims'>(model, lat, lon)</div><div class='xr-var-dtype'>float64</div><div class='xr-var-preview xr-preview'>0.9288 0.9288 ... 0.9988 0.9988</div><input id='attrs-b1394e76-fb20-438f-9f4e-e961cb9d8245' class='xr-var-attrs-in' type='checkbox' ><label for='attrs-b1394e76-fb20-438f-9f4e-e961cb9d8245' title='Show/Hide attributes'><svg class='icon xr-icon-file-text2'><use xlink:href='#icon-file-text2'></use></svg></label><input id='data-26ba6303-a523-423b-8ec6-b00831489e6c' class='xr-var-data-in' type='checkbox'><label for='data-26ba6303-a523-423b-8ec6-b00831489e6c' title='Show/Hide data repr'><svg class='icon xr-icon-database'><use xlink:href='#icon-database'></use></svg></label><div class='xr-var-attrs'><dl class='xr-attrs'><dt><span>long_name :</span></dt><dd>mean_of_posterior_x_biosphere_posterior</dd></dl></div><div class='xr-var-data'><pre>array([[[0.9288381 , 0.9288381 ],
+        [0.9288381 , 0.9288381 ]],
+
+       [[0.99875685, 0.99875685],
+        [0.99875685, 0.99875685]]])</pre></div></li><li class='xr-var-item'><div class='xr-var-name'><span>scaling_fossil_posterior_mean</span></div><div class='xr-var-dims'>(model, lat, lon)</div><div class='xr-var-dtype'>float64</div><div class='xr-var-preview xr-preview'>1.083 1.083 1.083 ... 1.083 1.083</div><input id='attrs-bb112bda-62dd-47c2-83eb-5fc35ef9b967' class='xr-var-attrs-in' type='checkbox' ><label for='attrs-bb112bda-62dd-47c2-83eb-5fc35ef9b967' title='Show/Hide attributes'><svg class='icon xr-icon-file-text2'><use xlink:href='#icon-file-text2'></use></svg></label><input id='data-7f3e402a-cbb3-4a1d-9cd0-a1688b79af6d' class='xr-var-data-in' type='checkbox'><label for='data-7f3e402a-cbb3-4a1d-9cd0-a1688b79af6d' title='Show/Hide data repr'><svg class='icon xr-icon-database'><use xlink:href='#icon-database'></use></svg></label><div class='xr-var-attrs'><dl class='xr-attrs'><dt><span>long_name :</span></dt><dd>mean_of_posterior_x_fossil_posterior</dd></dl></div><div class='xr-var-data'><pre>array([[[1.08259861, 1.08259861],
+        [1.08259861, 1.08259861]],
+
+       [[1.08306861, 1.08306861],
+        [1.08306861, 1.08306861]]])</pre></div></li></ul></div></li><li class='xr-section-item'><input id='section-9de38cd3-2c5b-4a76-9101-3fa5c5d20f3e' class='xr-section-summary-in' type='checkbox' /><label for='section-9de38cd3-2c5b-4a76-9101-3fa5c5d20f3e' class='xr-section-summary' title='Expand/collapse section'>Attributes: <span>(14)</span></label><div class='xr-section-inline-details'></div><div class='xr-section-details'><dl class='xr-attrs'><dt><span>created_at :</span></dt><dd>2026-10-20T12:26:43.311587+00:00</dd><dt><span>creation_library :</span></dt><dd>ArviZ</dd><dt><span>creation_library_version :</span></dt><dd>1.3.1</dd><dt><span>creation_library_language :</span></dt><dd>Python</dd><dt><span>inference_library :</span></dt><dd>pymc</dd><dt><span>inference_library_version :</span></dt><dd>6.3.2</dd><dt><span>sample_dims :</span></dt><dd>[&#x27;chain&#x27;, &#x27;draw&#x27;]</dd><dt><span>sampling_time :</span></dt><dd>0.011248111724853516</dd><dt><span>tuning_steps :</span></dt><dd>8</dd><dt><span>burn :</span></dt><dd>0</dd><dt><span>openghg_inversions:non_finite_flux :</span></dt><dd>{&quot;checked&quot;:&quot;not_counted&quot;,&quot;context&quot;:&quot;retained basis runtime flux&quot;,&quot;count&quot;:null,&quot;fill_value&quot;:0.0,&quot;fraction&quot;:null,&quot;policy&quot;:&quot;zero_fill&quot;,&quot;schema_version&quot;:1,&quot;source&quot;:null,&quot;total&quot;:null}</dd><dt><span>basis_reconstruction_path :</span></dt><dd>operator-backed</dd><dt><span>basis_artifact_source :</span></dt><dd>loaded-datatree</dd><dt><span>basis_artifact_path :</span></dt><dd>/home/runner/work/openghg_inversions/openghg_inversions/source/.tox/docs-full/tmp/multisector-handoffs-flo7_h9j/operator.nc</dd></dl></div></li></ul></div></div></div></div>
+</div>
+</section>
+<section id="compare-full-and-prepared-input-execution">
+<h2>Compare full and prepared-input execution<a class="headerlink" href="#compare-full-and-prepared-input-execution" title="Link to this heading">#</a></h2>
+<p>The full runner prepares supplied acquired data before constructing and
+sampling the model. Passing <code class="docutils literal notranslate"><span class="pre">prepared=prepared</span></code> starts from the existing
+scientific preparation instead. Both runners and the saved phases compose the
+same scientific operations; checkpoint files are optional boundaries between
+those operations.</p>
+<p>Use the second model’s choices and the same random seed to compare their flux
+products with replay. This checks execution parity, not convergence.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">config</span> <span class="o">=</span> <span class="n">RhimeConfig</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+    <span class="p">{</span>
+        <span class="o">**</span><span class="n">options</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">student_model</span><span class="p">,</span>
+        <span class="s2">"output_name"</span><span class="p">:</span> <span class="s2">"student-parity"</span><span class="p">,</span>
+        <span class="s2">"output_format"</span><span class="p">:</span> <span class="s2">"none"</span><span class="p">,</span>
+        <span class="s2">"save_inversion_output"</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="n">multisector</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">config</span> <span class="o">=</span> <span class="n">replace</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">sampler</span><span class="o">=</span><span class="n">sampler</span><span class="p">)</span>
+<span class="n">full</span> <span class="o">=</span> <span class="n">run_multisector</span><span class="p">(</span>
+    <span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">,</span>
+    <span class="n">merged_data</span><span class="o">=</span><span class="n">merged</span><span class="p">,</span>
+    <span class="n">likelihood_builder</span><span class="o">=</span><span class="n">likelihood_builder</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">resumed</span> <span class="o">=</span> <span class="n">run_multisector</span><span class="p">(</span>
+    <span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">,</span>
+    <span class="n">prepared</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
+    <span class="n">likelihood_builder</span><span class="o">=</span><span class="n">likelihood_builder</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="k">for</span> <span class="n">result</span> <span class="ow">in</span> <span class="p">(</span><span class="n">full</span><span class="p">,</span> <span class="n">resumed</span><span class="p">):</span>
+    <span class="n">xr</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_allclose</span><span class="p">(</span>
+        <span class="n">student_flux</span><span class="p">,</span>
+        <span class="n">make_sector_flux_outputs</span><span class="p">(</span>
+            <span class="n">result</span><span class="p">,</span>
+            <span class="n">stats</span><span class="o">=</span><span class="p">[</span><span class="s2">"mean"</span><span class="p">],</span>
+            <span class="n">report_flux_on_inversion_grid</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Full, prepared-input and replayed flux products agree."</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="stderr docutils container">
+<pre class="stderr literal-block">Only 8 samples per chain. Reliable r-hat and ESS diagnostics require longer chains for accurate estimate.
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">Initializing NUTS using jitter+adapt_diag...
+</pre>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>TIMING rhime.runner_setup seconds=0.000022 maxrss_kb=647660 multisector=true
+TIMING rhime.prepare_inputs.obs_filtering seconds=0.000007 maxrss_kb=647660 sites=1 filters=false
+Computing basis took 0.015624046325683594s.
+TIMING rhime.prepare_inputs.basis_build seconds=0.015680 maxrss_kb=647660 basis_algorithm=weighted
+TIMING rhime.prepare_inputs.footprint_sensitivity seconds=0.011991 maxrss_kb=647660 site=TAC nmeasure=4 state_size=1 sources=2
+TIMING rhime.prepare_inputs.footprint_sensitivity_total seconds=0.012210 maxrss_kb=647660 sites=1
+TIMING rhime.prepare_inputs.make_inv_inputs seconds=0.027862 maxrss_kb=647660 sites=1
+TIMING rhime.prepare_inputs.prepared_dims seconds=0.000000 maxrss_kb=647660 nmeasure=4 sites=1 sources=2 basis_source=datatree
+TIMING rhime.prepare_inputs seconds=0.082449 maxrss_kb=647660 multisector=true nmeasure=4 sites=1 sources=2 basis_source=datatree
+TIMING rhime.model_inputs_materialize seconds=0.001594 maxrss_kb=647660 variables=H,mf,mf_error coordinates=
+TIMING rhime.model_build seconds=0.029255 maxrss_kb=647660 multisector=true
+</pre></div>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">Sequential sampling (1 chains in 1 job)
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">NUTS: [x_biosphere, x_fossil]
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">Sampling 1 chain for 8 tune and 8 draw iterations (8 + 8 draws total) took 0 seconds.
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">The number of samples is too small to check convergence reliably.
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">Only 8 samples per chain. Reliable r-hat and ESS diagnostics require longer chains for accurate estimate.
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">Initializing NUTS using jitter+adapt_diag...
+</pre>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>TIMING rhime.sampler.pm_sample seconds=0.553274 maxrss_kb=647660 draws=8 tune=8 chains=1 nuts_sampler=pymc
+TIMING rhime.sampler.sample_stats seconds=0.000000 maxrss_kb=647660 n_steps_mean=5.250000 n_steps_max=7.000000 tree_depth_mean=2.625000 tree_depth_max=3.000000 step_size_mean=0.047678 acceptance_rate_mean=0.862313 divergences=0
+TIMING rhime.sampler.burn_slicing seconds=0.006504 maxrss_kb=647660 burn=0
+TIMING rhime.sampler.coord_restore seconds=0.007746 maxrss_kb=647660 restored=true
+TIMING rhime.sampler_total seconds=0.568107 maxrss_kb=647660 draws=8 burn=0 tune=8 chains=1 nuts_sampler=pymc
+TIMING rhime.runner_setup seconds=0.000023 maxrss_kb=647660 multisector=true
+TIMING rhime.model_inputs_materialize seconds=0.001661 maxrss_kb=647660 variables=H,mf,mf_error coordinates=
+TIMING rhime.model_build seconds=0.029157 maxrss_kb=647760 multisector=true
+</pre></div>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">Sequential sampling (1 chains in 1 job)
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">NUTS: [x_biosphere, x_fossil]
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">Sampling 1 chain for 8 tune and 8 draw iterations (8 + 8 draws total) took 0 seconds.
+</pre>
+</div>
+<div class="stderr docutils container">
+<pre class="stderr literal-block">The number of samples is too small to check convergence reliably.
+</pre>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>TIMING rhime.sampler.pm_sample seconds=0.775459 maxrss_kb=651600 draws=8 tune=8 chains=1 nuts_sampler=pymc
+TIMING rhime.sampler.sample_stats seconds=0.000000 maxrss_kb=651600 n_steps_mean=5.250000 n_steps_max=7.000000 tree_depth_mean=2.625000 tree_depth_max=3.000000 step_size_mean=0.047678 acceptance_rate_mean=0.862313 divergences=0
+TIMING rhime.sampler.burn_slicing seconds=0.006121 maxrss_kb=651600 burn=0
+TIMING rhime.sampler.coord_restore seconds=0.010168 maxrss_kb=651600 restored=true
+TIMING rhime.sampler_total seconds=0.792354 maxrss_kb=651600 draws=8 burn=0 tune=8 chains=1 nuts_sampler=pymc
+Full, prepared-input and replayed flux products agree.
+</pre></div>
+</div>
+</div>
+</div>
+<p>The preparation and both sample manifests remain in <code class="docutils literal notranslate"><span class="pre">destination</span></code> until the
+following cleanup. For a real project, choose persistent directories and keep
+each manifest with its referenced files so that replay remains possible.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">workspace</span><span class="o">.</span><span class="n">cleanup</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="staged_workflow.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Staged RHIME workflows</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="prior_predictive_checking.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Prior predictive checking tutorial</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#set-up-two-source-fields">Set up two source fields</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#prepare-once">Prepare once</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#sample-a-normal-model">Sample a Normal model</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#change-the-prior-and-likelihood">Change the prior and likelihood</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#replay-with-current-output-choices">Replay with current output choices</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#compare-full-and-prepared-input-execution">Compare full and prepared-input execution</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/usage/multisector_handoffs.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, Eric Saboya and Brendan Murphy.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.1.0.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.21.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

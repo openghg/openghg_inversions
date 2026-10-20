@@ -390,6 +390,7 @@
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
+<li class="toctree-l2"><a class="reference internal" href="multisector_handoffs.html">Reuse a multisector preparation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="prior_predictive_checking.html">Prior predictive checking tutorial</a></li>
 </ul>
 </details></li>
@@ -598,13 +599,15 @@ multisector model used for surface sites.</p>
 </section>
 <section id="inspecting-and-processing-results">
 <h2>Inspecting and processing results<a class="headerlink" href="#inspecting-and-processing-results" title="Link to this heading">#</a></h2>
-<p>Both calls return a <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeResult" title="openghg_inversions.rhime.RhimeResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">openghg_inversions.rhime.RhimeResult</span></code></a>. Inspect the
+<p>Both calls return an
+<a class="reference internal" href="../reference/openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><code class="xref py py-class docutils literal notranslate"><span class="pre">InversionOutput</span></code></a>.
+Inspect the
 canonical inputs before interpreting the posterior:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="n">satellite_result</span>  <span class="c1"># or site_result</span>
 
 <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H"</span><span class="p">]</span><span class="o">.</span><span class="n">dims</span><span class="p">)</span>
 <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H"</span><span class="p">]</span><span class="o">.</span><span class="n">coords</span><span class="p">[</span><span class="s2">"source"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">idata</span><span class="o">.</span><span class="n">posterior</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">trace_group</span><span class="p">(</span><span class="s2">"posterior"</span><span class="p">))</span>
 <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">output_metadata</span><span class="p">)</span>
 </pre></div>
 </div>
@@ -617,20 +620,31 @@ applied. Column runs retain <code class="docutils literal notranslate"><span cla
 <p>The posterior contains one sector scaling variable per sanitized sector name,
 for example <code class="docutils literal notranslate"><span class="pre">x_anth</span></code>, <code class="docutils literal notranslate"><span class="pre">x_resp</span></code>, and <code class="docutils literal notranslate"><span class="pre">x_gpp_atm</span></code>. Use the semantic mapping
 instead of constructing names in downstream code:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">roles</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">model_build_result</span><span class="o">.</span><span class="n">variable_roles</span>
-<span class="k">for</span> <span class="n">sector</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">model_spec</span><span class="o">.</span><span class="n">sectors</span><span class="p">:</span>
-    <span class="n">role</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"flux_scale:</span><span class="si">{</span><span class="n">sector</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">roles</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">variable_roles</span>
+<span class="k">for</span> <span class="n">sector</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">model_metadata</span><span class="p">[</span><span class="s2">"sectors"</span><span class="p">]:</span>
+    <span class="n">role</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"flux_scale:</span><span class="si">{</span><span class="n">sector</span><span class="p">[</span><span class="s1">'name'</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span>
     <span class="n">variable</span> <span class="o">=</span> <span class="n">roles</span><span class="p">[</span><span class="n">role</span><span class="p">]</span>
-    <span class="nb">print</span><span class="p">(</span><span class="n">sector</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">idata</span><span class="o">.</span><span class="n">posterior</span><span class="p">[</span><span class="n">variable</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">())</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">sector</span><span class="p">[</span><span class="s2">"name"</span><span class="p">],</span> <span class="n">result</span><span class="o">.</span><span class="n">trace_group</span><span class="p">(</span><span class="s2">"posterior"</span><span class="p">)[</span><span class="n">variable</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">())</span>
 </pre></div>
 </div>
-<p>With <code class="docutils literal notranslate"><span class="pre">output_format=&quot;inv_out&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">result.inv_out</span></code> is the modern,
-serializable inversion product and is also saved when
-<code class="docutils literal notranslate"><span class="pre">save_inversion_output=True</span></code>. Multisector runs additionally populate
-<code class="docutils literal notranslate"><span class="pre">result.outputs</span></code> and <code class="docutils literal notranslate"><span class="pre">result.output_metadata</span></code> with any requested sector
-diagnostics. Legacy output is intentionally unavailable for multisector runs;
-use <code class="docutils literal notranslate"><span class="pre">inv_out</span></code>, <code class="docutils literal notranslate"><span class="pre">basic</span></code>, <code class="docutils literal notranslate"><span class="pre">paris</span></code>, or <code class="docutils literal notranslate"><span class="pre">none</span></code> according to the required
-downstream product.</p>
+<p>The returned value is the modern, serializable scientific result, including with
+<code class="docutils literal notranslate"><span class="pre">output_format=&quot;none&quot;</span></code>. <code class="docutils literal notranslate"><span class="pre">output_format=&quot;inv_out&quot;</span></code> requests its file export;
+<code class="docutils literal notranslate"><span class="pre">save_inversion_output</span></code> and <code class="docutils literal notranslate"><span class="pre">save_trace</span></code> control optional exports. Current
+output policy is separate from the result’s scientific context and inference
+metadata. Compute in-memory sector diagnostics explicitly:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.postprocessing.make_outputs</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_sector_flux_outputs</span>
+
+<span class="n">diagnostics</span> <span class="o">=</span> <span class="n">make_sector_flux_outputs</span><span class="p">(</span>
+    <span class="n">result</span><span class="p">,</span> <span class="n">stats</span><span class="o">=</span><span class="p">[</span><span class="s2">"mean"</span><span class="p">],</span> <span class="n">include_scale_factors</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">report_flux_on_inversion_grid</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Copied runners call <code class="docutils literal notranslate"><span class="pre">postprocess_multisector_outputs(result,</span> <span class="pre">output_spec)</span></code> for
+configured products, then <code class="docutils literal notranslate"><span class="pre">save_inversion_output(result,</span> <span class="pre">output_spec)</span></code> for
+exports. Use <code class="docutils literal notranslate"><span class="pre">inv_out</span></code>, <code class="docutils literal notranslate"><span class="pre">paris</span></code>, or <code class="docutils literal notranslate"><span class="pre">none</span></code> for multisector runs;
+<code class="docutils literal notranslate"><span class="pre">basic</span></code> and legacy HBMCMC output remain single-sector-only. See <a class="reference internal" href="staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> for
+reusing prepared inputs and saved samples with current product choices.</p>
 </section>
 <section id="configuration-and-batch-runs">
 <h2>Configuration and batch runs<a class="headerlink" href="#configuration-and-batch-runs" title="Link to this heading">#</a></h2>

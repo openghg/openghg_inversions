@@ -48,15 +48,16 @@ guide. New configuration files should use the RHIME vocabulary documented in
 validated production-shape examples are used by
 :doc:`rhime_standard_tutorial` and :doc:`rhime_multisector_tutorial`.
 
-Saved standard phases
-----------------------
+Saved standard and multisector phases
+--------------------------------------
 
 ``rhime prepare`` resolves preparation choices and prints one manifest path.
 ``rhime sample --preparation-manifest ...`` accepts current model/sampler
 choices; ``rhime postprocess --sample-manifest ...`` accepts current output
 choices. Sampling and postprocessing do not require a full configuration file.
-See :doc:`staged_workflow` for the complete preparation/two-model/two-output
-sequence and the separate multisector/CO2 interfaces.
+Select ``--model multisector`` for the same one-manifest command forms with
+sector-labelled inputs. See :doc:`staged_workflow` for the complete
+preparation/two-model/two-output sequence and the separate CO2 interface.
 
 Python model selection and compatibility
 ----------------------------------------

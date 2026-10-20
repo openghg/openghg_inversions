@@ -391,6 +391,7 @@
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
+<li class="toctree-l2"><a class="reference internal" href="multisector_handoffs.html">Reuse a multisector preparation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="prior_predictive_checking.html">Prior predictive checking tutorial</a></li>
 </ul>
 </details></li>
@@ -803,12 +804,11 @@ not implemented. They are tracked in
 </section>
 <section id="alternative-models-and-likelihoods">
 <h2>Alternative models and likelihoods<a class="headerlink" href="#alternative-models-and-likelihoods" title="Link to this heading">#</a></h2>
-<p>Direct-Python likelihood builders enter through <code class="docutils literal notranslate"><span class="pre">run_standard</span></code>,
-<code class="docutils literal notranslate"><span class="pre">run_rhime_multisector</span></code>, or <code class="docutils literal notranslate"><span class="pre">run_rhime_from_prepared_inputs</span></code>.
-Complete-model builders remain available only at the prepared-input boundary.
-Callables are never read from configuration or stored on <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code> or
-<code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code>, so model and run specs remain serializable. There is no
-entry-point or config-file plugin registry.</p>
+<p>Direct-Python likelihood builders enter through <code class="docutils literal notranslate"><span class="pre">run_standard</span></code> or
+<code class="docutils literal notranslate"><span class="pre">run_multisector</span></code>. Complete-model changes use the explicit construction and
+sampling operations below. Callables are never read from configuration or
+stored on <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code>, so model settings remain serializable. There is
+no entry-point or config-file plugin registry.</p>
 <p>A concrete recipe owns the complete forward-model mean: pollution, baseline,
 and optional offset contributions are composed visibly and packaged as named
 forward terms before the shared built-in dispatcher is invoked. The runner
@@ -894,105 +894,80 @@ posterior variables. The ordinary runner records the callable identity,
 and JSON-compatible options in the saved output. The component reuses OpenGHG
 Inversions’ aggregation-error and Gaussian likelihood machinery.</p>
 </section>
-<section id="advanced-whole-model-compatibility-boundary">
-<h3>Advanced whole-model compatibility boundary<a class="headerlink" href="#advanced-whole-model-compatibility-boundary" title="Link to this heading">#</a></h3>
-<p>A complete model builder is a retained multisector compatibility escape hatch
-available through <code class="docutils literal notranslate"><span class="pre">run_rhime_from_prepared_inputs</span></code> when
-<code class="docutils literal notranslate"><span class="pre">run_spec.split_by_sectors=True</span></code>.
-The standard <code class="docutils literal notranslate"><span class="pre">run_standard(prepared=...,</span> <span class="pre">config=...)</span></code> route accepts alternative
-or cached preparation, then
-uses the same construction, sampling, result and product operations as full and
-saved execution. Its builder takes <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code> without output settings.
-Standard callers must replace <code class="docutils literal notranslate"><span class="pre">model_builder</span></code> with <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> when
-changing the likelihood, or construct and sample a custom PyMC model directly
-when replacing the complete graph. The retained multisector builder receives a
-<code class="docutils literal notranslate"><span class="pre">RhimeModelBuilderContext</span></code> containing the validated <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code>,
-updated <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code>, and validated multisector mode, and
-returns a <code class="docutils literal notranslate"><span class="pre">RhimeModelBuildResult</span></code>. Ordinary standard and multisector recipes
-never construct or consume this context. Complete builders also bypass the
-ordinary recipe-owned materialization step, so they must select, validate, and
-materialize any lazy arrays they consume:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">importlib.metadata</span><span class="w"> </span><span class="kn">import</span> <span class="n">version</span>
-
-<span class="kn">import</span><span class="w"> </span><span class="nn">pymc</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pm</span>
-
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">RhimeModelBuilderContext</span><span class="p">,</span>
-    <span class="n">RhimeModelBuildResult</span><span class="p">,</span>
-    <span class="n">run_rhime_from_prepared_inputs</span><span class="p">,</span>
+<section id="compose-a-complete-model-directly">
+<span id="rhime-complete-model-composition"></span><h3>Compose a complete model directly<a class="headerlink" href="#compose-a-complete-model-directly" title="Link to this heading">#</a></h3>
+<p>Standard and multisector prepared execution use the same construction,
+sampling and output operations as their full and saved routes. A complete-model
+change belongs in an ordinary scientific function receiving the inputs it
+needs. Copy the nearby concrete builder, edit its scientific operations, and
+call it directly; the multisector runner has no <code class="docutils literal notranslate"><span class="pre">model_builder</span></code> hook or
+ambient run-specification context.</p>
+<p>This example exposes the multisector operations using an existing canonical
+<code class="docutils literal notranslate"><span class="pre">prepared</span></code> value and resolved <code class="docutils literal notranslate"><span class="pre">config</span></code>. Replace the <code class="docutils literal notranslate"><span class="pre">build_multisector_model</span></code>
+call with your copied builder to change the complete graph. Keep input and prior
+materialization explicit, so selected scientific arrays and enabled prior
+parameters compute together. Construction consumes these eager values; it does
+not materialize them or read unrelated lazy preparation extensions:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.multisector</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">build_multisector_model</span><span class="p">,</span>
+    <span class="n">materialize_multisector_inputs</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">add_coords</span><span class="p">,</span>
-    <span class="n">registered_model</span><span class="p">,</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.outputs</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">annotate_sample_trace</span><span class="p">,</span>
+    <span class="n">make_model_output</span><span class="p">,</span>
+    <span class="n">postprocess_multisector_outputs</span><span class="p">,</span>
+    <span class="n">save_inversion_output</span><span class="p">,</span>
+    <span class="n">validate_multisector_output_resources</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.postprocessing.contracts</span><span class="w"> </span><span class="kn">import</span> <span class="n">OutputContract</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.sampling</span><span class="w"> </span><span class="kn">import</span> <span class="n">sample_rhime_model</span>
 
-
-<span class="k">def</span><span class="w"> </span><span class="nf">complete_model</span><span class="p">(</span>
-    <span class="n">context</span><span class="p">:</span> <span class="n">RhimeModelBuilderContext</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RhimeModelBuildResult</span><span class="p">:</span>
-    <span class="n">data</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">prepared_inputs</span><span class="o">.</span><span class="n">inv_inputs</span>
-    <span class="k">with</span> <span class="n">registered_model</span><span class="p">()</span> <span class="k">as</span> <span class="n">model</span><span class="p">:</span>
-        <span class="n">add_coords</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">coords</span><span class="p">,</span> <span class="n">model_dims</span><span class="o">=</span><span class="p">(</span><span class="s2">"nmeasure"</span><span class="p">,))</span>
-        <span class="n">mean</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">Normal</span><span class="p">(</span><span class="s2">"custom_mean"</span><span class="p">,</span> <span class="n">mu</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="mf">10.0</span><span class="p">)</span>
-        <span class="n">pm</span><span class="o">.</span><span class="n">Normal</span><span class="p">(</span>
-            <span class="s2">"custom_y"</span><span class="p">,</span>
-            <span class="n">mu</span><span class="o">=</span><span class="n">mean</span><span class="p">,</span>
-            <span class="n">sigma</span><span class="o">=</span><span class="n">data</span><span class="o">.</span><span class="n">mf_error</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
-            <span class="n">observed</span><span class="o">=</span><span class="n">data</span><span class="o">.</span><span class="n">mf</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
-            <span class="n">dims</span><span class="o">=</span><span class="s2">"nmeasure"</span><span class="p">,</span>
-        <span class="p">)</span>
-    <span class="k">return</span> <span class="n">RhimeModelBuildResult</span><span class="p">(</span>
-        <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
-        <span class="n">output_contract</span><span class="o">=</span><span class="n">OutputContract</span><span class="p">(</span>
-            <span class="n">variable_roles</span><span class="o">=</span><span class="p">{</span>
-                <span class="s2">"observation"</span><span class="p">:</span> <span class="s2">"mf"</span><span class="p">,</span>
-                <span class="s2">"observation_error"</span><span class="p">:</span> <span class="s2">"mf_error"</span><span class="p">,</span>
-                <span class="s2">"concentration"</span><span class="p">:</span> <span class="s2">"custom_y"</span><span class="p">,</span>
-            <span class="p">},</span>
-            <span class="n">supported_output_formats</span><span class="o">=</span><span class="p">(</span><span class="s2">"none"</span><span class="p">,</span> <span class="s2">"inv_out"</span><span class="p">),</span>
-            <span class="n">metadata</span><span class="o">=</span><span class="p">{</span>
-                <span class="s2">"package"</span><span class="p">:</span> <span class="s2">"my-rhime-models"</span><span class="p">,</span>
-                <span class="s2">"version"</span><span class="p">:</span> <span class="n">version</span><span class="p">(</span><span class="s2">"my-rhime-models"</span><span class="p">),</span>
-                <span class="s2">"model"</span><span class="p">:</span> <span class="s2">"complete_model_v1"</span><span class="p">,</span>
-            <span class="p">},</span>
-        <span class="p">),</span>
-    <span class="p">)</span>
-
-
-<span class="c1"># prepared and run_spec must describe a multisector run.</span>
-<span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime_from_prepared_inputs</span><span class="p">(</span>
-    <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
-    <span class="n">run_spec</span><span class="o">=</span><span class="n">run_spec</span><span class="p">,</span>
-    <span class="n">model_builder</span><span class="o">=</span><span class="n">complete_model</span><span class="p">,</span>
+<span class="n">validate_multisector_output_resources</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>
+<span class="n">model_inputs</span><span class="p">,</span> <span class="n">priors</span> <span class="o">=</span> <span class="n">materialize_multisector_inputs</span><span class="p">(</span><span class="n">prepared</span><span class="p">,</span> <span class="n">config</span><span class="o">.</span><span class="n">model</span><span class="p">)</span>
+<span class="n">built</span> <span class="o">=</span> <span class="n">build_multisector_model</span><span class="p">(</span>
+    <span class="n">model_inputs</span><span class="p">,</span>
+    <span class="n">config</span><span class="o">.</span><span class="n">model</span><span class="p">,</span>
+    <span class="n">priors</span><span class="o">=</span><span class="n">priors</span><span class="p">,</span>
 <span class="p">)</span>
+<span class="n">built</span><span class="o">.</span><span class="n">output_contract</span><span class="o">.</span><span class="n">validate_requested_output</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">output_format</span><span class="p">)</span>
+<span class="n">posterior</span> <span class="o">=</span> <span class="n">sample_rhime_model</span><span class="p">(</span><span class="n">built</span><span class="p">,</span> <span class="n">config</span><span class="o">.</span><span class="n">sampler</span><span class="p">)</span>
+<span class="n">annotate_sample_trace</span><span class="p">(</span><span class="n">built</span><span class="p">,</span> <span class="n">posterior</span><span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">make_model_output</span><span class="p">(</span>
+    <span class="n">prepared</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
+    <span class="n">model_spec</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">model</span><span class="p">,</span>
+    <span class="n">split_by_sectors</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">split_by_sectors</span><span class="p">,</span>
+    <span class="n">posterior</span><span class="o">=</span><span class="n">posterior</span><span class="p">,</span>
+    <span class="n">output_contract</span><span class="o">=</span><span class="n">built</span><span class="o">.</span><span class="n">output_contract</span><span class="p">,</span>
+    <span class="n">start_date</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">start_date</span><span class="p">,</span>
+    <span class="n">end_date</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">end_date</span><span class="p">,</span>
+    <span class="n">actual_inference</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">sampler</span><span class="o">.</span><span class="n">describe</span><span class="p">(),</span>
+<span class="p">)</span>
+<span class="n">postprocess_multisector_outputs</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">config</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>
+<span class="n">save_inversion_output</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">config</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>The compatibility rules are explicit:</p>
-<ul class="simple">
-<li><p>a complete builder must return a concrete <code class="docutils literal notranslate"><span class="pre">pm.Model</span></code> and a non-empty role
-manifest; <code class="docutils literal notranslate"><span class="pre">concentration</span></code> is required;</p></li>
-<li><p>every declared role name must exist in either the model or prepared inversion
-inputs;</p></li>
-<li><p>builders must construct their graph with <code class="docutils literal notranslate"><span class="pre">registered_model()</span></code> before
-calling <code class="docutils literal notranslate"><span class="pre">add_coords</span></code> or public model components, so
-<code class="docutils literal notranslate"><span class="pre">RhimeSampler</span></code> can restore MultiIndexes and auxiliary scientific
-coordinates;</p></li>
-<li><p>builder metadata must be JSON serializable, and external packages should
-record their package version and stable model identity there;</p></li>
-<li><p>custom builders support only <code class="docutils literal notranslate"><span class="pre">output_format=&quot;none&quot;</span></code> unless they explicitly
-declare more formats; declaring a format promises that the trace, roles,
-basis layout, and variables required by that output really are present;</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">model_builder</span></code> and <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> are mutually exclusive; and</p></li>
-<li><p>a component that does not exist, such as inferred model error in a fixed-error
-model, is omitted from the role manifest rather than represented by a magic
-name.</p></li>
-</ul>
-<p>The eager standard builder returns <code class="docutils literal notranslate"><span class="pre">RhimeModelBuildResult</span></code> for direct graph
-inspection. The multisector compatibility runner retains that contract on
-<code class="docutils literal notranslate"><span class="pre">RhimeResult.model_build_result</span></code>. Multisector roles use keys such as
-<code class="docutils literal notranslate"><span class="pre">flux_scale:FF</span></code> and <code class="docutils literal notranslate"><span class="pre">flux_contribution:FF</span></code>. Deferred-family low-level builders
-retain their existing plain-model and result-wrapper interfaces.</p>
+<p>The standard recipe exposes corresponding <code class="docutils literal notranslate"><span class="pre">materialize_standard_inputs</span></code> and
+<code class="docutils literal notranslate"><span class="pre">build_standard_model</span></code> functions. Both recipes share <code class="docutils literal notranslate"><span class="pre">make_model_output</span></code>
+with an explicit <code class="docutils literal notranslate"><span class="pre">split_by_sectors</span></code> choice and <code class="docutils literal notranslate"><span class="pre">save_inversion_output</span></code> for
+scientific result and trace exports. Each recipe has one eager model builder.
+Both builders return <code class="docutils literal notranslate"><span class="pre">RhimeModelBuildResult</span></code>, containing the concrete
+<code class="docutils literal notranslate"><span class="pre">pm.Model</span></code> and its <code class="docutils literal notranslate"><span class="pre">OutputContract</span></code>. The sampler consumes that graph and
+its scientific variable roles; it does not resolve model choices or output destinations.
+Pass <code class="docutils literal notranslate"><span class="pre">sigma_alignment=...</span></code> to either builder when you already have a
+<code class="docutils literal notranslate"><span class="pre">SigmaAlignment</span></code> for the selected observations; otherwise the likelihood
+constructs its alignment from those observations.</p>
+<p>A copied builder should use <code class="docutils literal notranslate"><span class="pre">registered_model()</span></code> before <code class="docutils literal notranslate"><span class="pre">add_coords</span></code> or
+public model components so inference can restore MultiIndexes and auxiliary
+scientific coordinates. Keep the output contract consistent with the graph:
+multisector roles include <code class="docutils literal notranslate"><span class="pre">flux_scale:FF</span></code> and <code class="docutils literal notranslate"><span class="pre">flux_contribution:FF</span></code> for a
+sector named <code class="docutils literal notranslate"><span class="pre">FF</span></code>. Omit roles for absent terms. The flux reconstruction and
+products shown here require the existing multiplicative sector-state meaning,
+retained basis and source mappings. A model that changes those meanings must
+provide its own reconstruction and product functions rather than reuse an
+incompatible contract. Direct construction does not make a custom graph
+recordable by the package’s saved multisector sampling operation.</p>
+<p>The shared <code class="docutils literal notranslate"><span class="pre">RhimeModelBuilderContext</span></code> remains for deferred nested consumers;
+<code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> remains for nested and CO2 consumers. Neither interface
+is part of standard or multisector construction.</p>
 <p>Structurally distinct observation-channel models belong in readable named
 recipes with concrete builders. The active design guidance is
 <a class="reference internal" href="../development/rhime_model_development.html"><span class="doc">Developing RHIME models</span></a>; the retired semantic-model work
@@ -1073,7 +1048,7 @@ component is insufficient.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#names-and-generated-names">Names and generated names</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#alternative-models-and-likelihoods">Alternative models and likelihoods</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#labelled-per-site-iid-mismatch">Labelled per-site IID mismatch</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#advanced-whole-model-compatibility-boundary">Advanced whole-model compatibility boundary</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#compose-a-complete-model-directly">Compose a complete model directly</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#customization-boundaries">Customization boundaries</a></li>

@@ -390,6 +390,7 @@
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
+<li class="toctree-l2"><a class="reference internal" href="multisector_handoffs.html">Reuse a multisector preparation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="prior_predictive_checking.html">Prior predictive checking tutorial</a></li>
 </ul>
 </details></li>
@@ -586,10 +587,10 @@ an existing compatible uv environment.</p>
         <span class="s2">"OPENGHG_TUTORIAL_CODE_REF"</span><span class="p">,</span> <span class="s2">"local checkout"</span>
     <span class="p">),</span>
     <span class="s2">"tutorial data"</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"OPENGHG_TUTORIAL_DATA_TAG"</span><span class="p">,</span> <span class="s2">"v1.0.0"</span><span class="p">),</span>
-    <span class="s2">"sites"</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">run_spec</span><span class="o">.</span><span class="n">sites</span><span class="p">),</span>
+    <span class="s2">"sites"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">run_metadata</span><span class="p">[</span><span class="s2">"sites"</span><span class="p">],</span>
     <span class="s2">"observations"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">inv_inputs</span><span class="o">.</span><span class="n">sizes</span><span class="p">[</span><span class="s2">"nmeasure"</span><span class="p">],</span>
     <span class="s2">"posterior samples"</span><span class="p">:</span> <span class="p">{</span>
-        <span class="n">name</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">idata</span><span class="o">.</span><span class="n">posterior</span><span class="o">.</span><span class="n">sizes</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"chain"</span><span class="p">,</span> <span class="s2">"draw"</span><span class="p">)</span>
+        <span class="n">name</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">trace_group</span><span class="p">(</span><span class="s2">"posterior"</span><span class="p">)</span><span class="o">.</span><span class="n">sizes</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"chain"</span><span class="p">,</span> <span class="s2">"draw"</span><span class="p">)</span>
     <span class="p">},</span>
 <span class="p">}</span>
 </pre></div>
@@ -606,22 +607,21 @@ an existing compatible uv environment.</p>
 </div>
 </div>
 </section>
-<section id="inspect-labelled-state-and-provenance">
-<h2>Inspect labelled state and provenance<a class="headerlink" href="#inspect-labelled-state-and-provenance" title="Link to this heading">#</a></h2>
+<section id="inspect-labelled-state-and-model-context">
+<h2>Inspect labelled state and model context<a class="headerlink" href="#inspect-labelled-state-and-model-context" title="Link to this heading">#</a></h2>
 <div class="jupyter_cell jupyter_container docutils container">
 <div class="cell_input code_cell docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">inversion_output</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">outputs</span><span class="p">[</span><span class="s2">"inversion_output"</span><span class="p">]</span>
-<span class="p">{</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
     <span class="s2">"sectors"</span><span class="p">:</span> <span class="p">[</span>
-        <span class="p">(</span><span class="n">sector</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">sector</span><span class="o">.</span><span class="n">flux_source</span><span class="p">)</span> <span class="k">for</span> <span class="n">sector</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">model_spec</span><span class="o">.</span><span class="n">sectors</span>
+        <span class="p">(</span><span class="n">sector</span><span class="p">[</span><span class="s2">"name"</span><span class="p">],</span> <span class="n">sector</span><span class="p">[</span><span class="s2">"flux_source"</span><span class="p">])</span>
+        <span class="k">for</span> <span class="n">sector</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">model_metadata</span><span class="p">[</span><span class="s2">"sectors"</span><span class="p">]</span>
     <span class="p">],</span>
     <span class="s2">"H dimensions"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H"</span><span class="p">]</span><span class="o">.</span><span class="n">dims</span><span class="p">,</span>
     <span class="s2">"source labels"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H"</span><span class="p">]</span><span class="o">.</span><span class="n">source</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">tolist</span><span class="p">(),</span>
     <span class="s2">"scale variables"</span><span class="p">:</span> <span class="nb">sorted</span><span class="p">(</span>
-        <span class="n">name</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">idata</span><span class="o">.</span><span class="n">posterior</span><span class="o">.</span><span class="n">data_vars</span> <span class="k">if</span> <span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"x_"</span><span class="p">)</span>
+        <span class="n">name</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">trace_group</span><span class="p">(</span><span class="s2">"posterior"</span><span class="p">)</span><span class="o">.</span><span class="n">data_vars</span> <span class="k">if</span> <span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"x_"</span><span class="p">)</span>
     <span class="p">),</span>
-    <span class="s2">"variable roles"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">model_build_result</span><span class="o">.</span><span class="n">variable_roles</span><span class="p">,</span>
-    <span class="s2">"provenance contract"</span><span class="p">:</span> <span class="n">inversion_output</span><span class="o">.</span><span class="n">provenance</span><span class="p">[</span><span class="s2">"contract"</span><span class="p">],</span>
+    <span class="s2">"variable roles"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">model_metadata</span><span class="p">[</span><span class="s2">"variable_roles"</span><span class="p">],</span>
 <span class="p">}</span>
 </pre></div>
 </div>
@@ -648,8 +648,7 @@ an existing compatible uv environment.</p>
   'boundary': 'mu_bc',
   'baseline_scale': 'bc',
   'baseline_sensitivity': 'hbc',
-  'baseline': 'mu_bc'},
- 'provenance contract': 'modern_rhime_inversion_output'}
+  'baseline': 'mu_bc'}}
 </pre></div>
 </div>
 </div>
@@ -670,23 +669,31 @@ separately identify those sources, even when every array label is correct.</p>
 </section>
 <section id="inspect-the-sector-source-output">
 <h2>Inspect the sector/source output<a class="headerlink" href="#inspect-the-sector-source-output" title="Link to this heading">#</a></h2>
-<p>Every multisector run constructs labelled sector diagnostics. With the
-configured <code class="docutils literal notranslate"><span class="pre">inv_out</span></code> output they are also persisted:</p>
+<p>The configured <code class="docutils literal notranslate"><span class="pre">inv_out</span></code> output writes labelled sector diagnostics alongside
+the self-contained inversion output. To inspect the same scientific reduction in
+memory, call the product operation explicitly:</p>
 <div class="jupyter_cell jupyter_container docutils container">
 <div class="cell_input code_cell docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">diagnostics</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">outputs</span><span class="p">[</span><span class="s2">"sector_flux_diagnostics"</span><span class="p">]</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.postprocessing.make_outputs</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_sector_flux_outputs</span>
+
+<span class="n">diagnostics</span> <span class="o">=</span> <span class="n">make_sector_flux_outputs</span><span class="p">(</span>
+    <span class="n">result</span><span class="p">,</span>
+    <span class="n">stats</span><span class="o">=</span><span class="p">[</span><span class="s2">"mean"</span><span class="p">],</span>
+    <span class="n">include_scale_factors</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">report_flux_on_inversion_grid</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">product_stem</span> <span class="o">=</span> <span class="s2">"multisector_tutorial"</span> <span class="o">+</span> <span class="n">result</span><span class="o">.</span><span class="n">start_date</span>
+<span class="n">diagnostic_path</span> <span class="o">=</span> <span class="n">tutorial_output_path</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">product_stem</span><span class="si">}</span><span class="s2">_sector_flux_diagnostics.nc"</span>
+<span class="n">inversion_path</span> <span class="o">=</span> <span class="n">tutorial_output_path</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">product_stem</span><span class="si">}</span><span class="s2">_inversion_output.nc"</span>
+<span class="k">assert</span> <span class="n">diagnostic_path</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span> <span class="ow">and</span> <span class="n">inversion_path</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span>
 <span class="p">{</span>
     <span class="s2">"diagnostic variables"</span><span class="p">:</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">diagnostics</span><span class="o">.</span><span class="n">data_vars</span><span class="p">),</span>
     <span class="s2">"diagnostic sizes"</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(</span><span class="n">diagnostics</span><span class="o">.</span><span class="n">sizes</span><span class="p">),</span>
     <span class="s2">"variable dimensions"</span><span class="p">:</span> <span class="p">{</span>
         <span class="n">name</span><span class="p">:</span> <span class="n">diagnostics</span><span class="p">[</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">dims</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">diagnostics</span><span class="o">.</span><span class="n">data_vars</span><span class="p">)</span>
     <span class="p">},</span>
-    <span class="s2">"sector diagnostics file"</span><span class="p">:</span> <span class="n">Path</span><span class="p">(</span>
-        <span class="n">result</span><span class="o">.</span><span class="n">output_metadata</span><span class="p">[</span><span class="s2">"sector_flux_diagnostics_path"</span><span class="p">]</span>
-    <span class="p">)</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
-    <span class="s2">"inversion output file"</span><span class="p">:</span> <span class="n">Path</span><span class="p">(</span>
-        <span class="n">result</span><span class="o">.</span><span class="n">output_metadata</span><span class="p">[</span><span class="s2">"inversion_output_path"</span><span class="p">]</span>
-    <span class="p">)</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+    <span class="s2">"sector diagnostics file"</span><span class="p">:</span> <span class="n">diagnostic_path</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+    <span class="s2">"inversion output file"</span><span class="p">:</span> <span class="n">inversion_path</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
 <span class="p">}</span>
 </pre></div>
 </div>
@@ -738,6 +745,21 @@ two maintained fixture products, one a dimension-shuffled numerical duplicate,
 and deterministic sampling. That verifies labelled routing and persistence,
 not scientific sector separation. Normal CI does not clone or download the
 companion data repository.</p>
+</section>
+<section id="reuse-preparation-and-saved-samples">
+<h2>Reuse preparation and saved samples<a class="headerlink" href="#reuse-preparation-and-saved-samples" title="Link to this heading">#</a></h2>
+<p>For the same resolved <code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code>,
+<code class="docutils literal notranslate"><span class="pre">run_multisector(prepared=prepared,</span> <span class="pre">config=config)</span></code> starts at the model-input
+boundary and returns <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code>, as the full runner does.
+<code class="docutils literal notranslate"><span class="pre">rhime.multisector_stages.prepare</span></code> saves one preparation manifest;
+<code class="docutils literal notranslate"><span class="pre">sample</span></code> accepts it with current compatible sector-prior, likelihood and sampler
+choices; <code class="docutils literal notranslate"><span class="pre">postprocess</span></code> accepts one sample manifest with current output choices.
+Keep each model’s samples in a separate destination. Replayed products retain the
+original requested window, sector/source associations and prior flux without
+building a graph or repeating inference.</p>
+<p>See <a class="reference internal" href="staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> for phase-only configuration and checkpoint lifetime,
+and <a class="reference internal" href="multisector_handoffs.html"><span class="doc">Reuse a multisector preparation</span></a> for an executable notebook comparing full, staged
+and replayed execution using synthetic data. Its <a class="reference download internal" download="" href="../_downloads/8e75f4384736dcc972ca5321305c6b91/multisector_handoffs.py"><code class="xref download docutils literal notranslate"><span class="pre">companion</span> <span class="pre">script</span></code></a> also checks independent model equations.</p>
 </section>
 <section id="common-failures">
 <h2>Common failures<a class="headerlink" href="#common-failures" title="Link to this heading">#</a></h2>
@@ -812,8 +834,9 @@ changing <code class="docutils literal notranslate"><span class="pre">output_for
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#prerequisites-and-sector-inputs">Prerequisites and sector inputs</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuration">Configuration</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-it">Run it</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#inspect-labelled-state-and-provenance">Inspect labelled state and provenance</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#inspect-labelled-state-and-model-context">Inspect labelled state and model context</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#inspect-the-sector-source-output">Inspect the sector/source output</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#reuse-preparation-and-saved-samples">Reuse preparation and saved samples</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#common-failures">Common failures</a></li>
 </ul>
   </nav></div>

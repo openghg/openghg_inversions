@@ -391,6 +391,7 @@
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
+<li class="toctree-l2"><a class="reference internal" href="multisector_handoffs.html">Reuse a multisector preparation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="prior_predictive_checking.html">Prior predictive checking tutorial</a></li>
 </ul>
 </details></li>
@@ -668,17 +669,25 @@ they enter at different scientific boundaries. Standard results retain the actua
 inference description in <code class="docutils literal notranslate"><span class="pre">result.output_metadata[&quot;sampler&quot;]</span></code> without a live
 sampler or PyMC model. Replay reuses that description without inference or current
 defaults.</p>
-<p><code class="docutils literal notranslate"><span class="pre">run_rhime_from_prepared_inputs</span></code> is retained only for multisector execution with
-<code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code>. The standard 0.7 call using <code class="docutils literal notranslate"><span class="pre">prepared_inputs</span></code> plus a one-sector
-<code class="docutils literal notranslate"><span class="pre">run_spec</span></code> must migrate to <code class="docutils literal notranslate"><span class="pre">run_standard(prepared=...,</span> <span class="pre">config=...)</span></code>; it is not
-accepted by the retained multisector entry point. That entry point and the nested,
-CO2 and CO2/O2 prepared runners accept <code class="docutils literal notranslate"><span class="pre">sampler=&quot;default&quot;</span></code> (also omission) or a
-configured <code class="docutils literal notranslate"><span class="pre">RhimeSampler</span></code>. Explicit <code class="docutils literal notranslate"><span class="pre">sampler=None</span></code> is rejected. Each invocation
-isolates mutable option containers while borrowing scientific arrays.</p>
+<p>For multisector execution with ordinary resolved configuration, use
+<code class="docutils literal notranslate"><span class="pre">run_multisector(prepared=prepared,</span> <span class="pre">config=config)</span></code> with
+<code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params(options,</span> <span class="pre">multisector=True)</span></code>. It returns <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code>
+and uses the same materialization, construction, inference and output operations
+as a full multisector run. Saved phases use those operations through
+<code class="docutils literal notranslate"><span class="pre">rhime.multisector_stages</span></code>; see <a class="reference internal" href="staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> for preparation reuse,
+compatible prior/likelihood changes and graph-free product replay.</p>
+<p>The old <code class="docutils literal notranslate"><span class="pre">run_rhime_from_prepared_inputs</span></code> entry point is removed. Standard and
+multisector callers use their ordinary runner with <code class="docutils literal notranslate"><span class="pre">prepared</span></code> and <code class="docutils literal notranslate"><span class="pre">config</span></code>.
+For whole-model changes, compose construction and sampling directly as shown in
+<a class="reference internal" href="concrete_rhime_model.html#rhime-complete-model-composition"><span class="std std-ref">Compose a complete model directly</span></a>. The nested, CO2 and CO2/O2 prepared
+runners retain their separate interfaces; they accept <code class="docutils literal notranslate"><span class="pre">sampler=&quot;default&quot;</span></code>
+(also omission) or a configured <code class="docutils literal notranslate"><span class="pre">RhimeSampler</span></code>. Explicit <code class="docutils literal notranslate"><span class="pre">sampler=None</span></code> is
+rejected. Each invocation isolates mutable option containers while borrowing
+scientific arrays.</p>
 <p>The prepared object is trusted canonical input: it must already contain the
 observation, error, sensitivity, and optional boundary-condition variables
-required by the selected model. A multisector run requires
-<code class="docutils literal notranslate"><span class="pre">run_spec.split_by_sectors=True</span></code> and a source-resolved layout on
+required by the selected model. A multisector run requires sector-split
+configuration and a source-resolved layout on
 <code class="docutils literal notranslate"><span class="pre">prepared.inv_inputs[&quot;H&quot;]</span></code>. Shared-basis inputs may use a rectangular
 <code class="docutils literal notranslate"><span class="pre">source</span></code> dimension. Source-specific, ragged state blocks use one gathered
 state dimension with a <code class="docutils literal notranslate"><span class="pre">(source,</span> <span class="pre">region_in_source)</span></code> MultiIndex. A scalar
@@ -891,43 +900,33 @@ prepared artifact is reopened:</p>
 </div>
 <p>Finally, construct and execute the OpenGHG Inversions run from the canonical
 prepared object:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeModelSpec</span><span class="p">,</span> <span class="n">SectorSpec</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">RhimeOutputSpec</span><span class="p">,</span>
-    <span class="n">RhimeRunSpec</span><span class="p">,</span>
-    <span class="n">RhimeSampler</span><span class="p">,</span>
-    <span class="n">run_rhime_from_prepared_inputs</span><span class="p">,</span>
-<span class="p">)</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeConfig</span><span class="p">,</span> <span class="n">run_multisector</span>
 
 <span class="n">sources</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"ocean"</span><span class="p">,</span> <span class="s2">"FF"</span><span class="p">,</span> <span class="s2">"GPP"</span><span class="p">,</span> <span class="s2">"TER"</span><span class="p">]</span>
-<span class="n">sectors</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span>
-    <span class="n">SectorSpec</span><span class="p">(</span>
-        <span class="n">name</span><span class="o">=</span><span class="n">source</span><span class="p">,</span>
-        <span class="n">flux_source</span><span class="o">=</span><span class="n">source</span><span class="p">,</span>
-        <span class="n">x_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"lognormal"</span><span class="p">,</span> <span class="s2">"mean"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"stdev"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
-        <span class="n">variable_suffix</span><span class="o">=</span><span class="n">source</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span>
-    <span class="p">)</span>
-    <span class="k">for</span> <span class="n">source</span> <span class="ow">in</span> <span class="n">sources</span>
+<span class="n">config</span> <span class="o">=</span> <span class="n">RhimeConfig</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+    <span class="p">{</span>
+        <span class="s2">"species"</span><span class="p">:</span> <span class="s2">"co2"</span><span class="p">,</span>
+        <span class="s2">"domain"</span><span class="p">:</span> <span class="s2">"EUROPE"</span><span class="p">,</span>
+        <span class="s2">"start_date"</span><span class="p">:</span> <span class="s2">"2021-01-01"</span><span class="p">,</span>
+        <span class="s2">"end_date"</span><span class="p">:</span> <span class="s2">"2021-01-05"</span><span class="p">,</span>
+        <span class="s2">"sites"</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">prepared</span><span class="o">.</span><span class="n">sites</span><span class="p">),</span>
+        <span class="s2">"averaging_period"</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">prepared</span><span class="o">.</span><span class="n">averaging_period</span><span class="p">),</span>
+        <span class="s2">"flux_sources"</span><span class="p">:</span> <span class="n">sources</span><span class="p">,</span>
+        <span class="s2">"sector_priors"</span><span class="p">:</span> <span class="p">{</span>
+            <span class="n">source</span><span class="p">:</span> <span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"lognormal"</span><span class="p">,</span> <span class="s2">"mean"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"stdev"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">}</span>
+            <span class="k">for</span> <span class="n">source</span> <span class="ow">in</span> <span class="n">sources</span>
+        <span class="p">},</span>
+        <span class="s2">"sigma_freq"</span><span class="p">:</span> <span class="s2">"monthly"</span><span class="p">,</span>
+        <span class="s2">"use_bc"</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="s2">"output_name"</span><span class="p">:</span> <span class="s2">"external-inputs"</span><span class="p">,</span>
+        <span class="s2">"output_format"</span><span class="p">:</span> <span class="s2">"none"</span><span class="p">,</span>
+        <span class="s2">"draws"</span><span class="p">:</span> <span class="mi">1000</span><span class="p">,</span>
+        <span class="s2">"tune"</span><span class="p">:</span> <span class="mi">1000</span><span class="p">,</span>
+        <span class="s2">"chains"</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="n">multisector</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="n">run_spec</span> <span class="o">=</span> <span class="n">RhimeRunSpec</span><span class="p">(</span>
-    <span class="n">start_date</span><span class="o">=</span><span class="s2">"2021-01-01"</span><span class="p">,</span>
-    <span class="n">end_date</span><span class="o">=</span><span class="s2">"2021-01-05"</span><span class="p">,</span>
-    <span class="n">sites</span><span class="o">=</span><span class="n">prepared</span><span class="o">.</span><span class="n">sites</span><span class="p">,</span>
-    <span class="n">averaging_period</span><span class="o">=</span><span class="n">prepared</span><span class="o">.</span><span class="n">averaging_period</span><span class="p">,</span>
-    <span class="n">model</span><span class="o">=</span><span class="n">RhimeModelSpec</span><span class="p">(</span>
-        <span class="n">species</span><span class="o">=</span><span class="s2">"co2"</span><span class="p">,</span>
-        <span class="n">domain</span><span class="o">=</span><span class="s2">"EUROPE"</span><span class="p">,</span>
-        <span class="n">sectors</span><span class="o">=</span><span class="n">sectors</span><span class="p">,</span>
-        <span class="n">sigma_freq</span><span class="o">=</span><span class="s2">"monthly"</span><span class="p">,</span>
-    <span class="p">),</span>
-    <span class="n">output</span><span class="o">=</span><span class="n">RhimeOutputSpec</span><span class="p">(</span><span class="n">output_format</span><span class="o">=</span><span class="s2">"none"</span><span class="p">),</span>
-    <span class="n">split_by_sectors</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<span class="p">)</span>
-<span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime_from_prepared_inputs</span><span class="p">(</span>
-    <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
-    <span class="n">run_spec</span><span class="o">=</span><span class="n">run_spec</span><span class="p">,</span>
-    <span class="n">sampler</span><span class="o">=</span><span class="n">RhimeSampler</span><span class="p">(</span><span class="n">draws</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">tune</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">chains</span><span class="o">=</span><span class="mi">4</span><span class="p">),</span>
-<span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">run_multisector</span><span class="p">(</span><span class="n">prepared</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>This adapter is an extension boundary for data acquisition and assembly, not a
@@ -1137,7 +1136,8 @@ containing the value <code class="docutils literal notranslate"><span class="pre
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">StateActivity</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">replace</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.standard</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">build_standard_model</span><span class="p">,</span> <span class="n">materialize_standard_inputs</span><span class="p">,</span>
+    <span class="n">build_standard_model</span><span class="p">,</span>
+    <span class="n">materialize_standard_inputs</span><span class="p">,</span>
 <span class="p">)</span>
 
 <span class="n">state_policy</span> <span class="o">=</span> <span class="n">StateActivity</span><span class="p">(</span>
@@ -1146,14 +1146,20 @@ containing the value <code class="docutils literal notranslate"><span class="pre
 <span class="p">)</span>
 <span class="n">selected_model</span> <span class="o">=</span> <span class="n">replace</span><span class="p">(</span><span class="n">model_spec</span><span class="p">,</span> <span class="n">state_activity</span><span class="o">=</span><span class="n">state_policy</span><span class="p">)</span>
 <span class="n">inputs</span><span class="p">,</span> <span class="n">priors</span> <span class="o">=</span> <span class="n">materialize_standard_inputs</span><span class="p">(</span><span class="n">prepared</span><span class="p">,</span> <span class="n">selected_model</span><span class="p">)</span>
-<span class="n">built</span> <span class="o">=</span> <span class="n">build_standard_model</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="n">selected_model</span><span class="p">,</span> <span class="n">priors</span><span class="o">=</span><span class="n">priors</span><span class="p">)</span>
+<span class="n">built</span> <span class="o">=</span> <span class="n">build_standard_model</span><span class="p">(</span>
+    <span class="n">inputs</span><span class="p">,</span>
+    <span class="n">selected_model</span><span class="p">,</span>
+    <span class="n">priors</span><span class="o">=</span><span class="n">priors</span><span class="p">,</span>
+<span class="p">)</span>
 <span class="n">model</span> <span class="o">=</span> <span class="n">built</span><span class="o">.</span><span class="n">model</span>
 </pre></div>
 </div>
-<p>The direct multisector builder accepts one ordered sequence of <code class="docutils literal notranslate"><span class="pre">SectorSpec</span></code>
-objects. Each sector carries its source, backend suffix, prior, and optional
-<code class="docutils literal notranslate"><span class="pre">state_activity</span></code> override; the builder’s <code class="docutils literal notranslate"><span class="pre">state_activity</span></code> argument supplies
-the shared policy. <code class="docutils literal notranslate"><span class="pre">StateActivity(active=False)</span></code> freezes a complete sector.
+<p>The multisector builder reads the ordered <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec.sectors</span></code> sequence.
+Each <code class="docutils literal notranslate"><span class="pre">SectorSpec</span></code> carries its source, backend suffix, prior, and optional
+<code class="docutils literal notranslate"><span class="pre">state_activity</span></code> override; <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec.state_activity</span></code> supplies the
+shared policy. Call <code class="docutils literal notranslate"><span class="pre">materialize_multisector_inputs(prepared,</span> <span class="pre">model_spec)</span></code>
+first, then pass its Dataset and eager priors to <code class="docutils literal notranslate"><span class="pre">build_multisector_model</span></code>.
+<code class="docutils literal notranslate"><span class="pre">StateActivity(active=False)</span></code> freezes a complete sector.
 RHIME config-file syntax and persisted activity-reason tables remain follow-up
 work. Each <code class="docutils literal notranslate"><span class="pre">SectorSpec.x_prior</span></code> supports the same scalar, full-state array,
 and labelled <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> parameter forms; labelled values must match the
@@ -1164,8 +1170,8 @@ selected sector’s state coordinate exactly.</p>
 consume the resulting <code class="docutils literal notranslate"><span class="pre">ResolvedStateActivity</span></code>; they do not inspect <code class="docutils literal notranslate"><span class="pre">H</span></code> or
 infer its output dimension.</p>
 <p>Boundary-condition scaling states can be handled the same way. Set
-<code class="docutils literal notranslate"><span class="pre">RhimeModelSpec(bc_state_activity=StateActivity(active=False))</span></code> (or the
-equivalent low-level builder argument) to retain <code class="docutils literal notranslate"><span class="pre">mu_bc</span> <span class="pre">=</span> <span class="pre">H_bc</span> <span class="pre">&#64;</span> <span class="pre">bc</span></code> with a
+<code class="docutils literal notranslate"><span class="pre">bc_state_activity=StateActivity(active=False)</span></code> on <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code> to retain
+<code class="docutils literal notranslate"><span class="pre">mu_bc</span> <span class="pre">=</span> <span class="pre">H_bc</span> <span class="pre">&#64;</span> <span class="pre">bc</span></code> with a
 fixed <code class="docutils literal notranslate"><span class="pre">bc</span></code> vector and no boundary-condition random variable. This is distinct
 from supplying a standalone baseline time series, which belongs to a separate
 baseline component.</p>
@@ -1269,7 +1275,8 @@ retain their gathered <code class="docutils literal notranslate"><span class="pr
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">replace</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.standard</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">build_standard_model</span><span class="p">,</span> <span class="n">materialize_standard_inputs</span><span class="p">,</span>
+    <span class="n">build_standard_model</span><span class="p">,</span>
+    <span class="n">materialize_standard_inputs</span><span class="p">,</span>
 <span class="p">)</span>
 
 <span class="n">x_prior_stdev</span> <span class="o">=</span> <span class="n">project_basis_prior_stdev</span><span class="p">(</span>
@@ -1283,7 +1290,11 @@ retain their gathered <code class="docutils literal notranslate"><span class="pr
 <span class="p">)</span>
 <span class="n">selected_model</span> <span class="o">=</span> <span class="n">replace</span><span class="p">(</span><span class="n">model_spec</span><span class="p">,</span> <span class="n">sectors</span><span class="o">=</span><span class="p">(</span><span class="n">selected_sector</span><span class="p">,))</span>
 <span class="n">inputs</span><span class="p">,</span> <span class="n">priors</span> <span class="o">=</span> <span class="n">materialize_standard_inputs</span><span class="p">(</span><span class="n">prepared</span><span class="p">,</span> <span class="n">selected_model</span><span class="p">)</span>
-<span class="n">built</span> <span class="o">=</span> <span class="n">build_standard_model</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="n">selected_model</span><span class="p">,</span> <span class="n">priors</span><span class="o">=</span><span class="n">priors</span><span class="p">)</span>
+<span class="n">built</span> <span class="o">=</span> <span class="n">build_standard_model</span><span class="p">(</span>
+    <span class="n">inputs</span><span class="p">,</span>
+    <span class="n">selected_model</span><span class="p">,</span>
+    <span class="n">priors</span><span class="o">=</span><span class="n">priors</span><span class="p">,</span>
+<span class="p">)</span>
 <span class="n">model</span> <span class="o">=</span> <span class="n">built</span><span class="o">.</span><span class="n">model</span>
 </pre></div>
 </div>
@@ -1324,7 +1335,7 @@ configuration construction. Prefer <code class="docutils literal notranslate"><s
 the standard runner. To inspect reporting results in memory, call
 <code class="docutils literal notranslate"><span class="pre">basic_output(result,</span> <span class="pre">country_file=...)</span></code> on the returned <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code>.
 The runner calls <code class="docutils literal notranslate"><span class="pre">postprocess_standard_outputs</span></code> to compute and write configured
-PARIS or legacy products, then <code class="docutils literal notranslate"><span class="pre">save_standard_artifacts</span></code> to export the scientific
+PARIS or legacy products, then <code class="docutils literal notranslate"><span class="pre">save_inversion_output</span></code> to export the scientific
 result and trace. PARIS and legacy requests require an <code class="docutils literal notranslate"><span class="pre">output_path</span></code> before
 sampling. Export defaults and filename policy remain unchanged. See
 <a class="reference internal" href="staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> for the distinction between checkpoints, self-contained

@@ -71,10 +71,12 @@ its options again:
    result = run_standard(config=config)
 
 For multisector requests, construct with ``multisector=True`` and use
-``run_rhime_multisector(config=config)``. An explicit ``data.split_by_sectors``
-value must match the selected recipe; omitted values inherit it. Saved standard
-preparations with a conflicting recorded layout are rejected before numerical
-inputs are loaded. A resolved ``config`` cannot be
+``run_multisector(config=config)``. Supply ``prepared=prepared`` to reuse
+canonical inputs with the same resolved configuration, bypassing acquisition and
+preparation. An explicit ``data.split_by_sectors`` value must match the selected
+recipe; omitted values inherit it. Saved standard and multisector preparations
+with a conflicting recorded layout are rejected before numerical inputs are
+loaded. A resolved ``config`` cannot be
 combined with ``config_file`` or raw configuration keyword arguments. Python
 execution inputs such as ``merged_data`` and a custom ``likelihood_builder``
 remain separate arguments; a custom likelihood still requires the resolved
@@ -230,7 +232,9 @@ Standard full runs call
 inference. This checks country resources and requires ``output_path`` for PARIS
 and legacy products. Staged standard postprocessing applies the same check before
 loading samples. Direct callers of ``postprocess_standard_outputs`` must perform
-this check first. Multisector and nested routes retain
+this check first. Multisector full and saved runs call
+``rhime.validate_multisector_output_resources`` before acquisition/inference or
+sample loading; PARIS products require ``output_path``. Nested routes retain
 ``rhime.validate_output_resources``, which checks country resources without
 requiring a written-product destination. Preparation-only workflows do not
 require reporting resources. Packaged tutorial fixtures remain usable when
@@ -330,11 +334,13 @@ in-memory acquisition and :doc:`rhime` for saving and loading prepared inputs.
 The requested configuration contains no acquired/prepared handoff or
 ``RhimeRunSpec``.
 Merged and prepared handoffs describe the sites retained by acquisition and
-filtering. Deferred-family runners create their execution ``RhimeRunSpec`` after
-preparation: it combines those retained sites and periods with the requested
-date bounds and resolved model/output choices. If only TAC remains from a
-TAC/MHD request, the configuration continues to name both sites while the run
-specification names TAC. A supplied compatible merged handoff keeps its own
+filtering. Nested and CO2 runners still create an execution
+``RhimeRunSpec`` after preparation: it combines those retained sites and periods
+with the requested date bounds and resolved model/output choices. If only TAC
+remains from a TAC/MHD request, the configuration continues to name both sites while the run
+specification names TAC. Standard and multisector execution bind retained sites
+and periods directly into the scientific output without constructing a run
+specification. A supplied compatible merged handoff keeps its own
 authoritative site options. The :doc:`prepared-input API <rhime>` remains independent of ``RhimeConfig``.
 
 Forwarding resolved values in custom runners

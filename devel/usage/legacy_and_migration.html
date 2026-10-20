@@ -390,6 +390,7 @@
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
+<li class="toctree-l2"><a class="reference internal" href="multisector_handoffs.html">Reuse a multisector preparation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="prior_predictive_checking.html">Prior predictive checking tutorial</a></li>
 </ul>
 </details></li>
@@ -509,17 +510,17 @@ Runner frontends, including direct <code class="docutils literal notranslate"><s
 aliases through 0.8 with deprecation warnings. <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>
 accepts canonical names only and has no alias translation or warnings.
 Modern output formats and explicit save paths remain.</p></li>
-<li><p>Replace standard <code class="docutils literal notranslate"><span class="pre">run_rhime_from_prepared_inputs(prepared_inputs=...,</span>
-<span class="pre">run_spec=...)</span></code> calls, including the 0.7 one-sector <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> convention,
-with <code class="docutils literal notranslate"><span class="pre">run_standard(prepared=prepared,</span> <span class="pre">config=config)</span></code>. The ordinary resolved
-<code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code> supplies model, output, date and sampler choices; supplied
-prepared inputs skip acquisition/preparation. <code class="docutils literal notranslate"><span class="pre">run_rhime_from_prepared_inputs</span></code>
-now serves only the retained multisector compatibility route. Standard custom
-likelihoods use <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code>; replacing the complete standard graph
-requires direct PyMC construction and sampling. Standard construction uses
-<code class="docutils literal notranslate"><span class="pre">build_standard_model</span></code> with eager inputs and prior parameters. Call
-<code class="docutils literal notranslate"><span class="pre">materialize_standard_inputs</span></code> explicitly where needed to compute related
-arrays together. Select acquisition/preparation arguments with
+<li><p>Replace <code class="docutils literal notranslate"><span class="pre">run_rhime_from_prepared_inputs(prepared_inputs=...,</span> <span class="pre">run_spec=...)</span></code>
+calls with <code class="docutils literal notranslate"><span class="pre">run_standard(prepared=prepared,</span> <span class="pre">config=config)</span></code> or
+<code class="docutils literal notranslate"><span class="pre">run_multisector(prepared=prepared,</span> <span class="pre">config=config)</span></code>. The old entry point and
+its multisector result/configuration adapters are removed. The ordinary
+resolved <code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code> supplies separate data, model, output and sampler
+choices; supplied prepared inputs skip acquisition/preparation. Custom
+likelihoods use <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code>. Replacing the complete graph requires
+direct construction and sampling; see <a class="reference internal" href="concrete_rhime_model.html#rhime-complete-model-composition"><span class="std std-ref">Compose a complete model directly</span></a>.
+Both recipes expose <code class="docutils literal notranslate"><span class="pre">materialize_*_inputs</span></code> and <code class="docutils literal notranslate"><span class="pre">build_*_model</span></code> operations
+so related arrays and enabled priors are computed together before PyMC
+construction. Select acquisition/preparation arguments with
 <code class="docutils literal notranslate"><span class="pre">config.data.select(...)</span></code> and use <code class="docutils literal notranslate"><span class="pre">config.model</span></code> / <code class="docutils literal notranslate"><span class="pre">config.output</span></code> directly;
 the global <code class="docutils literal notranslate"><span class="pre">RhimeConfig.select</span></code> API has been removed.</p></li>
 <li><p>Use invocation-relative paths for Python/CLI calls, INI/JSON resource and
@@ -541,12 +542,23 @@ paths or loading scientific data during configuration construction.</p></li>
 <code class="docutils literal notranslate"><span class="pre">build_standard_model</span></code> contract. Model inputs and enabled prior parameters must
 be materialized before calling it; <code class="docutils literal notranslate"><span class="pre">materialize_standard_inputs</span></code> is the shared
 convenience operation. It is not another CLI phase.</p>
+<p>Replace <code class="docutils literal notranslate"><span class="pre">build_multisector_rhime_model</span></code> and
+<code class="docutils literal notranslate"><span class="pre">build_multisector_rhime_model_result</span></code> with <code class="docutils literal notranslate"><span class="pre">build_multisector_model</span></code>.
+Pass the canonical Dataset and resolved <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code>, together with eager
+<code class="docutils literal notranslate"><span class="pre">priors</span></code> from <code class="docutils literal notranslate"><span class="pre">materialize_multisector_inputs</span></code>. The single builder constructs
+the scientific graph and returns <code class="docutils literal notranslate"><span class="pre">RhimeModelBuildResult</span></code>; use <code class="docutils literal notranslate"><span class="pre">built.model</span></code>
+when a caller needs the PyMC graph. Its optional <code class="docutils literal notranslate"><span class="pre">sigma_alignment</span></code> argument
+accepts an already resolved mismatch alignment, as in the standard builder.</p>
 <p><code class="docutils literal notranslate"><span class="pre">RhimeModelBuildResult</span></code> now takes only <code class="docutils literal notranslate"><span class="pre">model</span></code> and <code class="docutils literal notranslate"><span class="pre">output_contract</span></code>.
 Move its former <code class="docutils literal notranslate"><span class="pre">variable_roles</span></code>, <code class="docutils literal notranslate"><span class="pre">supported_output_formats</span></code> and <code class="docutils literal notranslate"><span class="pre">metadata</span></code>
 arguments into an <code class="docutils literal notranslate"><span class="pre">OutputContract</span></code> from
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.contracts</span></code>. The legacy
-<code class="docutils literal notranslate"><span class="pre">make_standard_rhime_result</span></code> facade is removed; use <code class="docutils literal notranslate"><span class="pre">make_standard_output</span></code>
-for the standard scientific result.</p>
+<code class="docutils literal notranslate"><span class="pre">make_standard_rhime_result</span></code> facade is removed. The former
+<code class="docutils literal notranslate"><span class="pre">make_standard_output</span></code> and <code class="docutils literal notranslate"><span class="pre">make_multisector_output</span></code> constructors are
+replaced by <code class="docutils literal notranslate"><span class="pre">make_model_output(...,</span> <span class="pre">split_by_sectors=...)</span></code> for both recipes.
+Pass <code class="docutils literal notranslate"><span class="pre">False</span></code> for standard and <code class="docutils literal notranslate"><span class="pre">True</span></code> for multisector scientific results.
+The former <code class="docutils literal notranslate"><span class="pre">save_standard_artifacts</span></code> and <code class="docutils literal notranslate"><span class="pre">save_multisector_artifacts</span></code>
+exporters are replaced by the shared <code class="docutils literal notranslate"><span class="pre">save_inversion_output</span></code> function.</p>
 <p>Configuration helpers introduced during this development cycle are named
 <code class="docutils literal notranslate"><span class="pre">load_params</span></code>, <code class="docutils literal notranslate"><span class="pre">group_params</span></code> and <code class="docutils literal notranslate"><span class="pre">option_groups</span></code>; <code class="docutils literal notranslate"><span class="pre">read_rhime_ini</span></code> retains
 its established name. <code class="docutils literal notranslate"><span class="pre">RHIME_PREPARATION_OPTION_NAMES</span></code> is removed; select named
@@ -557,7 +569,7 @@ on the returned <code class="docutils literal notranslate"><span class="pre">Inv
 writers, invoked through <code class="docutils literal notranslate"><span class="pre">postprocess_standard_outputs(result,</span> <span class="pre">output_spec)</span></code>.
 Call <code class="docutils literal notranslate"><span class="pre">validate_standard_output_resources(output_spec)</span></code> before execution;
 standard PARIS and legacy requests require an <code class="docutils literal notranslate"><span class="pre">output_path</span></code>. The separate
-<code class="docutils literal notranslate"><span class="pre">save_standard_artifacts(result,</span> <span class="pre">output_spec)</span></code> exports inversion outputs and
+<code class="docutils literal notranslate"><span class="pre">save_inversion_output(result,</span> <span class="pre">output_spec)</span></code> exports inversion outputs and
 traces without computing derived products. Copied runners should call the
 postprocessor before the exporter.</p>
 <p><code class="docutils literal notranslate"><span class="pre">acquire_merged_data(data_config)</span></code> now only acquires data. Validate a supplied
@@ -657,8 +669,9 @@ the table below:</p>
 <code class="docutils literal notranslate"><span class="pre">ImportError</span></code> directing callers to <code class="docutils literal notranslate"><span class="pre">run_standard</span></code>. This supersedes the earlier
 proposal to retain a deprecated wrapper. The <code class="docutils literal notranslate"><span class="pre">run-rhime</span></code> CLI command retains its
 name, written files and logging and calls <code class="docutils literal notranslate"><span class="pre">run_standard</span></code> directly.</p>
-<p><code class="docutils literal notranslate"><span class="pre">run_standard</span></code>, standard prepared-input execution and <code class="docutils literal notranslate"><span class="pre">stages.postprocess</span></code>
-return an <a class="reference internal" href="../reference/openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><code class="xref py py-class docutils literal notranslate"><span class="pre">InversionOutput</span></code></a>,
+<p><code class="docutils literal notranslate"><span class="pre">run_standard</span></code>, <code class="docutils literal notranslate"><span class="pre">run_multisector</span></code>, their <code class="docutils literal notranslate"><span class="pre">prepared=...</span></code> execution and their
+saved <code class="docutils literal notranslate"><span class="pre">postprocess</span></code> operations return an
+<a class="reference internal" href="../reference/openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><code class="xref py py-class docutils literal notranslate"><span class="pre">InversionOutput</span></code></a>,
 including with <code class="docutils literal notranslate"><span class="pre">output_format=&quot;none&quot;</span></code>. Use <code class="docutils literal notranslate"><span class="pre">result.trace</span></code> instead of
 <code class="docutils literal notranslate"><span class="pre">result.idata</span></code>, and use <code class="docutils literal notranslate"><span class="pre">result.inv_inputs</span></code>, <code class="docutils literal notranslate"><span class="pre">result.basis_functions</span></code>,
 <code class="docutils literal notranslate"><span class="pre">result.variable_roles</span></code>, <code class="docutils literal notranslate"><span class="pre">result.run_metadata</span></code> and <code class="docutils literal notranslate"><span class="pre">result.model_metadata</span></code>
@@ -666,7 +679,34 @@ for the scientific result. Output-policy choices, written paths, live PyMC model
 and samplers are not stored on it; <code class="docutils literal notranslate"><span class="pre">output_metadata</span></code> contains the inference
 description. Call product functions such as <code class="docutils literal notranslate"><span class="pre">basic_output(result)</span></code> to produce
 in-memory summaries. For graph inspection, call the eager model builder directly.
-Deferred multisector, nested and CO2 families retain their existing result types.</p>
+Nested and CO2 families retain their existing result types.</p>
+<p>For multisector prepared execution with ordinary configuration, use
+<code class="docutils literal notranslate"><span class="pre">run_multisector(prepared=prepared,</span> <span class="pre">config=config)</span></code> and a <code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code>
+constructed with <code class="docutils literal notranslate"><span class="pre">multisector=True</span></code>. Keep sector/source mappings and ordering
+unchanged. The result is already the inversion output; remove
+<code class="docutils literal notranslate"><span class="pre">result.inv_out</span></code> and <code class="docutils literal notranslate"><span class="pre">result.outputs[&quot;inversion_output&quot;]</span></code> access. Read sector
+records from <code class="docutils literal notranslate"><span class="pre">result.model_metadata[&quot;sectors&quot;]</span></code> and their scientific roles from
+<code class="docutils literal notranslate"><span class="pre">result.variable_roles</span></code>. Compute in-memory sector diagnostics with
+<code class="docutils literal notranslate"><span class="pre">postprocessing.make_outputs.make_sector_flux_outputs</span></code>. Copied runners call
+<code class="docutils literal notranslate"><span class="pre">postprocess_multisector_outputs(result,</span> <span class="pre">output_spec)</span></code> for requested products,
+then <code class="docutils literal notranslate"><span class="pre">save_inversion_output(result,</span> <span class="pre">output_spec)</span></code> for exports.</p>
+<p>Standard and multisector execution no longer construct <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> or
+return <code class="docutils literal notranslate"><span class="pre">RhimeResult</span></code>. These shared types remain only for the deferred nested
+and cached CO2 recipes until their own consumers migrate. Remove multisector
+calls to <code class="docutils literal notranslate"><span class="pre">make_multisector_rhime_result</span></code> and <code class="docutils literal notranslate"><span class="pre">make_multisector_rhime_outputs</span></code>.
+Use <code class="docutils literal notranslate"><span class="pre">build_multisector_model</span></code>, <code class="docutils literal notranslate"><span class="pre">make_model_output</span></code>, and the explicit
+product/export calls above. For a custom complete model, pass selected eager
+scientific inputs to an ordinary function and sample its returned graph;
+there is no multisector model-builder context or <code class="docutils literal notranslate"><span class="pre">model_builder</span></code> hook.</p>
+<p>The saved multisector envelope and its complete-configuration identity and
+output-binding gates are removed in 0.8. Replace multisector
+<code class="docutils literal notranslate"><span class="pre">prepare_rhime_stage</span></code>/<code class="docutils literal notranslate"><span class="pre">sample_rhime_stage</span></code>/<code class="docutils literal notranslate"><span class="pre">postprocess_rhime_stage</span></code> calls
+with <code class="docutils literal notranslate"><span class="pre">rhime.multisector_stages.prepare</span></code>/<code class="docutils literal notranslate"><span class="pre">sample</span></code>/<code class="docutils literal notranslate"><span class="pre">postprocess</span></code>. Sampling
+requires one preparation manifest and current model/sampler choices; products
+require one sample manifest and current output choices. Use <a class="reference internal" href="staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a>
+to regenerate reusable preparation and sample manifests. Numerical prepared-input
+codecs and final product formats are preserved; this migration does not convert
+0.7 staged manifests.</p>
 </section>
 </section>
 <section id="parameter-mapping">

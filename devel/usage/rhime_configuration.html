@@ -390,6 +390,7 @@
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
+<li class="toctree-l2"><a class="reference internal" href="multisector_handoffs.html">Reuse a multisector preparation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="prior_predictive_checking.html">Prior predictive checking tutorial</a></li>
 </ul>
 </details></li>
@@ -530,10 +531,12 @@ its options again:</p>
 </pre></div>
 </div>
 <p>For multisector requests, construct with <code class="docutils literal notranslate"><span class="pre">multisector=True</span></code> and use
-<code class="docutils literal notranslate"><span class="pre">run_rhime_multisector(config=config)</span></code>. An explicit <code class="docutils literal notranslate"><span class="pre">data.split_by_sectors</span></code>
-value must match the selected recipe; omitted values inherit it. Saved standard
-preparations with a conflicting recorded layout are rejected before numerical
-inputs are loaded. A resolved <code class="docutils literal notranslate"><span class="pre">config</span></code> cannot be
+<code class="docutils literal notranslate"><span class="pre">run_multisector(config=config)</span></code>. Supply <code class="docutils literal notranslate"><span class="pre">prepared=prepared</span></code> to reuse
+canonical inputs with the same resolved configuration, bypassing acquisition and
+preparation. An explicit <code class="docutils literal notranslate"><span class="pre">data.split_by_sectors</span></code> value must match the selected
+recipe; omitted values inherit it. Saved standard and multisector preparations
+with a conflicting recorded layout are rejected before numerical inputs are
+loaded. A resolved <code class="docutils literal notranslate"><span class="pre">config</span></code> cannot be
 combined with <code class="docutils literal notranslate"><span class="pre">config_file</span></code> or raw configuration keyword arguments. Python
 execution inputs such as <code class="docutils literal notranslate"><span class="pre">merged_data</span></code> and a custom <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code>
 remain separate arguments; a custom likelihood still requires the resolved
@@ -671,7 +674,9 @@ Standard full runs call
 inference. This checks country resources and requires <code class="docutils literal notranslate"><span class="pre">output_path</span></code> for PARIS
 and legacy products. Staged standard postprocessing applies the same check before
 loading samples. Direct callers of <code class="docutils literal notranslate"><span class="pre">postprocess_standard_outputs</span></code> must perform
-this check first. Multisector and nested routes retain
+this check first. Multisector full and saved runs call
+<code class="docutils literal notranslate"><span class="pre">rhime.validate_multisector_output_resources</span></code> before acquisition/inference or
+sample loading; PARIS products require <code class="docutils literal notranslate"><span class="pre">output_path</span></code>. Nested routes retain
 <code class="docutils literal notranslate"><span class="pre">rhime.validate_output_resources</span></code>, which checks country resources without
 requiring a written-product destination. Preparation-only workflows do not
 require reporting resources. Packaged tutorial fixtures remain usable when
@@ -762,11 +767,13 @@ in-memory acquisition and <a class="reference internal" href="rhime.html"><span 
 <p>The requested configuration contains no acquired/prepared handoff or
 <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code>.
 Merged and prepared handoffs describe the sites retained by acquisition and
-filtering. Deferred-family runners create their execution <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> after
-preparation: it combines those retained sites and periods with the requested
-date bounds and resolved model/output choices. If only TAC remains from a
-TAC/MHD request, the configuration continues to name both sites while the run
-specification names TAC. A supplied compatible merged handoff keeps its own
+filtering. Nested and CO2 runners still create an execution
+<code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> after preparation: it combines those retained sites and periods
+with the requested date bounds and resolved model/output choices. If only TAC
+remains from a TAC/MHD request, the configuration continues to name both sites while the run
+specification names TAC. Standard and multisector execution bind retained sites
+and periods directly into the scientific output without constructing a run
+specification. A supplied compatible merged handoff keeps its own
 authoritative site options. The <a class="reference internal" href="rhime.html"><span class="doc">prepared-input API</span></a> remains independent of <code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code>.</p>
 </section>
 <section id="forwarding-resolved-values-in-custom-runners">

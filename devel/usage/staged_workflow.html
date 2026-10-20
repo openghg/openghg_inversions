@@ -58,7 +58,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Prior predictive checking tutorial" href="prior_predictive_checking.html" />
+    <link rel="next" title="Reuse a multisector preparation" href="multisector_handoffs.html" />
     <link rel="prev" title="Running and validating inversions" href="running_and_validating.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -390,6 +390,7 @@
 </details></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">Staged RHIME workflows</a></li>
+<li class="toctree-l2"><a class="reference internal" href="multisector_handoffs.html">Reuse a multisector preparation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="prior_predictive_checking.html">Prior predictive checking tutorial</a></li>
 </ul>
 </details></li>
@@ -467,10 +468,10 @@
                   
   <section id="staged-rhime-workflows">
 <h1>Staged RHIME workflows<a class="headerlink" href="#staged-rhime-workflows" title="Link to this heading">#</a></h1>
-<p>The standard recipe can prepare once, sample compatible models into separate
-locations, and produce different outputs from saved samples. <code class="docutils literal notranslate"><span class="pre">run_standard</span></code>
-with or without <code class="docutils literal notranslate"><span class="pre">prepared=...</span></code> uses the same scientific operations
-as the saved phases: prepare inputs, explicitly materialize selected arrays and
+<p>The standard and multisector recipes can prepare once, sample compatible models
+into separate locations, and produce different outputs from saved samples.
+<code class="docutils literal notranslate"><span class="pre">run_standard</span></code> and <code class="docutils literal notranslate"><span class="pre">run_multisector</span></code>, with or without <code class="docutils literal notranslate"><span class="pre">prepared=...</span></code>,
+use the same scientific operations as their saved phases: prepare inputs, explicitly materialize selected arrays and
 enabled priors where needed, build one eager model, sample, construct an
 <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> view, then write requested products and exports. Checkpoints
 add loading and saving at those boundaries; full execution needs no intermediate
@@ -500,7 +501,7 @@ data, filters, basis, native flux or baked numerical policy needs new preparatio
 <p><code class="docutils literal notranslate"><span class="pre">load_samples</span></code> decodes the sample manifest to <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code>.
 <code class="docutils literal notranslate"><span class="pre">postprocess</span></code> uses that reader with current output choices, calls
 <code class="docutils literal notranslate"><span class="pre">postprocess_standard_outputs</span></code> to compute and write requested PARIS or legacy
-products, then calls <code class="docutils literal notranslate"><span class="pre">save_standard_artifacts</span></code> for optional exports. It loads
+products, then calls <code class="docutils literal notranslate"><span class="pre">save_inversion_output</span></code> for optional exports. It loads
 the recorded model meaning, output contract, inference metadata, prepared inputs
 and samples without building a graph or running inference. It returns
 <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> without a live model or sampler. Missing descriptive metadata stays
@@ -589,7 +590,7 @@ not provide content-integrity or tamper detection.</p>
 an unused summary. For in-memory reporting, call <code class="docutils literal notranslate"><span class="pre">basic_output(inv_out,</span>
 <span class="pre">country_file=...)</span></code> yourself. PARIS and legacy products require <code class="docutils literal notranslate"><span class="pre">output_path</span></code>;
 missing destinations fail before sampling in a full run or before loading samples
-in staged postprocessing. <code class="docutils literal notranslate"><span class="pre">save_standard_artifacts</span></code> only exports the scientific
+in staged postprocessing. <code class="docutils literal notranslate"><span class="pre">save_inversion_output</span></code> only exports the scientific
 result and trace; it does not compute derived products.</p>
 <p>Choose saved artifacts by what you need to reuse:</p>
 <ul class="simple">
@@ -684,12 +685,86 @@ the full-run command.</p>
 <p>For a runnable synthetic scientific parity example, see
 <a class="reference download internal" download="" href="../_downloads/148e99c9eca9bcd9a6f9a9c399a4a5c5/standard_handoffs.py"><code class="xref download docutils literal notranslate"><span class="pre">standard_handoffs.py</span></code></a>.</p>
 </section>
+<section id="multisector-saved-phases">
+<h2>Multisector saved phases<a class="headerlink" href="#multisector-saved-phases" title="Link to this heading">#</a></h2>
+<p>Use <code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime.multisector_stages</span></code> for multisector <code class="docutils literal notranslate"><span class="pre">prepare</span></code>,
+<code class="docutils literal notranslate"><span class="pre">sample</span></code>, <code class="docutils literal notranslate"><span class="pre">load_preparation</span></code>, <code class="docutils literal notranslate"><span class="pre">load_samples</span></code> and <code class="docutils literal notranslate"><span class="pre">postprocess</span></code>. These
+operations use the same manifest lifetime, generation binding and numerical
+codecs as standard handoffs. They call the multisector preparation, materialization,
+construction, sampling and product operations directly. Full
+<code class="docutils literal notranslate"><span class="pre">run_multisector</span></code> execution calls those same operations in memory; no
+checkpoint is required. Acquisition or supplied-merged validation happens before
+<code class="docutils literal notranslate"><span class="pre">prepare_multisector</span></code>; preparation itself neither retrieves data nor writes
+exports. Caller-owned xarray and Dask arrays remain borrowed until explicit
+materialization or serialization boundaries.</p>
+<p>Resolve preparation with <code class="docutils literal notranslate"><span class="pre">DataConfig.from_params(options,</span> <span class="pre">multisector=True)</span></code>.
+Keep <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> ordered. At sampling, supply <code class="docutils literal notranslate"><span class="pre">sector_sources</span></code> to map
+scientific sector names to those source labels. Each sector uses a distinct prepared source;
+its scaling and concentration-contribution roles are saved with the samples.
+Both rectangular shared-basis and source-labelled gathered layouts retain their
+scientific interpretation. Preparation retains all source fluxes; the first
+requested source supplies basis weighting. Retained sites and their averaging
+periods come from the prepared numerical inputs, even when a requested site is
+dropped. Original requested dates remain the inversion window for later products.</p>
+<p>Sampling can change <code class="docutils literal notranslate"><span class="pre">sector_priors</span></code> or a compatible Python
+<code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> without preparing again. The custom likelihood requires
+<code class="docutils literal notranslate"><span class="pre">mismatch_model=None</span></code> and receives the combined sector observation mean through
+the existing likelihood interface. Missing required arrays, incompatible source
+layouts, or a conflicting baked <code class="docutils literal notranslate"><span class="pre">bc_freq</span></code> require corrected inputs or a new
+preparation. Current model choices cannot change acquisition, filtering, basis
+construction or the saved native flux.</p>
+<p>Saved sampling follows the standard recordable-model limits: explicit
+<code class="docutils literal notranslate"><span class="pre">state_activity</span></code>, <code class="docutils literal notranslate"><span class="pre">bc_state_activity</span></code> and sector activity overrides are not
+encoded in sample records and fail before inference. Full and direct prepared
+execution can still use those policies. Whole-model customization uses direct
+scientific composition; see <a class="reference internal" href="concrete_rhime_model.html#rhime-complete-model-composition"><span class="std std-ref">Compose a complete model directly</span></a>. Saved
+sampling supports the ordinary custom-likelihood seam.</p>
+<p>For example, after placing multisector preparation choices in <code class="docutils literal notranslate"><span class="pre">sectors.json</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>rhime<span class="w"> </span>prepare<span class="w"> </span>--model<span class="w"> </span>multisector<span class="w"> </span>--params-file<span class="w"> </span>sectors.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span>run/prepare
+rhime<span class="w"> </span>sample<span class="w"> </span>--model<span class="w"> </span>multisector<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--preparation-manifest<span class="w"> </span>run/prepare/prepare-manifest.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--kwargs<span class="w"> </span><span class="s1">'{"sector_sources":{"anth":"anth-inventory","wetlands":"wetlands-inventory"},"sector_priors":{"anth":{"pdf":"normal","mu":1,"sigma":0.2},"wetlands":{"pdf":"normal","mu":1,"sigma":0.5}}}'</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span>run/model-a
+rhime<span class="w"> </span>postprocess<span class="w"> </span>--model<span class="w"> </span>multisector<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--sample-manifest<span class="w"> </span>run/model-a/sample-manifest.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--kwargs<span class="w"> </span><span class="s1">'{"output_format":"inv_out"}'</span><span class="w"> </span>--output-dir<span class="w"> </span>run/products
+</pre></div>
+</div>
+<p>The keys in <code class="docutils literal notranslate"><span class="pre">sector_sources</span></code> and <code class="docutils literal notranslate"><span class="pre">sector_priors</span></code> must agree, and the mapped
+sources must match those acquired by <code class="docutils literal notranslate"><span class="pre">sectors.json</span></code>. Use separate sample
+destinations for each model. Sampling accepts model and sampler choices alone;
+postprocessing accepts output choices alone, including a current output name,
+destination or country file.</p>
+<p><code class="docutils literal notranslate"><span class="pre">load_samples</span></code> and <code class="docutils literal notranslate"><span class="pre">postprocess</span></code> return <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> with the original
+scientific context, retained source flux, output roles and actual inference
+metadata. The result holds no live model or sampler; replay builds no PyMC model
+and runs no inference. It does not replace unknown original metadata with current
+defaults. <code class="docutils literal notranslate"><span class="pre">make_model_output</span></code> binds samples to scientific context;
+<code class="docutils literal notranslate"><span class="pre">postprocess_multisector_outputs(result,</span> <span class="pre">output_spec)</span></code> computes and writes
+requested products, then <code class="docutils literal notranslate"><span class="pre">save_inversion_output(result,</span> <span class="pre">output_spec)</span></code>
+exports the scientific result and trace. Full and saved routes call those same
+operations. Legacy HBMCMC products remain unsupported for multisector.</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">result.trace</span></code> for samples, <code class="docutils literal notranslate"><span class="pre">result.variable_roles</span></code> for scientific roles,
+and <code class="docutils literal notranslate"><span class="pre">result.run_metadata</span></code> / <code class="docutils literal notranslate"><span class="pre">result.model_metadata</span></code> for recorded context.
+Product choices and written-file receipts are separate from this scientific view.
+For in-memory sector diagnostics, call
+<code class="docutils literal notranslate"><span class="pre">postprocessing.make_outputs.make_sector_flux_outputs</span></code> explicitly.
+<code class="docutils literal notranslate"><span class="pre">output_format=&quot;none&quot;</span></code> still returns the scientific result. Multisector supports
+<code class="docutils literal notranslate"><span class="pre">none</span></code>, <code class="docutils literal notranslate"><span class="pre">inv_out</span></code> and <code class="docutils literal notranslate"><span class="pre">paris</span></code>; <code class="docutils literal notranslate"><span class="pre">basic</span></code> and <code class="docutils literal notranslate"><span class="pre">legacy</span></code> are single-sector formats.</p>
+<p>Follow <a class="reference internal" href="multisector_handoffs.html"><span class="doc">Reuse a multisector preparation</span></a> for an executable notebook demonstrating
+preparation reuse, separate model samples, multiple output choices and comparison
+with full execution. Its <a class="reference download internal" download="" href="../_downloads/8e75f4384736dcc972ca5321305c6b91/multisector_handoffs.py"><code class="xref download docutils literal notranslate"><span class="pre">companion</span> <span class="pre">script</span></code></a> also checks independent model equations.</p>
+</section>
 <section id="readiness-and-independent-diagnosis">
 <h2>Readiness and independent diagnosis<a class="headerlink" href="#readiness-and-independent-diagnosis" title="Link to this heading">#</a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">prior-predictive</span> <span class="pre">--preparation-manifest</span> <span class="pre">...</span> <span class="pre">--output-dir</span> <span class="pre">...</span></code> builds
 the selected model and draws prior predictions without posterior inference.
 <code class="docutils literal notranslate"><span class="pre">--draws</span></code> controls its sample count. Loading and serialization errors
 propagate; supported model/input failures produce a readiness <code class="docutils literal notranslate"><span class="pre">fail</span></code> result.
+Select <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">multisector</span></code> for prior predictions from a multisector preparation
+manifest. Python callers use <code class="docutils literal notranslate"><span class="pre">multisector_stages.prior_predictive</span></code> with current
+model choices and the same likelihood seam as sampling.
 Readiness checks finite evidence, not scientific plausibility. See
 <a class="reference internal" href="prior_predictive_checking.html"><span class="doc">Prior predictive checking tutorial</span></a> for interpreting predictions.</p>
 <p id="staged-convergence-check"><code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">diagnose</span> <span class="pre">--posterior</span> <span class="pre">posterior.nc</span> <span class="pre">--output-dir</span> <span class="pre">...</span></code> independently
@@ -705,17 +780,23 @@ and stage label.</p>
 </section>
 <section id="other-families-and-migration">
 <h2>Other families and migration<a class="headerlink" href="#other-families-and-migration" title="Link to this heading">#</a></h2>
-<p>Multisector and CO2 retain their existing staged interfaces pending separate
-handoff adoption. They require explicit <code class="docutils literal notranslate"><span class="pre">--model</span></code>, a full configuration and
+<p>CO2 retains its existing staged interface pending separate handoff adoption.
+It requires explicit <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2</span></code>, a full configuration and
 <code class="docutils literal notranslate"><span class="pre">--prepared-inputs</span></code>/<code class="docutils literal notranslate"><span class="pre">--preparation-manifest</span></code> for sampling. Postprocessing also
-requires <code class="docutils literal notranslate"><span class="pre">--posterior</span></code> and <code class="docutils literal notranslate"><span class="pre">--sample-manifest</span></code>. Multisector retains its
-configuration restriction and output-binding record. CO2 takes an existing
+requires <code class="docutils literal notranslate"><span class="pre">--posterior</span></code> and <code class="docutils literal notranslate"><span class="pre">--sample-manifest</span></code>. CO2 takes an existing
 coherent preparation; see <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for its supported outputs.
 Linked CO2/O2 staging remains separate work.</p>
-<p>The new standard handoff format replaces historical standard staged envelopes
-and multi-artifact argument lists. Regenerate those handoffs with 0.8, or use the
-original package version to consume them. Existing numerical codecs, scientific
-Python APIs and final product formats retain their contracts.</p>
+<p>The new standard and multisector handoff formats replace their historical staged
+envelopes and multi-artifact argument lists. For multisector, replace
+<code class="docutils literal notranslate"><span class="pre">prepare_rhime_stage</span></code>, <code class="docutils literal notranslate"><span class="pre">sample_rhime_stage</span></code>, <code class="docutils literal notranslate"><span class="pre">postprocess_rhime_stage</span></code> and
+stage-setup/configuration-identity calls with <code class="docutils literal notranslate"><span class="pre">multisector_stages.prepare</span></code>,
+<code class="docutils literal notranslate"><span class="pre">sample</span></code> and <code class="docutils literal notranslate"><span class="pre">postprocess</span></code>. CLI sampling takes only
+<code class="docutils literal notranslate"><span class="pre">--preparation-manifest</span></code>; postprocessing takes only <code class="docutils literal notranslate"><span class="pre">--sample-manifest</span></code>.
+Remove multisector <code class="docutils literal notranslate"><span class="pre">--prepared-inputs</span></code> and <code class="docutils literal notranslate"><span class="pre">--posterior</span></code> phase arguments.
+Regenerate handoffs with 0.8, or use the original package version to consume them;
+there is no historical-envelope adapter. Existing numerical codecs and final
+product formats retain their contracts. See <a class="reference internal" href="legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a> for the
+multisector prepared-input entry point and retained custom-builder boundary.</p>
 </section>
 </section>
 
@@ -739,11 +820,11 @@ Python APIs and final product formats retain their contracts.</p>
       </div>
     </a>
     <a class="right-next"
-       href="prior_predictive_checking.html"
+       href="multisector_handoffs.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Prior predictive checking tutorial</p>
+        <p class="prev-next-title">Reuse a multisector preparation</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -768,6 +849,7 @@ Python APIs and final product formats retain their contracts.</p>
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#standard-saved-phases">Standard saved phases</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuration-and-cli">Configuration and CLI</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#multisector-saved-phases">Multisector saved phases</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#readiness-and-independent-diagnosis">Readiness and independent diagnosis</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#other-families-and-migration">Other families and migration</a></li>
 </ul>
