@@ -91,6 +91,39 @@ the scientific graph and returns ``RhimeModelBuildResult``; use ``built.model``
 when a caller needs the PyMC graph. Its optional ``sigma_alignment`` argument
 accepts an already resolved mismatch alignment, as in the standard builder.
 
+Nested Python callers now use ``run_nested(config=config, prepared=nested)``
+in place of ``run_rhime_nested_from_prepared_inputs``. The returned
+``NestedOutput`` contains ``outer`` and ``inner`` scientific ``InversionOutput``
+views of one trace; use ``result.outer.trace`` to inspect samples and each view's
+``basis_functions`` for its native grid. ``NestedRhimeResult`` and its
+``RhimeResult`` forwarding envelope are removed. CLI entry points and supported
+nested INI option spellings remain accepted.
+
+The nested CLI now saves both native ``InversionOutput`` artifacts through the
+standard writer. Their ``output_metadata`` no longer copies ``output_format``,
+``output_path``, ``output_name``, ``save_trace`` or ``save_inversion_output``;
+their ``provenance`` records package ``version``, ``revision`` and ``dirty``
+status instead of the former ``contract``, ``compatibility_issue`` and
+``basis_representation`` markers. Saving emits
+``TIMING rhime.output.inversion_output_save`` log lines and validates
+``output_name`` and ``start_date`` as filename components. The scientific
+arrays, native grids and nested overlap metadata retain their meanings.
+Requested basis exports retain their destination receipts in both native views.
+
+Use ``materialize_nested_inputs(nested.combined, config.model)`` and pass the
+returned Dataset and ``priors`` to the single ``build_nested_rhime_model``.
+It now returns ``RhimeModelBuildResult``; ``build_nested_rhime_model_result``
+and ``RhimeModelBuilderContext`` are removed. Scientific preparation takes
+acquired outer/inner data and explicit resolved choices; the runner owns
+resource loading and optional basis exports. Explicit product construction uses
+``make_nested_paris_products(result.outer, result.inner, ...)`` instead of the
+removed ``make_nested_paris_outputs`` result adapter. Configured PARIS runs now
+require ``output_path`` before sampling; use that direct product function for
+in-memory products. Runs that write PARIS products retain those datasets in
+``result.products`` and all written destinations in ``result.paths``.
+``inner_data_config`` exposes the same inner configuration derivation used by
+the full runner for callers preparing their own handoff. See :doc:`nested_domains`.
+
 ``RhimeModelBuildResult`` now takes only ``model`` and ``output_contract``.
 Move its former ``variable_roles``, ``supported_output_formats`` and ``metadata``
 arguments into an ``OutputContract`` from
@@ -232,7 +265,8 @@ for the scientific result. Output-policy choices, written paths, live PyMC model
 and samplers are not stored on it; ``output_metadata`` contains the inference
 description. Call product functions such as ``basic_output(result)`` to produce
 in-memory summaries. For graph inspection, call the eager model builder directly.
-Nested and CO2 families retain their existing result types.
+Nested execution returns ``NestedOutput`` with two native ``InversionOutput``
+views; CO2 families retain their existing result types.
 
 For multisector prepared execution with ordinary configuration, use
 ``run_multisector(prepared=prepared, config=config)`` and a ``RhimeConfig``
@@ -253,9 +287,9 @@ when scientific sector names differ from inventory names. Existing current-forma
 built-in sample handoffs with ``x_<suffix>`` state names remain readable. This
 does not restore the retired historical staged-envelope format.
 
-Standard and multisector execution no longer construct ``RhimeRunSpec`` or
-return ``RhimeResult``. These shared types remain only for the deferred nested
-and cached CO2 recipes until their own consumers migrate. Remove multisector
+Standard, multisector and nested execution no longer construct ``RhimeRunSpec``
+or return ``RhimeResult``. These shared types remain only for the cached CO2
+recipe until its consumers migrate. Remove multisector
 calls to ``make_multisector_rhime_result`` and ``make_multisector_rhime_outputs``.
 Use ``build_multisector_model``, ``make_model_output``, and the explicit
 product/export calls above. For a custom complete model, pass selected eager

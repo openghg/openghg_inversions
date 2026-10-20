@@ -64,10 +64,15 @@ def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monke
         multisector, "materialize_multisector_inputs", lambda *args, **kwargs: pytest.fail("materialized before preflight"),
     )
     monkeypatch.setattr(
-        nested, "materialize_pymc_inputs", lambda *args, **kwargs: pytest.fail("materialized before preflight"),
+        nested, "materialize_nested_inputs", lambda *args, **kwargs: pytest.fail("materialized before preflight"),
     )
+    for module in (standard, multisector, _standard_stages, multisector_stages, nested):
+        monkeypatch.setattr(
+            module, "make_model_output", lambda **kwargs: pytest.fail("constructed products before preflight"),
+        )
     monkeypatch.setattr(
-        outputs, "_make_inversion_output", lambda **kwargs: pytest.fail("constructed products before preflight"),
+        "openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_products",
+        lambda *args, **kwargs: pytest.fail("constructed products before preflight"),
     )
     if route == "staged":
         # Saved standard samples replay without a graph; only output choices change.
@@ -106,22 +111,37 @@ def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monke
             else:
                 standard.run_standard(prepared=inputs, config=config)
         elif route == "prepared_nested":
-            nested.run_rhime_nested_from_prepared_inputs(
-                prepared_inputs=None, run_spec=config.retained_run_spec(_prepared()),
-            )
+            nested.run_nested(config=config, prepared=object())
         elif route == "staged":
             _standard_stages.postprocess(sampled, output=config.output)
         elif route == "staged_multi":
             multisector_stages.postprocess(tmp_path / "absent-manifest.json", output=config.output)
+        elif route == "output_nested":
+            nested._write_nested_paris_outputs(object(), config.output)
         else:
-            result = SimpleNamespace(output_spec=config.output)
-            if route == "output_nested":
-                nested._write_nested_paris_outputs(SimpleNamespace(rhime_result=result))
-            else:
-                outputs.postprocess_multisector_outputs(
-                    SimpleNamespace(model_metadata={"supported_output_formats": ["paris"]}), config.output,
-                )
+            outputs.postprocess_multisector_outputs(
+                SimpleNamespace(model_metadata={"supported_output_formats": ["paris"]}), config.output,
+            )
     assert not destination.exists()
+
+
+@pytest.mark.parametrize("route", ["full", "prepared", "output"])
+def test_nested_paris_requires_destination_before_work(tmp_path, monkeypatch, route):
+    country = tmp_path / "country.nc"
+    country.touch()
+    config = RhimeConfig.from_params(
+        _params(output_format="paris", country_file=country, output_path=None, save_inversion_output=False),
+        multisector=False,
+    )
+    monkeypatch.setattr(nested, "acquire_merged_data", lambda *args: pytest.fail("acquired before preflight"))
+    monkeypatch.setattr(nested, "materialize_nested_inputs", lambda *args: pytest.fail("materialized before preflight"))
+    with pytest.raises(ValueError, match="output_path.*required.*nested"):
+        if route == "output":
+            nested._write_nested_paris_outputs(object(), config.output)
+        elif route == "prepared":
+            nested.run_nested(config=config, prepared=object())
+        else:
+            nested.run_nested(config=config, inner_domain="6km")
 
 
 def test_resource_helpers_are_public_and_indexed():

@@ -16,6 +16,7 @@ from openghg_inversions.rhime.preparation import acquire_merged_data, resolve_ba
 
 from collections.abc import Mapping
 from contextlib import nullcontext
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -71,6 +72,7 @@ from .requests import load_params
 from .preparation import (
     assemble_rhime_inputs,
     build_sensitivities,
+    export_basis,
     filter_observations,
     prepare_observation_errors,
 )
@@ -591,8 +593,9 @@ def run_standard(
         prepared = prepared.validated()
 
     if config.data.basis_output_path is not None:
-        Path(config.data.basis_output_path).parent.mkdir(parents=True, exist_ok=True)
-        prepared.basis_functions.save(config.data.basis_output_path)
+        prepared = replace(
+            prepared, basis_functions=export_basis(prepared.basis_functions, config.data.basis_output_path),
+        )
 
     # 2. Materialize selected inputs and priors together, then build and sample.
     model_inputs, priors = materialize_standard_inputs(prepared, config.model)

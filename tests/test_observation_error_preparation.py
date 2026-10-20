@@ -160,7 +160,7 @@ def test_nested_domains_prepare_errors_before_outer_aggregation_and_inner_alignm
     ).chunk(time=1))
     config = RhimeConfig.from_params(dict(
         species="ch4", domain="EUROPE", sites=["TAC"], averaging_period="1h",
-        start_date="2020-01-01", end_date="2020-01-02", output_name="nested-errors",
+        start_date="2020-01-01", end_date="2020-01-02", output_name="nested-errors", mismatch_model="fixed_error",
         output_format="none", flux_sources=["inventory"], filters="daily_median", use_bc=False,
     ), multisector=False)
     monkeypatch.setattr(RhimeMergedData, "from_options", lambda **kw: inner if kw["domain"] == "EUROPE-6km" else outer)
@@ -178,7 +178,7 @@ def test_nested_domains_prepare_errors_before_outer_aggregation_and_inner_alignm
 
     monkeypatch.setattr(nested, "_prepare_one_domain", reached_basis)
     with pytest.raises(PreparedBothDomains):
-        nested.prepare_nested_rhime_inputs(config, inner_domain="6km", inner_nbasis=2)
+        nested.run_nested(config=config, inner_domain="6km", inner_nbasis=2)
     assert captured[0].site_data["TAC"].mf_error.item() == pytest.approx(np.sqrt(82.0))
     assert captured[1].site_data["TAC"].mf_error.item() == pytest.approx(np.std([0.0, 10.0, 100.0]))
     np.testing.assert_array_equal(captured[1].site_data["TAC"].time, time[:1])

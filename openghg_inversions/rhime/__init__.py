@@ -21,7 +21,6 @@ configure_pytensor()
 
 from .builders import (
     RhimeLikelihoodBuilder,
-    RhimeModelBuilderContext,
     RhimeModelBuildResult,
 )
 from .co2 import build_co2_model, co2_model_input_names, run_co2
@@ -55,17 +54,18 @@ from .multisector import (
 )
 from .nested import (
     NestedRhimePreparedInputs,
-    NestedRhimeResult,
+    NestedOutput,
+    inner_data_config,
+    materialize_nested_inputs,
+    make_nested_inversion_outputs,
     align_inner_merged_to_outer_observations,
     build_nested_rhime_model,
-    build_nested_rhime_model_result,
     combine_nested_rhime_inputs,
     mask_outer_merged_for_inner_domain,
     nested_model_input_names,
     prepare_nested_rhime_inputs,
     run_nested,
     run_rhime_nested,
-    run_rhime_nested_from_prepared_inputs,
 )
 from .outputs import (
     RhimeResult,
@@ -128,8 +128,10 @@ __all__ = [
     "RhimeModelSpec",
     "RhimeLikelihoodBuilder",
     "NestedRhimePreparedInputs",
-    "NestedRhimeResult",
-    "RhimeModelBuilderContext",
+    "NestedOutput",
+    "inner_data_config",
+    "materialize_nested_inputs",
+    "make_nested_inversion_outputs",
     "RhimeModelBuildResult",
     "RhimeOutputSpec",
     "RhimeSampler",
@@ -148,7 +150,6 @@ __all__ = [
     "validate_multisector_output_resources",
     "build_co2_model",
     "build_nested_rhime_model",
-    "build_nested_rhime_model_result",
     "build_sensitivities",
     "build_standard_model",
     "materialize_standard_inputs",
@@ -179,7 +180,6 @@ __all__ = [
     "run_co2",
     "run_rhime_multisector",
     "run_rhime_nested",
-    "run_rhime_nested_from_prepared_inputs",
     "sample_rhime_model",
     "sample_rhime_stage",
     "standard_model_input_names",
