@@ -46,8 +46,10 @@ data, filters, basis, native flux or baked numerical policy needs new preparatio
 products, then calls ``save_inversion_output`` for optional exports. It loads
 the recorded model meaning, output contract, inference metadata, prepared inputs
 and samples without building a graph or running inference. It returns
-``InversionOutput`` without a live model or sampler. Missing descriptive metadata stays
-unavailable. Output naming, destination and supported formats can change;
+``InversionOutput`` without a live model or sampler. Standard and multisector
+sample records require ``actual_inference`` and ``provenance`` fields. An invalid
+present sampler description stays unavailable; provenance must be a valid mapping.
+Output naming, destination and supported formats can change;
 scientific choices cannot relabel saved samples. Default sampling retains
 scientific ``x``, including when it is a deterministic transform of ``x_latent``.
 Posterior ``sample_kwargs["var_names"]`` overrides are rejected by the sampler;

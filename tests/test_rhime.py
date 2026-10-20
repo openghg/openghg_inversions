@@ -19,6 +19,7 @@ import pytest
 import xarray as xr
 from dask.callbacks import Callback
 from pymc.util import get_state_from_generator
+from pydantic import ValidationError
 
 from examples.rhime_customisation import likelihoods as example_likelihoods
 import openghg_inversions.inversion_data.acquisition as acquisition_module
@@ -3885,33 +3886,19 @@ def test_prepared_recipes_validate_output_before_execution(
 
 
 def test_prepared_standard_rejects_empty_model() -> None:
-    """Prepared runs reject model specifications without a sector."""
-    model_spec, output_spec, config = _minimal_output_specs(output_format="none")
-    config = _fixture_config(
-        config.data.start_date,
-        config.data.end_date,
-        config.data.site_options.sites,
-        config.data.site_options.averaging_period,
-        RhimeModelSpec(species=model_spec.species, domain=model_spec.domain, sectors=(), likelihood=PollutionEventSettings(), use_bc=False),
-        output_spec,
-    )
-    prepared = RhimePreparedInputs(
-        inv_inputs=_minimal_output_inv_inputs(),
-        basis_functions=_fake_basis_functions(),
-        site_metadata=_prepared_site_metadata(),
-    )
-
-    with pytest.raises(ValueError, match="exactly one (?:model )?sector"):
-        _run_prepared(prepared_inputs=prepared, config=config)
-
-
+    """An empty model fails during configuration construction, before preparation."""
+    with pytest.raises(ValidationError, match="sectors"):
+        RhimeModelSpec(
+            species="ch4", domain="EUROPE", sectors=(),
+            likelihood=PollutionEventSettings(), use_bc=False,
+        )
 
 
 def test_unreleased_sampling_compatibility_shims_are_absent() -> None:
     """Unreleased same-branch sampling names are not public API."""
     assert not hasattr(rhime_public, "RhimeSamplingSpec")
     assert not hasattr(rhime_sampling, "RhimeSamplingSpec")
-    with pytest.raises(TypeError, match="nit"):
+    with pytest.raises(ValidationError, match="nit"):
         RhimeSampler(nit=7)  # type: ignore[call-arg]
 
 
@@ -8036,7 +8023,7 @@ def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter
     product = basic_output(bundle, country_file=output_spec.country_file)
     assert product["ok"].item() == 1
     assert captured["inv_out"] is bundle
-    assert captured["country_file"] == str(europe_country_file)
+    assert captured["country_file"] == europe_country_file
 
 
 def test_standard_products_and_archived_trace_use_all_chains(
@@ -8119,7 +8106,7 @@ def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter
 
     assert isinstance(bundle, InversionOutput)
     assert captured["inv_out"] is bundle
-    assert captured["country_file"] == str(europe_country_file)
+    assert captured["country_file"] == europe_country_file
     assert captured["domain"] == "EUROPE"
     assert captured["obs_avg_period"] == "1h"
     assert bundle.model_metadata["footprint_provenance"]["TAC"] == {

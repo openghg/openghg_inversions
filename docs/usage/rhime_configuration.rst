@@ -126,10 +126,10 @@ stays available until that last step: changing sites or averaging periods before
 resolution expands the final values together. The resulting ``config`` can be
 passed to a runner without resolving again.
 
-``RhimeConfig.from_params`` is the single construction entry point; the former
+``RhimeConfig.from_params`` is the external request-resolution entry point; the former
 ``resolve_rhime_config`` wrapper has been removed. Runner frontends, including
 ``run_standard`` and staged commands, translate supported deprecated names before
-calling this constructor. They emit ``DeprecationWarning`` on devel and in 0.8;
+calling this resolver. They emit ``DeprecationWarning`` on devel and in 0.8;
 these aliases are removed in 0.9. For names such as ``xprior`` and ``outputname``,
 canonical names take precedence. Flux keyword deprecations follow the stricter
 rules below. Canonical inputs emit no warning. Configuration construction has no
