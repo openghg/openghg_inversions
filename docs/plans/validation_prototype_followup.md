@@ -1,7 +1,9 @@
 # Validation prototype follow-up
 
-**Date:** 20 October 2026  
-**Status:** research and experimental implementation scope; not an adopted capability or serialization policy  
+**Date:** 20 October 2026
+
+**Status:** research and experimental implementation scope; not an adopted capability or serialization policy
+
 **Baseline:** `devel` at `b87f315fb29b80085ea3c5358787a0a2e93c2ff2`
 
 This note keeps the research, prototype boundaries and related issue priorities
