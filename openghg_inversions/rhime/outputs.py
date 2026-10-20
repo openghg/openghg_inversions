@@ -94,6 +94,10 @@ def validate_nested_output_resources(output_spec: RhimeOutputSpec) -> None:
     validate_output_resources(output_spec)
     if output_spec.output_format == "paris" and output_spec.output_path is None:
         raise ValueError("`output_path` is required for nested PARIS products.")
+    if output_spec.output_format == "paris":
+        from openghg_inversions.postprocessing.nested_paris_outputs import validate_nested_paris_options
+
+        validate_nested_paris_options(output_spec.paris_postprocessing_kwargs or {})
 
 
 def annotate_likelihood_trace(

@@ -494,6 +494,40 @@ warning; its old `get_data` import alias SHALL remain removed.
   time alignment; only sites with both domains can enter nested preparation
 - **AND** `averaging_error` is preparation policy, not a binding acquisition fact
 
+#### Scenario: Shared nested spatial support
+
+- **WHEN** retained nested sites provide different indexed latitude/longitude
+  grids within either domain
+- **THEN** preparation rejects the inconsistency before overlap masking or basis
+  projection
+- **AND** compatible sites share one inner rectangular extent, applied on each
+  actual outer footprint and flux grid without mutating or eagerly computing
+  borrowed arrays
+- **AND** output metadata retains the applied footprint rectangle; externally
+  pre-masked inputs with no supplied extent retain an unknown mask extent
+
+#### Scenario: Reuse nested preparation with known request facts
+
+- **WHEN** acquired nested inputs are prepared and supplied to a later run
+- **THEN** known outer species, domain and requested time bounds survive the
+  handoff and conflicting run values are rejected before basis exports or
+  materialization
+- **AND** absent facts remain unknown, labels compare without case, equivalent
+  UTC instants agree, and observation extrema do not define request identity
+- **AND** independently known inner facts are checked at preparation against
+  the selected inner domain and known outer species and window
+- **AND** a supplied preparation's explicit sensitivity source label must match
+  the requested emissions source; absent labels remain unknown
+
+#### Scenario: Nested PARIS preflight
+
+- **WHEN** a nested run requests PARIS products
+- **THEN** unsupported or reserved postprocessing options, invalid templates,
+  time points or explicit flux frequencies, and missing explicit inner country
+  files fail before acquisition, inference, output creation or cache creation
+- **AND** direct nested product construction performs the same checks
+- **AND** `output_format="none"` does not require PARIS resources
+
 #### Scenario: Direct scientific stages use named inputs
 
 - **WHEN** a caller supplies acquired data and named required scientific choices

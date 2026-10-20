@@ -22,7 +22,6 @@ from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
-import hashlib
 from numbers import Integral
 from pathlib import Path
 from typing import Any, TypeVar, get_type_hints
@@ -35,9 +34,10 @@ import pymc as pm
 import xarray as xr
 
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
+from openghg_inversions._spatial_grid import coordinate_sha256
 from openghg_inversions.array_ops import to_dense
 from ._domain_support import rectangular_extent_mask, remove_domain_overlap
-from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, SiteOptions
+from openghg_inversions.inversion_data import AcquisitionFacts, RhimeMergedData, RhimePreparedInputs, SiteOptions
 from openghg_inversions.models.components import add_linear_component, add_offset_component
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
@@ -95,7 +95,7 @@ __all__ = [
 
 _PREPARED_OVERLAP_MASK_POLICY = "caller_supplied_pre_masked_outer_sensitivity"
 _RETRIEVAL_OVERLAP_MASK_POLICY = (
-    "outer_footprint_and_flux_zeroed_within_union_of_inner_site_rectangular_extents_before_basis_projection"
+    "outer_footprint_and_flux_zeroed_within_shared_inner_grid_rectangular_extent_before_basis_projection"
 )
 
 
@@ -124,6 +124,11 @@ class NestedRhimePreparedInputs:
             response was masked before basis projection.
         outer_overlap_mask_policy: Machine-readable description of how the
             overlapping outer response was removed.
+        outer_overlap_mask_extent: Applied inclusive rectangle as latitude minimum,
+            latitude maximum, longitude minimum and longitude maximum. Omission
+            leaves the actual mask bounds unknown, including for supplied inputs.
+        outer_acquisition: Known original outer retrieval choices. Missing facts
+            remain unknown when this preparation is supplied to another run.
     """
 
     outer: RhimePreparedInputs
@@ -134,6 +139,8 @@ class NestedRhimePreparedInputs:
     inner_domain_label: str | None = None
     outer_overlap_masked: bool = False
     outer_overlap_mask_policy: str = _PREPARED_OVERLAP_MASK_POLICY
+    outer_overlap_mask_extent: tuple[float, float, float, float] | None = None
+    outer_acquisition: AcquisitionFacts = field(default_factory=AcquisitionFacts)
 
     def validated(self) -> NestedRhimePreparedInputs:
         """Revalidate both native preparations and rebuild their combination."""
@@ -145,6 +152,8 @@ class NestedRhimePreparedInputs:
             inner_domain_label=self.inner_domain_label,
             outer_overlap_masked=self.outer_overlap_masked,
             outer_overlap_mask_policy=self.outer_overlap_mask_policy,
+            outer_acquisition=self.outer_acquisition,
+            outer_overlap_mask_extent=self.outer_overlap_mask_extent,
         )
 
 
@@ -185,20 +194,15 @@ def _grid_identity(prepared: RhimePreparedInputs) -> dict[str, Any]:
     if missing:
         raise ValueError(f"Nested basis flux is missing spatial coordinate(s): {missing!r}.")
 
-    digest = hashlib.sha256()
     identity: dict[str, Any] = {}
     for name in ("lat", "lon"):
         values = np.asarray(flux[name].values)
-        digest.update(name.encode())
-        digest.update(str(values.dtype).encode())
-        digest.update(str(values.shape).encode())
-        digest.update(np.ascontiguousarray(values).tobytes())
         identity[name] = {
             "size": int(values.size),
             "minimum": float(np.min(values)),
             "maximum": float(np.max(values)),
         }
-    identity["coordinate_sha256"] = digest.hexdigest()
+    identity["coordinate_sha256"] = coordinate_sha256(lat=flux["lat"], lon=flux["lon"])
     return identity
 
 
@@ -207,24 +211,30 @@ def _nested_domain_artifact_metadata(
     *,
     outer_domain: str,
     view: str,
+    outer_grid: dict[str, Any],
+    inner_grid: dict[str, Any],
 ) -> dict[str, Any]:
     """Describe nested identities, grids, and masking in one durable view."""
     inner_domain = prepared.inner_domain_label or f"{outer_domain}-inner"
-    inner_grid = _grid_identity(prepared.inner)
+    extent = prepared.outer_overlap_mask_extent
+    extent_source = "unknown" if extent is None else (
+        "inner_footprint_grid" if prepared.outer_overlap_mask_policy == _RETRIEVAL_OVERLAP_MASK_POLICY
+        else "caller_supplied"
+    )
     return {
         "view": view,
         "view_domain": outer_domain if view == "outer" else inner_domain,
         "outer_domain": outer_domain,
         "inner_domain": inner_domain,
-        "outer_grid": _grid_identity(prepared.outer),
+        "outer_grid": outer_grid,
         "inner_grid": inner_grid,
         "outer_support": {
             "overlap_masked": prepared.outer_overlap_masked,
             "mask_policy": prepared.outer_overlap_mask_policy,
-            "mask_extent_source": "inner_grid",
-            "inner_extent": {
-                "latitude": [inner_grid["lat"]["minimum"], inner_grid["lat"]["maximum"]],
-                "longitude": [inner_grid["lon"]["minimum"], inner_grid["lon"]["maximum"]],
+            "mask_extent_source": extent_source,
+            "inner_extent": None if extent is None else {
+                "latitude": list(extent[:2]),
+                "longitude": list(extent[2:]),
             },
         },
     }
@@ -259,6 +269,8 @@ def make_nested_inversion_outputs(
     Returns:
         Two views borrowing their native arrays and the same posterior.
     """
+    outer_grid = _grid_identity(prepared.outer)
+    inner_grid = _grid_identity(prepared.inner)
     outputs = []
     for tag, native in (("outer", prepared.outer), ("inner", prepared.inner)):
         contract = replace(
@@ -280,6 +292,7 @@ def make_nested_inversion_outputs(
         )
         output.output_metadata["nested_domain"] = _nested_domain_artifact_metadata(
             prepared, outer_domain=model_spec.domain, view=tag,
+            outer_grid=outer_grid, inner_grid=inner_grid,
         )
         outputs.append(output)
     return NestedOutput(outer=outputs[0], inner=outputs[1])
@@ -329,6 +342,39 @@ def _validate_one_to_one_inner_time_matches(
     )
 
 
+def _site_time_indexer(
+    outer_times: pd.DatetimeIndex,
+    inner_times: pd.DatetimeIndex,
+    *,
+    site: str,
+    time_tolerance: str | pd.Timedelta | None,
+) -> np.ndarray:
+    """Select native inner positions once per site, without reusing footprints."""
+    if outer_times.has_duplicates or inner_times.has_duplicates:
+        raise ValueError(f"Nested inputs for site {site!r} contain duplicate timestamps.")
+    tolerance = None if time_tolerance is None else pd.Timedelta(time_tolerance)
+    order = inner_times.argsort()
+    sorted_times = inner_times.take(order)
+    if tolerance is None:
+        indexer = sorted_times.get_indexer(outer_times)
+    else:
+        indexer = sorted_times.get_indexer(outer_times, method="nearest", tolerance=tolerance)
+    missing = indexer < 0
+    if bool(missing.any()):
+        missing_times = outer_times[missing]
+        preview = ", ".join(str(time) for time in missing_times[:5])
+        suffix = "" if len(missing_times) <= 5 else f", ... ({len(missing_times)} total)"
+        alignment = "exact timestamps" if tolerance is None else f"nearest timestamps within {tolerance}"
+        raise ValueError(
+            f"Inner nested inputs for site {site!r} cannot be aligned to every outer observation "
+            f"using {alignment}: {preview}{suffix}."
+        )
+    _validate_one_to_one_inner_time_matches(
+        outer_times, sorted_times, indexer, label=f"Inner nested inputs for site {site!r}",
+    )
+    return order[indexer]
+
+
 def _inner_measurement_positions(
     outer_index: pd.MultiIndex,
     inner_index: pd.MultiIndex,
@@ -336,62 +382,19 @@ def _inner_measurement_positions(
     time_tolerance: str | pd.Timedelta | None,
 ) -> list[int]:
     """Map each outer site/time observation to an inner observation position."""
-    tolerance = None if time_tolerance is None else pd.Timedelta(time_tolerance)
-    positions = [-1] * len(outer_index)
-    missing: list[tuple[str, object]] = []
-    site_matches: list[tuple[str, pd.DatetimeIndex, pd.DatetimeIndex, np.ndarray]] = []
-
+    positions = np.empty(len(outer_index), dtype=int)
     outer_sites = outer_index.get_level_values("site")
     inner_sites = inner_index.get_level_values("site")
-    for site in dict.fromkeys(str(value) for value in outer_sites):
-        outer_site_positions = [index for index, value in enumerate(outer_sites) if str(value) == site]
-        inner_site_positions = [index for index, value in enumerate(inner_sites) if str(value) == site]
-        if not inner_site_positions:
-            missing.extend((site, outer_index[index][1]) for index in outer_site_positions)
-            continue
-
-        inner_times = pd.DatetimeIndex([inner_index[index][1] for index in inner_site_positions])
-        if inner_times.has_duplicates:
-            raise ValueError(f"Inner nested inputs contain duplicate observation times for site {site!r}.")
-        order = inner_times.argsort()
-        sorted_times = inner_times.take(order)
-        sorted_positions = [inner_site_positions[int(index)] for index in order]
-        outer_times = pd.DatetimeIndex([outer_index[index][1] for index in outer_site_positions])
-        if tolerance is None:
-            site_indexer = sorted_times.get_indexer(outer_times)
-        else:
-            site_indexer = sorted_times.get_indexer(
-                outer_times,
-                method="nearest",
-                tolerance=tolerance,
-            )
-        site_matches.append((site, outer_times, sorted_times, site_indexer))
-
-        for outer_position, mapped_position in zip(outer_site_positions, site_indexer, strict=True):
-            inner_position = int(mapped_position)
-            if inner_position < 0:
-                missing.append((site, outer_index[outer_position][1]))
-            else:
-                positions[outer_position] = sorted_positions[inner_position]
-
-    if missing:
-        preview = ", ".join(f"{site}@{time}" for site, time in missing[:5])
-        suffix = "" if len(missing) <= 5 else f", ... ({len(missing)} total)"
-        alignment = "exact timestamps" if tolerance is None else f"nearest timestamps within {tolerance}"
-        raise ValueError(
-            "Inner nested inputs cannot be aligned to every outer observation using "
-            f"{alignment}: {preview}{suffix}."
+    for site in dict.fromkeys(outer_sites):
+        outer_positions = np.flatnonzero(outer_sites == site)
+        inner_positions = np.flatnonzero(inner_sites == site)
+        indexer = _site_time_indexer(
+            pd.DatetimeIndex(outer_index.get_level_values("time").take(outer_positions)),
+            pd.DatetimeIndex(inner_index.get_level_values("time").take(inner_positions)),
+            site=str(site), time_tolerance=time_tolerance,
         )
-
-    for site, outer_times, inner_times, inner_indexer in site_matches:
-        _validate_one_to_one_inner_time_matches(
-            outer_times,
-            inner_times,
-            inner_indexer,
-            label=f"Inner nested inputs for site {site!r}",
-        )
-
-    return positions
+        positions[outer_positions] = inner_positions[indexer]
+    return positions.tolist()
 
 
 def combine_nested_rhime_inputs(
@@ -403,6 +406,8 @@ def combine_nested_rhime_inputs(
     inner_domain_label: str | None = None,
     outer_overlap_masked: bool = False,
     outer_overlap_mask_policy: str = _PREPARED_OVERLAP_MASK_POLICY,
+    outer_acquisition: AcquisitionFacts | None = None,
+    outer_overlap_mask_extent: tuple[float, float, float, float] | None = None,
 ) -> NestedRhimePreparedInputs:
     """Combine independently prepared native grids at the sensitivity boundary.
 
@@ -419,6 +424,10 @@ def combine_nested_rhime_inputs(
     overlapping prepared inputs from being combined silently. Prepared-input
     callers may also provide a more specific ``outer_overlap_mask_policy``;
     otherwise the durable metadata records that the mask was caller supplied.
+    Known original retrieval choices may be supplied as ``outer_acquisition``;
+    omitted facts remain unknown rather than inferred from observation bounds.
+    ``outer_overlap_mask_extent`` records the actual applied rectangle, when
+    known; it is never inferred from inner basis or flux coordinates.
     """
     if outer_overlap_masked is not True:
         raise ValueError(
@@ -427,6 +436,14 @@ def combine_nested_rhime_inputs(
         )
     if not isinstance(outer_overlap_mask_policy, str) or not outer_overlap_mask_policy.strip():
         raise ValueError("`outer_overlap_mask_policy` must describe how outer support was removed.")
+    if outer_overlap_mask_extent is not None:
+        if (
+            len(outer_overlap_mask_extent) != 4
+            or not np.isfinite(outer_overlap_mask_extent).all()
+            or outer_overlap_mask_extent[0] > outer_overlap_mask_extent[1]
+            or outer_overlap_mask_extent[2] > outer_overlap_mask_extent[3]
+        ):
+            raise ValueError("`outer_overlap_mask_extent` must contain four finite, ordered rectangle bounds.")
     outer = outer.validated()
     inner = inner.validated()
     if outer.sites != inner.sites:
@@ -501,6 +518,8 @@ def combine_nested_rhime_inputs(
         inner_domain_label=inner_domain_label,
         outer_overlap_masked=True,
         outer_overlap_mask_policy=outer_overlap_mask_policy,
+        outer_acquisition=outer_acquisition if outer_acquisition is not None else AcquisitionFacts(),
+        outer_overlap_mask_extent=outer_overlap_mask_extent,
     )
 
 
@@ -573,7 +592,6 @@ def align_inner_merged_to_outer_observations(
     """
     if outer.sites != inner.sites:
         raise ValueError("Nested time alignment requires identical outer and inner site order.")
-    tolerance = None if time_tolerance is None else pd.Timedelta(time_tolerance)
     site_data = dict(inner.site_data)
     for site in outer.sites:
         outer_dataset = outer.site_data[site]
@@ -584,37 +602,32 @@ def align_inner_merged_to_outer_observations(
             raise ValueError(f"Nested datasets for site {site!r} require indexed time coordinates.")
         outer_times = pd.DatetimeIndex(outer_dataset.get_index("time"))
         inner_times = pd.DatetimeIndex(inner_dataset.get_index("time"))
-        if outer_times.has_duplicates or inner_times.has_duplicates:
-            raise ValueError(f"Nested datasets for site {site!r} contain duplicate timestamps.")
-        order = inner_times.argsort()
-        sorted_times = inner_times.take(order)
-        if tolerance is None:
-            indexer = sorted_times.get_indexer(outer_times)
-        else:
-            indexer = sorted_times.get_indexer(
-                outer_times,
-                method="nearest",
-                tolerance=tolerance,
-            )
-        missing = indexer < 0
-        if bool(missing.any()):
-            missing_times = outer_times[missing]
-            preview = ", ".join(str(time) for time in missing_times[:5])
-            suffix = "" if len(missing_times) <= 5 else f", ... ({len(missing_times)} total)"
-            alignment = "exact timestamps" if tolerance is None else f"nearest within {tolerance}"
-            raise ValueError(
-                f"Inner nested scenario for site {site!r} cannot align using {alignment}: {preview}{suffix}."
-            )
-        _validate_one_to_one_inner_time_matches(
-            outer_times,
-            sorted_times,
-            indexer,
-            label=f"Inner nested scenario for site {site!r}",
+        native_positions = _site_time_indexer(
+            outer_times, inner_times, site=site, time_tolerance=time_tolerance,
         )
-        native_positions = order[indexer]
         aligned = inner_dataset.isel(time=native_positions).assign_coords(time=outer_dataset["time"].variable)
         site_data[site] = aligned
     return inner.with_site_data(site_data, context="Nested-domain time alignment")
+
+
+def _shared_site_grid(data: RhimeMergedData | _NestedDomainData, *, label: str) -> xr.Dataset:
+    """Establish one indexed native spatial grid across retained sites."""
+    grids = []
+    for site in data.sites:
+        dataset = data.site_data[site]
+        for name in ("lat", "lon"):
+            if name not in dataset.indexes or dataset[name].dims != (name,):
+                raise ValueError(f"{label} dataset for site {site!r} requires indexed {name!r} coordinates.")
+            if dataset.get_index(name).empty:
+                raise ValueError(f"{label} dataset for site {site!r} has empty {name!r} coordinates.")
+        grids.append(xr.Dataset(coords={name: dataset[name].variable for name in ("lat", "lon")}))
+    if not grids:
+        raise ValueError("Nested-domain masking requires at least one retained site.")
+    try:
+        aligned = xr.align(*grids, join="exact", copy=False)
+    except ValueError as exc:
+        raise ValueError(f"{label} nested-domain sites must share the same indexed lat/lon grid.") from exc
+    return aligned[0]
 
 
 def mask_outer_merged_for_inner_domain(
@@ -625,26 +638,22 @@ def mask_outer_merged_for_inner_domain(
 
     The returned preparation record holds shallow dataset copies and
     ``where`` preserves Dask laziness. Acquired ``MergedData`` inputs remain
-    borrowed and unmodified; masked values are never wrapped in that type.  The union of all retained inner site extents is applied to the
-    retained outer flux used by basis generation and post-run reconstruction.
+    borrowed and unmodified; masked values are never wrapped in that type.
+    All retained sites must share one grid per domain. The shared inner
+    rectangle is also removed from each retained outer flux grid.
     """
     if outer.sites != inner.sites:
         raise ValueError("Masking requires outer and inner merged data aligned to identical sites.")
 
-    site_data = dict(outer.site_data)
-    for site in outer.sites:
-        outer_dataset = outer.site_data[site]
-        inner_dataset = inner.site_data[site]
-        if not isinstance(outer_dataset, xr.Dataset) or not isinstance(inner_dataset, xr.Dataset):
-            raise TypeError("Modern nested-domain preparation requires per-site xarray Datasets.")
-        if "lat" not in outer_dataset.coords or "lon" not in outer_dataset.coords:
-            raise ValueError(f"Outer-domain dataset for site {site!r} is missing lat/lon coordinates.")
-        site_mask = rectangular_extent_mask(
-            inner_dataset,
-            target_lat=outer_dataset["lat"],
-            target_lon=outer_dataset["lon"],
-        )
-        site_data[site] = _mask_spatial_variables(outer_dataset, site_mask)
+    outer_grid = _shared_site_grid(outer, label="Outer")
+    inner_grid = _shared_site_grid(inner, label="Inner")
+    site_mask = rectangular_extent_mask(
+        inner_grid, target_lat=outer_grid["lat"], target_lon=outer_grid["lon"],
+    )
+    site_data = {
+        site: _mask_spatial_variables(outer.site_data[site], site_mask)
+        for site in outer.sites
+    }
 
     flux_entries = outer.flux_data
     if not isinstance(flux_entries, Mapping) or not flux_entries:
@@ -656,18 +665,9 @@ def mask_outer_merged_for_inner_domain(
         flux = flux_dataset["flux"]
         if "lat" not in flux.coords or "lon" not in flux.coords:
             raise ValueError(f"Outer flux entry {source!r} is missing lat/lon coordinates.")
-        union_mask: xr.DataArray | None = None
-        for site in inner.sites:
-            site_mask = rectangular_extent_mask(
-                inner.site_data[site],
-                target_lat=flux["lat"],
-                target_lon=flux["lon"],
-            )
-            union_mask = site_mask if union_mask is None else union_mask | site_mask
-        if union_mask is None:  # guarded by the non-empty site invariant
-            raise ValueError("Nested-domain masking requires at least one retained site.")
+        mask = rectangular_extent_mask(inner_grid, target_lat=flux["lat"], target_lon=flux["lon"])
         masked_dataset = flux_dataset.copy(deep=False)
-        masked_dataset["flux"] = remove_domain_overlap(flux, union_mask)
+        masked_dataset["flux"] = remove_domain_overlap(flux, mask)
         masked_flux_entries[source] = masked_dataset
 
     return _NestedDomainData(
@@ -894,6 +894,12 @@ def prepare_nested_rhime_inputs(
     """
     if len(flux_sources) != 1:
         raise ValueError("Nested RHIME preparation requires exactly one emissions source.")
+    outer.acquisition.validate_request(domain=domain, start_date=start_date)
+    inner.acquisition.validate_request(
+        domain=inner_domain, start_date=start_date,
+        species=outer.acquisition.species if outer.acquisition.species != "unknown" else None,
+        end_date=outer.acquisition.end_date if outer.acquisition.end_date != "unknown" else None,
+    )
     preparation_start = timer_start()
     outer_data = _NestedDomainData(outer.site_data, outer.flux_data, outer.site_options)
     inner_data = _NestedDomainData(inner.site_data, inner.flux_data, inner.site_options)
@@ -915,6 +921,14 @@ def prepare_nested_rhime_inputs(
         outer_filtered, inner_data, time_tolerance=time_tolerance,
     )
     masked_outer = mask_outer_merged_for_inner_domain(outer_filtered, inner_filtered)
+    # Masking established one shared footprint grid; basis flux labels may differ.
+    inner_grid = inner_filtered.site_data[inner_filtered.sites[0]]
+    inner_lat = inner_grid.get_index("lat")
+    inner_lon = inner_grid.get_index("lon")
+    mask_extent = (
+        float(inner_lat.min()), float(inner_lat.max()),
+        float(inner_lon.min()), float(inner_lon.max()),
+    )
 
     outer_nbasis = nbasis
     inner_target = nbasis if inner_nbasis is None else inner_nbasis
@@ -944,6 +958,8 @@ def prepare_nested_rhime_inputs(
         outer_prepared, inner_prepared, time_tolerance=time_tolerance,
         inner_domain_label=inner_domain, outer_overlap_masked=True,
         outer_overlap_mask_policy=_RETRIEVAL_OVERLAP_MASK_POLICY,
+        outer_acquisition=outer.acquisition,
+        outer_overlap_mask_extent=mask_extent,
     )
     log_timing(
         "rhime.prepare_nested_inputs", timer_seconds(preparation_start),
@@ -1365,15 +1381,24 @@ def run_nested(
         if inner_domain is not None or nested_options or time_tolerance is not None:
             raise ValueError("Supplied prepared inputs cannot be combined with preparation options.")
         prepared = prepared.validated()
+        prepared.outer_acquisition.validate_request(
+            **config.data.select("species", "domain", "start_date", "end_date"),
+        )
+        for native in (prepared.outer, prepared.inner):
+            source = native.inv_inputs["H"].coords.get("source")
+            if source is not None and str(source.item()) != config.model.sectors[0].flux_source:
+                raise ValueError("Supplied nested inputs have an incompatible emissions source.")
 
     outer_basis = export_basis(prepared.outer.basis_functions, config.data.basis_output_path)
     inner_basis = export_basis(prepared.inner.basis_functions, inner_basis_output_path)
-    prepared = replace(
-        prepared,
-        outer=replace(prepared.outer, basis_functions=outer_basis),
-        inner=replace(prepared.inner, basis_functions=inner_basis),
-        combined=replace(prepared.combined, basis_functions=outer_basis),
-    )
+    if outer_basis is not prepared.outer.basis_functions:
+        prepared = replace(
+            prepared,
+            outer=replace(prepared.outer, basis_functions=outer_basis),
+            combined=replace(prepared.combined, basis_functions=outer_basis),
+        )
+    if inner_basis is not prepared.inner.basis_functions:
+        prepared = replace(prepared, inner=replace(prepared.inner, basis_functions=inner_basis))
     model_inputs, priors = materialize_nested_inputs(
         prepared.combined, config.model, inner_x_prior=inner_x_prior,
     )

@@ -21,24 +21,27 @@ from __future__ import annotations
 
 import hashlib
 import os
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from uuid import uuid4
 
 import numpy as np
 import xarray as xr
 
 from openghg_inversions._country_file import load_country_dataset
+from openghg_inversions._spatial_grid import coordinate_sha256
 from openghg_inversions.postprocessing.countries import regrid_country_dataset
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_paris_outputs import (
     DEFAULT_PARIS_TEMPLATE_VERSION,
     PARIS_LATEST_COUNTRIES,
     ParisTemplateVersion,
+    _flux_frequency_to_offset,
     infer_flux_frequency,
     paris_concentration_outputs,
     paris_flux_output,
+    paris_template_files,
 )
 from openghg_inversions.utils import get_country_file_path
 
@@ -59,16 +62,31 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _coordinate_sha256(*, lat: xr.DataArray, lon: xr.DataArray) -> str:
-    """Return an exact identity digest for the target spatial coordinates."""
-    digest = hashlib.sha256()
-    for name, coordinate in (("lat", lat), ("lon", lon)):
-        values = np.asarray(coordinate.values)
-        digest.update(name.encode())
-        digest.update(str(values.dtype).encode())
-        digest.update(str(values.shape).encode())
-        digest.update(np.ascontiguousarray(values).tobytes())
-    return digest.hexdigest()
+def validate_nested_paris_options(options: Mapping[str, Any]) -> None:
+    """Check reporting choices and explicit inner resources without creating products.
+
+    The recipe owns country-file and observation-period arguments; callers may
+    override the remaining product options through its postprocessing mapping.
+    """
+    supported = {
+        "inner_country_file", "time_point", "report_mode", "inversion_grid",
+        "flux_frequency", "template_version", "country_selections", "country_file_cache_dir",
+    }
+    if unexpected := ", ".join(sorted(options.keys() - supported)):
+        raise ValueError(f"Unsupported nested PARIS postprocessing options: {unexpected}.")
+    template_version = options.get("template_version", DEFAULT_PARIS_TEMPLATE_VERSION)
+    time_point = options.get("time_point", "midpoint")
+    flux_frequency = options.get("flux_frequency")
+    inner_country_file = options.get("inner_country_file")
+    paris_template_files(template_version)
+    if time_point not in ("start", "midpoint"):
+        raise ValueError("Nested PARIS time_point must be 'start' or 'midpoint'.")
+    if template_version == "latest" and time_point != "midpoint":
+        raise ValueError("Latest PARIS flux output requires midpoint time coordinates and time bounds.")
+    if flux_frequency is not None:
+        _flux_frequency_to_offset(flux_frequency)
+    if inner_country_file is not None and not Path(inner_country_file).is_file():
+        raise FileNotFoundError(inner_country_file)
 
 
 def _default_country_cache_dir() -> Path:
@@ -124,7 +142,7 @@ def _regridded_inner_country_file(
     source_path = Path(get_country_file_path(country_file=country_file, domain=domain))
     target_dir = Path(cache_dir) if cache_dir is not None else _default_country_cache_dir()
     source_sha256 = _file_sha256(source_path)
-    grid_sha256 = _coordinate_sha256(lat=lat, lon=lon)
+    grid_sha256 = coordinate_sha256(lat=lat, lon=lon)
     identity = hashlib.sha256(f"{source_sha256}:{grid_sha256}".encode()).hexdigest()[:16]
     safe_label = str(inner_domain_label).replace("/", "_")
     target_path = target_dir / f"country_{safe_label}_{identity}_regridded.nc"
@@ -205,6 +223,14 @@ def make_nested_paris_products(
         ``flux_inner``. ``flux_inner`` reports genuine native-resolution flux
         and country totals on the inner domain's own grid.
     """
+    validate_nested_paris_options(
+        {
+            "inner_country_file": inner_country_file,
+            "time_point": time_point,
+            "template_version": template_version,
+            "flux_frequency": flux_frequency,
+        }
+    )
     conc_outs = paris_concentration_outputs(
         outer_inv_out,
         report_mode=report_mode,

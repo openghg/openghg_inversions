@@ -462,7 +462,14 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
         sensitivity=np.array([[1.0]]),
         basis=basis,
     )
-    merged = from_legacy_fp_all(fp_all={"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, site_options=_site_options())
+    merged = from_legacy_fp_all(
+        fp_all={"TAC": xr.Dataset(
+            {"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]),
+             "mf_variability": ("time", [0.0])},
+            coords={"lat": [50.0], "lon": [-2.0]},
+        )},
+        site_options=_site_options(),
+    )
     country = tmp_path / "country.nc"
     country.touch()
     setup = RhimeConfig.from_params(params={
@@ -825,6 +832,7 @@ def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
         inner,
         inner_domain_label="europe-6km",
         outer_overlap_masked=True,
+        outer_overlap_mask_extent=(50.9, 51.4, -1.6, -1.4),
     )
     model_spec = _model_spec()
 
@@ -888,9 +896,9 @@ def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
     assert inner_nested["view_domain"] == "europe-6km"
     assert outer_nested["outer_support"]["mask_policy"] == "caller_supplied_pre_masked_outer_sensitivity"
     assert outer_nested["outer_support"]["inner_extent"] == {
-        "latitude": [51.0, 51.5],
-        "longitude": [-1.5, -1.5],
+        "latitude": [50.9, 51.4], "longitude": [-1.6, -1.4],
     }
+    assert outer_nested["outer_support"]["mask_extent_source"] == "caller_supplied"
     assert len(inner_nested["inner_grid"]["coordinate_sha256"]) == 64
 
     reloaded_inner = InversionOutput.from_datatree(inner_inv_out.to_datatree())

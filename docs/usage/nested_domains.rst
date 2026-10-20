@@ -18,7 +18,11 @@ overlap twice. The workflow:
    boundary-condition, model-error, and likelihood components.
 
 All retained sites currently use the same outer domain and the same inner
-domain. Both domains must be available for each retained site.
+domain, including identical indexed latitude/longitude coordinates within each
+domain. Both domains must be available for each retained site. Preparation
+rejects differing site grids before masking or basis projection. The shared
+inner rectangle is applied separately to each actual target footprint or flux grid.
+Masking borrows the original arrays and preserves Dask laziness.
 
 The two grids are not RHIME emissions sectors or grouped basis regions. A
 sector separates different flux sources on one spatial layout; a nested domain
@@ -169,6 +173,7 @@ These exports also run with ``run_nested(config=config, prepared=nested,
 inner_basis_output_path=...)``. Each returned native basis and its saved
 ``InversionOutput`` retain the export destination as provenance; the borrowed
 prepared inputs remain unchanged.
+Without an export destination, the validated preparations are reused directly.
 ``landsea_path`` and ``inner_landsea_path`` select each grid's class map when
 weighted generation needs one; support-map selection fails for missing files
 or unsupported domains before acquisition. If no inner basis file or algorithm
@@ -310,7 +315,17 @@ explicit acknowledgement shown below and run from that boundary:
 This uses the same materialization, model construction, inference and output
 operations as a complete run. Supplied preparation is validated at entry;
 acquisition and scientific preparation are skipped. No staged manifest is
-required. For direct graph inspection, call ``materialize_nested_inputs`` on
+required. Retrieval-backed preparation retains known outer acquisition facts:
+species, domain and requested time window must agree with the supplied run
+configuration. Species and domain ignore case; equivalent UTC instants agree.
+An explicit emissions-source label on the sensitivity must also match the run.
+External callers can pass ``outer_acquisition=outer_merged.acquisition`` when
+combining prepared inputs. Missing facts remain unknown; observation extrema
+are not treated as the original requested window. Independently acquired inner
+facts are checked against the selected inner domain and known outer request
+before scientific preparation.
+
+For direct graph inspection, call ``materialize_nested_inputs`` on
 ``nested.combined`` and ``config.model``, then pass its returned Dataset and
 ``priors`` to ``build_nested_rhime_model`` with the same model specification.
 
@@ -363,6 +378,11 @@ trace is unchanged. This produces three products:
 
 ``run_rhime_nested`` requires ``output_path`` for PARIS and writes all three, using the
 inner domain's label (e.g. ``EUROPE-6km``) in the inner flux file's name.
+Before acquisition or inference, it validates the nested postprocessing option
+names, template version, time point, explicit flux frequency and any explicit
+``inner_country_file``. These checks create no output or country cache. They
+also apply when calling ``make_nested_paris_products`` directly; options that
+depend on the sampled data are resolved during product construction.
 The returned ``NestedOutput.products`` retains ``paris_flux``,
 ``paris_flux_inner`` and ``paris_concentration`` so Python callers can inspect
 the products without reconstructing them. ``NestedOutput.paths`` records the
@@ -372,6 +392,11 @@ When inversion-output artifacts are requested, each domain view also retains
 its actual outer/inner identity, coordinate-grid fingerprints and extents,
 the explicit trace-to-basis state-dimension mapping, and the outer overlap
 mask policy. These fields survive an ``InversionOutput`` save/load round trip.
+The applied mask bounds are retained from the inner footprint grid. For
+externally pre-masked inputs, pass ``outer_overlap_mask_extent`` as
+``(lat_min, lat_max, lon_min, lon_max)`` to ``combine_nested_rhime_inputs`` when
+known; omission records an unknown extent rather than deriving it from the
+inner flux grid.
 The inner view records its own state-activity policy.
 Use ``make_nested_paris_products(result.outer, result.inner,
 inner_domain_label="EUROPE-6km", country_file=...)`` for explicit product

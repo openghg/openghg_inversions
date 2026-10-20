@@ -152,11 +152,11 @@ def test_nested_domains_prepare_errors_before_outer_aggregation_and_inner_alignm
         {"mf": ("time", [10.0, 20.0, 30.0]),
          "mf_repeatability": ("time", [1.0, 9.0, 3.0]),
          "mf_variability": ("time", [9.0, 1.0, 4.0])},
-        coords={"time": time},
+        coords={"time": time, "lat": [50.0], "lon": [-1.0]},
     ))
     inner = _merged(xr.Dataset(
         {"mf": ("time", [0.0, 10.0, 100.0]), "mf_repeatability": ("time", [0.0, 2.0, 2.0])},
-        coords={"time": time},
+        coords={"time": time, "lat": [50.0], "lon": [-1.0]},
     ).chunk(time=1))
     config = RhimeConfig.from_params(dict(
         species="ch4", domain="EUROPE", sites=["TAC"], averaging_period="1h",

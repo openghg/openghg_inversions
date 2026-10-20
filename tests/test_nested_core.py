@@ -280,3 +280,31 @@ def test_nested_paris_requires_destination_before_sampling(monkeypatch, tmp_path
                         lambda *args: pytest.fail("sampled before output preflight"))
     with pytest.raises(ValueError, match="output_path.*required"):
         run_nested(config=config, prepared=_nested())
+
+
+def test_nested_no_basis_export_borrows_validated_preparations(monkeypatch):
+    """Skipping exports must not reconstruct canonical prepared records."""
+    from openghg_inversions.rhime.nested import NestedRhimePreparedInputs
+    from tests.test_staged_workflow import _params
+
+    canonical = _nested().validated()
+    supplied = _nested()
+    monkeypatch.setattr(NestedRhimePreparedInputs, "validated", lambda self: canonical)
+    config = RhimeConfig.from_params(_params(output_format="none"), multisector=False)
+
+    class ReachedMaterialization(Exception):
+        pass
+
+    def materialize(prepared, *args, **kwargs):
+        assert prepared is canonical.combined
+        raise ReachedMaterialization
+
+    monkeypatch.setattr("openghg_inversions.rhime.nested.materialize_nested_inputs", materialize)
+    # Exporting no destination returns the original basis. Reconstructing any
+    # prepared record here would trigger canonicalization and break borrowing.
+    def forbidden(*args, **kwargs):
+        pytest.fail("No basis export should rebuild prepared inputs")
+
+    monkeypatch.setattr(RhimePreparedInputs, "__init__", forbidden)
+    with pytest.raises(ReachedMaterialization):
+        run_nested(config=config, prepared=supplied)
