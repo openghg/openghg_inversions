@@ -1185,6 +1185,30 @@ def test_additive_sigma_inputs_align_site_keyed_scales() -> None:
     np.testing.assert_array_equal(prior["sigma"], [[2.0], [5.0]])
 
 
+def test_additive_sigma_prior_follows_supplied_alignment_site_order() -> None:
+    """Named scales keep their sites when a supplied latent order is reversed."""
+    observations = xr.DataArray(
+        [1.0, 2.0, 3.0],
+        dims="nmeasure",
+        coords={"site": ("nmeasure", ["TAC", "MHD", "TAC"])},
+    )
+    alignment = SigmaAlignment.from_indices(
+        xr.DataArray([1, 0, 1], dims="nmeasure"),
+        xr.DataArray([0, 0, 0], dims="nmeasure"),
+        site_labels=["MHD", "TAC"],
+    )
+    scales = {"TAC": 2.0, "MHD": 5.0, "dropped": 9.0}
+    resolved_alignment, prior = rhime_model_building.prepare_additive_sigma_inputs(
+        observations,
+        sigma_alignment=alignment,
+        sigma_prior={"pdf": "halfnormal", "sigma": scales},
+    )
+
+    assert resolved_alignment is alignment
+    np.testing.assert_array_equal(prior["sigma"], [[5.0], [2.0]])
+    assert scales == {"TAC": 2.0, "MHD": 5.0, "dropped": 9.0}
+
+
 @pytest.mark.parametrize("unused", [True, 0.0, -1.0, np.nan, np.inf, "3.0"])
 def test_additive_sigma_inputs_validate_extra_site_scales(unused: Any) -> None:
     """Dropped sites retain the same prior validation as retained sites."""
