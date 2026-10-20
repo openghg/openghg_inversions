@@ -572,28 +572,7 @@
                   
   <section id="module-openghg_inversions.rhime.builders">
 <span id="openghg-inversions-rhime-builders"></span><h1>openghg_inversions.rhime.builders<a class="headerlink" href="#module-openghg_inversions.rhime.builders" title="Link to this heading">#</a></h1>
-<p>Scientific graph results and retained nested-model validation.</p>
-<dl class="py class">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.builders.RhimeModelBuilderContext">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RhimeModelBuilderContext</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_spec</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multisector</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.builders.RhimeModelBuilderContext" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Run context retained by the nested model’s validation boundary.</p>
-<p>Ordinary in-tree recipes and components use explicit named scientific
-inputs. Nested execution still uses this context to validate its graph and
-output roles; standard and multisector construction take explicit inputs.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs"><em>PreparedInputs</em></a>) – Validated canonical inputs, retained basis functions,
-and preparation metadata.</p></li>
-<li><p><strong>run_spec</strong> (<a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeRunSpec" title="openghg_inversions.rhime.specs.RhimeRunSpec"><em>RhimeRunSpec</em></a>) – Retained nested model, output and run settings.</p></li>
-<li><p><strong>multisector</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether the validated prepared layout and model spec are
-sector resolved.</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
+<p>Scientific graph results and callable provenance.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.builders.RhimeModelBuildResult">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RhimeModelBuildResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_contract</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="Link to this definition">#</a></dt>
@@ -607,24 +586,6 @@ sector resolved.</p></li>
 construction metadata. Custom models default to sampling-only
 capability when constructing an ordinary <code class="docutils literal notranslate"><span class="pre">OutputContract</span></code>.</p></li>
 </ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.builders.validate_model_build_result">
-<span class="sig-name descname"><span class="pre">validate_model_build_result</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">result</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">context</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.builders.validate_model_build_result" title="Link to this definition">#</a></dt>
-<dd><p>Validate a custom build result before sampling or postprocessing.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>result</strong> (<a class="reference internal" href="#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="openghg_inversions.rhime.builders.RhimeModelBuildResult"><em>RhimeModelBuildResult</em></a>) – Complete model build result to validate.</p></li>
-<li><p><strong>context</strong> (<a class="reference internal" href="#openghg_inversions.rhime.builders.RhimeModelBuilderContext" title="openghg_inversions.rhime.builders.RhimeModelBuilderContext"><em>RhimeModelBuilderContext</em></a>) – Prepared inputs and run settings for the active model build.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the requested output is unsupported or a declared
-    variable role refers to an absent variable.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -696,9 +657,7 @@ runtime customization.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.builders.RhimeModelBuilderContext"><code class="docutils literal notranslate"><span class="pre">RhimeModelBuilderContext</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.builders.RhimeModelBuildResult"><code class="docutils literal notranslate"><span class="pre">RhimeModelBuildResult</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.builders.validate_model_build_result"><code class="docutils literal notranslate"><span class="pre">validate_model_build_result()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.builders.callable_metadata"><code class="docutils literal notranslate"><span class="pre">callable_metadata()</span></code></a></li>
 </ul>
   </nav></div>

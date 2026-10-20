@@ -492,7 +492,7 @@ footprint grids at different spatial resolutions.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Public entry points</p></td>
 <td><p><a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_nested" title="openghg_inversions.rhime.run_rhime_nested"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_nested()</span></code></a> for a complete run,
-and <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_nested_from_prepared_inputs" title="openghg_inversions.rhime.run_rhime_nested_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_nested_from_prepared_inputs()</span></code></a>
+and <code class="docutils literal notranslate"><span class="pre">run_nested(config=config,</span> <span class="pre">prepared=nested)</span></code>
 for explicit prepared outer and inner inputs.</p></td>
 </tr>
 <tr class="row-even"><td><p>Configuration and command line</p></td>
@@ -501,7 +501,8 @@ for explicit prepared outer and inner inputs.</p></td>
 not currently accept this family.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Outputs</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">output_format=&quot;none&quot;</span></code> returns the sampled result without formatted
+<td><p><code class="docutils literal notranslate"><span class="pre">output_format=&quot;none&quot;</span></code> returns <code class="docutils literal notranslate"><span class="pre">NestedOutput</span></code> with separate outer
+and inner scientific views without writing files or formatted
 products. <code class="docutils literal notranslate"><span class="pre">output_format=&quot;paris&quot;</span></code> can additionally write separate
 outer- and inner-grid flux products plus one shared concentration
 product. Other output formats are rejected because they assume one

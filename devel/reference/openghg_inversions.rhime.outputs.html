@@ -631,6 +631,14 @@ in-memory reporting.</p>
 </dl>
 </dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.outputs.validate_nested_output_resources">
+<span class="sig-name descname"><span class="pre">validate_nested_output_resources</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_spec</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.outputs.validate_nested_output_resources" title="Link to this definition">#</a></dt>
+<dd><p>Check nested reporting resources and destinations before doing work.</p>
+<dl class="field-list simple">
+</dl>
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.outputs.RhimeResult">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RhimeResult</span></span><span class="sig-paren">(</span>
@@ -653,9 +661,9 @@ in-memory reporting.</p>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.outputs.RhimeResult" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Runtime envelope retained for nested and CO2 consumers.</p>
+<p>Runtime envelope retained for deferred CO2 consumers.</p>
 <p>Standard and multisector execution return <code class="xref py py-class docutils literal notranslate"><span class="pre">InversionOutput</span></code> directly.
-Those remaining families own its retirement with their execution migration.</p>
+Those consumers own its retirement with their execution migration.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -803,7 +811,7 @@ Scientific result and trace exports remain a separate runner operation.</p>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.outputs.make_model_output" title="Link to this definition">#</a></dt>
-<dd><p>Bind standard or multisector samples to their borrowed scientific context.</p>
+<dd><p>Bind sampled states to their borrowed scientific context.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -830,7 +838,7 @@ installed package provenance for an in-memory run.</p></li>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.outputs.save_inversion_output">
-<span class="sig-name descname"><span class="pre">save_inversion_output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inv_out</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_spec</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.outputs.save_inversion_output" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">save_inversion_output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inv_out</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_spec</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">suffix</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.outputs.save_inversion_output" title="Link to this definition">#</a></dt>
 <dd><p>Export the scientific result and trace without computing derived products.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -839,13 +847,22 @@ installed package provenance for an in-memory run.</p></li>
 <li><p><strong>output_spec</strong> (<a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeOutputSpec" title="openghg_inversions.rhime.specs.RhimeOutputSpec"><em>RhimeOutputSpec</em></a>) – Resolved export choices. <code class="docutils literal notranslate"><span class="pre">inv_out</span></code> defaults to exporting the
 scientific result; <code class="docutils literal notranslate"><span class="pre">none</span></code> writes nothing. Explicit paths retain
 their destinations and existing files follow normal overwrite behavior.</p></li>
+<li><p><strong>suffix</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Optional suffix appended to each resolved artifact stem, including
+explicit destinations. For example, <code class="docutils literal notranslate"><span class="pre">&quot;_inner&quot;</span></code> selects the inner view.</p></li>
 </ul>
 </dd>
-<dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><ul class="simple">
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Written artifact paths keyed by <code class="docutils literal notranslate"><span class="pre">inversion_output{suffix}_path</span></code> and
+<code class="docutils literal notranslate"><span class="pre">trace{suffix}_path</span></code>. Disabled exports are absent.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If filenames or destinations are invalid.</p></li>
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#OSError" title="(in Python v3.15)"><strong>OSError</strong></a> – If an artifact cannot be written.</p></li>
 </ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -902,6 +919,7 @@ their destinations and existing files follow normal overwrite behavior.</p></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.outputs.validate_output_resources"><code class="docutils literal notranslate"><span class="pre">validate_output_resources()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.outputs.validate_standard_output_resources"><code class="docutils literal notranslate"><span class="pre">validate_standard_output_resources()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.outputs.validate_multisector_output_resources"><code class="docutils literal notranslate"><span class="pre">validate_multisector_output_resources()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.outputs.validate_nested_output_resources"><code class="docutils literal notranslate"><span class="pre">validate_nested_output_resources()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.outputs.RhimeResult"><code class="docutils literal notranslate"><span class="pre">RhimeResult</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.outputs.annotate_likelihood_trace"><code class="docutils literal notranslate"><span class="pre">annotate_likelihood_trace()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.outputs.postprocess_standard_outputs"><code class="docutils literal notranslate"><span class="pre">postprocess_standard_outputs()</span></code></a></li>

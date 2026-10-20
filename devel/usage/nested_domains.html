@@ -483,6 +483,8 @@ the inner latitude/longitude extent;</p></li>
 <li><p>samples <code class="docutils literal notranslate"><span class="pre">H</span> <span class="pre">&#64;</span> <span class="pre">x_outer</span> <span class="pre">+</span> <span class="pre">H_inner</span> <span class="pre">&#64;</span> <span class="pre">x_inner</span></code> with the ordinary RHIME
 boundary-condition, model-error, and likelihood components.</p></li>
 </ol>
+<p>All retained sites currently use the same outer domain and the same inner
+domain. Both domains must be available for each retained site.</p>
 <p>The two grids are not RHIME emissions sectors or grouped basis regions. A
 sector separates different flux sources on one spatial layout; a nested domain
 separates two transport grids for the same flux source and must retain two
@@ -608,15 +610,20 @@ native grid. Configure the exact outer and inner artifacts independently with
 <p>Do not create one basis artifact spanning both grids. When generating a basis
 instead, <code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> and <code class="docutils literal notranslate"><span class="pre">inner_basis_output_path</span></code> save the outer
 and inner artifacts at their exact destinations independently.
+These exports also run with <code class="docutils literal notranslate"><span class="pre">run_nested(config=config,</span> <span class="pre">prepared=nested,</span>
+<span class="pre">inner_basis_output_path=...)</span></code>. Each returned native basis and its saved
+<code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> retain the export destination as provenance; the borrowed
+prepared inputs remain unchanged.
 <code class="docutils literal notranslate"><span class="pre">landsea_path</span></code> and <code class="docutils literal notranslate"><span class="pre">inner_landsea_path</span></code> select each grid’s class map when
 weighted generation needs one; support-map selection fails for missing files
 or unsupported domains before acquisition. If no inner basis file or algorithm
 is specified, the inner grid uses the quadtree algorithm.</p>
-<p>The result exposes the ordinary RHIME objects and both native preparations:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">result</span><span class="o">.</span><span class="n">idata</span><span class="o">.</span><span class="n">posterior</span><span class="p">[[</span><span class="s2">"x_outer"</span><span class="p">,</span> <span class="s2">"x_inner"</span><span class="p">]]</span>
-<span class="n">result</span><span class="o">.</span><span class="n">inv_inputs</span><span class="p">[[</span><span class="s2">"H"</span><span class="p">,</span> <span class="s2">"H_inner"</span><span class="p">]]</span>
-<span class="n">result</span><span class="o">.</span><span class="n">outer_basis_functions</span>
-<span class="n">result</span><span class="o">.</span><span class="n">inner_basis_functions</span>
+<p>The returned <code class="docutils literal notranslate"><span class="pre">NestedOutput</span></code> exposes an outer and an inner <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code>
+view. They borrow one sampled trace and retain their separate native bases:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">result</span><span class="o">.</span><span class="n">outer</span><span class="o">.</span><span class="n">trace</span><span class="o">.</span><span class="n">posterior</span><span class="p">[[</span><span class="s2">"x_outer"</span><span class="p">,</span> <span class="s2">"x_inner"</span><span class="p">]]</span>
+<span class="n">result</span><span class="o">.</span><span class="n">outer</span><span class="o">.</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H"</span><span class="p">]</span>
+<span class="n">result</span><span class="o">.</span><span class="n">outer</span><span class="o">.</span><span class="n">basis_functions</span>
+<span class="n">result</span><span class="o">.</span><span class="n">inner</span><span class="o">.</span><span class="n">basis_functions</span>
 </pre></div>
 </div>
 </section>
@@ -705,8 +712,9 @@ masked before basis projection. That spatial contribution cannot be removed
 from an already projected <code class="docutils literal notranslate"><span class="pre">H</span></code>. Combine the two preparations with the
 explicit acknowledgement shown below and run from that boundary:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">RhimeConfig</span><span class="p">,</span>
     <span class="n">combine_nested_rhime_inputs</span><span class="p">,</span>
-    <span class="n">run_rhime_nested_from_prepared_inputs</span><span class="p">,</span>
+    <span class="n">run_nested</span><span class="p">,</span>
 <span class="p">)</span>
 
 <span class="n">nested</span> <span class="o">=</span> <span class="n">combine_nested_rhime_inputs</span><span class="p">(</span>
@@ -715,14 +723,36 @@ explicit acknowledgement shown below and run from that boundary:</p>
     <span class="n">time_tolerance</span><span class="o">=</span><span class="s2">"30min"</span><span class="p">,</span>
     <span class="n">outer_overlap_masked</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
 <span class="p">)</span>
-
-<span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime_nested_from_prepared_inputs</span><span class="p">(</span>
-    <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">nested</span><span class="p">,</span>
-    <span class="n">run_spec</span><span class="o">=</span><span class="n">run_spec_with_output_format_none</span><span class="p">,</span>
-    <span class="n">sampler</span><span class="o">=</span><span class="n">sampler</span><span class="p">,</span>
-<span class="p">)</span>
+<span class="n">config</span> <span class="o">=</span> <span class="n">RhimeConfig</span><span class="o">.</span><span class="n">from_params</span><span class="p">({</span>
+    <span class="s2">"species"</span><span class="p">:</span> <span class="s2">"ch4"</span><span class="p">,</span>
+    <span class="s2">"sites"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"TAC"</span><span class="p">,</span> <span class="s2">"MHD"</span><span class="p">],</span>
+    <span class="s2">"averaging_period"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"1h"</span><span class="p">,</span> <span class="s2">"1h"</span><span class="p">],</span>
+    <span class="s2">"domain"</span><span class="p">:</span> <span class="s2">"EUROPE"</span><span class="p">,</span>
+    <span class="s2">"start_date"</span><span class="p">:</span> <span class="s2">"2019-01-01"</span><span class="p">,</span>
+    <span class="s2">"end_date"</span><span class="p">:</span> <span class="s2">"2019-02-01"</span><span class="p">,</span>
+    <span class="s2">"flux_sources"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"total-ukghg-edgar7"</span><span class="p">],</span>
+    <span class="s2">"mismatch_model"</span><span class="p">:</span> <span class="s2">"pollution_event"</span><span class="p">,</span>
+    <span class="s2">"output_name"</span><span class="p">:</span> <span class="s2">"prepared_nested"</span><span class="p">,</span>
+    <span class="s2">"output_format"</span><span class="p">:</span> <span class="s2">"none"</span><span class="p">,</span>
+<span class="p">},</span> <span class="n">multisector</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">run_nested</span><span class="p">(</span><span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">,</span> <span class="n">prepared</span><span class="o">=</span><span class="n">nested</span><span class="p">)</span>
 </pre></div>
 </div>
+<p>This uses the same materialization, model construction, inference and output
+operations as a complete run. Supplied preparation is validated at entry;
+acquisition and scientific preparation are skipped. No staged manifest is
+required. For direct graph inspection, call <code class="docutils literal notranslate"><span class="pre">materialize_nested_inputs</span></code> on
+<code class="docutils literal notranslate"><span class="pre">nested.combined</span></code> and <code class="docutils literal notranslate"><span class="pre">config.model</span></code>, then pass its returned Dataset and
+<code class="docutils literal notranslate"><span class="pre">priors</span></code> to <code class="docutils literal notranslate"><span class="pre">build_nested_rhime_model</span></code> with the same model specification.</p>
+<p>To prepare the two domains yourself, first call
+<code class="docutils literal notranslate"><span class="pre">inner_data_config(config.data,</span> <span class="pre">inner_domain=&quot;6km&quot;,</span> <span class="pre">...)</span></code> from
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime</span></code>. This is the same configuration step used by the
+full runner: it inherits the outer stores, resolves independent inner basis
+paths, defaults to quadtree, and disables the inner boundary component. Pass
+the outer and inner configurations to <code class="docutils literal notranslate"><span class="pre">resolve_basis_inputs</span></code> and
+<code class="docutils literal notranslate"><span class="pre">acquire_merged_data</span></code>, then pass the acquired data and resolved basis inputs
+to <code class="docutils literal notranslate"><span class="pre">prepare_nested_rhime_inputs</span></code>. Keep <code class="docutils literal notranslate"><span class="pre">inner_nbasis=None</span></code> at preparation
+when requesting automatic total-budget allocation.</p>
 <p>Omitting <code class="docutils literal notranslate"><span class="pre">outer_overlap_masked=True</span></code> raises rather than silently combining
 two ordinary overlapping sensitivity matrices. The retrieval-backed
 <code class="docutils literal notranslate"><span class="pre">run_rhime_nested</span></code> path performs the mask before preparation and supplies
@@ -758,14 +788,23 @@ target coordinates, preventing reuse against a changed grid);</p></li>
 (<code class="docutils literal notranslate"><span class="pre">mu</span> <span class="pre">=</span> <span class="pre">mu_outer</span> <span class="pre">+</span> <span class="pre">mu_inner</span> <span class="pre">+</span> <span class="pre">baseline</span></code>) already reports one concentration
 per observation – there is no separate “inner concentration” product.</p></li>
 </ul>
-<p><code class="docutils literal notranslate"><span class="pre">run_rhime_nested</span></code> writes all three when <code class="docutils literal notranslate"><span class="pre">output_path</span></code> is set, using the
+<p><code class="docutils literal notranslate"><span class="pre">run_rhime_nested</span></code> requires <code class="docutils literal notranslate"><span class="pre">output_path</span></code> for PARIS and writes all three, using the
 inner domain’s label (e.g. <code class="docutils literal notranslate"><span class="pre">EUROPE-6km</span></code>) in the inner flux file’s name.
+The returned <code class="docutils literal notranslate"><span class="pre">NestedOutput.products</span></code> retains <code class="docutils literal notranslate"><span class="pre">paris_flux</span></code>,
+<code class="docutils literal notranslate"><span class="pre">paris_flux_inner</span></code> and <code class="docutils literal notranslate"><span class="pre">paris_concentration</span></code> so Python callers can inspect
+the products without reconstructing them. <code class="docutils literal notranslate"><span class="pre">NestedOutput.paths</span></code> records the
+corresponding <code class="docutils literal notranslate"><span class="pre">paris_*_path</span></code> destinations and any written
+<code class="docutils literal notranslate"><span class="pre">inversion_output_path</span></code>, <code class="docutils literal notranslate"><span class="pre">inversion_output_inner_path</span></code> and <code class="docutils literal notranslate"><span class="pre">trace_path</span></code>.
 When inversion-output artifacts are requested, each domain view also retains
 its actual outer/inner identity, coordinate-grid fingerprints and extents,
 the explicit trace-to-basis state-dimension mapping, and the outer overlap
 mask policy. These fields survive an <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> save/load round trip.
-The public <code class="docutils literal notranslate"><span class="pre">make_nested_paris_outputs</span></code> helper remains available as a
-compatibility wrapper for callers that already hold a <code class="docutils literal notranslate"><span class="pre">NestedRhimeResult</span></code>.</p>
+The inner view records its own state-activity policy.
+Use <code class="docutils literal notranslate"><span class="pre">make_nested_paris_products(result.outer,</span> <span class="pre">result.inner,</span>
+<span class="pre">inner_domain_label=&quot;EUROPE-6km&quot;,</span> <span class="pre">country_file=...)</span></code> for explicit product
+construction from these views. The scientific result contains no live PyMC
+model, sampler or writing policy. See <a class="reference internal" href="legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a> for the
+removed result and prepared-runner interfaces.</p>
 </section>
 </section>
 

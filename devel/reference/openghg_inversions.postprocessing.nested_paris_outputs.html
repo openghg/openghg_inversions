@@ -649,37 +649,6 @@ and country totals on the inner domain’s own grid.</p>
 </dl>
 </dd></dl>
 
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_outputs">
-<span class="sig-name descname"><span class="pre">make_nested_paris_outputs</span></span><span class="sig-paren">(</span>
-
-<dl>
-<dd><em class="sig-param"><span class="n"><span class="pre">nested_result</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">country_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">inner_country_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">time_point</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'midpoint'</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">report_mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">inversion_grid</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">flux_frequency</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">obs_avg_period</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'4h'</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">template_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'legacy'</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">country_selections</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('AUT',</span> <span class="pre">'BEL',</span> <span class="pre">'CHE',</span> <span class="pre">'CZE',</span> <span class="pre">'DEU',</span> <span class="pre">'DNK',</span> <span class="pre">'ESP',</span> <span class="pre">'FIN',</span> <span class="pre">'FRA',</span> <span class="pre">'GBR',</span> <span class="pre">'HRV',</span> <span class="pre">'HUN',</span> <span class="pre">'IRL',</span> <span class="pre">'ITA',</span> <span class="pre">'LUX',</span> <span class="pre">'NLD',</span> <span class="pre">'NOR',</span> <span class="pre">'POL',</span> <span class="pre">'PRT',</span> <span class="pre">'SVK',</span> <span class="pre">'SVN',</span> <span class="pre">'SWE')</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">country_file_cache_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-</dl>
-
-<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_outputs" title="Link to this definition">#</a></dt>
-<dd><p>Compatibility wrapper adapting a sampled nested result to PARIS products.</p>
-<p>New recipe code should construct its domain <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> views and
-call <a class="reference internal" href="#openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_products" title="openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_products"><code class="xref py py-func docutils literal notranslate"><span class="pre">make_nested_paris_products()</span></code></a> directly. This wrapper preserves
-the original public entry point for callers holding a <code class="docutils literal notranslate"><span class="pre">NestedRhimeResult</span></code>.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)">tuple</a>[<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>, <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>, <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>]</p>
-</dd>
-</dl>
-</dd></dl>
-
 </section>
 
 
@@ -730,7 +699,6 @@ the original public entry point for callers holding a <code class="docutils lite
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_products"><code class="docutils literal notranslate"><span class="pre">make_nested_paris_products()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_outputs"><code class="docutils literal notranslate"><span class="pre">make_nested_paris_outputs()</span></code></a></li>
 </ul>
   </nav></div>
 

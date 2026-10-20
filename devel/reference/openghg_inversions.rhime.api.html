@@ -591,8 +591,8 @@ selection does not add acquisition or checkpoint routes.</p></li>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>The selected recipe’s scientific result. Standard and multisector return
-InversionOutput, ordinary CO2 returns Co2Output, nested retains its result
-record, and cached/linked CO2 recipes return an inference DataTree.</p>
+InversionOutput, ordinary CO2 returns Co2Output, nested returns NestedOutput
+with two native output views, and cached/linked CO2 recipes return an inference DataTree.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -605,7 +605,7 @@ record, and cached/linked CO2 recipes return an inference DataTree.</p>
 </dd>
 </dl>
 <p>See the concrete recipe for scientific options, ownership and output
-behavior. Standard and multisector callers may supply <code class="docutils literal notranslate"><span class="pre">prepared</span></code> to skip preparation.</p>
+behavior. Standard, multisector and nested callers may supply <code class="docutils literal notranslate"><span class="pre">prepared</span></code> to skip preparation.</p>
 </dd></dl>
 
 </section>

@@ -549,6 +549,36 @@ Pass the canonical Dataset and resolved <code class="docutils literal notranslat
 the scientific graph and returns <code class="docutils literal notranslate"><span class="pre">RhimeModelBuildResult</span></code>; use <code class="docutils literal notranslate"><span class="pre">built.model</span></code>
 when a caller needs the PyMC graph. Its optional <code class="docutils literal notranslate"><span class="pre">sigma_alignment</span></code> argument
 accepts an already resolved mismatch alignment, as in the standard builder.</p>
+<p>Nested Python callers now use <code class="docutils literal notranslate"><span class="pre">run_nested(config=config,</span> <span class="pre">prepared=nested)</span></code>
+in place of <code class="docutils literal notranslate"><span class="pre">run_rhime_nested_from_prepared_inputs</span></code>. The returned
+<code class="docutils literal notranslate"><span class="pre">NestedOutput</span></code> contains <code class="docutils literal notranslate"><span class="pre">outer</span></code> and <code class="docutils literal notranslate"><span class="pre">inner</span></code> scientific <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code>
+views of one trace; use <code class="docutils literal notranslate"><span class="pre">result.outer.trace</span></code> to inspect samples and each view’s
+<code class="docutils literal notranslate"><span class="pre">basis_functions</span></code> for its native grid. <code class="docutils literal notranslate"><span class="pre">NestedRhimeResult</span></code> and its
+<code class="docutils literal notranslate"><span class="pre">RhimeResult</span></code> forwarding envelope are removed. CLI entry points and supported
+nested INI option spellings remain accepted.</p>
+<p>The nested CLI now saves both native <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> artifacts through the
+standard writer. Their <code class="docutils literal notranslate"><span class="pre">output_metadata</span></code> no longer copies <code class="docutils literal notranslate"><span class="pre">output_format</span></code>,
+<code class="docutils literal notranslate"><span class="pre">output_path</span></code>, <code class="docutils literal notranslate"><span class="pre">output_name</span></code>, <code class="docutils literal notranslate"><span class="pre">save_trace</span></code> or <code class="docutils literal notranslate"><span class="pre">save_inversion_output</span></code>;
+their <code class="docutils literal notranslate"><span class="pre">provenance</span></code> records package <code class="docutils literal notranslate"><span class="pre">version</span></code>, <code class="docutils literal notranslate"><span class="pre">revision</span></code> and <code class="docutils literal notranslate"><span class="pre">dirty</span></code>
+status instead of the former <code class="docutils literal notranslate"><span class="pre">contract</span></code>, <code class="docutils literal notranslate"><span class="pre">compatibility_issue</span></code> and
+<code class="docutils literal notranslate"><span class="pre">basis_representation</span></code> markers. Saving emits
+<code class="docutils literal notranslate"><span class="pre">TIMING</span> <span class="pre">rhime.output.inversion_output_save</span></code> log lines and validates
+<code class="docutils literal notranslate"><span class="pre">output_name</span></code> and <code class="docutils literal notranslate"><span class="pre">start_date</span></code> as filename components. The scientific
+arrays, native grids and nested overlap metadata retain their meanings.
+Requested basis exports retain their destination receipts in both native views.</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">materialize_nested_inputs(nested.combined,</span> <span class="pre">config.model)</span></code> and pass the
+returned Dataset and <code class="docutils literal notranslate"><span class="pre">priors</span></code> to the single <code class="docutils literal notranslate"><span class="pre">build_nested_rhime_model</span></code>.
+It now returns <code class="docutils literal notranslate"><span class="pre">RhimeModelBuildResult</span></code>; <code class="docutils literal notranslate"><span class="pre">build_nested_rhime_model_result</span></code>
+and <code class="docutils literal notranslate"><span class="pre">RhimeModelBuilderContext</span></code> are removed. Scientific preparation takes
+acquired outer/inner data and explicit resolved choices; the runner owns
+resource loading and optional basis exports. Explicit product construction uses
+<code class="docutils literal notranslate"><span class="pre">make_nested_paris_products(result.outer,</span> <span class="pre">result.inner,</span> <span class="pre">...)</span></code> instead of the
+removed <code class="docutils literal notranslate"><span class="pre">make_nested_paris_outputs</span></code> result adapter. Configured PARIS runs now
+require <code class="docutils literal notranslate"><span class="pre">output_path</span></code> before sampling; use that direct product function for
+in-memory products. Runs that write PARIS products retain those datasets in
+<code class="docutils literal notranslate"><span class="pre">result.products</span></code> and all written destinations in <code class="docutils literal notranslate"><span class="pre">result.paths</span></code>.
+<code class="docutils literal notranslate"><span class="pre">inner_data_config</span></code> exposes the same inner configuration derivation used by
+the full runner for callers preparing their own handoff. See <a class="reference internal" href="nested_domains.html"><span class="doc">Run a nested-domain RHIME inversion</span></a>.</p>
 <p><code class="docutils literal notranslate"><span class="pre">RhimeModelBuildResult</span></code> now takes only <code class="docutils literal notranslate"><span class="pre">model</span></code> and <code class="docutils literal notranslate"><span class="pre">output_contract</span></code>.
 Move its former <code class="docutils literal notranslate"><span class="pre">variable_roles</span></code>, <code class="docutils literal notranslate"><span class="pre">supported_output_formats</span></code> and <code class="docutils literal notranslate"><span class="pre">metadata</span></code>
 arguments into an <code class="docutils literal notranslate"><span class="pre">OutputContract</span></code> from
@@ -679,7 +709,8 @@ for the scientific result. Output-policy choices, written paths, live PyMC model
 and samplers are not stored on it; <code class="docutils literal notranslate"><span class="pre">output_metadata</span></code> contains the inference
 description. Call product functions such as <code class="docutils literal notranslate"><span class="pre">basic_output(result)</span></code> to produce
 in-memory summaries. For graph inspection, call the eager model builder directly.
-Nested and CO2 families retain their existing result types.</p>
+Nested execution returns <code class="docutils literal notranslate"><span class="pre">NestedOutput</span></code> with two native <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code>
+views; CO2 families retain their existing result types.</p>
 <p>For multisector prepared execution with ordinary configuration, use
 <code class="docutils literal notranslate"><span class="pre">run_multisector(prepared=prepared,</span> <span class="pre">config=config)</span></code> and a <code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code>
 constructed with <code class="docutils literal notranslate"><span class="pre">multisector=True</span></code>. Keep sector/source mappings and ordering
@@ -697,9 +728,9 @@ rather than read <code class="docutils literal notranslate"><span class="pre">x_
 when scientific sector names differ from inventory names. Existing current-format
 built-in sample handoffs with <code class="docutils literal notranslate"><span class="pre">x_&lt;suffix&gt;</span></code> state names remain readable. This
 does not restore the retired historical staged-envelope format.</p>
-<p>Standard and multisector execution no longer construct <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> or
-return <code class="docutils literal notranslate"><span class="pre">RhimeResult</span></code>. These shared types remain only for the deferred nested
-and cached CO2 recipes until their own consumers migrate. Remove multisector
+<p>Standard, multisector and nested execution no longer construct <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code>
+or return <code class="docutils literal notranslate"><span class="pre">RhimeResult</span></code>. These shared types remain only for the cached CO2
+recipe until its consumers migrate. Remove multisector
 calls to <code class="docutils literal notranslate"><span class="pre">make_multisector_rhime_result</span></code> and <code class="docutils literal notranslate"><span class="pre">make_multisector_rhime_outputs</span></code>.
 Use <code class="docutils literal notranslate"><span class="pre">build_multisector_model</span></code>, <code class="docutils literal notranslate"><span class="pre">make_model_output</span></code>, and the explicit
 product/export calls above. For a custom complete model, pass selected eager

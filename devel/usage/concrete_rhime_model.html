@@ -977,9 +977,8 @@ retained basis and source mappings. A model that changes those meanings must
 provide its own reconstruction and product functions rather than reuse an
 incompatible contract. Direct construction does not make a custom graph
 recordable by the package’s saved multisector sampling operation.</p>
-<p>The shared <code class="docutils literal notranslate"><span class="pre">RhimeModelBuilderContext</span></code> remains for deferred nested consumers;
-<code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> remains for nested and CO2 consumers. Neither interface
-is part of standard or multisector construction.</p>
+<p>Nested construction also accepts explicit model inputs and materialized priors;
+see <a class="reference internal" href="nested_domains.html"><span class="doc">Run a nested-domain RHIME inversion</span></a>. <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> remains for deferred CO2 consumers.</p>
 <p>Structurally distinct observation-channel models belong in readable named
 recipes with concrete builders. The active design guidance is
 <a class="reference internal" href="../development/rhime_model_development.html"><span class="doc">Developing RHIME models</span></a>; the retired semantic-model work

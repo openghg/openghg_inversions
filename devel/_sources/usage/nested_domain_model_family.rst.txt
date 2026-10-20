@@ -25,14 +25,15 @@ Current support
        footprint grids at different spatial resolutions.
    * - Public entry points
      - :func:`openghg_inversions.rhime.run_rhime_nested` for a complete run,
-       and :func:`openghg_inversions.rhime.run_rhime_nested_from_prepared_inputs`
+       and ``run_nested(config=config, prepared=nested)``
        for explicit prepared outer and inner inputs.
    * - Configuration and command line
      - Supports the RHIME INI schema and
        ``openghg-inversions run-rhime-nested``. The generic staged commands do
        not currently accept this family.
    * - Outputs
-     - ``output_format="none"`` returns the sampled result without formatted
+     - ``output_format="none"`` returns ``NestedOutput`` with separate outer
+       and inner scientific views without writing files or formatted
        products. ``output_format="paris"`` can additionally write separate
        outer- and inner-grid flux products plus one shared concentration
        product. Other output formats are rejected because they assume one
