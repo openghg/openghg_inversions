@@ -73,11 +73,6 @@ class Co2Preparation:
     affine_payload: Path | None = None
 
 
-def _preparation_record(manifest: str | Path) -> tuple[Path, dict[str, Any]]:
-    path, record = read_checkpoint(manifest, Co2PreparationRecord)
-    return path, checkpoint_dict(record)
-
-
 def _finish_preparation(
     destination: Path, *, prepared_path: Path, affine_path: Path | None,
     facts: Mapping[str, str],
@@ -181,17 +176,19 @@ def load_preparation(manifest: str | Path, *, expected_generation: str | None = 
     An expected generation rejects replacement of a preparation after sampling.
     Affine references stay unloaded until scientific output replay consumes them.
     """
-    path, record = _preparation_record(manifest)
-    if expected_generation is not None and record["generation"] != expected_generation:
+    path, record = read_checkpoint(manifest, Co2PreparationRecord)
+    if expected_generation is not None and record.generation != expected_generation:
         raise ValueError(f"CO2 preparation {path} was replaced; samples require generation {expected_generation!r}.")
-    payload = reference(path, record["prepared_inputs"])
+    payload = reference(path, record.prepared_inputs)
     prepared = Co2PreparedInputs.load(payload)
-    facts = requested_co2_facts(prepared, **{name: record[name] for name in ("start_date", "end_date", "domain")})
+    facts = requested_co2_facts(
+        prepared, start_date=record.start_date, end_date=record.end_date, domain=record.domain,
+    )
     affine_payload = (
-        reference(path, record["affine_reconstruction"]) if record.get("affine_reconstruction") is not None else None
+        reference(path, record.affine_reconstruction) if record.affine_reconstruction is not None else None
     )
     return Co2Preparation(
-        prepared=prepared, generation=record["generation"], payload=payload, affine_payload=affine_payload, **facts,
+        prepared=prepared, generation=record.generation, payload=payload, affine_payload=affine_payload, **facts,
     )
 
 
@@ -205,14 +202,14 @@ def save_samples(
     configuration identity and callable representations do not gate reuse. Model
     choices are live inference inputs; replay uses only saved scientific meaning.
     """
-    preparation_path, preparation = _preparation_record(preparation_manifest)
-    if preparation["generation"] != preparation_generation:
+    preparation_path, preparation = read_checkpoint(preparation_manifest, Co2PreparationRecord)
+    if preparation.generation != preparation_generation:
         raise ValueError(f"CO2 preparation {preparation_path} was replaced; samples require generation {preparation_generation!r}.")
     validate_co2_trace(trace)
-    prepared_path = reference(preparation_path, preparation["prepared_inputs"])
+    prepared_path = reference(preparation_path, preparation.prepared_inputs)
     affine_path = (
-        reference(preparation_path, preparation["affine_reconstruction"])
-        if preparation.get("affine_reconstruction") is not None else None
+        reference(preparation_path, preparation.affine_reconstruction)
+        if preparation.affine_reconstruction is not None else None
     )
     record = Co2SampleWriteRecord(
         schema="openghg_inversions.co2.sample", schema_version=1,
@@ -275,11 +272,11 @@ def load_samples(sample_manifest: str | Path) -> Co2Output:
     installed-version provenance. Original requested dates are taken from the
     preparation, independently of observation extrema or current model settings.
     """
-    path, typed_record = read_checkpoint(sample_manifest, Co2SampleReadRecord)
-    record = checkpoint_dict(typed_record)
-    generation = record["preparation_generation"]
-    preparation = load_preparation(reference(path, record["preparation"]), expected_generation=generation)
-    trace = load_trace(reference(path, record["posterior"]))
+    path, record = read_checkpoint(sample_manifest, Co2SampleReadRecord)
+    preparation = load_preparation(
+        reference(path, record.preparation), expected_generation=record.preparation_generation,
+    )
+    trace = load_trace(reference(path, record.posterior))
     validate_co2_trace(trace, preparation.prepared)
     bound = (
         _bind_affine_flux_map(
@@ -288,15 +285,14 @@ def load_samples(sample_manifest: str | Path) -> Co2Output:
         )
         if preparation.affine_payload is not None else None
     )
-    result = make_co2_output(
+    return make_co2_output(
         prepared=preparation.prepared, trace=trace, bound=bound,
         start_date=preparation.start_date, end_date=preparation.end_date, domain=preparation.domain,
         output_metadata={
-            "sampler": describe_recorded_sampler(record.get("actual_inference")),
-            "provenance": record.get("provenance") if isinstance(record.get("provenance"), Mapping) else {},
+            "sampler": describe_recorded_sampler(record.actual_inference),
+            "provenance": record.provenance,
         },
     )
-    return result
 
 
 def postprocess(

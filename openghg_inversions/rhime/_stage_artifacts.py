@@ -93,21 +93,6 @@ def _validate_filename_component(name: str, value: Any) -> None:
         )
 
 
-def read_manifest(
-    path: str | Path, schema: str, required_keys: tuple[str, ...] = (),
-) -> tuple[Path, dict[str, Any]]:
-    """Read a version-one manifest and require the caller's envelope fields."""
-    path = Path(path).resolve()
-    record = json.loads(path.read_text(encoding="utf-8"))
-    if (not isinstance(record, dict) or record.get("schema") != schema
-            or type(record.get("schema_version")) is not int or record["schema_version"] != 1):
-        raise ValueError(f"{path} is not a {schema} version-1 manifest.")
-    missing = [name for name in required_keys if name not in record]
-    if missing:
-        raise ValueError(f"Manifest {path} is missing {missing!r}.")
-    return path, record
-
-
 def reference(manifest: Path, value: Any) -> Path:
     """Resolve a nonempty artifact reference relative to its manifest."""
     if not isinstance(value, str) or not value:
