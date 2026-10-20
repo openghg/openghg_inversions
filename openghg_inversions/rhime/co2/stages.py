@@ -8,7 +8,7 @@ their affine reconstruction binding remains valid.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from hashlib import sha256
 import json
 from numbers import Integral
@@ -18,12 +18,11 @@ from typing import Any, cast
 from collections.abc import Mapping
 
 import numpy as np
-import xarray as xr
 
 from openghg_inversions.basis.affine_flux_map_io import load as load_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import RhimePreparedInputs
-from openghg_inversions.postprocessing.countries import Countries
+from openghg_inversions.inference.sampling import describe_recorded_sampler
 from openghg_inversions.rhime.builders import callable_metadata
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.rhime._stage_artifacts import (
@@ -37,8 +36,7 @@ from openghg_inversions.rhime._stage_authentication import (
     _load_stage_manifest,
 )
 from openghg_inversions.rhime._stage_checks import PREPARATION_CHECK_NAME, _check_result, _check_stage
-from openghg_inversions.serialization import load_trace, reset_serialisation_multiindexes, save_trace
-from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
+from openghg_inversions.serialization import load_trace, save_trace
 
 from .co2_affine_output import BoundCo2AffineFluxMap, _bind_affine_flux_map, prepared_inputs_content_id
 from .co2_cached_sigma_runner import (
@@ -47,7 +45,10 @@ from .co2_cached_sigma_runner import (
     sample_co2_cached_prior_predictive,
 )
 from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs
-from .co2_outputs import Co2Output, Co2OutputOptions
+from .co2_outputs import (
+    Co2Output, Co2OutputOptions, calculate_co2_products, make_co2_output,
+    save_co2_products, validate_co2_output_spec, validate_co2_product_request,
+)
 from .configuration import Co2RunSetup, resolve_co2_family_config
 
 
@@ -128,8 +129,6 @@ def resolve_co2_stage_setup(params: Mapping[str, Any]) -> Co2StageSetup:
             "sample and postprocess with one preparation or sample manifest, or "
             "co2.run_co2 for configured full execution."
         )
-    from .co2_outputs import validate_co2_output_spec
-
     options = dict(params)
     outputs = dict(options.pop("outputs", {}))
     reconstruction = outputs.pop("reconstruction_path", None)
@@ -221,11 +220,6 @@ def _validate_inputs(setup: Co2StageSetup, prepared: Co2PreparedInputs) -> None:
         value = likelihood.get(key)
         if isinstance(value, Mapping) and set(value) != sites:
             raise ValueError(f"CO2 {key} must cover the prepared site labels exactly: {sorted(sites)!r}.")
-    if setup.output.output_format == "paris" and len(set(prepared.averaging_period)) != 1:
-        raise ValueError("CO2 PARIS concentration requires one common observation averaging period.")
-    if setup.output.country_file:
-        countries = Countries.from_file(country_file=setup.output.country_file)
-        xr.align(prepared.basis_functions.flux, countries.matrix, join="exact", copy=False)
     co2_cached_sigma_input_names(prepared, use_bc=bool(options.get("use_bc", False)))
 
 
@@ -264,13 +258,14 @@ def prepare_co2_stage(
         raise ValueError(
             "Save the new prepared handoff and bind its reconstruction before staging affine outputs."
         )
+    bound = None
     if setup.reconstruction_path is not None:
-        from .co2_outputs import validate_co2_outputs
-
         bound = _bind_affine_flux_map(
             load_affine(setup.reconstruction_path), prepared, prepared_inputs_id=prepared_inputs_content_id(source),
         )
-        validate_co2_outputs(setup.output, bound=bound, source_to_sector=setup.source_to_sector)
+    validate_co2_product_request(
+        setup.output, prepared=prepared, bound=bound, source_to_sector=setup.source_to_sector,
+    )
     manifest = _manifest(setup, "prepare")
     destination = _stage_output_directory(output_dir)
     prepared_path = _output_path(destination, None, "prepared-inputs.nc")
@@ -306,9 +301,6 @@ def _load_prepared(
             load_affine(setup.reconstruction_path), prepared,
             prepared_inputs_id=prepared_inputs_content_id(prepared_inputs),
         )
-    from .co2_outputs import validate_co2_outputs
-
-    validate_co2_outputs(setup.output, bound=bound, source_to_sector=setup.source_to_sector)
     return prepared, bound
 
 
@@ -363,7 +355,10 @@ def sample_co2_stage(
     output_dir: str | Path,
 ) -> dict[str, Any]:
     """Sample with the matched cached runner, then save canonically."""
-    prepared, _ = _load_prepared(setup, prepared_inputs, preparation_manifest)
+    prepared, bound = _load_prepared(setup, prepared_inputs, preparation_manifest)
+    validate_co2_product_request(
+        setup.output, prepared=prepared, bound=bound, source_to_sector=setup.source_to_sector,
+    )
     manifest = _manifest(setup, "sample")
     trace = setup.recipe.runner(**setup.recipe.runner_arguments(prepared))
     destination = _stage_output_directory(output_dir)
@@ -375,6 +370,14 @@ def sample_co2_stage(
     }
     manifest["manifest_path"] = str(_write_json(destination / "sample-manifest.json", manifest))
     return manifest
+
+
+def _observed_day_range(prepared: Co2PreparedInputs) -> tuple[str, str]:
+    """Return the cached reporting window, including the final observed day."""
+    time = prepared.inv_inputs["time"]
+    start = str(np.asarray(time.min().values).astype("datetime64[D]"))
+    end = str(np.asarray(time.max().values).astype("datetime64[D]") + np.timedelta64(1, "D"))
+    return start, end
 
 
 def postprocess_co2_stage(
@@ -393,10 +396,6 @@ def postprocess_co2_stage(
     manifest. Products keep their stage filenames; ``none`` writes only the
     postprocess manifest. Reporting dates retain the observed day range.
     """
-    from .co2_outputs import (
-        calculate_co2_products, make_co2_output, validate_co2_product_request,
-    )
-
     prepared, bound = _load_prepared(setup, prepared_inputs, preparation_manifest)
     _, sample = _load_stage_manifest(sample_manifest, stage="sample")
     if sample["schema_version"] != 1:
@@ -407,13 +406,14 @@ def postprocess_co2_stage(
     recorded_sampler = recorded.get("sampler") if isinstance(recorded, Mapping) else None
     trace = load_trace(posterior)
     destination = Path(output_dir).resolve()
-    time = prepared.inv_inputs["time"]
-    start = str(np.asarray(time.min().values).astype("datetime64[D]"))
-    end = str(np.asarray(time.max().values).astype("datetime64[D]") + np.timedelta64(1, "D"))
+    start, end = _observed_day_range(prepared)
     result = make_co2_output(
         prepared=prepared, trace=trace, start_date=start, end_date=end,
         domain=prepared.inv_inputs.attrs.get("domain", "unspecified"), bound=bound,
-        output_metadata={"sampler": recorded_sampler},
+        output_metadata={
+            "sampler": describe_recorded_sampler(recorded_sampler),
+            "provenance": dict(sample["ogi"]) if isinstance(sample.get("ogi"), Mapping) else {},
+        },
     )
     # Build all requested products before opening any output destination.
     countries = validate_co2_product_request(
@@ -425,19 +425,12 @@ def postprocess_co2_stage(
     )
     manifest = _manifest(setup, "postprocess")
     destination = _stage_output_directory(destination)
-    artifacts = {}
-    for name, product in result.outputs.items():
-        if isinstance(product, xr.Dataset):
-            path = _output_path(destination, None, f"{name}.nc")
-            if name.startswith("paris_"):
-                write_netcdf_preserving_bounds_attrs(product, path)
-            else:
-                reset_serialisation_multiindexes(product).to_netcdf(path)
-            artifacts[name] = _artifact_path(path)
-            result.output_metadata[f"{name}_path"] = str(path)
+    paths = {name: _output_path(destination, None, f"{name}.nc") for name in result.outputs}
+    # The sample stage owns posterior.nc; replay writes only its named products.
+    save_co2_products(result, output=replace(setup.output, save_trace=False), product_paths=paths)
     manifest["effective_configuration"]["sampler"] = recorded_sampler
     manifest["sampling_configuration"] = recorded_sampler
-    manifest["artifacts"] = artifacts
+    manifest["artifacts"] = {name: _artifact_path(path) for name, path in paths.items()}
     result.output_metadata["postprocess_manifest_path"] = str(
         _write_json(destination / "postprocess-manifest.json", manifest)
     )

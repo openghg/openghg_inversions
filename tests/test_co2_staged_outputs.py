@@ -137,7 +137,6 @@ def test_direct_basic_output_roundtrips_observation_multiindex_without_mutating_
     from openghg_inversions.serialization import load_trace
     xr.testing.assert_identical(load_trace(result.output_metadata["trace_path"]), trace)
     assert not hasattr(result, "output_spec")
-    assert result.sampler is None
 
 
 def test_unsupported_requests_are_rejected_before_destinations_exist(tmp_path):

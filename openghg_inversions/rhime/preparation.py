@@ -372,7 +372,6 @@ def _validate_multisector_sensitivity_sources(
     return sensitivity
 
 
-# Established public imports retained through the 0.9 compatibility cycle.
 assemble_rhime_inputs = assemble_inputs
 
 

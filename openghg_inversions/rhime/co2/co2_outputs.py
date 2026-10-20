@@ -20,8 +20,10 @@ from openghg_inversions.postprocessing.inversion_output import trace_group
 from openghg_inversions.postprocessing.stats import calculate_stats
 from openghg_inversions.rhime.outputs import (
     _define_output_filename,
+    _resolve_output_path,
 )
-from openghg_inversions.serialization import reset_serialisation_multiindexes, save_datatree
+from openghg_inversions.rhime._stage_artifacts import _validate_filename_component
+from openghg_inversions.serialization import reset_serialisation_multiindexes, save_datatree, save_trace
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
 from .co2_affine_output import BoundCo2AffineFluxMap
@@ -37,8 +39,7 @@ class Co2Output:
     multiplicative flux scaling. ``idata`` remains the borrowed full DataTree,
     including distinct sample groups and their coordinates. Inference provenance
     remains descriptive in ``output_metadata``; no live sampler or writing policy
-    belongs to this scientific view. ``sampler=None`` explicitly represents the
-    absent inference object required by the replay contract. Products remain accessible in
+    belongs to this scientific view. Products remain accessible in
     ``outputs``. Reporting choices are supplied to calculation/export operations.
     """
 
@@ -48,7 +49,6 @@ class Co2Output:
     end_date: str
     domain: str
     bound: BoundCo2AffineFluxMap | None = None
-    sampler: None = field(default=None, init=False)
     outputs: dict = field(default_factory=dict)
     output_metadata: dict = field(default_factory=dict)
 
@@ -142,8 +142,6 @@ class Co2OutputOptions:
     paris_postprocessing_kwargs: Mapping | None = None
 
     def __post_init__(self) -> None:
-        from openghg_inversions.rhime._stage_artifacts import _validate_filename_component
-
         if not isinstance(self.output_format, str) or self.output_format not in {"none", "basic", "paris"}:
             raise ValueError("CO2 outputs support only 'none', 'basic', or 'paris'.")
         _validate_filename_component("output_name", self.output_name)
@@ -176,19 +174,11 @@ def validate_co2_output_spec(
     *,
     has_reconstruction: bool,
 ) -> None:
-    """Reject unsupported CO2 requests before constructing or writing products.
-
-    Basic products may report concentrations and states without native
-    reconstruction. PARIS requires a bound affine reconstruction and supports
-    latest templates, native grids, means, and midpoint flux timestamps only.
-    The standard multiplicative inversion-output and legacy formats cannot
-    represent coherent affine CO2 reconstruction.
-    """
+    """Require affine reconstruction when country or PARIS flux is requested."""
     if output_spec.country_file and not has_reconstruction:
         raise ValueError("CO2 country flux outputs require a bound affine reconstruction.")
-    if output_spec.output_format == "paris":
-        if not has_reconstruction:
-            raise ValueError("CO2 PARIS flux outputs require a bound affine reconstruction.")
+    if output_spec.output_format == "paris" and not has_reconstruction:
+        raise ValueError("CO2 PARIS flux outputs require a bound affine reconstruction.")
 
 
 def validate_co2_outputs(
@@ -555,29 +545,37 @@ def calculate_co2_products(
     result.outputs.update(products, concentration_components=components)
 
 
-def save_co2_products(result: Co2Output, *, output: Co2OutputOptions) -> None:
-    """Export calculated products and the optional trace through existing naming policy."""
+def save_co2_products(
+    result: Co2Output, *, output: Co2OutputOptions,
+    product_paths: Mapping[str, Path] | None = None,
+) -> None:
+    """Export products and the optional trace, using explicit paths for staged outputs.
+
+    Without ``product_paths``, output options determine the ordinary filenames
+    and full concentration-component draws remain in memory. Explicit paths
+    select the products to export and preserve the cached stage filenames.
+    Both routes use the same MultiIndex-aware product codecs.
+    """
     if output.output_format == "none":
         return
     domain = result.domain
     start_date = result.start_date
-    if output.output_path is not None:
-        Path(output.output_path).mkdir(parents=True, exist_ok=True)
-        for name, product in result.outputs.items():
-            if name == "concentration_components":
-                continue
-            path = _define_output_filename(
+    if product_paths is None:
+        product_paths = {
+            name: _define_output_filename(
                 output.output_path, "co2", domain, f"{output.output_name}_{name}", start_date,
                 filename_convention="rhime",
             )
-            if name == "basic":
-                save_datatree(xr.DataTree(reset_serialisation_multiindexes(product)), path)
-            else:
-                write_netcdf_preserving_bounds_attrs(product, path)
-            result.output_metadata[f"{name}_path"] = str(path)
-    from openghg_inversions.rhime.outputs import _resolve_output_path
-    from openghg_inversions.serialization import save_trace
-
+            for name in result.outputs if name != "concentration_components"
+        } if output.output_path is not None else {}
+    for name, path in product_paths.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        product = result.outputs[name]
+        if name in {"basic", "concentration_components"}:
+            save_datatree(xr.DataTree(reset_serialisation_multiindexes(product)), path)
+        else:
+            write_netcdf_preserving_bounds_attrs(product, path)
+        result.output_metadata[f"{name}_path"] = str(path)
     trace_path = _resolve_output_path(output.save_trace, output.output_path,
                                       f"{output.output_name}{start_date}_trace.nc")
     if trace_path is not None:

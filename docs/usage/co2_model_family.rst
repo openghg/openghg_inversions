@@ -227,7 +227,7 @@ decide scientific compatibility.
 
 Replay loads saved trace roles, inference provenance and affine associations.
 It performs no acquisition, preparation, model construction or inference, and
-returns ``Co2Output`` with ``sampler=None``. Missing descriptive facts remain
+returns ``Co2Output`` without a live sampler. Missing descriptive facts remain
 unavailable. Records include package version and Git revision/checkout status
 when available; unavailable VCS facts are ``null`` and do not prevent execution.
 
@@ -267,9 +267,9 @@ they exclude unresolved native-state posterior uncertainty tracked in OPE-68.
 retaining separate prior, posterior, predictive and diagnostic groups with
 their own coordinates. Ordinary CO2 retains the original requested window, optional
 bound affine reconstruction, in-memory products and descriptive provenance.
-It carries no writing policy or live sampler; ``sampler`` is ``None`` for both
-live and replay results. Concentration products deliberately use a derived
-Dataset with separate prior sample axes; this does not flatten the original trace.
+It carries no writing policy or live sampler field. Concentration products
+deliberately use a derived Dataset with separate prior sample axes; this does not
+flatten the original trace.
 
 Pass :class:`openghg_inversions.rhime.co2.co2_outputs.Co2OutputOptions` to
 calculation and export operations. Its ordinary CO₂ fields are

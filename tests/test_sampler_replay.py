@@ -19,12 +19,13 @@ def test_saved_sampler_metadata_matches_live_output_despite_current_defaults(tmp
     output_dir = tmp_path / "products"
     sampler = RhimeSampler(draws=17, burn=2, tune=13, chains=3, nuts_sampler="numpyro")
     manifest = json.loads(path.read_text())
-    recorded = sampler.describe()
+    recorded = {**sampler.describe(), "sample_kwargs": {"random_seed": 71}, "future_option": True}
     # Runtime-only or future sampler options are descriptive provenance at replay.
     manifest["provenance"] = {"unavailable_runtime_plugin": {"module": "not_installed"}}
     manifest["actual_inference"] = recorded
     path.write_text(json.dumps(manifest))
     with monkeypatch.context() as patch:
+        patch.setattr(RhimeSampler, "__init__", _forbidden)
         patch.setattr(RhimeSampler, "sample", _forbidden)
         patch.setattr(standard, "build_standard_model", _forbidden)
         replay = stages.postprocess(path, output=RhimeOutputSpec(output_path=str(output_dir)))
@@ -47,10 +48,11 @@ def test_unavailable_sampler_description_does_not_block_products(tmp_path, monke
     manifest = json.loads(path.read_text())
     manifest["actual_inference"] = recorded
     path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(RhimeSampler, "__init__", _forbidden)
     monkeypatch.setattr(RhimeSampler, "sample", _forbidden)
     monkeypatch.setattr(standard, "build_standard_model", _forbidden)
     replay = stages.postprocess(path, output=RhimeOutputSpec(output_path=str(output_dir)))
-    assert replay.output_metadata["sampler"] == recorded
+    assert replay.output_metadata["sampler"] == {}
     assert list(output_dir.glob("*.nc"))
 
 
@@ -58,8 +60,9 @@ def test_partial_sampler_description_does_not_invent_defaults(tmp_path, monkeypa
     _, path = _saved(tmp_path)
     output_dir = tmp_path / "products"
     manifest = json.loads(path.read_text())
-    manifest["actual_inference"] = {"draws": 17, "burn": 2}
+    manifest["actual_inference"] = {"draws": "17", "burn": 2}
     path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(RhimeSampler, "__init__", _forbidden)
     monkeypatch.setattr(RhimeSampler, "sample", _forbidden)
     monkeypatch.setattr(standard, "build_standard_model", _forbidden)
     replay = stages.postprocess(path, output=RhimeOutputSpec(output_path=str(output_dir)))

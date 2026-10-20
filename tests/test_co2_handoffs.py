@@ -183,7 +183,14 @@ def test_affine_source_or_projection_mismatch_never_completes(tmp_path):
     assert not (tmp_path / "incomplete").exists()
 
 
-def test_graph_free_replay_keeps_recorded_sampler_and_provenance(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "recorded,expected",
+    [({"draws": "25"}, {"draws": 25}),
+     ({"draws": 25, "burn": 2, "tune": 13, "chains": 3, "nuts_sampler": "numpyro", "sample_kwargs": {}},
+      {"draws": 25, "burn": 2, "tune": 13, "chains": 3, "nuts_sampler": "numpyro"}),
+     ({"draws": "invalid"}, {})],
+)
+def test_graph_free_replay_keeps_recorded_sampler_and_provenance(tmp_path, monkeypatch, recorded, expected):
     prepared, trace = _components_fixture()
     trace.attrs["rhime_priors"] = "{}"
     prep = handoffs.save_preparation(prepared, output_dir=tmp_path / "prep", **FACTS)
@@ -192,13 +199,14 @@ def test_graph_free_replay_keeps_recorded_sampler_and_provenance(tmp_path, monke
         prep, trace, actual_inference=RhimeSampler(draws=4, chains=1).describe(), preparation_generation=generation, output_dir=tmp_path / "sample",
     )
     record = json.loads(sample.read_text())
-    record["actual_inference"] = {"draws": 25}
+    record["actual_inference"] = recorded
     record["provenance"] = {"version": "saved-version", "revision": None, "dirty": None}
     sample.write_text(json.dumps(record))
 
     def forbidden(*args, **kwargs):
         raise AssertionError("Replay must not construct or sample")
 
+    monkeypatch.setattr(RhimeSampler, "__init__", forbidden)
     monkeypatch.setattr(handoffs, "prepare_co2_inputs", forbidden)
     monkeypatch.setattr(handoffs.pm, "sample_prior_predictive", forbidden)
     monkeypatch.setattr(handoffs, "sample_rhime_model", forbidden)
@@ -207,8 +215,7 @@ def test_graph_free_replay_keeps_recorded_sampler_and_provenance(tmp_path, monke
     monkeypatch.setattr(handoffs, "installed_ogi_provenance", forbidden)
     output = Co2OutputOptions(output_format="basic")
     result = handoffs.postprocess(sample, output=output)
-    assert result.sampler is None
-    assert result.output_metadata["sampler"] == {"draws": 25}
+    assert result.output_metadata["sampler"] == expected
     assert result.output_metadata["provenance"] == record["provenance"]
     assert result.start_date == FACTS["start_date"]
     assert result.end_date == FACTS["end_date"]
@@ -277,7 +284,6 @@ def test_missing_or_malformed_descriptive_metadata_stays_unavailable(tmp_path, r
             record[name] = recorded
     sample.write_text(json.dumps(record))
     loaded = handoffs.load_samples(sample)
-    assert loaded.sampler is None
     assert loaded.output_metadata["sampler"] == {}
     assert loaded.output_metadata["provenance"] == {}
 

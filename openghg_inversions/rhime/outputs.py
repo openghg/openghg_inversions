@@ -14,6 +14,7 @@ from openghg_inversions._serialization_codecs import _json_value
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions._timing import timed
 from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inference.sampling import describe_recorded_sampler
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.output_views import make_inversion_output
@@ -535,7 +536,7 @@ def make_model_output(
             "split_by_sectors": split_by_sectors,
         },
         model_metadata=_structured_metadata(model_metadata),
-        output_metadata={"sampler": dict(actual_inference) if isinstance(actual_inference, Mapping) else actual_inference},
+        output_metadata={"sampler": describe_recorded_sampler(actual_inference)},
         provenance=installed_ogi_provenance() if provenance is None else dict(provenance),
     )
 
