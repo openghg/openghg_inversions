@@ -1,12 +1,14 @@
 import numpy as np
 import pandas as pd
 import pymc as pm
+import pytensor
 import xarray as xr
 import pytest
 
 from openghg_inversions.models.coords import (
     CoordRegistry,
     add_coords,
+    add_model_data,
     attach_coord_registry,
     get_coord_registry,
     registered_model,
@@ -14,6 +16,57 @@ from openghg_inversions.models.coords import (
     sanitize_coords_for_pymc,
 )
 from tests.helpers import make_trace
+
+
+@pytest.mark.parametrize("model_name", ["", "recipe"])
+@pytest.mark.parametrize("float_dtype", ["float32", "float64"])
+def test_add_model_data_reuses_matching_values_and_scientific_coordinates(model_name, float_dtype) -> None:
+    data = xr.DataArray(
+        [.1, .2], dims="state",
+        coords={"state": ["west", "east"], "latitude": ("state", [50., 51.])},
+        name="sensitivity",
+    )
+    with pytensor.config.change_flags(floatX=float_dtype), registered_model(name=model_name):
+        registered = add_model_data(data)
+        assert add_model_data(data.copy(deep=True)) is registered
+        assert add_model_data(data, registered.name) is registered
+
+
+@pytest.mark.parametrize("conflicting, message", [
+    (xr.DataArray([9., 8.], dims="state"), "values differ"),
+    (xr.DataArray([.1, .2, .3], dims="state"), "values differ"),
+    (xr.DataArray([.1, .2], dims="other"), "dimensions differ"),
+    (xr.DataArray([.1, .2], dims="state", coords={"state": ["east", "west"]}), "values differ"),
+    (xr.DataArray([.1, .2], dims="state", coords={
+        "state": ["west", "east"], "latitude": ("state", [99., 51.]),
+    }), "values differ"),
+])
+def test_add_model_data_rejects_conflicting_reuse(conflicting, message) -> None:
+    data = xr.DataArray(
+        [.1, .2], dims="state",
+        coords={"state": ["west", "east"], "latitude": ("state", [50., 51.])},
+    )
+    with registered_model() as model:
+        registered = add_model_data(data, "sensitivity")
+        original = registered.get_value()
+        with pytest.raises(ValueError, match=message):
+            add_model_data(conflicting, "sensitivity")
+        np.testing.assert_array_equal(registered.get_value(), original)
+        assert "other" not in model.coords
+
+
+def test_add_model_data_rejects_equal_values_with_different_backend_dtype() -> None:
+    with registered_model():
+        add_model_data(xr.DataArray([True, False], dims="state"), "selector")
+        with pytest.raises(ValueError, match="dtype"):
+            add_model_data(xr.DataArray([1, 0], dims="state"), "selector")
+
+
+def test_add_model_data_rejects_existing_random_variable() -> None:
+    with registered_model():
+        pm.Normal("sensitivity")
+        with pytest.raises(ValueError, match="not.*data"):
+            add_model_data(xr.DataArray(1.), "sensitivity")
 
 
 def test_sanitize_coords_for_pymc_returns_range_coords() -> None:

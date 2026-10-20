@@ -245,6 +245,14 @@ records from ``result.model_metadata["sectors"]`` and their scientific roles fro
 ``postprocess_multisector_outputs(result, output_spec)`` for requested products,
 then ``save_inversion_output(result, output_spec)`` for exports.
 
+New standard and multisector models expose one full physical ``x``, sensitivity
+``hx`` and combined flux concentration contribution ``mu``. Multisector callers
+select a source-labelled block from ``result.trace_group("posterior")["x"]``
+rather than read ``x_<sector>`` variables; use the saved sector/source mapping
+when scientific sector names differ from inventory names. Existing current-format
+built-in sample handoffs with ``x_<suffix>`` state names remain readable. This
+does not restore the retired historical staged-envelope format.
+
 Standard and multisector execution no longer construct ``RhimeRunSpec`` or
 return ``RhimeResult``. These shared types remain only for the deferred nested
 and cached CO2 recipes until their own consumers migrate. Remove multisector

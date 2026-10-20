@@ -260,11 +260,15 @@ materialization or serialization boundaries.
 
 Resolve preparation with ``DataConfig.from_params(options, multisector=True)``.
 Keep ``flux_sources`` ordered. At sampling, supply ``sector_sources`` to map
-scientific sector names to those source labels. Each sector uses a distinct prepared source;
-its scaling and concentration-contribution roles are saved with the samples.
+scientific sector names to those source labels. Each sector uses a distinct
+prepared source and keeps its own prior block in the full sampled ``x`` state.
+The saved roles are ``flux_scale: x``, ``emissions_sensitivity: hx`` and
+``flux_contribution: mu``; source labels and recorded sector associations select
+blocks for reporting.
 Both rectangular shared-basis and source-labelled gathered layouts retain their
 scientific interpretation. Preparation retains all source fluxes; the first
-requested source supplies basis weighting. Retained sites and their averaging
+requested source supplies basis weighting, independently of sector declaration
+order. Retained sites and their averaging
 periods come from the prepared numerical inputs, even when a requested site is
 dropped. Original requested dates remain the inversion window for later products.
 
@@ -325,6 +329,12 @@ Follow :doc:`multisector_handoffs` for an executable notebook demonstrating
 preparation reuse, separate model samples, multiple output choices and comparison
 with full execution. Its :download:`companion script
 <../../examples/multisector_handoffs.py>` also checks independent model equations.
+
+Existing current-format built-in samples declaring ``x_<suffix>`` per-sector
+state variables remain readable at the output boundary. A saved canonical
+``flux_scale`` role is authoritative: missing or incompatible ``x`` cannot fall back to old variables.
+This compatibility does not restore historical staged envelopes or add alias
+variables to new graphs.
 
 Ordinary CO₂ handoffs
 ---------------------

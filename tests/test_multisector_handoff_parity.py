@@ -25,6 +25,53 @@ from openghg_inversions.rhime.specs import RhimeModelSpec, RhimeOutputSpec
 from tests.helpers import make_trace
 
 
+def test_sector_mapping_order_does_not_change_preparation_weighting(tmp_path, monkeypatch):
+    """Full and phase-only requests use the declared first source for basis weights."""
+    merged, options, flux, *_ = synthetic_inputs(tmp_path)
+    options.pop("basis_path")
+    options.update(flux_sources=["inventory", "supplemental"],
+                   basis_algorithm="quadtree", nbasis=2, fix_basis_outer_regions=False)
+    flux = {name: field.expand_dims(time=merged.site_data["TAC"].time) for name, field in flux.items()}
+    merged = replace(merged,
+        flux_data={name: field.to_dataset(name="flux") for name, field in flux.items()},
+        site_data={
+            name: site.assign(fp=xr.ones_like(site.fp_x_flux_sectoral.isel(source=0, drop=True)))
+            for name, site in merged.site_data.items()
+        },
+    )
+    config = RhimeConfig.from_params(
+        {**options, **model_options(.2), "output_name": "weights", "output_format": "none"},
+        multisector=True,
+    )
+    phase_data = DataConfig.from_params(options, multisector=True)
+    assert config.model.sectors[0].flux_source == "supplemental"
+    assert config.data.flux_sources == phase_data.flux_sources == ("inventory", "supplemental")
+    weights = []
+    prepare_basis = multisector.prepare_basis
+
+    def capture_weights(**kwargs):
+        weights.append(kwargs["weighting_flux"])
+        return prepare_basis(**kwargs)
+
+    monkeypatch.setattr(multisector, "prepare_basis", capture_weights)
+    preparations = []
+    for data in (phase_data, config.data):
+        preparations.append(multisector.prepare_multisector(
+            merged, basis_inputs=resolve_basis_inputs(data),
+            **data.select("domain", "start_date", "flux_sources", "averaging_error", "filters",
+                          "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
+                          "min_error", "min_error_options"),
+        ))
+    xr.testing.assert_equal(preparations[0].basis_functions.flat_basis(),
+                            preparations[1].basis_functions.flat_basis())
+    xr.testing.assert_equal(preparations[0].basis_functions.operator.basis_matrix,
+                            preparations[1].basis_functions.operator.basis_matrix)
+    xr.testing.assert_equal(preparations[0].inv_inputs.H, preparations[1].inv_inputs.H)
+    assert len(weights) == 2
+    for weighting_flux in weights:
+        xr.testing.assert_equal(weighting_flux, flux["inventory"])
+
+
 def test_one_preparation_two_priors_and_likelihoods_matches_full_prepared_and_replay(tmp_path, monkeypatch):
     resolutions = []
     resolve = multisector.resolve_runtime_flux
@@ -103,12 +150,13 @@ def test_full_and_prepared_execution_need_no_checkpoint_machinery_and_retain_sci
     assert merged.site_data["TAC"].fp_x_flux_sectoral.data is borrowed
     assert "mf_error" not in merged.site_data["TAC"]
     xr.testing.assert_allclose(full.trace["posterior"].to_dataset(), resumed.trace["posterior"].to_dataset())
-    for suffix in ("biosphere", "fossil"):
-        posterior = resumed.trace["posterior"]
-        assert f"x_{suffix}" in posterior and f"x_{suffix}_latent" in posterior
-        np.testing.assert_allclose(posterior[f"x_{suffix}"],
-                                   np.exp(-np.log(2) / 2 + np.sqrt(np.log(2)) * posterior[f"x_{suffix}_latent"]),
-                                   rtol=1e-6)
+    posterior = resumed.trace["posterior"]
+    for suffix, source in (("biosphere", "supplemental"), ("fossil", "inventory")):
+        np.testing.assert_allclose(
+            posterior["x"].sel(source=source).values,
+            np.exp(-np.log(2) / 2 + np.sqrt(np.log(2)) * posterior[f"x_{suffix}_active_latent"].values),
+            rtol=1e-6,
+        )
     assert not list(tmp_path.glob("**/*manifest.json"))
 
 
@@ -190,8 +238,8 @@ def test_model_construction_consumes_supplied_eager_sensitivities_without_replac
     inputs, priors = multisector.materialize_multisector_inputs(prepared, config.model)
     modified = inputs.assign(H=inputs.H * 10)
     built = multisector.build_multisector_model(modified, config.model, priors=priors)
-    for suffix, source in (("biosphere", "supplemental"), ("fossil", "inventory")):
-        np.testing.assert_allclose(built.model[f"hx_{suffix}"].get_value(), h[source][:, None] * 10)
+    expected = np.column_stack([h[source] for source in inputs.H.source.values]) * 10
+    np.testing.assert_allclose(built.model["hx"].get_value(), expected)
     xr.testing.assert_identical(prepared.inv_inputs.H, original)
 
 

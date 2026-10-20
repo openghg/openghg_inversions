@@ -10,6 +10,7 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.cli import main
+from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime import (
     RhimeSampler,
@@ -36,7 +37,10 @@ def _deterministic_trace(model: pm.Model, variable_names: tuple[str, ...]) -> xr
             coords[dim] = np.asarray(coord)
         dims = ("chain", "draw", *model_dims)
         variables[name] = (dims, np.ones(tuple(len(coords[dim]) for dim in dims)))
-    return make_trace(posterior=xr.Dataset(variables, coords=coords))
+    trace = make_trace(posterior=xr.Dataset(variables, coords=coords))
+    registry = get_coord_registry(model)
+    assert registry is not None
+    return restore_inferencedata_coords(trace, registry)
 
 
 def _test_store_overrides(
@@ -141,7 +145,7 @@ def test_multisector_tutorial_runs_to_sector_diagnostics(
     monkeypatch.setattr(
         RhimeSampler,
         "sample",
-        lambda self, model, **kwargs: _deterministic_trace(model, ("x_ff", "x_ocean", "bc")),
+        lambda self, model, **kwargs: _deterministic_trace(model, ("x", "mu", "bc")),
     )
     overrides = _test_store_overrides(tac_ch4_data_args, tmp_path)
     overrides.update(
@@ -161,6 +165,8 @@ def test_multisector_tutorial_runs_to_sector_diagnostics(
 
     assert isinstance(result, InversionOutput)
     assert [sector["name"] for sector in result.model_metadata["sectors"]] == ["FF", "ocean"]
+    assert result.variable_roles["flux_scale"] == "x"
+    assert "source" in result.trace_group("posterior")["x"].coords
     assert tuple(result.inv_inputs["H"].source.values) == (
         "total-ukghg-edgar7",
         "total-ukghg-edgar7-shuffled",

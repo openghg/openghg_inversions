@@ -655,3 +655,58 @@ loading its unused affine companion; creation/import and replay retain the
 scientific affine binding checks. CO2 readiness restores the configured optional
 seed without requiring MCMC settings, and preserves the already specified execution-
 error propagation. Returned invalid predictive evidence still produces a failed check.
+
+### 10. One full flux state in standard and multisector — 16 October 2026
+
+The maintainer approved implementing the explored shared-state formulation on
+the combined multisector/ordinary CO2 delivery. This is an amendment to the
+scientific construction and output contract, not a claim that the resulting
+code has received readability acceptance or completed its validation gates.
+
+Standard and multisector use one full labelled physical scaling state `x`, one
+two-dimensional model sensitivity `hx` and one total flux concentration
+contribution `mu`. The scientific calculation is `H @ x`; registered `hx` may
+omit structurally zero columns, with the shared linear operation selecting the
+matching full-state entries. Standard retains its existing state labels.
+Multisector gathers source-local state blocks onto one source-labelled index;
+rectangular input sensitivities are packed for construction only, and existing
+gathered input indexes are preserved. Preparation and retained basis artifacts
+stay borrowed and unchanged. State order comes from the scientific input labels,
+not the order of sector declarations or backend variable suffixes.
+The model-only state dimension may be renamed when its name conflicts with
+another component's input or prior metadata; its scientific index values, level
+names and order remain unchanged.
+
+Independent sector priors may have different distributions, array parameters,
+reparameterizations and active/fixed states. Their private prior variables and
+construction-owned records may retain sector keys such as `x_<suffix>`, while
+the complete physical state and forward calculation are shared. All fixed and
+zero-effect entries remain in `x`. New graphs do not add per-sector full-state,
+sensitivity or contribution aliases solely for output compatibility. One nearby
+concrete flux-construction operation serves standard and multisector; this is
+demonstrated reuse of the same equations, not a generic model or stage engine.
+
+Both recipes declare `flux_scale: x`, `emissions_sensitivity: hx` and
+`flux_contribution: mu`. Multisector product selection uses saved sector-to-source
+associations to select a source block and restore the local basis state labels.
+The output boundary may read existing current-format built-in traces with
+`x_<suffix>` state names when their saved contract lacks the new canonical role.
+An explicit canonical role remains authoritative: missing or incompatible canonical state
+must fail rather than fall back. This bounded reader compatibility neither emits
+new alias variables nor restores historical staged-envelope/schema recovery.
+Generation checks and graph-free replay remain unchanged.
+
+Ordinary CO2 already applies one full correlated retained state to its effective
+sensitivity. Sharing the state representation does not change its defining
+prior/covariance, affine concentration intercept or native reconstruction
+`F [m + U* (alpha - alpha_ref)]`. CO2 native source and sector products are formed
+after this reconstruction, retaining their conditional uncertainty scope. Its
+scientific trace roles and affine owner remain authoritative; no generic
+multiplicative output adapter is introduced.
+
+Validation must compare the actual forward calculation and joint log density,
+including heterogeneous priors and ragged/fixed states, and preserve signed
+source/total flux products and current-format replay. Existing source coverage,
+array ownership, minimum-error and baked BC checks remain at their owners.
+Documentation/examples and the bounded tasks in group 6 follow this amendment;
+multisector, ordinary CO2 and integrated acceptance gates remain separate.

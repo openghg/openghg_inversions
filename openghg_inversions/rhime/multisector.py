@@ -1,4 +1,13 @@
-"""Readable scientific recipe for a source-resolved multisector RHIME inversion."""
+"""Source-resolved RHIME recipe using one stacked flux state.
+
+Independent sector priors and activity policies populate one full flux state
+``x``. Sectors identify sampled state components; acquisition sources identify
+inventories and responses. Their current one-to-one ``sector_sources`` mapping
+binds each sector prior to its sensitivity columns. The saved state retains its
+``source`` coordinate, so select a sector's state using its mapped source with
+``x.sel(source=...)``. The gathered sensitivity ``hx`` maps the full state to
+pollution ``mu``; output roles retain local basis labels for native flux products.
+"""
 
 from __future__ import annotations
 
@@ -8,57 +17,35 @@ from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.basis import prepare_basis
 
 from collections.abc import Mapping
-from dataclasses import replace
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from dask import is_dask_collection
 from dask.base import unpack_collections
 
-import pytensor.tensor as pt
 import xarray as xr
 
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
-from openghg_inversions.models.components import (
-    add_linear_component,
-    add_offset_component,
-)
-from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.models._flux import (
-    _namespace_sector_state_coords,
     _prepared_sources,
     _select_sector_design,
 )
-from openghg_inversions.models.state_activity import (
-    PreparedLinearSensitivity,
-    StateActivity,
-    active_prior_args,
-    prepare_linear_sensitivity,
-    resolve_state_activity,
-)
 from openghg_inversions.observation_error import (
     aggregation_error_input_names,
-    resolve_aggregation_error,
 )
 from openghg_inversions.sigma import SigmaAlignment
 from openghg_inversions.model_error import MinErrorConfig
 from .specs import (
     AdditiveSigmaSettings,
     PollutionEventSettings,
-    DEFAULT_BC_PRIOR,
-    DEFAULT_OFFSET_PRIOR,
     RhimeModelSpec,
 )
 
-from ._model_building import (
-    ForwardModelTerms,
-    add_rhime_likelihood,
-    builtin_model_build_result,
-)
+from .standard import _build_independent_rhime_model
 from .builders import (
     RhimeLikelihoodBuilder,
     RhimeModelBuildResult,
@@ -193,6 +180,11 @@ def _multisector_input_names(
         raise ValueError(
             "Multisector model sources must cover the retained source layout exactly; "
             f"declared {declared_sources!r}, prepared {available_sources!r}."
+        )
+    for sector in sectors:
+        _select_sector_design(
+            model_inputs["H"], sector=sector.name, source=sector.flux_source,
+            variable_suffix=sector.variable_suffix, namespace_state_dim=False,
         )
 
     _require_component_inputs(
@@ -348,9 +340,9 @@ def build_multisector_model(
 ) -> RhimeModelBuildResult:
     """Construct the multisector graph from already materialized values.
 
-    The sector loop selects each source, resolves its active/fixed states and
-    adds its flux contribution. Those contributions are then summed before
-    adding boundary conditions, offsets and the observation likelihood.
+    Source-prior blocks populate one labelled full state. The shared standard
+    recipe applies one gathered sensitivity, then adds boundary conditions,
+    offsets and the observation likelihood.
 
     Args:
         model_inputs: Canonical Dataset with selected scientific inputs eager.
@@ -381,153 +373,11 @@ def build_multisector_model(
     if any(is_dask_collection(model_inputs[name]) for name in names) or lazy_priors:
         raise ValueError("Multisector model inputs and prior parameters must be materialized before building.")
 
-    timing_start = timer_start()
-    flux_sensitivity = model_inputs["H"]
-    observations = model_inputs["mf"]
-    observation_error = model_inputs["mf_error"]
-    minimum_error = model_inputs.get("min_error")
-    aggregation_error = resolve_aggregation_error(model_inputs, model_spec.aggregation_error_mode)
-    gathered_layout = "source" not in flux_sensitivity.dims
-
-    bc_prior = dict(priors.get("bc", DEFAULT_BC_PRIOR))
-    offset_prior = dict(priors.get("offset_latent", DEFAULT_OFFSET_PRIOR))
-    prepared_boundary = (
-        prepare_linear_sensitivity(model_inputs["H_bc"])
-        if model_spec.use_bc
-        else None
+    return _build_independent_rhime_model(
+        model_inputs, model_spec, priors=priors,
+        likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs,
+        sigma_alignment=sigma_alignment, multisector=True,
     )
-
-    with registered_model() as model:
-        sector_outputs = []
-        for sector in model_spec.sectors:
-            design = _select_sector_design(
-                flux_sensitivity,
-                sector=sector.name,
-                source=sector.flux_source,
-                variable_suffix=sector.variable_suffix,
-                namespace_state_dim=False,
-            )
-            sector_policy = (
-                sector.state_activity
-                if sector.state_activity is not None
-                else model_spec.state_activity
-            )
-            prepared_sensitivity = prepare_linear_sensitivity(design)
-            resolved_activity = resolve_state_activity(prepared_sensitivity.removed, sector_policy)
-            # Align the full scientific prior before backend namespacing and pruning.
-            all_active = replace(
-                resolved_activity,
-                active=xr.ones_like(resolved_activity.active, dtype=bool),
-            )
-            prior = active_prior_args(dict(priors[f"x_{sector.variable_suffix}"]), all_active)
-
-            design_state_dim = next(
-                str(dim)
-                for dim in prepared_sensitivity.sensitivity.dims
-                if dim != prepared_sensitivity.output_dim
-            )
-            backend_design = _namespace_sector_state_coords(
-                prepared_sensitivity.sensitivity,
-                variable_suffix=sector.variable_suffix,
-                namespace_state_dim=(
-                    gathered_layout
-                    or design_state_dim != resolved_activity.state_dim
-                ),
-            )
-            backend_removed = _namespace_sector_state_coords(
-                prepared_sensitivity.removed,
-                variable_suffix=sector.variable_suffix,
-                namespace_state_dim=gathered_layout,
-            )
-            backend_prepared = PreparedLinearSensitivity(
-                sensitivity=backend_design,
-                removed=backend_removed,
-                output_dim=prepared_sensitivity.output_dim,
-            )
-            rename_state = (
-                {resolved_activity.state_dim: f"{resolved_activity.state_dim}_{sector.variable_suffix}"}
-                if gathered_layout
-                else {}
-            )
-            backend_activity = StateActivity(
-                active=resolved_activity.active.rename(rename_state),
-                fixed_value=resolved_activity.fixed_value.rename(rename_state),
-            )
-            for name, value in prior.items():
-                if isinstance(value, xr.DataArray) and value.ndim:
-                    prior[name] = _namespace_sector_state_coords(
-                        value,
-                        variable_suffix=sector.variable_suffix,
-                        namespace_state_dim=gathered_layout,
-                    )
-            sector_component = add_linear_component(
-                backend_prepared,
-                data_name=f"hx_{sector.variable_suffix}",
-                prior_args=prior,
-                var_name=f"x_{sector.variable_suffix}",
-                output_name=f"mu_{sector.variable_suffix}",
-                output_dim="nmeasure",
-                compute_deterministic=True,
-                state_activity=backend_activity,
-            )
-            sector_outputs.append(sector_component.output)
-
-        pollution_mean = cast(Any, pt.stack(sector_outputs, axis=0)).sum(axis=0)
-
-        boundary_mean = None
-        if prepared_boundary is not None:
-            boundary_mean = add_linear_component(
-                prepared_boundary,
-                data_name="hbc",
-                prior_args=bc_prior,
-                var_name="bc",
-                output_name="mu_bc",
-                output_dim="nmeasure",
-                compute_deterministic=True,
-                state_activity=model_spec.bc_state_activity,
-            ).output
-
-        offset = None
-        if model_spec.add_offset:
-            offset = add_offset_component(
-                observations,
-                prior_args=offset_prior,
-                output_name="offset",
-                output_dim="nmeasure",
-                **(model_spec.offset_args or {}),
-            )
-
-        baseline_mean = boundary_mean
-        if offset is not None:
-            baseline_mean = offset if baseline_mean is None else baseline_mean + offset
-        modelled_mean = pollution_mean if baseline_mean is None else pollution_mean + baseline_mean
-
-        forward = ForwardModelTerms(
-            total=modelled_mean,
-            pollution=pollution_mean,
-            baseline=baseline_mean,
-        )
-        add_rhime_likelihood(
-            settings=model_spec.likelihood,
-            likelihood_builder=likelihood_builder,
-            likelihood_kwargs=likelihood_kwargs,
-            forward=forward,
-            observations=observations,
-            observation_error=observation_error,
-            aggregation_error=aggregation_error,
-            minimum_error=minimum_error,
-            output_dim="nmeasure",
-            sigma_alignment=sigma_alignment,
-            prior_parameters=priors,
-        )
-    result = builtin_model_build_result(
-        model,
-        model_spec=model_spec,
-        multisector=True,
-        input_names=tuple(str(name) for name in model_inputs.data_vars),
-    )
-    log_timing("rhime.model_build", timer_seconds(timing_start), multisector=True)
-    return result
 
 
 def prepare_multisector(

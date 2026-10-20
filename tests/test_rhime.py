@@ -1052,7 +1052,7 @@ def test_recipe_passes_completed_forward_mean_to_custom_likelihood(
         "mean",
         "output_dim",
     }
-    pollution = model["mu_ff"] + model["mu_ocean"] if multisector else model["mu"]
+    pollution = model["mu"]
     mean, pollution_value, boundary, offset = pm.draw(
         [
             call["mean"],
@@ -1070,8 +1070,7 @@ def test_recipe_passes_completed_forward_mean_to_custom_likelihood(
         atol=1e-5,
     )
     assert "mu_baseline" not in model.named_vars
-    if multisector:
-        assert "mu" not in model.named_vars
+    assert "mu" in model.named_vars
 
 
 @pytest.mark.parametrize("multisector", [False, True])
@@ -1111,7 +1110,7 @@ def test_builtin_additive_peer_uses_completed_forward_mean(
             ),
             sigma_alignment=kwargs["additive_sigma_alignment"],
         )
-        pollution = model["mu_ff"] + model["mu_ocean"]
+        pollution = model["mu"]
     else:
         model = build_rhime_model(inv_inputs, **kwargs)
         pollution = model["mu"]
@@ -1333,7 +1332,7 @@ def test_build_multisector_model_contains_expected_variables(
     builder_args: dict,
     multisector_model_spec: RhimeModelSpec,
 ) -> None:
-    """Freeze the exact multi-sector built-model variable and dimension inventory."""
+    """Both sector priors feed one full state and one pollution contribution."""
     sectors = (
         _sector("total-ukghg-edgar7", prior=builder_args["x_prior"]),
         _sector("sector-2", prior=builder_args["x_prior"]),
@@ -1347,49 +1346,12 @@ def test_build_multisector_model_contains_expected_variables(
         sigma_alignment=builder_args["sigma_alignment"],
     )
 
-    assert set(model.named_vars) == {
-        "Y",
-        "aggregation_error_marginal_variance",
-        "bc",
-        "epsilon",
-        "error",
-        "hbc",
-        "hx_sector_2",
-        "hx_total_ukghg_edgar7",
-        "min_error",
-        "x_total_ukghg_edgar7",
-        "mu_total_ukghg_edgar7",
-        "x_sector_2",
-        "mu_sector_2",
-        "mu_bc",
-        "sigma",
-        "sigma_period_index",
-        "sigma_site_index",
-        "y",
-    }
-    assert model.named_vars_to_dims == {
-        "Y": ("nmeasure",),
-        "aggregation_error_marginal_variance": ("nmeasure",),
-        "bc": ("bc_region",),
-        "epsilon": ("nmeasure",),
-        "error": ("nmeasure",),
-        "hbc": ("nmeasure", "bc_region"),
-        "hx_sector_2": ("nmeasure", "region"),
-        "hx_total_ukghg_edgar7": ("nmeasure", "region"),
-        "min_error": ("nmeasure",),
-        "mu_bc": ("nmeasure",),
-        "mu_sector_2": ("nmeasure",),
-        "mu_total_ukghg_edgar7": ("nmeasure",),
-        "sigma": ("nsigma_site", "nsigma_time"),
-        "sigma_period_index": ("nmeasure",),
-        "sigma_site_index": ("nmeasure",),
-        "x_sector_2": ("region",),
-        "x_total_ukghg_edgar7": ("region",),
-        "y": ("nmeasure",),
-    }
-    region_coord = model.coords["region"]
-    assert region_coord is not None
-    assert len(region_coord) == multisector_inv_inputs.sizes["region"]
+    assert {"x", "hx", "mu", "bc", "mu_bc", "sigma", "epsilon", "y"}.issubset(model.named_vars)
+    assert model.named_vars_to_dims["x"] == ("state",)
+    assert model.named_vars_to_dims["hx"] == ("nmeasure", "state")
+    assert model.named_vars_to_dims["mu"] == ("nmeasure",)
+    assert not any(name.startswith(("hx_", "mu_sector_", "mu_total_")) for name in model.named_vars)
+    assert len(model.coords["state"]) == 2 * multisector_inv_inputs.sizes["region"]
 
 
 @pytest.mark.rhime_contract
@@ -1765,7 +1727,7 @@ def test_flux_inputs_align_or_reject_reordered_observation_coordinates(multisect
             spec,
             priors={f"x_{sector.variable_suffix}": sector.x_prior for sector in spec.sectors},
         )
-        sensitivity = built.model["hx_ff"].get_value()
+        sensitivity = built.model["hx"].get_value()[:, :1]
     else:
         built = rhime_standard.build_standard_model(
             inputs,
@@ -2034,12 +1996,12 @@ def test_configured_surface_excludes_internal_composed_values() -> None:
             rhime_params.validate_supported_params({name: True})
 
 
-def test_build_multisector_model_uses_sector_names_for_variables(
+def test_build_multisector_model_preserves_sector_priors_in_joint_state(
     multisector_inv_inputs: xr.Dataset,
     builder_args: dict,
     multisector_model_spec: RhimeModelSpec,
 ) -> None:
-    """Distinct sector priors retain named states and additive mu deterministics."""
+    """The joint state preserves distinct priors and the full forward equation."""
     model = build_multisector_graph(
         multisector_inv_inputs,
         replace(
@@ -2062,35 +2024,16 @@ def test_build_multisector_model_uses_sector_names_for_variables(
         sigma_alignment=builder_args["sigma_alignment"],
     )
 
-    expected_trace_names = {
-        "x_ff",
-        "mu_ff",
-        "x_ocean",
-        "mu_ocean",
-    }
-    expected_model_names = expected_trace_names | {
-        "bc",
-        "mu_bc",
-        "sigma",
-        "epsilon",
-        "y",
-    }
-    assert expected_model_names.issubset(model.named_vars)
-    free_rv_names = [rv.name for rv in model.free_RVs]
-    assert free_rv_names.count("x_ff") == 1
-    assert free_rv_names.count("x_ocean") == 1
-
     with model:
-        trace = pm.sample_prior_predictive(
-            draws=4,
-            var_names=sorted(expected_trace_names),
-            random_seed=412,
-        )
-
-    prior = cast(Any, trace).prior
-    assert set(prior.data_vars) == expected_trace_names
-    assert np.all((prior["x_ff"] >= 1.0) & (prior["x_ff"] <= 2.0))
-    assert np.all((prior["x_ocean"] >= 10.0) & (prior["x_ocean"] <= 11.0))
+        trace = pm.sample_prior_predictive(draws=4, var_names=["x", "mu"], random_seed=412)
+    registry = models.get_coord_registry(model)
+    trace = models.restore_inferencedata_coords(cast(xr.DataTree, trace), registry)
+    prior = trace.prior
+    ff = prior["x"].sel(source="total-ukghg-edgar7")
+    ocean = prior["x"].sel(source="sector-2")
+    assert np.all((ff >= 1.0) & (ff <= 2.0))
+    assert np.all((ocean >= 10.0) & (ocean <= 11.0))
+    np.testing.assert_allclose(prior["mu"], prior["x"].values @ model["hx"].get_value().T)
 
 
 def test_build_multisector_model_selects_sources_by_label(
@@ -2123,16 +2066,15 @@ def test_build_multisector_model_selects_sources_by_label(
 
     expected_ff = reversed_inputs["H"].sel(source="total-ukghg-edgar7").transpose("nmeasure", "region")
     expected_ocean = reversed_inputs["H"].sel(source="sector-2").transpose("nmeasure", "region")
-    np.testing.assert_allclose(model["hx_ff"].get_value(), expected_ff.values)
-    np.testing.assert_allclose(model["hx_ocean"].get_value(), expected_ocean.values)
+    np.testing.assert_allclose(model["hx"].get_value(), np.column_stack([expected_ocean, expected_ff]))
 
 
-def test_multisector_model_namespaces_differently_retained_source_states(
+def test_multisector_model_prunes_source_zero_columns_in_one_state(
     multisector_inv_inputs: xr.Dataset,
     builder_args: dict,
     multisector_model_spec: RhimeModelSpec,
 ) -> None:
-    """Source-specific zero columns get distinct retained backend dimensions."""
+    """One retained sensitivity preserves the full source-labelled state."""
     inputs = multisector_inv_inputs.copy(deep=True)
     inputs["H"].loc[{"source": "total-ukghg-edgar7", "region": inputs.region[0]}] = 0.0
     inputs["H"].loc[{"source": "sector-2", "region": inputs.region[1]}] = 0.0
@@ -2149,22 +2091,13 @@ def test_multisector_model_namespaces_differently_retained_source_states(
         sigma_alignment=builder_args["sigma_alignment"],
     )
 
-    assert model.named_vars_to_dims["hx_ff"] == ("nmeasure", "region_retained_ff")
-    assert model.named_vars_to_dims["hx_ocean"] == ("nmeasure", "region_retained_ocean")
-    np.testing.assert_allclose(
-        model["hx_ff"].get_value(),
-        inputs["H"]
-        .sel(source="total-ukghg-edgar7")
-        .isel(region=slice(1, None))
-        .transpose("nmeasure", "region"),
-    )
-    np.testing.assert_allclose(
-        model["hx_ocean"].get_value(),
-        inputs["H"]
-        .sel(source="sector-2")
-        .isel(region=[0, *range(2, inputs.sizes["region"])])
-        .transpose("nmeasure", "region"),
-    )
+    assert model.named_vars_to_dims["hx"] == ("nmeasure", "state_retained")
+    stacked = inputs["H"].stack(state=("source", "region")).transpose("nmeasure", "state")
+    retained = np.any(stacked.values != 0, axis=0)
+    np.testing.assert_allclose(model["hx"].get_value(), stacked.values[:, retained])
+    state = pm.draw(model["x"], random_seed=934)
+    assert state.shape == (stacked.sizes["state"],)
+    np.testing.assert_allclose(state[~retained], 1.0)
 
 
 def test_multisector_model_accepts_gathered_ragged_states(
@@ -2241,48 +2174,25 @@ def test_multisector_model_accepts_gathered_ragged_states(
         sigma_alignment=builder_args["sigma_alignment"],
     )
 
-    np.testing.assert_allclose(model["hx_ff"].get_value(), values[:2].T)
-    np.testing.assert_allclose(model["hx_ocean"].get_value(), values[2:].T)
-    assert model.named_vars_to_dims["x_ff"] == ("state_ff",)
-    assert model.named_vars_to_dims["x_ocean"] == ("state_ocean",)
-    assert model.coords["state_ff"] == (0, 1)
-    assert model.coords["state_ocean"] == (0, 1, 2)
-
+    np.testing.assert_allclose(model["hx"].get_value(), values.T)
+    assert model.named_vars_to_dims["x"] == ("state",)
     registry = models.get_coord_registry(model)
     assert registry is not None
-    assert list(registry.original_coords["state_ff"]) == ff_labels
-    assert list(registry.original_coords["state_ocean"]) == ocean_labels
+    assert registry.original_coords["state"].equals(state_index)
     assert registry.original_coords["nmeasure"].equals(inv_inputs.indexes["nmeasure"])
-    np.testing.assert_array_equal(registry.auxiliary_coords["basis_group_ff"], ["fixed", "active"])
     np.testing.assert_array_equal(
-        registry.auxiliary_coords["basis_group_ocean"],
-        ["fixed", "active", "active"],
+        registry.auxiliary_coords["basis_group"], ["fixed", "active", "fixed", "active", "active"]
     )
-    assert list(registry.original_coords["state_ff_x_ff_active"]) == ["north"]
-    assert list(registry.original_coords["state_ocean_x_ocean_active"]) == ["pacific", "indian"]
-
-    var_names = [
-        "x_ff_active",
-        "x_ff",
-        "mu_ff",
-        "x_ocean_active",
-        "x_ocean",
-        "mu_ocean",
-    ]
     with model:
-        prior = pm.sample_prior_predictive(
-            draws=2,
-            var_names=var_names,
-            random_seed=535,
-        )
+        prior = pm.sample_prior_predictive(draws=2, var_names=["x", "mu"], random_seed=535)
     prior = models.restore_inferencedata_coords(cast(xr.DataTree, prior), registry)
     dataset = prior.prior
-    assert list(dataset["state_ff"].values) == ff_labels
-    assert list(dataset["state_ocean"].values) == ocean_labels
-    assert list(dataset["state_ff_x_ff_active"].values) == ["north"]
-    assert list(dataset["state_ocean_x_ocean_active"].values) == ["pacific", "indian"]
-    assert np.all((dataset["x_ff_active"] >= 10.0) & (dataset["x_ff_active"] <= 11.0))
-    np.testing.assert_allclose(dataset["x_ff"].sel(state_ff="south"), 2.0)
+    assert dataset.indexes["state"].equals(state_index)
+    north = dataset["x"].sel(state=("ff-inventory", "north"))
+    assert np.all((north >= 10.0) & (north <= 11.0))
+    np.testing.assert_allclose(dataset["x"].sel(state=("ff-inventory", "south")), 2.0)
+    np.testing.assert_allclose(dataset["x"].sel(state=("ocean-inventory", "atlantic")), 1.0)
+    np.testing.assert_allclose(dataset["mu"], dataset["x"].values @ values)
     assert dataset.indexes["nmeasure"].equals(inv_inputs.indexes["nmeasure"])
 
 
@@ -2439,7 +2349,7 @@ def test_build_multisector_model_allows_prior_only_regions(
         sigma_alignment=builder_args["sigma_alignment"],
     )
 
-    assert "x_ff" in model.named_vars
+    assert "x" in model.named_vars
 
 
 def test_build_multisector_model_rejects_duplicate_sector_source_mappings(
@@ -2496,12 +2406,12 @@ def test_multisector_builder_accepts_canonical_inputs_and_resolved_spec() -> Non
     }.isdisjoint(parameters)
 
 
-def test_concrete_multisector_model_rejects_reparameterized_name_collisions(
+def test_multisector_model_keeps_reparameterized_prior_blocks_distinct(
     multisector_inv_inputs: xr.Dataset,
     builder_args: dict,
     multisector_model_spec: RhimeModelSpec,
 ) -> None:
-    """Concrete composition preserves PyMC's generated-name collision check."""
+    """A semantic suffix does not collide with another block's latent name."""
     reparameterized_prior = {
         "pdf": "lognormal",
         "mean": 1.0,
@@ -2509,28 +2419,30 @@ def test_concrete_multisector_model_rejects_reparameterized_name_collisions(
         "reparameterise": True,
     }
 
-    with pytest.raises(ValueError, match="x_ff_latent.*already exists"):
-        build_multisector_graph(
-            multisector_inv_inputs,
-            replace(
-                multisector_model_spec,
-                sectors=(
-                    _sector(
-                        "FF",
-                        source="total-ukghg-edgar7",
-                        suffix="ff",
-                        prior=reparameterized_prior,
-                    ),
-                    _sector(
-                        "other",
-                        source="sector-2",
-                        suffix="ff_latent",
-                        prior=reparameterized_prior,
-                    ),
+    model = build_multisector_graph(
+        multisector_inv_inputs,
+        replace(
+            multisector_model_spec,
+            sectors=(
+                _sector(
+                    "FF",
+                    source="total-ukghg-edgar7",
+                    suffix="ff",
+                    prior=reparameterized_prior,
+                ),
+                _sector(
+                    "other",
+                    source="sector-2",
+                    suffix="ff_latent",
+                    prior=reparameterized_prior,
                 ),
             ),
-            sigma_alignment=builder_args["sigma_alignment"],
-        )
+        ),
+        sigma_alignment=builder_args["sigma_alignment"],
+    )
+
+    assert "x" in model.named_vars
+    assert {"x_ff_active_latent", "x_ff_latent_active_latent"}.issubset(model.named_vars)
 
 
 def test_standard_model_preserves_reparameterized_prior_and_forward_equation(
@@ -2666,7 +2578,7 @@ def test_multisector_model_preserves_additive_semantics(
     captured: dict[str, Any] = {}
 
     def capture_likelihood(**kwargs: Any) -> Any:
-        """Capture the unnamed pollution sum used by the likelihood."""
+        """Capture the complete forward mean used by the likelihood."""
         captured.update(kwargs)
         return example_likelihoods.likelihood_builder(**kwargs)
 
@@ -2683,13 +2595,12 @@ def test_multisector_model_preserves_additive_semantics(
         likelihood_builder=capture_likelihood,
     )
 
-    completed_mean, ff, ocean_and_baseline = pm.draw(
-        [captured["mean"], model["mu_ff"], model["mu_ocean"] + model["mu_bc"]],
+    completed_mean, pollution, baseline = pm.draw(
+        [captured["mean"], model["mu"], model["mu_bc"]],
         draws=2,
         random_seed=403,
     )
-    np.testing.assert_allclose(completed_mean, ff + ocean_and_baseline)
-    assert "mu" not in model.named_vars
+    np.testing.assert_allclose(completed_mean, pollution + baseline)
 
 
 @pytest.mark.parametrize(
@@ -4260,23 +4171,24 @@ def test_standard_model_result_resolves_explicit_inputs_from_spec(monkeypatch) -
     model_spec, _, _ = _minimal_output_specs(output_format="none")
     model_spec = replace(model_spec, use_bc=False, state_activity=activity)
     seen = {}
-    real_linear = rhime_standard.add_linear_component
+    real_state = rhime_standard.add_state_vector
     real_likelihood = rhime_standard.add_rhime_likelihood
 
-    def linear(sensitivity, **kwargs):
-        seen["linear"] = kwargs
-        return real_linear(sensitivity, **kwargs)
+    def state(activity, **kwargs):
+        seen["state"] = kwargs
+        seen["activity"] = activity
+        return real_state(activity, **kwargs)
 
     def likelihood(**kwargs):
         seen["likelihood"] = kwargs
         return real_likelihood(**kwargs)
 
-    monkeypatch.setattr(rhime_standard, "add_linear_component", linear)
+    monkeypatch.setattr(rhime_standard, "add_state_vector", state)
     monkeypatch.setattr(rhime_standard, "add_rhime_likelihood", likelihood)
     prior = {"pdf": "normal", "mu": 1.5, "sigma": .1}
     built = rhime_standard.build_standard_model(inputs, model_spec, priors={"x": prior})
-    assert seen["linear"]["prior_args"] == prior
-    assert seen["linear"]["state_activity"] is activity
+    assert seen["state"]["prior_args"] == prior
+    np.testing.assert_allclose(pm.draw(built.model["x"]), 2.0)
     assert seen["likelihood"]["observations"].variable is inputs["mf"].variable
     assert seen["likelihood"]["observation_error"].variable is inputs["mf_error"].variable
     assert seen["likelihood"]["settings"] is model_spec.likelihood
@@ -5350,36 +5262,13 @@ def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layo
     built = rhime_multisector.build_multisector_model(model_inputs, model_spec, priors=priors)
 
     xr.testing.assert_identical(loaded.inv_inputs, loaded_before_run)
-    assert built.model.named_vars_to_dims["x_ff"] == ("region_ff",)
-    assert built.model.named_vars_to_dims["x_ocean"] == ("region_ocean",)
+    assert built.model.named_vars_to_dims["x"] == (state_dim,)
     registry = models.get_coord_registry(built.model)
     assert registry is not None
-    assert registry.auxiliary_coords["sector_ff"].values.tolist() == ["ff-inventory"] * 2
-    assert registry.auxiliary_coords["sector_ocean"].values.tolist() == ["ocean-inventory"] * 3
-    ff_states = expected_sector.values == "ff-inventory"
-    ocean_states = expected_sector.values == "ocean-inventory"
-    ff_codes = registry.auxiliary_coords["state_measurement_code_ff"]
-    ocean_codes = registry.auxiliary_coords["state_measurement_code_ocean"]
-    assert ff_codes.dims == ("nmeasure", "region_ff")
-    assert ocean_codes.dims == ("nmeasure", "region_ocean")
-    expected_ff_codes = (
-        expected_state_measurement_code.isel({state_dim: np.flatnonzero(ff_states)})
-        .rename({state_dim: "region_ff"})
-        .transpose(*ff_codes.dims)
-    )
-    expected_ocean_codes = (
-        expected_state_measurement_code.isel({state_dim: np.flatnonzero(ocean_states)})
-        .rename({state_dim: "region_ocean"})
-        .transpose(*ocean_codes.dims)
-    )
-    np.testing.assert_array_equal(
-        ff_codes,
-        expected_ff_codes,
-    )
-    np.testing.assert_array_equal(
-        ocean_codes,
-        expected_ocean_codes,
-    )
+    assert registry.original_coords[state_dim].equals(expected_state_index)
+    np.testing.assert_array_equal(registry.auxiliary_coords["sector"], expected_sector)
+    codes = registry.auxiliary_coords["state_measurement_code"]
+    np.testing.assert_array_equal(codes, expected_state_measurement_code.transpose(*codes.dims))
     observation_label = registry.auxiliary_coords["observation_label"]
     assert observation_label.dims == ("nmeasure",)
     assert observation_label.values.tolist() == ["shared-observation"]
@@ -8573,9 +8462,10 @@ def test_run_rhime_multisector_api_smoke(
         assert self.draws == 1
         assert variable_roles is not None
         assert variable_roles["concentration"] == "y"
-        assert variable_roles["flux_scale:FF"] == "x_ff"
-        assert variable_roles["flux_scale:ocean"] == "x_ocean"
-        return _posterior_only_idata(model, ("x_ff", "x_ocean"))
+        assert variable_roles["flux_scale"] == "x"
+        return models.restore_inferencedata_coords(
+            _posterior_only_idata(model, ("x",)), models.get_coord_registry(model)
+        )
 
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
 
@@ -8606,8 +8496,8 @@ def test_run_rhime_multisector_api_smoke(
         "upper": 1.3,
     }
     posterior = cast(Any, result.trace).posterior
-    assert "x_ff" in posterior
-    assert "x_ocean" in posterior
+    assert "x" in posterior
+    assert set(posterior["source"].values) == set(args["flux_sources"])
 
 
 @pytest.mark.rhime_contract

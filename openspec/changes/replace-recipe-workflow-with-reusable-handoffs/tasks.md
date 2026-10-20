@@ -782,3 +782,231 @@ revision in #866. This acceptance record changes no runtime code.
 The standard gate permits the separately reviewed multisector and ordinary CO2
 slices to proceed. Remaining family tasks, integrated acceptance and capability
 promotion/archive remain open under OPE-207/#880.
+
+## 6. Shared standard/multisector flux-state formulation
+
+The maintainer approved implementation of the explored formulation on
+16 October 2026, on the combined #887/#886 base. Design decision 10 records the
+amendment. This approval does not establish readability acceptance, completed
+scientific validation or merged delivery; tasks 2.4, 3.1/3.6 and group 5 retain
+their existing gates. Ordinary CO2 keeps its coherent affine interpretation.
+
+- [x] 6.1 Implement one concrete full-state flux calculation shared by standard
+  and multisector: `x`, two-dimensional `hx` and `mu`. Preserve source-labelled
+  ragged blocks, heterogeneous priors, fixed/zero-effect states, construction-owned
+  prior records and borrowed preparation/basis arrays. Pack rectangular inputs
+  for construction only; add no representation switch or per-sector full aliases.
+- [x] 6.2 Bind generic flux roles to the full state and update source selection
+  for existing sector/native/country products. Preserve current-format saved
+  built-in per-sector traces at the output boundary, without weakening canonical-role,
+  preparation-generation or graph-free replay checks. Keep CO2 affine ownership.
+- [x] 6.3 Update affected usage/migration guidance, public docstrings, executable
+  examples and tracked release notes alongside the implementation. Record the
+  approved amendment in this active change without spec promotion or an archive.
+- [x] 6.4 Validate equivalent forward means and joint densities, heterogeneous
+  and ragged/fixed source states, signed sector/total products, borrowed arrays
+  and new/previous current-format replay. Run focused and relevant broader
+  standard/multisector/CO2, CLI, serialization and example checks on the combined
+  base; record exact evidence and leave maintainer acceptance separate.
+
+### Shared-state documentation and example evidence — 16 October 2026
+
+Usage and migration pages describe generic `x`/`hx`/`mu` roles, source-labelled
+selection, model-only rectangular packing, private prior records and current-format
+built-in trace compatibility. They distinguish the full scientific sensitivity
+from structurally pruned backend `hx`; CO2's coherent affine interpretation stays
+unchanged. The source-order correction keeps automatic basis weighting tied to
+the first requested data source rather than model sector declaration order.
+Tracked fragments are `880.feature.2.md` and `880.bugfix.md`.
+
+The revised `examples.multisector_handoffs.run_example(..., draws=4)` passes
+full/prepared/staged/replay comparisons for fixed-error and Student-t likelihoods,
+native source totals and independent SciPy joint-density checks at three states
+per likelihood (`rtol=1e-6`, `atol=1e-5`). These short chains test execution and
+replay, not convergence. All five `tests/test_rhime_tutorials.py` cases pass,
+using real preparation/building, registry-restored deterministic fixture traces
+and serialized output/diagnostics. Twenty-three Python documentation blocks and
+the executable example parse. Ruff on the changed example/tutorial test paths,
+strict active-change validation and diff checks pass. A full rendered
+documentation build is not claimed here. Implementation evidence for task 6.4
+follows; the existing maintainer acceptance gates remain open.
+
+
+### Shared-state implementation evidence — 16 October 2026
+
+The implementation sits above combined base `208ff5b6`: #887 remains based on
+`devel`, and #886 now targets #887 after an integration merge. Ninety-eight
+CLI/handoff/sampler cases passed on the combined base before the new formulation.
+
+Validation used Python 3.13.7 and PyMC 6.3.2 with the working source on `PYTHONPATH`
+and separate temporary PyTensor caches:
+
+- `tests/test_rhime.py` and `tests/test_multisector_handoff_parity.py`: 327 passed
+  in 121.76 seconds. This includes the source-order weighting regression,
+  source-labelled prior alignment, full/prepared parity and saved replay.
+- `tests/test_co2_rhime.py`, `tests/test_co2_handoffs.py`,
+  `tests/test_co2_handoff_parity.py`, `tests/test_co2_phase_cli.py`,
+  `tests/test_standard_phase_cli.py`, `tests/test_multisector_handoffs.py`,
+  `tests/test_sampler_selection.py` and `tests/postprocessing`: 404 passed,
+  eight skipped in 214.48 seconds. Five output-selector cases passed again
+  after restricting historical-name selection to traces without a canonical role.
+- `tests/models/test_state_activity.py`: 43 passed. The final nine
+  `tests/models/test_stacked_state.py` cases plus the existing semantic padding
+  diagnostic case passed together. They cover mixed independent distributions,
+  source order, interleaved/ragged/fixed states, zero-effect columns, exact local
+  prior labels, lazy borrowed graphs, auxiliary-name collisions and native
+  MultiIndexes. After the final gathering change, 81 selected multisector/stacked
+  cases from the RHIME, handoff and stacked-state modules passed in 76.72 seconds.
+- `tests/integration/test_multisector_paris_pipeline.py -m slow`: one passed in
+  42.97 seconds, exercising real sampling through sector/total NetCDF products
+  and the current PARIS schema. Its stale boundary-directory option was migrated
+  to the supported explicit `bc_basis_paths` input.
+- Changed-path Ruff, `git diff --check` and strict active OpenSpec validation pass.
+  Tutorial and independent example/density evidence is recorded above.
+
+No new full compatibility matrix, type-check run, rendered documentation build
+or external-store satellite integration is claimed. Short chains establish
+execution and product parity rather than convergence. This completes task 6.4's
+focused/relevant broader validation, not maintainer readability acceptance or
+merged delivery; tasks 2.4, 3.1/3.6 and group 5 retain their existing gates.
+
+### PR #891 coordinate review fixes — 16 October 2026
+
+The model flux-state axis reserves dimension and coordinate names from other
+model inputs and labelled non-flux prior parameters. Source-prior metadata uses
+its private namespace. The non-flux reservation follows a
+reproduced case where boundary-prior metadata, absent from `H_bc`, overwrote the
+restored flux MultiIndex and removed source selection. The reservation inspects
+metadata names only and does not compute borrowed payloads.
+
+The same prior-only collision was reproduced with gathered input: the combined
+base restored per-sector labels, whereas the shared-state graph lost its source
+index. A collision may therefore rename an existing state dimension for model
+construction only, preserving the index values, level names, order and borrowed
+prepared inputs. Source-based output selection discovers the sampled index and
+restores the retained basis dimension rather than depending on its model name.
+
+Private full-prior and active-state coordinates use distinct namespaces. Unequal
+source blocks with suffixes `ff` and `ff_active` now coexist without changing
+their random-variable or construction-record names. One pure coordinate helper
+serves independent, multisource and correlated state construction; existing
+standard/CO2 coordinate names and preparation outside a model context remain
+unchanged. When every sensitivity column is retained, preparation borrows the
+matrix payload; actual pruning keeps its full-state mapping and coordinate rules.
+The review fixes are recorded in `891.bugfix.md`; they require no new usage flow.
+
+Focused validation:
+
+- `tests/models/test_state_coordinates.py`, `tests/models/test_state_activity.py`,
+  `tests/models/test_correlated_state.py` and `tests/models/test_prior_registration.py`:
+  93 passed. The four new cases cover both unequal-block source orders, partial
+  native MultiIndex activity and existing independent/correlated coordinate names.
+- `tests/models/test_sensitivity_borrowing.py`, `tests/models/test_state_activity.py`
+  and `tests/models/test_components.py`: 69 passed in 23.94 seconds. New cases
+  check read-only eager storage sharing, borrowed lazy payloads with one inspection,
+  and exact-zero pruning while retaining tiny nonzero columns.
+- `tests/test_rhime.py`, `tests/test_multisector_handoff_parity.py`,
+  `tests/test_multisector_handoffs.py`, `tests/test_standard_phase_cli.py`,
+  `tests/test_co2_phase_cli.py` and `tests/test_sampler_selection.py`:
+  425 passed (351 warnings).
+- `tests/models/test_correlated_state.py`, `tests/models/test_coords.py`,
+  `tests/test_co2_rhime.py`, `tests/test_co2_handoff_parity.py`,
+  `tests/test_co2_cached_sigma.py`, `tests/test_rhime_co2_o2.py`,
+  `tests/test_nested_rhime.py` and `tests/postprocessing/test_make_outputs.py`:
+  241 passed (156 warnings) in 214.61 seconds. These broader runs preceded the
+  final gathered-axis collision fix; the affected rerun is recorded below.
+- After that fix, `tests/models/test_stacked_state.py` and
+  `tests/models/test_state_coordinates.py`: 19 passed (one warning) in
+  4.50 seconds. Restoration preserves source selection and boundary metadata
+  for rectangular inputs and unequal gathered inputs, including prior-only
+  collisions and a second occupied candidate axis name.
+- `tests/postprocessing/test_stacked_state_persistence.py` and the existing
+  stacked output-selector cases: five passed (28 deselected, one warning) in
+  6.67 seconds. The new case builds and samples a gathered graph with a prior-only
+  collision, saves/reopens its trace as NetCDF, and verifies canonical source
+  extraction restores the local retained basis labels and values.
+- After the gathered-axis fix, `tests/test_rhime.py`,
+  `tests/test_multisector_handoff_parity.py`, `tests/test_multisector_handoffs.py`
+  and `tests/test_standard_phase_cli.py`: 383 passed (350 warnings) in
+  122.87 seconds.
+- Changed-path Ruff, diff checks and strict active OpenSpec validation pass.
+
+These checks add review-fix evidence to task 6.4 without changing the open family
+acceptance or capability-promotion gates.
+
+
+### Stack integration readiness — 20 October 2026
+
+The maintainer requested checking the entire #887 → #886 → #891 stack against
+current `devel` `fd279807`, including merged bounded postprocessing #895/#896.
+#887 integrates that base at `4462ecd6`. #886 integrates the refreshed #887 at
+`b0182e14`; independent Towncrier notes now have distinct filenames instead of
+an add/add collision. The #891 integration preserves canonical gathered-state
+selection while selecting only the requested scale variable before trace-group
+alignment. It retains the narrated notebook and stacked-state example equations,
+and the supplied `SigmaAlignment` ordering fix from the updated base.
+
+The transferred module explanation now describes independent sector priors,
+the full state, gathered sensitivity and pollution mean. Sectors identify sampled
+components; acquisition sources identify inventories and responses. The current
+one-to-one `sector_sources` mapping binds them without making them synonyms;
+existing stored `source` labels retain their compatibility contract. The
+source-order regression actually generates an automatic basis without a saved
+operator, compares generated basis matrices and sensitivities, and checks the
+requested weighting source. A source-selector regression includes an unrelated
+predictive draw index to ensure it cannot enlarge selected state draws.
+
+Focused output/source-selection checks passed (39 tests), followed by the real
+basis-generation and unrelated-predictive-axis regressions. The combined
+multisector/standard/CO2 CLI, handoff, stacked-state/persistence and new bounded
+product/statistics selection passed 150 tests. Fixed-revision Slurm
+compatibility/type/docs evidence follows in the PRs. Previous full-suite results remain evidence for their recorded revisions,
+not acceptance of this integration. Maintainer readability/design acceptance,
+merged delivery and programme completion are not claimed. The sector-labelled
+flux-prior API review question remains explicitly discussed on #891; no generic
+workflow or configuration framework is added during conflict resolution.
+
+
+Stack Slurm terminal evidence, 20 October 2026: array 19553048 checked
+#887 `4462ecd6`, #886 `b0182e14` and #891 `8ab3cbc3` against baseline
+`fd279807`/19553052. #887 passes both full locked Python suites and GitHub
+CI tests/docs (39391518767/39391518431). Its Mypy count is 164 versus baseline
+166, with no added normalized diagnostics. #886 reports 163 (the existing
+PyMC missing-stubs diagnostic moves to its new handoff owner). #891 reports
+164, including one additional missing-stubs import for `pymc.pytensorf`.
+Docs report 308/303/303 versus baseline 318: no increased diagnostic message
+content or multiplicity; two existing TensorVariable warnings appear under
+new `multisector_stages` reference ownership. Existing type/docs debt remains
+#881/#679; these are not clean type/docs passes.
+
+#886's two suites reach 3283 passes/eight skips each, with 69 fixture setup
+errors caused by the shared test-store lock timeout. Retry uses a fresh
+job-local TMPDIR instead of reusing a node's per-user /tmp test-store path.
+#891 reaches 3391 passes/eight skips each; its only two failures are obsolete
+per-sector variable assertions in the xarray-input adapter persistence tests.
+Those now assert the canonical stacked `x`/`hx`/`mu` roles and compare eager
+sensitivity values with the loaded labelled inputs. The complete adapter file
+passes 70 tests. Conversion uses the already imported PyMC module's identical
+`pytensorf.convert_data` function, avoiding a separate untyped-module import;
+21 coordinate registration/reuse checks pass. No numeric algorithm is changed.
+The narrowed retry covers only #886/#891; #887's passing suites are retained.
+Maintainer review and final retry evidence remain open; nothing is merged.
+
+
+Final stack retry evidence — 20 October 2026: Slurm 19553508_0 at #886
+`b0182e14` and 19553508_1 at #891 `ed6316c3` both pass the complete locked
+Python 3.12 and 3.13 suites. The fresh job-local TMPDIR removes the fixture lock
+failures. #891's corrected canonical-state persistence assertions pass in both
+complete suites. Mypy is 163/50 files on both heads versus baseline 166/52:
+no introduced diagnostic after accounting for the existing CO2 PyMC stub
+warning's move from stages to handoffs; the extra pytensorf import diagnostic
+is gone. Combined job exits remain nonzero only for existing typing debt.
+Docs retain the completed first-array evidence (308/303/303 versus 318, no
+increased message content/multiplicity); no rendered documentation changed in
+the retry. #887's complete-suite and GitHub CI passes at `4462ecd6` are retained.
+Remote devel still equals `fd279807`; all three remote heads match these
+validated revisions, are non-draft and merge without conflicts in stack order
+#887 → #886 → #891. Final local summaries are preserved with the job logs.
+Subsequent evidence-only commits change no runtime behavior. No jobs remain
+pending. Review threads, readability/design acceptance and the programme's
+merged-delivery gates remain open; nothing is merged or archived.

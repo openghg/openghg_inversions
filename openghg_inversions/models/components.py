@@ -24,6 +24,7 @@ Model components derive frequency indicators from observation coordinates with
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -35,8 +36,10 @@ import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.array_ops import select_gathered_data_array
 from openghg_inversions.inversion_inputs import make_freq_indicator, make_site_indicator
 from openghg_inversions.models.coords import add_coords, add_model_data as add_model_data
+from openghg_inversions.models._flux import _namespace_sector_state_coords
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.models.state_activity import (
     PreparedLinearSensitivity,
@@ -283,6 +286,20 @@ def add_coherent_affine_component(
     return pm.Deterministic(output_name, fixed + linear_signal, dims=fixed_contribution.dims)
 
 
+def _active_state_coords(
+    coordinate: xr.DataArray,
+    active_indices: np.ndarray,
+    namespace: str,
+) -> tuple[str, xr.Coordinates | dict[str, Any]]:
+    """Select active labels and namespace their dimension and MultiIndex levels."""
+    active_dim = f"{coordinate.dims[0]}_{namespace}"
+    active_index = coordinate.to_index()[active_indices]
+    if isinstance(active_index, pd.MultiIndex):
+        active_index = active_index.set_names([f"{name}_{namespace}" for name in active_index.names])
+        return active_dim, xr.Coordinates.from_pandas_multiindex(active_index, active_dim)
+    return active_dim, {active_dim: active_index.to_numpy()}
+
+
 def add_state_vector(
     activity: ResolvedStateActivity,
     /,
@@ -344,16 +361,7 @@ def add_state_vector(
     latent: TensorVariable | None = None
     active_state: TensorVariable | None = None
     if activity.n_active:
-        active_dim = f"{state_dim}_{var_name}_active"
-        active_index = state_coord.to_index()[active_indices]
-        active_coords: xr.Coordinates | dict[str, Any]
-        if isinstance(active_index, pd.MultiIndex):
-            active_index = active_index.set_names(
-                [f"{name}_{var_name}_active" for name in active_index.names]
-            )
-            active_coords = xr.Coordinates.from_pandas_multiindex(active_index, active_dim)
-        else:
-            active_coords = {active_dim: active_index.to_numpy()}
+        active_dim, active_coords = _active_state_coords(state_coord, active_indices, f"{var_name}_active")
         add_coords(active_coords, model_dims=(active_dim,))
         active_state = parse_prior(
             f"{var_name}_active",
@@ -369,6 +377,75 @@ def add_state_vector(
         full_state = pt.set_subtensor(full_state[active_indices], active_state)
     state = pm.Deterministic(var_name, full_state, dims=state_dim)
     return StateVectorResult(latent=latent, state=state, activity=activity)
+
+
+def _add_multisource_state_vector(
+    zero_sensitivity: xr.DataArray,
+    prior_blocks: Mapping[str, tuple[str, dict[str, Any], StateActivity | None]],
+    *,
+    local_state_dim: str,
+    var_name: str,
+) -> TensorVariable:
+    """Insert independent source-prior draws into one ordered full state.
+
+    Each block owns its prior family, source-local labelled parameters and
+    activity policy. Private prior dimensions may differ in size; the physical
+    state and zero-sensitivity mask use the complete gathered coordinate.
+    Block keys cover the source layout, as validated by the owning recipe.
+    """
+    state_dim = str(zero_sensitivity.dims[0])
+    state_index = zero_sensitivity.get_index(state_dim)
+    region_level = next(str(name) for name in state_index.names if name != "source")
+    add_coords(zero_sensitivity.coords, model_dims=(state_dim,))
+    active = np.zeros(len(state_index), dtype=bool)
+    fixed_values = np.empty(len(state_index), dtype=float)
+    draws = []
+    for source, (record_name, prior, policy) in prior_blocks.items():
+        positions = np.flatnonzero(state_index.get_level_values("source") == source)
+        local_zero = select_gathered_data_array(
+            zero_sensitivity, key=source, key_dim="source",
+            ragged_dim=region_level, stack_dim=state_dim,
+        )
+        if state_dim != local_state_dim:
+            local_zero = local_zero.rename({state_dim: local_state_dim})
+        activity = resolve_state_activity(local_zero, policy)
+        aligned_prior = active_prior_args(dict(prior), activity, select_active=False)
+        active[positions] = activity.active.to_numpy()
+        fixed_values[positions] = activity.fixed_value.to_numpy()
+        if not activity.n_active:
+            continue
+
+        prior_namespace = f"prior_{record_name}"
+        block_zero = _namespace_sector_state_coords(
+            local_zero, variable_suffix=prior_namespace, namespace_state_dim=True,
+        )
+        block_dim = str(block_zero.dims[0])
+        add_coords(block_zero.coords, model_dims=(block_dim,))
+        parameters = {
+            name: _namespace_sector_state_coords(
+                value, variable_suffix=prior_namespace, namespace_state_dim=True,
+            ) if isinstance(value, xr.DataArray) and value.ndim else value
+            for name, value in aligned_prior.items()
+        }
+        active_indices = activity.active_indices
+        active_dim, active_coords = _active_state_coords(
+            local_zero.coords[local_state_dim], active_indices, f"active_{record_name}",
+        )
+        add_coords(active_coords, model_dims=(active_dim,))
+        draw = parse_prior(
+            f"{record_name}_active", parameters, dims=active_dim,
+            active_indices=active_indices, record_name=record_name,
+        )
+        draws.append((positions[active_indices], draw))
+
+    if active.all():
+        state = pt.zeros(len(state_index))
+    else:
+        add_model_data(zero_sensitivity.copy(data=active).rename(f"{var_name}_is_active"))
+        state = add_model_data(zero_sensitivity.copy(data=fixed_values).rename(f"{var_name}_fixed_value"))
+    for positions, draw in draws:
+        state = pt.set_subtensor(state[positions], draw)
+    return cast(TensorVariable, pm.Deterministic(var_name, state, dims=state_dim))
 
 
 def add_correlated_lognormal_state(
@@ -557,16 +634,7 @@ def prepare_active_correlated_lognormal_prior(
         return prior
 
     active_indices = activity.active_indices
-    active_dim = f"{state_dim}_{var_name}_active"
-    active_index = mean.coords[state_dim].to_index()[active_indices]
-    active_coords: xr.Coordinates | dict[str, Any]
-    if isinstance(active_index, pd.MultiIndex):
-        active_index = active_index.set_names(
-            [f"{name}_{var_name}_active" for name in active_index.names]
-        )
-        active_coords = xr.Coordinates.from_pandas_multiindex(active_index, active_dim)
-    else:
-        active_coords = {active_dim: active_index.to_numpy()}
+    active_dim, active_coords = _active_state_coords(mean.coords[state_dim], active_indices, f"{var_name}_active")
     active_mean = xr.DataArray(
         mean.isel({state_dim: active_indices}).values,
         dims=(active_dim,),

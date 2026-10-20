@@ -360,7 +360,7 @@ def builtin_model_build_result(
     Args:
         model: Concrete built-in PyMC graph.
         model_spec: Scientific options used to build the graph.
-        multisector: Whether sector-specific flux roles are required.
+        multisector: Whether product capabilities are restricted to multisector outputs.
         input_names: Names available from retained canonical inputs.
 
     Returns:
@@ -378,13 +378,7 @@ def builtin_model_build_result(
         roles["observation_repeatability"] = "mf_repeatability"
     if "mf_variability" in input_names:
         roles["observation_variability"] = "mf_variability"
-    if multisector:
-        for sector in model_spec.sectors:
-            roles[f"flux_scale:{sector.name}"] = f"x_{sector.variable_suffix}"
-            roles[f"flux_contribution:{sector.name}"] = f"mu_{sector.variable_suffix}"
-            roles[f"emissions_sensitivity:{sector.name}"] = f"hx_{sector.variable_suffix}"
-    else:
-        roles.update({"flux_scale": "x", "flux_contribution": "mu", "emissions_sensitivity": "hx"})
+    roles.update({"flux_scale": "x", "flux_contribution": "mu", "emissions_sensitivity": "hx"})
     if model_spec.use_bc:
         roles.update(
             {
