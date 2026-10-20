@@ -27,7 +27,11 @@ def _cli(*arguments):
     return result
 
 
-def test_installed_unequal_axis_sequence_retains_joint_science(tmp_path):
+def test_installed_unequal_axis_sequence_retains_joint_science(tmp_path, monkeypatch):
+    # PyMC/Numba multivariate-normal predictive draws currently require float64.
+    flags = [flag for flag in os.environ.get("PYTENSOR_FLAGS", "").split(",")
+             if flag and flag.partition("=")[0].strip() != "floatX"]
+    monkeypatch.setenv("PYTENSOR_FLAGS", ",".join([*flags, "floatX=float64"]))
     prepared = synthetic_inputs()
     source = tmp_path / "linked.nc"
     prepared.save(source)
