@@ -128,14 +128,28 @@ def test_supplied_data_reaches_filtering_without_acquisition(monkeypatch, multis
         pytest.fail("supplied data must bypass both acquisition factories")
     class ReachedFiltering(Exception):
         pass
+    stages = []
+    def validate(actual, **kwargs):
+        assert actual is supplied
+        assert kwargs == {
+            "split_by_sectors": multisector_mode,
+            "use_bc": config.data.use_bc,
+            "flux_sources": config.data.flux_sources,
+            "require_footprints": True,
+        }
+        stages.append("validate")
     def filter_supplied(site_data, site_options, **kwargs):
+        assert stages == ["validate"]
         assert site_data.keys() == supplied.site_data.keys()
         assert site_options is supplied.site_options
+        stages.append("filter")
         raise ReachedFiltering
     monkeypatch.setattr(RhimeMergedData, "from_options", forbidden)
+    monkeypatch.setattr(RhimeMergedData, "validate_scientific_inputs", validate)
     monkeypatch.setattr(recipe, "filter_observations", filter_supplied)
     with pytest.raises(ReachedFiltering):
         runner(config=config, merged_data=supplied)
+    assert stages == ["validate", "filter"]
 
 
 @pytest.mark.parametrize("multisector_mode", [False, True])
@@ -177,12 +191,25 @@ def test_acquired_data_binding_preserves_selectors_and_rejects_conflicts(
     }
     recipe = multisector if multisector_mode else standard
     runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_standard
+    config = _config(multisector_mode, **config_options)
+    validations = []
     reached = []
 
     class ReachedFiltering(Exception):
         pass
 
+    def validate(actual, **kwargs):
+        assert actual is supplied
+        assert kwargs == {
+            "split_by_sectors": multisector_mode,
+            "use_bc": config.data.use_bc,
+            "flux_sources": config.data.flux_sources,
+            "require_footprints": True,
+        }
+        validations.append(actual)
+
     def filtering(site_data, site_options, **kwargs):
+        assert validations == [supplied]
         reached.append(site_data)
         assert site_options is supplied.site_options
         assert site_options == options
@@ -192,17 +219,18 @@ def test_acquired_data_binding_preserves_selectors_and_rejects_conflicts(
 
     monkeypatch.setattr(recipe, "filter_observations", filtering)
     monkeypatch.setattr(RhimeMergedData, "from_options", lambda **kw: pytest.fail("Unexpected acquisition"))
+    monkeypatch.setattr(RhimeMergedData, "validate_scientific_inputs", validate)
     calls = []
     with Callback(pretask=lambda *args: calls.append(args)):
         with pytest.raises(ReachedFiltering):
-            runner(config=_config(multisector_mode, **config_options),
-                   merged_data=supplied)
+            runner(config=config, merged_data=supplied)
         for key, value in [("species", "co2"), ("domain", "USA"),
                            ("start_date", "2019-01-02"), ("end_date", "2019-01-31")]:
             with pytest.raises(ValueError, match=key):
                 runner(config=_config(multisector_mode, **{**config_options, key: value}),
                        merged_data=supplied)
     assert len(reached) == 1
+    assert validations == [supplied]
     assert not calls
     assert supplied.acquisition.species == "CH4"
     assert supplied.site_options == options

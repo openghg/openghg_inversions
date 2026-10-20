@@ -6,13 +6,10 @@ import numpy as np
 import xarray as xr
 from xarray_validate import (
     AttrSchema, CoordsSchema, DataArraySchema, DatasetSchema, DimsSchema,
-    SchemaError, ValidationContext,
+    ValidationContext,
 )
-from xarray_validate.units import set_registry
 
 from ._units import cf_ureg, mole_fraction_unit_scale
-
-set_registry(cf_ureg)
 
 _REAL_DTYPES = (np.integer, np.floating)
 _UNCERTAINTIES = ("mf_error", "mf_repeatability", "mf_variability")
@@ -22,12 +19,6 @@ def _same_unit_scale(actual: object, expected: str, *, name: str) -> None:
     """Accept equal-scale expressions without converting borrowed values."""
     if not isinstance(actual, str) or not actual.strip():
         raise ValueError(f"{name}.attrs.units must be a nonempty string.")
-    try:
-        AttrSchema(units=expected).validate(actual)
-        return
-    except (SchemaError, ValueError):
-        # Native Unit equality misses equal-scale quantities such as umol/mol.
-        pass
     try:
         quantity = cf_ureg.parse_expression(actual)
         reference = cf_ureg.parse_expression(expected)

@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import numpy as np
 import pytest
 import xarray as xr
 
@@ -33,17 +34,30 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         multisector=False,
     )
     sampler = config.sampler
+    grid = {"lat": [50.], "lon": [0.]}
+    time = np.array(["2019-01-01"], dtype="datetime64[ns]")
     merged = RhimeMergedData(
         site_data={
             site: xr.Dataset({
+                "mf": ("time", [1.0], {"units": "ppm"}),
                 "mf_error": ("time", [1.0]),
                 "mf_repeatability": ("time", [0.0]),
                 "mf_variability": ("time", [0.0]),
-            })
+                "fp": (("lat", "lon", "time"), [[[1.0]]]),
+                "fp_x_flux": (("lat", "lon", "time"), [[[2.0]]], {"units": "ppm"}),
+                **{
+                    f"bc_{direction}": (
+                        ("height", "lon" if direction in "ns" else "lat", "time"),
+                        [[[0.1]]], {"units": "ppm"},
+                    )
+                    for direction in "nesw"
+                },
+            }, coords={**grid, "time": time, "height": [500.]})
             for site in config.data.site_options.sites
         },
-        flux_data={"inventory": xr.Dataset({"flux": (("lat", "lon"), [[2.]])},
-                                           coords={"lat": [50.], "lon": [0.]})},
+        flux_data={"inventory": xr.Dataset(
+            {"flux": (("lat", "lon"), [[2.]], {"units": "mol m-2 s-1"})}, coords=grid,
+        )},
         site_options=config.data.site_options,
     )
     filtered = {"MHD": merged.site_data["MHD"]}
@@ -68,6 +82,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
     priors = {"x": {"pdf": "normal", "mu": 1.0, "sigma": 0.2}}
     expected = InversionOutput(trace=idata, inv_inputs=prepared.inv_inputs, basis_functions=basis)
     calls: list[str] = []
+    validate_scientific_inputs = RhimeMergedData.validate_scientific_inputs
 
     def resolve(cls, params: dict[str, Any], *, multisector: bool) -> Any:
         assert params == {
@@ -87,6 +102,18 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         assert "merged_data" not in kwargs
         calls.append("retrieve")
         return merged
+
+    def validate(actual: RhimeMergedData, **kwargs: Any) -> None:
+        """Exercise the real acquired-data contract before controlled stages."""
+        assert actual is merged
+        assert kwargs == {
+            "split_by_sectors": False,
+            "use_bc": config.data.use_bc,
+            "flux_sources": config.data.flux_sources,
+            "require_footprints": True,
+        }
+        validate_scientific_inputs(actual, **kwargs)
+        calls.append("validate")
 
     def filter_observations(actual: Any, site_options: Any, *, filters: Any) -> Any:
         assert actual.keys() == merged.site_data.keys()
@@ -170,6 +197,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
 
     monkeypatch.setattr(rhime_runner.RhimeConfig, "from_params", classmethod(resolve))
     monkeypatch.setattr(rhime_runner.RhimeMergedData, "from_options", retrieve)
+    monkeypatch.setattr(rhime_runner.RhimeMergedData, "validate_scientific_inputs", validate)
     monkeypatch.setattr(rhime_runner, "filter_observations", filter_observations)
     monkeypatch.setattr(rhime_runner, "prepare_basis", build_basis)
     monkeypatch.setattr(rhime_runner, "build_sensitivities", build_sensitivities)
@@ -188,6 +216,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
     assert calls == [
         "resolve",
         "retrieve",
+        "validate",
         "filter",
         "basis",
         "sensitivities",
