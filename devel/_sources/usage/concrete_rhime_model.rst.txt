@@ -284,6 +284,7 @@ helpers:
            var_name="bc",
            output_name="mu_bc",
            output_dim="nmeasure",
+           coordinate_owner="bc",
        )
        pollution_mean = flux.output
        baseline_mean = boundary.output
@@ -349,6 +350,26 @@ sector associations. New models do not add separate ``x_ff``, ``hx_ff`` or
 ``mu_ff`` full-state aliases for reporting. Every private prior and generated
 latent still needs a unique backend name; PyMC rejects duplicate names.
 
+Boundary coordinates
+--------------------
+
+Built-in standard, multisector, nested and CO2 recipes qualify boundary-state
+coordinates with ``bc_`` when registering the graph. Existing ``bc_`` names,
+including ``bc_region``, keep their names. Linked CO2/O2 uses its existing
+``co2_`` and ``o2_`` channel prefixes, such as ``co2_bc_region``. Flux dimensions,
+source labels and supplied ``sector`` auxiliaries keep their scientific names.
+
+This lets a flux ``source(region)`` coordinate coexist with a boundary-prior
+``source(bc_region)`` coordinate, stored as ``bc_source`` in the trace. Saved
+traces retain the qualified boundary names; output selection does not rename
+flux coordinates. Borrowed inputs retain their original labels and payloads.
+
+Observation coordinates and scalar metadata remain shared. Their values must
+agree across components; conflicting scalar metadata raises an explicit error.
+State coordinates with different ownership or local-name metadata cannot share
+a registered name, even when their values match. Custom compositions can use
+``coordinate_owner`` on ``add_linear_component`` for the same boundary behavior.
+
 Names and generated names
 -------------------------
 
@@ -364,7 +385,7 @@ helper still relies on conventional names for boundary, offset, error, and
 likelihood components; there is not yet one allocator for the complete model
 namespace.
 
-Generated-name reporting, whole-model allocation, and component namespaces are
+Generated-name reporting and whole-model variable-name allocation are
 not implemented. They are tracked in
 `issue #532 <https://github.com/openghg/openghg_inversions/issues/532>`_.
 

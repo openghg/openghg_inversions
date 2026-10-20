@@ -702,6 +702,7 @@ present on <code class="docutils literal notranslate"><span class="pre">model</s
 <dd><em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'nmeasure'</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">compute_deterministic</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">coordinate_owner</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.components.add_linear_component" title="Link to this definition">#</a></dt>
@@ -718,6 +719,8 @@ present on <code class="docutils literal notranslate"><span class="pre">model</s
 <li><p><strong>output_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Observation/output dimension name.</p></li>
 <li><p><strong>compute_deterministic</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether to wrap the aligned output in
 <code class="docutils literal notranslate"><span class="pre">pm.Deterministic</span></code>.</p></li>
+<li><p><strong>coordinate_owner</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Explicit namespace for registered state coordinates;
+scientific inputs and activity policies retain their local names.</p></li>
 <li><p><strong>state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional active/fixed policy over the full scientific
 state. <code class="docutils literal notranslate"><span class="pre">None</span></code> samples every retained column.</p></li>
 </ul>
@@ -744,10 +747,11 @@ contribution, and resolved activity.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">data_name</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">output_name</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">compute_deterministic</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">coordinate_owner</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.components.apply_linear_sensitivity" title="Link to this definition">#</a></dt>
-<dd><p>Apply a prepared sensitivity to an already-built full state vector.</p>
+<dd><p>Apply a prepared sensitivity using its state’s explicit coordinate owner.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><em>TensorVariable</em></p>
@@ -818,7 +822,7 @@ channel signals. The calling recipe owns those scientific choices.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.models.components.add_state_vector">
-<span class="sig-name descname"><span class="pre">add_state_vector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">activity</span></span></em>, <em class="sig-param"><span class="positional-only-separator o"><abbr title="Positional-only parameter separator (PEP 570)"><span class="pre">/</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">var_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.components.add_state_vector" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">add_state_vector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">activity</span></span></em>, <em class="sig-param"><span class="positional-only-separator o"><abbr title="Positional-only parameter separator (PEP 570)"><span class="pre">/</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">var_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coordinate_owner</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.components.add_state_vector" title="Link to this definition">#</a></dt>
 <dd><p>Construct an active/fixed state graph from a resolved activity contract.</p>
 <p>When every state is active, this creates the same base prior graph as
 <code class="docutils literal notranslate"><span class="pre">add_linear_component</span></code>. Partial activity creates an active-only prior and
@@ -833,6 +837,7 @@ design inspection must be completed before calling this helper.</p></li>
 <li><p><strong>prior_args</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – Prior specification. Distribution parameters may be scalar,
 full-state arrays, or labelled state <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> objects.</p></li>
 <li><p><strong>var_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Name of the full user-facing state vector.</p></li>
+<li><p><strong>coordinate_owner</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional namespace for registered state coordinates.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -927,6 +932,9 @@ full state.</p></li>
 <dt class="sig sig-object py" id="openghg_inversions.models.components.prepare_active_correlated_lognormal_prior">
 <span class="sig-name descname"><span class="pre">prepare_active_correlated_lognormal_prior</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">activity</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior</span></span></em>, <em class="sig-param"><span class="positional-only-separator o"><abbr title="Positional-only parameter separator (PEP 570)"><span class="pre">/</span></abbr></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">var_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.components.prepare_active_correlated_lognormal_prior" title="Link to this definition">#</a></dt>
 <dd><p>Align and subset one correlated prior for active-state construction.</p>
+<p>This eager graph-construction boundary materializes the prior and activity
+coordinate datasets together before comparing auxiliary labels. Borrowed
+inputs remain unchanged and shared Dask coordinate tasks run once.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><em>CorrelatedLognormalPrior</em></a> | None</p>

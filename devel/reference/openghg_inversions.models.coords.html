@@ -581,6 +581,34 @@ model coordinates, so model construction should use sanitized, PyMC-safe coords.
 dimension coordinate to a range index. The original scientific coordinates are
 stored separately so they can later be restored onto sampled trace groups.</p>
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.models.coords.component_coords">
+<span class="sig-name descname"><span class="pre">component_coords</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">array</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">owner</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'nmeasure'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.coords.component_coords" title="Link to this definition">#</a></dt>
+<dd><p>Qualify component-owned state coordinates without copying array payloads.</p>
+<p>Observation coordinates and scalar metadata remain shared and must agree
+across components. Every other dimension and coordinate depending on it
+receives the owner’s prefix, unless it already has that prefix. Metadata
+records ownership so ambiguous qualified names are rejected at registration.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>array</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Borrowed scientific array.</p></li>
+<li><p><strong>owner</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Explicit component name, or <code class="docutils literal notranslate"><span class="pre">None</span></code> to retain local names.</p></li>
+<li><p><strong>observation_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Shared observation dimension, excluded from qualification.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Labelled view sharing the original numerical payload.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – Local and already-prefixed coordinates would share a name.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.models.coords.add_model_data">
 <span class="sig-name descname"><span class="pre">add_model_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.coords.add_model_data" title="Link to this definition">#</a></dt>
 <dd><p>Register labelled numerical data on the active registered model.</p>
@@ -641,6 +669,7 @@ the corresponding length.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">pymc_coords</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">original_coords</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">auxiliary_coords</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">coordinate_attrs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.coords.CoordRegistry" title="Link to this definition">#</a></dt>
@@ -655,6 +684,8 @@ dimension name.</p></li>
 <li><p><strong>auxiliary_coords</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>xarray.core.dataarray.DataArray</em></a><em>]</em>) – Additional non-dimension coordinates attached to
 model dimensions, such as exploded <code class="docutils literal notranslate"><span class="pre">time</span></code> or <code class="docutils literal notranslate"><span class="pre">site</span></code> coordinates
 derived from a stacked <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> MultiIndex.</p></li>
+<li><p><strong>coordinate_attrs</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><em>Any</em><em>]</em><em>]</em>) – Scientific coordinate attributes, including explicit
+component ownership and local names used to reject ambiguous registrations.</p></li>
 </ul>
 </dd>
 </dl>
@@ -674,7 +705,8 @@ dimensions are also preserved when possible.</p></li>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the same coordinate name is registered more than once
-    with conflicting lengths, shapes, or values.</p>
+    with conflicting lengths, shapes, values or ownership metadata.
+    Scalar metadata is shared and must agree across components.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -810,6 +842,7 @@ and auxiliary coordinates restored onto its xarray groups.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.coords.component_coords"><code class="docutils literal notranslate"><span class="pre">component_coords()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.coords.add_model_data"><code class="docutils literal notranslate"><span class="pre">add_model_data()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.coords.sanitize_coords_for_pymc"><code class="docutils literal notranslate"><span class="pre">sanitize_coords_for_pymc()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.coords.CoordRegistry"><code class="docutils literal notranslate"><span class="pre">CoordRegistry</span></code></a><ul class="nav section-nav flex-column">

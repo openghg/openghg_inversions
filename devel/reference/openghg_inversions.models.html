@@ -583,6 +583,7 @@ primitives. RHIME-specific recipes and contracts live in <code class="docutils l
 <dd><em class="sig-param"><span class="n"><span class="pre">pymc_coords</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">original_coords</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">auxiliary_coords</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">coordinate_attrs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.CoordRegistry" title="Link to this definition">#</a></dt>
@@ -597,6 +598,8 @@ dimension name.</p></li>
 <li><p><strong>auxiliary_coords</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>xarray.core.dataarray.DataArray</em></a><em>]</em>) – Additional non-dimension coordinates attached to
 model dimensions, such as exploded <code class="docutils literal notranslate"><span class="pre">time</span></code> or <code class="docutils literal notranslate"><span class="pre">site</span></code> coordinates
 derived from a stacked <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> MultiIndex.</p></li>
+<li><p><strong>coordinate_attrs</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><em>Any</em><em>]</em><em>]</em>) – Scientific coordinate attributes, including explicit
+component ownership and local names used to reject ambiguous registrations.</p></li>
 </ul>
 </dd>
 </dl>
@@ -616,7 +619,8 @@ dimensions are also preserved when possible.</p></li>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the same coordinate name is registered more than once
-    with conflicting lengths, shapes, or values.</p>
+    with conflicting lengths, shapes, values or ownership metadata.
+    Scalar metadata is shared and must agree across components.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1586,6 +1590,7 @@ the prepared sensitivity and owns the resulting deterministic output.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'nmeasure'</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">compute_deterministic</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">coordinate_owner</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.add_linear_component" title="Link to this definition">#</a></dt>
@@ -1602,6 +1607,8 @@ the prepared sensitivity and owns the resulting deterministic output.</p>
 <li><p><strong>output_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Observation/output dimension name.</p></li>
 <li><p><strong>compute_deterministic</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether to wrap the aligned output in
 <code class="docutils literal notranslate"><span class="pre">pm.Deterministic</span></code>.</p></li>
+<li><p><strong>coordinate_owner</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Explicit namespace for registered state coordinates;
+scientific inputs and activity policies retain their local names.</p></li>
 <li><p><strong>state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional active/fixed policy over the full scientific
 state. <code class="docutils literal notranslate"><span class="pre">None</span></code> samples every retained column.</p></li>
 </ul>
@@ -1628,10 +1635,11 @@ contribution, and resolved activity.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">data_name</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">output_name</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">compute_deterministic</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">coordinate_owner</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.apply_linear_sensitivity" title="Link to this definition">#</a></dt>
-<dd><p>Apply a prepared sensitivity to an already-built full state vector.</p>
+<dd><p>Apply a prepared sensitivity using its state’s explicit coordinate owner.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><em>TensorVariable</em></p>
@@ -1939,6 +1947,7 @@ before calling this function.</p>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.models.coords.html">openghg_inversions.models.coords</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.component_coords"><code class="docutils literal notranslate"><span class="pre">component_coords()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.add_model_data"><code class="docutils literal notranslate"><span class="pre">add_model_data()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.sanitize_coords_for_pymc"><code class="docutils literal notranslate"><span class="pre">sanitize_coords_for_pymc()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.CoordRegistry"><code class="docutils literal notranslate"><span class="pre">CoordRegistry</span></code></a><ul>

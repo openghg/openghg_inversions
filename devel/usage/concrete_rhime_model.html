@@ -736,6 +736,7 @@ helpers:</p>
         <span class="n">var_name</span><span class="o">=</span><span class="s2">"bc"</span><span class="p">,</span>
         <span class="n">output_name</span><span class="o">=</span><span class="s2">"mu_bc"</span><span class="p">,</span>
         <span class="n">output_dim</span><span class="o">=</span><span class="s2">"nmeasure"</span><span class="p">,</span>
+        <span class="n">coordinate_owner</span><span class="o">=</span><span class="s2">"bc"</span><span class="p">,</span>
     <span class="p">)</span>
     <span class="n">pollution_mean</span> <span class="o">=</span> <span class="n">flux</span><span class="o">.</span><span class="n">output</span>
     <span class="n">baseline_mean</span> <span class="o">=</span> <span class="n">boundary</span><span class="o">.</span><span class="n">output</span>
@@ -796,6 +797,23 @@ sector associations. New models do not add separate <code class="docutils litera
 <code class="docutils literal notranslate"><span class="pre">mu_ff</span></code> full-state aliases for reporting. Every private prior and generated
 latent still needs a unique backend name; PyMC rejects duplicate names.</p>
 </section>
+<section id="boundary-coordinates">
+<h2>Boundary coordinates<a class="headerlink" href="#boundary-coordinates" title="Link to this heading">#</a></h2>
+<p>Built-in standard, multisector, nested and CO2 recipes qualify boundary-state
+coordinates with <code class="docutils literal notranslate"><span class="pre">bc_</span></code> when registering the graph. Existing <code class="docutils literal notranslate"><span class="pre">bc_</span></code> names,
+including <code class="docutils literal notranslate"><span class="pre">bc_region</span></code>, keep their names. Linked CO2/O2 uses its existing
+<code class="docutils literal notranslate"><span class="pre">co2_</span></code> and <code class="docutils literal notranslate"><span class="pre">o2_</span></code> channel prefixes, such as <code class="docutils literal notranslate"><span class="pre">co2_bc_region</span></code>. Flux dimensions,
+source labels and supplied <code class="docutils literal notranslate"><span class="pre">sector</span></code> auxiliaries keep their scientific names.</p>
+<p>This lets a flux <code class="docutils literal notranslate"><span class="pre">source(region)</span></code> coordinate coexist with a boundary-prior
+<code class="docutils literal notranslate"><span class="pre">source(bc_region)</span></code> coordinate, stored as <code class="docutils literal notranslate"><span class="pre">bc_source</span></code> in the trace. Saved
+traces retain the qualified boundary names; output selection does not rename
+flux coordinates. Borrowed inputs retain their original labels and payloads.</p>
+<p>Observation coordinates and scalar metadata remain shared. Their values must
+agree across components; conflicting scalar metadata raises an explicit error.
+State coordinates with different ownership or local-name metadata cannot share
+a registered name, even when their values match. Custom compositions can use
+<code class="docutils literal notranslate"><span class="pre">coordinate_owner</span></code> on <code class="docutils literal notranslate"><span class="pre">add_linear_component</span></code> for the same boundary behavior.</p>
+</section>
 <section id="names-and-generated-names">
 <h2>Names and generated names<a class="headerlink" href="#names-and-generated-names" title="Link to this heading">#</a></h2>
 <p>PyMC model variables currently share one flat effective namespace. A prior can
@@ -808,7 +826,7 @@ enforces this during concrete composition. The shared observation-component
 helper still relies on conventional names for boundary, offset, error, and
 likelihood components; there is not yet one allocator for the complete model
 namespace.</p>
-<p>Generated-name reporting, whole-model allocation, and component namespaces are
+<p>Generated-name reporting and whole-model variable-name allocation are
 not implemented. They are tracked in
 <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/532">issue #532</a>.</p>
 </section>
@@ -1057,6 +1075,7 @@ component is insufficient.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#standard-single-flux-model">Standard single-flux model</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#equivalent-construction-from-public-helpers">Equivalent construction from public helpers</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#multisector-model">Multisector model</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#boundary-coordinates">Boundary coordinates</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#names-and-generated-names">Names and generated names</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#alternative-models-and-likelihoods">Alternative models and likelihoods</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#labelled-per-site-iid-mismatch">Labelled per-site IID mismatch</a></li>
