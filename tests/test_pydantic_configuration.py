@@ -11,7 +11,7 @@ import xarray as xr
 from jsonschema import Draft202012Validator
 from pydantic import TypeAdapter, ValidationError
 
-from openghg_inversions.inference.sampling import RhimeSampler
+from openghg_inversions.inference.sampling import RhimeSampler, resolve_sampler
 from openghg_inversions.inversion_data import SiteOptions
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.params import DataConfig, RhimeConfig
@@ -57,10 +57,14 @@ def test_site_selector_construction_validates_entries_and_owns_sequences():
     assert updated.averaging_period == ("1h",)
 
 
-def test_nested_configuration_rejects_invalid_sampler_at_construction():
+def test_nested_configuration_allows_serialization_only_sampler():
     config = RhimeConfig.from_params(_request(), multisector=False)
+    no_sampler = replace(config, sampler=None)
+    assert RhimeConfig.from_dict(no_sampler.to_dict()).sampler is None
+    with pytest.raises(TypeError, match="sampler"):
+        resolve_sampler(no_sampler.sampler)
     with pytest.raises(ValidationError, match="sampler"):
-        replace(config, sampler=None)
+        replace(config, sampler="unknown")
 
 
 def test_constructor_validation_borrows_lazy_prior_values_and_rejects_lazy_scalars():

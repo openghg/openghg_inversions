@@ -32,6 +32,17 @@ The returned ``RhimeConfig`` is the complete requested configuration:
 * ``sampler`` is the existing ``RhimeSampler`` with resolved sampling settings.
   It executes inference only when supplied a completed model. Its implementation
   lives in ``inference.sampling``; the established RHIME imports remain valid.
+  All declared settings are supported in the configured frontend, including
+  ``sample_prior_predictive`` and ``sample_posterior_predictive``.
+
+``RhimeConfig.to_dict()`` and ``RhimeConfig.from_dict()`` roundtrip portable
+nested current choices, including the configured sampler, paths and inlet
+slices. ``RhimeConfig.json_schema()`` describes this JSON representation.
+Direct construction and JSON reading also permit an omitted or null sampler for
+serialization-only configurations. Live execution rejects it before acquisition
+or preparation; ``from_params`` always resolves a real sampler. Runtime-only
+policies, array-valued priors and opaque sampler options cannot be exported.
+See :doc:`/experimental/pydantic_records` for the runnable example and limits.
 
 Sampler options cannot override model-owned coordinates: ``coords`` and ``dims``
 inside ``sample_kwargs["idata_kwargs"]`` or

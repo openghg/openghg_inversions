@@ -16,8 +16,9 @@ From an installed prototype checkout, run:
 
    python -m examples.pydantic_records /tmp/pydantic-records
 
-The example writes component and checkpoint schemas, a resolved data snapshot
-and an output contract. It roundtrips a path and an inlet slice without opening
+The example writes component, sampler, complete configuration and checkpoint
+schemas, resolved configuration/data snapshots and an output contract. It
+roundtrips a path, an inlet slice and configured predictive settings without opening
 scientific resources, acquiring observations, constructing a graph or sampling.
 The schema files can be inspected by editors and external JSON Schema tools.
 For real numerical checkpoint workflows, use :doc:`/usage/staged_workflow`.
@@ -26,7 +27,7 @@ Construct and inspect configuration
 -----------------------------------
 
 ``RhimeConfig``, ``DataConfig``, ``RhimeModelSpec``, ``SectorSpec``, likelihood
-settings, ``RhimeOutputSpec`` and ``SiteOptions`` remain dataclasses. Pydantic
+settings, ``RhimeOutputSpec``, ``RhimeSampler`` and ``SiteOptions`` are dataclasses. Pydantic
 validates their constructors, including reconstruction by ``dataclasses.replace``.
 For example:
 
@@ -41,10 +42,13 @@ For example:
        assert error.errors()[0]["loc"] == ("sigma_per_site",)
 
 Unknown constructor options and invalid scalar types fail with field paths.
-Ordinary prior and keyword containers are owned; numerical leaves remain
-borrowed. A prior containing a lazy DataArray is retained without executing it.
+Ordinary prior and keyword containers are owned. Prior arrays and xarray/Dask
+values remain borrowed; NumPy sampler option arrays retain their existing owned
+copy behavior. A prior containing a lazy DataArray is retained without executing it.
 A lazy value supplied as a Boolean, numeric power or sampler draw count is
-rejected without converting it to a scalar.
+rejected without converting it to a scalar. Known eager NumPy integer and
+floating scalars are unboxed at runtime scalar fields; arrays and arbitrary
+conversion objects are rejected. Saved JSON number validation remains strict.
 
 Direct constructors validate supplied values and their declared defaults.
 ``RhimeConfig.from_params`` and the component resolvers still resolve request
@@ -52,6 +56,45 @@ choices: for example, an omitted likelihood period anchor uses the winning
 requested start date, and enabled components receive their owning prior
 defaults. File frontends decode syntax and apply overrides before these same
 resolvers. See :doc:`/usage/rhime_configuration` for the configuration groups.
+
+Portable current configuration
+------------------------------
+
+``RhimeSampler`` owns its validated settings, ``sample(model)`` execution,
+``to_dict()``, ``from_dict()`` and generated ``json_schema()``. All declared
+settings are available through the configured frontend, including prior and
+posterior predictive selection. A configured sampler can be exported, read and
+resolved without constructing or sampling a model:
+
+.. code-block:: python
+
+   from openghg_inversions.inference.sampling import RhimeSampler, resolve_sampler
+
+   sampler = RhimeSampler(draws=23, sample_prior_predictive=5,
+                          sample_posterior_predictive=["concentration"],
+                          sample_kwargs={"target_accept": 0.95})
+   restored = RhimeSampler.from_dict(sampler.to_dict())
+   assert resolve_sampler(restored) == sampler
+
+``RhimeConfig.to_dict()``, ``from_dict()`` and ``json_schema()`` cover the
+complete nested portable configuration, including declared path and inlet-slice
+encodings. ``TypeAdapter(RhimeConfig)`` provides the same Pydantic JSON interface.
+An omitted or null sampler is allowed for configuration-only construction and
+serialization. Live runners reject it before acquisition or preparation;
+``RhimeConfig.from_params`` continues to resolve an actual configured sampler.
+
+These methods read current configuration choices. Optional omitted settings use
+their declared constructor defaults; exported snapshots include their resolved
+values. Historical checkpoint descriptions use their separate product readers,
+which never replace missing inference metadata with current sampler defaults.
+
+Native finite JSON option values are portable. Runtime samplers may still borrow
+PyMC objects, random generators and numerical payloads, but exporting such values
+raises a path-bearing error. Likewise, runtime ``StateActivity`` policies and
+array-valued priors have no portable configuration encoding in this prototype.
+Export rejects them without computation. Export checks raw keys before JSON
+conversion, and revalidates mutable sampler fields; it never stringifies an
+opaque value to make it serializable.
 
 One output contract
 --------------------
@@ -76,7 +119,10 @@ Saved meaning and current defaults
 ----------------------------------
 
 Standard and multisector manifests contain typed model descriptions with tagged
-likelihood options. All saved scientific choices are required. A null prior or
+likelihood options. ``RhimeModelSpec.to_record()`` returns a dictionary validated
+against ``ModelDescription``; the executable ``from_record`` decoder has been removed.
+Unused or symbolic prior descriptions cannot recreate executable settings.
+All saved scientific choices are required. A null prior or
 power description records a prior that construction did not use; it never asks
 for today's default. Registered array references and named or symbolic
 dependencies remain descriptions. Saved output readers validate them and bind

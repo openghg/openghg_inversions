@@ -1,8 +1,10 @@
 """Validation primitives for configuration and finite JSON handoffs."""
 
 from collections.abc import Mapping
+import math
 from typing import Annotated, Literal
 
+import numpy as np
 from pydantic import BaseModel, BeforeValidator, ConfigDict, JsonValue
 
 
@@ -23,10 +25,62 @@ def _json_number(value: object) -> object:
 
 
 JsonFloat = Annotated[float, BeforeValidator(_json_number)]
+
+
+def normalize_runtime_scalar(value: object) -> object:
+    """Unbox only known eager NumPy numbers at a runtime configuration boundary."""
+    if isinstance(value, (np.integer, np.floating)):
+        return value.item()
+    return value
+
+
+def _runtime_number(value: object) -> object:
+    return _json_number(normalize_runtime_scalar(value))
+
+
+RuntimeFloat = Annotated[float, BeforeValidator(_runtime_number)]
+RuntimeInt = Annotated[int, BeforeValidator(normalize_runtime_scalar)]
 RuntimeConfig = ConfigDict(
     strict=True, extra="forbid", arbitrary_types_allowed=True,
     allow_inf_nan=False, validate_default=True,
 )
+
+
+def portable_json(value: object) -> JsonValue:
+    """Copy native finite JSON values without coercing runtime objects.
+
+    Configuration may borrow arrays, distributions, or sampler objects while
+    running. Exporting those objects requires an explicit product-specific
+    representation; this boundary never calls their conversion methods.
+    """
+    ancestors: set[int] = set()
+
+    def visit(item: object, path: str) -> JsonValue:
+        if item is None or type(item) in (str, bool, int):
+            return item  # type: ignore[return-value]
+        if type(item) is float:
+            if not math.isfinite(item):
+                raise ValueError(f"{path}: JSON numbers must be finite")
+            return item
+        if type(item) not in (dict, list):
+            raise ValueError(f"{path}: {type(item).__name__} has no portable JSON representation")
+        identity = id(item)
+        if identity in ancestors:
+            raise ValueError(f"{path}: cyclic containers have no portable JSON representation")
+        ancestors.add(identity)
+        try:
+            if isinstance(item, dict):
+                result: dict[str, JsonValue] = {}
+                for key, child in item.items():
+                    if type(key) is not str:
+                        raise ValueError(f"{path}: JSON object keys must be strings")
+                    result[key] = visit(child, f"{path}[{key!r}]")
+                return result
+            return [visit(child, f"{path}[{index}]") for index, child in enumerate(item)]
+        finally:
+            ancestors.remove(identity)
+
+    return visit(value, "$")
 
 
 def validate_json_keys(value: object) -> None:
@@ -54,4 +108,7 @@ class Record(BaseModel):
     )
 
 
-__all__ = ["JsonFloat", "JsonValue", "Record", "RuntimeConfig", "SchemaVersion", "validate_json_keys"]
+__all__ = [
+    "JsonFloat", "JsonValue", "Record", "RuntimeConfig", "RuntimeFloat", "RuntimeInt", "SchemaVersion",
+    "normalize_runtime_scalar", "portable_json", "validate_json_keys",
+]

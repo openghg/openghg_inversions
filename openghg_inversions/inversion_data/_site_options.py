@@ -5,12 +5,14 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from numbers import Integral
-from typing import Any, ClassVar, Literal, cast
+from typing import Annotated, Any, ClassVar, Literal, cast
 
-from pydantic import field_validator
+from pydantic import PlainSerializer, WithJsonSchema, field_validator
 from pydantic.dataclasses import dataclass
 
-from openghg_inversions._record_schema import JsonFloat, Record, RuntimeConfig
+from openghg_inversions._record_schema import (
+    JsonFloat, Record, RuntimeConfig, RuntimeInt, normalize_runtime_scalar,
+)
 
 
 class InletSlice(Record):
@@ -23,6 +25,20 @@ class InletSlice(Record):
 
     def to_slice(self) -> slice:
         return slice(self.start, self.stop, self.step)
+
+
+def _slice_record(value: slice) -> InletSlice:
+    return InletSlice(
+        type="slice", start=normalize_runtime_scalar(value.start),
+        stop=normalize_runtime_scalar(value.stop), step=normalize_runtime_scalar(value.step),
+    )
+
+
+SliceSelector = Annotated[
+    slice,
+    PlainSerializer(_slice_record, return_type=InletSlice, when_used="json"),
+    WithJsonSchema(InletSlice.model_json_schema()),
+]
 
 
 def expand_site_option(
@@ -129,9 +145,9 @@ def _normalise_site_strings(
     *,
     length: int,
     name: str,
-) -> list[str | None]:
+) -> tuple[str | None, ...]:
     """Normalize and validate one optional-string value per requested site."""
-    normalized = list(expand_site_option(value, nsites=length, name=name))
+    normalized = expand_site_option(value, nsites=length, name=name)
     invalid = [item for item in normalized if item is not None and not isinstance(item, str)]
     if invalid:
         raise ValueError(f"`{name}` entries must be strings or None. Invalid value(s): {invalid!r}.")
@@ -143,9 +159,9 @@ def _normalise_site_integers(
     *,
     length: int,
     name: str,
-) -> list[int | None]:
+) -> tuple[int | None, ...]:
     """Normalize and validate one optional integer value per requested site."""
-    normalized = list(expand_site_option(value, nsites=length, name=name))
+    normalized = expand_site_option(value, nsites=length, name=name)
 
     invalid = [
         item
@@ -154,20 +170,17 @@ def _normalise_site_integers(
     ]
     if invalid:
         raise ValueError(f"`{name}` entries must be integers or None. Invalid value(s): {invalid!r}.")
-    return [None if item is None else int(item) for item in normalized]
+    return tuple(None if item is None else int(item) for item in normalized)
 
 
 def _normalise_site_inlets(
     value: Sequence[str | slice | None] | str | None,
     *,
     length: int,
-) -> list[str | slice | None]:
+) -> tuple[str | slice | None, ...]:
     """Normalize inlet selectors, including legacy per-site slice selectors."""
-    normalized = [
-        InletSlice.model_validate(item).to_slice() if isinstance(item, Mapping) else item
-        for item in expand_site_option(value, nsites=length, name="inlet")
-    ]
-    invalid = [item for item in normalized if item is not None and not isinstance(item, str | slice)]
+    normalized = expand_site_option(value, nsites=length, name="inlet")
+    invalid = [item for item in normalized if item is not None and not isinstance(item, str | slice | Mapping)]
     if invalid:
         raise ValueError(f"`inlet` entries must be strings, slices, or None. Invalid value(s): {invalid!r}.")
     return normalized
@@ -178,9 +191,9 @@ def _normalise_site_booleans(
     *,
     length: int,
     name: str,
-) -> list[bool | None]:
+) -> tuple[bool | None, ...]:
     """Normalize one optional boolean selector per requested site."""
-    return list(expand_site_boolean_option(value, nsites=length, name=name))
+    return expand_site_boolean_option(value, nsites=length, name=name)
 
 
 @dataclass(frozen=True, config=RuntimeConfig)
@@ -215,25 +228,35 @@ class SiteOptions:
 
     @field_validator("*", mode="before")
     @classmethod
-    def freeze_sequences(cls, value: Any) -> Any:
+    def _freeze_sequences(cls, value: Any) -> Any:
         """Own each resolved selector sequence before validating its entries."""
-        return tuple(value) if isinstance(value, (tuple, list)) else value
+        return tuple(value) if isinstance(value, list) else value
+
+    @field_validator("inlet", mode="before")
+    @classmethod
+    def _decode_slices(cls, value: Any) -> Any:
+        if isinstance(value, (list, tuple)) and any(isinstance(item, Mapping) for item in value):
+            return tuple(
+                InletSlice.model_validate(item).to_slice() if isinstance(item, Mapping) else item
+                for item in value
+            )
+        return value
 
     REQUIRED_INPUT_NAMES: ClassVar[tuple[str, ...]] = ("sites", "averaging_period")
 
     sites: tuple[str, ...]
     averaging_period: tuple[str | None, ...]
-    inlet: tuple[str | slice | None, ...]
+    inlet: tuple[str | SliceSelector | None, ...]
     fp_height: tuple[str | None, ...]
     instrument: tuple[str | None, ...]
     platform: tuple[str | None, ...]
     obs_data_level: tuple[str | None, ...]
     met_model: tuple[str | None, ...]
-    max_level: tuple[int | None, ...]
+    max_level: tuple[RuntimeInt | None, ...]
     time_resolved: tuple[bool | None, ...]
 
     def __post_init__(self) -> None:
-        """Freeze supplied sequences and enforce the common-length invariant."""
+        """Enforce site uniqueness and the common-length invariant."""
         field_names = (
             "sites",
             "averaging_period",
@@ -246,9 +269,6 @@ class SiteOptions:
             "max_level",
             "time_resolved",
         )
-        for name in field_names:
-            object.__setattr__(self, name, tuple(getattr(self, name)))
-
         if not self.sites:
             raise ValueError("At least one site must be specified for inversion data preparation.")
         if len(set(self.sites)) != len(self.sites):
@@ -322,19 +342,15 @@ class SiteOptions:
         nsites = len(normalized_sites)
         return cls(
             sites=tuple(normalized_sites),
-            averaging_period=tuple(
-                _normalise_site_strings(averaging_period, length=nsites, name="averaging_period")
-            ),
-            inlet=tuple(_normalise_site_inlets(inlet, length=nsites)),
-            fp_height=tuple(_normalise_site_strings(fp_height, length=nsites, name="fp_height")),
-            instrument=tuple(_normalise_site_strings(instrument, length=nsites, name="instrument")),
-            platform=tuple(_normalise_site_strings(platform, length=nsites, name="platform")),
-            obs_data_level=tuple(
-                _normalise_site_strings(obs_data_level, length=nsites, name="obs_data_level")
-            ),
-            met_model=tuple(_normalise_site_strings(met_model, length=nsites, name="met_model")),
-            max_level=tuple(_normalise_site_integers(max_level, length=nsites, name="max_level")),
-            time_resolved=tuple(_normalise_site_booleans(time_resolved, length=nsites, name="time_resolved")),
+            averaging_period=_normalise_site_strings(averaging_period, length=nsites, name="averaging_period"),
+            inlet=_normalise_site_inlets(inlet, length=nsites),
+            fp_height=_normalise_site_strings(fp_height, length=nsites, name="fp_height"),
+            instrument=_normalise_site_strings(instrument, length=nsites, name="instrument"),
+            platform=_normalise_site_strings(platform, length=nsites, name="platform"),
+            obs_data_level=_normalise_site_strings(obs_data_level, length=nsites, name="obs_data_level"),
+            met_model=_normalise_site_strings(met_model, length=nsites, name="met_model"),
+            max_level=_normalise_site_integers(max_level, length=nsites, name="max_level"),
+            time_resolved=_normalise_site_booleans(time_resolved, length=nsites, name="time_resolved"),
         )
 
     def select_indices(self, indices: Sequence[int]) -> SiteOptions:

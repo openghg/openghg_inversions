@@ -1996,8 +1996,7 @@ def test_configured_surface_excludes_internal_composed_values() -> None:
         with pytest.raises(ValueError, match=name):
             rhime_params.validate_supported_params({name: object()})
     for name in ("sample_prior_predictive", "sample_posterior_predictive"):
-        with pytest.raises(ValueError, match=name):
-            rhime_params.validate_supported_params({name: True})
+        rhime_params.validate_supported_params({name: True})
 
 
 def test_build_multisector_model_preserves_sector_priors_in_joint_state(
@@ -6635,7 +6634,7 @@ def test_run_rhime_rejects_unsupported_output_format(tmp_path: Path) -> None:
         "output_format": "definitely-not-supported",
     }
 
-    with pytest.raises(ValueError, match="Unsupported RHIME output_format"):
+    with pytest.raises(ValidationError, match="output_format"):
         run_standard(**args)
 
 
@@ -6652,7 +6651,7 @@ def test_run_rhime_can_validate_output_format_without_output_path() -> None:
         "output_format": "definitely-not-supported",
     }
 
-    with pytest.raises(ValueError, match="Unsupported RHIME output_format"):
+    with pytest.raises(ValidationError, match="output_format"):
         run_standard(**args)
 
 

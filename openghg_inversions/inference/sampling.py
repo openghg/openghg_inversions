@@ -12,16 +12,20 @@ from openghg_inversions._pymc_config import configure_pytensor
 
 configure_pytensor()
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from copy import copy
-from typing import Any, ClassVar, Literal, cast
+from dataclasses import fields
+from typing import Annotated, Any, ClassVar, Literal, cast
 
 import numpy as np
 import pymc as pm
 import xarray as xr
-from pydantic import validate_call
+from pydantic import BeforeValidator, Field, JsonValue, TypeAdapter, field_serializer, field_validator, model_serializer
+from pydantic.dataclasses import dataclass
 
-from openghg_inversions._record_schema import RuntimeConfig
+from openghg_inversions._record_schema import (
+    RuntimeConfig, RuntimeInt, normalize_runtime_scalar, portable_json,
+)
 from pymc.util import get_random_generator  # type: ignore[import-untyped]
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
@@ -61,7 +65,7 @@ def _copy_sampler_options(value: Any) -> Any:
         return tuple(_copy_sampler_options(item) for item in value)
     if isinstance(value, np.ndarray):
         return value.copy()
-    return value
+    return normalize_runtime_scalar(value)
 
 
 def _validate_idata_options(kwargs: Mapping[str, Any] | None, *, label: str) -> None:
@@ -209,6 +213,7 @@ def _reset_retained_draws(trace: xr.DataTree, *, burn: int) -> xr.DataTree:
     return trace
 
 
+@dataclass(config=RuntimeConfig, kw_only=True, eq=False)
 class RhimeSampler:
     """PyMC sampler configuration and execution for RHIME models.
 
@@ -241,66 +246,78 @@ class RhimeSampler:
             is overridden, or inference coordinates override model registration.
     """
 
-    # The established configured frontend exposes this subset. Predictive
-    # selection remains available on the independent sampler constructor.
     CONFIG_OPTION_NAMES: ClassVar[tuple[str, ...]] = (
         "draws", "burn", "tune", "chains", "nuts_sampler", "progressbar",
-        "sample_kwargs", "posterior_predictive_kwargs",
+        "sample_kwargs", "sample_prior_predictive", "sample_posterior_predictive",
+        "posterior_predictive_kwargs",
     )
     INTEGER_OPTION_NAMES: ClassVar[tuple[str, ...]] = ("draws", "burn", "tune", "chains")
     MAPPING_OPTION_NAMES: ClassVar[tuple[str, ...]] = ("sample_kwargs", "posterior_predictive_kwargs")
 
-    __slots__ = (
-        "draws",
-        "burn",
-        "tune",
-        "chains",
-        "nuts_sampler",
-        "progressbar",
-        "sample_kwargs",
-        "sample_prior_predictive",
-        "sample_posterior_predictive",
-        "posterior_predictive_kwargs",
-    )
+    draws: RuntimeInt = 1000
+    burn: RuntimeInt = 0
+    tune: RuntimeInt = 1000
+    chains: RuntimeInt = 4
+    nuts_sampler: NutsSampler = "pymc"
+    progressbar: bool = False
+    sample_kwargs: dict[str, Any] | None = None
+    sample_prior_predictive: bool | Annotated[int, Field(ge=0), BeforeValidator(normalize_runtime_scalar)] = True
+    sample_posterior_predictive: bool | tuple[str, ...] = ("y",)
+    posterior_predictive_kwargs: dict[str, Any] | None = None
 
-    draws: int
-    burn: int
-    tune: int
-    chains: int
-    nuts_sampler: NutsSampler
-    progressbar: bool
-    sample_kwargs: dict[str, Any] | None
-    sample_prior_predictive: bool | int
-    sample_posterior_predictive: bool | tuple[str, ...]
-    posterior_predictive_kwargs: dict[str, Any] | None
+    @field_validator("sample_kwargs", "posterior_predictive_kwargs", mode="after")
+    @classmethod
+    def _own_options(cls, value: dict[str, Any] | None, info: Any) -> dict[str, Any] | None:
+        _validate_idata_options(value, label=info.field_name)
+        return _copy_sampler_options(value)
 
-    @validate_call(config=RuntimeConfig)
-    def __init__(
-        self,
-        *,
-        draws: int = 1000,
-        burn: int = 0,
-        tune: int = 1000,
-        chains: int = 4,
-        nuts_sampler: NutsSampler | str = "pymc",
-        progressbar: bool = False,
-        sample_kwargs: dict[str, Any] | None = None,
-        sample_prior_predictive: bool | int = True,
-        sample_posterior_predictive: bool | str | Sequence[str] = ("y",),
-        posterior_predictive_kwargs: dict[str, Any] | None = None,
-    ) -> None:
-        self.draws = int(draws)
-        self.burn = int(burn)
-        self.tune = int(tune)
-        self.chains = int(chains)
-        self.nuts_sampler = self._normalise_nuts_sampler(nuts_sampler)
-        self.progressbar = bool(progressbar)
-        _validate_idata_options(sample_kwargs, label="sample_kwargs")
-        _validate_idata_options(posterior_predictive_kwargs, label="posterior_predictive_kwargs")
-        self.sample_kwargs = _copy_sampler_options(sample_kwargs)
-        self.sample_prior_predictive = sample_prior_predictive
-        self.sample_posterior_predictive = self._normalise_posterior_predictive(sample_posterior_predictive)
-        self.posterior_predictive_kwargs = _copy_sampler_options(posterior_predictive_kwargs)
+    @field_validator("sample_posterior_predictive", mode="before")
+    @classmethod
+    def _normalise_posterior_predictive(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return (value,)
+        if isinstance(value, list):
+            return tuple(value)
+        return value
+
+    @field_serializer("sample_kwargs", "posterior_predictive_kwargs", when_used="json")
+    def _serialize_options(self, value: dict[str, Any] | None) -> dict[str, JsonValue] | None:
+        # The enclosing serializer checks raw values before JSON projection.
+        return value
+
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler: Any, info: Any):
+        if info.mode != "json":
+            return handler(self)
+        values = {field.name: getattr(self, field.name) for field in fields(self)}
+        for name in self.MAPPING_OPTION_NAMES:
+            try:
+                values[name] = portable_json(values[name])
+            except ValueError as exc:
+                raise ValueError(f"sampler.{name}: {exc}") from exc
+        # Samplers are mutable: export validates the current settings.
+        return handler(type(self)(**values))
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        """Export portable current settings, rejecting runtime-only objects."""
+        return TypeAdapter(type(self)).dump_python(self, mode="json", warnings="error")
+
+    @classmethod
+    def from_dict(cls, value: dict[str, JsonValue]) -> RhimeSampler:
+        """Read a current sampler request using declared constructor defaults.
+
+        Historical descriptions belong to ``describe_recorded_sampler``;
+        this method does not reconstruct a historical sampling operation.
+        """
+        native = portable_json(value)
+        if not isinstance(native, dict):
+            raise ValueError("sampler configuration must be a JSON object")
+        return cls(**native)
+
+    @classmethod
+    def json_schema(cls) -> dict[str, Any]:
+        """Describe portable sampler settings using their owning declaration."""
+        return TypeAdapter(cls).json_schema(mode="serialization")
 
     @staticmethod
     def _normalise_nuts_sampler(value: NutsSampler | str) -> NutsSampler:
@@ -308,17 +325,6 @@ class RhimeSampler:
         if value not in ("pymc", "nutpie", "numpyro", "blackjax"):
             raise ValueError("`nuts_sampler` must be one of 'pymc', 'nutpie', 'numpyro', or 'blackjax'.")
         return cast(NutsSampler, value)
-
-    @staticmethod
-    def _normalise_posterior_predictive(
-        value: bool | Sequence[str],
-    ) -> bool | tuple[str, ...]:
-        """Normalize posterior predictive settings while preserving booleans."""
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            return (value,)
-        return tuple(str(item) for item in value)
 
     def describe(self) -> dict[str, int | str]:
         """Snapshot the sampling settings used by output metadata."""
@@ -335,12 +341,12 @@ class RhimeSampler:
         if not isinstance(other, RhimeSampler):
             return NotImplemented
         return all(
-            _sampler_options_equal(getattr(self, name), getattr(other, name)) for name in self.__slots__
+            _sampler_options_equal(getattr(self, name), getattr(other, name)) for name in self.CONFIG_OPTION_NAMES
         )
 
     def __repr__(self) -> str:
         """Return a concise representation for tests and debugging."""
-        args = ", ".join(f"{name}={getattr(self, name)!r}" for name in self.__slots__)
+        args = ", ".join(f"{name}={getattr(self, name)!r}" for name in self.CONFIG_OPTION_NAMES)
         return f"{type(self).__name__}({args})"
 
     def sample(
