@@ -227,9 +227,10 @@ def test_postprocess_cli_requires_only_current_output_choices(tmp_path, monkeypa
 
 
 def test_multisector_cli_rejects_retired_artifact_arguments(tmp_path):
-    with pytest.raises(ValueError, match="one manifest"):
+    with pytest.raises(SystemExit) as error:
         main(["sample", "--model", "multisector", "--preparation-manifest", "saved.json",
               "--prepared-inputs", "inputs.nc", "--output-dir", str(tmp_path)])
+    assert error.value.code == 2
 
 
 def test_multisector_cli_strict_readiness_keeps_failure_status(tmp_path, monkeypatch):

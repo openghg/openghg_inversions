@@ -24,7 +24,6 @@ from .co2_cached_sigma_model import Co2CachedSigmaModel, build_co2_cached_sigma_
 from .co2_cached_sigma_runner import (
     build_rhime_co2_cached_sigma,
     co2_cached_sigma_build_result,
-    sample_co2_cached_prior_predictive,
     co2_cached_sigma_input_names,
 )
 from .co2_o2_model import (
@@ -54,7 +53,6 @@ __all__ = [
     "annotate_co2_trace",
     "materialize_co2_inputs",
     "build_co2_from_materialized",
-    "sample_co2_cached_prior_predictive",
     "build_co2_cached_sigma_model",
     "build_co2_model",
     "build_rhime_co2_cached_sigma",

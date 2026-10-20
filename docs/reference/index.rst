@@ -177,7 +177,6 @@ value and its unchanged version-1 schema live in
    openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized
    openghg_inversions.rhime.co2.co2_outputs.validate_co2_product_request
    openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma
-   openghg_inversions.rhime.co2.sample_co2_cached_prior_predictive
    openghg_inversions.rhime.co2.prepare_co2_o2_inputs
 
 Basis construction and state geometry

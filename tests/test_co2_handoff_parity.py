@@ -169,14 +169,20 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(
             assert Path(staged.output_metadata[f"{name}_path"]).is_file()
     assert full.output_metadata["sampler"]["draws"] == 12
     assert full.output_metadata["sampler"] == staged.output_metadata["sampler"]
-    assert full.output_metadata["sampler"]["algorithm"] == "nuts"
-    assert full.output_metadata["sampler"]["nuts_sampler"] == "numpyro"
-    if target_accept is None:
-        assert full.output_metadata["sampler"]["target_accept_source"] == "pm.sample_default"
-        assert "target_accept" not in full.output_metadata["sampler"]
+    if likelihood_kind == "fixed_ou":
+        assert full.output_metadata["sampler"]["algorithm"] == "cached_ou_sigma_then_state_nuts"
+        assert full.output_metadata["sampler"]["nuts_sampler"] == "pymc"
+        assert full.output_metadata["sampler"]["sigma_target_accept"] == 0.8
+        assert full.output_metadata["sampler"]["state_target_accept"] == 0.9
     else:
-        assert full.output_metadata["sampler"]["target_accept"] == target_accept
-        assert "target_accept_source" not in full.output_metadata["sampler"]
+        assert full.output_metadata["sampler"]["algorithm"] == "nuts"
+        assert full.output_metadata["sampler"]["nuts_sampler"] == "numpyro"
+        if target_accept is None:
+            assert full.output_metadata["sampler"]["target_accept_source"] == "pm.sample_default"
+            assert "target_accept" not in full.output_metadata["sampler"]
+        else:
+            assert full.output_metadata["sampler"]["target_accept"] == target_accept
+            assert "target_accept_source" not in full.output_metadata["sampler"]
     assert json.loads(full.idata.attrs["rhime_actual_inference"]) == full.output_metadata["sampler"]
     assert not hasattr(full, "output_spec")
     assert not hasattr(full, "source_to_sector")

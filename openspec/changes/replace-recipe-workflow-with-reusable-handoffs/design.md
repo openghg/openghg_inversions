@@ -669,7 +669,8 @@ external-trace validator stays beside the scientific output owner and checks rol
 dimensions, units and alignment even when products are disabled. Generic contract
 validation does not replace these family-specific checks. Named preparation fields
 remain a concrete handoff. Scientific output views have no live sampler field;
-one pure helper normalizes the available five-field inference description without
+pure metadata readers normalize the available base inference description and
+CO2 algorithm/tuning details without
 creating an inference object or filling missing values from current defaults.
 Cached output provenance comes from the sample manifest. Replay omits the former
 zero-valued `build_and_sample_seconds` placeholder because it cannot measure the

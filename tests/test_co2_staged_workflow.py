@@ -326,8 +326,7 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(
     )
     unrelated.save(tmp_path / "unrelated.nc")
     rejected_inputs = ["--prepared-inputs", tmp_path / "unrelated.nc"]
-    rejection = "CO2 phases take one manifest"
-    with pytest.raises(ValueError, match=rejection):
+    with pytest.raises(SystemExit) as error:
         _in_process_cli(
             "sample",
             *common,
@@ -337,6 +336,7 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(
             "--output-dir",
             tmp_path / "rejected",
         )
+    assert error.value.code == 2
     assert not (tmp_path / "rejected" / "posterior.nc").exists()
 
 

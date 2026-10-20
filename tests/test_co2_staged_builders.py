@@ -10,10 +10,11 @@ import xarray as xr
 from openghg_inversions.rhime.co2 import (
     materialize_co2_inputs,
     build_co2_from_materialized,
-    build_rhime_co2_cached_sigma,
-    sample_co2_cached_prior_predictive,
 )
 from openghg_inversions.rhime.co2 import co2_cached_sigma_runner, co2_runner
+from openghg_inversions.rhime.co2.inference import build_co2_inference, annotate_co2_inference
+from openghg_inversions.rhime.co2.configuration import resolve_co2_model
+from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.serialization import load_trace, save_trace
 
 
@@ -67,14 +68,18 @@ def test_unsampled_builders_and_correlated_cached_prior(monkeypatch: Any, tmp_pa
     inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, no_model_error=True)
     ordinary = build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, no_model_error=True)
     assert ordinary.output_contract.variable_roles["model_mean"] == "modelled_concentration"
-    cached = build_rhime_co2_cached_sigma(
-        prepared_inputs=prepared,
-        tau_hours=4.0,
-        site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.5},
-    )
-    trace = sample_co2_cached_prior_predictive(
-        cached, prepared, draws=2000, random_seed=917,
-    )
+    options = resolve_co2_model({"likelihood": {
+        "kind": "fixed_ou", "tau_hours": 4.0,
+        "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.5},
+    }})
+    built, cached = build_co2_inference(prepared, options)
+    assert cached is not None
+    with built.model:
+        trace = pm.sample_prior_predictive(draws=2000, random_seed=917)
+    registry = get_coord_registry(built.model)
+    if registry is not None:
+        trace = restore_inferencedata_coords(trace, registry)
+    trace = annotate_co2_inference(trace, built, prepared, options, cached)
     assert "posterior" not in trace.children
     assert "log_likelihood" not in trace.children
     assert trace.prior_predictive["y"].attrs["units"] == "ppm"
@@ -101,11 +106,7 @@ def test_unsampled_builders_and_correlated_cached_prior(monkeypatch: Any, tmp_pa
     with cached.model:
         pm.compute_log_likelihood(posterior)
         pm.sample_posterior_predictive(posterior, extend_inferencedata=True, random_seed=918)
-    posterior = co2_cached_sigma_runner._annotate_cached_co2_trace(
-        posterior,
-        co2_cached_sigma_runner.co2_cached_sigma_build_result(cached, prepared),
-        concentration_units="ppm",
-    )
+    posterior = annotate_co2_inference(posterior, built, prepared, options, cached)
     path = tmp_path / "cached-posterior.nc"
     save_trace(posterior, path)
     replay = load_trace(path)

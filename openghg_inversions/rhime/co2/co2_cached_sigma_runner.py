@@ -12,14 +12,12 @@ import copy
 import json
 from typing import Any, cast
 
-import pymc as pm
 from pymc.initial_point import convert_str_to_rv_dict, make_initial_point_fn  # type: ignore[import-untyped]
 import xarray as xr
 
 from openghg_inversions.postprocessing.contracts import OutputContract
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import (
@@ -86,7 +84,7 @@ def co2_cached_sigma_input_names(
     missing = [name for name in names if name not in inputs]
     if missing:
         raise ValueError(
-            "Cached-sigma CO2 prepared inputs are missing required variable(s): "
+            "CO2 inputs for inferred fixed-OU amplitudes are missing required variable(s): "
             f"{missing!r}."
         )
     return tuple(names)
@@ -95,17 +93,17 @@ def co2_cached_sigma_input_names(
 def validate_cached_co2_sampler(sampler: RhimeSampler) -> None:
     """Reject incompatible inference choices before preparing any arrays."""
     if sampler.nuts_sampler != "pymc":
-        raise ValueError("The cached-sigma CO2 recipe requires nuts_sampler='pymc'.")
+        raise ValueError("Inferred fixed-OU amplitudes require nuts_sampler='pymc'.")
     sample_kwargs = dict(sampler.sample_kwargs or {})
     if "target_accept" in sample_kwargs:
         raise ValueError(
-            "The cached-sigma CO2 recipe owns two NUTS tuning controls; pass "
+            "Inferred fixed-OU amplitudes use separate NUTS tuning controls; pass "
             "separate `sigma_target_accept` and `state_target_accept` controls instead of "
             "sampler.sample_kwargs['target_accept']."
         )
     if sample_kwargs.get("step") is not None:
         raise ValueError(
-            "The cached-sigma CO2 recipe constructs its required sigma-then-state "
+            "The fixed-OU amplitude sampler constructs its required sigma-then-state "
             "CompoundStep; do not pass sample_kwargs['step']."
         )
     requested = sampler.sample_posterior_predictive
@@ -113,13 +111,13 @@ def validate_cached_co2_sampler(sampler: RhimeSampler) -> None:
         unsupported_names = set(requested) - {"y", "concentration"}
         if unsupported_names:
             raise ValueError(
-                "Cached-sigma prediction supports only y or concentration; "
+                "Fixed-OU amplitude prediction supports only y or concentration; "
                 f"got {sorted(unsupported_names)!r}."
             )
     unsupported = set(sampler.posterior_predictive_kwargs or {}) - {"random_seed"}
     if unsupported:
         raise ValueError(
-            "Cached-sigma prediction supports only random_seed; "
+            "Fixed-OU amplitude prediction supports only random_seed; "
             f"got {sorted(unsupported)!r}."
         )
 
@@ -365,42 +363,8 @@ def co2_cached_sigma_build_result(
     return built
 
 
-def sample_co2_cached_prior_predictive(
-    cached_model: Co2CachedSigmaModel,
-    prepared_inputs: Co2PreparedInputs,
-    *,
-    draws: int = 500,
-    random_seed: int | None = None,
-) -> xr.DataTree:
-    """Draw cached CO2 priors and exact correlated observation replicates.
-
-    Native PyMC prediction uses each draw's model mean and site amplitudes,
-    retaining the full covariance independently of the mutable sampler cache.
-
-    Args:
-        cached_model: Graph built from the supplied prepared inputs.
-        prepared_inputs: Prepared observations and basis provenance.
-        draws: Number of prior draws.
-        random_seed: Optional reproducible seed for priors and joint replicates.
-
-    Returns:
-        Annotated prior, prior-predictive, observed-data, and constant groups.
-    """
-    with cached_model.model:
-        trace = pm.sample_prior_predictive(draws=draws, random_seed=random_seed)
-    registry = get_coord_registry(cached_model.model)
-    if registry is not None:
-        trace = restore_inferencedata_coords(trace, registry)
-    return _annotate_cached_co2_trace(
-        trace,
-        co2_cached_sigma_build_result(cached_model, prepared_inputs),
-        concentration_units=prepared_inputs.inv_inputs["mf"].attrs.get("units"),
-    )
-
-
 __all__ = [
     "build_rhime_co2_cached_sigma",
     "co2_cached_sigma_build_result",
     "co2_cached_sigma_input_names",
-    "sample_co2_cached_prior_predictive",
 ]

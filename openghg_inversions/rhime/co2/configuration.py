@@ -394,7 +394,7 @@ def _model(value: object) -> dict[str, Any]:
     return result
 
 
-def _ordinary_likelihood(value: object, *, matched_ou: bool = False) -> dict[str, Any]:
+def _co2_likelihood(value: object, *, matched_ou: bool = False) -> dict[str, Any]:
     options = _table(value, "likelihood")
     kind = _string(_take(options, "kind", "likelihood"), "likelihood.kind")
     result: dict[str, Any] = {}
@@ -591,7 +591,7 @@ def _resolve_linked(options: dict[str, object], variant: str) -> Co2O2RunSetup:
         if likelihood_options.get("kind") != "fixed_ou":
             raise ValueError("The linked recipe supports config.likelihood.kind='fixed_ou'.")
         likelihood_kwargs = dict(
-            cast(Mapping[str, object], _ordinary_likelihood(likelihood_options)["likelihood_kwargs"])
+            cast(Mapping[str, object], _co2_likelihood(likelihood_options)["likelihood_kwargs"])
         )
     sampling = _table(options.pop("sampling", {}), "sampling")
     sampling.setdefault("nuts_sampler", "pymc" if likelihood is not None or cached else "numpyro")
@@ -670,7 +670,7 @@ def resolve_co2_model(config: Mapping[str, object]) -> dict[str, Any]:
     options = _table(config, "config")
     model = _model(options.get("model", {}))
     likelihood_options = _table(_take(options, "likelihood", "config"), "likelihood")
-    likelihood = _ordinary_likelihood(likelihood_options, matched_ou=True)
+    likelihood = _co2_likelihood(likelihood_options, matched_ou=True)
     likelihood_kwargs = likelihood.get("likelihood_kwargs", {})
     if "eigenbasis_path" in likelihood_kwargs:
         likelihood["likelihood_kwargs"] = {

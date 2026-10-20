@@ -115,8 +115,6 @@ def test_downstream_stage_parser_requires_handoff_manifests() -> None:
                 "/run/effective.json",
                 "--model",
                 "standard",
-                "--prepared-inputs",
-                "/run/prepared.nc",
                 "--output-dir",
                 "/run/sample",
             ]

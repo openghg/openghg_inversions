@@ -954,7 +954,7 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
         posterior_predictive_kwargs={"random_seed": 148},
     )
 
-    result = sample_co2_inference(
+    result, actual = sample_co2_inference(
         cast(Any, PreparedInputsStub()),
         {
             "use_bc": True,
@@ -969,17 +969,18 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
                 "tau_hours": {"AAA": 3.0, "BBB": 7.0},
                 "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.75},
                 "initial_site_amplitudes": 0.4,
-                "sigma_target_accept": 0.82,
-                "state_target_accept": 0.93,
             },
         },
-        sampler,
+        sampler, sigma_target_accept=0.82, state_target_accept=0.93,
     )
 
     assert step_settings == {
         "sigma_target_accept": 0.82,
         "state_target_accept": 0.93,
     }
+    assert actual["sigma_target_accept"] == 0.82
+    assert actual["state_target_accept"] == 0.93
+    assert json.loads(result.attrs["rhime_actual_inference"]) == actual
     assert len(selected) == 1
     assert selected[0].count("H_bc") == 1
     assert result.posterior["flux_scaling"].shape == (2, 2, 2)

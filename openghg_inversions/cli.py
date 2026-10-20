@@ -128,14 +128,6 @@ def _co2_params(args: argparse.Namespace) -> dict[str, Any]:
     return params
 
 
-def _reject_co2_artifact_args(args: argparse.Namespace) -> None:
-    """Current CO2 phases consume one manifest with all scientific references."""
-    if getattr(args, "prepared_inputs", None) or getattr(args, "posterior", None):
-        raise ValueError("CO2 phases take one manifest; remove --prepared-inputs and --posterior.")
-    if args.command == "postprocess" and args.preparation_manifest:
-        raise ValueError("CO2 postprocess takes only --sample-manifest.")
-
-
 def _prepare_command(args: argparse.Namespace) -> None:
     """Run the prepare phase for the selected family."""
     from openghg_inversions.rhime.stages import prepare
@@ -196,7 +188,6 @@ def _prior_predictive_command(args: argparse.Namespace) -> None:
     if args.model == "co2":
         from openghg_inversions.rhime.co2.handoffs import prior_predictive as prior_co2
 
-        _reject_co2_artifact_args(args)
         from openghg_inversions.rhime.co2.configuration import resolve_co2_prior_seed
 
         params = _co2_params(args)
@@ -204,7 +195,6 @@ def _prior_predictive_command(args: argparse.Namespace) -> None:
         result = prior_co2(args.preparation_manifest, model=choices,
                            random_seed=resolve_co2_prior_seed(params), **common)
     elif args.model in {"standard", "multisector"}:
-        _reject_envelope_artifact_args(args)
         if args.model == "multisector":
             from openghg_inversions.rhime.multisector_stages import prior_predictive
         choices = _rhime_phase_options(args, phase="prior")
@@ -212,14 +202,6 @@ def _prior_predictive_command(args: argparse.Namespace) -> None:
     print(json.dumps(result, sort_keys=True))
     if args.strict and result["status"] == "fail":
         raise SystemExit(1)
-
-
-def _reject_envelope_artifact_args(args: argparse.Namespace) -> None:
-    """Reject retired arguments replaced by standard and multisector manifests."""
-    if getattr(args, "prepared_inputs", None) or getattr(args, "posterior", None):
-        raise ValueError(f"{args.model.capitalize()} saved phases take one manifest; remove --prepared-inputs and --posterior.")
-    if args.command == "postprocess" and args.preparation_manifest:
-        raise ValueError(f"{args.model.capitalize()} postprocess takes only --sample-manifest.")
 
 
 def _sample_command(args: argparse.Namespace) -> None:
@@ -231,7 +213,6 @@ def _sample_command(args: argparse.Namespace) -> None:
     if args.model == "co2":
         from openghg_inversions.rhime.co2.handoffs import sample as sample_co2
 
-        _reject_co2_artifact_args(args)
 
         params = _co2_params(args)
         choices: dict[str, Any] = {name: params[name] for name in ("model", "likelihood") if name in params}
@@ -239,7 +220,6 @@ def _sample_command(args: argparse.Namespace) -> None:
                             sampling=params.get("sampling", {}), output_dir=_stage_output_dir(args))
         print(result)
     elif args.model in {"standard", "multisector"}:
-        _reject_envelope_artifact_args(args)
         if args.model == "multisector":
             from openghg_inversions.rhime.multisector_stages import sample
         choices = _rhime_phase_options(args, phase="sample")
@@ -277,14 +257,12 @@ def _postprocess_command(args: argparse.Namespace) -> None:
     if args.model == "co2":
         from openghg_inversions.rhime.co2.handoffs import postprocess as postprocess_co2
 
-        _reject_co2_artifact_args(args)
         from openghg_inversions.rhime.co2.execution import resolve_co2_output
 
         params = _co2_params(args)
         params["outputs"] = {**params.get("outputs", {}), "output_path": _stage_output_dir(args)}
         postprocess_co2(args.sample_manifest, **resolve_co2_output(params))
     elif args.model in {"standard", "multisector"}:
-        _reject_envelope_artifact_args(args)
         if args.model == "multisector":
             from openghg_inversions.rhime.multisector_stages import postprocess
         choices = _rhime_phase_options(args, phase="postprocess")["output"]
@@ -356,7 +334,6 @@ def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser
     )
     _add_stage_config_args(prior_parser, required=False)
     _add_output_dir(prior_parser)
-    prior_parser.add_argument("--prepared-inputs", help="Retired; use one manifest")
     prior_parser.add_argument("--preparation-manifest", required=True)
     prior_parser.add_argument("--check-output")
     prior_parser.add_argument("--draws", type=int, default=100)
@@ -367,7 +344,6 @@ def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser
     sample_parser = subparsers.add_parser("sample", help="Sample explicitly supplied RHIME inputs")
     _add_stage_config_args(sample_parser, required=False)
     _add_output_dir(sample_parser)
-    sample_parser.add_argument("--prepared-inputs", help="Retired; use one manifest")
     sample_parser.add_argument("--preparation-manifest", required=True)
     sample_parser.set_defaults(func=_sample_command)
 
@@ -392,10 +368,7 @@ def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser
     )
     _add_stage_config_args(postprocess_parser, required=False)
     _add_output_dir(postprocess_parser)
-    postprocess_parser.add_argument("--prepared-inputs", help="Retired; use one manifest")
-    postprocess_parser.add_argument("--preparation-manifest", help="Retired; use one manifest")
     postprocess_parser.add_argument("--sample-manifest", required=True)
-    postprocess_parser.add_argument("--posterior", help="Retired; use one manifest")
     postprocess_parser.set_defaults(func=_postprocess_command)
 
     run_nested_parser = subparsers.add_parser(

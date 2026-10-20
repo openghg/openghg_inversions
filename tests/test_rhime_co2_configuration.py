@@ -185,7 +185,7 @@ def test_resolved_nested_options_are_json_serializable_for_provenance() -> None:
     }
 
 
-def test_boundary_offset_and_cached_variant_lower_to_runner_arguments() -> None:
+def test_boundary_offset_and_inferred_ou_choices_lower_to_component_arguments() -> None:
     config = _ordinary()
     config["model"] = {
         "boundary": {
@@ -204,12 +204,13 @@ def test_boundary_offset_and_cached_variant_lower_to_runner_arguments() -> None:
         "tau_hours": {"MHD": 24.0},
         "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.5},
         "initial_site_amplitudes": 0.5,
-        "sigma_target_accept": 0.82,
-        "state_target_accept": 0.91,
     }
-    config["sampling"] = {"chains": 2}
+    config["sampling"] = {"chains": 2, "sigma_target_accept": 0.82, "state_target_accept": 0.91}
 
     model = resolve_co2_model(config)
+    sampling = resolve_co2_sampling(config, model=model)
+    assert sampling.sigma_target_accept == 0.82
+    assert sampling.state_target_accept == 0.91
     assert model.pop("likelihood_builder") is add_fixed_ou_gaussian_likelihood
     likelihood = model.pop("likelihood_kwargs")
     assert {**model, **likelihood} == {
@@ -220,8 +221,6 @@ def test_boundary_offset_and_cached_variant_lower_to_runner_arguments() -> None:
         "tau_hours": {"MHD": 24.0},
         "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.5},
         "initial_site_amplitudes": 0.5,
-        "sigma_target_accept": 0.82,
-        "state_target_accept": 0.91,
     }
 
 

@@ -176,8 +176,8 @@ The CO2 family provides three installed TOML templates:
 :func:`openghg_inversions.rhime.co2.co2_config_templates` to discover their
 installed paths. Copy the closest template for a run; do not edit the installed
 resource. The templates configure the existing prepared-input Python seams.
-Despite its historical filename, ``co2_cached_sigma.toml`` now configures
-``run_co2`` with inferred fixed-OU amplitudes and sampling-owned tuning controls.
+``co2_fixed_ou.toml`` configures ``run_co2`` with inferred fixed-OU amplitudes
+and sampling-owned tuning controls.
 The CO2-only templates also underpin ``--model co2`` staged commands; see
 :doc:`co2_model_family` for the staged output table and complete command
 sequence. Linked CO2/O2 templates remain Python-only.
@@ -368,14 +368,15 @@ false). A global offset (``per_site = false``) cannot set a frequency or use
 ``drop_first = true``.
 
 CO2 fixed OU with inferred amplitudes also accepts positive
-``initial_site_amplitudes`` and the zero-to-one controls
-``sigma_target_accept`` and ``state_target_accept`` in ``[likelihood]``.
+``initial_site_amplitudes`` in ``[likelihood]``. The zero-to-one controls
+``sigma_target_accept`` and ``state_target_accept`` belong in ``[sampling]``.
 Posterior-predictive name lists may contain only ``y`` or ``concentration``.
 The implementation selects the matched cached sampler automatically.
 
-Linked ``variant = "cached_fixed_ou"`` uses the same controls, positive
-``tau_hours`` and ``site_amplitude_prior``, with species/site keys such as
-``"co2:MHD"``. Linked cached sampling requires ``nuts_sampler = "pymc"``.
+Linked ``variant = "cached_fixed_ou"`` retains its target-accept controls in
+``[likelihood]``, alongside positive ``tau_hours`` and ``site_amplitude_prior``,
+with species/site keys such as ``"co2:MHD"``.
+Linked cached sampling requires ``nuts_sampler = "pymc"``.
 
 The optional ``[sampling]`` table is shared by the supported setups.
 Defaults below apply when an option is omitted; linked fixed-error sampling
@@ -1128,9 +1129,9 @@ For example::
    })
    idata = result.idata
 
-The runner constructs the required ``site amplitude -> state`` ``CompoundStep``
+The runner updates site amplitudes before any active state coefficients
 and uses process spawning for multiple chains. Optional ``sigma_target_accept``
-and ``state_target_accept`` belong in ``[likelihood]``; a generic
+and ``state_target_accept`` belong in ``[sampling]``; a generic
 ``sampling.target_accept`` is rejected for this model. The state-likelihood
 quadratic cache and fixed-OU generalized eigenbasis are runtime numerical state
 derived from materialized prepared inputs, not external cache artifacts.

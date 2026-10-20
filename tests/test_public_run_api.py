@@ -99,7 +99,7 @@ def test_removed_ordinary_runner_names_have_no_compatibility_aliases():
     from openghg_inversions.rhime import co2
     from openghg_inversions import rhime
 
-    for name in ("run_rhime_co2", "build_rhime_co2", "run_co2_from_config", "run_rhime_co2_cached_sigma", "Co2RunSetup"):
+    for name in ("run_rhime_co2", "build_rhime_co2", "run_co2_from_config", "run_rhime_co2_cached_sigma", "Co2RunSetup", "sample_co2_cached_prior_predictive"):
         assert not hasattr(co2, name)
         assert not hasattr(rhime, name)
 

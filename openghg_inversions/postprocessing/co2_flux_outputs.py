@@ -4,18 +4,22 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from typing import TYPE_CHECKING
 
 import xarray as xr
 from openghg.util import cf_ureg, molar_mass  # pyright: ignore[reportPrivateImportUsage]
 
 from openghg_inversions.array_ops import sparse_xr_dot, to_dense
 from openghg_inversions.basis.affine_flux_map import _in_dimensionless_units
-from openghg_inversions.rhime.co2.co2_affine_output import BoundCo2AffineFluxMap
 
 from ._basis_products import bounded_affine_flux_map
 from .countries import Countries, _bounded_projection
 from .inversion_output import trace_group
 from .stats import calculate_stats
+
+if TYPE_CHECKING:
+    from openghg_inversions.rhime.co2.co2_affine_output import BoundCo2AffineFluxMap
+
 
 __all__ = ["co2_native_flux_outputs", "co2_country_flux_outputs"]
 
@@ -29,7 +33,7 @@ def _output_inputs(
     if not isinstance(metadata, dict):
         raise ValueError("CO2 model metadata must be a JSON object.")
     recipe = metadata.get("recipe", trace.attrs.get("rhime_recipe"))
-    if not isinstance(recipe, str) or recipe not in {"co2", "co2_cached_sigma_fixed_ou"}:
+    if recipe != "co2":
         raise ValueError("Affine CO2 flux outputs require a CO2-only recipe.")
     roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
     if not isinstance(roles, dict):
