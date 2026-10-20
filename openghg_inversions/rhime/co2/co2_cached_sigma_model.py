@@ -12,7 +12,6 @@ from numpy.typing import NDArray
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
-from pymc.initial_point import make_initial_point_fn
 from pytensor.graph.traversal import graph_inputs
 from pytensor.tensor.variable import TensorVariable
 
@@ -204,7 +203,9 @@ def _add_cached_likelihood(
     if any(value in dependencies for value in model.value_vars if value is not amplitude_value):
         raise ValueError("Cached amplitudes require independent priors without other free variables.")
     overrides = {} if initial_amplitudes is None else {amplitude: pm.floatX(initial_amplitudes)}
-    point = make_initial_point_fn(model=model, overrides=overrides, return_transformed=True)(seed=0)
+    point = pm.initial_point.make_initial_point_fn(
+        model=model, overrides=overrides, return_transformed=True,
+    )(seed=0)
     eta = point[str(amplitude_value.name)]
     initial_amplitudes, prior_density = model.compile_fn(
         [physical_amplitude, amplitude_logp], inputs=[amplitude_value],
