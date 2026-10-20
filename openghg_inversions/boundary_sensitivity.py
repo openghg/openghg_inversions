@@ -127,7 +127,8 @@ def scale_satellite_boundary_sensitivity_to_column_signal(
     Returns:
         The unchanged borrowed dataset when scaling is inapplicable or its
         verified footprint and observation levels agree. Otherwise, a shallow
-        copy whose satellite ``H_bc`` rows are explicitly scaled and carry
+        copy whose satellite ``H_bc`` rows (and optional dimensionless
+        ``G_bc`` rows) are explicitly scaled and carry
         transform provenance.
     """
     required = {"H_bc", "mf", "mf_prior_factor", "mf_prior_upper_level_factor", "site"}
@@ -164,6 +165,10 @@ def scale_satellite_boundary_sensitivity_to_column_signal(
     scale = xr.where(raw_column > 0, inputs["mf"] / raw_column, 1.0).clip(min=0.0, max=1.0)
     result = inputs.copy(deep=False)
     result["H_bc"] = inputs["H_bc"] * scale.where(scale_mask, 1.0)
+    if "G_bc" in inputs:
+        result["G_bc"] = (
+            inputs["G_bc"] * scale.where(scale_mask, 1.0)
+        ).assign_attrs(inputs["G_bc"].attrs)
     result["H_bc"].attrs = dict(inputs["H_bc"].attrs)
     result["H_bc"].attrs["satellite_column_bc_scale"] = (
         "Applied to satellite rows with missing or inconsistent footprint max_level provenance using "

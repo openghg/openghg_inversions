@@ -724,11 +724,15 @@ def test_joint_outputs_are_exact_and_predict_complete_correlated_vectors() -> No
     )
 
 
+@pytest.mark.parametrize("mean_shift", [False, True])
 def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     monkeypatch: pytest.MonkeyPatch,
+    mean_shift: bool,
 ) -> None:
     """The named runner samples the real graph and labels every cached output."""
     inputs = _boundary_inputs()
+    inputs["G_bc"] = xr.DataArray(np.where(inputs.H_bc.values > 0, 0.2, 0.0), dims=("nmeasure", "bc_region"), attrs={"units": "1"})
+    inputs["bc_centering_weights"] = xr.DataArray(np.arange(1, 9), dims="bc_region", attrs={"units": "1"})
     step_settings: dict[str, float] = {}
     original_make_step = co2_cached_sigma_runner.make_cached_sigma_compound_step
 
@@ -784,11 +788,13 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
         sigma_target_accept=0.82,
         state_target_accept=0.93,
         use_bc=True,
-        bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
-        bc_state_activity=StateActivity(
+        bc_prior=None if mean_shift else {"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+        bc_state_activity=None if mean_shift else StateActivity(
             active=np.asarray([True, False, False, False, False, False, False, False]),
             fixed_value=1.0,
         ),
+        bc_anomaly_scale=0.2 if mean_shift else None,
+        bc_mean_shift_prior={"pdf": "normal", "mu": 0.0, "sigma": 0.5} if mean_shift else None,
         offset_prior={"pdf": "normal", "mu": 0.2, "sigma": 0.1},
     )
 
@@ -799,7 +805,8 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     assert len(selected) == 1
     assert selected[0].count("H_bc") == 1
     assert result.posterior["flux_scaling"].shape == (1, 2, 2)
-    assert result.posterior["bc"].shape == (1, 2, 8)
+    if not mean_shift:
+        assert result.posterior["bc"].shape == (1, 2, 8)
     assert result.posterior["offset"].shape == (1, 2, 4)
     assert result.posterior["offset_latent"].shape == (1, 2, 2)
     assert result.posterior["offset_latent"].dims == (
@@ -817,13 +824,13 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     roles = json.loads(result.attrs["rhime_variable_roles"])
     metadata = json.loads(result.attrs["rhime_model_metadata"])
     assert roles["boundary_concentration"] == "mu_bc"
-    assert roles["boundary_scale"] == "bc"
+    if not mean_shift:
+        assert roles["boundary_scale"] == "bc"
     assert roles["boundary_sensitivity"] == "hbc"
     assert "baseline_concentration" not in roles
     assert "baseline_scale" not in roles
-    assert json.loads(result.posterior["bc"].attrs["rhime_scientific_roles"]) == [
-        "boundary_scale"
-    ]
+    if not mean_shift:
+        assert json.loads(result.posterior["bc"].attrs["rhime_scientific_roles"]) == ["boundary_scale"]
     assert json.loads(result.posterior["mu_bc"].attrs["rhime_scientific_roles"]) == [
         "boundary_concentration"
     ]
@@ -845,6 +852,31 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
         "joint_log_likelihood"
     ]
     assert result.posterior.attrs["rhime_recipe"] == "co2_cached_sigma_fixed_ou"
+
+    if mean_shift:
+        assert selected[0].count("G_bc") == 1
+        assert result.posterior["bc_mean_shift"].dims == ("chain", "draw")
+        assert result.posterior["bc_mean_shift"].attrs["units"] == "ppm"
+        assert result.constant_data["G_bc"].attrs["units"] == "1"
+        np.testing.assert_allclose(
+            result.posterior["mu_bc_mean_shift"],
+            result.posterior["bc_mean_shift"] * inputs.G_bc.sum("bc_region"),
+        )
+        np.testing.assert_allclose(
+            result.posterior["mu_bc"],
+            result.posterior["mu_bc_reference"] + result.posterior["mu_bc_mean_shift"] + result.posterior["mu_bc_anomaly"],
+        )
+        assert roles["boundary_mean_shift"] == "bc_mean_shift"
+        assert "bc" not in result.posterior
+        assert "boundary_scale" not in roles
+        np.testing.assert_allclose(
+            (result.posterior["bc_anomaly"] * result.constant_data["bc_centering_weights"]).sum("bc_region"),
+            0.0, atol=1e-12,
+        )
+        assert result.posterior["bc_correction"].attrs["units"] == "ppm"
+    else:
+        assert "G_bc" not in selected[0]
+        assert "bc_mean_shift" not in result.posterior
 
 
 def test_cached_runner_rejects_generic_target_accept() -> None:

@@ -47,6 +47,8 @@ from openghg_inversions.rhime.cached_sigma import PytensorMarginalQuadraticCache
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
 
+from .co2_boundary import add_centered_boundary, prepare_centered_boundary
+
 
 OU_SITE_DIM = "ou_site"
 OU_SITE_INDEX = "ou_site_index"
@@ -247,6 +249,10 @@ def build_co2_cached_sigma_model(
     boundary_sensitivity: xr.DataArray | None = None,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
+    bc_mean_shift_prior: PriorArgs | None = None,
+    bc_anomaly_scale: float | None = None,
+    boundary_correction_sensitivity: xr.DataArray | None = None,
+    bc_centering_weights: xr.DataArray | None = None,
     offset_prior: PriorArgs | None = None,
     offset_freq: str | None = None,
     offset_drop_first: bool = False,
@@ -296,6 +302,21 @@ def build_co2_cached_sigma_model(
             a selected boundary component, the default boundary prior is used.
         bc_state_activity: Optional labelled active/fixed policy for boundary
             scalings. Requires ``boundary_sensitivity``.
+        bc_mean_shift_prior: Prior for one common additive boundary correction
+            over the inversion window, in concentration units. Selects centred
+            additive boundaries instead of sampled multiplicative scales;
+            cannot be combined with ``bc_prior`` or ``bc_state_activity``.
+        bc_anomaly_scale: Positive fixed Gaussian scale before weighted
+            centring, in concentration units. Required in additive mode.
+        boundary_correction_sensitivity: Dimensionless unit boundary transport
+            on the observation and ``bc_region`` axes, labelled exactly as
+            ``boundary_sensitivity``. Required in additive mode.
+        bc_centering_weights: Positive dimensionless ``bc_region`` weights
+            defining the mean across curtain/period states. Normalized within
+            the model; the weighted mean of additive anomalies is exactly zero.
+            Required in additive mode. See the centred-boundary explanation in
+            :doc:`/usage/co2_models` and Stan's parameterizing-centred-vectors
+            discussion for the constraint and its prior covariance.
         offset_prior: Optional prior for additive offsets. Its location and
             scale parameters use the observations' concentration units. When
             omitted, no offset is added.
@@ -321,6 +342,11 @@ def build_co2_cached_sigma_model(
             for incompatible global-offset options or a model without active
             affine coefficients.
     """
+    centered_boundary = prepare_centered_boundary(
+        boundary_sensitivity, boundary_correction_sensitivity, bc_centering_weights,
+        observations, bc_mean_shift_prior, bc_anomaly_scale, bc_prior, bc_state_activity,
+        output_dim=output_dim,
+    )
     if boundary_sensitivity is None and (
         bc_prior is not None or bc_state_activity is not None
     ):
@@ -374,7 +400,7 @@ def build_co2_cached_sigma_model(
     boundary_activity = None
     boundary_active_design = None
     boundary_fixed_contribution = None
-    if boundary_sensitivity is not None:
+    if boundary_sensitivity is not None and centered_boundary is None:
         prepared_boundary = prepare_linear_sensitivity(
             boundary_sensitivity,
             output_dim=output_dim,
@@ -473,6 +499,20 @@ def build_co2_cached_sigma_model(
                         if boundary_result.latent is not None
                         else ()
                     ),
+                    output=boundary_output,
+                )
+            )
+        if centered_boundary is not None:
+            assert bc_mean_shift_prior is not None and bc_anomaly_scale is not None
+            boundary_output, boundary_coefficients, boundary_latents = add_centered_boundary(
+                centered_boundary, bc_mean_shift_prior, bc_anomaly_scale, output_dim=output_dim
+            )
+            terms.append(
+                _CachedAffineTerm(
+                    fixed_contribution=centered_boundary.reference_sensitivity.values.sum(axis=1),
+                    active_design=centered_boundary.design,
+                    coefficients=boundary_coefficients,
+                    sampled_rvs=boundary_latents,
                     output=boundary_output,
                 )
             )

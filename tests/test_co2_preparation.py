@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 import warnings
@@ -576,3 +577,61 @@ def test_standard_runner_materializes_aggregation_payload_once(
         )
 
     assert executions == 1
+
+
+def test_boundary_mean_shift_response_survives_preparation_and_round_trip(tmp_path: Path) -> None:
+    canonical = _canonical_inputs()
+    canonical.inv_inputs["H_bc"] = xr.DataArray(
+        np.ones((2, 3)), dims=("bc_region", "nmeasure"), coords={"bc_region": ["north", "east"]}
+    )
+    response = xr.DataArray(
+        da.from_array([[1.0, 0.3], [0.7, 0.2], [0.2, 0.6]], chunks=(2, 2)),
+        dims=("nmeasure", "bc_region"),
+        coords={**canonical.inv_inputs.mf.coords, "bc_region": ["north", "east"]},
+        attrs={"units": "1"},
+    )
+    weights = xr.DataArray(
+        [1.0, 2.0], dims="bc_region", coords={"bc_region": ["north", "east"]}, attrs={"units": "1"}
+    )
+    original = canonical.inv_inputs.copy(deep=True)
+    prepared = prepare_co2_inputs(
+        canonical, _reduction(canonical), aggregation_error_rank=None,
+        boundary_correction_sensitivity=response, bc_centering_weights=weights,
+    )
+    xr.testing.assert_identical(canonical.inv_inputs, original)
+    assert hasattr(prepared.inv_inputs.G_bc.data, "__dask_graph__")
+    path = tmp_path / "shift.nc"
+    prepared.save(path)
+    loaded = Co2PreparedInputs.load(path)
+    xr.testing.assert_identical(loaded.inv_inputs.G_bc, response.rename("G_bc").compute())
+    xr.testing.assert_identical(loaded.inv_inputs.bc_centering_weights, weights.rename("bc_centering_weights"))
+    for select in (co2_runner.co2_model_input_names, co2_cached_sigma_runner.co2_cached_sigma_input_names):
+        extra = (
+            {"preserve_prepared_fixed_mismatch": False} if select is co2_runner.co2_model_input_names else {}
+        )
+        assert "G_bc" not in select(loaded, use_bc=True, **extra)
+        names = select(loaded, use_bc=True, use_bc_mean_shift=True, **extra)
+        assert {"G_bc", "bc_centering_weights"} <= set(names)
+        with pytest.raises(ValueError, match="requires use_bc"):
+            select(loaded, use_bc_mean_shift=True, **extra)
+    for bad_response, bad_weights, message in (
+        (response.assign_attrs(units="ppm"), weights, "units"),
+        (response.isel(nmeasure=[2, 1, 0]), weights, "align|index|coordinate"),
+        (response, weights.isel(bc_region=[1, 0]), "align|index|coordinate"),
+        (response.drop_indexes("bc_region"), weights, "labelled"),
+        (response, None, "together"),
+        (None, weights, "together"),
+    ):
+        with pytest.raises(ValueError, match=message):
+            prepare_co2_inputs(
+                canonical, _reduction(canonical),
+                boundary_correction_sensitivity=bad_response, bc_centering_weights=bad_weights,
+            )
+    canonical.inv_inputs["G_bc"] = (response.dims, response.data, response.attrs)
+    canonical.inv_inputs["bc_centering_weights"] = weights
+    retained = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=None)
+    xr.testing.assert_identical(retained.inv_inputs.G_bc, response.rename("G_bc"))
+    for missing in ("H_bc", "G_bc", "bc_centering_weights"):
+        broken = replace(canonical, inv_inputs=canonical.inv_inputs.drop_vars(missing))
+        with pytest.raises(ValueError, match="together with H_bc"):
+            prepare_co2_inputs(broken, _reduction(canonical), aggregation_error_rank=None)

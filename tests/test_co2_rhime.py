@@ -482,9 +482,12 @@ def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: An
     assert "sigma" in sampled_models[0].named_vars
 
 
-def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) -> None:
+@pytest.mark.parametrize("mean_shift", [False, True])
+def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any, mean_shift: bool) -> None:
     """The public runner materializes and composes boundary and offset once."""
     inputs = _production_boundary_inputs()
+    inputs["G_bc"] = xr.DataArray(np.full((2, 8), 0.1), dims=("nmeasure", "bc_region"), attrs={"units": "1"})
+    inputs["bc_centering_weights"] = xr.DataArray(np.arange(1, 9), dims="bc_region", attrs={"units": "1"})
 
     class PreparedInputsStub:
         inv_inputs = inputs
@@ -523,8 +526,10 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) ->
         fixed_model_mismatch=1.0,
         no_model_error=True,
         use_bc=True,
-        bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
-        bc_state_activity=StateActivity(active=bc_active, fixed_value=bc_fixed),
+        bc_prior=None if mean_shift else {"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+        bc_state_activity=None if mean_shift else StateActivity(active=bc_active, fixed_value=bc_fixed),
+        bc_anomaly_scale=0.2 if mean_shift else None,
+        bc_mean_shift_prior={"pdf": "normal", "mu": 0.3, "sigma": 0.5} if mean_shift else None,
         offset_prior={"pdf": "normal", "mu": 0.2, "sigma": 0.1},
         offset_args={"per_site": False},
     )
@@ -533,16 +538,18 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) ->
     roles = json.loads(result.attrs["rhime_variable_roles"])
     assert len(materialized_names) == 1
     assert materialized_names[0].count("H_bc") == 1
-    assert {"hbc", "bc", "mu_bc", "offset", "offset_latent"} <= set(model.named_vars)
+    assert {"hbc", "mu_bc", "offset", "offset_latent"} <= set(model.named_vars)
     assert roles["boundary_concentration"] == "mu_bc"
-    assert roles["boundary_scale"] == "bc"
+    if not mean_shift:
+        assert roles["boundary_scale"] == "bc"
     assert roles["boundary_sensitivity"] == "hbc"
     assert "baseline_concentration" not in roles
     assert "baseline_scale" not in roles
     registry = get_coord_registry(model)
     assert registry is not None
     assert registry.original_coords["bc_region"].equals(inputs.indexes["bc_region"])
-    np.testing.assert_array_equal(model["bc_is_active"].eval(), bc_active)
+    if not mean_shift:
+        np.testing.assert_array_equal(model["bc_is_active"].eval(), bc_active)
 
     variables = [
         model[name]
@@ -566,6 +573,19 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) ->
         flux,
         fixed + inputs["H"].values @ flux_scaling,
     )
+
+    if mean_shift:
+        assert materialized_names[0].count("G_bc") == 1
+        assert "bc" not in model.named_vars
+        assert "boundary_scale" not in roles
+        assert roles["boundary_mean_shift"] == "bc_mean_shift"
+        np.testing.assert_allclose(
+            boundary,
+            inputs.H_bc.values.sum(axis=1) + 0.3 * inputs.G_bc.values.sum(axis=1),
+            rtol=1e-6,
+        )
+    else:
+        assert "G_bc" not in materialized_names[0]
 
 
 def test_public_co2_runner_does_not_auto_select_prepared_baseline(monkeypatch: Any) -> None:
