@@ -398,8 +398,9 @@ def test_multisector_flux_total_requires_each_sector_per_draw(
         sector: make_outputs.OutputSector,
         *,
         report_flux_on_inversion_grid: bool,
+        bounded: bool = True,
     ) -> xr.Dataset:
-        del output, report_flux_on_inversion_grid
+        del output, report_flux_on_inversion_grid, bounded
         values = (
             np.asarray([0.0, 0.0, 0.0]) if sector.variable_suffix == "ff" else np.asarray([1.0, 2.0, np.nan])
         )

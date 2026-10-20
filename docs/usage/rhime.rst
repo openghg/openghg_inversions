@@ -1007,6 +1007,25 @@ and do not inherit the built-in statistics' block memory bound, unless every
 requested statistic is registered with ``pointwise=True``, declaring that each
 non-sample point is reduced independently.
 
+Quantities derived from several sampled variables, such as a baseline formed
+from a modelled boundary contribution and an offset, use ``summarize_derived``
+from ``openghg_inversions.postprocessing.stats``. It broadcasts the operands as
+borrowed views. When every requested statistic declares ``pointwise=True``, it
+applies the arithmetic within bounded blocks before computing statistics. If any
+requested statistic lacks that declaration, the compatibility path applies the
+arithmetic once to the complete dataset. Basis reconstruction applies the shared
+spatial and flux-time chunk limits by default.
+
+Operands and companion variables use outer alignment, preserving all coordinate
+labels and padding missing values. Derived and companion dataset attributes are
+combined without conflicts; contradictory attributes raise an error rather than
+silently replacing quantity meaning or provenance.
+
+Variables with matching point dimensions and compatible chunk layouts share
+source tasks within each block. Lower-dimensional operands or companions may be
+read again in other blocks or groups; reuse across those computations is not
+guaranteed.
+
 Multisector flux products retain the selected compact state samples for the duration
 of the product, preserving their sample chunks and reusing them for grid tiles and
 scale-factor summaries. Full reconstructed grid samples are not retained.

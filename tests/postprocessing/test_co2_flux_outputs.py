@@ -13,8 +13,10 @@ import xarray as xr
 from openghg_inversions.basis.affine_flux_map import AffineFluxMap
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, save
 from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.postprocessing import co2_flux_outputs, stats
+from openghg_inversions.postprocessing._basis_products import bounded_affine_flux_map
 from openghg_inversions.postprocessing.co2_flux_outputs import (
     co2_country_flux_outputs,
     co2_native_flux_outputs,
@@ -414,3 +416,145 @@ def test_country_eager_sparse_membership_with_lazy_sparse_prolongation(monkeypat
     assert all(value.chunks is None for value in actual.data_vars.values())
     assert lazy_u.data is original_u
     xr.testing.assert_allclose(actual, expected)
+
+
+def _grid_fixture(n, *, lazy):
+    """A single-source affine map on an n-by-n grid, with one whole-grid prolongation chunk."""
+    rng = np.random.default_rng(3)
+    coords = {"lat": np.arange(n, dtype=float), "lon": np.arange(n, dtype=float)}
+    mean = xr.DataArray(rng.random((n, n)) + 0.5, dims=("lat", "lon"), coords=coords, attrs={"units": "1"})
+    flux = mean.copy(data=rng.normal(size=(n, n)))
+    flux.attrs = {"units": "mol m-2 s-1"}
+    u = sparse.COO.from_numpy(rng.random((n, n, 3)))
+    prolongation = xr.DataArray(
+        da.from_array(u, chunks=(n, n, 3)) if lazy else u,
+        dims=("lat", "lon", "region"),
+        coords={**coords, "region": ["a", "b", "c"]},
+        attrs={"units": "1"},
+    )
+    reference = xr.DataArray(np.ones(3), dims="region", coords={"region": ["a", "b", "c"]}, attrs={"units": "1"})
+    mapping = AffineFluxMap(mean, flux, prolongation, state_dim="region")
+    bound = BoundCo2AffineFluxMap(
+        AffineFluxMapArtifact(mapping, "grid", {"projection_strategy": "explicit"}, {}), reference
+    )
+    groups = {
+        group: xr.Dataset(
+            {
+                "retained_draws": xr.DataArray(
+                    rng.random((2, 3, 3)),
+                    dims=("chain", "draw", "region"),
+                    coords={"chain": [0, 1], "draw": [0, 1, 2], "region": reference.region},
+                    attrs={"units": "1"},
+                )
+            }
+        )
+        for group in ("prior", "posterior")
+    }
+    groups["/"] = xr.Dataset(
+        attrs={
+            "rhime_model_metadata": json.dumps({"recipe": "co2"}),
+            "rhime_variable_roles": json.dumps({"flux_scale": "retained_draws"}),
+        }
+    )
+    return bound, xr.DataTree.from_dict(groups)
+
+
+@pytest.mark.parametrize("lazy", [False, True], ids=["eager", "dask"])
+def test_native_reconstruction_prepares_bounded_affine_ingredients(lazy):
+    """A 64x64 grid reconstructs draws in 32x32 tiles, not one 4,096-point task."""
+    bound, trace = _grid_fixture(64, lazy=lazy)
+    mapping = bound.affine_map
+    payloads = []
+
+    def observe(key, value, *args):
+        if isinstance(value, (np.ndarray, sparse.COO)):
+            payloads.append(value.size)
+
+    with Callback(posttask=observe):
+        result = co2_native_flux_outputs(trace, bound)
+    # Six pooled samples by at most one 1,024-point tile (dense or sparse prolongation x 3 states).
+    assert max(payloads) <= 6 * 1024 * 3
+    assert bound.affine_map is mapping
+    for group in ("prior", "posterior"):
+        state = trace[group].retained_draws
+        delta = state.values - bound.reference_state.values
+        prolongation = mapping.prolongation.data
+        prolongation = prolongation.compute() if lazy else prolongation
+        draws = mapping.flux.values * (
+            mapping.native_mean.values + np.einsum("lir,cdr->cdli", prolongation.todense(), delta)
+        )
+        np.testing.assert_allclose(result[f"flux_total_{group}_mean"], draws.mean(axis=(0, 1)), rtol=1e-6)
+
+
+def test_country_outputs_share_country_projection_preparation(monkeypatch):
+    """CO2 country responses use the ordinary country projection preparation."""
+    bound, trace, countries = _fixture()
+    prepared = []
+    original = co2_flux_outputs._bounded_projection
+
+    def record(projection, contraction_dims):
+        prepared.append((set(projection.dims), set(contraction_dims)))
+        return original(projection, contraction_dims)
+
+    monkeypatch.setattr(co2_flux_outputs, "_bounded_projection", record)
+    co2_country_flux_outputs(trace, bound, countries)
+    assert ({"country", "native_source", "region"}, {"region"}) in prepared
+
+
+@pytest.mark.parametrize("source_last", [False, True], ids=["source-first", "source-last"])
+def test_multisource_native_reconstruction_bounds_source_expansion(source_last):
+    """Source chunks must bound the contraction before mean and flux are applied."""
+    flat = xr.DataArray(
+        np.ones((64, 64), dtype=int), dims=("lat", "lon"), coords={"lat": np.arange(64), "lon": np.arange(64)}
+    )
+    operator = MultiSourceBucketBasisOperator({"fossil": flat, "biosphere": flat}, state_dim="region")
+    mean = xr.DataArray(
+        np.ones((2, 64, 64)),
+        dims=("native_source", "lat", "lon"),
+        coords={"native_source": ["fossil", "biosphere"], **flat.coords},
+        attrs={"units": "1"},
+    )
+    flux = mean.copy(data=np.broadcast_to(np.array([2.0, -3.0])[:, None, None], mean.shape))
+    flux.attrs = {"units": "mol m-2 s-1"}
+    if source_last:
+        flux = flux.transpose("lat", "lon", "native_source")
+    mapping = AffineFluxMap(mean, flux, operator, state_dim="region")
+    reference = xr.DataArray(
+        np.zeros(2), dims="region", coords=operator.basis_matrix.region.coords, attrs={"units": "1"}
+    )
+    bound = BoundCo2AffineFluxMap(AffineFluxMapArtifact(mapping, "sources", {}, {}), reference)
+    _, trace, _ = _fixture()
+    state = xr.DataArray(
+        np.arange(40, dtype=float).reshape(1, 20, 2),
+        dims=("chain", "draw", "region"),
+        coords={"chain": [0], "draw": np.arange(20), **reference.coords},
+        attrs={"units": "1"},
+    )
+    for group in ("prior", "posterior"):
+        trace[group] = state.to_dataset(name="retained_draws")
+
+    borrowed_matrix, borrowed_flux = operator.basis_matrix.data, flux.data
+    borrowed_graph = borrowed_matrix.__dask_graph__()
+    # Eager native layouts keep their original source expansion.
+    assert mapping._prolongation_array().chunksizes["native_source"] == (2,)
+    tasks = []
+    with Callback(pretask=lambda key, *args: tasks.append(key)):
+        prepared = bounded_affine_flux_map(mapping)
+        geometry = prepared._prolongation_array()
+    assert not tasks
+    assert geometry.chunksizes["native_source"] == prepared.native_mean.chunksizes["native_source"]
+
+    sample_payloads = []
+
+    def observe(key, value, *args):
+        if isinstance(value, (np.ndarray, sparse.COO)) and 20 in value.shape:
+            sample_payloads.append(value.size)
+
+    with Callback(posttask=observe):
+        result = co2_native_flux_outputs(trace, bound)
+    assert sample_payloads and max(sample_payloads) <= 20 * 1024
+    for group in ("prior", "posterior"):
+        np.testing.assert_array_equal(result[f"flux_total_{group}_mean"], -23.0)
+    assert operator.basis_matrix.data is borrowed_matrix
+    assert borrowed_matrix.__dask_graph__() is borrowed_graph
+    assert flux.data is borrowed_flux

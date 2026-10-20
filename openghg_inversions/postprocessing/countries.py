@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import warnings
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Hashable, Iterable, Mapping, Sequence
 from math import prod
 from pathlib import Path
 from typing import cast, Literal, Self, TypeVar
@@ -297,6 +297,20 @@ class CountryRegions:
         return list(self._regions.keys())
 
 
+def _bounded_projection(projection: xr.DataArray, contraction_dims: Iterable[Hashable]) -> xr.DataArray:
+    """Prepare a projection so its contraction with samples has bounded output blocks.
+
+    Output dimensions are chunked within the summary point budget; contraction
+    dimensions stay complete. Small projections are returned unchanged to keep
+    their accumulation order.
+    """
+    contraction_dims = set(contraction_dims)
+    output_points = prod(size for dim, size in projection.sizes.items() if dim not in contraction_dims)
+    if output_points > _STATS_MAX_POINTS:
+        return _chunk_non_sample_dims(projection, contraction_dims)
+    return projection
+
+
 class Countries:
     """Class to load country files and create country traces.
 
@@ -481,11 +495,7 @@ class Countries:
         TODO: there is a "country unit" conversion in the old code, but it seems to always produce
               1.0, based on how it is used in hbmcmc
         """
-        contraction_dims = set(x_to_country.dims) & set(x_trace.dims)
-        output_points = prod(size for dim, size in x_to_country.sizes.items() if dim not in contraction_dims)
-        # Keep small matrix contractions intact to retain their accumulation order.
-        if output_points > _STATS_MAX_POINTS:
-            x_to_country = _chunk_non_sample_dims(x_to_country, contraction_dims)
+        x_to_country = _bounded_projection(x_to_country, set(x_to_country.dims) & set(x_trace.dims))
         raw_trace = sparse_xr_dot(x_to_country, x_trace)
         molar_mass = convert.molar_mass(species)
         return raw_trace * 365 * 24 * 3600 * molar_mass  # type: ignore

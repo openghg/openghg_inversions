@@ -18,7 +18,7 @@ from openghg_inversions.postprocessing._basis_products import (
     reconstruct_scale_factor_stats,
 )
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
-from openghg_inversions.postprocessing.stats import _STATS_CHUNKS, calculate_stats
+from openghg_inversions.postprocessing.stats import calculate_stats, summarize_derived
 from openghg_inversions.postprocessing.utils import rename_by_replacement
 
 
@@ -46,9 +46,6 @@ TRACE_GROUP_SUFFIXES = (
     "_prior",
     "_posterior",
 )
-
-
-_FLUX_STATS_CHUNKS = _STATS_CHUNKS
 
 
 def _materialize_product(ds: xr.Dataset) -> xr.Dataset:
@@ -299,7 +296,7 @@ def _sector_flux_trace_dataset(
     sector: OutputSector,
     *,
     report_flux_on_inversion_grid: bool,
-    chunks: Mapping[str, int] | None = None,
+    bounded: bool = True,
     trace: xr.Dataset | None = None,
 ) -> xr.Dataset:
     """Return one sector's per-draw reconstructed flux trace."""
@@ -312,7 +309,7 @@ def _sector_flux_trace_dataset(
         sector_flux,
         trace,
         report_flux_on_inversion_grid=report_flux_on_inversion_grid,
-        _chunks=chunks,
+        bounded=bounded,
     )
     reconstructed = rename_by_replacement(reconstructed, "x", "flux")
     return _rename_sector_flux_vars(reconstructed, sector)
@@ -334,7 +331,7 @@ def _sector_scale_factor_stats(
         chunk_dim=_state_chunk_dim(trace, inv_out),
     )
     scale_stats = calculate_stats(trace, **sector_stats_args)
-    result = reconstruct_scale_factor_stats(basis_functions, scale_stats, _chunks=_FLUX_STATS_CHUNKS)
+    result = reconstruct_scale_factor_stats(basis_functions, scale_stats)
     for data_var in result.data_vars:
         if data_var in scale_stats.data_vars:
             result[data_var].attrs = scale_stats[data_var].attrs
@@ -387,7 +384,7 @@ def _multisector_flux_trace_parts(
     inv_out: InversionOutput,
     report_flux_on_inversion_grid: bool = True,
     *,
-    chunks: Mapping[str, int] | None = None,
+    bounded: bool = True,
     scale_traces: Mapping[str, xr.Dataset] | None = None,
 ) -> tuple[list[OutputSector], list[xr.Dataset], xr.Dataset]:
     """Return sector metadata, sector flux traces, and total flux trace."""
@@ -397,9 +394,7 @@ def _multisector_flux_trace_parts(
     sectors = _multisector_output_sectors(inv_out)
     sector_flux_traces = []
     for sector in sectors:
-        reconstruction_args: dict = {}
-        if chunks is not None:
-            reconstruction_args["chunks"] = chunks
+        reconstruction_args: dict = {"bounded": bounded}
         if scale_traces is not None:
             reconstruction_args["trace"] = scale_traces[sector.variable_suffix]
         sector_flux_traces.append(
@@ -451,9 +446,11 @@ def make_multisector_flux_trace_outputs(
         ValueError: If ``inv_out`` is not multisector or lacks required sector
             metadata or trace variables.
     """
+    # Per-draw trace exports keep the reconstruction's sparse storage unbounded.
     _, sector_flux_traces, total_flux_trace = _multisector_flux_trace_parts(
         inv_out,
         report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+        bounded=False,
     )
     result = xr.merge([total_flux_trace, *sector_flux_traces])
     if materialize:
@@ -578,7 +575,6 @@ def _multisector_flux_mean_parts(
             _sector_flux(inv_out, sector),
             mean,
             report_flux_on_inversion_grid=report_flux_on_inversion_grid,
-            _chunks=_FLUX_STATS_CHUNKS,
         )
         reconstructed = rename_by_replacement(reconstructed, "x", "flux")
         sector_means.append(_rename_sector_flux_vars(reconstructed, sector))
@@ -630,7 +626,6 @@ def make_sector_flux_outputs(
         sectors, sector_flux_traces, total_flux_trace = _multisector_flux_trace_parts(
             inv_out,
             report_flux_on_inversion_grid=report_flux_on_inversion_grid,
-            chunks=_FLUX_STATS_CHUNKS,
             scale_traces=scale_traces,
         )
         outputs = [calculate_stats(xr.merge([total_flux_trace, *sector_flux_traces]), **flux_stats_args)]
@@ -711,7 +706,6 @@ def make_flux_outputs(
         inv_out.flux,
         stats_ds,
         report_flux_on_inversion_grid=report_flux_on_inversion_grid,
-        _chunks=_FLUX_STATS_CHUNKS,
     )
 
     for dv in flux_stats.data_vars:
@@ -725,9 +719,7 @@ def make_flux_outputs(
     flux_stats = rename_by_replacement(flux_stats, "x", "flux")
 
     if include_scale_factors:
-        scale_factor_stats = reconstruct_scale_factor_stats(
-            inv_out.basis_functions, stats_ds, _chunks=_FLUX_STATS_CHUNKS
-        )
+        scale_factor_stats = reconstruct_scale_factor_stats(inv_out.basis_functions, stats_ds)
 
         for dv in scale_factor_stats.data_vars:
             if dv in stats_ds.data_vars:
@@ -867,20 +859,10 @@ def make_concentration_outputs(
         },
     )
 
-    baseline_operands = {}
+    baseline_names = []
     if combine_bc_and_offset and offset_available:
         if boundary_available:
-            for data_var in list(trace.data_vars):
-                name = str(data_var)
-                if name.startswith("mu_bc"):
-                    offset_data_var = name.replace("mu_bc", "offset", 1)
-                    operand_name = f"_baseline_operand_{name}"
-                    # Broadcast borrowed views before grouping, including draw-only
-                    # offsets. Addition belongs inside the shared bounded executor.
-                    trace[data_var], trace[operand_name] = xr.broadcast(
-                        trace[data_var], trace[offset_data_var]
-                    )
-                    baseline_operands[name] = operand_name
+            baseline_names = [str(name) for name in trace.data_vars if str(name).startswith("mu_bc")]
         elif not complete_baseline_available:
             for data_var in list(trace.data_vars):
                 name = str(data_var)
@@ -895,25 +877,25 @@ def make_concentration_outputs(
     stats_args["chunk_dim"] = "nmeasure"
     stats_args["chunk_size"] = 1
 
-    def combine_baseline_block(block: xr.Dataset) -> xr.Dataset:
-        """Add baseline operands with their native backend and bounded workspace."""
-        result = block.copy(deep=False)
-        for name, operand in baseline_operands.items():
-            if name in result:
-                result[name] = result[name] + result[operand]
-                result[name].attrs["long_name"] = (
-                    f"{name.removeprefix('mu_bc_')}_modelled_baseline_including_offset"
-                )
-                result = result.drop_vars(operand)
+    if not baseline_names:
+        return calculate_stats(trace, **stats_args)
+
+    offset_names = [name.replace("mu_bc", "offset", 1) for name in baseline_names]
+
+    def combine_baseline(block: xr.Dataset) -> xr.Dataset:
+        """Add each offset to its modelled boundary contribution."""
+        result = xr.Dataset()
+        for name, offset_name in zip(baseline_names, offset_names, strict=True):
+            result[name] = block[name] + block[offset_name]
+            result[name].attrs["long_name"] = f"{name.removeprefix('mu_bc_')}_modelled_baseline_including_offset"
         return result
 
-    conc_stats = calculate_stats(
-        trace,
-        _prepare_block=combine_baseline_block if baseline_operands else None,
+    return summarize_derived(
+        {name: trace[name] for name in [*baseline_names, *offset_names]},
+        combine_baseline,
+        companions=trace.drop_vars(baseline_names),
         **stats_args,
     )
-
-    return conc_stats
 
 
 def make_country_outputs(
