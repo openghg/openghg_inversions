@@ -1,4 +1,11 @@
-"""Readable scientific recipe for a source-resolved multisector RHIME inversion."""
+"""Source-resolved RHIME recipe using one stacked flux state.
+
+Independent source-prior blocks and their activity policies populate one full
+source-labelled state ``x``. The gathered sensitivity ``hx`` maps that state to
+the pollution contribution ``mu`` in the shared standard/multisector builder.
+Select a source's sampled state with ``x.sel(source=...)``; output roles retain
+its source-local basis labels when reconstructing native flux products.
+"""
 
 from __future__ import annotations
 

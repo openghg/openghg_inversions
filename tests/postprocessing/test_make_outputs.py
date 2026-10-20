@@ -88,12 +88,17 @@ def test_stacked_flux_selector_restores_unequal_source_state_axes(multisector_po
         [[[2.0, 3.0, 4.0]]], dims=("chain", "draw", "region"),
         coords={"chain": [0], "draw": [0], "region": basis.operator.basis_matrix.region},
     )
+    unrelated = xr.Dataset(
+        {"y": (("chain", "draw", "nmeasure"), np.zeros((1, 1, 3)))},
+        coords={"chain": [0], "draw": [999]},
+    )
     stacked = replace(legacy, basis_functions=basis,
-                      trace=make_trace(posterior=xr.Dataset({"x": values})),
+                      trace=make_trace(posterior=xr.Dataset({"x": values}), prior_predictive=unrelated),
                       model_metadata={**legacy.model_metadata, "variable_roles": {"flux_scale": "x"}})
     sectors = make_outputs._multisector_output_sectors(stacked)
     first, second = [make_outputs._sector_scale_trace(stacked, sector) for sector in sectors]
     assert first.x_posterior.dims == ("chain", "draw", "region")
+    np.testing.assert_array_equal(first.draw, [0])
     np.testing.assert_array_equal(first.region, [0, 1])
     np.testing.assert_array_equal(second.region, [0])
     np.testing.assert_array_equal(first.x_posterior, [[[2.0, 3.0]]])
@@ -494,8 +499,9 @@ def test_multisector_flux_total_requires_each_sector_per_draw(
         sector: make_outputs.OutputSector,
         *,
         report_flux_on_inversion_grid: bool,
+        bounded: bool = True,
     ) -> xr.Dataset:
-        del output, report_flux_on_inversion_grid
+        del output, report_flux_on_inversion_grid, bounded
         values = (
             np.asarray([0.0, 0.0, 0.0]) if sector.variable_suffix == "ff" else np.asarray([1.0, 2.0, np.nan])
         )
@@ -609,3 +615,52 @@ def test_multisector_country_traces_project_basis_regions_before_scaling(
             + country_trace[f"country_ocean_{when}"].isel(draw=0),
         )
         assert country_trace[f"country_total_{when}"].attrs["units"] == "g/yr"
+
+
+@pytest.mark.parametrize(
+    "probability_key, shared_generator",
+    [("hdi_prob", False), ("hdi__hdi_prob", False), ("hdi__hdi_prob", True)],
+    ids=["generic", "override", "shared-generator"],
+)
+def test_multisector_flux_tiles_reuse_hdi_probability_generators(
+    multisector_postprocessing_inv_out: Callable[..., InversionOutput],
+    probability_key: str,
+    shared_generator: bool,
+) -> None:
+    """HDI generators cover every tile, trace group, sector, and scale factor."""
+    labels = xr.DataArray(
+        np.ones((33, 1), dtype=int),
+        dims=("lat", "lon"),
+        coords={"lat": np.arange(33, dtype=float), "lon": [0.0]},
+    )
+    flux = xr.concat([labels.astype(float), labels * 3.0], dim="source").assign_coords(
+        source=["ff-inventory", "ocean-inventory"]
+    )
+    flux.attrs["units"] = "mol/m2/s"
+    basis = BasisFunctions.from_flat_basis(
+        basis_flat=labels, flux=flux, operator_kwargs={"state_dim": "region"}
+    )
+    inv_out = multisector_postprocessing_inv_out(basis)
+    probabilities = (0.68, 0.95)
+    options = {"hdi_prob": 0.5, probability_key: probabilities}
+    expected = make_flux_outputs(
+        inv_out, stats=["hdi"], stats_args=options, report_flux_on_inversion_grid=False
+    )
+    generator = (probability for probability in probabilities)
+    options[probability_key] = generator
+    if shared_generator:
+        options["hdi_prob"] = generator
+    actual = make_flux_outputs(
+        inv_out, stats=["hdi"], stats_args=options, report_flux_on_inversion_grid=False
+    )
+
+    xr.testing.assert_identical(actual, expected)
+    assert options[probability_key] is generator
+    if shared_generator:
+        assert options["hdi_prob"] is generator
+    assert set(actual.data_vars) == {
+        f"{product}_{group}_hdi_{probability}"
+        for product in ("flux_total", "flux_ff", "flux_ocean", "scaling_ff", "scaling_ocean")
+        for group in ("prior", "posterior")
+        for probability in (68, 95)
+    }

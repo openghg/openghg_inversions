@@ -48,9 +48,6 @@ def test_unsampled_builders_and_correlated_cached_prior(monkeypatch: Any, tmp_pa
         rhime_inputs = None
         aggregation_error_mode = "dense"
 
-        def validated(self) -> "Prepared":
-            return self
-
     def materialize(_prepared: Any, *, variable_names: tuple[str, ...]) -> xr.Dataset:
         return inputs[list(variable_names)]
 

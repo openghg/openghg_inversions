@@ -342,10 +342,6 @@ class Co2PreparedInputs:
         """Return the provenance-only basis artifact path."""
         return self.rhime_inputs.basis_artifact_path
 
-    def validated(self) -> Self:
-        """Return this structurally validated frozen wrapper."""
-        return self
-
     def to_datatree(self) -> xr.DataTree:
         """Build the versioned in-memory serialization tree.
 

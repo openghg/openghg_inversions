@@ -152,4 +152,4 @@ jobs:
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           gh workflow run release-follow-up.yaml -f tag="$TAG"
-          gh workflow run docs.yaml --ref "$TAG"
+          gh workflow run docs.yaml --ref main -f docs_ref="$TAG"

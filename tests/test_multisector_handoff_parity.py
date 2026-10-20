@@ -28,7 +28,17 @@ from tests.helpers import make_trace
 def test_sector_mapping_order_does_not_change_preparation_weighting(tmp_path, monkeypatch):
     """Full and phase-only requests use the declared first source for basis weights."""
     merged, options, flux, *_ = synthetic_inputs(tmp_path)
-    options["flux_sources"] = ["inventory", "supplemental"]
+    options.pop("basis_path")
+    options.update(flux_sources=["inventory", "supplemental"],
+                   basis_algorithm="quadtree", nbasis=2, fix_basis_outer_regions=False)
+    flux = {name: field.expand_dims(time=merged.site_data["TAC"].time) for name, field in flux.items()}
+    merged = replace(merged,
+        flux_data={name: field.to_dataset(name="flux") for name, field in flux.items()},
+        site_data={
+            name: site.assign(fp=xr.ones_like(site.fp_x_flux_sectoral.isel(source=0, drop=True)))
+            for name, site in merged.site_data.items()
+        },
+    )
     config = RhimeConfig.from_params(
         {**options, **model_options(.2), "output_name": "weights", "output_format": "none"},
         multisector=True,
@@ -44,13 +54,19 @@ def test_sector_mapping_order_does_not_change_preparation_weighting(tmp_path, mo
         return prepare_basis(**kwargs)
 
     monkeypatch.setattr(multisector, "prepare_basis", capture_weights)
+    preparations = []
     for data in (phase_data, config.data):
-        multisector.prepare_multisector(
+        preparations.append(multisector.prepare_multisector(
             merged, basis_inputs=resolve_basis_inputs(data),
             **data.select("domain", "start_date", "flux_sources", "averaging_error", "filters",
                           "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
                           "min_error", "min_error_options"),
-        )
+        ))
+    xr.testing.assert_equal(preparations[0].basis_functions.flat_basis(),
+                            preparations[1].basis_functions.flat_basis())
+    xr.testing.assert_equal(preparations[0].basis_functions.operator.basis_matrix,
+                            preparations[1].basis_functions.operator.basis_matrix)
+    xr.testing.assert_equal(preparations[0].inv_inputs.H, preparations[1].inv_inputs.H)
     assert len(weights) == 2
     for weighting_flux in weights:
         xr.testing.assert_equal(weighting_flux, flux["inventory"])

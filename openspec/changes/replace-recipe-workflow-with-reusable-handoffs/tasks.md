@@ -487,6 +487,60 @@ implementation evidence. Shared deferred-family adapter retirement and cached
 CO2/integrated acceptance remain with #880/OPE-207; no maintainer readability
 acceptance, spec promotion/archive or merge is claimed.
 
+**2026-10-17 review follow-up:** Site-keyed additive-sigma priors now use the
+resolved `SigmaAlignment.site_labels`, including supplied alignments whose
+latent-site order differs from observation order. A reversed `MHD`/`TAC`
+regression verifies that prior scales keep their scientific site meaning;
+validation of missing labels and all supplied values, including dropped sites,
+is preserved. The nine focused additive-sigma checks pass.
+
+The multisector example now has a narrated `jupyter-execute` walkthrough with a
+downloadable notebook and a companion script divided into scientific phases.
+All eight cells execute, including Normal/Student-t preparation reuse, replay
+with current output choices, and native-grid flux parity with full and prepared
+execution. Short chains demonstrate execution, not convergence. All **422 tests
+pass across eight relevant modules**: RHIME construction/runners, multisector
+handoffs and parity, sigma alignment and likelihoods, output reconstruction,
+tutorials and family documentation. Changed-path Ruff, diff and strict OpenSpec
+checks pass; the companion script's executable AST is unchanged. Refreshed
+fixed-revision Slurm compatibility/type/rendered-docs evidence follows in the PR;
+this does not close task 2.4.
+
+Slurm **19475933** validates fixed Git checkout `1136977e`: all three complete
+compatibility environments pass (`py312-openghgCur` 830.62 s,
+`py313-openghgCur` 825.53 s, `py312-openghgDev` 533.59 s, including setup).
+Mypy remains **162 errors in 50 files**, with identical normalized diagnostics
+to the prior validated runtime and zero additions against devel's 164/52.
+GitHub tests and docs also pass at `1136977e` (runs `39007837850` and
+`39007837858`). Independent agents checked the type and documentation evidence.
+
+The notebook executes all eight cells during the documentation build; its
+download matches the executed notebook and all **62 local page links** resolve.
+Strict docs reported **311 warnings**: the existing 308 plus three expected
+short-chain stderr messages in sampling cells. Those cells now explicitly
+render stderr with the Jupyter directive's `:stderr:` option, preserving the
+scientific warning for readers. A docs-only Slurm rebuild verifies this
+presentation correction; scientific runtime and the passing full suites are
+unchanged. No baseline diagnostics are suppressed.
+
+Final docs-only Slurm **19476310** at `6271669a` reports **308 warnings**, with
+content and multiplicity identical to the previously validated documentation
+and zero introduced diagnostics against devel's 318. An independent review
+confirms short-chain and convergence warnings remain visible, all eight cells
+execute successfully, the downloaded notebook matches the executed notebook,
+and all 62 local links resolve. Comparison/render evidence is retained in
+`docs-warning-comparison-review-final-6271669a.json` and
+`docs-rendered-review-final-6271669a.json` beside the raw Slurm logs. Existing
+Mypy/docs failures remain owned by #881/#679; no validation jobs remain pending.
+The final commit records evidence only; task 2.4 remains unchecked.
+
+The source-order implementation is delivered in stacked PR #891, not duplicated
+here. Its remaining automatic-basis regression coverage is tracked in
+`#891 discussion_r4301612276`; stacked-state module documentation and the
+source-labelled flux-prior representation question are tracked in
+`discussion_r4301612271` and `discussion_r4301612275`. The latter two original
+#887 threads remain open pending their resolution in #891.
+
 ## 3. Ordinary CO2 reusable-handoff adoption
 
 - [ ] 3.1 Resolve owned CO2 phase choices consistently for configured full and
@@ -879,3 +933,32 @@ Focused validation:
 
 These checks add review-fix evidence to task 6.4 without changing the open family
 acceptance or capability-promotion gates.
+
+
+### Stack integration readiness — 20 October 2026
+
+The maintainer requested checking the entire #887 → #886 → #891 stack against
+current `devel` `fd279807`, including merged bounded postprocessing #895/#896.
+#887 integrates that base at `4462ecd6`. #886 integrates the refreshed #887 at
+`b0182e14`; independent Towncrier notes now have distinct filenames instead of
+an add/add collision. The #891 integration preserves canonical gathered-state
+selection while selecting only the requested scale variable before trace-group
+alignment. It retains the narrated notebook and stacked-state example equations,
+and the supplied `SigmaAlignment` ordering fix from the updated base.
+
+The transferred module explanation now describes independent source-prior blocks,
+the full source-labelled state, gathered sensitivity and pollution mean. The
+source-order regression actually generates an automatic basis without a saved
+operator, compares generated basis matrices and sensitivities, and checks the
+requested weighting source. A source-selector regression includes an unrelated
+predictive draw index to ensure it cannot enlarge selected state draws.
+
+Focused output/source-selection checks passed (39 tests), followed by the real
+basis-generation and unrelated-predictive-axis regressions. The combined
+multisector/standard/CO2 CLI, handoff, stacked-state/persistence and new bounded
+product/statistics selection passed 150 tests. Fixed-revision Slurm
+compatibility/type/docs evidence follows in the PRs. Previous full-suite results remain evidence for their recorded revisions,
+not acceptance of this integration. Maintainer readability/design acceptance,
+merged delivery and programme completion are not claimed. The source-labelled
+flux-prior API review question remains explicitly discussed on #891; no generic
+workflow or configuration framework is added during conflict resolution.

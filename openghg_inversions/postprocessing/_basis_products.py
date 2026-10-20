@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import replace
+
 import xarray as xr
 
-from openghg_inversions.array_ops import align_sparse_lat_lon, sparse_xr_dot
+from openghg_inversions.array_ops import align_sparse_lat_lon, sparse_xr_dot, to_dense
+from openghg_inversions.basis.affine_flux_map import AffineFluxMap
 from openghg_inversions.basis.basis_functions import BasisFunctions
-from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
+from openghg_inversions.basis.operators import BucketBasisOperator, MultiSourceBucketBasisOperator
 from openghg_inversions.flux_sanitization import copy_flux_nonfinite_attrs, sanitize_flux_nonfinite
+
+from . import stats
 
 BASIS_RECONSTRUCTION_PATH_ATTR = "basis_reconstruction_path"
 BASIS_ARTIFACT_SOURCE_OUTPUT_ATTR = "basis_artifact_source"
@@ -89,6 +95,7 @@ def _interpolate_dataset(
     *,
     flux_weighted: bool,
     sum_flux_sources: bool = False,
+    _chunks: Mapping[str, int] | None = None,
 ) -> xr.Dataset:
     """Reconstruct completed total-grid products from retained state variables."""
     operator_state = _to_operator_state_dim(state, basis_functions)
@@ -100,11 +107,13 @@ def _interpolate_dataset(
         source_dim = "source"
     for name, data in operator_state.data_vars.items():
         interpolated = (
-            basis_functions.state_to_flux(data)
-            if flux_weighted else basis_functions.state_to_native(data)
+            basis_functions.state_to_flux(data) if flux_weighted else basis_functions.state_to_native(data)
         )
         if source_dim is not None:
             interpolated = interpolated.sum(source_dim)
+        if _chunks is not None:
+            # Scalar contractions can still produce sparse, densely occupied tiles.
+            interpolated = to_dense(interpolated)
         interpolated.attrs = state[name].attrs
         data_vars[name] = interpolated
     result = xr.Dataset(data_vars, attrs=state.attrs)
@@ -133,7 +142,62 @@ def _operator_region_flux_mean(basis_functions: BasisFunctions, flux: xr.DataArr
     """Return mean prior flux in each basis region using the retained operator."""
     basis = align_sparse_lat_lon(basis_functions.operator.basis_matrix, flux)
     grid_dims = list(basis_functions.operator.meta.grid_dims)
-    return ((basis * flux).sum(grid_dims) / basis.sum(grid_dims)).fillna(0.0)
+    # Sparse concatenation distinguishes negative and positive zero fills.
+    weighted_basis = basis * flux + 0.0
+    return (weighted_basis.sum(grid_dims) / basis.sum(grid_dims)).fillna(0.0)
+
+
+def _reconstruction_chunks(bounded: bool, chunks: Mapping[str, int] | None) -> Mapping[str, int] | None:
+    """Return the shared spatial/time producer limits, or ``None`` for unbounded reconstruction."""
+    if not bounded:
+        return None
+    return stats._STATS_CHUNKS if chunks is None else chunks
+
+
+def _chunk_bucket_operator(
+    operator: BucketBasisOperator | MultiSourceBucketBasisOperator, chunks: Mapping[str, int | tuple[int, ...]]
+) -> BucketBasisOperator | MultiSourceBucketBasisOperator:
+    """Chunk bucket geometry on its grid, keeping the complete retained-state contraction axis."""
+    return operator.with_chunks(
+        {
+            **{dim: size for dim, size in chunks.items() if dim in operator.meta.grid_dims},
+            operator.meta.state_dim: operator.basis_matrix.variable.chunksizes[operator.meta.state_dim],
+        }
+    )
+
+
+def _chunk_basis_functions(
+    basis_functions: BasisFunctions, chunks: Mapping[str, int | tuple[int, ...]]
+) -> BasisFunctions:
+    """Give reconstruction its own chunked geometry without modifying the retained basis."""
+    operator = basis_functions.operator
+    if isinstance(operator, (BucketBasisOperator, MultiSourceBucketBasisOperator)):
+        return replace(basis_functions, operator=_chunk_bucket_operator(operator, chunks))
+    return basis_functions
+
+
+def bounded_affine_flux_map(affine_map: AffineFluxMap) -> AffineFluxMap:
+    """Prepare affine reconstruction ingredients with bounded native chunks.
+
+    Native mean, reference flux and prolongation share one native layout within
+    the summary point budget, so reconstructing ``F [m + U* (alpha - alpha_ref)]``
+    for any sample axes creates bounded tasks. The retained-state contraction
+    axis stays complete. Eager inputs become lazy; borrowed inputs and their
+    graphs are unchanged.
+    """
+    flux_chunks = stats._bounded_chunk_sizes(affine_map.flux, sample_dims=())
+    native_chunks = {dim: size for dim, size in flux_chunks.items() if dim in affine_map.native_dims}
+    prolongation = affine_map.prolongation
+    if isinstance(prolongation, xr.DataArray):
+        prolongation = prolongation.chunk(native_chunks)
+    else:
+        prolongation = _chunk_bucket_operator(prolongation, native_chunks)
+    return replace(
+        affine_map,
+        native_mean=affine_map.native_mean.chunk(native_chunks),
+        flux=affine_map.flux.chunk(flux_chunks),
+        prolongation=prolongation,
+    )
 
 
 def reconstruct_flux_stats(
@@ -142,6 +206,8 @@ def reconstruct_flux_stats(
     stats_ds: xr.Dataset,
     *,
     report_flux_on_inversion_grid: bool,
+    bounded: bool = True,
+    _chunks: Mapping[str, int] | None = None,
 ) -> xr.Dataset:
     """Reconstruct gridded flux statistics using flux retained with the basis.
 
@@ -154,6 +220,14 @@ def reconstruct_flux_stats(
         report_flux_on_inversion_grid: Apply mean retained flux per basis region
             on the inversion grid when ``True``; otherwise apply retained flux
             on its native grid.
+        bounded: Apply the shared spatial/time producer limits to geometry,
+            flux and output tiles before reconstruction. Compact state payloads
+            are made dense with outer Dask laziness preserved. Output tiles are
+            densified before assembly. Inversion-grid region means preserve their
+            original spatial reduction and are materialized once at the compact
+            state/time boundary. ``False`` keeps the inputs' storage, including
+            sparse output, without bounding tasks.
+        _chunks: Override the shared limits, for tests on small grids.
 
     Returns:
         Reconstructed gridded statistics carrying non-finite policy metadata.
@@ -162,6 +236,7 @@ def reconstruct_flux_stats(
         NonFiniteFluxWarning: If old retained flux has no sanitation metadata
             and the lazy zero-fill backstop is applied.
     """
+    _chunks = _reconstruction_chunks(bounded, _chunks)
     retained_flux = sanitize_flux_nonfinite(
         basis_functions.flux,
         context="operator-backed flux reconstruction",
@@ -173,8 +248,24 @@ def reconstruct_flux_stats(
     elif "flux_time" not in output_flux.dims and "flux_time" in flux.dims:
         output_flux = output_flux.expand_dims(flux_time=flux.flux_time)
     basis_functions = basis_functions.with_flux(output_flux)
+    if _chunks is not None:
+        stats_ds = stats_ds.map(to_dense, keep_attrs=True)
     if report_flux_on_inversion_grid:
+        if _chunks is not None:
+            output_flux = output_flux.chunk(
+                {
+                    dim: size
+                    for dim, size in _chunks.items()
+                    if dim in output_flux.dims and dim not in basis_functions.operator.meta.grid_dims
+                }
+            )
         region_flux = _operator_region_flux_mean(basis_functions, output_flux)
+        if _chunks is not None:
+            region_flux = region_flux.compute(scheduler="single-threaded").as_numpy()
+            region_flux = region_flux.chunk(
+                {dim: size for dim, size in _chunks.items() if dim in region_flux.dims}
+            )
+            basis_functions = _chunk_basis_functions(basis_functions, _chunks)
         state = _to_operator_state_dim(stats_ds, basis_functions)
         occupied = set(state.dims) | set(state.coords) | set(region_flux.dims) | set(region_flux.coords)
         renames = {}
@@ -191,7 +282,7 @@ def reconstruct_flux_stats(
             occupied.add(candidate)
         state = state.rename(renames) * region_flux
         result = _interpolate_dataset(
-            state, basis_functions, flux_weighted=False, sum_flux_sources=True
+            state, basis_functions, flux_weighted=False, sum_flux_sources=True, _chunks=_chunks
         )
         result = _transpose_inversion_grid_dataset(result)
         result = copy_flux_nonfinite_attrs(result, retained_flux)
@@ -199,8 +290,15 @@ def reconstruct_flux_stats(
             result.attrs["time_period"] = retained_flux.attrs["time_period"]
         return result
 
+    if _chunks is not None:
+        basis_functions = _chunk_basis_functions(basis_functions, _chunks)
+        basis_functions = basis_functions.with_flux(
+            output_flux.chunk({dim: size for dim, size in _chunks.items() if dim in output_flux.dims})
+        )
     result = copy_flux_nonfinite_attrs(
-        _interpolate_dataset(stats_ds, basis_functions, flux_weighted=True, sum_flux_sources=True),
+        _interpolate_dataset(
+            stats_ds, basis_functions, flux_weighted=True, sum_flux_sources=True, _chunks=_chunks
+        ),
         retained_flux,
     )
     if "time_period" in retained_flux.attrs:
@@ -211,9 +309,22 @@ def reconstruct_flux_stats(
 def reconstruct_scale_factor_stats(
     basis_functions: BasisFunctions,
     stats_ds: xr.Dataset,
+    *,
+    bounded: bool = True,
+    _chunks: Mapping[str, int] | None = None,
 ) -> xr.Dataset:
-    """Reconstruct gridded scale-factor statistics with the retained operator."""
-    return _interpolate_dataset(stats_ds, basis_functions, flux_weighted=False)
+    """Reconstruct scaling summaries, bounding geometry and output tiles by default.
+
+    Bounded execution uses the shared spatial/time producer limits and retains
+    the borrowed state and operator graphs. Compact sparse state payloads are
+    made dense, preserving outer Dask laziness. ``_chunks`` overrides the
+    shared limits, for tests on small grids.
+    """
+    _chunks = _reconstruction_chunks(bounded, _chunks)
+    if _chunks is not None:
+        basis_functions = _chunk_basis_functions(basis_functions, _chunks)
+        stats_ds = stats_ds.map(to_dense, keep_attrs=True)
+    return _interpolate_dataset(stats_ds, basis_functions, flux_weighted=False, _chunks=_chunks)
 
 
 def make_x_to_country_matrix(

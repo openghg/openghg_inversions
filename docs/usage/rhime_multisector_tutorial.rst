@@ -237,9 +237,9 @@ original requested window, sector/source associations and prior flux without
 building a graph or repeating inference.
 
 See :doc:`staged_workflow` for phase-only configuration and checkpoint lifetime,
-and the runnable :download:`multisector_handoffs.py
-<../../examples/multisector_handoffs.py>` for a synthetic comparison of full,
-staged and replayed execution.
+and :doc:`multisector_handoffs` for an executable notebook comparing full, staged
+and replayed execution using synthetic data. Its :download:`companion script
+<../../examples/multisector_handoffs.py>` also checks independent model equations.
 
 Common failures
 ---------------
