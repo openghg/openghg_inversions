@@ -3,29 +3,25 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, replace
 import json
 from pathlib import Path
 from typing import Any
 
-import pymc as pm
 import xarray as xr
 
 from openghg_inversions._serialization_codecs import _json_value
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions._timing import timed
-from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.output_views import make_inversion_output
 from openghg_inversions.rhime.builders import RhimeModelBuildResult, callable_metadata, RhimeLikelihoodBuilder
-from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import (
     OutputFilenameConvention,
     RhimeModelSpec,
     RhimeOutputSpec,
-    RhimeRunSpec,
 )
 from openghg_inversions.serialization import save_trace
 from openghg_inversions.models.priors import prior_records, trace_prior_records
@@ -97,59 +93,6 @@ def validate_nested_output_resources(output_spec: RhimeOutputSpec) -> None:
     validate_output_resources(output_spec)
     if output_spec.output_format == "paris" and output_spec.output_path is None:
         raise ValueError("`output_path` is required for nested PARIS products.")
-
-
-@dataclass
-class RhimeResult:
-    """Runtime envelope retained for deferred CO2 consumers.
-
-    Standard and multisector execution return :class:`InversionOutput` directly.
-    Those consumers own its retirement with their execution migration.
-
-    Args:
-        run_spec: Top-level dates, sites, model, and output settings for the run.
-        model_spec: Scientific options used to construct the model.
-        output_spec: Output products, paths, and naming settings.
-        inv_inputs: Prepared inversion inputs supplied to the model.
-        idata: Posterior samples and diagnostics returned by the sampler.
-        output_metadata: Output paths, timing, and provenance accumulated during
-            the run. A new empty dictionary is used by default.
-        outputs: In-memory postprocessing products keyed by product name. A new
-            empty dictionary is used by default.
-        basis_functions: Basis operator and flux retained for postprocessing.
-        model: Concrete sampled PyMC model, when retained.
-        inv_out: Modern inversion output, when postprocessing created one.
-        sampler: Live sampling configuration, when supplied. Defaults to ``None``.
-            Results constructed from saved samples need no sampler. Descriptive sampler
-            metadata belongs in ``output_metadata["sampler"]`` for replay.
-            A supplied live sampler inserts or overwrites that entry in the supplied
-            dictionary at construction; later sampler changes do not refresh it.
-        model_build_result: Model, variable-role manifest, and builder metadata,
-            when available.
-        output_contract: Durable scientific roles and reconstruction mapping.
-            Defaults to the live build result contract when one is supplied.
-    """
-
-    run_spec: RhimeRunSpec
-    model_spec: RhimeModelSpec
-    output_spec: RhimeOutputSpec
-    inv_inputs: xr.Dataset
-    idata: xr.DataTree
-    output_metadata: dict[str, Any] = field(default_factory=dict)
-    outputs: dict[str, Any] = field(default_factory=dict)
-    basis_functions: BasisFunctions | None = None
-    model: pm.Model | None = None
-    inv_out: InversionOutput | None = None
-    sampler: RhimeSampler | None = None
-    model_build_result: RhimeModelBuildResult | None = None
-    output_contract: OutputContract | None = None
-
-    def __post_init__(self) -> None:
-        """Retain output information independently of the optional live model."""
-        if self.sampler is not None:
-            self.output_metadata["sampler"] = self.sampler.describe()
-        if self.output_contract is None and self.model_build_result is not None:
-            self.output_contract = self.model_build_result.output_contract
 
 
 def annotate_likelihood_trace(
@@ -273,107 +216,6 @@ def _define_derived_output_filename(
         start_date,
         filename_convention=output_spec.output_filename_convention,
         ext=ext,
-    )
-
-
-def _save_requested_trace(result: RhimeResult) -> dict[str, str]:
-    """Save the sampled trace when requested; return its ``trace_path`` metadata."""
-    trace_path = _resolve_output_path(
-        result.output_spec.save_trace,
-        result.output_spec.output_path,
-        f"{result.output_spec.output_name}{result.run_spec.start_date}_trace.nc",
-    )
-    if trace_path is None:
-        return {}
-    trace_path.parent.mkdir(parents=True, exist_ok=True)
-    with timed("rhime.output.trace_save", path=trace_path):
-        save_trace(result.idata, trace_path)
-    return {"trace_path": str(trace_path)}
-
-
-def _make_inversion_output(
-    *,
-    result: RhimeResult,
-    prepared: RhimePreparedInputs,
-    variable_roles: Mapping[str, str] | None = None,
-    state_dimension_mapping: Mapping[str, str] | None = None,
-) -> InversionOutput:
-    """Create a modern InversionOutput without fixedbasis legacy adapters.
-
-    Args:
-        result: Sampled recipe result and model-owned output contract.
-        prepared: Retained canonical inputs and basis functions.
-        variable_roles: Optional override for the semantic role-to-variable
-            mapping. Defaults to ``result.output_contract.variable_roles``.
-            Nested RHIME passes a per-domain override here: its builder
-            declares tagged roles (``"flux_scale:outer"``, ``"flux_scale:inner"``,
-            etc.) so one shared trace can be viewed as two ordinary,
-            single-grid ``InversionOutput`` contracts.
-        state_dimension_mapping: Optional explicit mapping from the selected
-            trace state dimension to the retained basis operator state
-            dimension. Nested views use this to normalize selected trace
-            variables without modifying the shared sampled trace.
-
-    Returns:
-        Complete modern inversion-output artifact.
-    """
-    contract = result.output_contract
-    if contract is None:
-        raise ValueError("RHIME result is missing its scientific output contract.")
-    builder_metadata = dict(contract.metadata)
-    for key in ("model_builder", "likelihood_builder", "likelihood_kwargs"):
-        if key in result.output_metadata:
-            builder_metadata[key] = result.output_metadata[key]
-    contract = replace(
-        contract,
-        variable_roles=contract.variable_roles if variable_roles is None else variable_roles,
-        state_dimension_mapping=(
-            contract.state_dimension_mapping if state_dimension_mapping is None else state_dimension_mapping
-        ),
-        metadata=_structured_metadata(builder_metadata),
-    )
-    constructed_priors = (prior_records(result.model) if result.model is not None else
-                          trace_prior_records(result.idata) if "rhime_priors" in result.idata.attrs else {})
-    model_metadata = result.model_spec.describe(priors=constructed_priors)
-    model_metadata["constructed_priors"] = constructed_priors
-    if model_metadata["likelihood"] is not None:
-        model_metadata["likelihood"] = model_metadata["likelihood"]["options"]
-    # Keep existing in-memory activity provenance; saved phases reject these
-    # explicit policies before writing a sample record.
-    for name in ("state_activity", "bc_state_activity"):
-        policy = getattr(result.model_spec, name)
-        model_metadata[name] = None if policy is None else asdict(policy)
-    for sector, record in zip(result.model_spec.sectors, model_metadata["sectors"], strict=True):
-        role = "flux_scale" if len(result.model_spec.sectors) == 1 else f"flux_scale:{sector.name}"
-        variable = contract.variable_roles.get(role)
-        if variable is not None and variable in constructed_priors:
-            record["x_prior"] = constructed_priors[variable]
-        record["state_activity"] = None if sector.state_activity is None else asdict(sector.state_activity)
-    return make_inversion_output(
-        prepared=prepared,
-        trace=result.idata,
-        contract=contract,
-        run_metadata={
-            "start_date": result.run_spec.start_date,
-            "end_date": result.run_spec.end_date,
-            "sites": list(result.run_spec.sites),
-            "averaging_period": list(result.run_spec.averaging_period),
-            "split_by_sectors": result.run_spec.split_by_sectors,
-        },
-        model_metadata=_structured_metadata(model_metadata),
-        output_metadata={
-            "output_format": result.output_spec.output_format,
-            "output_path": result.output_spec.output_path,
-            "output_name": result.output_spec.output_name,
-            "save_trace": result.output_spec.save_trace,
-            "save_inversion_output": result.output_spec.save_inversion_output,
-            "sampler": result.output_metadata.get("sampler"),
-        },
-        provenance={
-            "contract": "modern_rhime_inversion_output",
-            "compatibility_issue": "401",
-            "basis_representation": "operator-backed",
-        },
     )
 
 

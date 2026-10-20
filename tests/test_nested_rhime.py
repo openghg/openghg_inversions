@@ -45,7 +45,6 @@ from openghg_inversions.rhime.specs import (
     FixedErrorSettings,
     RhimeModelSpec,
     RhimeOutputSpec,
-    RhimeRunSpec,
     SectorSpec,
 )
 from tests.helpers import make_trace
@@ -105,8 +104,8 @@ def _prepared(
     )
 
 
-def _run_spec() -> RhimeRunSpec:
-    model = RhimeModelSpec(
+def _model_spec() -> RhimeModelSpec:
+    return RhimeModelSpec(
         species="ch4",
         domain="EUROPE",
         sectors=(
@@ -119,18 +118,6 @@ def _run_spec() -> RhimeRunSpec:
         ),
         use_bc=False,
         likelihood=FixedErrorSettings(),
-    )
-    return RhimeRunSpec(
-        start_date="2019-01-01",
-        end_date="2019-01-02",
-        sites=("TAC",),
-        averaging_period=("1h",),
-        model=model,
-        output=RhimeOutputSpec(
-            output_format="none",
-            output_name="nested-test",
-            save_inversion_output=False,
-        ),
     )
 
 
@@ -398,10 +385,10 @@ def test_nested_model_uses_two_labelled_state_blocks_and_shared_likelihood() -> 
         basis=inner_basis,
     )
     prepared = combine_nested_rhime_inputs(outer, inner, outer_overlap_masked=True)
-    run_spec = _run_spec()
+    model_spec = _model_spec()
 
-    inputs, priors = materialize_nested_inputs(prepared.combined, run_spec.model)
-    result = build_nested_rhime_model(inputs, run_spec.model, priors=priors)
+    inputs, priors = materialize_nested_inputs(prepared.combined, model_spec)
+    result = build_nested_rhime_model(inputs, model_spec, priors=priors)
     model = result.model
     assert {"hx_outer", "hx_inner", "x_outer", "x_inner", "mu_outer", "mu_inner", "mu", "y"} <= set(
         model.named_vars
@@ -839,13 +826,13 @@ def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
         inner_domain_label="europe-6km",
         outer_overlap_masked=True,
     )
-    run_spec = _run_spec()
+    model_spec = _model_spec()
 
     inputs, priors = materialize_nested_inputs(
-        prepared.combined, run_spec.model,
+        prepared.combined, model_spec,
         inner_x_prior={"pdf": "normal", "mu": 2.0, "sigma": 0.4},
     )
-    build_result = build_nested_rhime_model(inputs, run_spec.model, priors=priors)
+    build_result = build_nested_rhime_model(inputs, model_spec, priors=priors)
     trace = make_trace(
         posterior=xr.Dataset(
             {
@@ -860,9 +847,9 @@ def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
     assert records["x_outer"]["mu"] == 1.0
     assert records["x_inner"]["mu"] == 2.0
     output = make_nested_inversion_outputs(
-        prepared=prepared, model_spec=run_spec.model, posterior=trace,
+        prepared=prepared, model_spec=model_spec, posterior=trace,
         output_contract=OutputContract.from_dict(build_result.output_contract.to_dict()),
-        start_date=run_spec.start_date, end_date=run_spec.end_date,
+        start_date="2019-01-01", end_date="2019-01-02",
         actual_inference=RhimeSampler().describe(),
     )
     assert isinstance(output, NestedOutput)
@@ -919,7 +906,6 @@ def test_nested_latest_paris_output_writes_index_as_unlimited_dimension(
     europe_country_file: Path,
 ) -> None:
     """Nested latest concentration files preserve their index-based time axis."""
-    run_spec = _run_spec()
     output_spec = RhimeOutputSpec(
         output_format="paris",
         country_file=str(europe_country_file),
@@ -931,7 +917,7 @@ def test_nested_latest_paris_output_writes_index_as_unlimited_dimension(
     from types import SimpleNamespace
     outer = SimpleNamespace(
         domain="EUROPE", species="ch4",
-        run_metadata={"start_date": run_spec.start_date, "averaging_period": ["1h"]},
+        run_metadata={"start_date": "2019-01-01", "averaging_period": ["1h"]},
     )
     inner = SimpleNamespace(output_metadata={"nested_domain": {"inner_domain": "EUROPE-6km"}})
     output = NestedOutput(outer=outer, inner=inner)

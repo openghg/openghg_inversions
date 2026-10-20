@@ -272,23 +272,6 @@ def test_resolution_preserves_caller_containers_and_lazy_keywords(monkeypatch, i
     assert without_opaque == before
 
 
-def test_retained_run_uses_prepared_metadata_without_changing_request():
-    config = rhime_params.RhimeConfig.from_params(
-        _request(averaging_period=["1h", "2h"]), multisector=False
-    )
-    prepared = SimpleNamespace(sites=("MHD",), averaging_period=("2h",))
-
-    run = config.retained_run_spec(prepared)
-
-    assert config.data.site_options.sites == ("TAC", "MHD")
-    assert config.data.site_options.averaging_period == ("1h", "2h")
-    assert run.sites == ("MHD",)
-    assert run.averaging_period == ("2h",)
-    assert (run.start_date, run.end_date) == ("2019-01-01", "2019-02-01")
-    assert run.model is config.model
-    assert run.output is config.output
-
-
 def test_resolved_choices_are_available_without_a_preparation_record():
     request = _request(use_bc=False, mismatch_model=None, draws="7", time_resolved=True)
     config = rhime_params.RhimeConfig.from_params(request, multisector=False)

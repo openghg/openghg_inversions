@@ -18,10 +18,10 @@ from ._stage_checks import (
     PREPARATION_CHECK_NAME,
     diagnose_rhime_stage,
 )
-from .outputs import RhimeResult
 from .requests import load_params
 
 if TYPE_CHECKING:
+    from .co2.co2_outputs import Co2Output
     from .co2.stages import Co2StageSetup
 
 ModelKind = Literal["co2"]
@@ -266,7 +266,7 @@ def postprocess_rhime_stage(
     output_dir: str | Path,
     preparation_manifest: str | Path,
     sample_manifest: str | Path,
-) -> RhimeResult:
+) -> Co2Output:
     """Make products from saved samples for the retained CO2 workflow.
 
     The retained CO2 route replays its scientific output context.

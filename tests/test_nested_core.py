@@ -19,7 +19,7 @@ from openghg_inversions.rhime.nested import (
 )
 from openghg_inversions.rhime.params import RhimeConfig
 from openghg_inversions.rhime.sampling import RhimeSampler
-from tests.test_nested_rhime import _basis, _prepared, _run_spec
+from tests.test_nested_rhime import _basis, _prepared, _model_spec
 
 
 def _nested():
@@ -41,7 +41,7 @@ def test_nested_logp_matches_independent_two_grid_and_baseline_equation():
     inputs["H_bc"] = xr.DataArray([[.3, .4]], dims=("bc_region", "nmeasure"), coords={"bc_region": [0]})
     prepared = RhimePreparedInputs(inputs, nested.combined.basis_functions, nested.combined.site_metadata)
     model_spec = replace(
-        _run_spec().model, use_bc=True, add_offset=True,
+        _model_spec(), use_bc=True, add_offset=True,
         bc_prior={"pdf": "normal", "mu": 1., "sigma": .5},
         offset_prior={"pdf": "normal", "mu": 0., "sigma": 2.},
         offset_args={"per_site": False},
@@ -80,7 +80,7 @@ def test_nested_inputs_and_priors_compute_shared_graph_once():
     inputs["extension"] = xr.DataArray(shared, dims=("region", "nmeasure"))
     borrowed = RhimePreparedInputs(inputs, nested.combined.basis_functions, nested.combined.site_metadata)
     prior = {"pdf": "normal", "mu": xr.DataArray(shared[:, 0], dims="region", coords={"region": inputs.region}), "sigma": .2}
-    spec = replace(_run_spec().model, sectors=(replace(_run_spec().model.sectors[0], x_prior=prior),))
+    spec = replace(_model_spec(), sectors=(replace(_model_spec().sectors[0], x_prior=prior),))
     inner_prior = {**prior, "mu": prior["mu"].rename(region="inner_region")}
     eager, priors = materialize_nested_inputs(borrowed, spec, inner_x_prior=inner_prior)
     assert calls == [1]

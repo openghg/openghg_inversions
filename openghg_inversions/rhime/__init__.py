@@ -41,8 +41,6 @@ from .preparation import (
     build_sensitivities,
     filter_observations,
     prepare_observation_errors,
-    with_prepared_sites,
-    with_prepared_rhime_sites,
 )
 from .multisector import (
     build_multisector_model,
@@ -68,7 +66,6 @@ from .nested import (
     run_rhime_nested,
 )
 from .outputs import (
-    RhimeResult,
     make_model_output,
     postprocess_multisector_outputs,
     save_inversion_output,
@@ -104,7 +101,6 @@ from .specs import (
     PollutionEventSettings,
     RhimeModelSpec,
     RhimeOutputSpec,
-    RhimeRunSpec,
     SectorSpec,
 )
 
@@ -116,7 +112,6 @@ __all__ = [
     "MergedData",
     "PreparedInputs",
     "assemble_inputs",
-    "with_prepared_sites",
     "RhimeConfig",
     "DataConfig",
     "group_params",
@@ -135,8 +130,6 @@ __all__ = [
     "RhimeModelBuildResult",
     "RhimeOutputSpec",
     "RhimeSampler",
-    "RhimeRunSpec",
-    "RhimeResult",
     "CONVERGENCE_CHECK_NAME",
     "PREPARATION_CHECK_NAME",
     "assemble_rhime_inputs",
@@ -183,7 +176,6 @@ __all__ = [
     "sample_rhime_model",
     "sample_rhime_stage",
     "standard_model_input_names",
-    "with_prepared_rhime_sites",
 ]
 
 

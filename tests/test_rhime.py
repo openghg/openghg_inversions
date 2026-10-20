@@ -3160,7 +3160,6 @@ def test_rhime_public_package_exports_supported_orchestration_stages() -> None:
         "prepare_observation_errors",
         "build_sensitivities",
         "assemble_rhime_inputs",
-        "with_prepared_rhime_sites",
         "materialize_pymc_inputs",
         "build_standard_model",
         "build_multisector_model",

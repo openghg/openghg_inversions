@@ -560,7 +560,8 @@ incompatible contract. Direct construction does not make a custom graph
 recordable by the package's saved multisector sampling operation.
 
 Nested construction also accepts explicit model inputs and materialized priors;
-see :doc:`nested_domains`. ``RhimeRunSpec`` remains for deferred CO2 consumers.
+see :doc:`nested_domains`. Model construction takes scientific choices directly;
+the former ``RhimeRunSpec`` execution envelope is removed.
 
 Structurally distinct observation-channel models belong in readable named
 recipes with concrete builders. The active design guidance is

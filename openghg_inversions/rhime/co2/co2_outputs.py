@@ -18,14 +18,9 @@ from openghg_inversions.postprocessing.co2_flux_outputs import (
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import trace_group
 from openghg_inversions.postprocessing.stats import calculate_stats
-from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.outputs import (
-    RhimeResult,
     _define_output_filename,
-    _save_requested_trace,
 )
-from openghg_inversions.rhime.sampling import RhimeSampler
-from openghg_inversions.rhime.specs import RhimeOutputSpec, RhimeRunSpec
 from openghg_inversions.serialization import reset_serialisation_multiindexes, save_datatree
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
@@ -35,9 +30,10 @@ from .co2_preparation import Co2PreparedInputs, _require_equivalent_units
 
 @dataclass
 class Co2Output:
-    """Borrowed CO2 scientific output and its requested reporting window.
+    """Borrowed CO2 scientific output and its reporting window.
 
-    ``bound`` preserves conditional affine reconstruction rather than standard
+    Ordinary execution retains requested dates; cached stages retain the observed
+    day range. ``bound`` preserves conditional affine reconstruction rather than standard
     multiplicative flux scaling. ``idata`` remains the borrowed full DataTree,
     including distinct sample groups and their coordinates. Inference provenance
     remains descriptive in ``output_metadata``; no live sampler or writing policy
@@ -129,7 +125,7 @@ def _validate_co2_paris_options(kwargs: Mapping | None) -> None:
 
 @dataclass(frozen=True)
 class Co2OutputOptions:
-    """Ordinary CO2 concentration and conditional-flux reporting choices.
+    """Ordinary and cached CO2 concentration and conditional-flux reporting choices.
 
     ``none`` suppresses products and exports; ``basic`` retains scientific
     summaries, and ``paris`` adds supported latest-template products. With no
@@ -169,14 +165,14 @@ class Co2OutputOptions:
 
     @classmethod
     def from_params(cls, params: Mapping) -> Co2OutputOptions:
-        """Resolve only supported ordinary CO2 product and export options."""
+        """Resolve supported CO2 product and export options."""
         if unknown := params.keys() - cls.__dataclass_fields__.keys():
             raise ValueError(f"Unsupported CO2 output option(s): {sorted(unknown)!r}.")
         return cls(**params)
 
 
 def validate_co2_output_spec(
-    output_spec: Co2OutputOptions | RhimeOutputSpec,
+    output_spec: Co2OutputOptions,
     *,
     has_reconstruction: bool,
 ) -> None:
@@ -188,26 +184,15 @@ def validate_co2_output_spec(
     The standard multiplicative inversion-output and legacy formats cannot
     represent coherent affine CO2 reconstruction.
     """
-    if isinstance(output_spec, RhimeOutputSpec):
-        if output_spec.output_format not in {"none", "basic", "paris"}:
-            raise ValueError(
-                "CO2 outputs support output_format='none', 'basic', or 'paris'; inv_out and legacy are unsupported."
-            )
-        if output_spec.save_inversion_output:
-            raise ValueError(
-                "CO2 save_inversion_output is unsupported; retain the prepared, posterior, and reconstruction stage artifacts."
-            )
     if output_spec.country_file and not has_reconstruction:
         raise ValueError("CO2 country flux outputs require a bound affine reconstruction.")
     if output_spec.output_format == "paris":
         if not has_reconstruction:
             raise ValueError("CO2 PARIS flux outputs require a bound affine reconstruction.")
-        if isinstance(output_spec, RhimeOutputSpec):
-            _validate_co2_paris_options(output_spec.paris_postprocessing_kwargs)
 
 
 def validate_co2_outputs(
-    output_spec: Co2OutputOptions | RhimeOutputSpec,
+    output_spec: Co2OutputOptions,
     *,
     bound: BoundCo2AffineFluxMap | None = None,
     source_to_sector: Mapping[str, str] | None = None,
@@ -237,7 +222,7 @@ def validate_co2_source_mapping(
 
 
 def validate_co2_reporting_inputs(
-    output: Co2OutputOptions | RhimeOutputSpec, prepared: Co2PreparedInputs, bound: BoundCo2AffineFluxMap | None,
+    output: Co2OutputOptions, prepared: Co2PreparedInputs, bound: BoundCo2AffineFluxMap | None,
 ) -> Countries | None:
     """Load requested country masks and align them before inference or writing.
 
@@ -262,7 +247,7 @@ def validate_co2_reporting_inputs(
 
 
 def validate_co2_product_request(
-    output: Co2OutputOptions | RhimeOutputSpec, *, prepared: Co2PreparedInputs,
+    output: Co2OutputOptions, *, prepared: Co2PreparedInputs,
     bound: BoundCo2AffineFluxMap | None = None,
     source_to_sector: Mapping[str, str] | None = None,
 ) -> Countries | None:
@@ -275,37 +260,6 @@ def validate_co2_product_request(
     """
     validate_co2_outputs(output, bound=bound, source_to_sector=source_to_sector)
     return validate_co2_reporting_inputs(output, prepared, bound)
-
-
-def make_co2_rhime_result(
-    *,
-    prepared: Co2PreparedInputs,
-    run_spec: RhimeRunSpec,
-    sampler: RhimeSampler | None,
-    model_build_result: RhimeModelBuildResult | None = None,
-    idata: xr.DataTree,
-    build_and_sample_seconds: float = 0.0,
-) -> RhimeResult:
-    """Join a retained cached-stage posterior with its validated preparation.
-
-    The cached caller supplies the matched trace and preparation. The adapter borrows
-    those scientific inputs without rebuilding a graph or serializing.
-    An in-memory runner may additionally retain its existing model build.
-    Passing ``sampler=None`` retains no live sampler; saved-output orchestration
-    supplies recorded descriptive values in ``result.output_metadata["sampler"]``.
-    """
-    return RhimeResult(
-        run_spec=run_spec,
-        model_spec=run_spec.model,
-        output_spec=run_spec.output,
-        inv_inputs=prepared.inv_inputs,
-        idata=idata,
-        sampler=sampler,
-        model=None if model_build_result is None else model_build_result.model,
-        basis_functions=prepared.basis_functions,
-        model_build_result=model_build_result,
-        output_metadata={"build_and_sample_seconds": build_and_sample_seconds},
-    )
 
 
 def reconstruct_co2_concentrations(trace: xr.DataTree, prepared: Co2PreparedInputs) -> xr.Dataset:
@@ -480,9 +434,9 @@ def _paris_products(components, native, country, countries, result, source_to_se
     )
     concentration["total_error"] = concentration.total_error_posterior
     concentration = concentration.drop_vars(["total_error_prior", "total_error_posterior", "residual_prior"])
-    domain = result.domain if isinstance(result, Co2Output) else result.model_spec.domain
-    start_date = result.start_date if isinstance(result, Co2Output) else result.run_spec.start_date
-    end_date = result.end_date if isinstance(result, Co2Output) else result.run_spec.end_date
+    domain = result.domain
+    start_date = result.start_date
+    end_date = result.end_date
     conc = _concentration_product(concentration.compute(), domain=domain, obs_avg_period=prepared_period(result))
     kwargs = output.paris_postprocessing_kwargs or {}
     sectors = sorted(set(source_to_sector.values())) if source_to_sector else []
@@ -553,9 +507,9 @@ def _paris_products(components, native, country, countries, result, source_to_se
     return conc, flux
 
 
-def prepared_period(result: Co2Output | RhimeResult) -> str:
+def prepared_period(result: Co2Output) -> str:
     """Return the observation interval used by the PARIS timestamp contract."""
-    averaging_period = result.prepared.averaging_period if isinstance(result, Co2Output) else result.run_spec.averaging_period
+    averaging_period = result.prepared.averaging_period
     periods = set(averaging_period)
     if len(periods) != 1:
         raise ValueError("CO2 PARIS concentration requires one common observation averaging period.")
@@ -564,9 +518,9 @@ def prepared_period(result: Co2Output | RhimeResult) -> str:
 
 def calculate_co2_products(
     *,
-    result: Co2Output | RhimeResult,
+    result: Co2Output,
     prepared: Co2PreparedInputs,
-    output: Co2OutputOptions | RhimeOutputSpec,
+    output: Co2OutputOptions,
     bound: BoundCo2AffineFluxMap | None = None,
     source_to_sector: Mapping[str, str] | None = None,
     countries: Countries | None = None,
@@ -579,12 +533,10 @@ def calculate_co2_products(
     any destination is opened. Basic
     summaries preserve independent prior and posterior counts. Native/country
     products use the supplied exact affine map; PARIS reports their conditional
-    scope. Files use the ordinary RHIME naming convention. Full component
-    draws remain available in ``result.outputs['concentration_components']``.
+    scope. Full component draws remain available in ``result.outputs['concentration_components']``.
     """
     if output.output_format == "none":
-        if isinstance(result, Co2Output):
-            result.outputs.clear()
+        result.outputs.clear()
         return
     if output.output_format == "paris" and "prior" not in result.idata.children:
         raise ValueError("CO2 PARIS outputs require prior draws; enable sample_prior_predictive.")
@@ -596,61 +548,42 @@ def calculate_co2_products(
         if country is not None:
             products["country_flux"] = country
         result.output_metadata["uncertainty_scope"] = bound.affine_map.uncertainty_scope
-        if isinstance(result, RhimeResult):
-            result.outputs["affine_reconstruction"] = bound
         if output.output_format == "paris":
             conc, flux = _paris_products(components, native, country, countries, result, source_to_sector, output=output)
             products.update(paris_concentration=conc, paris_flux=flux)
-    if isinstance(result, Co2Output):
-        result.outputs.clear()
+    result.outputs.clear()
     result.outputs.update(products, concentration_components=components)
 
 
-def save_co2_products(result: Co2Output | RhimeResult, *, output: Co2OutputOptions | RhimeOutputSpec) -> None:
+def save_co2_products(result: Co2Output, *, output: Co2OutputOptions) -> None:
     """Export calculated products and the optional trace through existing naming policy."""
     if output.output_format == "none":
         return
-    domain = result.domain if isinstance(result, Co2Output) else result.model_spec.domain
-    start_date = result.start_date if isinstance(result, Co2Output) else result.run_spec.start_date
+    domain = result.domain
+    start_date = result.start_date
     if output.output_path is not None:
         Path(output.output_path).mkdir(parents=True, exist_ok=True)
         for name, product in result.outputs.items():
-            if name in {"affine_reconstruction", "concentration_components"}:
+            if name == "concentration_components":
                 continue
             path = _define_output_filename(
                 output.output_path, "co2", domain, f"{output.output_name}_{name}", start_date,
-                filename_convention=output.output_filename_convention if isinstance(output, RhimeOutputSpec) else "rhime",
+                filename_convention="rhime",
             )
             if name == "basic":
                 save_datatree(xr.DataTree(reset_serialisation_multiindexes(product)), path)
             else:
                 write_netcdf_preserving_bounds_attrs(product, path)
             result.output_metadata[f"{name}_path"] = str(path)
-    if isinstance(result, Co2Output):
-        from openghg_inversions.rhime.outputs import _resolve_output_path
-        from openghg_inversions.serialization import save_trace
+    from openghg_inversions.rhime.outputs import _resolve_output_path
+    from openghg_inversions.serialization import save_trace
 
-        trace_path = _resolve_output_path(output.save_trace, output.output_path,
-                                          f"{output.output_name}{start_date}_trace.nc")
-        if trace_path is not None:
-            trace_path.parent.mkdir(parents=True, exist_ok=True)
-            save_trace(result.idata, trace_path)
-            result.output_metadata["trace_path"] = str(trace_path)
-    else:
-        result.output_metadata.update(_save_requested_trace(result))
-
-
-def make_co2_rhime_outputs(
-    *, result: RhimeResult, prepared: Co2PreparedInputs,
-    bound: BoundCo2AffineFluxMap | None = None, source_to_sector: Mapping[str, str] | None = None,
-) -> None:
-    """Calculate and export CO2 products for the retained cached-stage adapter."""
-    countries = validate_co2_product_request(
-        result.output_spec, prepared=prepared, bound=bound, source_to_sector=source_to_sector,
-    )
-    calculate_co2_products(result=result, prepared=prepared, output=result.output_spec,
-                           bound=bound, source_to_sector=source_to_sector, countries=countries)
-    save_co2_products(result, output=result.output_spec)
+    trace_path = _resolve_output_path(output.save_trace, output.output_path,
+                                      f"{output.output_name}{start_date}_trace.nc")
+    if trace_path is not None:
+        trace_path.parent.mkdir(parents=True, exist_ok=True)
+        save_trace(result.idata, trace_path)
+        result.output_metadata["trace_path"] = str(trace_path)
 
 
 __all__ = [
@@ -664,7 +597,5 @@ __all__ = [
     "validate_co2_output_spec",
     "validate_co2_outputs",
     "validate_co2_source_mapping",
-    "make_co2_rhime_result",
-    "make_co2_rhime_outputs",
     "reconstruct_co2_concentrations",
 ]

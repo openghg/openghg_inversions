@@ -294,10 +294,11 @@ interfaces.
 
 ### Results
 
-`run_rhime` returns a `RhimeResult`. Its `idata` attribute is an xarray
-`DataTree` containing ArviZ-compatible posterior and predictive groups,
-`inv_inputs` contains labelled model inputs, and `outputs` contains requested
-derived products. See the
+Standard and multisector runners return an `InversionOutput` with the annotated
+trace, observations and retained basis. Nested execution returns two native
+`InversionOutput` views in a `NestedOutput`. Ordinary and cached CO₂ outputs use
+`Co2Output`, which borrows the preparation and trace and retains calculated
+products. See the
 [RHIME guide](docs/usage/rhime.rst) for output formats and persistence.
 
 

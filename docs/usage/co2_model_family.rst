@@ -265,7 +265,7 @@ they exclude unresolved native-state posterior uncertainty tracked in OPE-68.
 
 ``Co2Output`` borrows the preparation and complete annotated trace DataTree,
 retaining separate prior, posterior, predictive and diagnostic groups with
-their own coordinates. It also retains the original requested window, optional
+their own coordinates. Ordinary CO2 retains the original requested window, optional
 bound affine reconstruction, in-memory products and descriptive provenance.
 It carries no writing policy or live sampler; ``sampler`` is ``None`` for both
 live and replay results. Concentration products deliberately use a derived
@@ -303,5 +303,11 @@ Cached CO₂ handoff adoption remains separate. Its existing
 ordinary handoff format. Use ``likelihood.kind = "fixed_ou"``, a positive
 ``tau_hours``, ``site_amplitude_prior_scale`` and ``sampling.nuts_sampler = "pymc"``
 for that existing route. Preserve its original configuration and matched files.
+Cached postprocessing also returns ``Co2Output``, with its matched preparation,
+trace and optional affine reconstruction. Its reporting window remains the
+first observed day through the day after the final observation. Cached stage
+products retain their literal filenames such as ``basic.nc`` and
+``concentration_components.nc`` and their postprocess manifest. Recorded sampler
+settings are descriptive provenance and do not construct a sampler during replay.
 Linked CO₂/O₂ staged routing remains separate in OPE-165; nested workflows are
 outside these CO₂ commands.

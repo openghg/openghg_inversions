@@ -194,7 +194,6 @@ def make_likelihood_settings(
     return settings_type(**options)
 
 
-
 @dataclass(frozen=True)
 class SectorSpec:
     """Configuration for one separately optimised flux sector.
@@ -487,34 +486,6 @@ class RhimeOutputSpec:
     country_file: Path | None = None
     paris_postprocessing_kwargs: dict[str, Any] | None = None
     output_filename_convention: OutputFilenameConvention = "rhime"
-
-
-@dataclass(frozen=True)
-class RhimeRunSpec:
-    """Run metadata retained by nested and CO2 execution.
-
-    Standard and multisector execution pass model, output and data choices
-    separately and do not construct this envelope.
-
-    Args:
-        start_date: Inclusive inversion start date.
-        end_date: Exclusive inversion end date.
-        sites: Sites included after data preparation and filtering.
-        averaging_period: Observation averaging period per retained site.
-        model: Mathematical model specification.
-        output: Output settings.
-        split_by_sectors: Whether flux data were prepared in sector-resolved
-            mode. Single-sector and multi-sector RHIME are runner/model modes;
-            this flag records the prepared data layout.
-    """
-
-    start_date: str
-    end_date: str
-    sites: tuple[str, ...]
-    averaging_period: tuple[str | None, ...]
-    model: RhimeModelSpec
-    output: RhimeOutputSpec
-    split_by_sectors: bool = False
 
 
 def validate_output_format(output_format: str) -> None:

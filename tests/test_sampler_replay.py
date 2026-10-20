@@ -3,27 +3,15 @@
 import json
 
 import pytest
-import xarray as xr
 
 from openghg_inversions.rhime import _standard_stages as stages, standard
-from openghg_inversions.rhime.outputs import RhimeResult
 from openghg_inversions.rhime.sampling import RhimeSampler
-from openghg_inversions.rhime.specs import RhimeModelSpec, RhimeOutputSpec, RhimeRunSpec
+from openghg_inversions.rhime.specs import RhimeOutputSpec
 from tests.test_standard_handoffs import _saved
 
 
 def _forbidden(*args, **kwargs):
     raise AssertionError("Replay must not construct a model or run inference.")
-
-
-def test_result_default_does_not_construct_a_sampler(monkeypatch):
-    model = RhimeModelSpec(species="ch4", domain="EUROPE", sectors=())
-    output = RhimeOutputSpec(output_format="none")
-    run = RhimeRunSpec("2019-01-01", "2019-02-01", ("TAC",), ("1h",), model, output)
-    monkeypatch.setattr(RhimeSampler, "__init__", _forbidden)
-    result = RhimeResult(run, model, output, xr.Dataset(), xr.DataTree())
-    assert result.sampler is None
-    assert "sampler" not in result.output_metadata
 
 
 def test_saved_sampler_metadata_matches_live_output_despite_current_defaults(tmp_path, monkeypatch):

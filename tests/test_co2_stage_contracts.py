@@ -145,6 +145,7 @@ def test_affine_replay_checks_saved_draws_instead_of_current_sampler(
         raise AssertionError("Saved CO2 replay must not build a model or execute inference.")
 
     monkeypatch.setattr(stages, "build_rhime_co2_cached_sigma", forbidden)
+    monkeypatch.setattr(RhimeSampler, "__init__", forbidden)
     monkeypatch.setattr(RhimeSampler, "sample", forbidden)
     arguments = {
         "setup": replay_setup,
@@ -160,12 +161,38 @@ def test_affine_replay_checks_saved_draws_instead_of_current_sampler(
         assert not (tmp_path / "replay").exists()
         return
     result = stages.postprocess_co2_stage(**arguments)
-    assert result.model is None
+    from openghg_inversions.rhime.co2.co2_outputs import Co2Output
+    assert isinstance(result, Co2Output)
+    assert not hasattr(result, "model")
     assert result.sampler is None
     assert (tmp_path / "replay" / "native_flux.nc").is_file()
     assert "flux_total_prior_mean" in result.outputs["native_flux"]
+    assert result.bound is not None
+    assert "affine_reconstruction" not in result.outputs
+    assert set(result.outputs) == {"basic", "native_flux", "concentration_components"}
+    assert result.start_date == "2020-01-01"
+    assert result.end_date == "2020-01-02"
+    assert result.domain == prepared.inv_inputs.attrs.get("domain", "unspecified")
+    from openghg_inversions.serialization import restore_serialisation_multiindexes
+    for name, product in result.outputs.items():
+        with xr.open_dataset(tmp_path / "replay" / f"{name}.nc") as saved:
+            restored = restore_serialisation_multiindexes(saved.load())
+        xr.testing.assert_identical(restored, product)
     manifest = json.loads(Path(result.output_metadata["postprocess_manifest_path"]).read_text())
     assert manifest["sampling_configuration"]["sample_prior_predictive"] == 4
+    assert set(manifest["artifacts"]) == set(result.outputs)
+    from dataclasses import replace
+    from openghg_inversions.rhime.co2.co2_outputs import Co2OutputOptions
+    none_arguments = {**arguments, "setup": replace(replay_setup, output=Co2OutputOptions(output_format="none")),
+                      "output_dir": tmp_path / "none"}
+    none_result = stages.postprocess_co2_stage(**none_arguments)
+    assert isinstance(none_result, Co2Output)
+    assert none_result.bound is not None
+    assert none_result.outputs == {}
+    assert sorted(path.name for path in (tmp_path / "none").iterdir()) == ["postprocess-manifest.json"]
+    none_manifest = json.loads(Path(none_result.output_metadata["postprocess_manifest_path"]).read_text())
+    assert none_manifest["artifacts"] == {}
+
 
 
 def test_cached_tuning_is_sampling_configuration(tmp_path):
@@ -259,6 +286,23 @@ def test_co2_replay_requires_version_one_and_stays_graph_free(tmp_path, monkeypa
 
     from openghg_inversions.rhime.sampling import RhimeSampler
 
+    loaded = {}
+    load_prepared = co2_stages._load_prepared
+    load_trace = co2_stages.load_trace
+
+    def retain_prepared(*args, **kwargs):
+        value = load_prepared(*args, **kwargs)
+        loaded["prepared"] = value[0]
+        return value
+
+    def retain_trace(*args, **kwargs):
+        value = load_trace(*args, **kwargs)
+        loaded["trace"] = value
+        return value
+
+    monkeypatch.setattr(co2_stages, "_load_prepared", retain_prepared)
+    monkeypatch.setattr(co2_stages, "load_trace", retain_trace)
+    monkeypatch.setattr(RhimeSampler, "__init__", forbidden)
     monkeypatch.setattr(RhimeSampler, "sample", forbidden)
     monkeypatch.setattr(co2_stages, "build_rhime_co2_cached_sigma", forbidden)
     monkeypatch.setattr(multisector_stages, "build_multisector_model", forbidden)
@@ -285,13 +329,13 @@ def test_co2_replay_requires_version_one_and_stays_graph_free(tmp_path, monkeypa
         sample_manifest=sampling,
         output_dir=tmp_path / "replay",
     )
-    assert result.model is None
+    from openghg_inversions.rhime.co2.co2_outputs import Co2Output
+    assert isinstance(result, Co2Output)
+    assert not hasattr(result, "model")
     assert result.sampler is None
-    if recorded == "complete":
-        expected = {"draws": 17, "burn": 2, "tune": 13, "chains": 3, "nuts_sampler": "pymc"}
-    else:
-        expected = {"draws": 17} if recorded == {"draws": 17} else {}
-    assert result.output_metadata["sampler"] == expected
+    assert result.prepared is loaded["prepared"]
+    assert result.idata is loaded["trace"]
+    assert result.output_metadata["sampler"] == sampled_settings
     replay = json.loads(Path(result.output_metadata["postprocess_manifest_path"]).read_text())
     assert replay["effective_configuration"]["sampler"] == sampled_settings
     assert replay["sampling_configuration"] == sampled_settings

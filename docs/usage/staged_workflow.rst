@@ -365,6 +365,10 @@ compatibility and the distinct cached-CO₂ boundary, and
 :download:`co2_handoffs.py <../../examples/co2_handoffs.py>` for an executable
 full/saved scientific comparison. Linked CO₂/O₂ and nested workflows are separate.
 
+The separate cached fixed-OU postprocessing route also returns ``Co2Output``.
+It keeps the existing matched-file arguments, observed-day reporting window,
+stage product filenames and manifests described in :doc:`co2_model_family`.
+
 Readiness and independent diagnosis
 -----------------------------------
 
