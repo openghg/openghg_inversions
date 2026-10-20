@@ -395,8 +395,8 @@ choices change.
 
 The configuration record is frozen; its existing mapping and sampler members
 remain mutable. Resolution leaves caller options unchanged, and retained-site
-selection leaves the requested configuration unchanged. Configuration
-serialization and an INI writer are deferred to
+selection leaves the requested configuration unchanged. This prototype exports
+portable resolved choices with ``RhimeConfig.to_dict()``; INI writing remains tracked by
 `Issue 814 <https://github.com/openghg/openghg_inversions/issues/814>`_.
 Standard saved sampling checks scientific compatibility with preparation,
 allowing compatible model choices to change without full-configuration equality.
