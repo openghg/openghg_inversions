@@ -534,7 +534,9 @@ def test_cached_boundary_and_default_site_offset_match_dense_oracle_at_varied_po
     assert "cached_linear_state" not in cached.model.named_vars
     registry = get_coord_registry(cached.model)
     assert registry is not None
-    assert registry.original_coords["bc_region"].equals(inputs.indexes["bc_region"])
+    assert registry.original_coords["bc_bc_region"].equals(
+        inputs.indexes["bc_region"].set_names(["bc_bc_curtain", "bc_bc_period"]),
+    )
     np.testing.assert_array_equal(cached.model["bc_is_active"].eval(), bc_active)
 
 

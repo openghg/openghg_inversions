@@ -98,10 +98,10 @@ def _multisector_output_sectors(inv_out: InversionOutput) -> list[OutputSector]:
 
 
 def _sector_scale_trace(inv_out: InversionOutput, sector: OutputSector) -> xr.Dataset:
-    """Select one source's full scaling state in its retained basis coordinates.
+    """Select one sector's full scaling state in its retained basis coordinates.
 
     Current graphs expose one gathered state through the ``flux_scale`` role.
-    Historical saved traces without that role retain their per-sector variables.
+    Historical source-indexed and per-sector traces remain readable.
     """
     gathered = "flux_scale" in inv_out.model_metadata.get("variable_roles", {})
     base_name = inv_out.variable_name("flux_scale") if gathered else f"x_{sector.variable_suffix}"
@@ -121,21 +121,24 @@ def _sector_scale_trace(inv_out: InversionOutput, sector: OutputSector) -> xr.Da
 
     state_dims = [
         str(dim) for dim, index in selected.indexes.items()
-        if dim in selected.dims and isinstance(index, pd.MultiIndex) and "source" in index.names
+        if dim in selected.dims and isinstance(index, pd.MultiIndex)
+        and ("sector" in index.names or "source" in index.names)
     ]
     if len(state_dims) != 1:
-        raise ValueError("Multisector flux_scale requires a gathered state MultiIndex containing 'source'.")
+        raise ValueError("Multisector flux_scale requires a gathered state MultiIndex containing 'sector'.")
     state_dim = state_dims[0]
     index = selected.get_index(state_dim)
-    local_levels = [str(name) for name in index.names if name != "source"]
+    key_dim = "sector" if "sector" in index.names else "source"
+    key = sector.name if key_dim == "sector" else sector.flux_source
+    local_levels = [str(name) for name in index.names if name != key_dim]
     if not local_levels:
-        raise ValueError("Multisector flux_scale requires source-local state labels.")
+        raise ValueError("Multisector flux_scale requires sector-local state labels.")
     basis_state_dim = inv_out.basis_functions.operator.meta.state_dim
     return xr.Dataset({
         name: select_gathered_data_array(
             variable,
-            key=sector.flux_source,
-            key_dim="source",
+            key=key,
+            key_dim=key_dim,
             ragged_dim=local_levels[0],
             stack_dim=state_dim,
         ).rename({state_dim: basis_state_dim})

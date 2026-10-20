@@ -232,3 +232,30 @@ def test_restore_inferencedata_preserves_independent_auxiliary_on_multiindex() -
 
     assert restored.posterior.indexes["state"].equals(state_index)
     np.testing.assert_array_equal(restored.posterior["latitude"], [50.0, 51.0])
+
+
+def test_component_coordinates_borrow_payload_and_restore_scientific_names() -> None:
+    """Owned MultiIndex metadata survives trace restoration without renaming observations."""
+    from openghg_inversions.models.coords import component_coords, local_component_coords
+
+    index = pd.MultiIndex.from_tuples([("ocean", "a"), ("ff", "b")], names=["source", "region"])
+    array = xr.DataArray(
+        np.ones((2, 2)), dims=("nmeasure", "state"),
+        coords={**xr.Coordinates.from_pandas_multiindex(index, "state"),
+                "nmeasure": [0, 1], "site": ("nmeasure", ["A", "B"]),
+                "origin": ("state", ["one", "two"])},
+    )
+    before = array.copy(deep=True)
+    owned = component_coords(array, "flux")
+    assert owned.data is array.data
+    assert owned.dims == ("nmeasure", "flux_state")
+    assert owned.indexes["flux_state"].names == ["flux_source", "flux_region"]
+    xr.testing.assert_identical(array, before)
+    registry = CoordRegistry()
+    registry.add(owned.coords, model_dims=owned.dims)
+    group = xr.Dataset({"x": (("nmeasure", "flux_state"), owned.values)})
+    restored = restore_inferencedata_coords(make_trace(posterior=group), registry)
+    local = local_component_coords(restored.posterior["x"], "flux")
+    assert local.indexes["state"].equals(index)
+    np.testing.assert_array_equal(local["origin"], array["origin"])
+    np.testing.assert_array_equal(local["site"], array["site"])

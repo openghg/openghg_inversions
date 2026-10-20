@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Hashable, Iterable
 
 import pandas as pd
 import xarray as xr
@@ -63,28 +62,41 @@ def _prepared_sources(design: xr.DataArray, *, observation_dim: str = "nmeasure"
 
 
 def _stack_multisector_sensitivity(
-    design: xr.DataArray, *, reserved_names: Iterable[Hashable] = (),
+    design: xr.DataArray, *, sectors: dict[str, str] | None = None,
 ) -> xr.DataArray:
-    """Gather source/state columns without colliding with other components' coordinates."""
+    """Gather acquisition sources in a deterministic full state coordinate.
+
+    Recipes supply the source-to-sector mapping. Source provenance remains a
+    separate auxiliary coordinate when the inference index uses sector labels.
+    """
     state_dims = [str(dim) for dim in design.dims if dim not in {"nmeasure", "source"}]
     if len(state_dims) != 1:
         raise ValueError("Multisector H requires one observation, source and state dimension.")
     state_dim = state_dims[0]
-    reserved_names = set(reserved_names)
-    if "source" not in design.dims and state_dim not in reserved_names:
-        return design.transpose("nmeasure", state_dim)
-    occupied = set(design.dims) | set(design.coords) | reserved_names
-    stacked_dim = "state"
-    suffix = 0
-    while stacked_dim in occupied:
-        suffix += 1
-        stacked_dim = "flux_state" if suffix == 1 else f"flux_state_{suffix}"
-    if "source" not in design.dims:
-        return design.rename({state_dim: stacked_dim}).transpose("nmeasure", stacked_dim)
-    return concat_gather_data_arrays(
-        {source: design.sel(source=source, drop=True) for source in design.get_index("source")},
-        key_dim="source", ragged_dim=state_dim, stack_dim=stacked_dim, join="exact",
-    ).transpose("nmeasure", stacked_dim)
+    stack_dim = "stacked_state_vector" if state_dim == "state_vector" and "source" in design.dims else "state_vector"
+    if stack_dim in design.coords and state_dim != stack_dim:
+        raise ValueError(f"Multisector H reserves {stack_dim!r} for its packed state dimension.")
+    if "source" in design.dims:
+        gathered = concat_gather_data_arrays(
+            {source: design.sel(source=source, drop=True) for source in design.get_index("source")},
+            key_dim="source", ragged_dim=state_dim, stack_dim=stack_dim, join="exact",
+        )
+    else:
+        gathered = design.rename({state_dim: stack_dim}) if state_dim != stack_dim else design
+    if sectors is not None:
+        index = gathered.get_index(stack_dim)
+        sources = index.get_level_values("source")
+        if "sector" in gathered.coords:
+            raise ValueError("Multisector H reserves 'sector' for the inferred component labels.")
+        sector_index = pd.MultiIndex.from_arrays(
+            [[sectors[str(source)] for source in sources] if name == "source"
+             else index.get_level_values(name) for name in index.names],
+            names=["sector" if name == "source" else name for name in index.names],
+        )
+        gathered = gathered.drop_vars([stack_dim, *index.names]).assign_coords(
+            xr.Coordinates.from_pandas_multiindex(sector_index, stack_dim),
+        ).assign_coords(source=(stack_dim, sources.to_numpy()))
+    return gathered.transpose("nmeasure", stack_dim)
 
 
 def _validate_unpadded_sector_design(

@@ -7,7 +7,6 @@ from dataclasses import replace
 from typing import Any
 
 import numpy as np
-import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
@@ -216,41 +215,8 @@ def _add_co2_o2_baseline_components(
                     f"{channel} boundary sensitivity must have its native observation axis first."
                 )
             native, _ = xr.align(native, sensitivity, join="exact", copy=False)
-            state_dim = str(native.dims[1])
-            rename = {
-                name: f"{channel}_{name}"
-                for name, coordinate in native.coords.items()
-                if state_dim in coordinate.dims
-            }
-            if isinstance(native.indexes[state_dim], pd.MultiIndex):
-                rename.update({name: f"{channel}_{name}" for name in native.indexes[state_dim].names})
-            native = native.rename(rename)
             activity = (bc_state_activity or {}).get(channel)
-            if activity is not None:
-                activity = replace(
-                    activity,
-                    **{
-                        name: value.rename(
-                            {
-                                key: val
-                                for key, val in rename.items()
-                                if key in value.dims or key in value.coords
-                            }
-                        )
-                        for name in ("active", "fixed_value")
-                        if isinstance(value := getattr(activity, name), xr.DataArray)
-                    },
-                    group_coord=rename.get(activity.group_coord, activity.group_coord),
-                )
             prior = dict((bc_prior or {}).get(channel, DEFAULT_BC_PRIOR))
-            prior = {
-                name: value.rename(
-                    {key: val for key, val in rename.items() if key in value.dims or key in value.coords}
-                )
-                if isinstance(value, xr.DataArray)
-                else value
-                for name, value in prior.items()
-            }
             design = _pad_channel_design(native, observations, channel)
             result = add_linear_component(
                 prepare_linear_sensitivity(design, output_dim=output_dim),
@@ -260,6 +226,7 @@ def _add_co2_o2_baseline_components(
                 output_name=f"{channel}_mu_bc",
                 output_dim=output_dim,
                 state_activity=activity,
+                coordinate_owner=f"bc_{channel}",
             )
             components.append((channel, result, design))
             boundaries.append(result.output)
@@ -411,6 +378,7 @@ def build_co2_o2_model(
             activity,
             retained_prior,
             var_name="flux_scaling",
+            coordinate_owner="flux",
         ).state
 
         # Preparation declares that this sensitivity already contains the fixed,
@@ -420,6 +388,7 @@ def build_co2_o2_model(
             state,
             data_name="co2_o2_sensitivity",
             output_name="co2_o2_flux_contribution",
+            coordinate_owner="flux",
         )
         baseline_components = _add_co2_o2_baseline_components(
             observations=observations,

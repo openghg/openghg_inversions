@@ -882,18 +882,18 @@ def test_build_rhime_model_contains_expected_variables(
     assert model.named_vars_to_dims == {
         "Y": ("nmeasure",),
         "aggregation_error_marginal_variance": ("nmeasure",),
-        "bc": ("bc_region",),
+        "bc": ("bc_bc_region",),
         "epsilon": ("nmeasure",),
         "error": ("nmeasure",),
-        "hbc": ("nmeasure", "bc_region"),
-        "hx": ("nmeasure", "region"),
+        "hbc": ("nmeasure", "bc_bc_region"),
+        "hx": ("nmeasure", "flux_region"),
         "min_error": ("nmeasure",),
         "mu": ("nmeasure",),
         "mu_bc": ("nmeasure",),
         "sigma": ("nsigma_site", "nsigma_time"),
         "sigma_period_index": ("nmeasure",),
         "sigma_site_index": ("nmeasure",),
-        "x": ("region",),
+        "x": ("flux_region",),
         "y": ("nmeasure",),
     }
 
@@ -1347,11 +1347,11 @@ def test_build_multisector_model_contains_expected_variables(
     )
 
     assert {"x", "hx", "mu", "bc", "mu_bc", "sigma", "epsilon", "y"}.issubset(model.named_vars)
-    assert model.named_vars_to_dims["x"] == ("state",)
-    assert model.named_vars_to_dims["hx"] == ("nmeasure", "state")
+    assert model.named_vars_to_dims["x"] == ("flux_state_vector",)
+    assert model.named_vars_to_dims["hx"] == ("nmeasure", "flux_state_vector")
     assert model.named_vars_to_dims["mu"] == ("nmeasure",)
     assert not any(name.startswith(("hx_", "mu_sector_", "mu_total_")) for name in model.named_vars)
-    assert len(model.coords["state"]) == 2 * multisector_inv_inputs.sizes["region"]
+    assert len(model.coords["flux_state_vector"]) == 2 * multisector_inv_inputs.sizes["region"]
 
 
 @pytest.mark.rhime_contract
@@ -2029,11 +2029,14 @@ def test_build_multisector_model_preserves_sector_priors_in_joint_state(
     registry = models.get_coord_registry(model)
     trace = models.restore_inferencedata_coords(cast(xr.DataTree, trace), registry)
     prior = trace.prior
-    ff = prior["x"].sel(source="total-ukghg-edgar7")
-    ocean = prior["x"].sel(source="sector-2")
+    ff = prior["x"].sel(flux_sector="FF")
+    ocean = prior["x"].sel(flux_sector="ocean")
     assert np.all((ff >= 1.0) & (ff <= 2.0))
     assert np.all((ocean >= 10.0) & (ocean <= 11.0))
-    np.testing.assert_allclose(prior["mu"], prior["x"].values @ model["hx"].get_value().T)
+    np.testing.assert_allclose(
+        prior["mu"], prior["x"].values @ model["hx"].get_value().T,
+        rtol=10 * np.finfo(prior["mu"].dtype).eps,
+    )
 
 
 def test_build_multisector_model_selects_sources_by_label(
@@ -2091,7 +2094,7 @@ def test_multisector_model_prunes_source_zero_columns_in_one_state(
         sigma_alignment=builder_args["sigma_alignment"],
     )
 
-    assert model.named_vars_to_dims["hx"] == ("nmeasure", "state_retained")
+    assert model.named_vars_to_dims["hx"] == ("nmeasure", "flux_state_vector_retained")
     stacked = inputs["H"].stack(state=("source", "region")).transpose("nmeasure", "state")
     retained = np.any(stacked.values != 0, axis=0)
     np.testing.assert_allclose(model["hx"].get_value(), stacked.values[:, retained])
@@ -2175,23 +2178,27 @@ def test_multisector_model_accepts_gathered_ragged_states(
     )
 
     np.testing.assert_allclose(model["hx"].get_value(), values.T)
-    assert model.named_vars_to_dims["x"] == ("state",)
+    assert model.named_vars_to_dims["x"] == ("flux_state_vector",)
     registry = models.get_coord_registry(model)
     assert registry is not None
-    assert registry.original_coords["state"].equals(state_index)
+    expected_index = pd.MultiIndex.from_tuples(
+        [("FF" if source == "ff-inventory" else "ocean", region) for source, region in state_index],
+        names=["flux_sector", "flux_region_in_source"],
+    )
+    assert registry.original_coords["flux_state_vector"].equals(expected_index)
     assert registry.original_coords["nmeasure"].equals(inv_inputs.indexes["nmeasure"])
     np.testing.assert_array_equal(
-        registry.auxiliary_coords["basis_group"], ["fixed", "active", "fixed", "active", "active"]
+        registry.auxiliary_coords["flux_basis_group"], ["fixed", "active", "fixed", "active", "active"]
     )
     with model:
         prior = pm.sample_prior_predictive(draws=2, var_names=["x", "mu"], random_seed=535)
     prior = models.restore_inferencedata_coords(cast(xr.DataTree, prior), registry)
     dataset = prior.prior
-    assert dataset.indexes["state"].equals(state_index)
-    north = dataset["x"].sel(state=("ff-inventory", "north"))
+    assert dataset.indexes["flux_state_vector"].equals(expected_index)
+    north = dataset["x"].sel(flux_state_vector=("FF", "north"))
     assert np.all((north >= 10.0) & (north <= 11.0))
-    np.testing.assert_allclose(dataset["x"].sel(state=("ff-inventory", "south")), 2.0)
-    np.testing.assert_allclose(dataset["x"].sel(state=("ocean-inventory", "atlantic")), 1.0)
+    np.testing.assert_allclose(dataset["x"].sel(flux_state_vector=("FF", "south")), 2.0)
+    np.testing.assert_allclose(dataset["x"].sel(flux_state_vector=("ocean", "atlantic")), 1.0)
     np.testing.assert_allclose(dataset["mu"], dataset["x"].values @ values)
     assert dataset.indexes["nmeasure"].equals(inv_inputs.indexes["nmeasure"])
 
@@ -2560,7 +2567,7 @@ def test_bc_zero_columns_are_structurally_removed_by_default(
     assert model["bc"].eval()[0] == 1.0
     registry = models.get_coord_registry(model)
     assert registry is not None
-    assert list(registry.original_coords["bc_region_bc_active"]) == list(
+    assert list(registry.original_coords["bc_bc_region_bc_active"]) == list(
         inv_inputs["H_bc"].indexes["bc_region"][1:]
     )
     actual, state = pm.draw([model["mu_bc"], model["bc"]], random_seed=417)
@@ -5229,12 +5236,12 @@ def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layo
     state_dim = next(dim for dim in sensitivity.dims if dim != "nmeasure")
     state_measurement_code = np.arange(sensitivity.size).reshape(sensitivity.shape)
     inv_inputs["H"] = sensitivity.assign_coords(
-        sector=(state_dim, sensitivity.coords["source"].values),
+        inventory_label=(state_dim, sensitivity.coords["source"].values),
         state_measurement_code=(sensitivity.dims, state_measurement_code),
         observation_label=("nmeasure", ["shared-observation"]),
     )
     expected_state_index = inv_inputs.indexes[state_dim].copy()
-    expected_sector = inv_inputs["sector"].copy(deep=True)
+    expected_inventory = inv_inputs["inventory_label"].copy(deep=True)
     expected_state_measurement_code = inv_inputs["state_measurement_code"].copy(deep=True)
 
     prepared = RhimePreparedInputs(
@@ -5251,7 +5258,7 @@ def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layo
     assert isinstance(loaded_state_index, pd.MultiIndex)
     assert loaded_state_index.names == ["source", "region_in_source"]
     assert loaded_state_index.equals(expected_state_index)
-    xr.testing.assert_identical(loaded.inv_inputs["sector"], expected_sector)
+    xr.testing.assert_identical(loaded.inv_inputs["inventory_label"], expected_inventory)
     xr.testing.assert_identical(
         loaded.inv_inputs["state_measurement_code"],
         expected_state_measurement_code,
@@ -5261,13 +5268,19 @@ def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layo
     built = rhime_multisector.build_multisector_model(model_inputs, model_spec, priors=priors)
 
     xr.testing.assert_identical(loaded.inv_inputs, loaded_before_run)
-    assert built.model.named_vars_to_dims["x"] == (state_dim,)
+    assert built.model.named_vars_to_dims["x"] == ("flux_state_vector",)
     registry = models.get_coord_registry(built.model)
     assert registry is not None
-    assert registry.original_coords[state_dim].equals(expected_state_index)
-    np.testing.assert_array_equal(registry.auxiliary_coords["sector"], expected_sector)
-    codes = registry.auxiliary_coords["state_measurement_code"]
-    np.testing.assert_array_equal(codes, expected_state_measurement_code.transpose(*codes.dims))
+    expected_model_index = pd.MultiIndex.from_tuples(
+        [("FF" if source == "ff-inventory" else "ocean", region) for source, region in expected_state_index],
+        names=["flux_sector", "flux_region_in_source"],
+    )
+    assert registry.original_coords["flux_state_vector"].equals(expected_model_index)
+    np.testing.assert_array_equal(registry.auxiliary_coords["flux_inventory_label"], expected_inventory)
+    codes = registry.auxiliary_coords["flux_state_measurement_code"]
+    np.testing.assert_array_equal(
+        codes, expected_state_measurement_code.rename({state_dim: "flux_state_vector"}).transpose(*codes.dims),
+    )
     observation_label = registry.auxiliary_coords["observation_label"]
     assert observation_label.dims == ("nmeasure",)
     assert observation_label.values.tolist() == ["shared-observation"]
@@ -8319,7 +8332,7 @@ def test_run_rhime_api_smoke(
         assert self.draws == 1
         assert variable_roles is not None
         assert variable_roles["concentration"] == "y"
-        assert model.named_vars_to_dims["x"] == ("region",)
+        assert model.named_vars_to_dims["x"] == ("flux_region",)
         x_owner = model["x"].owner
         assert x_owner is not None and type(x_owner.op).__name__ == "NormalRV"
         np.testing.assert_allclose(pm.draw(x_owner.inputs[-2]), 1.25)

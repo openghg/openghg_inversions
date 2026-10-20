@@ -200,6 +200,7 @@ def build_co2_model(
             activity,
             retained_prior,
             var_name="flux_scaling",
+            coordinate_owner="flux",
         ).state
         scaled_flux_contribution = apply_linear_sensitivity(
             prepared_flux,
@@ -207,6 +208,7 @@ def build_co2_model(
             data_name="co2_sensitivity",
             output_name="co2_flux_contribution",
             compute_deterministic=False,
+            coordinate_owner="flux",
         )
         co2_flux_contribution = add_coherent_affine_component(
             fixed_prior_contribution,
@@ -224,6 +226,7 @@ def build_co2_model(
                 output_dim="nmeasure",
                 compute_deterministic=True,
                 state_activity=bc_state_activity,
+                coordinate_owner="bc",
             ).output
 
         offset = None

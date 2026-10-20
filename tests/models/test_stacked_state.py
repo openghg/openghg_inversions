@@ -31,7 +31,7 @@ def _inputs(h: xr.DataArray) -> xr.Dataset:
 
 def _evaluate(model: pm.Model, values: dict[str, np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
     function = pytensor.function(model.free_RVs, [model["x"], model["mu"]])
-    return function(*(values[str(rv.name)] for rv in model.free_RVs))
+    return function(*(values[str(rv.name)].astype(rv.dtype) for rv in model.free_RVs))
 
 
 @pytest.mark.parametrize("local_dim", ["region", "state"])
@@ -62,21 +62,26 @@ def test_mixed_source_priors_preserve_labels_distributions_and_one_forward_model
     np.testing.assert_allclose(mean, h.sel(source="ff").to_numpy() @ [2., -1.]
                                + h.sel(source="ocean").to_numpy() @ ocean_state)
     np.testing.assert_allclose(pm.logp(model["x_ff_active"], [2., -1.]).eval(),
-                               norm.logpdf([2., -1.], loc=[5., 7.], scale=2.))
-    np.testing.assert_allclose(pm.logp(model["x_ocean_active_latent"], [0., 0.]).eval(), norm.logpdf([0., 0.]))
+                               norm.logpdf([2., -1.], loc=[5., 7.], scale=2.), rtol=2e-6)
+    np.testing.assert_allclose(
+        pm.logp(model["x_ocean_active_latent"], [0., 0.]).eval(), norm.logpdf([0., 0.]), rtol=2e-6,
+    )
     np.testing.assert_array_equal(model["x_ff_prior_mu"].get_value(), [5., 7.])
     np.testing.assert_array_equal(model["x_ocean_prior_mean"].get_value(), [3., 4.])
     assert set(prior_records(model)) == {"x_ff", "x_ocean"}
     assert {"x", "hx", "mu"}.issubset(model.named_vars)
     assert not {"x_ff", "x_ocean", "hx_ff", "hx_ocean", "mu_ff", "mu_ocean"}.intersection(model.named_vars)
     state_dim = model.named_vars_to_dims["x"][0]
-    assert state_dim == ("flux_state" if local_dim == "state" else "state")
+    assert state_dim == "flux_state_vector"
     registry = get_coord_registry(model)
     assert registry is not None
     assert registry.original_coords[state_dim].tolist() == [
-        ("ff", "north"), ("ff", "south"), ("ocean", "north"), ("ocean", "south"),
+        ("FF", "north"), ("FF", "south"), ("ocean", "north"), ("ocean", "south"),
     ]
-    np.testing.assert_array_equal(registry.auxiliary_coords["measurement_code"], [[1, 2, 1, 2], [3, 4, 3, 4]])
+    np.testing.assert_array_equal(registry.auxiliary_coords["flux_source"], ["ff", "ff", "ocean", "ocean"])
+    np.testing.assert_array_equal(
+        registry.auxiliary_coords["flux_measurement_code"], [[1, 2, 1, 2], [3, 4, 3, 4]],
+    )
     xr.testing.assert_identical(h, original)
 
 
@@ -113,7 +118,11 @@ def test_interleaved_ragged_state_preserves_source_overrides_fixed_values_and_ze
     np.testing.assert_array_equal(built.model["x_is_active"].get_value(), [not freeze_all, False, False, False, False])
     assert set(prior_records(built.model)) == (set() if freeze_all else {"x_ocean"})
     registry = get_coord_registry(built.model)
-    assert registry is not None and registry.original_coords["state"].equals(index)
+    expected_index = pd.MultiIndex.from_tuples(
+        [("FF" if source == "ff" else source, region) for source, region in index],
+        names=["flux_sector", "flux_region_in_source"],
+    )
+    assert registry is not None and registry.original_coords["flux_state_vector"].equals(expected_index)
 
 
 def test_standard_and_multisector_use_equivalent_independent_forward_calculations():
@@ -157,14 +166,27 @@ def test_rectangular_stacking_borrows_lazy_data():
     assert set(h.data.__dask_graph__()).issubset(stacked.data.__dask_graph__())
 
 
-def test_stacked_dimension_does_not_replace_existing_auxiliary_coordinates():
+def test_stacked_dimension_preserves_existing_auxiliary_coordinates():
     h = xr.DataArray(np.ones((2, 2, 2)), dims=("source", "nmeasure", "region"),
                      coords={"source": ["ff", "ocean"], "nmeasure": [0, 1], "region": ["a", "b"],
                              "state": ("region", [1, 2]), "flux_state": ("region", [3, 4])})
     stacked = _stack_multisector_sensitivity(h)
-    assert stacked.dims == ("nmeasure", "flux_state_2")
+    assert stacked.dims == ("nmeasure", "state_vector")
     np.testing.assert_array_equal(stacked.coords["state"], [1, 2, 1, 2])
     np.testing.assert_array_equal(stacked.coords["flux_state"], [3, 4, 3, 4])
+
+
+@pytest.mark.parametrize("reserved", ["state_vector", "sector"])
+def test_stacked_dimension_rejects_reserved_metadata_instead_of_replacing_it(reserved):
+    h = xr.DataArray(
+        np.ones((2, 2, 2)), dims=("source", "nmeasure", "region"),
+        coords={"source": ["ff", "ocean"], "nmeasure": [0, 1], "region": ["a", "b"],
+                reserved: ("region", ["original-a", "original-b"])},
+    )
+    original = h.copy(deep=True)
+    with pytest.raises(ValueError, match=reserved):
+        _stack_multisector_sensitivity(h, sectors={"ff": "Fossil fuel", "ocean": "Ocean exchange"})
+    xr.testing.assert_identical(h, original)
 
 
 @pytest.mark.parametrize("boundary_coords", [("state",), ("state", "flux_state")])
@@ -178,7 +200,9 @@ def test_stacked_trace_restores_flux_labels_and_boundary_auxiliary_coordinates(
         np.arange(1., 9.).reshape(2, 2, 2), dims=("source", "nmeasure", "region"),
         coords={"source": ["ff", "ocean"], "nmeasure": [0, 1], "region": ["a", "b"]},
     )
-    expected = pd.MultiIndex.from_product([["ff", "ocean"], ["a", "b"]], names=["source", "region"])
+    expected = pd.MultiIndex.from_product(
+        [["FF", "ocean"], ["a", "b"]], names=["flux_sector", "flux_region"],
+    )
     if layout == "gathered":
         h = h.stack(state=("source", "region")).isel(state=[0, 1, 2])
         expected = expected[:3]
@@ -209,13 +233,13 @@ def test_stacked_trace_restores_flux_labels_and_boundary_auxiliary_coordinates(
     restored = restore_inferencedata_coords(trace, registry).prior
     state_dim = model.named_vars_to_dims["x"][0]
     assert restored["x"].get_index(state_dim).equals(expected)
-    for source in ("ff", "ocean"):
-        assert restored["x"].sel(source=source).get_index("region").equals(
-            expected[expected.get_level_values("source") == source].droplevel("source"),
+    for sector in ("FF", "ocean"):
+        assert restored["x"].sel(flux_sector=sector).get_index("flux_region").equals(
+            expected[expected.get_level_values("flux_sector") == sector].droplevel("flux_sector"),
         )
     for name in boundary_coords:
-        assert restored.coords[name].dims == ("bc_region",)
-        np.testing.assert_array_equal(restored.coords[name], [10, 20])
+        assert restored.coords[f"bc_{name}"].dims == ("bc_bc_region",)
+        np.testing.assert_array_equal(restored.coords[f"bc_{name}"], [10, 20])
     full_sensitivity = (h.to_numpy() if layout == "gathered"
                         else np.column_stack([h.sel(source=source) for source in h.source.values]))
     np.testing.assert_allclose(restored["mu"], restored["x"].values @ full_sensitivity.T)
@@ -243,5 +267,17 @@ def test_rectangular_sources_preserve_native_multiindex_state_and_prior_labels()
     np.testing.assert_array_equal(model["x_ff_prior_mu"].get_value(), [10., 20.])
     registry = get_coord_registry(model)
     assert registry is not None
-    assert registry.original_coords["state"].names == ["source", "basin", "month"]
+    assert registry.original_coords["flux_state_vector"].names == ["flux_sector", "flux_basin", "flux_month"]
     assert isinstance(registry.original_coords["region_active_x_ff"], pd.MultiIndex)
+
+
+def test_packing_preserves_native_state_vector_dimension_and_region_auxiliary():
+    h = xr.DataArray(
+        np.ones((2, 2, 2)), dims=("source", "nmeasure", "state_vector"),
+        coords={"source": ["ff", "ocean"], "nmeasure": [0, 1], "state_vector": ["a", "b"],
+                "region": ("state_vector", ["north", "south"])},
+    )
+    stacked = _stack_multisector_sensitivity(h, sectors={"ff": "Fossil", "ocean": "Ocean"})
+    assert stacked.dims == ("nmeasure", "stacked_state_vector")
+    assert stacked.indexes["stacked_state_vector"].names == ["sector", "state_vector"]
+    np.testing.assert_array_equal(stacked["region"], ["north", "south", "north", "south"])

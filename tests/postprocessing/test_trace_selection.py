@@ -10,6 +10,7 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.postprocessing.inversion_output import merge_trace_groups
+from openghg_inversions.models.coords import component_coords
 
 
 @pytest.mark.parametrize("lazy", [False, True], ids=["numpy", "dask"])
@@ -134,3 +135,41 @@ def test_converter_default_and_unsuffixed_group_selection():
         merge_trace_groups(trace, groups=["constant_data"], add_suffix=False, var_names=["h"]),
         constant[["h"]],
     )
+
+
+@pytest.mark.parametrize("shared_source", [None, "inventory", "observation-source"])
+def test_selected_flux_restores_local_state_without_changing_combined_trace(
+    multisector_postprocessing_inv_out, shared_source,
+):
+    """Flux reconstruction restores local labels; unrelated component axes stay separate."""
+    local = xr.DataArray(
+        [2., 3.], dims="region",
+        coords={"region": [9, 4], "source": ("region", ["inventory", "inventory"])},
+    ).chunk()
+    flux = component_coords(local, "flux").expand_dims(chain=[0], draw=[0])
+    boundary = component_coords(
+        local.assign_coords(region=[1, 2], source=("region", ["boundary", "boundary"])), "bc",
+    ).expand_dims(chain=[0], draw=[0])
+    group = xr.Dataset({"x": flux, "bc": boundary})
+    if shared_source is not None:
+        group = group.assign_coords(source=shared_source)
+    output = replace(
+        multisector_postprocessing_inv_out(),
+        trace=xr.DataTree.from_dict({"posterior": group}),
+        model_metadata={"variable_roles": {"flux_scale": "x"}},
+    )
+    borrowed = output.trace["posterior"]["x"].data
+    selected = output.trace_dataset(var_roles="flux_scale")
+    assert selected.x_posterior.dims == ("chain", "draw", "region")
+    np.testing.assert_array_equal(selected.region, [9, 4])
+    np.testing.assert_array_equal(selected.source, ["inventory", "inventory"])
+    assert selected.x_posterior.data is borrowed
+    combined = output.trace_dataset(var_names=["x", "bc"])
+    assert combined.x_posterior.dims == ("chain", "draw", "flux_region")
+    assert combined.bc_posterior.dims == ("chain", "draw", "bc_region")
+    np.testing.assert_array_equal(combined.flux_source, ["inventory", "inventory"])
+    np.testing.assert_array_equal(combined.bc_source, ["boundary", "boundary"])
+    if shared_source is not None:
+        assert combined.source.item() == shared_source
+        assert output.trace["posterior"].source.item() == shared_source
+    assert output.trace["posterior"]["x"].data is borrowed

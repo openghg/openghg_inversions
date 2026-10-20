@@ -333,11 +333,13 @@ for each source block:
 
 Standard and multisector expose the same physical ``x``, two-dimensional
 sensitivity data ``hx`` and combined flux contribution ``mu``. Multisector
-``x`` carries a gathered source/local-state index, including when sources have
+``x`` carries a gathered sector/local-state index, including when sources have
 different region counts. Source values select the corresponding input blocks;
-sector names identify their priors and reporting labels. They are not required
-to be the same strings. Rectangular preparation is packed only for construction,
-without changing the retained preparation or basis.
+sector names identify their inferred states, priors and reporting labels.
+The current mapping associates each sector with one distinct acquisition
+source; it does not aggregate multiple sources into one sector. Rectangular
+preparation is packed only for construction, without changing the retained
+preparation or basis.
 Registered ``hx`` may omit structurally zero columns; the shared linear operation
 selects ``x`` entries for the columns retained in ``hx``. Use complete prepared
 source blocks with their matching full-state blocks when reconstructing the
@@ -364,8 +366,28 @@ helper still relies on conventional names for boundary, offset, error, and
 likelihood components; there is not yet one allocator for the complete model
 namespace.
 
-Generated-name reporting, whole-model allocation, and component namespaces are
-not implemented. They are tracked in
+State coordinates have explicit component ownership. Flux dimensions,
+MultiIndex levels and state-dependent auxiliaries use ``flux_``; boundary
+coordinates use ``bc_`` (``bc_co2_`` and ``bc_o2_`` for linked channels).
+Observation dimensions, their site/time coordinates and scalar Dataset metadata
+remain shared. Independent component provenance should be indexed by its state
+dimension.
+Multisector ``x`` uses ``flux_state_vector``, with ``flux_sector`` identifying
+the inferred sector and ``flux_source`` retaining acquisition provenance.
+Auxiliary input names ``state_vector`` and ``sector`` are reserved at the
+multisector packing boundary. Ownership metadata survives trace serialization;
+output reconstruction restores local coordinates for the selected component
+before aligning with its retained basis or affine map. Conflicting labels
+within one component still fail.
+
+Flux and boundary priors can contribute to one numerical linear operation
+without changing their distributions. Their scientific states remain separately
+labelled: they can have different local indexes and auxiliary metadata.
+Concatenating their numerical arrays does not by itself define a shared
+scientific index or change the ``flux_scale`` output role.
+
+Automatic generated-name reporting and whole-model variable allocation remain
+tracked in
 `issue #532 <https://github.com/openghg/openghg_inversions/issues/532>`_.
 
 Alternative models and likelihoods
@@ -551,7 +573,8 @@ public model components so inference can restore MultiIndexes and auxiliary
 scientific coordinates. Keep the output contract consistent with the graph:
 standard and multisector roles include ``flux_scale: x``,
 ``emissions_sensitivity: hx`` and ``flux_contribution: mu``. Multisector
-sector/source metadata selects blocks from the full state. Omit roles for absent
+sector metadata selects blocks from the full state; source metadata identifies
+the corresponding acquisition inputs. Omit roles for absent
 terms. The flux reconstruction and products shown here require the existing
 multiplicative sector-state meaning,
 retained basis and source mappings. A model that changes those meanings must

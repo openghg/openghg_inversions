@@ -281,10 +281,13 @@ then ``save_inversion_output(result, output_spec)`` for exports.
 
 New standard and multisector models expose one full physical ``x``, sensitivity
 ``hx`` and combined flux concentration contribution ``mu``. Multisector callers
-select a source-labelled block from ``result.trace_group("posterior")["x"]``
-rather than read ``x_<sector>`` variables; use the saved sector/source mapping
-when scientific sector names differ from inventory names. Existing current-format
-built-in sample handoffs with ``x_<suffix>`` state names remain readable. This
+select a sector block from ``result.trace_group("posterior")["x"]`` with
+``.sel(flux_sector=sector_name)``. ``flux_source`` records its associated
+acquisition inventory. State dimensions, MultiIndex levels and auxiliaries use
+component prefixes such as ``flux_`` and ``bc_``; output reconstruction restores
+local coordinates from metadata. Existing current-format built-in sample
+handoffs with acquisition-source-indexed ``x`` or separate ``x_<suffix>`` state
+variables remain readable. This
 does not restore the retired historical staged-envelope format.
 
 ``RhimeRunSpec`` and ``RhimeResult`` are removed after their final cached CO2

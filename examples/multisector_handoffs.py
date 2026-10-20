@@ -175,8 +175,8 @@ def run_example(destination: Path, *, draws: int = 20) -> None:
         posterior = replay.trace["posterior"]
         scales = posterior[replay.variable_name("flux_scale")]
         expected_total = (
-            scales.sel(source="supplemental", drop=True).mean(("chain", "draw")).squeeze() * flux["supplemental"]
-            + scales.sel(source="inventory", drop=True).mean(("chain", "draw")).squeeze() * flux["inventory"]
+            scales.sel(flux_sector="biosphere", drop=True).mean(("chain", "draw")).squeeze() * flux["supplemental"]
+            + scales.sel(flux_sector="fossil", drop=True).mean(("chain", "draw")).squeeze() * flux["inventory"]
         )
         # Native reporting preserves each inventory's within-region spatial pattern.
         diagnostics = make_sector_flux_outputs(replay, stats=["mean"], report_flux_on_inversion_grid=False)

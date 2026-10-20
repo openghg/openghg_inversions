@@ -179,4 +179,4 @@ def test_real_oco2_prepared_inputs_run_through_multisector_model(
     assert tuple(result.inv_inputs.source.values) == _FLUX_SOURCES
     assert {"x", "mu"}.issubset(result.trace["posterior"])
     assert result.variable_roles["flux_scale"] == "x"
-    assert tuple(dict.fromkeys(result.trace["posterior"]["x"].source.values.tolist())) == _FLUX_SOURCES
+    assert tuple(dict.fromkeys(result.trace["posterior"]["x"].flux_source.values.tolist())) == _FLUX_SOURCES

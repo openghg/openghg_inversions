@@ -152,19 +152,19 @@ def test_fixed_outer_parity_uses_one_full_state_and_group_labels() -> None:
 
     registry = get_coord_registry(model)
     assert registry is not None
-    assert registry.auxiliary_coords["basis_group"].values.tolist() == [
+    assert registry.auxiliary_coords["flux_basis_group"].values.tolist() == [
         "inner",
         "outer",
         "inner",
         "outer",
     ]
-    assert registry.auxiliary_coords["basis_partition"].values.tolist() == [
+    assert registry.auxiliary_coords["flux_basis_partition"].values.tolist() == [
         "inner-grid",
         "outer-grid",
         "inner-grid",
         "outer-grid",
     ]
-    assert registry.auxiliary_coords["region_in_partition"].values.tolist() == [
+    assert registry.auxiliary_coords["flux_region_in_partition"].values.tolist() == [
         1,
         1,
         2,

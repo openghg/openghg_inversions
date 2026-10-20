@@ -15,6 +15,7 @@ from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, s
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
 from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.models.coords import component_coords
 from openghg_inversions.postprocessing import co2_flux_outputs, stats
 from openghg_inversions.postprocessing._basis_products import bounded_affine_flux_map
 from openghg_inversions.postprocessing.co2_flux_outputs import (
@@ -98,6 +99,22 @@ def _oracle(bound, state):
     return mapping.flux.values * (
         mapping.native_mean.values + np.einsum("slir,cdr->cdsli", mapping.prolongation.values, delta)
     )
+
+
+def test_affine_outputs_restore_component_owned_state_coordinates():
+    """A model coordinate namespace does not change conditional flux reconstruction."""
+    bound, trace, countries = _fixture()
+    expected_native = co2_native_flux_outputs(trace, bound)
+    expected_country = co2_country_flux_outputs(trace, bound, countries)
+    owned = component_coords(bound.reference_state, "flux")
+    for group in ("prior", "posterior"):
+        state = trace[group]["retained_draws"]
+        qualified = state.rename(region="flux_region").assign_coords(owned.coords)
+        trace[group] = xr.Dataset({"retained_draws": qualified.chunk({"draw": 1})})
+    borrowed = trace["posterior"]["retained_draws"].data
+    xr.testing.assert_allclose(co2_native_flux_outputs(trace, bound), expected_native)
+    xr.testing.assert_allclose(co2_country_flux_outputs(trace, bound, countries), expected_country)
+    assert trace["posterior"]["retained_draws"].data is borrowed
 
 
 def _assert_summary(result, prefix, draws, dims):

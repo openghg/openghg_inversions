@@ -130,12 +130,13 @@ Shared-basis preparation represents sensitivity as
 ``H(region, nmeasure, source)``. Source-specific bases may instead use one
 gathered state dimension labelled by ``(source, region_in_source)``. In either
 case, construction uses one full physical state ``x`` and one two-dimensional
-sensitivity ``hx``. Rectangular inputs are packed into a gathered source/local
+sensitivity ``hx``. Rectangular inputs are packed into a gathered sector/local
 state index for the model; the prepared ``H`` keeps its original layout.
-Select a posterior block by its source label, for example
-``result.trace_group("posterior")["x"].sel(source="wetcharts-v131-wetlands")``;
+Select a posterior block by its inferred sector label, for example
+``result.trace_group("posterior")["x"].sel(flux_sector="wetlands")``;
 never infer sector identity from axis position. The blocks scale their own
-prior fluxes, and ``mu`` gives their combined pollution concentration.
+prior fluxes, ``flux_source`` records the associated acquisition inventory,
+and ``mu`` gives their combined pollution concentration.
 See :doc:`rhime` for both prepared layouts and :doc:`concrete_rhime_model` for
 the scientific-role mapping.
 

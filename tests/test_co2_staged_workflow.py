@@ -191,7 +191,7 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(
     assert prior["status"] == "pass"
     prior_trace = load_trace(tmp_path / "prior" / "prior-predictive.nc")
     assert prior_trace["prior_predictive"].indexes["nmeasure"].equals(original.inv_inputs.indexes["nmeasure"])
-    assert prior_trace["prior"].indexes["region"].equals(original.inv_inputs.indexes["region"])
+    assert prior_trace["prior"].indexes["flux_region"].equals(original.inv_inputs.indexes["region"])
     _cli("sample", *common, *handoff, "--output-dir", tmp_path / "sample")
     trace = load_trace(posterior)
     roles = json.loads(trace.attrs["rhime_variable_roles"])
@@ -200,7 +200,7 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(
     assert saved_prior.indexes["nmeasure"].equals(original.inv_inputs.indexes["nmeasure"])
     assert np.isfinite(saved_prior).all()
     draws = trace["posterior"].to_dataset()
-    state = draws[roles["flux_scale"]]
+    state = draws[roles["flux_scale"]].rename(flux_region="region")
     np.testing.assert_allclose(state.sel(region=1), 0.9)
     expected_flux = (
         xr.dot(original.inv_inputs.H, state, dim="region") + original.inv_inputs.fixed_prior_contribution

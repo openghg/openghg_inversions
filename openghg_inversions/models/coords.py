@@ -23,6 +23,70 @@ from pytensor.tensor.sharedvar import TensorSharedVariable
 from pytensor.tensor.variable import TensorVariable
 
 
+def component_coords(
+    array: xr.DataArray, owner: str | None, *, observation_dim: str = "nmeasure",
+) -> xr.DataArray:
+    """Qualify component-owned state coordinates without copying array payloads.
+
+    Observation coordinates and scalar metadata remain shared. Every other dimension and coordinate
+    depending on it receives the explicit owner's prefix. Coordinate attributes
+    retain the local scientific name for output reconstruction.
+
+    Args:
+        array: Borrowed scientific array.
+        owner: Explicit component name, or ``None`` to retain local names.
+        observation_dim: Shared observation dimension, excluded from qualification.
+
+    Returns:
+        Labelled view sharing the original numerical payload.
+    """
+    if owner is None:
+        return array
+    state_dims = set(array.dims) - {observation_dim}
+    rename = {
+        str(name): f"{owner}_{name}"
+        for name, coord in array.coords.items()
+        if name in state_dims or state_dims.intersection(coord.dims)
+    }
+    rename.update({str(dim): f"{owner}_{dim}" for dim in state_dims})
+    result = array.rename(rename)
+    for local, qualified in rename.items():
+        if qualified in result.coords:
+            result.coords[qualified].attrs = {
+                **result.coords[qualified].attrs,
+                "rhime_component": owner,
+                "rhime_local_name": local,
+            }
+    return result
+
+
+def local_component_coords(array: xr.DataArray, owner: str) -> xr.DataArray:
+    """Restore a component's scientific names from explicit coordinate metadata.
+
+    Historical arrays without ownership metadata pass through unchanged.
+
+    Args:
+        array: Selected component array from a restored trace.
+        owner: Component whose coordinate names should be restored.
+
+    Returns:
+        View with the recorded local scientific coordinate names.
+    """
+    rename = {
+        str(name): str(coord.attrs["rhime_local_name"])
+        for name, coord in array.coords.items()
+        if coord.attrs.get("rhime_component") == owner and "rhime_local_name" in coord.attrs
+    }
+    shadowed = [
+        local for qualified, local in rename.items()
+        if qualified != local and local in array.coords and not array.coords[local].dims
+        and not array.coords[local].attrs.get("rhime_component")
+    ]
+    if shadowed:
+        array = array.drop_vars(shadowed)
+    return array.rename(rename) if rename else array
+
+
 def add_model_data(data: xr.DataArray, name: str | None = None) -> TensorVariable:
     """Register labelled numerical data on the active registered model.
 
@@ -147,11 +211,14 @@ class CoordRegistry:
         auxiliary_coords: Additional non-dimension coordinates attached to
             model dimensions, such as exploded ``time`` or ``site`` coordinates
             derived from a stacked ``nmeasure`` MultiIndex.
+        coordinate_attrs: Scientific coordinate attributes, including explicit
+            component ownership and local names used by output reconstruction.
     """
 
     pymc_coords: dict[str, np.ndarray] = field(default_factory=dict)
     original_coords: dict[str, Any] = field(default_factory=dict)
     auxiliary_coords: dict[str, xr.DataArray] = field(default_factory=dict)
+    coordinate_attrs: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def _store_original_coord(self, name: str, coord: Any) -> None:
         """Store an original coordinate, rejecting conflicting re-registrations."""
@@ -197,6 +264,9 @@ class CoordRegistry:
                 with conflicting lengths, shapes, or values.
         """
         mapping = _coords_to_mapping(coords)
+        for name, coord in mapping.items():
+            if isinstance(coord, xr.DataArray) and coord.attrs:
+                self.coordinate_attrs.setdefault(name, dict(coord.attrs))
         dims_to_register = tuple(model_dims) if model_dims is not None else tuple(mapping)
         dim_set = set(dims_to_register)
         pymc_coords = sanitize_coords_for_pymc(coords, model_dims=dims_to_register)
@@ -370,6 +440,11 @@ def restore_inferencedata_coords(
                 # would trigger xarray label alignment against the restored
                 # labels and silently replace ordinary auxiliaries with NaN.
                 group = group.assign_coords({name: (coord.dims, np.array(coord.values, copy=True))})
+
+        if isinstance(coords_or_registry, CoordRegistry):
+            for name, attrs in coords_or_registry.coordinate_attrs.items():
+                if name in group.coords:
+                    group.coords[name].attrs.update(attrs)
 
         idata[group_name] = group
 

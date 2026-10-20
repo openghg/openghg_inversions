@@ -9,7 +9,9 @@ footprint acquisition options.
 Use :func:`openghg_inversions.rhime.run_rhime_multisector` when every flux
 component should have its own scaling prior within the full state. The
 ``flux_sources`` values are the OpenGHG ``source`` metadata used for retrieval. Optional
-``sector_sources`` entries give those sources shorter model-facing names.
+``sector_sources`` entries identify the independently inferred sectors and map
+each one to its acquisition source. The current mapping is one-to-one: it does
+not combine several inventories into one inferred sector.
 
 Before running
 --------------
@@ -166,16 +168,17 @@ slice per requested flux source. Satellite inputs should also contain finite
 applied. Column runs retain ``mf_prior_factor`` and, when supplied,
 ``mf_prior_upper_level_factor`` in ``inv_inputs``.
 
-The posterior contains one full scaling variable, ``x``, on a gathered state
-coordinate carrying the source and local state labels. Its blocks retain their
-sector-specific priors. Use the scientific role to find the variable and the
-recorded source association to select a sector:
+The posterior contains one full scaling variable, ``x``, on ``flux_state_vector``.
+Its MultiIndex carries ``flux_sector`` and the sector's local state labels;
+``flux_source`` retains acquisition provenance. Each sector block retains its
+own prior. Use the scientific role to find the variable and the sector name
+to select its state:
 
 .. code-block:: python
 
    scales = result.trace_group("posterior")[result.variable_name("flux_scale")]
    for sector in result.model_metadata["sectors"]:
-       block = scales.sel(source=sector["flux_source"], drop=True)
+       block = scales.sel(flux_sector=sector["name"], drop=True)
        print(sector["name"], block.mean().item())
 
 The model uses one two-dimensional sensitivity ``hx`` and one total flux
@@ -183,6 +186,19 @@ concentration contribution ``mu``. Rectangular prepared ``H`` is packed only
 for model construction; the prepared inputs and retained basis remain unchanged.
 The first requested ``flux_sources`` entry supplies automatic basis weighting.
 Changing the order of ``sector_sources`` does not change that preparation choice.
+Flux state coordinates use the ``flux_`` prefix; boundary state coordinates use
+``bc_``. Observation coordinates remain shared. The model gathers multisector
+state into the fixed dimension ``state_vector`` before qualification; auxiliary
+input coordinates named ``state_vector`` or ``sector`` are reserved and rejected.
+For a rectangular input whose local state dimension is already ``state_vector``,
+the packed dimension is ``stacked_state_vector`` instead, preserving the native
+level name; that packed name is reserved for this layout.
+
+Output functions restore local basis coordinates from saved coordinate metadata.
+They also read earlier gathered traces indexed by acquisition ``source`` and
+historical per-sector variables. Newly sampled traces always use the sector
+index and component prefixes above; direct trace-inspection code must use those
+names.
 
 The returned value is the modern, serializable scientific result, including with
 ``output_format="none"``. ``output_format="inv_out"`` requests its file export;

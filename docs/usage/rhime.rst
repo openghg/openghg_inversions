@@ -144,8 +144,10 @@ supports one distinct source and one independent prior block per sector in a
 single full physical state ``x``. Its two-dimensional model sensitivity ``hx``
 uses the matching retained entries of that state to produce the combined flux
 concentration contribution ``mu``. Rectangular sensitivity inputs are packed
-into a gathered source/local state index for construction only; prepared inputs and basis artifacts retain
-their existing layouts. Select source blocks from ``x`` by label. The first
+into a gathered sector/local state index for construction only; prepared inputs
+and basis artifacts retain their existing layouts. Select sector blocks from
+``x`` with ``.sel(flux_sector=sector_name)``; ``flux_source`` retains the
+acquisition-source association. The first
 requested ``flux_sources`` entry still supplies basis weighting, independently
 of sector declaration order.
 Rectangular legacy inputs may carry ``source_region_count(source)`` so padded

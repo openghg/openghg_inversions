@@ -198,7 +198,7 @@ def test_co2_model_exposes_affine_correlated_dense_covariance_graph() -> None:
         "y",
     } <= set(model.named_vars)
     assert "outer_flux_contribution" not in model.named_vars
-    assert model.named_vars_to_dims["flux_scaling"] == ("region",)
+    assert model.named_vars_to_dims["flux_scaling"] == ("flux_region",)
     assert model.named_vars_to_dims["modelled_concentration"] == ("nmeasure",)
     assert isinstance(model["y"].owner.op, pm.MvNormal.rv_op.__class__)
 
@@ -298,8 +298,8 @@ def test_co2_structural_zero_is_fixed_at_one_and_pruned_only_from_operator() -> 
         random_seed=42,
     )
 
-    assert model.named_vars_to_dims["flux_scaling"] == ("region",)
-    assert model.named_vars_to_dims["co2_sensitivity"] == ("nmeasure", "region_retained")
+    assert model.named_vars_to_dims["flux_scaling"] == ("flux_region",)
+    assert model.named_vars_to_dims["co2_sensitivity"] == ("nmeasure", "flux_region_retained")
     assert full_state.shape == (inputs.sizes["region"],)
     assert active_state.shape == (inputs.sizes["region"] - 1,)
     assert full_state[1] == 1.0
@@ -385,12 +385,14 @@ def test_co2_partial_activity_preserves_full_gathered_multiindex_state() -> None
         inputs["fixed_prior_contribution"].values + inputs["H"].values @ full_state,
         rtol=2.0e-6,
     )
-    assert registry.original_coords["region"].equals(state_index)
-    assert registry.original_coords["region_flux_scaling_active"].tolist() == [
+    assert registry.original_coords["flux_region"].equals(
+        state_index.set_names(["flux_source", "flux_region_in_source"]),
+    )
+    assert registry.original_coords["flux_region_flux_scaling_active"].tolist() == [
         ("ff", "north"),
         ("ocean", "atlantic"),
     ]
-    assert registry.auxiliary_coords["source"].values.tolist() == [
+    assert registry.auxiliary_coords["flux_source"].values.tolist() == [
         "ff",
         "ff",
         "ocean",
@@ -588,7 +590,9 @@ def test_co2_operations_selects_boundary_and_offset_once(monkeypatch: Any) -> No
     assert "baseline_scale" not in roles
     registry = get_coord_registry(model)
     assert registry is not None
-    assert registry.original_coords["bc_region"].equals(inputs.indexes["bc_region"])
+    assert registry.original_coords["bc_bc_region"].equals(
+        inputs.indexes["bc_region"].set_names(["bc_bc_curtain", "bc_bc_period"]),
+    )
     np.testing.assert_array_equal(model["bc_is_active"].eval(), bc_active)
 
     variables = [
