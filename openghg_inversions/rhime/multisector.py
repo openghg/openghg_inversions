@@ -1,10 +1,12 @@
 """Source-resolved RHIME recipe using one stacked flux state.
 
-Independent source-prior blocks and their activity policies populate one full
-source-labelled state ``x``. The gathered sensitivity ``hx`` maps that state to
-the pollution contribution ``mu`` in the shared standard/multisector builder.
-Select a source's sampled state with ``x.sel(source=...)``; output roles retain
-its source-local basis labels when reconstructing native flux products.
+Independent sector priors and activity policies populate one full flux state
+``x``. Sectors identify sampled state components; acquisition sources identify
+inventories and responses. Their current one-to-one ``sector_sources`` mapping
+binds each sector prior to its sensitivity columns. The saved state retains its
+``source`` coordinate, so select a sector's state using its mapped source with
+``x.sel(source=...)``. The gathered sensitivity ``hx`` maps the full state to
+pollution ``mu``; output roles retain local basis labels for native flux products.
 """
 
 from __future__ import annotations

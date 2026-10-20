@@ -946,8 +946,11 @@ selection while selecting only the requested scale variable before trace-group
 alignment. It retains the narrated notebook and stacked-state example equations,
 and the supplied `SigmaAlignment` ordering fix from the updated base.
 
-The transferred module explanation now describes independent source-prior blocks,
-the full source-labelled state, gathered sensitivity and pollution mean. The
+The transferred module explanation now describes independent sector priors,
+the full state, gathered sensitivity and pollution mean. Sectors identify sampled
+components; acquisition sources identify inventories and responses. The current
+one-to-one `sector_sources` mapping binds them without making them synonyms;
+existing stored `source` labels retain their compatibility contract. The
 source-order regression actually generates an automatic basis without a saved
 operator, compares generated basis matrices and sensitivities, and checks the
 requested weighting source. A source-selector regression includes an unrelated
@@ -959,6 +962,6 @@ multisector/standard/CO2 CLI, handoff, stacked-state/persistence and new bounded
 product/statistics selection passed 150 tests. Fixed-revision Slurm
 compatibility/type/docs evidence follows in the PRs. Previous full-suite results remain evidence for their recorded revisions,
 not acceptance of this integration. Maintainer readability/design acceptance,
-merged delivery and programme completion are not claimed. The source-labelled
+merged delivery and programme completion are not claimed. The sector-labelled
 flux-prior API review question remains explicitly discussed on #891; no generic
 workflow or configuration framework is added during conflict resolution.
