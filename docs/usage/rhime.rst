@@ -986,3 +986,41 @@ RHIME: the direct ``fixedbasisMCMC`` / ``inferpymc`` implementation and the
 should use ``openghg-inversions run-rhime`` or ``run_standard(...)`` directly.
 See :doc:`legacy_and_migration` for the parameter map, return-type changes,
 and interfaces without a current equivalent.
+
+Postprocessing memory
+~~~~~~~~~~~~~~~~~~~~~
+
+Standard flux products reduce samples in basis-state space before reconstructing
+the grid. Multisector nonlinear statistics first combine matching sector draws; marginal
+sector intervals are not added together. Mean-only requests keep the existing
+state-space shortcut when the sector sample masks permit it. Built-in
+bucket-basis reconstruction uses bounded spatial and flux-time chunks. Built-in
+statistics complete one bounded non-sample block at a time, retaining all required
+samples and reusing its sources across requested summaries and HDI probabilities.
+Postprocessing pools all chains and draws at the reduction boundary within each block,
+retaining its statistic kernels and missing-sample handling.
+
+Custom statistics registered with ``register_stat`` are called once per variable.
+Register with ``whole_dataset=True`` for a statistic that combines related
+variables. Requests containing a custom statistic run on the complete dataset
+and do not inherit the built-in statistics' block memory bound, unless every
+requested statistic is registered with ``pointwise=True``, declaring that each
+non-sample point is reduced independently.
+
+Multisector flux products retain the selected compact state samples for the duration
+of the product, preserving their sample chunks and reusing them for grid tiles and
+scale-factor summaries. Full reconstructed grid samples are not retained.
+
+Trace selection occurs within each prior/posterior group before their coordinates
+are aligned, so requesting flux scaling does not pad unrelated concentration
+variables. ``InversionOutput.trace_dataset`` accepts semantic ``var_roles`` or
+exact ``var_names`` for this selection.
+
+These bounds limit additional computation workspace. Country projection geometry
+and region-mean prior flux retain their existing spatial calculations. Already
+resident inputs, retained compact intermediates, and the completed output still
+require memory, and an externally supplied lazy source must itself have suitably
+bounded producer tasks. Splitting its result into small blocks cannot shrink a
+task that reads or constructs a larger array. The shared
+``calculate_stats`` boundary executes blocks serially and returns completed
+summaries; individual statistic helpers can still return lazy arrays.

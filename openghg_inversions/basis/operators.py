@@ -48,7 +48,8 @@ from __future__ import annotations
 import json
 import warnings
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from copy import copy
 from dataclasses import dataclass
 from typing import Any, ClassVar, Literal, Self, TypeVar, cast
 
@@ -657,7 +658,8 @@ class BucketBasisOperator(BasisOperator):
             )
             mat = state_metadata_on_state_dim.assign_to_matrix(mat, state_dim=self.meta.state_dim)
 
-        # chunking
+        # Retain compact geometry so new chunk layouts never reload basis_flat.
+        self._unchunked_basis_matrix = mat
         mat = mat.chunk(chunks) if chunks is not None else mat.chunk()
 
         self._basis_matrix = mat
@@ -676,6 +678,24 @@ class BucketBasisOperator(BasisOperator):
         generally the compatible retained restriction ``Pi``.
         """
         return self._basis_matrix
+
+    def with_chunks(self, chunks: Mapping[str, int | tuple[int, ...]]) -> Self:
+        """Return a shallow operator copy with independently chunked geometry.
+
+        The copy retains the original sparse geometry and metadata. Xarray/Dask
+        may copy that compact sparse payload when building the new graph; this
+        operation never densifies geometry, reloads ``basis_flat``, or executes
+        auxiliary coordinates. The original operator and graph remain unchanged.
+
+        Args:
+            chunks: Dimension chunk sizes passed to the retained matrix's ``chunk`` method.
+
+        Returns:
+            Shallow operator copy with its own chunked sparse matrix graph.
+        """
+        result = copy(self)
+        result._basis_matrix = self._unchunked_basis_matrix.chunk(chunks)
+        return result
 
     @property
     def state_metadata(self) -> xr.Dataset | None:
@@ -923,6 +943,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         for src, bf in self.basis_flat.items():
             # use region_in_source_dim so we can gather it
             mats[src] = get_xr_dummies(bf, cat_dim=self.region_in_source_dim)
+        self._unchunked_source_matrices = mats
         self._source_matrices = {
             src: mat.chunk({dim: size for dim, size in (chunks or {}).items() if dim in mat.dims})
             for src, mat in mats.items()
@@ -938,7 +959,8 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             join="exact",
         )
 
-        # chunking
+        # Retain compact geometry so new chunk layouts never reload basis_flat.
+        self._unchunked_basis_matrix = mat
         mat = mat.chunk(chunks) if chunks is not None else mat.chunk()
 
         self._basis_matrix = mat
@@ -959,6 +981,34 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         restriction ``Pi``.
         """
         return self._basis_matrix
+
+    def with_chunks(self, chunks: Mapping[str, int | tuple[int, ...]]) -> Self:
+        """Return a shallow copy with bounded gathered and per-source geometry.
+
+        Xarray/Dask may copy the retained compact sparse matrices into new
+        graphs. Geometry is never densified or reloaded, auxiliary coordinates
+        remain lazy, and the borrowed operator and its graphs are unchanged.
+
+        Args:
+            chunks: Dimension chunk sizes for the reconstructed geometry.
+
+        Returns:
+            Shallow operator copy with independently chunked sparse matrices.
+        """
+        result = copy(self)
+        result._basis_matrix = self._unchunked_basis_matrix.chunk(chunks)
+        result._source_matrices = {
+            source: matrix.chunk(
+                {
+                    **{dim: size for dim, size in chunks.items() if dim in self.meta.grid_dims},
+                    self.region_in_source_dim: self._source_matrices[source].variable.chunksizes[
+                        self.region_in_source_dim
+                    ],
+                }
+            )
+            for source, matrix in self._unchunked_source_matrices.items()
+        }
+        return result
 
     @property
     def source_labels(self) -> tuple[str, ...]:

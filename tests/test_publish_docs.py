@@ -1,6 +1,11 @@
 """Exercise archive publication using small stand-in Sphinx builds."""
 
 import json
+import os
+import shutil
+import subprocess
+import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -144,3 +149,35 @@ def test_build_pages_cannot_overwrite_reserved_archive_paths(tmp_path: Path) -> 
     assert (site / "v0.6.0/index.html").read_text() == "Built v0.6.0/index.html"
     assert "Documentation versions" in (site / "versions/index.html").read_text()
     assert (site / "v0.7.4/versions/index.html").read_text() == "Built versions/index.html"
+
+
+@pytest.mark.parametrize("versions", [("devel",), ("devel", "v0.7.4", "v0.6.0")])
+def test_preview_workflow_assembles_download_layouts(tmp_path: Path, versions: tuple[str, ...]) -> None:
+    """Exercise the actual shell step with single and multiple artifact layouts."""
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github/workflows/docs-pr.yaml").read_text()
+    step = workflow.split("      - name: Assemble preview and browsing instructions\n", 1)[1]
+    script = textwrap.dedent(step.split("        run: |\n", 1)[1].split("\n      - name:", 1)[0])
+    for version in versions:
+        build = tmp_path / "builds"
+        if len(versions) > 1:
+            build /= f"docs-preview-build-{version}"
+        _build(build, ("index.html", "guide.html", "_static/style.css"))
+    (tmp_path / "scripts").mkdir()
+    shutil.copy(root / "scripts/publish_docs.py", tmp_path / "scripts/publish_docs.py")
+    subprocess.run(
+        ["bash", "-e", "-o", "pipefail", "-c", script],
+        cwd=tmp_path,
+        env={**os.environ, "PATH": f"{Path(sys.executable).parent}:{os.environ['PATH']}"},
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    preview = tmp_path / "preview"
+    entries = json.loads((preview / "versions.json").read_text())
+    assert {entry["version"] for entry in entries} == set(versions)
+    for version in versions:
+        assert (preview / version / "guide.html").is_file()
+        assert (preview / version / "_static/style.css").is_file()
+    assert (preview / "README.txt").is_file()
+    assert (preview / "index.html").is_file()

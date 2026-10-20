@@ -115,9 +115,10 @@ def co2_native_flux_outputs(trace: xr.DataTree, bound: BoundCo2AffineFluxMap) ->
         ``mol m-2 s-1``. ``flux_total_prior_*`` and ``flux_total_posterior_*``
         summarize source sums. Multisource maps also retain ``flux_prior_*``
         and ``flux_posterior_*`` on their native source axis. Prior and posterior
-        sample axes are reduced independently, pooling all chains. Results
-        remain lazy for Dask inputs; quantiles consolidate sample chunks through
-        the existing statistics helper. Inputs remain borrowed.
+        sample axes are reduced independently, pooling all chains. Summaries
+        are computed in bounded non-sample blocks; quantiles retain complete
+        samples within each block. Existing affine producers must already have
+        bounded task payloads. Inputs remain borrowed.
 
     Raises:
         ValueError: If the recipe, role, samples, native layout, state labels,
@@ -164,10 +165,11 @@ def co2_country_flux_outputs(
         population standard deviation, and 0.159/0.841 quantiles in grams of
         CO2 per fixed 365-day year. Multisource maps additionally retain
         ``country_prior_*`` and ``country_posterior_*`` on the source axis.
-        Other flux dimensions, such as time, remain in the result. Computation
-        stays lazy for Dask inputs. Compact country reference/response arrays
-        use dense chunk payloads; sample chunks for quantiles are consolidated.
-        Inputs are borrowed.
+        Other flux dimensions, such as time, remain in the result. Summaries
+        are computed in bounded non-sample blocks. Compact country
+        reference/response arrays use dense chunk payloads; sample chunks for
+        quantiles are consolidated. Existing producers must already have
+        bounded task payloads. Inputs are borrowed.
 
     Raises:
         ValueError: If input requirements or exact country-grid alignment fail.
