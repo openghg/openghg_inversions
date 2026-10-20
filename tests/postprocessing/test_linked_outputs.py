@@ -1,11 +1,13 @@
 """Role-driven linked products and graph-free export."""
 
+from dataclasses import replace
 import json
 
 import numpy as np
 import pytest
 import xarray as xr
 
+from openghg_inversions.rhime.co2 import co2_o2_handoffs as handoffs
 from openghg_inversions.rhime.co2.co2_o2_outputs import (
     Co2O2OutputOptions,
     calculate_co2_o2_products,
@@ -130,18 +132,113 @@ def test_native_reporting_loads_explicit_saved_basis(tmp_path):
     xr.testing.assert_identical(loaded["co2"].flux, basis.flux.rename("flux"))
 
 
-def test_trace_export_cannot_overwrite_referenced_artifact(tmp_path):
+@pytest.mark.parametrize("output_format", ["basic", "none"])
+@pytest.mark.parametrize("alias", ["same", "symlink", "hardlink"])
+def test_trace_export_cannot_overwrite_referenced_artifact(tmp_path, output_format, alias):
     prepared, trace = _joint_fixture()
     protected = tmp_path / "posterior.nc"
     protected.write_text("saved posterior")
     destination = tmp_path / "products"
     result = _result(prepared, trace)
-    output = Co2O2OutputOptions(output_path=destination, save_trace=protected)
+    target = protected
+    if alias != "same":
+        target = tmp_path / "alias.nc"
+        if alias == "symlink":
+            target.symlink_to(protected)
+        else:
+            target.hardlink_to(protected)
+    output = Co2O2OutputOptions(output_format=output_format, output_path=destination, save_trace=target)
     calculate_co2_o2_products(result=result, output=output)
     with pytest.raises(ValueError, match="overwrite"):
         save_co2_o2_products(result, output=output, referenced=(protected,))
     assert protected.read_text() == "saved posterior"
     assert not destination.exists()
+
+
+@pytest.mark.parametrize("layout", ["checkpoints", "products", "protected_store"])
+def test_zarr_trace_rejects_containment_overlaps_before_writing(tmp_path, layout):
+    prepared, trace = _joint_fixture()
+    store = tmp_path / "run.zarr"
+    checkpoint_root = store if layout == "checkpoints" else tmp_path / "checkpoints"
+    prep = handoffs.save_preparation(prepared, output_dir=checkpoint_root / "prepare",
+                                    start_date="2024-01-01", end_date="2024-02-01", domain="EUROPE")
+    sample = handoffs.save_samples(
+        prep, trace, actual_inference={}, preparation_generation=handoffs.load_preparation(prep).generation,
+        output_dir=checkpoint_root / "sample",
+    )
+    before = {path: path.read_bytes() for path in checkpoint_root.rglob("*") if path.is_file()}
+    destination = store if layout == "products" else store / "products"
+    target = checkpoint_root / "trace.zarr" if layout == "protected_store" else store
+    output = Co2O2OutputOptions(output_path=destination, save_trace=target)
+    with pytest.raises(ValueError, match="overlap|overwrite"):
+        if layout == "protected_store":
+            result = _result(prepared, trace)
+            calculate_co2_o2_products(result=result, output=output)
+            save_co2_o2_products(result, output=output, referenced=(checkpoint_root,))
+        else:
+            handoffs.postprocess(sample, output=output)
+    assert {path: path.read_bytes() for path in checkpoint_root.rglob("*") if path.is_file()} == before
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("trace_setting", ["netcdf", "zarr", "default"])
+def test_none_still_exports_requested_trace(tmp_path, trace_setting):
+    prepared, trace = _joint_fixture()
+    result = _result(prepared, trace)
+    target = tmp_path / ("trace.zarr" if trace_setting == "zarr" else "trace.nc")
+    destination = tmp_path / "products"
+    output = Co2O2OutputOptions(output_format="none", output_path=destination if trace_setting == "default" else None,
+                               save_trace=True if trace_setting == "default" else target)
+    calculate_co2_o2_products(result=result, output=output)
+    save_co2_o2_products(result, output=output)
+    assert result.outputs == {}
+    restored = load_trace(result.output_metadata["trace_path"])
+    xr.testing.assert_identical(restored, trace)
+    if trace_setting == "default":
+        assert list(destination.iterdir()) == [destination / "rhime2024-01-01_trace.nc"]
+    else:
+        assert not destination.exists()
+
+
+def test_none_trace_default_requires_output_directory():
+    with pytest.raises(ValueError, match="output_path"):
+        Co2O2OutputOptions(output_format="none", save_trace=True)
+
+
+def test_basic_summaries_share_sensitivities_within_independent_sample_groups():
+    import dask.array as da
+    from dask import delayed
+
+    prepared, trace = _joint_fixture()
+    roles = json.loads(trace.attrs["rhime_variable_roles"])
+    roles["concentration"] = "prediction"
+    trace.attrs["rhime_variable_roles"] = json.dumps(roles)
+    for group, draws in (("prior", 2), ("posterior", 1)):
+        trace[f"{group}_predictive"] = trace.posterior.to_dataset()[["prediction"]].isel(chain=[0], draw=slice(draws))
+    expected = _result(prepared, trace)
+    calculate_co2_o2_products(result=expected, output=Co2O2OutputOptions())
+    executions = {"co2": 0, "o2": 0}
+
+    @delayed
+    def load_sensitivity(species, values):
+        executions[species] += 1
+        return values
+
+    lazy = {}
+    for species in executions:
+        sensitivity = getattr(prepared, f"{species}_sensitivity")
+        data = da.from_delayed(load_sensitivity(species, sensitivity.to_numpy()),
+                               shape=sensitivity.shape, dtype=sensitivity.dtype)
+        lazy[f"{species}_sensitivity"] = sensitivity.copy(data=data)
+    borrowed = replace(prepared, **lazy)
+    result = _result(borrowed, trace)
+    assert executions == {"co2": 0, "o2": 0}
+    calculate_co2_o2_products(result=result, output=Co2O2OutputOptions())
+    # One computation per channel and prior/posterior sample group.
+    assert executions == {"co2": 2, "o2": 2}
+    for species in executions:
+        xr.testing.assert_identical(result.outputs[f"{species}_basic"], expected.outputs[f"{species}_basic"])
+        assert isinstance(getattr(borrowed, f"{species}_sensitivity").data, da.Array)
 
 
 def test_none_suppresses_products_and_writing(tmp_path):

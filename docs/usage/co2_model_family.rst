@@ -430,6 +430,12 @@ GPP/TER/fossil, channel ocean, coherent intercept and optional boundary/offset
 meaning. Mean residuals use observed minus modelled concentrations. Observation
 predictions are included only when the corresponding predictive draws were
 saved; replay does not manufacture them.
+
+``output_format="none"`` suppresses derived products while still honoring an
+explicit ``save_trace`` path (or ``save_trace=true`` with ``output_path``).
+Trace destinations must not overlap referenced artifacts or derived product
+paths, including Zarr directories containing those files.
+
 ``paris`` requires prior draws and produces separate CO₂/O₂ concentration
 products. Optional ``native_flux_bases`` and ``country_file`` use the existing
 conditional single-source bucket flux support, with its tracer exclusions;

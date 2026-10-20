@@ -57,6 +57,7 @@ class Co2O2OutputOptions:
     paths, for the existing conditional single-source bucket PARIS products.
     ``save_concentrations`` also exports full component draws. Paths resolve from
     the invocation directory; validation and calculation precede writing.
+    ``none`` suppresses derived products while honoring an explicit ``save_trace``.
     """
 
     output_format: str = "basic"
@@ -81,7 +82,7 @@ class Co2O2OutputOptions:
             object.__setattr__(self, name, Path(value).expanduser().resolve())
         if not isinstance(self.save_concentrations, bool):
             raise TypeError("Linked save_concentrations must be boolean.")
-        if self.output_format != "none" and self.save_trace is True and self.output_path is None:
+        if self.save_trace is True and self.output_path is None:
             raise ValueError("Linked output_path is required when save_trace=True.")
         kwargs = self.paris_postprocessing_kwargs
         if kwargs is not None:
@@ -198,15 +199,20 @@ def validate_co2_o2_product_request(
 
 
 def _summaries(components: xr.Dataset) -> xr.Dataset:
-    """Summarize independent sample groups without aligning their draw counts."""
-    summaries = []
+    """Compute related summaries together within each independent sample group."""
+    groups: dict[tuple, list] = {}
     for name, value in components.data_vars.items():
+        axes = tuple(sorted(str(dim) for dim in value.dims if str(dim).endswith(("chain", "draw"))))
+        groups.setdefault(axes, []).append(name)
+    summaries = []
+    for axes, names in groups.items():
+        selected = components[names]
         sample_dims = {str(dim): "chain" if str(dim).endswith("chain") else "draw"
-                       for dim in value.dims if str(dim).endswith(("chain", "draw"))}
+                       for dim in axes}
         if sample_dims:
-            summaries.append(calculate_stats(value.rename(sample_dims).to_dataset(), stats=["mean", "stdev", "quantiles"]))
+            summaries.append(calculate_stats(selected.rename(sample_dims), stats=["mean", "stdev", "quantiles"]))
         else:
-            summaries.append(value.to_dataset())
+            summaries.append(selected)
     result = xr.merge(summaries, compat="no_conflicts")
     result.attrs = dict(components.attrs)
     return result
@@ -260,13 +266,13 @@ def calculate_co2_o2_products(*, result: Co2O2Output, output: Co2O2OutputOptions
 def save_co2_o2_products(
     result: Co2O2Output, *, output: Co2O2OutputOptions, referenced: tuple[Path, ...] = (),
 ) -> None:
-    """Export calculated products, protecting any referenced input artifacts."""
-    if output.output_format == "none":
+    """Export requested products and traces after rejecting aliases and containment overlaps."""
+    if output.output_format == "none" and not output.save_trace:
         return
     _validate_filename_component("domain", result.domain)
     _validate_filename_component("start_date", result.start_date)
     paths = {}
-    if output.output_path is not None:
+    if output.output_format != "none" and output.output_path is not None:
         for name, product in result.outputs.items():
             if name.endswith("_concentration_components") and not output.save_concentrations:
                 continue
@@ -284,7 +290,10 @@ def save_co2_o2_products(
     targets = [*paths.values(), *([trace_path] if trace_path is not None else [])]
     for path in targets:
         check_checkpoint_targets(path.parent, stage=None, payloads=(path.name,), referenced=protected)
-        protected += (path.resolve(),)
+        target = path.resolve()
+        if any(target.is_relative_to(artifact) or artifact.is_relative_to(target) for artifact in protected):
+            raise ValueError(f"Linked output target {target} would overlap another input or output artifact.")
+        protected += (target,)
     for name, path in paths.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         product = result.outputs[name]
