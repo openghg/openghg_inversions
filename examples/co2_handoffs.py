@@ -128,7 +128,6 @@ def run_example(destination: Path) -> None:
     """Save a new prepared/affine pair and compare replay with full execution."""
     from openghg_inversions.rhime.co2 import run_co2
     from openghg_inversions.rhime.co2.execution import resolve_co2_output
-    from openghg_inversions.rhime.co2.configuration import resolve_co2_sampler
     from openghg_inversions.rhime.co2 import handoffs
 
     canonical, reduction, prepared, affine, countries = synthetic_inputs(destination)
@@ -139,9 +138,8 @@ def run_example(destination: Path) -> None:
     )
     preparation_bytes = manifest.read_bytes()
     model = {name: params[name] for name in ("model", "likelihood")}
-    sampler = resolve_co2_sampler(params)
     samples = handoffs.sample(
-        manifest, model=model, sampler=sampler, output_dir=destination / "sample",
+        manifest, model=model, sampling=params["sampling"], output_dir=destination / "sample",
     )
     replay_params = {"outputs": {**params["outputs"], "output_path": str(destination / "replay")}}
     replay = handoffs.postprocess(samples, **resolve_co2_output(replay_params))
@@ -160,7 +158,7 @@ def run_example(destination: Path) -> None:
     alternative["likelihood"]["fixed_model_mismatch"] = .15
     changed_model = {name: alternative[name] for name in ("model", "likelihood")}
     other_samples = handoffs.sample(
-        manifest, model=changed_model, sampler=sampler, output_dir=destination / "alternative-sample",
+        manifest, model=changed_model, sampling=params["sampling"], output_dir=destination / "alternative-sample",
     )
     other = handoffs.postprocess(other_samples, **resolve_co2_output(
         {"outputs": {**params["outputs"], "output_path": str(destination / "alternative-products")}},

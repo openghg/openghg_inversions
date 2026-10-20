@@ -66,6 +66,31 @@ matched cached update, without a public algorithm switch or silent fallback.
 Sampling lengths, chains and seeds SHALL remain configurable. Unsupported
 sampler substitutions SHALL fail before loading or materializing scientific
 inputs. Prior readiness SHALL resolve only its own scientific and seed choices.
+Configured CO2 SHALL reject `sampling.nuts_sampler`. The supported automatic
+policy SHALL be:
+
+| Likelihood | Backend / update | Reason |
+| --- | --- | --- |
+| `additive_sigma` | NumPyro NUTS | Retain the packaged additive template's backend |
+| `site_sigma`, fixed or inferred amplitudes | PyMC NUTS | Conservative default, not an inherent backend restriction |
+| `scalar_sigma` | PyMC NUTS | Conservative default, not an inherent backend restriction |
+| `fixed_ou`, fixed amplitudes | PyMC NUTS | Custom likelihood operation has no JAX implementation |
+| `fixed_ou`, inferred amplitudes | Matched PyMC amplitude update followed by state NUTS when states exist | Requires the ordered cached update |
+
+This explicit policy replaces the previous template-wide NumPyro setting and
+PyMC default when the backend was omitted. Matched target-accept controls SHALL
+belong to `sampling`, not the scientific likelihood. Inference selection SHALL
+use one predicate on the resolved model. The actual algorithm and effective
+target-accept values SHALL be recorded in the trace and sample manifest and
+retained by product replay without constructing a sampler. Presence of any
+active flux, boundary or offset state SHALL require the state update.
+
+#### Scenario: Full and saved sampling retain actual inference details
+
+- **WHEN** equivalent CO2 model and sampling choices run through full or saved execution
+- **THEN** both choose the same backend, update sequence and tuning controls
+- **AND** trace serialization and replay retain the actual algorithm and effective tuning
+- **AND** absent historical descriptions are not replaced by current execution defaults
 
 #### Scenario: All affine coefficients are fixed
 
@@ -179,6 +204,12 @@ owners without implying additional nested or linked checkpoint support.
 
 ### Requirement: Existing sampler API and invocation isolation
 
+Configured CO2 full and saved execution are an explicit exception to the
+generic sampler-argument contract below: they SHALL consume a `sampling`
+mapping, and the resolved model SHALL select the backend and update. They SHALL
+NOT retain a second saved-route sampler override. Direct scientific composition
+and linked CO2/O2 retain their separate numerical sampling APIs.
+
 Public live sampling and runner APIs offering default sampler selection,
 including existing prepared-input entry points, SHALL accept `RhimeSampler` or the literal
 `"default"` as their sampler argument. When no complete configured request supplies sampling choices, an omitted
@@ -261,6 +292,9 @@ Missing provenance SHALL NOT be filled from current defaults, and descriptive
 sampling metadata SHALL NOT impose an additional scientific compatibility gate.
 No strict-metadata mode is required. `"default"` SHALL remain an execution
 request only and SHALL NOT replace actual inference provenance.
+CO2 SHALL additionally retain valid recorded algorithm and effective target-accept
+fields through its plain metadata reader; it SHALL NOT drop them when replaying
+the sample manifest.
 
 #### Scenario: Result without a live sampler
 - **WHEN** a caller constructs a scientific output, or loads saved samples

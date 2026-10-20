@@ -189,8 +189,12 @@ likelihood table with:
 
 ``run_co2`` selects the matched cached update automatically. Configure draw
 counts, tuning length, chains and seed in ``sampling``; do not specify
-``nuts_sampler``. Fixed amplitudes, IID site mismatch, scalar mismatch and
-additive mismatch retain their corresponding scientific implementations.
+``nuts_sampler``. Additive sigma uses NumPyro; site sigma, scalar sigma and
+fixed-amplitude OU use PyMC. The :doc:`inference policy table <co2_models>`
+explains which choices are technical requirements and which are defaults.
+Inferred-OU tuning belongs to ``sampling.sigma_target_accept`` and
+``sampling.state_target_accept``. Saved Python sampling takes the same
+``sampling`` mapping as the full configuration.
 
 ``rhime run-co2`` remains an alias. This configured CLI route uses
 ``run_co2`` and writes requested products. Python
@@ -240,7 +244,9 @@ decide scientific compatibility.
 Replay loads saved trace roles, inference provenance and affine associations.
 It performs no acquisition, preparation, model construction or inference, and
 returns ``Co2Output`` without a live sampler. Missing descriptive facts remain
-unavailable. Records include package version and Git revision/checkout status
+unavailable. Trace and sample records retain the actual algorithm and effective
+target-accept settings, including whether the matched state step ran.
+Records include package version and Git revision/checkout status
 when available; unavailable VCS facts are ``null`` and do not prevent execution.
 
 ``prior-predictive --strict`` exits unsuccessfully for a failed readiness check;

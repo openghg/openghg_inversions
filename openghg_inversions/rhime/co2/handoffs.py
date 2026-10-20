@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 import os
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, cast
 from uuid import uuid4
 
 import numpy as np
@@ -22,7 +22,6 @@ from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load as load_affine, save as save_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import RhimePreparedInputs
-from openghg_inversions.inference.sampling import RhimeSampler, describe_recorded_sampler, resolve_sampler
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.rhime._stage_artifacts import (
     _output_path, check_checkpoint_targets, finish_checkpoint, read_manifest,
@@ -44,9 +43,9 @@ from .co2_preparation import (
     Co2PreparedInputs, prepare_co2_inputs, requested_co2_facts,
 )
 from .inference import (
-    annotate_co2_inference, build_co2_inference, sample_co2_inference, validate_co2_inference,
+    annotate_co2_inference, build_co2_inference, sample_co2_inference, validate_co2_inference, describe_co2_inference,
 )
-from .configuration import resolve_co2_model
+from .configuration import resolve_co2_model, resolve_co2_sampling
 
 
 @dataclass(frozen=True)
@@ -227,28 +226,30 @@ def save_samples(
 
 def sample(
     preparation_manifest: str | Path, *, model: Mapping[str, Any], output_dir: str | Path,
-    sampler: RhimeSampler | Literal["default"] = "default",
+    sampling: Mapping[str, Any] | None = None,
 ) -> Path:
     """Build and sample ordinary CO2 using current science and its resolved sampler.
 
     Compatible independent BC/offset priors and supported likelihood choices can
     reuse preparation; the defining coherent native reduction stays unchanged.
     Full execution and saved sampling share the explicit build and sample owners.
-    ``sampler="default"`` selects fresh defaults; an explicit sampler supplies
-    configured sampling choices. Direct runner trace returns remain unchanged.
+    Current sampling choices select fresh model-matched defaults and tuning.
     """
-    active_sampler = resolve_sampler(sampler)
     model_options = resolve_co2_model(model)
-    validate_co2_inference(model_options, active_sampler)
+    choices = resolve_co2_sampling({"sampling": sampling if sampling is not None else {}}, model=model_options)
+    validate_co2_inference(model_options, choices.sampler)
     preparation = load_preparation(preparation_manifest)
     check_checkpoint_targets(
         Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),
         referenced=(Path(preparation_manifest).resolve(), preparation.payload)
         + ((preparation.affine_payload,) if preparation.affine_payload else ()),
     )
-    trace = sample_co2_inference(preparation.prepared, model_options, active_sampler)
+    trace, actual = sample_co2_inference(
+        preparation.prepared, model_options, choices.sampler,
+        sigma_target_accept=choices.sigma_target_accept, state_target_accept=choices.state_target_accept,
+    )
     return save_samples(
-        preparation_manifest, trace, actual_inference=active_sampler.describe(), preparation_generation=preparation.generation,
+        preparation_manifest, trace, actual_inference=actual, preparation_generation=preparation.generation,
         output_dir=output_dir,
     )
 
@@ -282,7 +283,7 @@ def load_samples(sample_manifest: str | Path) -> Co2Output:
         prepared=preparation.prepared, trace=trace, bound=bound,
         start_date=preparation.start_date, end_date=preparation.end_date, domain=preparation.domain,
         output_metadata={
-            "sampler": describe_recorded_sampler(record.get("actual_inference")),
+            "sampler": describe_co2_inference(record.get("actual_inference")),
             "provenance": record.get("provenance") if isinstance(record.get("provenance"), Mapping) else {},
         },
     )
@@ -324,7 +325,7 @@ def prior_predictive(
     _check_draws(draws)
     stage = _check_stage(stage)
     preparation = load_preparation(preparation_manifest)
-    model_options = resolve_co2_model(model, prior_only=True)
+    model_options = resolve_co2_model(model)
     destination = Path(output_dir).resolve()
     report = _output_path(destination, check_output, "prior-predictive-readiness.json")
     check_checkpoint_targets(

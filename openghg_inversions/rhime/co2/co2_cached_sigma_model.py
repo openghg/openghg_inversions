@@ -232,7 +232,7 @@ def _add_cached_likelihood(
     )
     coefficients = (
         pt.concatenate([cast(TensorVariable, term.coefficients) for term in active_terms])
-        if active_terms else pt.as_tensor_variable(np.empty(0))
+        if active_terms else pt.as_tensor_variable(np.empty(0, dtype=amplitude.dtype))
     )
     cached_state_logp = shared_cache.log_likelihood(coefficients)
     pm.CustomDist(

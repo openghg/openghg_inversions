@@ -54,8 +54,8 @@ raise `TypeError` before selection runs. They are not supported override keys.
   site-amplitude prior
 - **THEN** full and saved sampling select the matched cached amplitude/state update
 - **AND** configuration needs no cached variant or sampler-backend choice
-- **AND** fixed-amplitude OU and other supported likelihoods retain their
-  appropriate inference implementations
+- **AND** other likelihoods use the explicit automatic backend policy in
+  the recipe-execution capability, including NumPyro for additive sigma
 
 
 ### Requirement: Preserve the CO2 prepared-input boundary

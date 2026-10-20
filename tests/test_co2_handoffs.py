@@ -289,10 +289,10 @@ def test_missing_or_malformed_descriptive_metadata_stays_unavailable(tmp_path, r
     assert loaded.output_metadata["provenance"] == {}
 
 
-@pytest.mark.parametrize("sampler", [None, "unknown"])
-def test_invalid_live_sampler_fails_before_loading_preparation(tmp_path, sampler):
-    with pytest.raises((TypeError, ValueError), match="sampler"):
-        handoffs.sample(tmp_path / "missing.json", model=_model(), sampler=sampler, output_dir=tmp_path / "sample")
+@pytest.mark.parametrize("backend", [None, "unknown"])
+def test_configured_backend_is_rejected_before_loading_preparation(tmp_path, backend):
+    with pytest.raises(ValueError, match="sampling.nuts_sampler"):
+        handoffs.sample(tmp_path / "missing.json", model=_model(), sampling={"nuts_sampler": backend}, output_dir=tmp_path / "sample")
     assert not (tmp_path / "sample").exists()
 
 

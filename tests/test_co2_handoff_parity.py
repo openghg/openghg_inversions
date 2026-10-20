@@ -17,7 +17,7 @@ from openghg_inversions.rhime.co2.co2_affine_output import prepared_inputs_conte
 from openghg_inversions.rhime.co2.co2_outputs import (
     Co2OutputOptions, calculate_co2_products, make_co2_output, validate_co2_product_request,
 )
-from openghg_inversions.rhime.co2.configuration import resolve_co2_model, resolve_co2_sampler
+from openghg_inversions.rhime.co2.configuration import resolve_co2_model
 
 
 def test_scientific_view_and_products_preserve_complete_trace(monkeypatch):
@@ -79,7 +79,6 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
     params = configuration(tmp_path / "full-products", countries)
     choices = {name: params[name] for name in ("model", "likelihood")}
     model = resolve_co2_model(choices)
-    sampler = resolve_co2_sampler(params)
     if imported:
         source = tmp_path / "source.nc"
         companion = tmp_path / "source-affine.nc"
@@ -95,7 +94,7 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
             start_date=START_DATE, end_date=END_DATE, domain="EUROPE",
         )
     before = manifest.read_bytes()
-    samples = handoffs.sample(manifest, model=choices, sampler=sampler, output_dir=tmp_path / "samples")
+    samples = handoffs.sample(manifest, model=choices, sampling=params["sampling"], output_dir=tmp_path / "samples")
     staged = handoffs.postprocess(
         samples, output=Co2OutputOptions(
             output_format="basic", output_name="co2",
@@ -125,6 +124,11 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
             assert Path(full.output_metadata[f"{name}_path"]).is_file()
             assert Path(staged.output_metadata[f"{name}_path"]).is_file()
     assert full.output_metadata["sampler"]["draws"] == 12
+    assert full.output_metadata["sampler"] == staged.output_metadata["sampler"]
+    assert full.output_metadata["sampler"]["algorithm"] == "nuts"
+    assert full.output_metadata["sampler"]["nuts_sampler"] == "numpyro"
+    assert full.output_metadata["sampler"]["target_accept"] == 0.8
+    assert json.loads(full.idata.attrs["rhime_actual_inference"]) == full.output_metadata["sampler"]
     assert not hasattr(full, "output_spec")
     assert not hasattr(full, "source_to_sector")
     assert not hasattr(staged, "model")

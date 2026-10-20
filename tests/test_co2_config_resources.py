@@ -8,7 +8,7 @@ import tomllib
 _CONFIG_DIRECTORY = files("openghg_inversions.rhime").joinpath("config")
 _EXPECTED_TEMPLATES = {
     "co2.toml": ("co2", "ordinary"),
-    "co2_cached_sigma.toml": ("co2", "cached_fixed_ou"),
+    "co2_cached_sigma.toml": ("co2", "ordinary"),
     "co2_o2.toml": ("co2_o2", "linked"),
 }
 

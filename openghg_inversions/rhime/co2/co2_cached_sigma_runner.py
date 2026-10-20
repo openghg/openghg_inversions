@@ -101,8 +101,7 @@ def validate_cached_co2_sampler(sampler: RhimeSampler) -> None:
     if "target_accept" in sample_kwargs:
         raise ValueError(
             "The cached-sigma CO2 recipe owns two NUTS tuning controls; pass "
-            "`sigma_target_accept` and `state_target_accept` to "
-            "`run_rhime_co2_cached_sigma` instead of "
+            "separate `sigma_target_accept` and `state_target_accept` controls instead of "
             "sampler.sample_kwargs['target_accept']."
         )
     if sample_kwargs.get("step") is not None:

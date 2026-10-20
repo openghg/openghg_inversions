@@ -2,12 +2,15 @@
 
 from collections.abc import Mapping
 from typing import Any
+import copy
+import json
 
 import xarray as xr
 
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
+from openghg_inversions.inference.sampling import describe_recorded_sampler
 
 from .co2_cached_sigma_model import Co2CachedSigmaModel
 from .co2_cached_sigma_runner import (
@@ -43,8 +46,6 @@ def build_co2_inference(
         options = dict(model)
         options.pop("likelihood_builder")
         likelihood = dict(options.pop("likelihood_kwargs"))
-        for name in ("sigma_target_accept", "state_target_accept"):
-            likelihood.pop(name, None)
         cached = build_rhime_co2_cached_sigma(prepared_inputs=prepared, **options, **likelihood)
         return co2_cached_sigma_build_result(cached, prepared), cached
     inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, **model)
@@ -65,19 +66,41 @@ def annotate_co2_inference(
     )
 
 
+def describe_co2_inference(recorded: object) -> dict[str, Any]:
+    """Read available CO2 algorithm provenance without constructing a sampler."""
+    record: dict[str, Any] = dict(describe_recorded_sampler(recorded))
+    if not isinstance(recorded, Mapping):
+        return record
+    if isinstance(recorded.get("algorithm"), str):
+        record["algorithm"] = recorded["algorithm"]
+    for name in ("target_accept", "sigma_target_accept", "state_target_accept"):
+        value = recorded.get(name)
+        if isinstance(value, int | float) and not isinstance(value, bool) and 0 < value < 1:
+            record[name] = value
+    return record
+
+
 def sample_co2_inference(
-    prepared: Co2PreparedInputs, model: Mapping[str, Any], sampler: RhimeSampler,
-) -> xr.DataTree:
-    """Build and sample the selected likelihood with its matched update steps."""
+    prepared: Co2PreparedInputs, model: Mapping[str, Any], sampler: RhimeSampler, *,
+    sigma_target_accept: float = 0.8, state_target_accept: float = 0.9,
+) -> tuple[xr.DataTree, dict[str, Any]]:
+    """Build the selected graph, sample its matched steps and record their settings."""
     validate_co2_inference(model, sampler)
     built, cached = build_co2_inference(prepared, model)
-    active = sampler
     if cached is not None:
-        options = model["likelihood_kwargs"]
         active = _sampler_for_cached_graph(
-            sampler, cached_model=cached,
-            sigma_target_accept=options.get("sigma_target_accept", 0.8),
-            state_target_accept=options.get("state_target_accept", 0.9),
+            sampler, cached_model=cached, sigma_target_accept=sigma_target_accept,
+            state_target_accept=state_target_accept,
         )
+        actual: dict[str, Any] = {**active.describe(), "algorithm": "cached_ou_sigma_nuts",
+                  "sigma_target_accept": sigma_target_accept}
+        if cached.states:
+            actual.update(algorithm="cached_ou_sigma_then_state_nuts", state_target_accept=state_target_accept)
+    else:
+        active = copy.copy(sampler)
+        active.sample_kwargs = {"target_accept": 0.8, **(sampler.sample_kwargs or {})}
+        actual = {**active.describe(), "algorithm": "nuts", "target_accept": active.sample_kwargs["target_accept"]}
     trace = sample_rhime_model(built, active)
-    return annotate_co2_inference(trace, built, prepared, model, cached)
+    trace = annotate_co2_inference(trace, built, prepared, model, cached)
+    trace.attrs["rhime_actual_inference"] = json.dumps(actual)
+    return trace, actual

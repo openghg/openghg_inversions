@@ -176,6 +176,8 @@ The CO2 family provides three installed TOML templates:
 :func:`openghg_inversions.rhime.co2.co2_config_templates` to discover their
 installed paths. Copy the closest template for a run; do not edit the installed
 resource. The templates configure the existing prepared-input Python seams.
+Despite its historical filename, ``co2_cached_sigma.toml`` now configures
+``run_co2`` with inferred fixed-OU amplitudes and sampling-owned tuning controls.
 The CO2-only templates also underpin ``--model co2`` staged commands; see
 :doc:`co2_model_family` for the staged output table and complete command
 sequence. Linked CO2/O2 templates remain Python-only.
@@ -183,8 +185,9 @@ sequence. Linked CO2/O2 templates remain Python-only.
 :func:`openghg_inversions.rhime.co2.load_co2_family_config` reads TOML.
 CO₂ uses :func:`~openghg_inversions.rhime.co2.run_co2` or the Python/CLI model
 selector. Preparation, model, sampler and output values are resolved at their
-concrete owners; saved sampling accepts decoded model/likelihood choices and one
-separate sampler. Native-resolution acquisition and coherent-reduction construction
+concrete owners; saved sampling accepts decoded model/likelihood choices and a
+separate ``sampling`` mapping. The model selects the backend and update.
+Native-resolution acquisition and coherent-reduction construction
 are separate from this configured prepared-input route.
 
 Cached and linked recipes retain
@@ -224,11 +227,39 @@ can execute through the canonical configured runner::
    result = run_co2(config_file="my-co2.toml")
    idata = result.idata  # The complete annotated inference DataTree.
 
-The likelihood determines inference: fixed OU with inferred independent site
-amplitudes uses the matched cached update; fixed OU with fixed amplitudes,
-``site_sigma``, ``scalar_sigma`` and additive mismatch retain their PyMC
-implementations. Configured CO₂ does not accept ``sampling.nuts_sampler``.
-``draws``, ``tune``, ``chains`` and ``random_seed`` remain configurable.
+Configured CO₂ selects inference from the resolved scientific model using this
+automatic policy:
+
+.. list-table:: CO2 inference policy
+   :header-rows: 1
+   :widths: 25 30 45
+
+   * - Likelihood
+     - Backend and update
+     - Reason
+   * - ``additive_sigma``
+     - NumPyro NUTS
+     - Keeps the backend used by the packaged additive example.
+   * - ``site_sigma`` (fixed or inferred amplitudes)
+     - PyMC NUTS
+     - Conservative default; this likelihood does not inherently require PyMC.
+   * - ``scalar_sigma``
+     - PyMC NUTS
+     - Conservative default; this likelihood does not inherently require PyMC.
+   * - ``fixed_ou`` with fixed amplitudes
+     - PyMC NUTS
+     - The custom likelihood operation has no JAX implementation.
+   * - ``fixed_ou`` with inferred amplitudes
+     - PyMC cached amplitude update, then state NUTS when states exist
+     - Requires the matched cache and ordered amplitude/state update.
+
+This is a new explicit policy. Previously the packaged template selected NumPyro
+regardless of a subsequent likelihood edit, while omitting the backend selected
+PyMC. Configured CO₂ now rejects ``sampling.nuts_sampler``; remove that option
+when migrating. ``draws``, ``tune``, ``chains`` and ``random_seed`` remain
+configurable. Inferred OU uses ``sampling.sigma_target_accept`` (default 0.8)
+and ``sampling.state_target_accept`` (default 0.9), each strictly between zero
+and one. These tuning controls are not likelihood options.
 For example, replace the likelihood section with:
 
 .. code-block:: toml
@@ -240,6 +271,10 @@ For example, replace the likelihood section with:
 
 The model can infer amplitudes even when every flux and baseline coefficient
 is fixed. In that case the matched update has no state NUTS step.
+Fixed flux with an active boundary or offset still requires the state step.
+The trace and sample manifest record the actual algorithm and effective
+target-accept values alongside the sampling counts and backend. Product replay
+retains that record without constructing a sampler.
 
 Equivalently, ``rhime.run(model="co2", config_file="my-co2.toml")`` selects the
 same runner. Output choices remain separate from the scientific trace.
@@ -389,10 +424,18 @@ uses NumPyro, while both linked OU routes default to and require PyMC.
      - Boolean or list of non-empty variable names. For the cached variant,
        listed names are restricted to ``"y"`` and ``"concentration"``.
    * - ``target_accept``
-     - Not set
+     - ``0.8`` for ordinary NUTS
      - ``0.95``
-     - Number strictly between zero and one. It is not accepted for the cached
-       variant; use the two likelihood target-accept controls described above.
+     - Number strictly between zero and one. Inferred fixed-OU amplitudes use
+       the separate controls below instead.
+   * - ``sigma_target_accept``
+     - ``0.8``
+     - See linked likelihood controls above
+     - CO2 inferred fixed-OU only; number strictly between zero and one.
+   * - ``state_target_accept``
+     - ``0.9``
+     - See linked likelihood controls above
+     - CO2 inferred fixed-OU only; used when flux, boundary or offset states exist.
    * - ``random_seed``
      - Not set
      - Not set
