@@ -19,9 +19,10 @@ overlap twice. The workflow:
 
 All retained sites currently use the same outer domain and the same inner
 domain. Both domains must be available for each retained site. Preparation
-uses OpenGHG's domain definitions to normalize coordinate precision. For an
+uses OpenGHG's domain definitions to normalize footprint coordinates and
+matching runtime flux coordinates before masking and basis generation. For an
 unregistered domain, it warns and uses the first retained site's grid as the
-reference. Incompatible grids are rejected before masking or basis projection.
+reference. Incompatible site grids are rejected before masking or basis projection.
 The shared inner rectangle is applied separately to each actual target
 footprint or flux grid.
 Masking borrows the original arrays and preserves Dask laziness.

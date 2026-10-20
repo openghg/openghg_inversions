@@ -605,7 +605,7 @@ def align_inner_merged_to_outer_observations(
 def _align_domain_sites(
     data: RhimeMergedData | _NestedDomainData, *, domain: str | None, label: str,
 ) -> _NestedDomainData:
-    """Normalize borrowed site labels to a named domain or its first site."""
+    """Normalize site and corresponding flux labels to one domain reference."""
     if not data.sites:
         raise ValueError("Nested-domain masking requires at least one retained site.")
     known = domain is not None and domain.upper() in get_domain_info()
@@ -636,7 +636,19 @@ def _align_domain_sites(
             name: aligned[name].assign_attrs(dataset[name].attrs) for name in ("lat", "lon")
         })
         site_data[site] = aligned
-    return _NestedDomainData(site_data, data.flux_data, data.site_options)
+    flux_data = dict(data.flux_data)
+    for source, dataset in flux_data.items():
+        try:
+            aligned = align_lat_lon(dataset, domain) if known and domain is not None else force_align(
+                dataset, site_data[reference_site], dims=("lat", "lon"),
+            )
+        except ValueError:
+            # Inventories on genuinely different grids retain their native labels.
+            continue
+        flux_data[source] = aligned.assign_coords({
+            name: aligned[name].assign_attrs(dataset[name].attrs) for name in ("lat", "lon")
+        })
+    return _NestedDomainData(site_data, flux_data, data.site_options)
 
 
 def mask_outer_merged_for_inner_domain(

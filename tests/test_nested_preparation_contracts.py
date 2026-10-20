@@ -121,7 +121,7 @@ def test_known_domain_uses_public_normalization_on_actual_datasets(monkeypatch):
     monkeypatch.setattr(nested, "get_domain_info", lambda: {"KNOWN": {}})
     monkeypatch.setattr(nested, "align_lat_lon", normalize)
     aligned = _align_domain_sites(data, domain="KNOWN", label="Inner")
-    assert [domain for _, domain in calls] == ["KNOWN", "KNOWN"]
+    assert [domain for _, domain in calls] == ["KNOWN", "KNOWN", "KNOWN"]
     for site in data.sites:
         np.testing.assert_array_equal(aligned.site_data[site].lat, reference.lat)
         assert aligned.site_data[site].fp.data is data.site_data[site].fp.data
@@ -146,3 +146,97 @@ def test_public_openghg_domain_normalization_preserves_lazy_payload():
                                        "B": shifted})
     with pytest.raises(ValueError, match="same indexed lat/lon grid"):
         _align_domain_sites(malformed, domain="EUROPE", label="Outer")
+
+
+@pytest.mark.parametrize("footprint_shift", [1e-7, .01])
+def test_shifted_europe_footprint_and_flux_generate_reconstructable_quadtree(footprint_shift):
+    from openghg.util import find_domain
+    from openghg_inversions.rhime.nested import _prepare_one_domain
+
+    lat, lon, *_ = find_domain("EUROPE")
+    data = _data(lat + 1e-7, lon + 1e-7)
+    data = replace(data, site_data={
+        site: dataset.assign_coords(lat=lat + footprint_shift, lon=lon + footprint_shift)
+        for site, dataset in data.site_data.items()
+    })
+    data = replace(data, site_data={
+        site: dataset.assign(fp_x_flux=dataset.fp, mf=("time", [10.]), mf_error=("time", [1.]),
+                             mf_repeatability=("time", [1.]), mf_variability=("time", [0.]))
+        for site, dataset in data.site_data.items()
+    })
+    data.flux_data["inventory"].lat.attrs["units"] = "degrees_north"
+    tasks = []
+    with Callback(pretask=lambda key, *_: tasks.append(key)):
+        aligned = _align_domain_sites(data, domain="EUROPE", label="Inner")
+    assert not tasks
+    assert aligned.flux_data["inventory"].flux.data is data.flux_data["inventory"].flux.data
+    assert aligned.flux_data["inventory"].lat.attrs == {"units": "degrees_north"}
+    np.testing.assert_array_equal(data.flux_data["inventory"].lat, lat + 1e-7)
+    prepared = _prepare_one_domain(
+        aligned, domain="EUROPE", start_date="2019-01-01", flux_sources=("inventory",),
+        basis_algorithm="quadtree", nbasis=4, fix_basis_outer_regions=False,
+        use_bc=False, bc_freq=None, min_error=0., min_error_options={"by_site": False},
+        basis_inputs={},
+    )
+    basis = prepared.basis_functions
+    state = xr.ones_like(prepared.inv_inputs.H.isel(nmeasure=0, drop=True))
+    reconstructed = basis.state_to_flux(state)
+    np.testing.assert_array_equal(reconstructed.lat, lat)
+    np.testing.assert_array_equal(reconstructed.lon, lon)
+    np.testing.assert_array_equal(reconstructed.compute(), np.ones(reconstructed.shape))
+    assert isinstance(basis.flux.data, da.Array)
+
+
+@pytest.mark.parametrize("domain", [None, "CUSTOM"])
+def test_corresponding_flux_uses_site_reference_lazily_with_metadata(domain):
+    data = _data([50., 51.], [-2., -1.])
+    flux = data.flux_data["inventory"].assign_coords(lat=data.site_data["A"].lat + 1e-7)
+    flux.lat.attrs["units"] = "degrees_north"
+    flux.attrs["inventory"] = "borrowed"
+    data = replace(data, flux_data={"inventory": flux})
+    tasks = []
+    from contextlib import nullcontext
+    notice = pytest.warns(UserWarning, match="CUSTOM.*retained site 'A'") if domain else nullcontext()
+    with notice, Callback(pretask=lambda key, *_: tasks.append(key)):
+        aligned = _align_domain_sites(data, domain=domain, label="Outer")
+    result = aligned.flux_data["inventory"]
+    assert not tasks
+    assert result.flux.data is flux.flux.data
+    assert result.flux.chunks == flux.flux.chunks
+    assert result.attrs == flux.attrs
+    assert result.lat.attrs == flux.lat.attrs == {"units": "degrees_north"}
+    np.testing.assert_array_equal(result.lat, data.site_data["A"].lat)
+    np.testing.assert_array_equal(flux.lat, data.site_data["A"].lat + 1e-7)
+
+
+@pytest.mark.parametrize("domain", [None, "EUROPE"])
+@pytest.mark.parametrize("grid_change", ["extent", "resolution"])
+def test_genuinely_different_flux_grid_is_retained(domain, grid_change):
+    from openghg.util import find_domain
+
+    lat, lon, *_ = find_domain("EUROPE")
+    data = _data(lat, lon)
+    flux = data.flux_data["inventory"]
+    flux = (flux.assign_coords(lat=flux.lat + 5.) if grid_change == "extent"
+            else flux.isel(lat=slice(None, None, 2)))
+    data = replace(data, flux_data={"inventory": flux})
+    with Callback(pretask=lambda *_: pytest.fail("normalization computed borrowed flux")):
+        aligned = _align_domain_sites(data, domain=domain, label="Outer")
+    assert aligned.flux_data["inventory"] is flux
+
+
+def test_normalized_corresponding_flux_and_footprint_share_inclusive_mask_boundary():
+    from openghg.util import find_domain
+
+    lat, lon, *_ = find_domain("EUROPE")
+    outer = _data(lat + 1e-7, lon + 1e-7)
+    inner = _data(lat[10:12], lon[10:12])
+    with Callback(pretask=lambda *_: pytest.fail("masking computed borrowed payloads")):
+        masked = mask_outer_merged_for_inner_domain(outer, inner, outer_domain="EUROPE")
+    footprint = masked.site_data["A"].fp
+    flux = masked.flux_data["inventory"].flux
+    xr.testing.assert_equal(footprint.rename("flux"), flux)
+    np.testing.assert_array_equal(flux.isel(lat=slice(10, 12), lon=slice(10, 12)).compute(), 0.)
+    assert flux.isel(lat=12, lon=12).compute().item() == 1.
+    assert set(outer.flux_data["inventory"].flux.data.dask).issubset(flux.data.dask)
+    assert outer.flux_data["inventory"].flux.isel(lat=11, lon=11).compute().item() == 1.
