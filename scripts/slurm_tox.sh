@@ -35,6 +35,8 @@ export UV_CACHE_DIR=${UV_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/uv}
 # Copies are expected here and disappear with TOX_WORK_DIR at job exit.
 export UV_LINK_MODE=copy
 export PYTEST_XDIST_WORKERS=${PYTEST_XDIST_WORKERS:-0}
+# Dask can count host CPUs rather than this allocation's two CPUs.
+export DASK_NUM_WORKERS=${DASK_NUM_WORKERS:-2}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-1}
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}
 # Managed interpreters include the development headers required by PyTensor.

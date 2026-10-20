@@ -365,11 +365,19 @@ sbatch scripts/slurm_tox.sh -e type
 The Slurm runner creates `TOX_WORK_DIR` on node-local storage and removes it on
 exit. It continues to use the shared uv cache for downloaded artifacts; files
 still have to be installed into each isolated tox environment, but those
-node-local copies are temporary.
+node-local copies are temporary. Tox environments and pytest run serially by
+default, with two Dask workers and one numerical thread per process. The runner
+preserves an explicit `DASK_NUM_WORKERS` setting through tox. Budget Dask workers
+together with pytest workers and parallel tox environments when overriding
+these defaults; a worker limit is not a total job memory limit.
 
-The tox environments do not require a C++ compiler. PyTensor can use its
-Python implementations when no compiler is configured, so cluster module
-loading is not needed before running the tests.
+Direct pytest and GitHub Actions bypass the Slurm runner. To bound Dask during
+a direct real-data test run, set `DASK_NUM_WORKERS=2 uv run pytest <test-path>`.
+
+Scientific tox environments check the resolved Python's development headers
+and PyTensor's configured C++ compiler before pytest. The Slurm runner prefers
+uv-managed Python installations, which include those headers. If PyTensor's
+compiler was explicitly disabled with `cxx=`, the compilation check is skipped.
 
 On a cluster compute node, a writable node-local PyTensor compilation cache
 also avoids shared-filesystem contention. Preserve any existing
