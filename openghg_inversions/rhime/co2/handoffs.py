@@ -22,7 +22,7 @@ from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load as load_affine, save as save_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import RhimePreparedInputs
-from openghg_inversions.inference.sampling import RhimeSampler, resolve_sampler
+from openghg_inversions.inference.sampling import RhimeSampler, describe_recorded_sampler, resolve_sampler
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.rhime._stage_artifacts import (
     _output_path, check_checkpoint_targets, finish_checkpoint, read_manifest,
@@ -268,7 +268,7 @@ def sample(
 def load_samples(sample_manifest: str | Path) -> Co2Output:
     """Load saved scientific meaning without acquisition, construction or inference.
 
-    Replayed results retain ``sampler=None`` and plain recorded inference and
+    Replayed results retain plain recorded inference and
     installed-version provenance. Original requested dates are taken from the
     preparation, independently of observation extrema or current model settings.
     """
@@ -294,7 +294,7 @@ def load_samples(sample_manifest: str | Path) -> Co2Output:
         prepared=preparation.prepared, trace=trace, bound=bound,
         start_date=preparation.start_date, end_date=preparation.end_date, domain=preparation.domain,
         output_metadata={
-            "sampler": record.get("actual_inference") if isinstance(record.get("actual_inference"), Mapping) else {},
+            "sampler": describe_recorded_sampler(record.get("actual_inference")),
             "provenance": record.get("provenance") if isinstance(record.get("provenance"), Mapping) else {},
         },
     )

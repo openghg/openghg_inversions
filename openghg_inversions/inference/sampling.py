@@ -28,6 +28,26 @@ from openghg_inversions.postprocessing.contracts import resolve_predictive_names
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
 
 
+def describe_recorded_sampler(recorded: object) -> dict[str, int | str]:
+    """Normalize available inference metadata without constructing a sampler.
+
+    Only the fields returned by ``RhimeSampler.describe`` are retained.
+    Missing fields stay absent; an invalid known value makes the description
+    unavailable without preventing scientific replay.
+    """
+    if not isinstance(recorded, Mapping):
+        return {}
+    try:
+        description: dict[str, int | str] = {
+            name: int(recorded[name]) for name in RhimeSampler.INTEGER_OPTION_NAMES if name in recorded
+        }
+        if "nuts_sampler" in recorded:
+            description["nuts_sampler"] = RhimeSampler._normalise_nuts_sampler(recorded["nuts_sampler"])
+    except (TypeError, ValueError, OverflowError):
+        return {}
+    return description
+
+
 def _copy_sampler_options(value: Any) -> Any:
     """Own keyword containers and NumPy options, borrowing opaque runtime objects."""
     if isinstance(value, dict):

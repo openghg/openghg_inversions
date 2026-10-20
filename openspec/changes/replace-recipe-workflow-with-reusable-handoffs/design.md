@@ -190,13 +190,13 @@ applicable subset:
 
 | Value | Meaning |
 | --- | --- |
-| A supplied `RhimeSampler` | Use or retain that configured sampler |
+| A supplied `RhimeSampler` | Use that configured sampler for live execution |
 | `"default"` | Request a fresh sampler; for standard execution, `RhimeSampler()` |
-| `None` | No live sampler object is present; valid on results, invalid when sampling is requested |
+| `None` | No sampler supplied; invalid when sampling is requested |
 
 There is no requirement for a three-way argument or a new "skip sampling" mode.
-Preparation and replay do not select a sampler. A replay result with `None` can
-still describe samples produced earlier through its saved provenance.
+Preparation and replay do not select a sampler. Scientific results have no live
+sampler field and describe completed inference through saved provenance.
 
 Take an invocation-local copy of the existing sampler and its owned keyword
 containers. Preserve supported list/tuple/NumPy values and isolate overrides.
@@ -211,8 +211,8 @@ needed to achieve these guarantees.
 Standard and multisector results use the existing `InversionOutput` scientific view, including
 when no files are requested. Its inference description records what happened;
 no live model/sampler or output policy is retained. Model inspection uses the
-eager builder directly. Deferred nested and CO2 families keep their existing `RhimeResult`
-compatibility shape until their own adoption slices. This supersedes the earlier
+eager builder directly. Nested uses `NestedOutput`, and ordinary and cached CO2
+use `Co2Output`. This supersedes the earlier
 proposal to preserve the standard result envelope or a deprecated `run_rhime`
 wrapper. The Python `run_rhime` name is removed in 0.8 with import guidance;
 `run-rhime` remains the unchanged CLI spelling and calls `run_standard`.
@@ -222,8 +222,9 @@ The maintainer's 16 October multisector correction also retires the remaining
 adapters. Prepared callers use `run_multisector(prepared=..., config=...)`;
 complete custom models compose ordinary materialization, construction, sampling
 and output operations directly. Multisector does not retain a `RhimeRunSpec`
-complete-builder context or a `RhimeResult` compatibility route. Shared envelope
-types and nested validation context remain only for actual deferred-family users.
+complete-builder context or a `RhimeResult` compatibility route. After nested and
+cached CO2 adoption, the unused shared envelope types and nested validation
+context are removed.
 
 ### 3. Keep scientific order visible; save only at explicit boundaries
 
@@ -644,8 +645,12 @@ parameter references; missing imported descriptions remain unavailable. The CO2
 external-trace validator stays beside the scientific output owner and checks roles,
 dimensions, units and alignment even when products are disabled. Generic contract
 validation does not replace these family-specific checks. Named preparation fields
-remain a concrete handoff, and `sampler=None` expresses the required absence-of-live-
-sampler protocol without creating an inference object.
+remain a concrete handoff. Scientific output views have no live sampler field;
+one pure helper normalizes the available five-field inference description without
+creating an inference object or filling missing values from current defaults.
+Cached output provenance comes from the sample manifest. Replay omits the former
+zero-valued `build_and_sample_seconds` placeholder because it cannot measure the
+earlier inference duration.
 
 Full/saved routes call one trace-annotation operation and one preparation-record
 finisher. They share output policy/resource preflight; calculation trusts that

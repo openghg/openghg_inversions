@@ -13,8 +13,6 @@ from openghg_inversions.rhime import (
     run_nested,
     run_rhime_multisector,
     run_rhime_nested,
-    with_prepared_rhime_sites,
-    with_prepared_sites,
 )
 
 
@@ -24,7 +22,6 @@ def test_established_imports_are_same_implementations():
     assert RhimeMergedData is MergedData
     assert RhimePreparedInputs is PreparedInputs
     assert assemble_rhime_inputs is assemble_inputs
-    assert with_prepared_rhime_sites is with_prepared_sites
 
 
 def test_unknown_model_rejected():
@@ -105,3 +102,12 @@ def test_removed_ordinary_runner_names_have_no_compatibility_aliases():
     for name in ("run_rhime_co2", "build_rhime_co2", "run_co2_from_config"):
         assert not hasattr(co2, name)
         assert not hasattr(rhime, name)
+
+
+def test_retired_run_envelopes_and_site_helpers_have_no_public_exports():
+    from openghg_inversions import rhime
+
+    for name in ("RhimeResult", "RhimeRunSpec", "with_prepared_sites", "with_prepared_rhime_sites"):
+        assert not hasattr(rhime, name)
+        assert name not in rhime.__all__
+    assert not hasattr(RhimeConfig, "retained_run_spec")

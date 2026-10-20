@@ -23,7 +23,6 @@ from openghg_inversions.rhime.co2.co2_outputs import (
     validate_co2_outputs,
     validate_co2_product_request,
 )
-from openghg_inversions.rhime.specs import RhimeOutputSpec
 from openghg_inversions.serialization import restore_serialisation_multiindexes
 from test_co2_affine_output import _prepared
 
@@ -122,7 +121,7 @@ def test_direct_basic_output_roundtrips_observation_multiindex_without_mutating_
         end_date="2020-02-01",
         domain="EUROPE",
     )
-    output = Co2OutputOptions(output_format="basic", output_path=tmp_path)
+    output = Co2OutputOptions(output_format="basic", output_path=tmp_path, save_trace=tmp_path / "trace.nc")
     countries = validate_co2_product_request(output, prepared=prepared)
     calculate_co2_products(result=result, prepared=prepared, output=output, countries=countries)
     save_co2_products(result, output=output)
@@ -134,8 +133,10 @@ def test_direct_basic_output_roundtrips_observation_multiindex_without_mutating_
     xr.testing.assert_identical(prepared.inv_inputs, inputs_before)
     xr.testing.assert_identical(trace, trace_before)
     assert result.idata is trace
+    assert result.prepared is prepared
+    from openghg_inversions.serialization import load_trace
+    xr.testing.assert_identical(load_trace(result.output_metadata["trace_path"]), trace)
     assert not hasattr(result, "output_spec")
-    assert result.sampler is None
 
 
 def test_unsupported_requests_are_rejected_before_destinations_exist(tmp_path):
@@ -151,9 +152,16 @@ def test_unsupported_requests_are_rejected_before_destinations_exist(tmp_path):
     assert not (tmp_path / "unopened").exists()
 
 
-def test_cached_output_adapter_preserves_unsupported_inversion_output_guard():
+def test_cached_output_options_preserve_unsupported_inversion_output_guard(tmp_path):
+    from openghg_inversions.rhime.co2.stages import resolve_co2_stage_setup
+    from test_co2_stage_contracts import _config
+
+    params = _config(tmp_path / "absent.nc")
+    params["outputs"] = {"output_format": "basic", "save_inversion_output": True}
     with pytest.raises(ValueError, match="save_inversion_output"):
-        validate_co2_outputs(RhimeOutputSpec(output_format="basic"))
+        resolve_co2_stage_setup(params)
+    params["outputs"]["save_inversion_output"] = False
+    assert isinstance(resolve_co2_stage_setup(params).output, Co2OutputOptions)
 
 
 def test_basic_native_product_uses_affine_nonunit_reference_and_signed_flux():

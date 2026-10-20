@@ -11,8 +11,6 @@ from pathlib import Path
 from typing import Any
 from collections.abc import Mapping
 
-from openghg_inversions.inference.sampling import RhimeSampler
-
 
 def _load_stage_manifest(path: str | Path, *, stage: str) -> tuple[Path, dict[str, Any]]:
     """Load and validate one OGI stage manifest envelope."""
@@ -37,27 +35,3 @@ def _load_stage_manifest(path: str | Path, *, stage: str) -> tuple[Path, dict[st
     if mismatched:
         raise ValueError(f"Stage manifest {manifest_path} has an invalid envelope: {mismatched!r}.")
     return manifest_path, loaded
-
-
-def _sampler_metadata_from_sample_manifest(manifest: Mapping[str, Any]) -> dict[str, int | str]:
-    """Describe recorded settings; unavailable descriptions do not prevent replay.
-
-    Use the sampler's existing normalization and output description, retaining
-    only supplied fields. Unknown runtime options are not needed for products.
-    If known settings cannot be parsed, leave their description unavailable;
-    the original record still retains the supplied provenance.
-    """
-    effective = manifest.get("effective_configuration")
-    sampler = effective.get("sampler") if isinstance(effective, Mapping) else None
-    if not isinstance(sampler, Mapping):
-        return {}
-    options = {
-        name: sampler[name]
-        for name in (*RhimeSampler.INTEGER_OPTION_NAMES, "nuts_sampler")
-        if name in sampler
-    }
-    try:
-        description = RhimeSampler(**options).describe()
-    except (TypeError, ValueError, OverflowError):
-        return {}
-    return {name: value for name, value in description.items() if name in options}

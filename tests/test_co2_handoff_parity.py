@@ -35,7 +35,6 @@ def test_scientific_view_and_products_preserve_complete_trace(monkeypatch):
     assert set(view.idata.children) == set(trace.children)
     assert not hasattr(view, "output_spec")
     assert not hasattr(view, "source_to_sector")
-    assert view.sampler is None
     to_dataset = xr.DataTree.to_dataset
 
     def child_dataset_only(tree, *args, **kwargs):
@@ -124,11 +123,9 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
         if name != "concentration_components":
             assert Path(full.output_metadata[f"{name}_path"]).is_file()
             assert Path(staged.output_metadata[f"{name}_path"]).is_file()
-    assert full.sampler is None
     assert full.output_metadata["sampler"]["draws"] == 12
     assert not hasattr(full, "output_spec")
     assert not hasattr(full, "source_to_sector")
-    assert staged.sampler is None
     assert not hasattr(staged, "model")
     assert not hasattr(full, "run_spec")
     assert not hasattr(full, "model_spec")
@@ -194,7 +191,6 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
             country_file=str(countries), output_path=str(tmp_path / "replay-products"),
         ),
     )
-    assert replay.sampler is None
     assert replay.output_metadata["sampler"] == staged.output_metadata["sampler"]
     for name in ("basic", "concentration_components", "native_flux", "country_flux"):
         xr.testing.assert_identical(replay.outputs[name], staged.outputs[name])

@@ -190,27 +190,26 @@ xarray and Dask objects.
   value is empty
 - **AND** the resulting valid sampler needs no repeated downstream check
 
-### Requirement: Optional live samplers and descriptive replay metadata
+### Requirement: Scientific outputs and descriptive replay metadata
 
-Standard and multisector results SHALL be `InversionOutput` and SHALL NOT hold live samplers or
-models. Deferred-family `RhimeResult.sampler` SHALL remain optional and default
-to `None` without a sampler factory. Saved sampler provenance SHALL be plain metadata describing the actual
-inference invocation. Product replay and diagnosis SHALL NOT rebuild the
-producing model or execute inference. They MAY use existing configuration
-construction to inspect supplied or recorded choices; constructing a settings
-object does not imply execution. Missing provenance SHALL NOT be filled from
-current defaults, and descriptive sampling metadata SHALL NOT impose an
-additional scientific compatibility gate. No strict-metadata mode is required.
-Live execution SHALL retain access to a sampler only when its result contract
-explicitly supplies one.
-Here `None` SHALL mean absence of a live sampler, not absence of previously
-completed inference. `"default"` SHALL be an execution request only and SHALL NOT
-be retained as a result sampler or substituted for actual inference provenance.
+Standard and multisector results SHALL be `InversionOutput`; nested results SHALL
+be `NestedOutput`, and ordinary and cached CO2 results SHALL be `Co2Output`.
+These scientific views SHALL NOT hold live models or sampler fields.
+Saved sampler provenance SHALL be plain metadata describing the actual inference
+invocation. Product replay and diagnosis SHALL NOT rebuild the producing model or
+execute inference. Replay SHALL normalize available `draws`, `burn`, `tune`,
+`chains` and `nuts_sampler` values through a pure metadata operation without
+constructing a sampler. Missing or invalid descriptions SHALL become `{}`; valid
+partial descriptions SHALL retain only their supplied fields.
+Missing provenance SHALL NOT be filled from current defaults, and descriptive
+sampling metadata SHALL NOT impose an additional scientific compatibility gate.
+No strict-metadata mode is required. `"default"` SHALL remain an execution
+request only and SHALL NOT replace actual inference provenance.
 
 #### Scenario: Result without a live sampler
-- **WHEN** a caller constructs a result without a sampler, or loads saved samples
+- **WHEN** a caller constructs a scientific output, or loads saved samples
   for product replay or diagnosis
-- **THEN** its live sampler remains `None` without selecting execution defaults
+- **THEN** the output retains no live sampler field or execution defaults
 - **AND** recorded sampler provenance remains inspectable as metadata without
   rebuilding a model or running inference
 
@@ -254,9 +253,9 @@ prepared-input and postprocessing execution. Multisector callers SHALL use
 operations. The superseded `run_rhime_from_prepared_inputs` entry point and its
 multisector build/result/output adapters SHALL be removed together with their
 callers. Complete-model customization SHALL use explicit scientific composition
-rather than an output-bearing `RhimeRunSpec` builder context. Shared envelope
-types MAY remain for actual nested and CO2 consumers until their owning
-adoption slices migrate those consumers.
+rather than an output-bearing `RhimeRunSpec` builder context. The retired
+`RhimeRunSpec` and `RhimeResult` envelope types SHALL be removed after nested and
+cached CO2 adopt their concrete scientific views.
 
 Standard full, prepared-input and postprocessing routes SHALL build an
 `InversionOutput` view, write requested products/exports, and return that view.

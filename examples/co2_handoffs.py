@@ -151,7 +151,6 @@ def run_example(destination: Path) -> None:
     )
     for name in ("basic", "concentration_components", "native_flux", "country_flux"):
         xr.testing.assert_allclose(full.outputs[name], replay.outputs[name])
-    assert replay.sampler is None
     assert replay.start_date == START_DATE
     assert replay.end_date == END_DATE
     # Independent BC/offset priors and mismatch choices do not redefine reduction.

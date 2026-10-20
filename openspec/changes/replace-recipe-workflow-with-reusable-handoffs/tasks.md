@@ -238,8 +238,8 @@ suite, supported Python versions, typing and documentation.
   cannot complete an incompatible handoff without supported reconstruction;
   `_latent` values alone do not satisfy the scientific output role.
 - [x] 1.8 Implement standard `postprocess` from one sample manifest and current
-  output choices. Replayed results use `sampler=None` and plain saved metadata;
-  configuration construction is permitted, but replay does not build a model or
+  output choices. Replayed results retain no live sampler field and use plain saved
+  metadata normalized without sampler construction. Replay does not build a model or
   run inference. Use retained, referenced or supplied run context without filling
   missing provenance from current defaults. Verify save/reopen and two output
   choices from the same samples, preserving requested window/retained metadata
@@ -378,10 +378,9 @@ adapters rather than preserving them for test/example consumers. All affected
 ordinary prepared-input callers migrate to `run_multisector(prepared=..., config=...)`
 and explicit scientific composition; the `RhimeRunSpec` complete-builder hook and
 unused callable adapter/protocol are removed. Neither standard nor multisector
-execution constructs `RhimeResult` or `RhimeRunSpec`. Shared envelope types and
-the nested graph-validation context remain because nested and CO2 still
-consume them; their owning slices must migrate those real consumers before
-global deletion. Ordinary CO2 #886 is coordinated separately and already uses
+execution constructs `RhimeResult` or `RhimeRunSpec`. The subsequent nested #898
+and cached CO2 #900 slices migrate the remaining consumers and remove the shared
+envelope types and nested graph-validation context. Ordinary CO2 #886 already uses
 its concrete scientific output. Nested/cached CO2, model-input ownership,
 artifact/storage policy and integrated acceptance remain outside this delivery.
 
@@ -576,7 +575,7 @@ source-labelled flux-prior representation question are tracked in
   independent diagnosis and applicable release notes with its writer/reader/callers.
   Verify unsupported science/output requests fail before expensive work or report
   destination creation, predictive evidence retains its scientific meaning and
-  replay uses saved metadata with `sampler=None` without rebuilding a graph or
+  replay uses saved metadata without a live sampler field, rebuilding a graph or
   running inference.
 - [ ] 3.6 Clear the ordinary CO2 gate against existing coherent, likelihood and
   affine reconstruction references, plus configured-full/staged/replay products
@@ -636,7 +635,7 @@ prior/posterior sample axes. Scientific trace/affine state owns reconstruction,
 role/alignment/unit checks and bounded actual model metadata; it does not use the
 standard multiplicative `OutputContract`. Decision 9 explicitly reconciles this
 with decision 6 and the existing CO2-specific capability scenario. Replay has
-`sampler=None` as absence under the existing replay contract, and uses saved
+no live sampler field and uses saved
 meaning/provenance without acquisition, callable import, graph construction or
 inference. Missing descriptive facts remain unavailable. The named preparation
 record retains its concrete fields. These are documented partial pushbacks to

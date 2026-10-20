@@ -8,7 +8,7 @@ their affine reconstruction binding remains valid.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from hashlib import sha256
 import json
 from numbers import Integral
@@ -18,31 +18,25 @@ from typing import Any, cast
 from collections.abc import Mapping
 
 import numpy as np
-import xarray as xr
 
 from openghg_inversions.basis.affine_flux_map_io import load as load_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import RhimePreparedInputs
-from openghg_inversions.postprocessing.countries import Countries
+from openghg_inversions.inference.sampling import describe_recorded_sampler
 from openghg_inversions.rhime.builders import callable_metadata
-from openghg_inversions.rhime.outputs import RhimeResult
-from openghg_inversions.rhime.specs import RhimeModelSpec, RhimeOutputSpec, RhimeRunSpec
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.rhime._stage_artifacts import (
     artifact_path as _artifact_path,
     json_value as _json_value,
     write_json as _write_json,
-    _validate_filename_component,
     _output_path,
     _stage_output_directory,
 )
 from openghg_inversions.rhime._stage_authentication import (
     _load_stage_manifest,
-    _sampler_metadata_from_sample_manifest,
 )
 from openghg_inversions.rhime._stage_checks import PREPARATION_CHECK_NAME, _check_result, _check_stage
-from openghg_inversions.serialization import load_trace, reset_serialisation_multiindexes, save_trace
-from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
+from openghg_inversions.serialization import load_trace, save_trace
 
 from .co2_affine_output import BoundCo2AffineFluxMap, _bind_affine_flux_map, prepared_inputs_content_id
 from .co2_cached_sigma_runner import (
@@ -51,6 +45,10 @@ from .co2_cached_sigma_runner import (
     sample_co2_cached_prior_predictive,
 )
 from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs
+from .co2_outputs import (
+    Co2Output, Co2OutputOptions, calculate_co2_products, make_co2_output,
+    save_co2_products, validate_co2_output_spec, validate_co2_product_request,
+)
 from .configuration import Co2RunSetup, resolve_co2_family_config
 
 
@@ -66,7 +64,7 @@ class Co2StageSetup:
     """
 
     recipe: Co2RunSetup
-    output: RhimeOutputSpec
+    output: Co2OutputOptions
     reconstruction_path: Path | None
     source_to_sector: Mapping[str, str] | None = None
 
@@ -131,8 +129,6 @@ def resolve_co2_stage_setup(params: Mapping[str, Any]) -> Co2StageSetup:
             "sample and postprocess with one preparation or sample manifest, or "
             "co2.run_co2 for configured full execution."
         )
-    from .co2_outputs import validate_co2_output_spec
-
     options = dict(params)
     outputs = dict(options.pop("outputs", {}))
     reconstruction = outputs.pop("reconstruction_path", None)
@@ -149,9 +145,11 @@ def resolve_co2_stage_setup(params: Mapping[str, Any]) -> Co2StageSetup:
     allowed = {"output_format", "output_name", "country_file", "save_inversion_output"}
     if unknown := outputs.keys() - allowed:
         raise ValueError(f"Unknown CO2 output option(s): {sorted(unknown)!r}.")
-    output = RhimeOutputSpec(output_format="basic", save_inversion_output=False)
-    output = RhimeOutputSpec(**{**asdict(output), **outputs})
-    _validate_filename_component("output_name", output.output_name)
+    if outputs.pop("save_inversion_output", False):
+        raise ValueError(
+            "CO2 save_inversion_output is unsupported; retain the prepared, posterior, and reconstruction stage artifacts."
+        )
+    output = Co2OutputOptions(**outputs)
     validate_co2_output_spec(output, has_reconstruction=reconstruction is not None)
     if output.output_format == "paris" and not output.country_file:
         raise ValueError("Staged CO2 PARIS outputs require an explicit outputs.country_file.")
@@ -222,11 +220,6 @@ def _validate_inputs(setup: Co2StageSetup, prepared: Co2PreparedInputs) -> None:
         value = likelihood.get(key)
         if isinstance(value, Mapping) and set(value) != sites:
             raise ValueError(f"CO2 {key} must cover the prepared site labels exactly: {sorted(sites)!r}.")
-    if setup.output.output_format == "paris" and len(set(prepared.averaging_period)) != 1:
-        raise ValueError("CO2 PARIS concentration requires one common observation averaging period.")
-    if setup.output.country_file:
-        countries = Countries.from_file(country_file=setup.output.country_file)
-        xr.align(prepared.basis_functions.flux, countries.matrix, join="exact", copy=False)
     co2_cached_sigma_input_names(prepared, use_bc=bool(options.get("use_bc", False)))
 
 
@@ -265,13 +258,14 @@ def prepare_co2_stage(
         raise ValueError(
             "Save the new prepared handoff and bind its reconstruction before staging affine outputs."
         )
+    bound = None
     if setup.reconstruction_path is not None:
-        from .co2_outputs import validate_co2_outputs
-
         bound = _bind_affine_flux_map(
             load_affine(setup.reconstruction_path), prepared, prepared_inputs_id=prepared_inputs_content_id(source),
         )
-        validate_co2_outputs(setup.output, bound=bound, source_to_sector=setup.source_to_sector)
+    validate_co2_product_request(
+        setup.output, prepared=prepared, bound=bound, source_to_sector=setup.source_to_sector,
+    )
     manifest = _manifest(setup, "prepare")
     destination = _stage_output_directory(output_dir)
     prepared_path = _output_path(destination, None, "prepared-inputs.nc")
@@ -307,9 +301,6 @@ def _load_prepared(
             load_affine(setup.reconstruction_path), prepared,
             prepared_inputs_id=prepared_inputs_content_id(prepared_inputs),
         )
-    from .co2_outputs import validate_co2_outputs
-
-    validate_co2_outputs(setup.output, bound=bound, source_to_sector=setup.source_to_sector)
     return prepared, bound
 
 
@@ -364,7 +355,10 @@ def sample_co2_stage(
     output_dir: str | Path,
 ) -> dict[str, Any]:
     """Sample with the matched cached runner, then save canonically."""
-    prepared, _ = _load_prepared(setup, prepared_inputs, preparation_manifest)
+    prepared, bound = _load_prepared(setup, prepared_inputs, preparation_manifest)
+    validate_co2_product_request(
+        setup.output, prepared=prepared, bound=bound, source_to_sector=setup.source_to_sector,
+    )
     manifest = _manifest(setup, "sample")
     trace = setup.recipe.runner(**setup.recipe.runner_arguments(prepared))
     destination = _stage_output_directory(output_dir)
@@ -378,24 +372,12 @@ def sample_co2_stage(
     return manifest
 
 
-def _run_spec(setup: Co2StageSetup, prepared: Co2PreparedInputs, output_dir: Path) -> RhimeRunSpec:
-    options = cast(Mapping[str, Any], setup.recipe.runner_kwargs)
+def _observed_day_range(prepared: Co2PreparedInputs) -> tuple[str, str]:
+    """Return the cached reporting window, including the final observed day."""
     time = prepared.inv_inputs["time"]
     start = str(np.asarray(time.min().values).astype("datetime64[D]"))
     end = str(np.asarray(time.max().values).astype("datetime64[D]") + np.timedelta64(1, "D"))
-    model = RhimeModelSpec(
-        species="co2",
-        domain=prepared.inv_inputs.attrs.get("domain", "unspecified"),
-        sectors=(),
-        use_bc=bool(options.get("use_bc", False)),
-        add_offset="offset_prior" in options,
-        aggregation_error_mode=prepared.aggregation_error_mode,
-        bc_prior=options.get("bc_prior"),
-        offset_prior=options.get("offset_prior"),
-        offset_args=dict(options.get("offset_args", {})),
-    )
-    output = RhimeOutputSpec(**{**asdict(setup.output), "output_path": None})
-    return RhimeRunSpec(start, end, prepared.sites, prepared.averaging_period, model, output)
+    return start, end
 
 
 def postprocess_co2_stage(
@@ -406,47 +388,49 @@ def postprocess_co2_stage(
     posterior: str | Path,
     sample_manifest: str | Path,
     output_dir: str | Path,
-) -> RhimeResult:
-    """Load version-1 CO2 artifacts and create role-selected common products."""
-    from .co2_outputs import make_co2_rhime_outputs, make_co2_rhime_result
+) -> Co2Output:
+    """Replay version-1 CO2 artifacts into a borrowed scientific output view.
 
+    The matched preparation, trace and affine map are retained without building
+    a model or sampler. Sampler provenance comes directly from the sample
+    manifest. Products keep their stage filenames; ``none`` writes only the
+    postprocess manifest. Reporting dates retain the observed day range.
+    """
     prepared, bound = _load_prepared(setup, prepared_inputs, preparation_manifest)
     _, sample = _load_stage_manifest(sample_manifest, stage="sample")
     if sample["schema_version"] != 1:
         raise ValueError("CO2 postprocessing requires schema_version=1 sample manifests.")
     if sample.get("configuration_identity") != co2_configuration_identity(setup):
         raise ValueError("Posterior does not match the effective CO2 configuration.")
-    sampler_metadata = _sampler_metadata_from_sample_manifest(sample)
+    recorded = sample.get("effective_configuration")
+    recorded_sampler = recorded.get("sampler") if isinstance(recorded, Mapping) else None
     trace = load_trace(posterior)
     destination = Path(output_dir).resolve()
-    result = make_co2_rhime_result(
-        prepared=prepared,
-        run_spec=_run_spec(setup, prepared, destination),
-        sampler=None,
-        idata=trace,
+    start, end = _observed_day_range(prepared)
+    result = make_co2_output(
+        prepared=prepared, trace=trace, start_date=start, end_date=end,
+        domain=prepared.inv_inputs.attrs.get("domain", "unspecified"), bound=bound,
+        output_metadata={
+            "sampler": describe_recorded_sampler(recorded_sampler),
+            "provenance": dict(sample["ogi"]) if isinstance(sample.get("ogi"), Mapping) else {},
+        },
     )
-    result.output_metadata["sampler"] = sampler_metadata
     # Build all requested products before opening any output destination.
-    make_co2_rhime_outputs(
-        result=result, prepared=prepared, bound=bound, source_to_sector=setup.source_to_sector
+    countries = validate_co2_product_request(
+        setup.output, prepared=prepared, bound=bound, source_to_sector=setup.source_to_sector,
+    )
+    calculate_co2_products(
+        result=result, prepared=prepared, output=setup.output, bound=bound,
+        source_to_sector=setup.source_to_sector, countries=countries,
     )
     manifest = _manifest(setup, "postprocess")
     destination = _stage_output_directory(destination)
-    artifacts = {}
-    for name, product in result.outputs.items():
-        if isinstance(product, xr.Dataset):
-            path = _output_path(destination, None, f"{name}.nc")
-            if name.startswith("paris_"):
-                write_netcdf_preserving_bounds_attrs(product, path)
-            else:
-                reset_serialisation_multiindexes(product).to_netcdf(path)
-            artifacts[name] = _artifact_path(path)
-            result.output_metadata[f"{name}_path"] = str(path)
-    recorded = sample.get("effective_configuration")
-    recorded_sampler = recorded.get("sampler") if isinstance(recorded, Mapping) else None
+    paths = {name: _output_path(destination, None, f"{name}.nc") for name in result.outputs}
+    # The sample stage owns posterior.nc; replay writes only its named products.
+    save_co2_products(result, output=replace(setup.output, save_trace=False), product_paths=paths)
     manifest["effective_configuration"]["sampler"] = recorded_sampler
     manifest["sampling_configuration"] = recorded_sampler
-    manifest["artifacts"] = artifacts
+    manifest["artifacts"] = {name: _artifact_path(path) for name, path in paths.items()}
     result.output_metadata["postprocess_manifest_path"] = str(
         _write_json(destination / "postprocess-manifest.json", manifest)
     )

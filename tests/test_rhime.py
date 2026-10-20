@@ -3160,7 +3160,6 @@ def test_rhime_public_package_exports_supported_orchestration_stages() -> None:
         "prepare_observation_errors",
         "build_sensitivities",
         "assemble_rhime_inputs",
-        "with_prepared_rhime_sites",
         "materialize_pymc_inputs",
         "build_standard_model",
         "build_multisector_model",
@@ -7201,7 +7200,7 @@ def test_default_model_inversion_output_save_load_roundtrip(tmp_path: Path) -> N
     assert reloaded.domain == "EUROPE"
     assert reloaded.run_metadata["basis_artifact_source"] == "unit-test"
     assert reloaded.provenance == {"package": "unit-test"}
-    assert reloaded.output_metadata == {"sampler": None}
+    assert reloaded.output_metadata == {"sampler": {}}
     assert "builder_strategy" not in reloaded.model_metadata
     assert reloaded.trace.attrs["burn"] == 1000
     assert cast(Any, reloaded.trace).posterior.attrs["burn"] == 1000
@@ -7296,7 +7295,7 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     assert reloaded.run_metadata["basis_artifact_path"] == basis_artifact_path
     assert reloaded.basis_functions.basis_artifact_path == basis_artifact_path
     assert reloaded.provenance == {"package": "unit-test"}
-    assert reloaded.output_metadata == {"sampler": None}
+    assert reloaded.output_metadata == {"sampler": {}}
     assert "builder_strategy" not in reloaded.model_metadata
     saved_activity = reloaded.model_metadata["sectors"][0]["state_activity"]
     assert saved_activity["active"] == {

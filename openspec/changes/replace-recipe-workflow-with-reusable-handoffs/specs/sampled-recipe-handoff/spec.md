@@ -185,11 +185,12 @@ Replay SHALL NOT import or execute recorded construction or likelihood callables
 Sampler provenance SHALL be a small description of completed sampling consumed
 by the shared output owner. It SHALL NOT be a scientific acceptance gate or be
 replaced by fresh sampler defaults. Missing descriptive fields SHALL remain
-unavailable rather than be invented. Constructing a `RhimeSampler` configuration
-to obtain its metadata SHALL be permitted and SHALL NOT imply sampling or model
-construction; no separate sampler settings type or metadata strict flag SHALL be
-required. An ordinary replay result SHALL have `sampler=None`, retaining saved
-sampler provenance as metadata rather than a live inference sampler. Replay SHALL
+unavailable rather than be invented. A shared pure metadata operation SHALL
+normalize available `draws`, `burn`, `tune`, `chains` and `nuts_sampler` values
+without constructing a `RhimeSampler`. Missing or invalid descriptions SHALL
+become `{}`, while valid partial descriptions SHALL remain partial. No separate
+sampler settings type or metadata strict flag SHALL be required. Replay results
+SHALL retain saved sampler provenance as metadata without a live sampler field. Replay SHALL
 use the preparation's retained flux rather than resolve current native
 flux or load historical flux from a separate basis artifact.
 Current output choices SHALL NOT replace recorded scientific or inference choices.
@@ -202,7 +203,7 @@ with the corresponding in-memory route.
   context and compatible current output choices with a new destination or naming policy
 - **THEN** it returns the requested products using recorded inference provenance
   and the same saved scientific output meaning without model execution
-- **AND** its result has `sampler=None` and its output metadata describes the completed sampling invocation without resampling or selecting new defaults
+- **AND** its result has no live sampler field and its output metadata describes the completed sampling invocation without resampling or selecting new defaults
 
 #### Scenario: Requested output is unsupported
 - **WHEN** current output choices request a format not supported by the saved

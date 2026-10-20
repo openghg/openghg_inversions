@@ -80,8 +80,9 @@ This supersedes the earlier alias-preservation promise for that name.
 `run_rhime_multisector` SHALL refer to `run_multisector`, and
 `run_rhime_nested` to `run_nested`. The corresponding shared aliases SHALL remain
 `RhimeMergedData` to `MergedData`, `RhimePreparedInputs` to `PreparedInputs`,
-`assemble_rhime_inputs` to `assemble_inputs`, and `with_prepared_rhime_sites` to
-`with_prepared_sites`.
+`assemble_rhime_inputs` to `assemble_inputs`. The 0.8 retirement of `RhimeRunSpec`
+also removes `with_prepared_sites` and `with_prepared_rhime_sites`; this supersedes
+their alias-preservation promise. Retained sites belong to the prepared handoff.
 
 #### Scenario: Removed standard Python alias
 

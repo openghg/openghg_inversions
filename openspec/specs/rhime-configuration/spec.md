@@ -366,8 +366,10 @@ Standard full, prepared-input and saved postprocessing SHALL return
 borrow its numerical inputs; `none` SHALL suppress writes, not result construction.
 Its output metadata SHALL contain the actual inference description, without output
 format, destinations, naming, save flags, written paths or live PyMC references.
-`RhimeResult` and `RhimeRunSpec` SHALL remain only for families awaiting handoff
-adoption. The three standard builder entry points SHALL be replaced by one eager
+`RhimeResult`, `RhimeRunSpec` and their retained-site construction helpers SHALL
+be removed after the final cached CO2 output consumer migrates to `Co2Output`.
+Model, output and retained preparation facts SHALL have separate owners.
+The three standard builder entry points SHALL be replaced by one eager
 `build_standard_model`; materialization SHALL be explicit in its caller.
 New configuration helpers SHALL use `load_params`, `group_params` and
 `option_groups`; `read_rhime_ini` SHALL retain its established name.

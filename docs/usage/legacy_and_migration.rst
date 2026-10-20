@@ -287,9 +287,28 @@ when scientific sector names differ from inventory names. Existing current-forma
 built-in sample handoffs with ``x_<suffix>`` state names remain readable. This
 does not restore the retired historical staged-envelope format.
 
-Standard, multisector and nested execution no longer construct ``RhimeRunSpec``
-or return ``RhimeResult``. These shared types remain only for the cached CO2
-recipe until its consumers migrate. Remove multisector
+``RhimeRunSpec`` and ``RhimeResult`` are removed after their final cached CO2
+consumer migrates to ``Co2Output``. Cached postprocessing retains the prepared
+inputs on ``result.prepared``, the trace on ``result.idata``, calculated products
+on ``result.outputs`` and conditional affine reconstruction on ``result.bound``.
+It retains no live model or sampler. CLI stage filenames are retained; manifest
+output settings now use the ``Co2OutputOptions`` fields, without the retired
+``save_inversion_output`` and ``output_filename_convention`` keys. Cached products
+use the same writer as ordinary CO2 products.
+The ``make_co2_rhime_result`` and ``make_co2_rhime_outputs`` adapters,
+``retained_run_spec`` and ``with_prepared_sites`` helpers, and
+``with_prepared_rhime_sites`` alias are removed. Copied CO2 runners use
+``make_co2_output``, ``validate_co2_product_request``, ``calculate_co2_products``
+and ``save_co2_products`` with separate ``Co2OutputOptions``.
+
+Replay ``output_metadata["sampler"]`` retains available ``draws``, ``burn``,
+``tune``, ``chains`` and ``nuts_sampler`` values from completed inference.
+Missing or invalid descriptions are ``{}``; partial descriptions stay partial
+without selecting current defaults. Cached ``output_metadata["provenance"]``
+comes from the sample manifest. The former ``build_and_sample_seconds`` replay
+placeholder is removed: replay does not measure the earlier inference duration.
+
+Remove multisector
 calls to ``make_multisector_rhime_result`` and ``make_multisector_rhime_outputs``.
 Use ``build_multisector_model``, ``make_model_output``, and the explicit
 product/export calls above. For a custom complete model, pass selected eager
