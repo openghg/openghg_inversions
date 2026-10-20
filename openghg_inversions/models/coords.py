@@ -28,9 +28,10 @@ def component_coords(
 ) -> xr.DataArray:
     """Qualify component-owned state coordinates without copying array payloads.
 
-    Observation coordinates and scalar metadata remain shared. Every other dimension and coordinate
-    depending on it receives the explicit owner's prefix. Coordinate attributes
-    retain the local scientific name for output reconstruction.
+    Observation coordinates and scalar metadata remain shared and must agree
+    across components. Every other dimension and coordinate depending on it
+    receives the owner's prefix, unless it already has that prefix. Metadata
+    records ownership so ambiguous qualified names are rejected at registration.
 
     Args:
         array: Borrowed scientific array.
@@ -39,16 +40,24 @@ def component_coords(
 
     Returns:
         Labelled view sharing the original numerical payload.
+
+    Raises:
+        ValueError: Local and already-prefixed coordinates would share a name.
     """
     if owner is None:
         return array
     state_dims = set(array.dims) - {observation_dim}
     rename = {
-        str(name): f"{owner}_{name}"
+        str(name): str(name) if str(name).startswith(f"{owner}_") else f"{owner}_{name}"
         for name, coord in array.coords.items()
         if name in state_dims or state_dims.intersection(coord.dims)
     }
-    rename.update({str(dim): f"{owner}_{dim}" for dim in state_dims})
+    rename.update({
+        str(dim): str(dim) if str(dim).startswith(f"{owner}_") else f"{owner}_{dim}"
+        for dim in state_dims
+    })
+    if len(set(rename.values())) != len(rename):
+        raise ValueError(f"Component {owner!r} has conflicting local and prefixed coordinate names.")
     result = array.rename(rename)
     for local, qualified in rename.items():
         if qualified in result.coords:
@@ -58,33 +67,6 @@ def component_coords(
                 "rhime_local_name": local,
             }
     return result
-
-
-def local_component_coords(array: xr.DataArray, owner: str) -> xr.DataArray:
-    """Restore a component's scientific names from explicit coordinate metadata.
-
-    Historical arrays without ownership metadata pass through unchanged.
-
-    Args:
-        array: Selected component array from a restored trace.
-        owner: Component whose coordinate names should be restored.
-
-    Returns:
-        View with the recorded local scientific coordinate names.
-    """
-    rename = {
-        str(name): str(coord.attrs["rhime_local_name"])
-        for name, coord in array.coords.items()
-        if coord.attrs.get("rhime_component") == owner and "rhime_local_name" in coord.attrs
-    }
-    shadowed = [
-        local for qualified, local in rename.items()
-        if qualified != local and local in array.coords and not array.coords[local].dims
-        and not array.coords[local].attrs.get("rhime_component")
-    ]
-    if shadowed:
-        array = array.drop_vars(shadowed)
-    return array.rename(rename) if rename else array
 
 
 def add_model_data(data: xr.DataArray, name: str | None = None) -> TensorVariable:
@@ -212,7 +194,7 @@ class CoordRegistry:
             model dimensions, such as exploded ``time`` or ``site`` coordinates
             derived from a stacked ``nmeasure`` MultiIndex.
         coordinate_attrs: Scientific coordinate attributes, including explicit
-            component ownership and local names used by output reconstruction.
+            component ownership and local names used to reject ambiguous registrations.
     """
 
     pymc_coords: dict[str, np.ndarray] = field(default_factory=dict)
@@ -239,6 +221,10 @@ class CoordRegistry:
             if existing.dims != coord.dims or existing.shape != coord.shape:
                 raise ValueError(f"Conflicting coord registration for {name!r}: shape mismatch.")
             if not _coords_equal(existing.values, coord.values):
+                if not coord.dims:
+                    raise ValueError(
+                        f"Conflicting shared scalar coordinate {name!r}: values must agree across components."
+                    )
                 raise ValueError(f"Conflicting coord registration for {name!r}: values differ.")
             return
 
@@ -261,12 +247,21 @@ class CoordRegistry:
 
         Raises:
             ValueError: If the same coordinate name is registered more than once
-                with conflicting lengths, shapes, or values.
+                with conflicting lengths, shapes, values or ownership metadata.
+                Scalar metadata is shared and must agree across components.
         """
         mapping = _coords_to_mapping(coords)
         for name, coord in mapping.items():
-            if isinstance(coord, xr.DataArray) and coord.attrs:
-                self.coordinate_attrs.setdefault(name, dict(coord.attrs))
+            attrs = dict(coord.attrs) if isinstance(coord, xr.DataArray) else {}
+            if name in self.coordinate_attrs:
+                previous = self.coordinate_attrs[name]
+                for key in ("rhime_component", "rhime_local_name"):
+                    if previous.get(key) != attrs.get(key):
+                        raise ValueError(
+                            f"Conflicting coord registration for {name!r}: {key} ownership differs."
+                        )
+            else:
+                self.coordinate_attrs[name] = attrs
         dims_to_register = tuple(model_dims) if model_dims is not None else tuple(mapping)
         dim_set = set(dims_to_register)
         pymc_coords = sanitize_coords_for_pymc(coords, model_dims=dims_to_register)

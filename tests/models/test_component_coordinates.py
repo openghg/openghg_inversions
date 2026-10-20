@@ -15,6 +15,8 @@ from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.rhime.co2 import build_co2_model
 from openghg_inversions.rhime.co2.co2_cached_sigma_model import build_co2_cached_sigma_model
 from openghg_inversions.rhime.multisector import build_multisector_model
+from openghg_inversions.rhime.standard import build_standard_model
+from openghg_inversions.rhime.nested import build_nested_rhime_model
 from openghg_inversions.rhime.specs import FixedErrorSettings, RhimeModelSpec, SectorSpec
 from openghg_inversions.serialization import load_trace, save_trace
 
@@ -116,7 +118,7 @@ def _roundtrip_prior(model, variables, tmp_path):
 
 @pytest.mark.parametrize("layout", ["rectangular", "gathered"])
 @pytest.mark.parametrize("partial_activity", [False, True])
-def test_multisector_component_coordinates_and_sector_identity_roundtrip(layout, partial_activity, tmp_path):
+def test_multisector_boundary_coordinates_roundtrip(layout, partial_activity, tmp_path):
     sensitivity = _flux_sensitivity(layout)
     boundary = _boundary_sensitivity()
     bc_prior = _boundary_prior()
@@ -127,14 +129,12 @@ def test_multisector_component_coordinates_and_sector_identity_roundtrip(layout,
     restored = _roundtrip_prior(model, ["x", "bc", "mu", "mu_bc"], tmp_path)
 
     expected_sources = ["ff-inventory", "ff-inventory", "ocean-inventory", "ocean-inventory"]
-    expected_sectors = ["Fossil fuel", "Fossil fuel", "Ocean exchange", "Ocean exchange"]
     expected_origins = ["flux-north", "flux-south", "flux-north", "flux-south"]
-    size = restored.sizes["flux_state_vector"]
-    assert restored["x"].dims == ("chain", "draw", "flux_state_vector")
-    assert restored["x"].get_index("flux_state_vector").names == ["flux_sector", "flux_region"]
-    np.testing.assert_array_equal(restored.flux_source, expected_sources[:size])
-    np.testing.assert_array_equal(restored.flux_sector, expected_sectors[:size])
-    np.testing.assert_array_equal(restored.flux_origin, expected_origins[:size])
+    size = restored.sizes["state"]
+    assert restored["x"].dims == ("chain", "draw", "state")
+    assert restored["x"].get_index("state").names == ["source", "region"]
+    np.testing.assert_array_equal(restored.source, expected_sources[:size])
+    np.testing.assert_array_equal(restored.origin, expected_origins[:size])
     np.testing.assert_array_equal(restored.bc_source, ["boundary-inventory-a", "boundary-inventory-b"])
     np.testing.assert_array_equal(restored.bc_origin, ["boundary-north", "boundary-south"])
     np.testing.assert_array_equal(restored.site, ["MHD", "TAC"])
@@ -167,9 +167,9 @@ def test_co2_component_coordinates_roundtrip(metadata_owner, partial_activity, t
     )
 
     state_dim = model.named_vars_to_dims["flux_scaling"][0]
-    assert restored.flux_scaling.get_index(state_dim).names == ["flux_source", "flux_region"]
-    np.testing.assert_array_equal(restored.flux_source, ["ff-inventory", "ff-inventory", "ocean-inventory"])
-    np.testing.assert_array_equal(restored.flux_origin, ["flux-north", "flux-south", "flux-north"])
+    assert restored.flux_scaling.get_index(state_dim).names == ["source", "region"]
+    np.testing.assert_array_equal(restored.source, ["ff-inventory", "ff-inventory", "ocean-inventory"])
+    np.testing.assert_array_equal(restored.origin, ["flux-north", "flux-south", "flux-north"])
     assert "flux_sector" not in restored.coords
     np.testing.assert_array_equal(restored.bc_source, ["boundary-inventory-a", "boundary-inventory-b"])
     np.testing.assert_array_equal(restored.bc_origin, ["boundary-north", "boundary-south"])
@@ -216,9 +216,9 @@ def test_co2_flux_and_boundary_can_share_local_dimension_and_multiindex_names(ca
         model, ["flux_scaling", "bc", "co2_flux_contribution", "mu_bc"], tmp_path,
     )
 
-    assert restored.flux_scaling.get_index("flux_state").names == ["flux_source", "flux_region"]
+    assert restored.flux_scaling.get_index("state").names == ["source", "region"]
     assert restored.bc.get_index("bc_state").names == ["bc_source", "bc_region"]
-    np.testing.assert_array_equal(restored.flux_source, ["ff-inventory", "ff-inventory", "ocean-inventory"])
+    np.testing.assert_array_equal(restored.source, ["ff-inventory", "ff-inventory", "ocean-inventory"])
     np.testing.assert_array_equal(restored.bc_source, ["boundary-inventory-a", "boundary-inventory-b"])
     np.testing.assert_allclose(
         restored.co2_flux_contribution, restored.flux_scaling.values @ sensitivity.values.T,
@@ -239,3 +239,91 @@ def test_correlated_flux_prior_rejects_conflicting_auxiliary_labels_before_activ
     activity = resolve_state_activity(prepare_linear_sensitivity(sensitivity).removed, StateActivity(active=active))
     with pytest.raises(ValueError, match="source"):
         prepare_active_correlated_lognormal_prior(activity, retained_prior, var_name="flux_scaling")
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_standard_and_nested_boundary_source_metadata_preserves_flux_schema(nested, tmp_path):
+    sensitivity = _flux_sensitivity("rectangular").sel(source="ff-inventory", drop=True).assign_coords(
+        source=("region", ["inventory-a", "inventory-b"]),
+    )
+    boundary = _boundary_sensitivity()
+    bc_prior = _boundary_prior()
+    prior = {"pdf": "normal", "mu": 1., "sigma": .2}
+    inputs = xr.Dataset({
+        "H": sensitivity, "H_bc": boundary,
+        "mf": ("nmeasure", [1., 2.]), "mf_error": ("nmeasure", [.1, .2]),
+    })
+    spec = RhimeModelSpec(
+        "ch4", "EUROPE", (SectorSpec("Total", "inventory", prior, "total"),),
+        use_bc=True, bc_prior=bc_prior, likelihood=FixedErrorSettings(),
+    )
+    if nested:
+        inputs["H_inner"] = xr.DataArray(
+            [[2.], [3.]], dims=("nmeasure", "inner_region"), coords={"inner_region": ["inner"]},
+        )
+        model = build_nested_rhime_model(
+            inputs, spec, priors={"x_outer": prior, "x_inner": prior, "bc": bc_prior},
+        ).model
+        state_name = "x_outer"
+    else:
+        model = build_standard_model(inputs, spec, priors={"x": prior, "bc": bc_prior}).model
+        state_name = "x"
+    restored = _roundtrip_prior(model, [state_name, "bc", "mu_bc"], tmp_path)
+    assert restored[state_name].dims == ("chain", "draw", "region")
+    assert restored.bc.dims == ("chain", "draw", "bc_region")
+    np.testing.assert_array_equal(restored.source, ["inventory-a", "inventory-b"])
+    np.testing.assert_array_equal(restored.bc_source, ["boundary-inventory-a", "boundary-inventory-b"])
+    np.testing.assert_allclose(restored.mu_bc, restored.bc.values @ boundary.values.T)
+
+
+def test_scalar_metadata_is_shared_and_conflicts_are_rejected():
+    from openghg_inversions.models.components import add_linear_component
+    from openghg_inversions.models.coords import registered_model
+
+    flux = xr.DataArray([[1., 2.]], dims=("nmeasure", "region"), coords={
+        "region": ["a", "b"], "source": "inventory",
+    })
+    boundary = xr.DataArray([[3., 4.]], dims=("nmeasure", "bc_region"), coords={"bc_region": ["a", "b"]})
+    parameter = xr.DataArray([.2, .3], dims="bc_region", coords={
+        "bc_region": ["a", "b"], "source": "boundary-inventory",
+    })
+    with registered_model():
+        add_linear_component(
+            prepare_linear_sensitivity(flux), data_name="hx", var_name="x", output_name="mu",
+            prior_args={"pdf": "normal", "mu": 1., "sigma": .2},
+        )
+        with pytest.raises(ValueError, match="Conflicting shared scalar coordinate 'source'.*agree across components"):
+            add_linear_component(
+                prepare_linear_sensitivity(boundary), data_name="hbc", var_name="bc", output_name="mu_bc",
+                prior_args={"pdf": "normal", "mu": 1., "sigma": parameter}, coordinate_owner="bc",
+            )
+
+
+def test_correlated_coordinate_validation_materializes_shared_graph_once_without_mutation():
+    import dask.array as da
+    from dask import delayed
+    from dataclasses import replace
+
+    calls = []
+
+    @delayed(pure=True)
+    def labels():
+        calls.append("computed")
+        return np.array([1., 2.])
+
+    lazy = da.from_delayed(labels(), shape=(2,), dtype=float)
+    mean = xr.DataArray([1., 1.], dims="region", coords={
+        "region": ["a", "b"], "origin": ("region", lazy),
+    })
+    prior = CorrelatedLognormalPrior(mean, np.eye(2) * .04)
+    sensitivity = xr.DataArray([[1., 2.]], dims=("nmeasure", "region"), coords={
+        "region": ["a", "b"], "origin": ("region", lazy),
+    })
+    activity = resolve_state_activity(prepare_linear_sensitivity(sensitivity).removed, None)
+    activity = replace(activity, zero_sensitivity=activity.zero_sensitivity.assign_coords(origin=("region", lazy)))
+    calls.clear()
+    result = prepare_active_correlated_lognormal_prior(activity, prior, var_name="flux_scaling")
+    assert result is prior
+    assert calls == ["computed"]
+    assert isinstance(prior.mean.origin.data, da.Array)
+    assert isinstance(activity.zero_sensitivity.origin.data, da.Array)

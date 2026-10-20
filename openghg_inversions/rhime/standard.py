@@ -29,14 +29,14 @@ import xarray as xr
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.models.components import (
-    _add_multisector_state_vector,
+    _add_multisource_state_vector,
     add_linear_component,
     add_offset_component,
     add_state_vector,
     apply_linear_sensitivity,
 )
 from openghg_inversions.models._flux import _stack_multisector_sensitivity
-from openghg_inversions.models.coords import registered_model
+from openghg_inversions.models.coords import component_coords, registered_model
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.models.state_activity import prepare_linear_sensitivity, resolve_state_activity
@@ -292,10 +292,24 @@ def _build_independent_rhime_model(
     source_sensitivity = model_inputs["H"]
     flux_sensitivity = source_sensitivity
     if multisector:
-        flux_sensitivity = _stack_multisector_sensitivity(
-            source_sensitivity,
-            sectors={sector.flux_source: sector.name for sector in model_spec.sectors},
-        )
+        coordinate_names = set()
+        for name, array in model_inputs.data_vars.items():
+            if name == "H":
+                continue
+            registered_array = component_coords(array, "bc" if name == "H_bc" else None)
+            coordinate_names.update(registered_array.dims)
+            coordinate_names.update(registered_array.coords)
+        # Flux prior coordinates are registered under private source namespaces.
+        flux_prior_names = {f"x_{sector.variable_suffix}" for sector in model_spec.sectors}
+        for name, parameters in priors.items():
+            if name in flux_prior_names:
+                continue
+            for value in parameters.values():
+                if isinstance(value, xr.DataArray):
+                    registered_value = component_coords(value, "bc" if name == "bc" else None)
+                    coordinate_names.update(registered_value.dims)
+                    coordinate_names.update(registered_value.coords)
+        flux_sensitivity = _stack_multisector_sensitivity(source_sensitivity, reserved_names=coordinate_names)
     observations = model_inputs["mf"]
     observation_error = model_inputs["mf_error"]
     minimum_error = model_inputs.get("min_error")
@@ -319,7 +333,7 @@ def _build_independent_rhime_model(
     with registered_model() as model:
         if multisector:
             prior_blocks = {
-                sector.name: (
+                sector.flux_source: (
                     f"x_{sector.variable_suffix}", priors[f"x_{sector.variable_suffix}"],
                     sector.state_activity if sector.state_activity is not None else model_spec.state_activity,
                 )
@@ -328,19 +342,16 @@ def _build_independent_rhime_model(
             local_state_dim = next(
                 str(dim) for dim in source_sensitivity.dims if dim not in {"nmeasure", "source"}
             )
-            state = _add_multisector_state_vector(
+            state = _add_multisource_state_vector(
                 prepared_flux.removed, prior_blocks, local_state_dim=local_state_dim, var_name="x",
-                coordinate_owner="flux",
             )
         else:
             sector = model_spec.sectors[0]
             policy = sector.state_activity if sector.state_activity is not None else model_spec.state_activity
             activity = resolve_state_activity(prepared_flux.removed, policy)
-            state = add_state_vector(
-                activity, prior_args=dict(priors["x"]), var_name="x", coordinate_owner="flux",
-            ).state
+            state = add_state_vector(activity, prior_args=dict(priors["x"]), var_name="x").state
         pollution_mean = apply_linear_sensitivity(
-            prepared_flux, state, data_name="hx", output_name="mu", coordinate_owner="flux",
+            prepared_flux, state, data_name="hx", output_name="mu",
         )
 
         boundary_mean = None

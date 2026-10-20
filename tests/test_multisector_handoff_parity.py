@@ -153,7 +153,7 @@ def test_full_and_prepared_execution_need_no_checkpoint_machinery_and_retain_sci
     posterior = resumed.trace["posterior"]
     for suffix, source in (("biosphere", "supplemental"), ("fossil", "inventory")):
         np.testing.assert_allclose(
-            posterior["x"].where(posterior["x"].flux_source == source, drop=True).values,
+            posterior["x"].sel(source=source).values,
             np.exp(-np.log(2) / 2 + np.sqrt(np.log(2)) * posterior[f"x_{suffix}_active_latent"].values),
             rtol=1e-6,
         )

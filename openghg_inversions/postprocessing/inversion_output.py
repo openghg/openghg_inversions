@@ -30,7 +30,6 @@ import xarray as xr
 
 from openghg_inversions._serialization_codecs import _decode_json_mapping, _json_value
 from openghg_inversions.basis.basis_functions import BasisFunctions
-from openghg_inversions.models.coords import local_component_coords
 from openghg_inversions.postprocessing.contracts import DEFAULT_VARIABLE_ROLES
 from openghg_inversions.serialization import (
     MULTIINDEX_DIMS_ATTR as _MULTIINDEX_DIMS_ATTR,
@@ -362,12 +361,6 @@ class InversionOutput:
 
     def _normalise_selected_trace_state_dimension(self, trace: xr.Dataset) -> xr.Dataset:
         """Rename one selected recipe state dimension to its basis dimension."""
-        flux_name = self.variable_name("flux_scale")
-        if all(str(name) in {f"{flux_name}_{group}" for group in TRACE_SAMPLE_GROUPS} for name in trace):
-            trace = xr.Dataset(
-                {name: local_component_coords(value, "flux") for name, value in trace.data_vars.items()},
-                attrs=trace.attrs,
-            )
         mapping = self.state_dimension_mapping
         if mapping is None or mapping["trace"] == mapping["basis"]:
             return trace
@@ -432,10 +425,8 @@ class InversionOutput:
         both; omitting both selects all trace variables. Each direct group is
         filtered before outer alignment. All chains and selected-variable
         missing-draw padding are retained without modifying borrowed inputs or
-        computing lazy payloads. A selection containing only ``flux_scale``
-        restores flux-local scientific coordinates for reconstruction; combined
-        selections retain component ownership. Explicit state-dimension
-        mappings apply only when variables are selected.
+        computing lazy payloads. Explicit state-dimension mappings apply only
+        when variables are selected.
         """
         selected = var_roles is not None or var_names is not None
         if var_roles is not None:

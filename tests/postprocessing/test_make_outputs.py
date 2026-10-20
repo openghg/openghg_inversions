@@ -13,7 +13,6 @@ import xarray as xr
 from openghg_inversions.array_ops import concat_gather_data_arrays
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.flux_sanitization import FluxNonFiniteMetadata, NONFINITE_POLICY_ZERO_FILL
-from openghg_inversions.models.coords import component_coords
 from openghg_inversions.postprocessing._basis_products import reconstruct_flux_stats
 from openghg_inversions.postprocessing import make_outputs
 from openghg_inversions.postprocessing.countries import Countries
@@ -27,12 +26,10 @@ from tests.helpers import make_trace
 
 
 @pytest.mark.parametrize("source_specific", [False, True])
-@pytest.mark.parametrize("state_format", ["source", "owned_sector"])
 def test_stacked_flux_state_preserves_sector_flux_country_and_covariance(
     multisector_postprocessing_inv_out,
     fake_source_specific_multisector_basis_functions,
     source_specific,
-    state_format,
 ):
     """A single labelled state reconstructs the same source products and joint totals."""
     basis = fake_source_specific_multisector_basis_functions() if source_specific else None
@@ -41,22 +38,10 @@ def test_stacked_flux_state_preserves_sector_flux_country_and_covariance(
     for group in ("prior", "posterior"):
         values = legacy.trace_group(group)
         # State storage order may differ from reporting-sector order.
-        blocks = {"ocean-inventory": values.x_ocean, "ff-inventory": values.x_ff}
-        if state_format == "owned_sector":
-            blocks = {"Ocean": values.x_ocean, "FF": values.x_ff}
         state = concat_gather_data_arrays(
-            blocks, key_dim="sector" if state_format == "owned_sector" else "source",
-            ragged_dim="region", stack_dim="state", join="exact",
+            {"ocean-inventory": values.x_ocean, "ff-inventory": values.x_ff},
+            key_dim="source", ragged_dim="region", stack_dim="state", join="exact",
         )
-        if state_format == "owned_sector":
-            source = ["ocean-inventory"] * values.x_ocean.sizes["region"]
-            source += ["ff-inventory"] * values.x_ff.sizes["region"]
-            state = state.assign_coords(source=("state", source))
-            owned = component_coords(state.isel(chain=0, draw=0, drop=True), "flux")
-            state = xr.DataArray(
-                state.data, dims=("chain", "draw", "flux_state"),
-                coords={"chain": state.chain, "draw": state.draw, **owned.coords},
-            )
         groups[group] = xr.Dataset({"scale": state.chunk({"draw": 1})})
     trace = xr.DataTree.from_dict(groups)
     stacked = replace(legacy, trace=trace, model_metadata={

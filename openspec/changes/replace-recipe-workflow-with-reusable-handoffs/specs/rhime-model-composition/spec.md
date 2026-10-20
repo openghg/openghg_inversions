@@ -53,7 +53,7 @@ Standard and multisector construction SHALL expose one complete physical scaling
 state `x`, one two-dimensional sensitivity `hx` and one total flux concentration
 contribution `mu`. Their forward calculation SHALL apply that sensitivity to the
 same full state used by scientific output consumers. Multisector states SHALL
-retain sector and local state labels on a gathered state coordinate without rectangular
+retain source-local labels on a gathered state coordinate without rectangular
 padding. Packing rectangular sensitivities for construction SHALL NOT mutate
 prepared inputs or retained basis artifacts; already gathered state coordinates
 SHALL retain their scientific meaning and ordering.
@@ -70,7 +70,7 @@ introducing a generic execution framework or an optional representation switch.
 
 - **WHEN** multisector sources have unequal state counts and different supported
   priors or active/fixed policies
-- **THEN** one full sector-labelled `x` contains every physical state and one
+- **THEN** one full source-labelled `x` contains every physical state and one
   labelled linear calculation gives the complete flux concentration contribution
 - **AND** structurally pruned backend sensitivity columns select their matching
   full-state entries without changing the scientific `H @ x` calculation
@@ -93,45 +93,37 @@ introducing a generic execution framework or an optional representation switch.
 - **AND** common labelled state representation does not substitute independent
   source scaling or standard multiplicative reconstruction for the affine map
 
-### Requirement: Component-owned state coordinates and explicit sector identity
 
-Built-in flux and boundary components SHALL qualify their state dimensions,
-MultiIndex levels and state-dependent auxiliary coordinates with deterministic
-component ownership. Shared observation coordinates SHALL remain unchanged.
-The coordinate registry and saved traces SHALL retain the component and local
-scientific name so a selected output component can restore its coordinates
-without guessing from spelling. Conflicting labels within one component SHALL
-still fail; adding another component SHALL NOT change existing component names.
+### Requirement: Boundary state coordinates do not collide with flux metadata
 
-Multisector inference SHALL index its state by sector identity, retaining
-acquisition source as separate provenance. The current association SHALL remain
-one sector to one distinct source; this requirement SHALL NOT introduce
-many-source aggregation. Model-only packing SHALL use `state_vector` and reject
-auxiliary input coordinates named `state_vector` or `sector`. For rectangular
-input whose native state dimension is `state_vector`, packing SHALL use
-`stacked_state_vector` instead and preserve the native level name; that packed
-name SHALL be reserved for that layout.
+Built-in standard, multisector, nested, ordinary and cached CO2 construction
+SHALL qualify boundary state dimensions, MultiIndex levels and state-dependent
+auxiliaries with `bc_`, preserving names that already have that prefix. Linked
+CO2/O2 SHALL retain its existing `co2_` and `o2_` boundary prefixes. Flux state
+names, source labels, supplied `sector` auxiliaries and gathered-state packing
+SHALL retain their existing behavior. This regression fix SHALL NOT introduce
+flux qualification, a source/sector identity redesign or inverse output renaming.
 
-#### Scenario: Independent flux and boundary metadata coexist
+Borrowed input arrays SHALL retain their local names and numerical payloads.
+Saved trace groups SHALL retain qualified boundary labels and coordinate
+ownership metadata. Within-component label disagreements and conflicting
+ownership metadata on a registered name SHALL be rejected. Observation and
+scalar coordinates SHALL remain shared; conflicting scalar values SHALL raise
+an explicit shared-coordinate error.
 
-- **WHEN** flux and boundary states have local coordinates with the same name
-  but different values, including MultiIndex levels and auxiliaries
-- **THEN** construction and trace roundtrip preserve both sets of coordinates
-- **AND** flux reconstruction restores only flux-local coordinates before exact
-  alignment with its retained scientific inputs
-- **AND** observation coordinates remain shared and borrowed inputs unchanged
+#### Scenario: Flux and boundary priors carry different source metadata
 
-#### Scenario: Inferred sector labels differ from acquisition source labels
+- **WHEN** a flux state and a boundary prior use the same local auxiliary name
+  with different dimensions or labels
+- **THEN** both scientific coordinate sets survive model construction and saved
+  trace restoration under distinct boundary-qualified names
+- **AND** existing `region`, `source`, `bc_region` and linked-channel trace names
+  remain unchanged where they already identify the corresponding state
 
-- **WHEN** a sector called `wetlands` maps to source `wetcharts-v131-wetlands`
-- **THEN** its state is selected by `flux_sector="wetlands"`
-- **AND** `flux_source` retains `wetcharts-v131-wetlands` as acquisition provenance
+#### Scenario: Correlated activity validation consumes lazy auxiliaries
 
-#### Scenario: Read earlier saved flux states
-
-- **WHEN** output reconstruction receives a saved gathered trace indexed by
-  `source`, or a historical trace containing separate sector variables
-- **THEN** the existing explicit source mapping or sector variable contract
-  remains readable
-- **AND** newly constructed traces use component-owned coordinates and sector
-  identity without emitting legacy aliases
+- **WHEN** correlated-prior and activity coordinates are compared before selecting
+  active, fixed or partially active states
+- **THEN** the eager correlated-state preparation boundary SHALL explicitly
+  materialize both coordinate datasets together before label comparison
+- **AND** shared Dask tasks SHALL run once without mutating borrowed inputs

@@ -226,7 +226,7 @@ def _add_co2_o2_baseline_components(
                 output_name=f"{channel}_mu_bc",
                 output_dim=output_dim,
                 state_activity=activity,
-                coordinate_owner=f"bc_{channel}",
+                coordinate_owner=channel,
             )
             components.append((channel, result, design))
             boundaries.append(result.output)
@@ -378,7 +378,6 @@ def build_co2_o2_model(
             activity,
             retained_prior,
             var_name="flux_scaling",
-            coordinate_owner="flux",
         ).state
 
         # Preparation declares that this sensitivity already contains the fixed,
@@ -388,7 +387,6 @@ def build_co2_o2_model(
             state,
             data_name="co2_o2_sensitivity",
             output_name="co2_o2_flux_contribution",
-            coordinate_owner="flux",
         )
         baseline_components = _add_co2_o2_baseline_components(
             observations=observations,

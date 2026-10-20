@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from openghg_inversions.models.coords import local_component_coords
 from openghg_inversions.postprocessing.co2_flux_outputs import (
     co2_country_flux_outputs,
     co2_native_flux_outputs,
@@ -73,8 +72,6 @@ def validate_co2_trace(trace: xr.DataTree, prepared: Co2PreparedInputs | None = 
             if roles[role] not in dataset:
                 raise ValueError(f"CO2 scientific outputs require role {role!r} in {group}.")
             variable = dataset[roles[role]]
-            if role == "flux_scale":
-                variable = local_component_coords(variable, "flux")
             if not {"chain", "draw"}.issubset(variable.dims):
                 raise ValueError(f"CO2 role {role!r} in {group} requires chain/draw sample dimensions.")
             if prepared is not None:
@@ -88,10 +85,7 @@ def validate_co2_trace(trace: xr.DataTree, prepared: Co2PreparedInputs | None = 
                 )
                 xr.align(variable, prepared.inv_inputs["mf"], join="exact", copy=False)
         if prepared is not None:
-            xr.align(
-                local_component_coords(dataset[roles["flux_scale"]], "flux"),
-                prepared.inv_inputs["alpha_prior_mean"], join="exact", copy=False,
-            )
+            xr.align(dataset[roles["flux_scale"]], prepared.inv_inputs["alpha_prior_mean"], join="exact", copy=False)
 
 
 def make_co2_output(

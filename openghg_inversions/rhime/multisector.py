@@ -3,9 +3,9 @@
 Independent sector priors and activity policies populate one full flux state
 ``x``. Sectors identify sampled state components; acquisition sources identify
 inventories and responses. Their current one-to-one ``sector_sources`` mapping
-binds each sector prior to its sensitivity columns. The saved state separates
-``flux_sector`` membership from ``flux_source`` acquisition provenance; select
-a sector with ``x.sel(flux_sector=...)``. The gathered sensitivity ``hx`` maps the full state to
+binds each sector prior to its sensitivity columns. The saved state retains its
+``source`` coordinate, so select a sector's state using its mapped source with
+``x.sel(source=...)``. The gathered sensitivity ``hx`` maps the full state to
 pollution ``mu``; output roles retain local basis labels for native flux products.
 """
 

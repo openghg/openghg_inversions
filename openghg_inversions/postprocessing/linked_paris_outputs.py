@@ -14,7 +14,6 @@ from openghg_inversions.array_ops import to_dense
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.basis.operators import BucketBasisOperator
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
-from openghg_inversions.models.coords import local_component_coords
 from openghg_inversions.rhime.co2.co2_o2_model import _gather_co2_o2_sensitivity
 from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
@@ -45,8 +44,6 @@ def _role(trace: xr.DataTree, role: str, group: str) -> xr.DataArray:
     if name not in dataset:
         raise ValueError(f"Linked output requires scientific role {role!r} in {group}.")
     value = dataset[name]
-    if role == "flux_scale":
-        value = local_component_coords(value, "flux")
     if group == "prior":
         value = value.rename({dim: f"prior_{dim}" for dim in ("chain", "draw") if dim in value.dims})
     return value

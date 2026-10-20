@@ -127,10 +127,9 @@ transitive authentication or rehashing dependencies before and after inference.
 
 - **WHEN** multisector sampling completes with the shared flux-state formulation
 - **THEN** its saved contract declares the complete `x` as `flux_scale` and default
-  trace retention includes its gathered sector/local-state labels and source
-  provenance
-- **AND** sector products select from that state using the recorded sector
-  identity and source association without requiring per-sector full-state aliases
+  trace retention includes its gathered source/local-state labels
+- **AND** per-source products select from that state using the recorded source
+  associations without requiring per-sector full-state aliases
 
 ### Requirement: Replay uses existing scientific validation
 

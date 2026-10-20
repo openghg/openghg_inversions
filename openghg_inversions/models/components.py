@@ -28,6 +28,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, cast
 
+from dask import compute
 import numpy as np
 import pandas as pd
 import pymc as pm
@@ -395,34 +396,31 @@ def add_state_vector(
     return StateVectorResult(latent=latent, state=state, activity=activity)
 
 
-def _add_multisector_state_vector(
+def _add_multisource_state_vector(
     zero_sensitivity: xr.DataArray,
     prior_blocks: Mapping[str, tuple[str, dict[str, Any], StateActivity | None]],
     *,
     local_state_dim: str,
     var_name: str,
-    coordinate_owner: str | None = None,
 ) -> TensorVariable:
-    """Insert independent sector-prior draws into one ordered full state.
+    """Insert independent source-prior draws into one ordered full state.
 
-    Each block owns its prior family, sector-local labelled parameters and
+    Each block owns its prior family, source-local labelled parameters and
     activity policy. Private prior dimensions may differ in size; the physical
     state and zero-sensitivity mask use the complete gathered coordinate.
-    Block keys cover the sector layout, as validated by the owning recipe.
+    Block keys cover the source layout, as validated by the owning recipe.
     """
     state_dim = str(zero_sensitivity.dims[0])
     state_index = zero_sensitivity.get_index(state_dim)
-    region_level = next(str(name) for name in state_index.names if name != "sector")
-    owned_zero = component_coords(zero_sensitivity, coordinate_owner)
-    owned_dim = str(owned_zero.dims[0])
-    add_coords(owned_zero.coords, model_dims=(owned_dim,))
+    region_level = next(str(name) for name in state_index.names if name != "source")
+    add_coords(zero_sensitivity.coords, model_dims=(state_dim,))
     active = np.zeros(len(state_index), dtype=bool)
     fixed_values = np.empty(len(state_index), dtype=float)
     draws = []
-    for sector, (record_name, prior, policy) in prior_blocks.items():
-        positions = np.flatnonzero(state_index.get_level_values("sector") == sector)
+    for source, (record_name, prior, policy) in prior_blocks.items():
+        positions = np.flatnonzero(state_index.get_level_values("source") == source)
         local_zero = select_gathered_data_array(
-            zero_sensitivity, key=sector, key_dim="sector",
+            zero_sensitivity, key=source, key_dim="source",
             ragged_dim=region_level, stack_dim=state_dim,
         )
         if state_dim != local_state_dim:
@@ -460,11 +458,11 @@ def _add_multisector_state_vector(
     if active.all():
         state = pt.zeros(len(state_index))
     else:
-        add_model_data(owned_zero.copy(data=active).rename(f"{var_name}_is_active"))
-        state = add_model_data(owned_zero.copy(data=fixed_values).rename(f"{var_name}_fixed_value"))
+        add_model_data(zero_sensitivity.copy(data=active).rename(f"{var_name}_is_active"))
+        state = add_model_data(zero_sensitivity.copy(data=fixed_values).rename(f"{var_name}_fixed_value"))
     for positions, draw in draws:
         state = pt.set_subtensor(state[positions], draw)
-    return cast(TensorVariable, pm.Deterministic(var_name, state, dims=owned_dim))
+    return cast(TensorVariable, pm.Deterministic(var_name, state, dims=state_dim))
 
 
 def add_correlated_lognormal_state(
@@ -472,7 +470,6 @@ def add_correlated_lognormal_state(
     /,
     *,
     var_name: str,
-    coordinate_owner: str | None = None,
 ) -> CorrelatedStateResult:
     """Add a whitened correlated LogNormal state to the active PyMC model.
 
@@ -480,8 +477,6 @@ def add_correlated_lognormal_state(
         prior: Validated labelled arithmetic and latent moment contract.
         var_name: Name of the positive user-facing state. The whitened standard
             normal is named ``{var_name}_latent``.
-        coordinate_owner: Optional component namespace for registered state
-            coordinates; the supplied scientific prior remains unchanged.
 
     Returns:
         The whitened latent, positive state, and supplied prior contract.
@@ -506,8 +501,8 @@ def add_correlated_lognormal_state(
         exact LogNormal marginalization. Known-exact state fixing is handled
         separately by ``StateActivity`` in the state-linear component builders.
     """
-    mean = component_coords(prior.mean, coordinate_owner)
-    state_dim = str(mean.dims[0])
+    state_dim = prior.state_dim
+    mean = prior.mean
     with np.errstate(over="ignore", under="ignore", invalid="ignore"):
         backend_mean = np.asarray(pm.floatX(np.asarray(mean.values)))
         backend_latent_mean = np.asarray(pm.floatX(np.asarray(prior.latent_mean.values)))
@@ -551,7 +546,6 @@ def add_correlated_lognormal_state_with_activity(
     /,
     *,
     var_name: str,
-    coordinate_owner: str | None = None,
 ) -> StateVectorResult:
     """Construct a correlated LogNormal state with exact active/fixed values.
 
@@ -565,8 +559,6 @@ def add_correlated_lognormal_state_with_activity(
         prior: Validated labelled arithmetic-moment LogNormal prior for the
             full state.
         var_name: Name of the full user-facing state vector.
-        coordinate_owner: Optional component namespace for registered state
-            coordinates; scientific prior and activity labels stay unchanged.
 
     Returns:
         Effective whitened latent, full state vector, and supplied activity.
@@ -580,7 +572,6 @@ def add_correlated_lognormal_state_with_activity(
         activity,
         active_prior,
         var_name=var_name,
-        coordinate_owner=coordinate_owner,
     )
 
 
@@ -590,19 +581,16 @@ def _add_prepared_correlated_lognormal_state_with_activity(
     /,
     *,
     var_name: str,
-    coordinate_owner: str | None = None,
 ) -> StateVectorResult:
     """Construct a state from the package-prepared active prior."""
-    registered_zero = component_coords(activity.zero_sensitivity, coordinate_owner)
-    state_dim = str(registered_zero.dims[0])
-    add_coords(registered_zero.coords, model_dims=(state_dim,))
+    state_dim = activity.state_dim
+    add_coords(activity.zero_sensitivity.coords, model_dims=(state_dim,))
 
     if activity.n_active == activity.n_state:
         assert active_prior is not None
         result = add_correlated_lognormal_state(
             active_prior,
             var_name=var_name,
-            coordinate_owner=coordinate_owner,
         )
         return StateVectorResult(
             latent=result.latent,
@@ -611,11 +599,11 @@ def _add_prepared_correlated_lognormal_state_with_activity(
         )
 
     add_model_data(
-        component_coords(activity.active, coordinate_owner),
+        activity.active.rename(f"{var_name}_is_active"),
         f"{var_name}_is_active",
     )
     fixed_value = add_model_data(
-        component_coords(activity.fixed_value, coordinate_owner),
+        activity.fixed_value.rename(f"{var_name}_fixed_value"),
         f"{var_name}_fixed_value",
     )
     active_indices = activity.active_indices
@@ -626,7 +614,6 @@ def _add_prepared_correlated_lognormal_state_with_activity(
         result = add_correlated_lognormal_state(
             active_prior,
             var_name=f"{var_name}_active",
-            coordinate_owner=coordinate_owner,
         )
         latent = result.latent
         active_state = result.state
@@ -645,7 +632,12 @@ def prepare_active_correlated_lognormal_prior(
     *,
     var_name: str,
 ) -> CorrelatedLognormalPrior | None:
-    """Align and subset one correlated prior for active-state construction."""
+    """Align and subset one correlated prior for active-state construction.
+
+    This eager graph-construction boundary materializes the prior and activity
+    coordinate datasets together before comparing auxiliary labels. Borrowed
+    inputs remain unchanged and shared Dask coordinate tasks run once.
+    """
     state_dim = activity.state_dim
     if prior.state_dim != state_dim:
         raise ValueError(
@@ -658,11 +650,10 @@ def prepare_active_correlated_lognormal_prior(
         raise ValueError(
             "Correlated LogNormal prior labels must exactly match state-activity labels in the same order."
         )
-    xr.merge(
-        [mean.coords.to_dataset(), activity.zero_sensitivity.coords.to_dataset()],
-        join="exact",
-        compat="equals",
+    prior_coords, activity_coords = compute(
+        mean.coords.to_dataset(), activity.zero_sensitivity.coords.to_dataset(),
     )
+    xr.merge([prior_coords, activity_coords], join="exact", compat="equals")
     if activity.n_active == 0:
         return None
     if activity.n_active == activity.n_state:

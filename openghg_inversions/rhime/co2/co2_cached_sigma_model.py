@@ -432,7 +432,6 @@ def build_co2_cached_sigma_model(
             activity,
             active_state_prior,
             var_name="flux_scaling",
-            coordinate_owner="flux",
         )
         contribution = apply_linear_sensitivity(
             prepared_flux,
@@ -440,7 +439,6 @@ def build_co2_cached_sigma_model(
             data_name="co2_sensitivity",
             output_name="co2_flux_contribution",
             compute_deterministic=False,
-            coordinate_owner="flux",
         )
         co2_flux_mean = add_coherent_affine_component(
             fixed_prior_data,
@@ -479,8 +477,8 @@ def build_co2_cached_sigma_model(
                 boundary_result.state,
                 data_name="hbc",
                 output_name="mu_bc",
-                compute_deterministic=True,
                 coordinate_owner="bc",
+                compute_deterministic=True,
             )
             boundary_active = boundary_result.activity.active_indices
             terms.append(

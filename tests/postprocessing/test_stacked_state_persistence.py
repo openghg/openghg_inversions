@@ -1,4 +1,4 @@
-"""Component-owned coordinates survive trace persistence and sector selection."""
+"""A model-only gathered-axis rename survives trace persistence and source selection."""
 
 from dataclasses import replace
 
@@ -13,7 +13,7 @@ from openghg_inversions.rhime.specs import FixedErrorSettings, RhimeModelSpec, S
 from openghg_inversions.serialization import load_trace, save_trace
 
 
-def test_qualified_gathered_state_roundtrip_preserves_canonical_source_blocks(
+def test_renamed_gathered_state_roundtrip_preserves_canonical_source_blocks(
     tmp_path, fake_source_specific_multisector_basis_functions, multisector_postprocessing_inv_out,
 ):
     basis = fake_source_specific_multisector_basis_functions()
@@ -44,16 +44,13 @@ def test_qualified_gathered_state_roundtrip_preserves_canonical_source_blocks(
     assert registry is not None
     trace = restore_inferencedata_coords(trace, registry)
     state_dim = model.named_vars_to_dims["x"][0]
-    assert state_dim == "flux_state_vector"
+    assert state_dim != "state"
     path = tmp_path / "renamed-state.nc"
     save_trace(trace, path)
     reloaded = load_trace(path)
-    restored_index = reloaded["prior"]["x"].get_index(state_dim)
-    assert restored_index.names == ["flux_sector", "flux_region_in_source"]
-    assert restored_index.tolist() == [("FF", 0), ("Ocean", 0)]
-    np.testing.assert_array_equal(reloaded["prior"].coords["flux_source"], index.get_level_values("source"))
-    assert reloaded["prior"].coords["bc_state"].dims == ("bc_bc_region",)
-    np.testing.assert_array_equal(reloaded["prior"].coords["bc_state"], [10, 20])
+    assert reloaded["prior"]["x"].get_index(state_dim).equals(index)
+    assert reloaded["prior"].coords["state"].dims == ("bc_region",)
+    np.testing.assert_array_equal(reloaded["prior"].coords["state"], [10, 20])
     output = multisector_postprocessing_inv_out(basis)
     output = replace(output, trace=reloaded, model_metadata={
         **output.model_metadata, "variable_roles": {"flux_scale": "x"},
@@ -62,5 +59,5 @@ def test_qualified_gathered_state_roundtrip_preserves_canonical_source_blocks(
         selected = make_outputs._sector_scale_trace(output, sector)
         assert selected.x_prior.dims == ("chain", "draw", "region")
         np.testing.assert_array_equal(selected.region, [0])
-        expected = reloaded["prior"]["x"].sel(flux_sector=sector.name)
+        expected = reloaded["prior"]["x"].sel(source=sector.flux_source)
         np.testing.assert_array_equal(selected.x_prior, expected)

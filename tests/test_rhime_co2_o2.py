@@ -352,13 +352,9 @@ def test_partial_gathered_state_restores_full_multiindex() -> None:
     assert registry is not None
     restored = restore_inferencedata_coords(trace, registry)
 
-    owned_dim = f"flux_{state_dim}"
-    expected_index = prepared.retained_prior.mean.indexes[state_dim]
-    assert restored.prior.indexes[owned_dim].equals(
-        expected_index.set_names([f"flux_{name}" for name in expected_index.names]),
-    )
-    assert restored.prior["flux_source"].values.tolist() == ["GPP", "TER", "FF", "ocean", "ocean"]
-    np.testing.assert_allclose(restored.prior["flux_scaling"].isel({owned_dim: 2}), 0.75)
+    assert restored.prior.indexes[state_dim].equals(prepared.retained_prior.mean.indexes[state_dim])
+    assert restored.prior["source"].values.tolist() == ["GPP", "TER", "FF", "ocean", "ocean"]
+    np.testing.assert_allclose(restored.prior["flux_scaling"].isel({state_dim: 2}), 0.75)
 
 
 def _two_site_week_inputs() -> dict[str, object]:
@@ -485,8 +481,8 @@ def test_two_site_week_runner_persists_labels_roles_units_and_provenance(tmp_pat
     )
     assert trace.posterior["flux_scaling"].attrs["units"] == "dimensionless flux scale"
     assert json.loads(trace.posterior["flux_scaling"].attrs["rhime_scientific_roles"]) == ["flux_scale"]
-    np.testing.assert_allclose(trace.posterior["flux_scaling"].sel(flux_state="ff:1"), 0.75)
-    assert trace.posterior["flux_source"].values.tolist() == ["GPP", "TER", "FF", "ocean", "ocean"]
+    np.testing.assert_allclose(trace.posterior["flux_scaling"].sel(state="ff:1"), 0.75)
+    assert trace.posterior["source"].values.tolist() == ["GPP", "TER", "FF", "ocean", "ocean"]
     observed = trace.observed_data["y"]
     np.testing.assert_allclose(observed, prepared.observations)
     assert observed["species"].values.tolist() == prepared.observations["species"].values.tolist()

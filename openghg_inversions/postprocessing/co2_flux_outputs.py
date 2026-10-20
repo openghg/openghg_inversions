@@ -4,22 +4,18 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
-from typing import TYPE_CHECKING
 
 import xarray as xr
 from openghg.util import cf_ureg, molar_mass  # pyright: ignore[reportPrivateImportUsage]
 
 from openghg_inversions.array_ops import sparse_xr_dot, to_dense
 from openghg_inversions.basis.affine_flux_map import _in_dimensionless_units
-from openghg_inversions.models.coords import local_component_coords
+from openghg_inversions.rhime.co2.co2_affine_output import BoundCo2AffineFluxMap
 
 from ._basis_products import bounded_affine_flux_map
 from .countries import Countries, _bounded_projection
 from .inversion_output import trace_group
 from .stats import calculate_stats
-
-if TYPE_CHECKING:
-    from openghg_inversions.rhime.co2.co2_affine_output import BoundCo2AffineFluxMap
 
 __all__ = ["co2_native_flux_outputs", "co2_country_flux_outputs"]
 
@@ -49,7 +45,7 @@ def _output_inputs(
     for group in ("prior", "posterior"):
         if group not in trace.children or name not in trace_group(trace, group):
             raise ValueError(f"Affine CO2 flux outputs require {group} flux_scale draws.")
-        state = local_component_coords(trace_group(trace, group)[name], "flux")
+        state = trace_group(trace, group)[name]
         if set(state.dims) != {"chain", "draw", bound.affine_map.state_dim}:
             raise ValueError(
                 "CO2 flux_scale draws require exactly chain, draw, and retained-state dimensions."

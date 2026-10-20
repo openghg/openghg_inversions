@@ -123,14 +123,12 @@ def build_co2_o2_cached_sigma_model(
             activity,
             active_prior,
             var_name="flux_scaling",
-            coordinate_owner="flux",
         )
         flux = apply_linear_sensitivity(
             prepared_flux,
             state.state,
             data_name="co2_o2_sensitivity",
             output_name="co2_o2_flux_contribution",
-            coordinate_owner="flux",
         )
         affine = add_coherent_affine_component(
             fixed_prior_contribution,

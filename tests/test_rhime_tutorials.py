@@ -166,7 +166,7 @@ def test_multisector_tutorial_runs_to_sector_diagnostics(
     assert isinstance(result, InversionOutput)
     assert [sector["name"] for sector in result.model_metadata["sectors"]] == ["FF", "ocean"]
     assert result.variable_roles["flux_scale"] == "x"
-    assert {"flux_source", "flux_sector"}.issubset(result.trace_group("posterior")["x"].coords)
+    assert "source" in result.trace_group("posterior")["x"].coords
     assert tuple(result.inv_inputs["H"].source.values) == (
         "total-ukghg-edgar7",
         "total-ukghg-edgar7-shuffled",
