@@ -251,7 +251,8 @@ for the scientific result. Output-policy choices, written paths, live PyMC model
 and samplers are not stored on it; ``output_metadata`` contains the inference
 description. Call product functions such as ``basic_output(result)`` to produce
 in-memory summaries. For graph inspection, call the eager model builder directly.
-Nested and CO2 families retain their existing result types.
+Nested execution returns ``NestedOutput`` with two native ``InversionOutput``
+views; CO2 families retain their existing result types.
 
 For multisector prepared execution with ordinary configuration, use
 ``run_multisector(prepared=prepared, config=config)`` and a ``RhimeConfig``
@@ -272,9 +273,9 @@ when scientific sector names differ from inventory names. Existing current-forma
 built-in sample handoffs with ``x_<suffix>`` state names remain readable. This
 does not restore the retired historical staged-envelope format.
 
-Standard and multisector execution no longer construct ``RhimeRunSpec`` or
-return ``RhimeResult``. These shared types remain only for the deferred nested
-and cached CO2 recipes until their own consumers migrate. Remove multisector
+Standard, multisector and nested execution no longer construct ``RhimeRunSpec``
+or return ``RhimeResult``. These shared types remain only for the cached CO2
+recipe until its consumers migrate. Remove multisector
 calls to ``make_multisector_rhime_result`` and ``make_multisector_rhime_outputs``.
 Use ``build_multisector_model``, ``make_model_output``, and the explicit
 product/export calls above. For a custom complete model, pass selected eager

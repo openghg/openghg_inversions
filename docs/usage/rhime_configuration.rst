@@ -334,11 +334,11 @@ in-memory acquisition and :doc:`rhime` for saving and loading prepared inputs.
 The requested configuration contains no acquired/prepared handoff or
 ``RhimeRunSpec``.
 Merged and prepared handoffs describe the sites retained by acquisition and
-filtering. Nested and CO2 runners still create an execution
+filtering. Cached CO2 runners still create an execution
 ``RhimeRunSpec`` after preparation: it combines those retained sites and periods
 with the requested date bounds and resolved model/output choices. If only TAC
 remains from a TAC/MHD request, the configuration continues to name both sites while the run
-specification names TAC. Standard and multisector execution bind retained sites
+specification names TAC. Standard, multisector and nested execution bind retained sites
 and periods directly into the scientific output without constructing a run
 specification. A supplied compatible merged handoff keeps its own
 authoritative site options. The :doc:`prepared-input API <rhime>` remains independent of ``RhimeConfig``.
