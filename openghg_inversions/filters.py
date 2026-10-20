@@ -154,16 +154,10 @@ def filtering(
 
 
 def _local_solar_time(dataset: xr.Dataset) -> list[int]:
-    """Returns hour of day as a function of local solar time relative to the Greenwich Meridian.
-
-    This function also modifies `dataset` by changing the time coordinates.
-
-    NOTE: This is not a filter; it is used by other filters.
-    TODO: do we want this to modify `dataset`? currently it changes the time coordinate
-    TODO: return np.ndarray and use vectorised filtering?
+    """Return local solar hours without modifying observation timestamps.
 
     Args:
-        dataset: dataset to extract hours of the day from; this dataset is modified in place
+        dataset: borrowed observations with timestamps and release longitude
 
     Returns:
         list of hours of the day for each time value in dataset.time
@@ -172,8 +166,8 @@ def _local_solar_time(dataset: xr.Dataset) -> list[int]:
     # convert lon to [-180,180], so time offset is negative west of 0 degrees
     if sitelon > 180:
         sitelon -= 360.0
-    dataset["time"] = dataset.time + pd.Timedelta(minutes=float(24 * 60 * sitelon / 360.0))
-    hours = dataset.time.to_pandas().index.hour
+    local_time = dataset.time + pd.Timedelta(minutes=float(24 * 60 * sitelon / 360.0))
+    hours = local_time.dt.hour.values
     return list(hours)
 
 
@@ -214,7 +208,7 @@ def six_hr_mean(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def daytime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Subset during daytime hours (11:00-15:00).
+    """Subset local solar hours 11 through 15, preserving observation timestamps.
 
     Args:
         dataset: dataset to filter
@@ -236,7 +230,7 @@ def daytime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def daytime9to5(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Subset during daytime hours (9:00-17:00).
+    """Subset local solar hours 9 through 17, preserving observation timestamps.
 
     Args:
         dataset: dataset to filter
@@ -258,7 +252,7 @@ def daytime9to5(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def nighttime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Subset during nighttime hours (23:00 - 03:00).
+    """Subset local solar hours 23 through 3, preserving observation timestamps.
 
     Args:
         dataset: dataset to filter
@@ -280,7 +274,7 @@ def nighttime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def noon(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Select only 12pm data.
+    """Select local solar hour 12, preserving observation timestamps.
 
     Args:
         dataset: dataset to filter
