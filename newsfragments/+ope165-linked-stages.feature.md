@@ -1,0 +1,1 @@
+Add installed linked CO2/O2 stages and scientific-output replay, preserving unequal channel axes, joint covariance, labels and requested dates. Supports common concentration units with fixed-error or fixed-amplitude OU likelihoods.
