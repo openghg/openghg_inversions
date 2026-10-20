@@ -107,19 +107,19 @@ def test_product_processing_and_artifact_export_are_separate(tmp_path, monkeypat
     outputs.postprocess_standard_outputs(inv_out, spec)
     assert events == ["compute"] + ["product"] * (2 if output_format == "paris" else 1)
     events.clear()
-    outputs.save_standard_artifacts(inv_out, spec)
+    outputs.save_inversion_output(inv_out, spec)
     assert events == ["inversion", "trace"]
 
 
 @pytest.mark.parametrize("field", ["output_name", "start_date"])
 def test_direct_artifact_export_rejects_filename_traversal(tmp_path, field):
     from types import SimpleNamespace
-    from openghg_inversions.rhime.outputs import save_standard_artifacts
+    from openghg_inversions.rhime.outputs import save_inversion_output
     from openghg_inversions.rhime.specs import RhimeOutputSpec
 
     destination = tmp_path / "outputs"
     inv_out = SimpleNamespace(run_metadata={"start_date": "../../outside" if field == "start_date" else "2019-01-01"})
     spec = RhimeOutputSpec(output_path=destination, output_name="../../outside" if field == "output_name" else "run")
     with pytest.raises(ValueError, match="filename component"):
-        save_standard_artifacts(inv_out, spec)
+        save_inversion_output(inv_out, spec)
     assert not destination.exists()

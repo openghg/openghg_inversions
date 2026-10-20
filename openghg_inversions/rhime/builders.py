@@ -1,10 +1,10 @@
-"""Public whole-model build contracts and validation for RHIME customizations."""
+"""Scientific graph results and retained nested-model validation."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any
 
 import pymc as pm
 from pytensor.tensor.variable import TensorVariable
@@ -19,18 +19,16 @@ RhimeLikelihoodBuilder = Callable[..., TensorVariable]
 
 @dataclass(frozen=True)
 class RhimeModelBuilderContext:
-    """Advanced compatibility input supplied only to a complete model builder.
+    """Run context retained by the nested model's validation boundary.
 
     Ordinary in-tree recipes and components use explicit named scientific
-    inputs. This context remains solely for user-owned complete models invoked
-    through the multisector ``run_rhime_from_prepared_inputs`` route; those builders own validation
-    and materialization of any lazy arrays they consume.
+    inputs. Nested execution still uses this context to validate its graph and
+    output roles; standard and multisector construction take explicit inputs.
 
     Args:
         prepared_inputs: Validated canonical inputs, retained basis functions,
             and preparation metadata.
-        run_spec: Model, output, and run settings for this execution. The
-            callable is deliberately kept outside this serializable spec.
+        run_spec: Retained nested model, output and run settings.
         multisector: Whether the validated prepared layout and model spec are
             sector resolved.
     """
@@ -53,14 +51,6 @@ class RhimeModelBuildResult:
 
     model: pm.Model
     output_contract: OutputContract
-
-
-class RhimeModelBuilder(Protocol):
-    """Advanced callable contract for a complete user-owned model factory."""
-
-    def __call__(self, context: RhimeModelBuilderContext, /) -> RhimeModelBuildResult:
-        """Build a concrete model from validated prepared inputs and settings."""
-        ...
 
 
 def validate_model_build_result(

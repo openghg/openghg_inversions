@@ -23,4 +23,5 @@ user guide does not yet provide a dedicated end-to-end procedure for them.
    :maxdepth: 1
 
    staged_workflow
+   multisector_handoffs
    prior_predictive_checking

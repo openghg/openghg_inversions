@@ -251,18 +251,24 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
 
     monkeypatch.setattr(module, "prepare_basis", prepare)
     monkeypatch.setattr(module, "build_sensitivities", sensitivities)
-    if route in {"standard", "staged"}:
-        # Standard preparation is scientific-only; its runner and staged
-        # handoff export the completed basis before using the prepared inputs.
+    if route in {"standard", "multisector", "staged"}:
+        # Scientific preparation completes before runners and staged handoffs
+        # export the basis and use the prepared inputs.
         from openghg_inversions.rhime import _standard_stages
         from tests.test_staged_workflow import _prepared
         monkeypatch.setattr(module, "build_sensitivities", lambda *args, **kwargs: {})
-        monkeypatch.setattr(module, "assemble_rhime_inputs",
-                            lambda site_data, basis, **kwargs: replace(_prepared(), basis_functions=basis))
+        def assemble(site_data, basis, **kwargs):
+            prepared = _prepared()
+            inputs = prepared.inv_inputs
+            if route == "multisector":
+                inputs = inputs.assign(H=inputs.H.expand_dims(source=list(basis.source_labels)))
+            return replace(prepared, inv_inputs=inputs, basis_functions=basis)
+        monkeypatch.setattr(module, "assemble_rhime_inputs", assemble)
         def after_preparation(*args, **kwargs):
             captured.append(args[0].basis_functions)  # the prepared inputs
             raise AfterBasis
-        monkeypatch.setattr(module, "materialize_standard_inputs", after_preparation)
+        monkeypatch.setattr(module, f"materialize_{'multisector' if route == 'multisector' else 'standard'}_inputs",
+                            after_preparation)
         monkeypatch.setattr(_standard_stages, "save_preparation", after_preparation)
     config = RhimeConfig.from_params(options, multisector=route == "multisector")
     with pytest.raises(AfterBasis):
@@ -278,7 +284,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
             module.run_standard(config=config)
     assert sources["a"].flux.data is borrowed
     assert config.data.basis_output_path == (tmp_path / options["basis_output_path"] if suffix else None)
-    if route in {"standard", "staged", "example"}:
+    if route in {"standard", "multisector", "staged", "example"}:
         # An explicit export preserves scientific basis payloads and acquisition
         # metadata rather than attaching a destination receipt.
         assert captured[0].operator is captured[1].operator
@@ -286,15 +292,15 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
         assert captured[1].metadata == original_metadata[0]
         assert captured[1].basis_artifact_path == (str(tmp_path / "input.nc") if selection == "reused" else None)
     if suffix is None:
-        if route not in {"standard", "staged"}:
+        if route not in {"standard", "multisector", "staged"}:
             assert captured[0] is captured[1]
         assert not list((tmp_path / "runs/prepared").glob("basis*"))
         return
     exported = tmp_path / options["basis_output_path"]
     assert exported.exists()
     assert not (tmp_path / "runs/prepared/runs").exists()
-    if route in {"multisector", "nested"}:
-        # Deferred families retain their historical export receipt copy.
+    if route == "nested":
+        # Nested retains its historical export receipt copy.
         assert captured[1].basis_artifact_path == str(exported)
         assert captured[0].basis_artifact_path != str(exported)
     restored = BasisFunctions.load(exported)

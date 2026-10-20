@@ -7,12 +7,14 @@ from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.basis import prepare_basis
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
-import pymc as pm
+from dask import is_dask_collection
+from dask.base import unpack_collections
+
 import pytensor.tensor as pt
 import xarray as xr
 
@@ -25,7 +27,7 @@ from openghg_inversions.models.components import (
 )
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.postprocessing.contracts import OutputContract
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.models._flux import (
     _namespace_sector_state_coords,
     _prepared_sources,
@@ -39,161 +41,109 @@ from openghg_inversions.models.state_activity import (
     resolve_state_activity,
 )
 from openghg_inversions.observation_error import (
-    AggregationError,
     aggregation_error_input_names,
     resolve_aggregation_error,
 )
 from openghg_inversions.sigma import SigmaAlignment
-from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
+from openghg_inversions.model_error import MinErrorConfig
 from .specs import (
+    AdditiveSigmaSettings,
+    PollutionEventSettings,
     DEFAULT_BC_PRIOR,
     DEFAULT_OFFSET_PRIOR,
-    LikelihoodSettings,
     RhimeModelSpec,
-    RhimeRunSpec,
-    SectorSpec,
 )
 
 from ._model_building import (
     ForwardModelTerms,
     add_rhime_likelihood,
     builtin_model_build_result,
-    validated_custom_model_build,
 )
 from .builders import (
     RhimeLikelihoodBuilder,
-    RhimeModelBuilder,
-    RhimeModelBuilderContext,
     RhimeModelBuildResult,
-    callable_metadata,
 )
 
-from .materialization import materialize_pymc_inputs
+from .materialization import _materialize_pymc_inputs_and_priors
 from .outputs import (
     annotate_sample_trace,
-    RhimeResult,
-    annotate_likelihood_trace,
-    make_multisector_rhime_outputs,
-    validate_output_resources,
+    make_model_output,
+    postprocess_multisector_outputs,
+    save_inversion_output,
+    validate_multisector_output_resources,
 )
-from .ini import read_rhime_ini
+from .requests import load_params
 from .params import RhimeConfig
 from .preparation import (
     acquire_merged_data,
     resolve_basis_inputs,
-    export_basis,
     assemble_rhime_inputs,
     build_sensitivities,
     filter_observations,
     prepare_observation_errors,
 )
-from .sampling import RhimeSampler, sample_rhime_model
+from .sampling import sample_rhime_model
 
 
-_SectorComponent = tuple[SectorSpec, PreparedLinearSensitivity, PriorArgs, StateActivity]
 _MULTISECTOR_FLUX_INPUT_NAMES = ("H",)
 _OBSERVATION_INPUT_NAMES = ("mf", "mf_error")
 _BASELINE_INPUT_NAMES = ("H_bc",)
-
-
-def _require_component_inputs(
-    prepared: RhimePreparedInputs,
-    names: tuple[str, ...],
-    *,
-    owner: str,
-) -> None:
-    """Fail before materialization with the selected component named."""
-    missing = [name for name in names if name not in prepared.inv_inputs]
-    if missing:
-        raise ValueError(f"{owner} requires prepared input(s) {missing!r}.")
 
 
 def multisector_model_input_names(
     prepared: RhimePreparedInputs,
     model_spec: RhimeModelSpec,
 ) -> tuple[str, ...]:
+    """Select scientific arrays required by the configured multisector components.
+
+    Args:
+        prepared: Borrowed canonical source-resolved inputs.
+        model_spec: Resolved sector, baseline and likelihood choices.
+
+    Returns:
+        Variable names for the explicit PyMC materialization boundary.
+
+    Raises:
+        ValueError: If selected components require missing inputs or ambiguous errors.
+    """
+    return _multisector_input_names(prepared.inv_inputs, model_spec)
+
+
+def _require_component_inputs(
+    model_inputs: xr.Dataset,
+    names: tuple[str, ...],
+    *,
+    owner: str,
+) -> None:
+    """Fail before materialization with the selected component named."""
+    missing = [name for name in names if name not in model_inputs]
+    if missing:
+        raise ValueError(f"{owner} requires prepared input(s) {missing!r}.")
+
+
+def _multisector_input_names(
+    model_inputs: xr.Dataset,
+    model_spec: RhimeModelSpec,
+) -> tuple[str, ...]:
     """Declare arrays required by selected multisector-model components.
 
     Args:
-        prepared: Backend-neutral prepared inputs.
+        model_inputs: Canonical scientific input Dataset.
         model_spec: Resolved multisector component options.
+
     Returns:
         Prepared variable names selected for coordinated materialization.
 
     Raises:
-        ValueError: If a selected component's required input is absent or its
-            aggregation-error representation is ambiguous.
+        ValueError: If selected inputs are absent, sector identities or source
+            layouts conflict, or the aggregation-error representation is ambiguous.
     """
     _require_component_inputs(
-        prepared,
+        model_inputs,
         _MULTISECTOR_FLUX_INPUT_NAMES,
         owner="Multisector flux component",
     )
-    _require_component_inputs(
-        prepared,
-        _OBSERVATION_INPUT_NAMES,
-        owner="Observation-error component",
-    )
-    names = [
-        *_MULTISECTOR_FLUX_INPUT_NAMES,
-        *_OBSERVATION_INPUT_NAMES,
-    ]
-    likelihood_inputs = (
-        () if model_spec.likelihood is None else model_spec.likelihood.required_prepared_inputs
-    )
-    if likelihood_inputs:
-        _require_component_inputs(
-            prepared,
-            likelihood_inputs,
-            owner="Selected built-in likelihood",
-        )
-        names.extend(likelihood_inputs)
-    if model_spec.use_bc:
-        _require_component_inputs(
-            prepared,
-            _BASELINE_INPUT_NAMES,
-            owner="Multisector baseline component selected by `use_bc=True`",
-        )
-        names.extend(_BASELINE_INPUT_NAMES)
-    aggregation_names = aggregation_error_input_names(
-        prepared.inv_inputs,
-        model_spec.aggregation_error_mode,
-    )
-    _require_component_inputs(
-        prepared,
-        aggregation_names,
-        owner=(
-            "Aggregation-error component selected by "
-            f"`aggregation_error_mode={model_spec.aggregation_error_mode!r}`"
-        ),
-    )
-    names.extend(aggregation_names)
-    return tuple(names)
-
-
-def _prepare_multisector_flux_components(
-    flux_sensitivity: xr.DataArray,
-    sectors: Sequence[SectorSpec],
-    *,
-    state_activity: StateActivity | None,
-) -> tuple[_SectorComponent, ...]:
-    """Validate and select the flux inputs used by the visible model loop.
-
-    Args:
-        flux_sensitivity: Canonical source-resolved sensitivity input.
-        sectors: Ordered scientific sector specifications.
-        state_activity: Shared active/fixed state policy used when a sector has
-            no explicit override.
-
-    Returns:
-        Sector specification, selected design, normalized prior, and resolved
-        activity policy for each sector, in the requested order.
-
-    Raises:
-        ValueError: If sector names, sources, suffixes, layouts, priors, or
-            activity policies are inconsistent.
-    """
-    sectors = tuple(sectors)
+    sectors = model_spec.sectors
     if len(sectors) < 2:
         raise ValueError("Multi-sector RHIME requires at least two sectors.")
 
@@ -228,218 +178,63 @@ def _prepare_multisector_flux_components(
             f"duplicate suffix {duplicate_suffixes[0]!r}."
         )
 
-    available_sources = _prepared_sources(flux_sensitivity)
+    available_sources = _prepared_sources(model_inputs["H"])
     missing_sources = [
         (sector.name, sector.flux_source) for sector in sectors if sector.flux_source not in available_sources
     ]
     if missing_sources:
         details = ", ".join(f"sector {name!r} -> source {source!r}" for name, source in missing_sources)
         raise ValueError(
-            f"Source data required by {details} is not present in `flux_sensitivity.source`; "
+            f"Source data required by {details} is not present in prepared H.source; "
             f"available source(s): {available_sources!r}."
         )
+    declared_sources = [sector.flux_source for sector in sectors]
+    if set(declared_sources) != set(available_sources):
+        raise ValueError(
+            "Multisector model sources must cover the retained source layout exactly; "
+            f"declared {declared_sources!r}, prepared {available_sources!r}."
+        )
 
-    gathered_layout = "source" not in flux_sensitivity.dims
-    components: list[_SectorComponent] = []
-    for sector in sectors:
-        design = _select_sector_design(
-            flux_sensitivity,
-            sector=sector.name,
-            source=sector.flux_source,
-            variable_suffix=sector.variable_suffix,
-            namespace_state_dim=False,
-        )
-        sector_policy = sector.state_activity if sector.state_activity is not None else state_activity
-        prepared_sensitivity = prepare_linear_sensitivity(design)
-        resolved_activity = resolve_state_activity(prepared_sensitivity.removed, sector_policy)
-        all_active = replace(
-            resolved_activity,
-            active=xr.ones_like(resolved_activity.active, dtype=bool),
-        )
-        prior = active_prior_args(dict(sector.x_prior), all_active)
-        design_state_dim = next(
-            str(dim)
-            for dim in prepared_sensitivity.sensitivity.dims
-            if dim != prepared_sensitivity.output_dim
-        )
-        backend_design = _namespace_sector_state_coords(
-            prepared_sensitivity.sensitivity,
-            variable_suffix=sector.variable_suffix,
-            namespace_state_dim=gathered_layout or design_state_dim != resolved_activity.state_dim,
-        )
-        semantic_state_dim = resolved_activity.state_dim
-        backend_state_dim = (
-            f"{semantic_state_dim}_{sector.variable_suffix}" if gathered_layout else semantic_state_dim
-        )
-        rename_state = (
-            {semantic_state_dim: backend_state_dim} if semantic_state_dim != backend_state_dim else {}
-        )
-        backend_removed = _namespace_sector_state_coords(
-            prepared_sensitivity.removed,
-            variable_suffix=sector.variable_suffix,
-            namespace_state_dim=gathered_layout,
-        )
-        backend_prepared = PreparedLinearSensitivity(
-            sensitivity=backend_design,
-            removed=backend_removed,
-            output_dim=prepared_sensitivity.output_dim,
-        )
-        backend_activity = StateActivity(
-            active=resolved_activity.active.rename(rename_state),
-            fixed_value=resolved_activity.fixed_value.rename(rename_state),
-        )
-        prior = {
-            key: _namespace_sector_state_coords(
-                value, variable_suffix=sector.variable_suffix,
-                namespace_state_dim=gathered_layout,
-            ) if isinstance(value, xr.DataArray) and value.ndim else value
-            for key, value in prior.items()
-        }
-        components.append((sector, backend_prepared, prior, backend_activity))
-    return tuple(components)
-
-
-def build_multisector_rhime_model(
-    flux_sensitivity: xr.DataArray,
-    *,
-    observations: xr.DataArray,
-    observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
-    minimum_error: xr.DataArray | None = None,
-    likelihood_settings: LikelihoodSettings | None = None,
-    likelihood_builder: RhimeLikelihoodBuilder | None = None,
-    likelihood_kwargs: Mapping[str, Any] | None = None,
-    sectors: Sequence[SectorSpec],
-    boundary_sensitivity: xr.DataArray | None = None,
-    bc_prior: PriorArgs | None = None,
-    offset_prior: PriorArgs | None = None,
-    add_offset: bool = False,
-    use_bc: bool = True,
-    offset_args: dict | None = None,
-    state_activity: StateActivity | None = None,
-    bc_state_activity: StateActivity | None = None,
-    sigma_alignment: SigmaAlignment | None = None,
-) -> pm.Model:
-    """Build the concrete shared-basis multi-sector RHIME model.
-
-    Each sector receives its own state vector ``x_<sector>`` and forward-model
-    contribution ``mu_<sector>``. The recipe visibly sums those contributions,
-    adds the baseline and optional offset, then passes the completed mean to
-    the likelihood.
-
-    Args:
-        flux_sensitivity: Labelled source-resolved flux sensitivity,
-            either shared-basis or gathered source-specific state layout.
-        observations: Observed mole fractions.
-        observation_error: Reported observation-error standard deviations.
-        aggregation_error: Validated fixed aggregation-error representation.
-        minimum_error: Optional prepared minimum total-error floor.
-        likelihood_settings: Resolved built-in likelihood settings.
-        likelihood_builder: Optional Python-only custom likelihood.
-        likelihood_kwargs: Options for the custom likelihood.
-        sectors: Ordered sector specifications containing each scientific name,
-            OpenGHG source, PyMC suffix, prior, and optional activity override.
-        boundary_sensitivity: Optional labelled boundary sensitivity matrix.
-        bc_prior: Prior for boundary-condition scaling factors.
-        offset_prior: Prior for optional offsets.
-        add_offset: Whether to include an offset term.
-        use_bc: Whether to include boundary-condition terms.
-        offset_args: Extra keyword arguments for the offset component.
-        state_activity: State policy shared by sectors without an override.
-        bc_state_activity: Optional active/fixed boundary-state policy.
-        sigma_alignment: Optional precomputed mismatch alignment. Ordinary
-            runners derive it from observations.
-
-    Returns:
-        Built PyMC model.
-
-    Raises:
-        KeyError: If required sensitivity inputs are absent.
-        ValueError: If sector labels, sources, suffixes, state policies, or
-            canonical likelihood variables are invalid.
-        TypeError: If the likelihood returns the wrong result type.
-    """
-    sector_components = _prepare_multisector_flux_components(
-        flux_sensitivity,
-        sectors,
-        state_activity=state_activity,
+    _require_component_inputs(
+        model_inputs,
+        _OBSERVATION_INPUT_NAMES,
+        owner="Observation-error component",
     )
-    bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
-    offset_prior = dict(DEFAULT_OFFSET_PRIOR if offset_prior is None else offset_prior)
-    prepared_boundary = (
-        prepare_linear_sensitivity(boundary_sensitivity)
-        if use_bc and boundary_sensitivity is not None
-        else None
+    names = [
+        *_MULTISECTOR_FLUX_INPUT_NAMES,
+        *_OBSERVATION_INPUT_NAMES,
+    ]
+    likelihood_inputs = (
+        () if model_spec.likelihood is None else model_spec.likelihood.required_prepared_inputs
     )
-    with registered_model() as model:
-        sector_outputs = []
-        for sector, design, prior, sector_policy in sector_components:
-            sector_outputs.append(
-                add_linear_component(
-                    design,
-                    data_name=f"hx_{sector.variable_suffix}",
-                    prior_args=prior,
-                    var_name=f"x_{sector.variable_suffix}",
-                    output_name=f"mu_{sector.variable_suffix}",
-                    output_dim="nmeasure",
-                    compute_deterministic=True,
-                    state_activity=sector_policy,
-                ).output
-            )
-
-        pollution_mean = cast(Any, pt.stack(sector_outputs, axis=0)).sum(axis=0)
-
-        boundary_mean = None
-        if use_bc:
-            if boundary_sensitivity is None:
-                raise ValueError(
-                    "Multisector baseline component requires `boundary_sensitivity` when `use_bc` is true."
-                )
-            assert prepared_boundary is not None
-            boundary_mean = add_linear_component(
-                prepared_boundary,
-                data_name="hbc",
-                prior_args=bc_prior,
-                var_name="bc",
-                output_name="mu_bc",
-                output_dim="nmeasure",
-                compute_deterministic=True,
-                state_activity=bc_state_activity,
-            ).output
-
-        offset = None
-        if add_offset:
-            offset = add_offset_component(
-                observations,
-                prior_args=offset_prior,
-                output_name="offset",
-                output_dim="nmeasure",
-                **(offset_args or {}),
-            )
-
-        baseline_mean = boundary_mean
-        if offset is not None:
-            baseline_mean = offset if baseline_mean is None else baseline_mean + offset
-        modelled_mean = pollution_mean if baseline_mean is None else pollution_mean + baseline_mean
-
-        forward = ForwardModelTerms(
-            total=modelled_mean,
-            pollution=pollution_mean,
-            baseline=baseline_mean,
+    if likelihood_inputs:
+        _require_component_inputs(
+            model_inputs,
+            likelihood_inputs,
+            owner="Selected built-in likelihood",
         )
-        add_rhime_likelihood(
-            settings=likelihood_settings,
-            likelihood_builder=likelihood_builder,
-            likelihood_kwargs=likelihood_kwargs,
-            forward=forward,
-            observations=observations,
-            observation_error=observation_error,
-            aggregation_error=aggregation_error,
-            minimum_error=minimum_error,
-            output_dim="nmeasure",
-            sigma_alignment=sigma_alignment,
+        names.extend(likelihood_inputs)
+    if model_spec.use_bc:
+        _require_component_inputs(
+            model_inputs,
+            _BASELINE_INPUT_NAMES,
+            owner="Multisector baseline component selected by `use_bc=True`",
         )
-    return model
+        names.extend(_BASELINE_INPUT_NAMES)
+    aggregation_names = aggregation_error_input_names(
+        model_inputs,
+        model_spec.aggregation_error_mode,
+    )
+    _require_component_inputs(
+        model_inputs,
+        aggregation_names,
+        owner=(
+            "Aggregation-error component selected by "
+            f"`aggregation_error_mode={model_spec.aggregation_error_mode!r}`"
+        ),
+    )
+    names.extend(aggregation_names)
+    return tuple(names)
 
 
 def _validate_multisector_basis_layout(
@@ -458,8 +253,14 @@ def _validate_multisector_basis_layout(
         ValueError: If a source basis is missing or its state coordinate does
             not match the corresponding prepared sensitivity design.
     """
+    available_sources = _prepared_sources(inv_inputs["H"])
+    declared_sources = [sector.flux_source for sector in model_spec.sectors]
+    if set(declared_sources) != set(available_sources) or len(declared_sources) != len(available_sources):
+        raise ValueError(
+            "Multisector model sources must cover the retained source layout exactly; "
+            f"declared {declared_sources!r}, prepared {available_sources!r}."
+        )
     design = inv_inputs["H"]
-    region_layouts: list[tuple[str, str, int, int, bool]] = []
     for sector in model_spec.sectors:
         try:
             source_basis = basis_functions.for_source(sector.flux_source)
@@ -483,166 +284,352 @@ def _validate_multisector_basis_layout(
                 f"one prepared state dimension; found {prepared_state_dims!r}."
             )
         prepared_index = sector_design.get_index(prepared_state_dims[0])
-        region_layouts.append(
-            (
-                sector.name,
-                sector.flux_source,
-                len(basis_index),
-                len(prepared_index),
-                basis_index.equals(prepared_index),
+        if not basis_index.equals(prepared_index):
+            raise ValueError(
+                "Retained source-specific basis state coordinates do not match prepared H; "
+                f"sector {sector.name!r} -> source {sector.flux_source!r}: "
+                f"basis has {len(basis_index)} regions, prepared H has {len(prepared_index)} "
+                "with different coordinates."
             )
-        )
-    if any(not matches for _, _, _, _, matches in region_layouts):
-        details = ", ".join(
-            f"sector {sector!r} -> source {source!r}: basis has {basis_count} regions, "
-            f"prepared H has {prepared_count}" + ("" if matches else " with different coordinates")
-            for sector, source, basis_count, prepared_count, matches in region_layouts
-        )
-        raise ValueError(
-            "Retained source-specific basis state coordinates do not match prepared H; " + details + "."
-        )
 
 
-def build_multisector_rhime_model_result(
-    *,
+def _multisector_prior_parameters(model_spec: RhimeModelSpec) -> dict[str, PriorArgs]:
+    """Select enabled priors before state pruning, retaining sector identities."""
+    priors = {f"x_{sector.variable_suffix}": sector.x_prior for sector in model_spec.sectors}
+    if model_spec.use_bc and model_spec.bc_prior is not None:
+        priors["bc"] = model_spec.bc_prior
+    if model_spec.add_offset and model_spec.offset_prior is not None:
+        priors["offset_latent"] = model_spec.offset_prior
+    likelihood = model_spec.likelihood
+    if isinstance(likelihood, (PollutionEventSettings, AdditiveSigmaSettings)) and likelihood.sigma_prior is not None:
+        priors["sigma"] = likelihood.sigma_prior
+    if isinstance(likelihood, PollutionEventSettings) and isinstance(likelihood.power, Mapping):
+        priors["power"] = likelihood.power
+    return priors
+
+
+def materialize_multisector_inputs(
     prepared: RhimePreparedInputs,
-    model_inputs: xr.Dataset,
-    run_spec: RhimeRunSpec,
-    model_builder: RhimeModelBuilder | None = None,
-    likelihood_builder: RhimeLikelihoodBuilder | None = None,
-    likelihood_kwargs: Mapping[str, Any] | None = None,
-) -> RhimeModelBuildResult:
-    """Validate source-specific bases and build the multisector graph result.
+    model_spec: RhimeModelSpec,
+) -> tuple[xr.Dataset, dict[str, PriorArgs]]:
+    """Materialize selected multisector arrays and enabled priors together.
 
     Args:
-        prepared: Retained source-specific prepared-input artifact.
-        model_inputs: Eager canonical arrays for the built-in PyMC graph.
-        run_spec: Resolved model, sampling, and output specification.
-        model_builder: Optional complete-model builder for advanced prepared-
-            input workflows.
-        likelihood_builder: Optional observation-error and distribution builder
-            used with the built-in graph.
-        likelihood_kwargs: Options expanded only into the custom likelihood.
+        prepared: Borrowed source-labelled inputs and retained native flux.
+        model_spec: Choices selecting scientific components and priors.
 
     Returns:
-        Model plus variable roles, supported outputs, and build metadata.
+        Shallow input Dataset with selected values eager and eager prior mappings.
+        Unselected arrays and the original preparation remain borrowed and lazy.
 
     Raises:
-        ValueError: If the basis layout is incompatible, both extension points
-            are supplied, or the result conflicts with the run specification.
+        ValueError: If a required component input or source layout is absent.
     """
-    if run_spec.output.output_format in ("basic", "legacy"):
-        raise ValueError(
-            f"RHIME output_format {run_spec.output.output_format!r} supports only single-sector runs."
-        )
-    if model_builder is not None and likelihood_builder is not None:
-        raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
+    _validate_multisector_basis_layout(
+        prepared.basis_functions,
+        model_spec,
+        prepared.inv_inputs,
+    )
+    return _materialize_pymc_inputs_and_priors(
+        prepared,
+        variable_names=multisector_model_input_names(prepared, model_spec),
+        prior_parameters=_multisector_prior_parameters(model_spec),
+    )
+
+
+def build_multisector_model(
+    model_inputs: xr.Dataset,
+    model_spec: RhimeModelSpec,
+    *,
+    priors: Mapping[str, PriorArgs],
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    likelihood_kwargs: Mapping[str, Any] | None = None,
+    sigma_alignment: SigmaAlignment | None = None,
+) -> RhimeModelBuildResult:
+    """Construct the multisector graph from already materialized values.
+
+    The sector loop selects each source, resolves its active/fixed states and
+    adds its flux contribution. Those contributions are then summed before
+    adding boundary conditions, offsets and the observation likelihood.
+
+    Args:
+        model_inputs: Canonical Dataset with selected scientific inputs eager.
+        model_spec: Resolved sector, baseline and likelihood choices.
+        priors: Eager prior mappings keyed by scientific model variable name.
+        likelihood_builder: Optional ordinary custom likelihood callable.
+        likelihood_kwargs: Options expanded only into that callable.
+        sigma_alignment: Optional precomputed mismatch alignment.
+
+    Returns:
+        Concrete PyMC model and its validated scientific output contract.
+
+    Raises:
+        ValueError: If selected inputs or prior parameters are missing or lazy,
+            sector identities or source layouts conflict, or likelihood choices
+            are inconsistent.
+        TypeError: If the custom likelihood returns an invalid value.
+    """
+    names = _multisector_input_names(model_inputs, model_spec)
+    if likelihood_builder is not None and model_spec.likelihood is not None:
+        raise ValueError("A custom likelihood cannot be combined with built-in likelihood settings.")
     if likelihood_kwargs and likelihood_builder is None:
         raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
+    missing_priors = _multisector_prior_parameters(model_spec).keys() - priors.keys()
+    if missing_priors:
+        raise ValueError(f"Missing materialized prior parameter mappings: {sorted(missing_priors)!r}.")
+    lazy_priors, _ = unpack_collections(priors)
+    if any(is_dask_collection(model_inputs[name]) for name in names) or lazy_priors:
+        raise ValueError("Multisector model inputs and prior parameters must be materialized before building.")
+
     timing_start = timer_start()
-    _validate_multisector_basis_layout(prepared.basis_functions, run_spec.model, prepared.inv_inputs)
-    if model_builder is not None:
-        builder_context = RhimeModelBuilderContext(
-            prepared_inputs=prepared,
-            run_spec=run_spec,
-            multisector=True,
+    flux_sensitivity = model_inputs["H"]
+    observations = model_inputs["mf"]
+    observation_error = model_inputs["mf_error"]
+    minimum_error = model_inputs.get("min_error")
+    aggregation_error = resolve_aggregation_error(model_inputs, model_spec.aggregation_error_mode)
+    gathered_layout = "source" not in flux_sensitivity.dims
+
+    bc_prior = dict(priors.get("bc", DEFAULT_BC_PRIOR))
+    offset_prior = dict(priors.get("offset_latent", DEFAULT_OFFSET_PRIOR))
+    prepared_boundary = (
+        prepare_linear_sensitivity(model_inputs["H_bc"])
+        if model_spec.use_bc
+        else None
+    )
+
+    with registered_model() as model:
+        sector_outputs = []
+        for sector in model_spec.sectors:
+            design = _select_sector_design(
+                flux_sensitivity,
+                sector=sector.name,
+                source=sector.flux_source,
+                variable_suffix=sector.variable_suffix,
+                namespace_state_dim=False,
+            )
+            sector_policy = (
+                sector.state_activity
+                if sector.state_activity is not None
+                else model_spec.state_activity
+            )
+            prepared_sensitivity = prepare_linear_sensitivity(design)
+            resolved_activity = resolve_state_activity(prepared_sensitivity.removed, sector_policy)
+            # Align the full scientific prior before backend namespacing and pruning.
+            all_active = replace(
+                resolved_activity,
+                active=xr.ones_like(resolved_activity.active, dtype=bool),
+            )
+            prior = active_prior_args(dict(priors[f"x_{sector.variable_suffix}"]), all_active)
+
+            design_state_dim = next(
+                str(dim)
+                for dim in prepared_sensitivity.sensitivity.dims
+                if dim != prepared_sensitivity.output_dim
+            )
+            backend_design = _namespace_sector_state_coords(
+                prepared_sensitivity.sensitivity,
+                variable_suffix=sector.variable_suffix,
+                namespace_state_dim=(
+                    gathered_layout
+                    or design_state_dim != resolved_activity.state_dim
+                ),
+            )
+            backend_removed = _namespace_sector_state_coords(
+                prepared_sensitivity.removed,
+                variable_suffix=sector.variable_suffix,
+                namespace_state_dim=gathered_layout,
+            )
+            backend_prepared = PreparedLinearSensitivity(
+                sensitivity=backend_design,
+                removed=backend_removed,
+                output_dim=prepared_sensitivity.output_dim,
+            )
+            rename_state = (
+                {resolved_activity.state_dim: f"{resolved_activity.state_dim}_{sector.variable_suffix}"}
+                if gathered_layout
+                else {}
+            )
+            backend_activity = StateActivity(
+                active=resolved_activity.active.rename(rename_state),
+                fixed_value=resolved_activity.fixed_value.rename(rename_state),
+            )
+            for name, value in prior.items():
+                if isinstance(value, xr.DataArray) and value.ndim:
+                    prior[name] = _namespace_sector_state_coords(
+                        value,
+                        variable_suffix=sector.variable_suffix,
+                        namespace_state_dim=gathered_layout,
+                    )
+            sector_component = add_linear_component(
+                backend_prepared,
+                data_name=f"hx_{sector.variable_suffix}",
+                prior_args=prior,
+                var_name=f"x_{sector.variable_suffix}",
+                output_name=f"mu_{sector.variable_suffix}",
+                output_dim="nmeasure",
+                compute_deterministic=True,
+                state_activity=backend_activity,
+            )
+            sector_outputs.append(sector_component.output)
+
+        pollution_mean = cast(Any, pt.stack(sector_outputs, axis=0)).sum(axis=0)
+
+        boundary_mean = None
+        if prepared_boundary is not None:
+            boundary_mean = add_linear_component(
+                prepared_boundary,
+                data_name="hbc",
+                prior_args=bc_prior,
+                var_name="bc",
+                output_name="mu_bc",
+                output_dim="nmeasure",
+                compute_deterministic=True,
+                state_activity=model_spec.bc_state_activity,
+            ).output
+
+        offset = None
+        if model_spec.add_offset:
+            offset = add_offset_component(
+                observations,
+                prior_args=offset_prior,
+                output_name="offset",
+                output_dim="nmeasure",
+                **(model_spec.offset_args or {}),
+            )
+
+        baseline_mean = boundary_mean
+        if offset is not None:
+            baseline_mean = offset if baseline_mean is None else baseline_mean + offset
+        modelled_mean = pollution_mean if baseline_mean is None else pollution_mean + baseline_mean
+
+        forward = ForwardModelTerms(
+            total=modelled_mean,
+            pollution=pollution_mean,
+            baseline=baseline_mean,
         )
-        result = validated_custom_model_build(model_builder, context=builder_context)
-    else:
-        model_spec = run_spec.model
-        if likelihood_builder is not None and model_spec.likelihood is not None:
-            raise ValueError("A custom likelihood cannot be combined with built-in likelihood settings.")
-        aggregation_error = resolve_aggregation_error(
-            model_inputs,
-            model_spec.aggregation_error_mode,
-        )
-        model = build_multisector_rhime_model(
-            model_inputs["H"],
-            observations=model_inputs["mf"],
-            observation_error=model_inputs["mf_error"],
-            aggregation_error=aggregation_error,
-            minimum_error=model_inputs.get("min_error"),
-            likelihood_settings=model_spec.likelihood,
+        add_rhime_likelihood(
+            settings=model_spec.likelihood,
             likelihood_builder=likelihood_builder,
             likelihood_kwargs=likelihood_kwargs,
-            sectors=model_spec.sectors,
-            boundary_sensitivity=model_inputs.get("H_bc"),
-            bc_prior=model_spec.bc_prior,
-            bc_state_activity=model_spec.bc_state_activity,
-            offset_prior=model_spec.offset_prior,
-            add_offset=model_spec.add_offset,
-            use_bc=model_spec.use_bc,
-            offset_args=model_spec.offset_args,
-            state_activity=model_spec.state_activity,
+            forward=forward,
+            observations=observations,
+            observation_error=observation_error,
+            aggregation_error=aggregation_error,
+            minimum_error=minimum_error,
+            output_dim="nmeasure",
+            sigma_alignment=sigma_alignment,
+            prior_parameters=priors,
         )
-        result = builtin_model_build_result(
-            model,
-            model_spec=run_spec.model,
-            multisector=True,
-            input_names=tuple(str(name) for name in model_inputs.data_vars),
-        )
+    result = builtin_model_build_result(
+        model,
+        model_spec=model_spec,
+        multisector=True,
+        input_names=tuple(str(name) for name in model_inputs.data_vars),
+    )
     log_timing("rhime.model_build", timer_seconds(timing_start), multisector=True)
     return result
 
 
-def make_multisector_rhime_result(
+def prepare_multisector(
+    merged_data: RhimeMergedData,
     *,
-    prepared: RhimePreparedInputs,
-    run_spec: RhimeRunSpec,
-    sampler: RhimeSampler | None,
-    model_build_result: RhimeModelBuildResult | None = None,
-    output_contract: OutputContract | None = None,
-    idata: xr.DataTree,
-    build_and_sample_seconds: float,
-    model_builder: RhimeModelBuilder | None = None,
-    likelihood_builder: RhimeLikelihoodBuilder | None = None,
-    likelihood_kwargs: Mapping[str, Any] | None = None,
-) -> RhimeResult:
-    """Construct a sampled multisector result before output side effects.
+    domain: str,
+    start_date: str,
+    flux_sources: tuple[str, ...],
+    averaging_error: bool,
+    filters: Any,
+    basis_algorithm: str | None,
+    nbasis: int,
+    fix_basis_outer_regions: bool,
+    use_bc: bool,
+    bc_freq: str | None,
+    min_error: MinErrorConfig,
+    min_error_options: Mapping[str, bool],
+    basis_inputs: Mapping[str, Any],
+    bc_basis: xr.Dataset | None = None,
+) -> RhimePreparedInputs:
+    """Prepare observations and sensitivities from supplied scientific resources.
 
     Args:
-        prepared: Retained source-resolved inputs and basis functions.
-        run_spec: Resolved model, output, and run settings.
-        sampler: Live sampler used for the trace, or ``None`` during saved replay.
-        model_build_result: Concrete graph and roles, when retained in memory.
-        output_contract: Durable output information for graph-free reconstruction.
-            Defaults to the live build result's contract when supplied.
-        idata: Sampled posterior and predictive groups.
-        build_and_sample_seconds: Combined graph-build and sampling duration.
-        model_builder: Optional complete-model callable used for provenance.
-        likelihood_builder: Optional likelihood callable used for provenance.
-        likelihood_kwargs: Serializable options owned by the likelihood.
+        domain: Domain label for prepared inputs and basis metadata.
+        start_date: Requested start anchoring boundary-condition periods.
+        flux_sources: Ordered source identities; the first weights basis design.
+        averaging_error: Include variability when deriving observation errors.
+        filters: Observation-filter choices interpreted by the filtering owner.
+        basis_algorithm: Selected basis-generation algorithm.
+        nbasis: Requested generated basis size.
+        fix_basis_outer_regions: Keep the supplied outer partition fixed.
+        use_bc: Construct boundary-condition sensitivities.
+        bc_freq: Baked boundary-condition scaling period.
+        min_error: Minimum-error policy interpreted during assembly.
+        min_error_options: Options for the minimum-error calculation.
+        merged_data: Borrowed acquired observations, transport and current flux.
+        basis_inputs: Selected operator path or loaded partition and support maps.
+        bc_basis: Loaded boundary-condition basis, when selected.
 
     Returns:
-        Multisector result ready for requested output construction.
+        Retained backend-neutral inputs and their current native-flux binding.
     """
-    result = RhimeResult(
-        run_spec=run_spec,
-        model_spec=run_spec.model,
-        output_spec=run_spec.output,
-        inv_inputs=prepared.inv_inputs,
-        idata=idata,
-        sampler=sampler,
-        model=model_build_result.model if model_build_result is not None else None,
-        basis_functions=prepared.basis_functions,
-        model_build_result=model_build_result,
-        output_contract=output_contract,
-        output_metadata={"build_and_sample_seconds": build_and_sample_seconds},
+    preparation_start = timer_start()
+    # Preparation works on per-site datasets; ``merged_data`` stays acquired data.
+    with_errors = prepare_observation_errors(
+        merged_data.site_data,
+        averaging_error=averaging_error,
     )
-    if model_builder is not None:
-        identity = callable_metadata(model_builder)
-        result.output_metadata["model_builder"] = identity
-    if likelihood_builder is not None:
-        identity = callable_metadata(likelihood_builder)
-        result.output_metadata["likelihood_builder"] = identity
-        annotate_likelihood_trace(
-            result.idata,
-            builder_identity=identity,
-            likelihood_kwargs=likelihood_kwargs,
+    filtered, site_options = filter_observations(
+        with_errors,
+        merged_data.site_options,
+        filters=filters,
+    )
+
+    runtime_flux = resolve_runtime_flux(
+        merged_data.flux_data,
+        split_by_sectors=merged_data.split_by_sectors,
+    )
+    with timed("rhime.prepare_inputs.basis_build", basis_algorithm=basis_algorithm):
+        basis_functions = prepare_basis(
+            site_data=filtered,
+            runtime_flux=runtime_flux,
+            weighting_flux=merged_data.flux_data[flux_sources[0]]["flux"],
+            domain=domain,
+            start_date=start_date,
+            basis_algorithm=basis_algorithm,
+            nbasis=nbasis,
+            fix_outer_regions=fix_basis_outer_regions,
+            **basis_inputs,
         )
-    if likelihood_kwargs is not None:
-        result.output_metadata["likelihood_kwargs"] = likelihood_kwargs
-    return result
+
+    sensitivities = build_sensitivities(
+        filtered,
+        basis_functions,
+        flux_sources=flux_sources,
+        use_bc=use_bc,
+        bc_basis=bc_basis,
+        multisector=True,
+    )
+
+    prepared = assemble_rhime_inputs(
+        sensitivities,
+        basis_functions,
+        site_options=site_options,
+        domain=domain,
+        start_date=start_date,
+        bc_freq=bc_freq,
+        min_error=min_error,
+        min_error_options=min_error_options,
+        use_bc=use_bc,
+    )
+    log_timing(
+        "rhime.prepare_inputs",
+        timer_seconds(preparation_start),
+        multisector=True,
+        nmeasure=prepared.inv_inputs.sizes.get("nmeasure"),
+        sites=len(prepared.sites),
+        regions=prepared.inv_inputs.sizes.get("region"),
+        sources=prepared.inv_inputs.sizes.get("source"),
+        basis_source=prepared.basis_artifact_source,
+    )
+    return prepared
 
 
 def run_multisector(
@@ -650,14 +637,15 @@ def run_multisector(
     config_file: str | Path | None = None,
     config: RhimeConfig | None = None,
     merged_data: RhimeMergedData | None = None,
+    prepared: RhimePreparedInputs | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     **kwargs: Any,
-) -> RhimeResult:
-    """Run a shared-basis multi-sector RHIME inversion.
+) -> InversionOutput:
+    """Run a source-resolved multisector inversion.
 
     The visible process is resolve → acquire or accept supplied data → observation
-    errors → filter → basis → sensitivities → assemble → materialize → build → sample → result →
+    errors → filter → basis → sensitivities → assemble → materialize → build → sample → scientific output →
     requested outputs.
     This module keeps source layout validation and sector-aware outputs beside
     that process instead of hiding them behind standard/multisector branching.
@@ -667,9 +655,8 @@ def run_multisector(
     support maps are loaded at that boundary. Saved bases are rebound to current
     flux; ``basis_output_path`` is an exact retained-artifact destination.
 
-    Without supplied merged data, this runner acquires fresh data. Persisted
-    prepared inputs can be reused with
-    :func:`openghg_inversions.rhime.run_rhime_from_prepared_inputs`.
+    Without supplied data, this runner acquires fresh data. Supplying ``prepared``
+    joins the same materialize/build/sample sequence without acquisition or preparation.
 
     Args:
         config_file: Optional INI configuration file. Values in ``kwargs``
@@ -681,6 +668,8 @@ def run_multisector(
             scientific data. Passing this in-memory handoff bypasses OpenGHG
             acquisition and resumes at observation-error preparation after validating
             recorded species, domain, time window, and sector layout.
+        prepared: Optional borrowed canonical inputs and retained basis. Cannot
+            be combined with ``merged_data``.
         likelihood_builder: Optional Python-only callable invoked with a
             completed forward-model mean and explicit error-model inputs in
             the active PyMC model. It must return the canonical observed
@@ -699,8 +688,8 @@ def run_multisector(
             absent.
 
     Returns:
-        Modern RHIME result containing canonical inputs, a sampled DataTree, specs,
-        output metadata, and sector diagnostics.
+        Scientific inversion output borrowing preparation and trace, even when
+        output is disabled. Use scientific product functions for in-memory diagnostics.
 
     Raises:
         TypeError: If a likelihood builder is not callable or returns the
@@ -712,18 +701,17 @@ def run_multisector(
     """
     if likelihood_kwargs and likelihood_builder is None:
         raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
+    if prepared is not None and merged_data is not None:
+        raise ValueError("Pass either prepared or merged_data, not both.")
     setup_start = timer_start()
     if config is not None:
         if config_file is not None or kwargs:
             raise ValueError("Pass either resolved `config` or `config_file`/run parameters, not both.")
         if not config.data.split_by_sectors:
-            raise ValueError("`run_rhime_multisector` received configuration for a different sector layout.")
+            raise ValueError("`run_multisector` received configuration for a different sector layout.")
     else:
-        params = read_rhime_ini(config_file) if config_file is not None else {}
-        params.update(kwargs)
-        if likelihood_builder is not None and params.get("mismatch_model") is not None:
-            raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
-        config = RhimeConfig.from_params(translate_rhime_aliases(params), multisector=True)
+        params = load_params(config_file=config_file, overrides=kwargs)
+        config = RhimeConfig.from_params(params, multisector=True)
     if likelihood_builder is not None and config.model.likelihood is not None:
         raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
     sampler = resolve_sampler(config.sampler)
@@ -731,115 +719,87 @@ def run_multisector(
     if likelihood_builder is None and config.model.likelihood is None:
         raise ValueError("A multisector RHIME run requires a built-in or custom likelihood.")
 
-    # Read selected scientific resources before expensive data acquisition.
-    validate_output_resources(config.output)
-    basis_inputs = resolve_basis_inputs(config.data)
-    bc_basis = load_bc_basis(config.data.bc_basis_paths) if config.data.use_bc and config.data.bc_basis_paths is not None else None
-
-
-    # 1. Acquire, or check supplied merged data.
-    preparation_start = timer_start()
-    if merged_data is None:
-        merged = acquire_merged_data(config.data)
-    else:
-        merged_data.validate_for_preparation(
-            **config.data.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
+    validate_multisector_output_resources(config.output)
+    # 1. Resolve resources, acquire or validate supplied data, then prepare.
+    if prepared is None:
+        basis_inputs = resolve_basis_inputs(config.data)
+        bc_basis = (
+            load_bc_basis(config.data.bc_basis_paths)
+            if config.data.use_bc and config.data.bc_basis_paths is not None else None
         )
-        merged = merged_data
-
-    # 2. Preparation works on per-site datasets; ``merged`` stays acquired data.
-    with_errors = prepare_observation_errors(merged.site_data, averaging_error=config.data.averaging_error)
-    filtered, site_options = filter_observations(with_errors, merged.site_options, filters=config.data.filters)
-
-    runtime_flux = resolve_runtime_flux(merged.flux_data, split_by_sectors=merged.split_by_sectors)
-    with timed("rhime.prepare_inputs.basis_build", basis_algorithm=config.data.basis_algorithm):
-        basis_functions = prepare_basis(
-            site_data=filtered,
-            runtime_flux=runtime_flux,
-            weighting_flux=merged.flux_data[config.data.flux_sources[0]]["flux"],
+        if merged_data is None:
+            merged_data = acquire_merged_data(config.data)
+        else:
+            merged_data.validate_for_preparation(
+                **config.data.select(
+                    "species",
+                    "domain",
+                    "start_date",
+                    "end_date",
+                    "split_by_sectors",
+                ),
+            )
+        prepared = prepare_multisector(
+            merged_data,
+            basis_inputs=basis_inputs,
+            bc_basis=bc_basis,
             **config.data.select(
-                "domain", "start_date", "basis_algorithm", "nbasis",
+                "domain",
+                "start_date",
+                "flux_sources",
+                "averaging_error",
+                "filters",
+                "basis_algorithm",
+                "nbasis",
+                "fix_basis_outer_regions",
+                "use_bc",
+                "bc_freq",
+                "min_error",
+                "min_error_options",
             ),
-            fix_outer_regions=config.data.fix_basis_outer_regions,
-            **basis_inputs,
         )
-    basis_functions = export_basis(basis_functions, config.data.basis_output_path)
+    else:
+        prepared = prepared.validated()
 
-    sensitivities = build_sensitivities(
-        filtered,
-        basis_functions,
-        **config.data.select(
-            "flux_sources", "use_bc",
-        ),
-        bc_basis=bc_basis,
-        multisector=True,
-    )
+    if config.data.basis_output_path is not None:
+        Path(config.data.basis_output_path).parent.mkdir(parents=True, exist_ok=True)
+        prepared.basis_functions.save(config.data.basis_output_path)
 
-    prepared = assemble_rhime_inputs(
-        sensitivities,
-        basis_functions,
-        site_options=site_options,
-        **config.data.select(
-            "domain", "start_date", "bc_freq", "min_error",
-            "min_error_options", "use_bc",
-        ),
-    )
-    log_timing(
-        "rhime.prepare_inputs",
-        timer_seconds(preparation_start),
-        multisector=True,
-        nmeasure=prepared.inv_inputs.sizes.get("nmeasure"),
-        sites=len(prepared.sites),
-        regions=prepared.inv_inputs.sizes.get("region"),
-        sources=prepared.inv_inputs.sizes.get("source"),
-        basis_source=prepared.basis_artifact_source,
-    )
-    run_spec = config.retained_run_spec(prepared)
-
-    # 3. Cross the explicit numerical/backend boundary, then build the graph.
-    model_inputs = materialize_pymc_inputs(
-        prepared,
-        variable_names=multisector_model_input_names(
-            prepared,
-            run_spec.model,
-        ),
-    )
-    build_and_sample_start = timer_start()
-    model_build_result = build_multisector_rhime_model_result(
-        prepared=prepared,
-        model_inputs=model_inputs,
-        run_spec=run_spec,
+    # 2. Materialize selected inputs and enabled priors, then build the graph.
+    model_inputs, priors = materialize_multisector_inputs(prepared, config.model)
+    model_build_result = build_multisector_model(
+        model_inputs,
+        config.model,
+        priors=priors,
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
     )
-    model_build_result.output_contract.validate_requested_output(run_spec.output.output_format)
-    # 4. Inference receives the completed graph and its variable roles.
+    model_build_result.output_contract.validate_requested_output(config.output.output_format)
+    # 3. Inference receives the completed graph and its variable roles.
     idata = sample_rhime_model(
         model_build_result,
         sampler,
     )
-    annotate_sample_trace(model_build_result, idata)
-    # 5. Bind the samples to durable scientific output information.
-    result = make_multisector_rhime_result(
-        prepared=prepared,
-        run_spec=run_spec,
-        sampler=sampler,
-        model_build_result=model_build_result,
-        idata=idata,
-        build_and_sample_seconds=timer_seconds(build_and_sample_start),
+    annotate_sample_trace(
+        model_build_result,
+        idata,
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
     )
-    # 6. The recipe adapter passes scientific views to product writers.
-    output_start = timer_start()
-    make_multisector_rhime_outputs(result=result, prepared=prepared)
-    log_timing(
-        "rhime.output_total",
-        timer_seconds(output_start),
-        multisector=True,
-        output_format=run_spec.output.output_format,
+    # 4. Bind scientific meaning, compute products, then export result and trace.
+    inv_out = make_model_output(
+        prepared=prepared,
+        model_spec=config.model,
+        posterior=idata,
+        output_contract=model_build_result.output_contract,
+        start_date=config.data.start_date,
+        end_date=config.data.end_date,
+        actual_inference=sampler.describe(),
+        split_by_sectors=config.data.split_by_sectors,
     )
-    return result
+    postprocess_multisector_outputs(inv_out, config.output)
+    save_inversion_output(inv_out, config.output)
+    return inv_out
 
 
 # Established public import retained through the 0.9 compatibility cycle.

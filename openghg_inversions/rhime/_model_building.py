@@ -12,7 +12,7 @@ import pymc as pm
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
-from openghg_inversions.inversion_inputs import DatetimeLike, make_site_names
+from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models.additive_sigma import (
     DEFAULT_ADDITIVE_SIGMA_PRIOR,
     add_additive_sigma_likelihood,
@@ -28,11 +28,8 @@ from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.sigma import SigmaAlignment
 
 from .builders import (
-    RhimeModelBuilder,
-    RhimeModelBuilderContext,
     RhimeModelBuildResult,
     RhimeLikelihoodBuilder,
-    validate_model_build_result,
 )
 from .specs import (
     DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR,
@@ -56,11 +53,11 @@ class ForwardModelTerms:
 
 def _resolve_site_additive_sigma_prior(
     prior: PriorArgs,
-    site: xr.DataArray,
+    alignment: SigmaAlignment,
     *,
     per_site: bool,
 ) -> PriorArgs:
-    """Translate site-keyed additive-sigma priors to retained-site order."""
+    """Select site-keyed prior scales in the resolved latent-site order."""
     resolved = dict(prior)
     scale = resolved.get("sigma")
     if not isinstance(scale, Mapping):
@@ -68,17 +65,17 @@ def _resolve_site_additive_sigma_prior(
     if not per_site:
         raise ValueError("A site-keyed additive-sigma prior requires `sigma_per_site=True`.")
 
-    site_names = [str(value) for value in make_site_names(site).values]
+    site_names = [str(value) for value in np.asarray(alignment.site_labels)]
     missing = [name for name in site_names if name not in scale]
     if missing:
         raise ValueError(f"Site-keyed additive-sigma prior is missing retained site(s): {missing!r}.")
-    values = [scale[name] for name in site_names]
+    values = list(scale.values())
     if any(isinstance(value, bool) or not isinstance(value, Real) for value in values):
         raise ValueError("Site-keyed additive-sigma prior values must be finite positive numbers.")
     scales = np.asarray(values, dtype=float)
     if np.any(~np.isfinite(scales)) or np.any(scales <= 0):
         raise ValueError("Site-keyed additive-sigma prior values must be finite positive numbers.")
-    resolved["sigma"] = scales[:, None]
+    resolved["sigma"] = np.asarray([scale[name] for name in site_names], dtype=float)[:, None]
     return resolved
 
 
@@ -91,7 +88,12 @@ def prepare_additive_sigma_inputs(
     sigma_per_site: bool = True,
     sigma_freq_anchor: DatetimeLike | None = None,
 ) -> tuple[SigmaAlignment, PriorArgs]:
-    """Resolve additive-sigma settings into direct component inputs."""
+    """Resolve additive-sigma settings into direct component inputs.
+
+    Site-keyed scales follow the resolved alignment's latent-site labels,
+    including when a supplied alignment uses a different site order from the
+    observations. Such an alignment must carry the corresponding site names.
+    """
     site = observations.coords.get("site")
     if site is None or site.dims != ("nmeasure",):
         raise ValueError(
@@ -110,7 +112,7 @@ def prepare_additive_sigma_inputs(
     )
     prior = _resolve_site_additive_sigma_prior(
         DEFAULT_ADDITIVE_SIGMA_PRIOR if sigma_prior is None else sigma_prior,
-        site,
+        alignment,
         per_site=sigma_per_site,
     )
     return alignment, prior
@@ -413,31 +415,3 @@ def builtin_model_build_result(
             metadata={"kind": "builtin"},
         ),
     )
-
-
-def validated_custom_model_build(
-    model_builder: RhimeModelBuilder,
-    *,
-    context: RhimeModelBuilderContext,
-) -> RhimeModelBuildResult:
-    """Call a complete-model builder and validate its external graph contract.
-
-    Args:
-        model_builder: User-owned complete-model callable.
-        context: Validated prepared inputs and run settings.
-
-    Returns:
-        Concrete custom model build result.
-
-    Raises:
-        TypeError: If the callable returns the wrong result type.
-        ValueError: If coordinate registration, declared variable roles or
-            requested output capabilities are invalid.
-    """
-    result = model_builder(context)
-    if not isinstance(result, RhimeModelBuildResult):
-        raise TypeError(
-            f"A RHIME model builder must return `RhimeModelBuildResult`; got {type(result).__name__}."
-        )
-    validate_model_build_result(result, context=context)
-    return result

@@ -17,8 +17,8 @@ def run(*, model: str = "standard", **kwargs: Any) -> Any:
             selection does not add acquisition or checkpoint routes.
 
     Returns:
-        The selected recipe's scientific result. Standard returns InversionOutput;
-        multisector and nested retain their result records, and CO2-family recipes
+        The selected recipe's scientific result. Standard and multisector return
+        InversionOutput; nested retains its result record, and CO2-family recipes
         return an inference DataTree.
 
     Raises:
@@ -26,7 +26,7 @@ def run(*, model: str = "standard", **kwargs: Any) -> Any:
         TypeError: If arguments do not match the selected recipe's interface.
 
     See the concrete recipe for scientific options, ownership and output
-    behavior. Standard callers may supply ``prepared`` to skip preparation.
+    behavior. Standard and multisector callers may supply ``prepared`` to skip preparation.
     """
     if model == "standard":
         from .standard import run_standard

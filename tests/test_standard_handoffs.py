@@ -582,17 +582,6 @@ def test_prior_predictive_targets_cannot_alias_preparation(tmp_path, monkeypatch
     assert payload.read_bytes() == original
 
 
-def test_multisector_load_checks_required_scientific_state(tmp_path):
-    from openghg_inversions.rhime.stages import postprocess_rhime_stage
-    from tests.test_staged_workflow import _saved_multisector_binding
-
-    arguments = _saved_multisector_binding(tmp_path)
-    posterior = stages.load_trace(arguments["posterior"])
-    posterior["posterior"] = posterior["posterior"].to_dataset().drop_vars("x")
-    stages.save_trace(posterior, arguments["posterior"])
-    with pytest.raises(ValueError, match="reconstruction state.*x"):
-        postprocess_rhime_stage(**arguments)
-
 
 @pytest.mark.parametrize("name", ["actual_inference", "provenance"])
 def test_missing_sampling_metadata_fails_at_reader(tmp_path, monkeypatch, name):

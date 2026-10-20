@@ -205,14 +205,22 @@ Leave model-dependent argument validation to PyMC. Configuration may hold the ex
 unbound sampler: strict separation into several settings/runtime classes is not
 needed to achieve these guarantees.
 
-Standard results use the existing `InversionOutput` scientific view, including
+Standard and multisector results use the existing `InversionOutput` scientific view, including
 when no files are requested. Its inference description records what happened;
 no live model/sampler or output policy is retained. Model inspection uses the
-eager builder directly. Deferred families keep their existing `RhimeResult`
+eager builder directly. Deferred nested and CO2 families keep their existing `RhimeResult`
 compatibility shape until their own adoption slices. This supersedes the earlier
 proposal to preserve the standard result envelope or a deprecated `run_rhime`
 wrapper. The Python `run_rhime` name is removed in 0.8 with import guidance;
 `run-rhime` remains the unchanged CLI spelling and calls `run_standard`.
+
+The maintainer's 16 October multisector correction also retires the remaining
+`run_rhime_from_prepared_inputs` route and multisector build/result/output
+adapters. Prepared callers use `run_multisector(prepared=..., config=...)`;
+complete custom models compose ordinary materialization, construction, sampling
+and output operations directly. Multisector does not retain a `RhimeRunSpec`
+complete-builder context or a `RhimeResult` compatibility route. Shared envelope
+types and nested validation context remain only for actual deferred-family users.
 
 ### 3. Keep scientific order visible; save only at explicit boundaries
 
@@ -409,7 +417,7 @@ def postprocess(sample_manifest, *, output):
     validate_standard_output_resources(output)
     inv_out = load_samples(sample_manifest)  # decode the borrowed scientific view
     postprocess_standard_outputs(inv_out, output)
-    save_standard_artifacts(inv_out, output)
+    save_inversion_output(inv_out, output)
     return inv_out
 ```
 
@@ -495,9 +503,9 @@ built = build_standard_model(inputs, model_spec, priors=priors, likelihood_build
 built.output_contract.validate_requested_output(output_spec.output_format)
 posterior = sample_rhime_model(built, sampler)
 annotate_sample_trace(built, posterior, likelihood_builder=...)
-inv_out = make_standard_output(...)
+inv_out = make_model_output(...)
 postprocess_standard_outputs(inv_out, output_spec)  # compute and write derived products
-save_standard_artifacts(inv_out, output_spec)  # export scientific result and trace
+save_inversion_output(inv_out, output_spec)  # export scientific result and trace
 return inv_out
 ```
 
@@ -515,7 +523,7 @@ return inv_out
   written in that case. Its output metadata holds only the inference description.
   In-memory products can be recomputed through existing product functions.
 - The runner calls `postprocess_standard_outputs` for PARIS/legacy generation
-  and writing, then `save_standard_artifacts` for optional self-contained
+  and writing, then `save_inversion_output` for optional self-contained
   inversion-output and trace exports. Standard PARIS/legacy requests require
   a destination before execution; in-memory reporting uses product functions
   directly. Optional basis export remains visible beside preparation.
