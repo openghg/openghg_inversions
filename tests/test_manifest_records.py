@@ -115,7 +115,7 @@ def test_invalid_new_description_leaves_existing_checkpoint_untouched(tmp_path, 
     original = manifest.read_bytes()
     posterior = _standard_stages.load_trace(manifest.parent / "posterior.nc")
     generation = _standard_stages.load_preparation(preparation)[2]
-    model = _model(manifest)
+    model = _model()
     contract = _contract(manifest)
     monkeypatch.setattr(_standard_stages, "save_trace", lambda *a, **k: pytest.fail("wrote trace"))
     with pytest.raises(ValidationError, match="actual_inference"):

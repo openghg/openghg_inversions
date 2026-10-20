@@ -77,6 +77,18 @@ TemporalAnchor = Annotated[
 ]
 
 
+def _runtime_policy_json(value: StateActivity) -> None:
+    """Reject Python-only policies without inspecting their numerical payloads."""
+    raise ValueError("StateActivity is runtime-only; portable configuration requires None.")
+
+
+RuntimeStateActivity = Annotated[
+    StateActivity,
+    WithJsonSchema({"not": {}, "description": "Python-only state activity policy; use null in portable configuration."}),
+    PlainSerializer(_runtime_policy_json, return_type=None, when_used="json"),
+]
+
+
 @dataclass(frozen=True, config=RuntimeConfig)
 class PollutionEventSettings:
     """Serializable settings for pollution-event-scaled model error.
@@ -231,7 +243,7 @@ class SectorSpec:
     flux_source: Name
     x_prior: BorrowedPrior
     variable_suffix: str
-    state_activity: StateActivity | None = field(default=None, kw_only=True)
+    state_activity: RuntimeStateActivity | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True, config=RuntimeConfig)
@@ -282,8 +294,8 @@ class RhimeModelSpec:
     bc_prior: BorrowedPrior | None = None
     offset_prior: BorrowedPrior | None = None
     offset_args: BorrowedOptions | None = None
-    bc_state_activity: StateActivity | None = field(default=None, kw_only=True)
-    state_activity: StateActivity | None = field(default=None, kw_only=True)
+    bc_state_activity: RuntimeStateActivity | None = field(default=None, kw_only=True)
+    state_activity: RuntimeStateActivity | None = field(default=None, kw_only=True)
 
     def describe(self, *, priors: Mapping[str, PriorArgs] | None = None) -> dict[str, Any]:
         """Describe structural choices and construction-owned prior parameters.

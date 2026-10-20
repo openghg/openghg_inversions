@@ -9,7 +9,8 @@ import pandas as pd
 import pytest
 import xarray as xr
 from jsonschema import Draft202012Validator
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
+from pydantic_core import PydanticSerializationError
 
 from openghg_inversions.models._prior_records import PriorDescription
 from openghg_inversions.postprocessing.contracts import OutputContract
@@ -109,3 +110,27 @@ def test_constructed_trace_owns_every_reported_prior_slot():
     assert metadata["offset_prior"] == actual["offset_latent"]
     assert metadata["likelihood"]["sigma_prior"] == actual["sigma"]
     assert metadata["likelihood"]["power"] == actual["power"]
+
+
+def test_config_export_rejects_runtime_state_policy_without_computing_it():
+    import dask
+    import dask.array as da
+    from openghg_inversions.models.state_activity import StateActivity
+
+    calls = []
+
+    @dask.delayed
+    def mask():
+        calls.append("computed")
+        return np.array([True])
+
+    config = RhimeConfig.from_params(_params(), multisector=False)
+    policy = StateActivity(active=xr.DataArray(da.from_delayed(mask(), shape=(1,), dtype=bool), dims="region"))
+    model = replace(config.model, state_activity=policy)
+    adapter = TypeAdapter(RhimeModelSpec)
+    Draft202012Validator(adapter.json_schema(mode="serialization")).validate(
+        json.loads(adapter.dump_json(config.model)),
+    )
+    with pytest.raises(PydanticSerializationError, match="StateActivity is runtime-only"):
+        adapter.dump_json(model)
+    assert calls == []
