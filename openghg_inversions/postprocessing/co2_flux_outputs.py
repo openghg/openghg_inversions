@@ -107,26 +107,28 @@ def co2_native_flux_outputs(trace: xr.DataTree, bound: BoundCo2AffineFluxMap) ->
     """Summarize signed affine native flux draws from a CO2-only trace.
 
     Args:
-        trace: Annotated ordinary or cached fixed-OU CO2 trace containing prior
+        trace (xarray.DataTree): Annotated ordinary or cached fixed-OU CO2 trace containing prior
             and posterior draws of the explicitly declared ``flux_scale``.
             Each group needs chain, draw, and the complete retained-state axis.
-        bound: Reconstruction bound to the saved prepared inputs, with the
+        bound (openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap):
+            Reconstruction bound to the saved prepared inputs, with the
             authoritative retained reference mean. The caller must supply the
             trace generated from that preparation; trace identity is not checked.
             Native dimensions are
             ``lat, lon`` or a leading source dimension followed by ``lat, lon``.
 
     Returns:
-        Mean, population standard deviation, and 0.159/0.841 quantiles in
-        ``mol m-2 s-1``. ``flux_total_prior_*`` and ``flux_total_posterior_*``
-        summarize source sums. Multisource maps also retain ``flux_prior_*``
-        and ``flux_posterior_*`` on their native source axis. Prior and posterior
-        sample axes are reduced independently, pooling all chains. Native mean,
-        reference flux and prolongation are chunked within the summary point
-        budget before draws are reconstructed, so eager or lazy inputs give
-        bounded tasks. Summaries are computed in bounded non-sample blocks;
-        quantiles retain complete samples within each block. Inputs remain
-        borrowed.
+        xarray.Dataset:
+            Mean, population standard deviation, and 0.159/0.841 quantiles in
+            ``mol m-2 s-1``. ``flux_total_prior_*`` and ``flux_total_posterior_*``
+            summarize source sums. Multisource maps also retain ``flux_prior_*``
+            and ``flux_posterior_*`` on their native source axis. Prior and posterior
+            sample axes are reduced independently, pooling all chains. Native mean,
+            reference flux and prolongation are chunked within the summary point
+            budget before draws are reconstructed, so eager or lazy inputs give
+            bounded tasks. Summaries are computed in bounded non-sample blocks;
+            quantiles retain complete samples within each block. Inputs remain
+            borrowed.
 
     Raises:
         ValueError: If the recipe, role, samples, native layout, state labels,
@@ -160,9 +162,10 @@ def co2_country_flux_outputs(
     """Summarize affine CO2 country flux without constructing native flux draws.
 
     Args:
-        trace: CO2-only annotated trace, with the same sample requirements as
+        trace (xarray.DataTree): CO2-only annotated trace, with the same sample requirements as
             :func:`co2_native_flux_outputs`.
-        bound: Reconstruction bound to its authoritative prepared reference.
+        bound (openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap):
+            Reconstruction bound to its authoritative prepared reference.
             The caller must supply the trace generated from that preparation;
             trace identity is not checked.
         countries: Country membership and cell areas on exactly the map's
@@ -170,17 +173,18 @@ def co2_country_flux_outputs(
             ``Countries.area_grid`` is in square metres.
 
     Returns:
-        ``country_total_prior_*`` and ``country_total_posterior_*`` mean,
-        population standard deviation, and 0.159/0.841 quantiles in grams of
-        CO2 per fixed 365-day year. Multisource maps additionally retain
-        ``country_prior_*`` and ``country_posterior_*`` on the source axis.
-        Other flux dimensions, such as time, remain in the result. Summaries
-        are computed in bounded non-sample blocks. Compact country
-        reference/response arrays use dense chunk payloads and are prepared like
-        ordinary country projections, chunking their output dimensions within
-        the summary point budget; sample chunks for quantiles are consolidated.
-        Existing producers must already have bounded task payloads. Inputs are
-        borrowed.
+        xarray.Dataset:
+            ``country_total_prior_*`` and ``country_total_posterior_*`` mean,
+            population standard deviation, and 0.159/0.841 quantiles in grams of
+            CO2 per fixed 365-day year. Multisource maps additionally retain
+            ``country_prior_*`` and ``country_posterior_*`` on the source axis.
+            Other flux dimensions, such as time, remain in the result. Summaries
+            are computed in bounded non-sample blocks. Compact country
+            reference/response arrays use dense chunk payloads and are prepared like
+            ordinary country projections, chunking their output dimensions within
+            the summary point budget; sample chunks for quantiles are consolidated.
+            Existing producers must already have bounded task payloads. Inputs are
+            borrowed.
 
     Raises:
         ValueError: If input requirements or exact country-grid alignment fail.

@@ -695,6 +695,10 @@ def _resolve_co2_sampling(config: Mapping[str, object], *, model: Mapping[str, A
     The configured backend is selected from resolved scientific choices.
     Additive sigma uses NumPyro; supported custom likelihoods use PyMC. Inferred
     OU amplitudes use the matched PyMC transition and its two explicit controls.
+
+    Returns:
+        object: Resolved sampler and matched OU tuning controls, with attributes
+            ``sampler``, ``sigma_target_accept``, and ``state_target_accept``.
     """
     options = _table(config, "config")
     sampling = _table(options.get("sampling", {}), "sampling")
