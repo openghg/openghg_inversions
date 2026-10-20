@@ -78,6 +78,8 @@ def test_missing_selected_resource_fails_before_acquisition(tmp_path, monkeypatc
 
     monkeypatch.chdir(tmp_path)
     params = _params(**options)
+    if route == "nested":
+        params["output_format"] = "none"
     if route == "multisector":
         params["flux_sources"] = ["a", "b"]
     config = RhimeConfig.from_params(params, multisector=route == "multisector")
@@ -88,7 +90,7 @@ def test_missing_selected_resource_fails_before_acquisition(tmp_path, monkeypatc
         elif route == "multisector":
             multisector.run_rhime_multisector(config=config)
         elif route == "nested":
-            nested.prepare_nested_rhime_inputs(config, inner_domain="6km")
+            nested.run_nested(config=config, inner_domain="6km")
         else:
             _standard_stages.prepare(config.data, output_dir=tmp_path / "stage")
     assert not list(tmp_path.glob("**/prepare-manifest.json"))
@@ -275,7 +277,11 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
         if route == "staged":
             _standard_stages.prepare(config.data, output_dir="runs/prepared")
         elif route == "nested":
-            module._prepare_one_domain(merged, data=config.data, basis_support_maps=resolve_basis_inputs(config.data))
+            module._prepare_one_domain(
+                merged, basis_inputs=resolve_basis_inputs(config.data),
+                **config.data.select("domain", "start_date", "flux_sources", "basis_algorithm", "nbasis",
+                    "fix_basis_outer_regions", "use_bc", "bc_freq", "min_error", "min_error_options"),
+            )
         elif route == "example":
             module.run_custom_rhime(**options)
         elif route == "multisector":
@@ -291,6 +297,10 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
         assert captured[0].flux.data is captured[1].flux.data
         assert captured[1].metadata == original_metadata[0]
         assert captured[1].basis_artifact_path == (str(tmp_path / "input.nc") if selection == "reused" else None)
+    if route == "nested":
+        assert captured[0] is captured[1]
+        assert not list((tmp_path / "runs/prepared").glob("basis*"))
+        return
     if suffix is None:
         if route not in {"standard", "multisector", "staged"}:
             assert captured[0] is captured[1]
@@ -299,10 +309,6 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
     exported = tmp_path / options["basis_output_path"]
     assert exported.exists()
     assert not (tmp_path / "runs/prepared/runs").exists()
-    if route == "nested":
-        # Nested retains its historical export receipt copy.
-        assert captured[1].basis_artifact_path == str(exported)
-        assert captured[0].basis_artifact_path != str(exported)
     restored = BasisFunctions.load(exported)
     xr.testing.assert_equal(restored.flat_basis(), captured[0].flat_basis())
     xr.testing.assert_equal(restored.flux, resolve_runtime_flux(sources, split_by_sectors=route == "multisector"))
@@ -312,7 +318,7 @@ def test_nested_resolves_both_domain_paths_before_acquisition(tmp_path, monkeypa
     from openghg_inversions.rhime import nested
 
     monkeypatch.chdir(tmp_path)
-    config = RhimeConfig.from_params(_params(basis_path="outer.nc", basis_output_path="outer-out.nc"),
+    config = RhimeConfig.from_params(_params(basis_path="outer.nc", basis_output_path="outer-out.nc", output_format="none"),
                                      multisector=False)
     captured = []
 
@@ -328,8 +334,8 @@ def test_nested_resolves_both_domain_paths_before_acquisition(tmp_path, monkeypa
     monkeypatch.setattr(nested, "resolve_basis_inputs", resources)
     monkeypatch.setattr(nested.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquired"))
     with pytest.raises(BeforeAcquisition):
-        nested.prepare_nested_rhime_inputs(config, inner_domain="6km", inner_basis_path="inner.nc",
-                                           inner_basis_output_path="inner-out.zarr")
+        nested.run_nested(config=config, inner_domain="6km", inner_basis_path="inner.nc",
+                          inner_basis_output_path="inner-out.zarr")
     assert captured[0].basis_path == tmp_path / "outer.nc"
     assert captured[0].basis_output_path == tmp_path / "outer-out.nc"
     assert captured[1].basis_path == tmp_path / "inner.nc"

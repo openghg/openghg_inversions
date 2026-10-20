@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 from pathlib import Path
-from types import SimpleNamespace
 
 import dask.array as da
 from dask.callbacks import Callback
@@ -27,17 +25,18 @@ from openghg_inversions.postprocessing.nested_paris_outputs import (
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import make_flux_outputs
 from openghg_inversions.rhime.nested import (
-    NestedRhimeResult,
+    NestedOutput,
     _domain_variable_roles,
     align_inner_merged_to_outer_observations,
-    build_nested_rhime_model_result,
+    build_nested_rhime_model,
+    materialize_nested_inputs,
     combine_nested_rhime_inputs,
     make_nested_inversion_outputs,
     mask_outer_merged_for_inner_domain,
 )
 from openghg_inversions.rhime.materialization import materialize_pymc_inputs
 from openghg_inversions.models.priors import prior_records
-from openghg_inversions.rhime.outputs import RhimeResult
+from openghg_inversions.rhime.outputs import annotate_sample_trace
 from openghg_inversions.hbmcmc.compatibility import translate_rhime_aliases
 from openghg_inversions.rhime.params import RhimeConfig
 from openghg_inversions.rhime import params as rhime_params
@@ -401,11 +400,8 @@ def test_nested_model_uses_two_labelled_state_blocks_and_shared_likelihood() -> 
     prepared = combine_nested_rhime_inputs(outer, inner, outer_overlap_masked=True)
     run_spec = _run_spec()
 
-    result = build_nested_rhime_model_result(
-        prepared=prepared,
-        model_inputs=prepared.combined.inv_inputs,
-        run_spec=run_spec,
-    )
+    inputs, priors = materialize_nested_inputs(prepared.combined, run_spec.model)
+    result = build_nested_rhime_model(inputs, run_spec.model, priors=priors)
     model = result.model
     assert {"hx_outer", "hx_inner", "x_outer", "x_inner", "mu_outer", "mu_inner", "mu", "y"} <= set(
         model.named_vars
@@ -469,9 +465,8 @@ def test_cli_run_rhime_nested_passes_config(monkeypatch, tmp_path: Path) -> None
 
 
 @pytest.mark.parametrize("deprecated", [False, True])
-@pytest.mark.parametrize("output_format", ["none", "basic", "paris"])
 def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
-    monkeypatch, capsys, deprecated, output_format,
+    monkeypatch, capsys, deprecated,
 ) -> None:
     basis = _basis([50.0], [-2.0], np.array([[1]]))
     prepared = _prepared(
@@ -488,23 +483,24 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
             "start_date": "2019-01-01",
             "end_date": "2019-01-02",
             "output_name": "nested-test",
+            "mismatch_model": "fixed_error",
             "flux_sources": ["inventory"],
             "use_bc": True,
             "basis_algorithm": "weighted",
             "nbasis": 100,
-            "output_format": output_format,
+            "output_format": "none",
         }, multisector=False)
     retrieval_args: list[dict[str, object]] = []
-    preparation_configs: list[rhime_params.DataConfig] = []
+    preparation_configs: list[dict[str, object]] = []
 
     def fake_retrieve(**kwargs):
         assert kwargs["split_by_sectors"] is False
         retrieval_args.append(kwargs)
         return merged
 
-    def fake_prepare(domain_merged, *, data, allow_empty_inner_region=False, basis_support_maps=None, bc_basis=None):
+    def fake_prepare(domain_merged, **choices):
         assert domain_merged.sites == ("TAC",)
-        preparation_configs.append(data)
+        preparation_configs.append(choices)
         return prepared
 
     monkeypatch.setattr(nested_module.RhimeMergedData, "from_options", fake_retrieve)
@@ -519,14 +515,21 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
     monkeypatch.setattr(nested_module, "mask_outer_merged_for_inner_domain", lambda outer, inner: outer)
     monkeypatch.setattr(nested_module, "_prepare_one_domain", fake_prepare)
 
+    class BeforeSampling(Exception):
+        pass
+
+    def before_sampling(*args, **kwargs):
+        raise BeforeSampling
+
+    monkeypatch.setattr(nested_module, "materialize_nested_inputs", before_sampling)
     from contextlib import nullcontext
 
     selectors = ({"inner_emissions_store": "inner-flux", "inner_emissions_domain": "EUROPE"}
                  if deprecated else {"inner_flux_store": "inner-flux", "inner_flux_domain": "EUROPE"})
     warning = pytest.warns(DeprecationWarning, match=r"removed in 0\.9") if deprecated else nullcontext()
-    with warning:
-        nested = nested_module.prepare_nested_rhime_inputs(
-            setup, inner_domain="6km", inner_footprint_store="inner-fp", inner_nbasis=40, **selectors
+    with warning, pytest.raises(BeforeSampling):
+        nested_module.run_nested(
+            config=setup, inner_domain="6km", inner_footprint_store="inner-fp", inner_nbasis=40, **selectors
         )
 
     assert capsys.readouterr().out.count("TIMING rhime.prepare_inputs.merged_data ") == 2
@@ -537,16 +540,12 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
     assert inner_args["flux_store"] == "inner-flux"
     assert inner_args["flux_domain"] == "EUROPE"
     assert inner_args["use_bc"] is False
-    assert preparation_configs[1].basis_algorithm == "quadtree"
-    assert preparation_configs[1].domain == "EUROPE-6km"
-    assert preparation_configs[1].use_bc is False
-    assert preparation_configs[1].nbasis == 40
-    assert preparation_configs[1].basis_path is None
-    assert preparation_configs[1].basis_partition_paths is None
-    assert preparation_configs[1].basis_output_path is None
-    assert preparation_configs[0].basis_algorithm == "weighted"
-    assert preparation_configs[1].basis_algorithm == "quadtree"
-    assert nested.outer_overlap_mask_policy.startswith("outer_footprint_and_flux_zeroed")
+    assert preparation_configs[1]["basis_algorithm"] == "quadtree"
+    assert preparation_configs[1]["domain"] == "EUROPE-6km"
+    assert preparation_configs[1]["use_bc"] is False
+    assert preparation_configs[1]["nbasis"] == 40
+    assert preparation_configs[0]["basis_algorithm"] == "weighted"
+    assert preparation_configs[1]["basis_algorithm"] == "quadtree"
 
     assert setup.data.nbasis == 100
 
@@ -602,11 +601,12 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
             "start_date": "2019-01-01",
             "end_date": "2019-01-02",
             "output_name": "nested-test",
+            "mismatch_model": "fixed_error",
             "flux_sources": ["inventory"],
             "nbasis": 100,
             "output_format": "none",
         }, multisector=False)
-    preparation_configs: list[rhime_params.DataConfig] = []
+    preparation_configs: list[dict[str, object]] = []
 
     def fake_retrieve(**kwargs):
         assert kwargs["split_by_sectors"] is False
@@ -617,8 +617,8 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
         )
         return from_legacy_fp_all(fp_all={"TAC": dataset}, site_options=_site_options())
 
-    def fake_prepare(domain_merged, *, data, allow_empty_inner_region=False, basis_support_maps=None, bc_basis=None):
-        preparation_configs.append(data)
+    def fake_prepare(domain_merged, **choices):
+        preparation_configs.append(choices)
         return prepared
 
     monkeypatch.setattr(nested_module.RhimeMergedData, "from_options", fake_retrieve)
@@ -633,10 +633,18 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
     monkeypatch.setattr(nested_module, "mask_outer_merged_for_inner_domain", lambda outer, inner: outer)
     monkeypatch.setattr(nested_module, "_prepare_one_domain", fake_prepare)
 
-    nested_module.prepare_nested_rhime_inputs(setup, inner_domain="6km")
+    class BeforeSampling(Exception):
+        pass
 
-    assert preparation_configs[0].nbasis == 40
-    assert preparation_configs[1].nbasis == 60
+    def before_sampling(*args, **kwargs):
+        raise BeforeSampling
+
+    monkeypatch.setattr(nested_module, "materialize_nested_inputs", before_sampling)
+    with pytest.raises(BeforeSampling):
+        nested_module.run_nested(config=setup, inner_domain="6km")
+
+    assert preparation_configs[0]["nbasis"] == 40
+    assert preparation_configs[1]["nbasis"] == 60
 
     assert setup.data.nbasis == 100
 
@@ -762,8 +770,7 @@ def test_regridded_inner_country_cache_uses_writable_identity_key(
         assert "nested_country_target_grid_sha256" in cached.attrs
 
 
-@pytest.mark.parametrize("retain_graph", [True, False])
-def test_make_nested_inversion_outputs_builds_per_domain_views(retain_graph: bool) -> None:
+def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
     """Outer/inner InversionOutput views must read distinct bases and trace variables.
 
     The two views exist so ordinary, single-grid PARIS/flux/country postprocessing
@@ -790,48 +797,32 @@ def test_make_nested_inversion_outputs_builds_per_domain_views(retain_graph: boo
     )
     run_spec = _run_spec()
 
-    build_result = build_nested_rhime_model_result(
-        prepared=prepared,
-        model_inputs=prepared.combined.inv_inputs,
-        run_spec=run_spec,
+    inputs, priors = materialize_nested_inputs(
+        prepared.combined, run_spec.model,
         inner_x_prior={"pdf": "normal", "mu": 2.0, "sigma": 0.4},
     )
-
-    result = RhimeResult(
-        run_spec=run_spec,
-        model_spec=run_spec.model,
-        output_spec=run_spec.output,
-        inv_inputs=prepared.combined.inv_inputs,
-        idata=make_trace(
-            posterior=xr.Dataset(
-                {
-                    "x_outer": (("chain", "draw", "region"), np.broadcast_to([[[1]], [[3]]], (2, 2, 2))),
-                    "x_inner": (
-                        ("chain", "draw", "inner_region"),
-                        np.broadcast_to([[[2]], [[6]]], (2, 2, 2)),
-                    ),
-                },
-                coords={
-                    "chain": [0, 1],
-                    "draw": [0, 1],
-                    "region": [0, 1],
-                    "inner_region": [0, 1],
-                },
-            )
+    build_result = build_nested_rhime_model(inputs, run_spec.model, priors=priors)
+    trace = make_trace(
+        posterior=xr.Dataset(
+            {
+                "x_outer": (("chain", "draw", "region"), np.broadcast_to([[[1]], [[3]]], (2, 2, 2))),
+                "x_inner": (("chain", "draw", "inner_region"), np.broadcast_to([[[2]], [[6]]], (2, 2, 2))),
+            },
+            coords={"chain": [0, 1], "draw": [0, 1], "region": [0, 1], "inner_region": [0, 1]},
         ),
-        basis_functions=prepared.combined.basis_functions,
-        model=build_result.model if retain_graph else None,
-        model_build_result=build_result if retain_graph else None,
-        output_contract=OutputContract.from_dict(build_result.output_contract.to_dict()),
-        sampler=RhimeSampler(),
     )
+    annotate_sample_trace(build_result, trace)
     records = prior_records(build_result.model)
     assert records["x_outer"]["mu"] == 1.0
     assert records["x_inner"]["mu"] == 2.0
-    result.idata.attrs["rhime_priors"] = json.dumps(records)
-    nested_result = NestedRhimeResult(rhime_result=result, prepared_inputs=prepared)
-
-    outer_inv_out, inner_inv_out = make_nested_inversion_outputs(nested_result)
+    output = make_nested_inversion_outputs(
+        prepared=prepared, model_spec=run_spec.model, posterior=trace,
+        output_contract=OutputContract.from_dict(build_result.output_contract.to_dict()),
+        start_date=run_spec.start_date, end_date=run_spec.end_date,
+        actual_inference=RhimeSampler().describe(),
+    )
+    assert isinstance(output, NestedOutput)
+    outer_inv_out, inner_inv_out = output.outer, output.inner
     assert outer_inv_out.model_metadata["sectors"][0]["x_prior"] == records["x_outer"]
     assert inner_inv_out.model_metadata["sectors"][0]["x_prior"] == records["x_inner"]
     assert inner_inv_out.model_metadata["constructed_priors"] == records
@@ -848,13 +839,13 @@ def test_make_nested_inversion_outputs_builds_per_domain_views(retain_graph: boo
     # lookups and default country-file resolution behave identically for both;
     # the inner grid's own resolution is carried separately.
     assert outer_inv_out.domain == inner_inv_out.domain == "EUROPE"
-    assert nested_result.prepared_inputs.inner_domain_label == "europe-6km"
+    assert prepared.inner_domain_label == "europe-6km"
 
     assert outer_inv_out.state_dimension_mapping == {"trace": "region", "basis": "region"}
     assert inner_inv_out.state_dimension_mapping == {"trace": "inner_region", "basis": "region"}
     assert inner_inv_out.trace_dataset(var_roles="flux_scale").sizes["region"] == 2
     assert "inner_region" not in inner_inv_out.trace_dataset(var_roles="flux_scale").dims
-    assert "inner_region" in nested_result.idata.posterior["x_inner"].dims
+    assert "inner_region" in trace.posterior["x_inner"].dims
     assert outer_inv_out.trace.posterior.sizes["chain"] == inner_inv_out.trace.posterior.sizes["chain"] == 2
     inner_flux = make_flux_outputs(inner_inv_out, stats=["mean"])
     assert inner_flux["flux_posterior_mean"].dims == ("lat", "lon", "flux_time")
@@ -893,32 +884,27 @@ def test_nested_latest_paris_output_writes_index_as_unlimited_dimension(
         save_inversion_output=False,
         paris_postprocessing_kwargs={"template_version": "latest"},
     )
-    result = SimpleNamespace(
-        run_spec=run_spec,
-        output_spec=output_spec,
-        model_spec=run_spec.model,
-        outputs={},
-        output_metadata={},
+    from types import SimpleNamespace
+    outer = SimpleNamespace(
+        domain="EUROPE", species="ch4",
+        run_metadata={"start_date": run_spec.start_date, "averaging_period": ["1h"]},
     )
-    prepared = SimpleNamespace(
-        outer=SimpleNamespace(averaging_period=("1h",)),
-        inner_domain_label="EUROPE-6km",
-    )
-    nested_result = SimpleNamespace(rhime_result=result, prepared_inputs=prepared)
+    inner = SimpleNamespace(output_metadata={"nested_domain": {"inner_domain": "EUROPE-6km"}})
+    output = NestedOutput(outer=outer, inner=inner)
     concentration = xr.Dataset(
         {"mf_observed": ("index", [1.0])},
         coords={"time": ("index", pd.to_datetime(["2019-01-01"]))},
     )
     flux = xr.Dataset({"flux_total_prior": ("time", [1.0])}, coords={"time": ["2019-01-01"]})
-    monkeypatch.setattr(nested_module, "make_nested_inversion_outputs", lambda _: (object(), object()))
     monkeypatch.setattr(
         "openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_products",
         lambda *args, **kwargs: (flux, flux, concentration),
     )
 
-    nested_module._write_nested_paris_outputs(nested_result)
+    nested_module._write_nested_paris_outputs(output, output_spec)
 
-    with xr.open_dataset(result.output_metadata["paris_concentration_path"]) as saved:
+    path = next(tmp_path.glob("*conc*.nc"))
+    with xr.open_dataset(path) as saved:
         assert saved.encoding["unlimited_dims"] == {"index"}
         assert saved.time.dims == ("index",)
 

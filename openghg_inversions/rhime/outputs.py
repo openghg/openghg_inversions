@@ -92,10 +92,10 @@ def validate_multisector_output_resources(output_spec: RhimeOutputSpec) -> None:
 
 @dataclass
 class RhimeResult:
-    """Runtime envelope retained for nested and CO2 consumers.
+    """Runtime envelope retained for deferred CO2 consumers.
 
     Standard and multisector execution return :class:`InversionOutput` directly.
-    Those remaining families own its retirement with their execution migration.
+    Those consumers own its retirement with their execution migration.
 
     Args:
         run_spec: Top-level dates, sites, model, and output settings for the run.
@@ -635,7 +635,7 @@ def make_model_output(
     actual_inference: Mapping[str, Any] | None = None,
     provenance: Mapping[str, Any] | None = None,
 ) -> InversionOutput:
-    """Bind standard or multisector samples to their borrowed scientific context.
+    """Bind sampled states to their borrowed scientific context.
 
     Args:
         prepared: Retained scientific inputs and basis.
@@ -661,6 +661,10 @@ def make_model_output(
         policy = getattr(model_spec, name)
         model_metadata[name] = None if policy is None else asdict(policy)
     for sector, record in zip(model_spec.sectors, model_metadata["sectors"], strict=True):
+        role = "flux_scale" if len(model_spec.sectors) == 1 else f"flux_scale:{sector.name}"
+        variable = output_contract.variable_roles.get(role)
+        if variable is not None and variable in priors:
+            record["x_prior"] = priors[variable]
         record["state_activity"] = None if sector.state_activity is None else asdict(sector.state_activity)
     metadata = dict(output_contract.metadata)
     for attr, key in (("rhime_likelihood_builder", "likelihood_builder"),

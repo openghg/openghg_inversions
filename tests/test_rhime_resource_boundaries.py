@@ -59,7 +59,7 @@ def test_bc_resource_loading_precedes_acquisition(tmp_path, monkeypatch, route, 
             if route == "staged":
                 module.prepare(config.data, output_dir="stage")
             else:
-                module.prepare_nested_rhime_inputs(config, inner_domain="6km")
+                module.run_nested(config=config, inner_domain="6km")
         elif route == "multisector":
             module.run_rhime_multisector(**options)
         elif route in ("example", "custom_basis"):

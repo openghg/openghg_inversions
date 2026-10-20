@@ -91,6 +91,25 @@ the scientific graph and returns ``RhimeModelBuildResult``; use ``built.model``
 when a caller needs the PyMC graph. Its optional ``sigma_alignment`` argument
 accepts an already resolved mismatch alignment, as in the standard builder.
 
+Nested Python callers now use ``run_nested(config=config, prepared=nested)``
+in place of ``run_rhime_nested_from_prepared_inputs``. The returned
+``NestedOutput`` contains ``outer`` and ``inner`` scientific ``InversionOutput``
+views of one trace; use ``result.outer.trace`` to inspect samples and each view's
+``basis_functions`` for its native grid. ``NestedRhimeResult`` and its
+``RhimeResult`` forwarding envelope are removed. CLI entry points and supported
+nested INI options retain their behavior.
+
+Use ``materialize_nested_inputs(nested.combined, config.model)`` and pass the
+returned Dataset and ``priors`` to the single ``build_nested_rhime_model``.
+It now returns ``RhimeModelBuildResult``; ``build_nested_rhime_model_result``
+and ``RhimeModelBuilderContext`` are removed. Scientific preparation takes
+acquired outer/inner data and explicit resolved choices; the runner owns
+resource loading and optional basis exports. Explicit product construction uses
+``make_nested_paris_products(result.outer, result.inner, ...)`` instead of the
+removed ``make_nested_paris_outputs`` result adapter. Configured PARIS runs now
+require ``output_path`` before sampling; use that direct product function for
+in-memory products. See :doc:`nested_domains`.
+
 ``RhimeModelBuildResult`` now takes only ``model`` and ``output_contract``.
 Move its former ``variable_roles``, ``supported_output_formats`` and ``metadata``
 arguments into an ``OutputContract`` from

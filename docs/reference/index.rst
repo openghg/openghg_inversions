@@ -30,7 +30,6 @@ runner.
    openghg_inversions.rhime.run_nested
    openghg_inversions.rhime.run_rhime_multisector
    openghg_inversions.rhime.run_rhime_nested
-   openghg_inversions.rhime.run_rhime_nested_from_prepared_inputs
    openghg_inversions.rhime.co2.run_co2
    openghg_inversions.rhime.co2.run_rhime_co2_cached_sigma
    openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs
@@ -96,9 +95,9 @@ Run specifications and results
 
 Standard and multisector runners return ``InversionOutput``, including prepared
 execution and graph-free saved replay. ``RhimeResult`` and ``RhimeRunSpec`` remain
-only for the deferred nested and CO2 recipes. Standard and multisector
-execution pass model choices, inference and output policy to their separate
-owners.
+only for deferred CO2 consumers. Nested execution returns ``NestedOutput``
+with two native ``InversionOutput`` views borrowing one trace. Model choices,
+inference and output policy have separate owners.
 The sampler's former ``rhime`` imports remain compatible; its implementation is
 owned by ``inference``.
 
@@ -110,7 +109,10 @@ owned by ``inference``.
    openghg_inversions.rhime.RhimeOutputSpec
    openghg_inversions.inference.RhimeSampler
    openghg_inversions.rhime.RhimeResult
-   openghg_inversions.rhime.NestedRhimeResult
+   openghg_inversions.rhime.NestedOutput
+   openghg_inversions.rhime.materialize_nested_inputs
+   openghg_inversions.rhime.build_nested_rhime_model
+   openghg_inversions.rhime.make_nested_inversion_outputs
    openghg_inversions.rhime.SectorSpec
    openghg_inversions.rhime.AdditiveSigmaSettings
    openghg_inversions.rhime.FixedErrorSettings

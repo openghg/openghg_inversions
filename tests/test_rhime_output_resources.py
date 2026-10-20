@@ -47,7 +47,7 @@ def test_reporting_resource_policy(tmp_path, output_format):
 @pytest.mark.parametrize("route", [
     "standard", "multisector", "nested", "copied", "copied_basis",
     "prepared", "prepared_multi", "prepared_nested", "staged", "staged_multi",
-    "output_multi", "output_nested",
+    "output_multi",
 ])
 def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monkeypatch, country_kind, route):
     destination = tmp_path / "outputs"
@@ -64,7 +64,7 @@ def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monke
         multisector, "materialize_multisector_inputs", lambda *args, **kwargs: pytest.fail("materialized before preflight"),
     )
     monkeypatch.setattr(
-        nested, "materialize_pymc_inputs", lambda *args, **kwargs: pytest.fail("materialized before preflight"),
+        nested, "materialize_nested_inputs", lambda *args, **kwargs: pytest.fail("materialized before preflight"),
     )
     monkeypatch.setattr(
         outputs, "_make_inversion_output", lambda **kwargs: pytest.fail("constructed products before preflight"),
@@ -106,21 +106,15 @@ def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monke
             else:
                 standard.run_standard(prepared=inputs, config=config)
         elif route == "prepared_nested":
-            nested.run_rhime_nested_from_prepared_inputs(
-                prepared_inputs=None, run_spec=config.retained_run_spec(_prepared()),
-            )
+            nested.run_nested(config=config, prepared=object())
         elif route == "staged":
             _standard_stages.postprocess(sampled, output=config.output)
         elif route == "staged_multi":
             multisector_stages.postprocess(tmp_path / "absent-manifest.json", output=config.output)
         else:
-            result = SimpleNamespace(output_spec=config.output)
-            if route == "output_nested":
-                nested._write_nested_paris_outputs(SimpleNamespace(rhime_result=result))
-            else:
-                outputs.postprocess_multisector_outputs(
-                    SimpleNamespace(model_metadata={"supported_output_formats": ["paris"]}), config.output,
-                )
+            outputs.postprocess_multisector_outputs(
+                SimpleNamespace(model_metadata={"supported_output_formats": ["paris"]}), config.output,
+            )
     assert not destination.exists()
 
 

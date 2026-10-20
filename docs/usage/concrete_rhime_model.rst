@@ -559,9 +559,8 @@ provide its own reconstruction and product functions rather than reuse an
 incompatible contract. Direct construction does not make a custom graph
 recordable by the package's saved multisector sampling operation.
 
-The shared ``RhimeModelBuilderContext`` remains for deferred nested consumers;
-``RhimeRunSpec`` remains for nested and CO2 consumers. Neither interface
-is part of standard or multisector construction.
+Nested construction also accepts explicit model inputs and materialized priors;
+see :doc:`nested_domains`. ``RhimeRunSpec`` remains for deferred CO2 consumers.
 
 Structurally distinct observation-channel models belong in readable named
 recipes with concrete builders. The active design guidance is

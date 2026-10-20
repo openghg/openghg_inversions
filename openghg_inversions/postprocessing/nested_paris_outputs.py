@@ -23,7 +23,7 @@ import hashlib
 import os
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 from uuid import uuid4
 
 import numpy as np
@@ -44,7 +44,6 @@ from openghg_inversions.utils import get_country_file_path
 
 __all__ = [
     "make_nested_paris_products",
-    "make_nested_paris_outputs",
 ]
 
 _CACHE_SOURCE_SHA256_ATTR = "nested_country_source_sha256"
@@ -258,50 +257,3 @@ def make_nested_paris_products(
     )
 
     return flux_outer, flux_inner, conc_outs
-
-
-def make_nested_paris_outputs(
-    nested_result: Any,
-    *,
-    country_file: str | Path | None = None,
-    inner_country_file: str | Path | None = None,
-    time_point: Literal["start", "midpoint"] = "midpoint",
-    report_mode: bool = False,
-    inversion_grid: bool = True,
-    flux_frequency: str | None = None,
-    obs_avg_period: str = "4h",
-    template_version: ParisTemplateVersion = DEFAULT_PARIS_TEMPLATE_VERSION,
-    country_selections: Iterable[str] | None = PARIS_LATEST_COUNTRIES,
-    country_file_cache_dir: str | Path | None = None,
-) -> tuple[xr.Dataset, xr.Dataset, xr.Dataset]:
-    """Compatibility wrapper adapting a sampled nested result to PARIS products.
-
-    New recipe code should construct its domain ``InversionOutput`` views and
-    call :func:`make_nested_paris_products` directly. This wrapper preserves
-    the original public entry point for callers holding a ``NestedRhimeResult``.
-    """
-    from openghg_inversions.rhime.nested import make_nested_inversion_outputs
-
-    outer_inv_out, inner_inv_out = make_nested_inversion_outputs(nested_result)
-    prepared = nested_result.prepared_inputs
-    inner_domain_label = prepared.inner_domain_label or f"{outer_inv_out.domain}-inner"
-    resolved_cache_dir = country_file_cache_dir
-    if resolved_cache_dir is None:
-        output_path = nested_result.rhime_result.output_spec.output_path
-        if output_path is not None:
-            resolved_cache_dir = Path(output_path) / ".country_cache"
-    return make_nested_paris_products(
-        outer_inv_out,
-        inner_inv_out,
-        inner_domain_label=inner_domain_label,
-        country_file=country_file,
-        inner_country_file=inner_country_file,
-        time_point=time_point,
-        report_mode=report_mode,
-        inversion_grid=inversion_grid,
-        flux_frequency=flux_frequency,
-        obs_avg_period=obs_avg_period,
-        template_version=template_version,
-        country_selections=country_selections,
-        country_file_cache_dir=resolved_cache_dir,
-    )
