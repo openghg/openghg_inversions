@@ -529,10 +529,10 @@
         <li><a href="reference/openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.AdditiveSigmaSettings">(class in openghg_inversions.rhime.specs)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.inversion_data.getters.html#openghg_inversions.inversion_data.getters.adjust_flux_start_date">adjust_flux_start_date() (in module openghg_inversions.inversion_data.getters)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap.affine_map">affine_map (BoundCo2AffineFluxMap property)</a>, <a href="reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.BoundCo2AffineFluxMap.affine_map">[1]</a>
 </li>
       <li><a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.AffineFluxMap">AffineFluxMap (class in openghg_inversions.basis)</a>
@@ -580,6 +580,8 @@
       <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.allocate_nbasis_by_class">allocate_nbasis_by_class() (in module openghg_inversions.basis.algorithms)</a>
 </li>
       <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.AllSplitAcceptancePolicies">AllSplitAcceptancePolicies (class in openghg_inversions.basis.algorithms)</a>
+</li>
+      <li><a href="reference/openghg_inversions.rhime.co2.inference.html#openghg_inversions.rhime.co2.inference.annotate_co2_inference">annotate_co2_inference() (in module openghg_inversions.rhime.co2.inference)</a>
 </li>
       <li><a href="reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.annotate_co2_o2_trace">annotate_co2_o2_trace() (in module openghg_inversions.rhime.co2)</a>
 
@@ -761,6 +763,8 @@
         <li><a href="reference/openghg_inversions.rhime.co2.co2_runner.html#openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized">(in module openghg_inversions.rhime.co2.co2_runner)</a>
 </li>
       </ul></li>
+      <li><a href="reference/openghg_inversions.rhime.co2.inference.html#openghg_inversions.rhime.co2.inference.build_co2_inference">build_co2_inference() (in module openghg_inversions.rhime.co2.inference)</a>
+</li>
       <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.build_co2_model">build_co2_model() (in module openghg_inversions.rhime)</a>
 
       <ul>
@@ -1069,16 +1073,18 @@
 </li>
       <li><a href="reference/openghg_inversions.serialization.html#openghg_inversions.serialization.decode_cf_multiindexes">decode_cf_multiindexes() (in module openghg_inversions.serialization)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.BasisOperator.decode_datatree">decode_datatree() (BasisOperator class method)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeModelSpec.describe">describe() (RhimeModelSpec method)</a>, <a href="reference/openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeModelSpec.describe">[1]</a>
 
       <ul>
         <li><a href="reference/openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler.describe">(RhimeSampler method)</a>, <a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeSampler.describe">[1]</a>
 </li>
       </ul></li>
+      <li><a href="reference/openghg_inversions.rhime.co2.inference.html#openghg_inversions.rhime.co2.inference.describe_co2_inference">describe_co2_inference() (in module openghg_inversions.rhime.co2.inference)</a>
+</li>
       <li><a href="reference/openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.describe_recorded_sampler">describe_recorded_sampler() (in module openghg_inversions.inference.sampling)</a>
 </li>
       <li><a href="reference/openghg_inversions.hbmcmc.legacy_basis.html#openghg_inversions.hbmcmc.legacy_basis.BasisFunction.description">description (BasisFunction attribute)</a>
@@ -1989,6 +1995,8 @@
 </li>
         <li><a href="reference/openghg_inversions.rhime.co2.handoffs.html#module-openghg_inversions.rhime.co2.handoffs">openghg_inversions.rhime.co2.handoffs</a>
 </li>
+        <li><a href="reference/openghg_inversions.rhime.co2.inference.html#module-openghg_inversions.rhime.co2.inference">openghg_inversions.rhime.co2.inference</a>
+</li>
         <li><a href="reference/openghg_inversions.rhime.co2.stages.html#module-openghg_inversions.rhime.co2.stages">openghg_inversions.rhime.co2.stages</a>
 </li>
         <li><a href="reference/openghg_inversions.rhime.ini.html#module-openghg_inversions.rhime.ini">openghg_inversions.rhime.ini</a>
@@ -2869,6 +2877,13 @@
 </li>
       </ul></li>
       <li>
+    openghg_inversions.rhime.co2.inference
+
+      <ul>
+        <li><a href="reference/openghg_inversions.rhime.co2.inference.html#module-openghg_inversions.rhime.co2.inference">module</a>
+</li>
+      </ul></li>
+      <li>
     openghg_inversions.rhime.co2.stages
 
       <ul>
@@ -3456,8 +3471,6 @@
 </li>
       <li><a href="reference/openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.resolve_co2_prior_seed">resolve_co2_prior_seed() (in module openghg_inversions.rhime.co2.configuration)</a>
 </li>
-      <li><a href="reference/openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.resolve_co2_sampler">resolve_co2_sampler() (in module openghg_inversions.rhime.co2.configuration)</a>
-</li>
       <li><a href="reference/openghg_inversions.rhime.co2.stages.html#openghg_inversions.rhime.co2.stages.resolve_co2_stage_setup">resolve_co2_stage_setup() (in module openghg_inversions.rhime.co2.stages)</a>
 </li>
       <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.resolve_flux_sources">resolve_flux_sources() (in module openghg_inversions.rhime)</a>
@@ -3466,10 +3479,10 @@
         <li><a href="reference/openghg_inversions.rhime.params.html#openghg_inversions.rhime.params.resolve_flux_sources">(in module openghg_inversions.rhime.params)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.basis.compatibility.html#openghg_inversions.basis.compatibility.resolve_legacy_basis_inputs">resolve_legacy_basis_inputs() (in module openghg_inversions.basis.compatibility)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.basis.compatibility.html#openghg_inversions.basis.compatibility.resolve_legacy_outer_path">resolve_legacy_outer_path() (in module openghg_inversions.basis.compatibility)</a>
 </li>
       <li><a href="reference/openghg_inversions.rhime.params.html#openghg_inversions.rhime.params.resolve_model_options">resolve_model_options() (in module openghg_inversions.rhime.params)</a>
@@ -3682,6 +3695,8 @@
         <li><a href="reference/openghg_inversions.rhime.co2.co2_cached_sigma_runner.html#openghg_inversions.rhime.co2.co2_cached_sigma_runner.sample_co2_cached_prior_predictive">(in module openghg_inversions.rhime.co2.co2_cached_sigma_runner)</a>
 </li>
       </ul></li>
+      <li><a href="reference/openghg_inversions.rhime.co2.inference.html#openghg_inversions.rhime.co2.inference.sample_co2_inference">sample_co2_inference() (in module openghg_inversions.rhime.co2.inference)</a>
+</li>
       <li><a href="reference/openghg_inversions.rhime.co2.stages.html#openghg_inversions.rhime.co2.stages.sample_co2_stage">sample_co2_stage() (in module openghg_inversions.rhime.co2.stages)</a>
 </li>
       <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.sample_rhime_model">sample_rhime_model() (in module openghg_inversions.rhime)</a>
@@ -3800,10 +3815,10 @@
 </li>
       <li><a href="reference/openghg_inversions.inference.cached_sigma.html#openghg_inversions.inference.cached_sigma.PymcCachedSigmaNutsStep.set_rng">set_rng() (PymcCachedSigmaNutsStep method)</a>, <a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.set_rng">[1]</a>
 </li>
-      <li><a href="reference/openghg_inversions.borrowed.html#openghg_inversions.borrowed.BorrowedNDArray.setfield">setfield() (BorrowedNDArray method)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="reference/openghg_inversions.borrowed.html#openghg_inversions.borrowed.BorrowedNDArray.setfield">setfield() (BorrowedNDArray method)</a>
+</li>
       <li><a href="reference/openghg_inversions.borrowed.html#openghg_inversions.borrowed.BorrowedNDArray.setflags">setflags() (BorrowedNDArray method)</a>
 </li>
       <li><a href="reference/openghg_inversions.inference.cached_sigma.html#openghg_inversions.inference.cached_sigma.PymcCachedSigmaNutsStep.setup_chain">setup_chain() (PymcCachedSigmaNutsStep method)</a>, <a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.setup_chain">[1]</a>
@@ -4030,6 +4045,8 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.postprocessing.utils.html#openghg_inversions.postprocessing.utils.update_attrs">update_attrs() (in module openghg_inversions.postprocessing.utils)</a>
 </li>
+      <li><a href="reference/openghg_inversions.rhime.co2.inference.html#openghg_inversions.rhime.co2.inference.uses_cached_ou">uses_cached_ou() (in module openghg_inversions.rhime.co2.inference)</a>
+</li>
   </ul></td>
 </tr></table>
 
@@ -4037,6 +4054,8 @@
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.validate_co2_config">validate_co2_config() (in module openghg_inversions.rhime.co2.configuration)</a>
+</li>
+      <li><a href="reference/openghg_inversions.rhime.co2.inference.html#openghg_inversions.rhime.co2.inference.validate_co2_inference">validate_co2_inference() (in module openghg_inversions.rhime.co2.inference)</a>
 </li>
       <li><a href="reference/openghg_inversions.rhime.co2.co2_o2_outputs.html#openghg_inversions.rhime.co2.co2_o2_outputs.validate_co2_o2_product_request">validate_co2_o2_product_request() (in module openghg_inversions.rhime.co2.co2_o2_outputs)</a>
 </li>

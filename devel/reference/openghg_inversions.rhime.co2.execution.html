@@ -466,6 +466,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html">openghg_inversions.rhime.co2.configuration</a></li>
 <li class="toctree-l4 current active"><a class="current reference internal" href="#">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html">openghg_inversions.rhime.co2.stages</a></li>
 </ul>
 </details></li>
@@ -628,7 +629,7 @@ references are resolved separately beside their declaring manifest.</p>
 <dd><p>Prepare or load ordinary CO2 inputs, sample and create requested products.</p>
 <p>This configured product entry point consumes <code class="docutils literal notranslate"><span class="pre">model</span></code>, <code class="docutils literal notranslate"><span class="pre">likelihood</span></code>,
 <code class="docutils literal notranslate"><span class="pre">sampling</span></code> and <code class="docutils literal notranslate"><span class="pre">outputs</span></code> without intermediate manifests. Trace-only
-callers compose the materialize, build and sample operations directly. Supplied canonical
+callers use the model-selected inference steps directly. Supplied canonical
 inputs and their coherent reduction are prepared together; an existing
 preparation is reused unchanged. Imported runs must supply requested dates
 and domain explicitly or retain them in preparation provenance.</p>

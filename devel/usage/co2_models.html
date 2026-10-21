@@ -513,7 +513,7 @@ observations’ concentration units unless <code class="docutils literal notrans
 <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code> when that scale is inappropriate for the observation units or
 scientific application. Set <code class="docutils literal notranslate"><span class="pre">no_model_error=True</span></code> to disable this inferred
 term.
-Configured ordinary execution selects these options through the <code class="docutils literal notranslate"><span class="pre">likelihood</span></code>
+Configured execution selects these options through the <code class="docutils literal notranslate"><span class="pre">likelihood</span></code>
 section, including <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code> and <code class="docutils literal notranslate"><span class="pre">no_model_error</span></code>.</p>
 <p>The CO₂ runner does not consume <code class="docutils literal notranslate"><span class="pre">min_error</span></code> or apply a minimum-error floor.
 Other recipes and components own their own floor settings; for example, the
@@ -525,7 +525,9 @@ described below. The <a class="reference internal" href="co2_model_family.html">
 installed staged commands and supported outputs; broader scientific acceptance
 remains tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-79">OPE-79</a>.</p>
 <p>For the matched fixed-tau Ornstein–Uhlenbeck (OU) likelihood with independently
-inferred site amplitudes, use <a class="reference internal" href="#co2-cached-sigma-recipe"><span class="std std-ref">the package-supported cached-sigma CO2 runner</span></a>.</p>
+inferred site amplitudes, configure <code class="docutils literal notranslate"><span class="pre">likelihood.kind</span> <span class="pre">=</span> <span class="pre">&quot;fixed_ou&quot;</span></code> and
+<code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code>. <code class="docutils literal notranslate"><span class="pre">run_co2</span></code> automatically selects the
+<a class="reference internal" href="#co2-cached-sigma-recipe"><span class="std std-ref">matched cached implementation</span></a>.</p>
 <section id="co2-grouped-inner-and-outer-states">
 <span id="co2-grouped-states"></span><h3>CO2 grouped inner and outer states<a class="headerlink" href="#co2-grouped-inner-and-outer-states" title="Link to this heading">#</a></h3>
 <p>Same-grid inner and outer fluxes use one ordinary retained state and one
@@ -610,17 +612,20 @@ concentration units.</p>
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.co2_config_templates" title="openghg_inversions.rhime.co2.co2_config_templates"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.co2_config_templates()</span></code></a> to discover their
 installed paths. Copy the closest template for a run; do not edit the installed
 resource. The templates configure the existing prepared-input Python seams.
+Despite its historical filename, <code class="docutils literal notranslate"><span class="pre">co2_cached_sigma.toml</span></code> now configures
+<code class="docutils literal notranslate"><span class="pre">run_co2</span></code> with inferred fixed-OU amplitudes and sampling-owned tuning controls.
 The CO2-only templates also underpin <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2</span></code> staged commands; see
 <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for the staged output table and complete command
 sequence, including <a class="reference internal" href="co2_model_family.html#linked-staged-commands"><span class="std std-ref">linked saved phases</span></a>.
 The packaged linked template uses that phase interface without a <code class="docutils literal notranslate"><span class="pre">variant</span></code>
 selector; the retained direct-runner resolver described below uses its own
 explicit <code class="docutils literal notranslate"><span class="pre">linked</span></code> or <code class="docutils literal notranslate"><span class="pre">cached_fixed_ou</span></code> variant.</p>
-<p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.load_co2_family_config" title="openghg_inversions.rhime.co2.load_co2_family_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.load_co2_family_config()</span></code></a> reads TOML. Ordinary
+<p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.load_co2_family_config" title="openghg_inversions.rhime.co2.load_co2_family_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.load_co2_family_config()</span></code></a> reads TOML.
 CO₂ uses <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_co2" title="openghg_inversions.rhime.co2.run_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_co2()</span></code></a> or the Python/CLI model
 selector. Preparation, model, sampler and output values are resolved at their
-concrete owners; saved sampling accepts decoded model/likelihood choices and one
-separate sampler. Native-resolution acquisition and coherent-reduction construction
+concrete owners; saved sampling accepts decoded model/likelihood choices and a
+separate <code class="docutils literal notranslate"><span class="pre">sampling</span></code> mapping. The model selects the backend and update.
+Native-resolution acquisition and coherent-reduction construction
 are separate from this configured prepared-input route.</p>
 <p>Cached and linked recipes retain
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.resolve_co2_family_config" title="openghg_inversions.rhime.co2.resolve_co2_family_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.resolve_co2_family_config()</span></code></a>, which accepts a
@@ -649,7 +654,6 @@ species/unit labels. The ordinary branch of that resolver is retired; use
 <span class="n">draws</span> <span class="o">=</span> <span class="mi">1000</span>
 <span class="n">tune</span> <span class="o">=</span> <span class="mi">1000</span>
 <span class="n">chains</span> <span class="o">=</span> <span class="mi">4</span>
-<span class="n">nuts_sampler</span> <span class="o">=</span> <span class="s2">"numpyro"</span>
 </pre></div>
 </div>
 <p>can execute through the canonical configured runner:</p>
@@ -659,6 +663,73 @@ species/unit labels. The ordinary branch of that resolver is retired; use
 <span class="n">idata</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">idata</span>  <span class="c1"># The complete annotated inference DataTree.</span>
 </pre></div>
 </div>
+<p>Configured CO₂ selects inference from the resolved scientific model using this
+automatic policy:</p>
+<div class="pst-scrollable-table-container"><table class="table" id="id1">
+<caption><span class="caption-text">CO2 inference policy</span><a class="headerlink" href="#id1" title="Link to this table">#</a></caption>
+<colgroup>
+<col style="width: 25.0%" />
+<col style="width: 30.0%" />
+<col style="width: 45.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Likelihood</p></th>
+<th class="head"><p>Backend and update</p></th>
+<th class="head"><p>Reason</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">additive_sigma</span></code></p></td>
+<td><p>NumPyro NUTS</p></td>
+<td><p>All steps are NUTS and the model runs under JAX via NumPyro.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">site_sigma</span></code> (fixed or inferred amplitudes)</p></td>
+<td><p>PyMC NUTS</p></td>
+<td><p>Conservative default; this likelihood does not inherently require PyMC.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">scalar_sigma</span></code></p></td>
+<td><p>PyMC NUTS</p></td>
+<td><p>Conservative default; this likelihood does not inherently require PyMC.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">fixed_ou</span></code> with fixed amplitudes</p></td>
+<td><p>PyMC NUTS</p></td>
+<td><p>The custom likelihood operation has no JAX implementation.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">fixed_ou</span></code> with inferred amplitudes</p></td>
+<td><p>PyMC cached amplitude update, then state NUTS when states exist</p></td>
+<td><p>Requires the matched cache and ordered amplitude/state update.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The inferred-amplitude OU path needs its custom cached amplitude update, and
+an ordered compound step when states exist. These require PyMC; NumPyro cannot
+execute the matched custom step.
+Timing evidence does not cover PyMC’s Numba mode or nutpie and does not establish
+NumPyro as the fastest backend. Site/scalar choices remain conservative policy
+choices. Configured execution exposes no backend selector.</p>
+<p>This is a new explicit policy. Previously the packaged template selected NumPyro
+regardless of a subsequent likelihood edit, while omitting the backend selected
+PyMC. Configured CO₂ now rejects <code class="docutils literal notranslate"><span class="pre">sampling.nuts_sampler</span></code>; remove that option
+when migrating. <code class="docutils literal notranslate"><span class="pre">draws</span></code>, <code class="docutils literal notranslate"><span class="pre">tune</span></code>, <code class="docutils literal notranslate"><span class="pre">chains</span></code> and <code class="docutils literal notranslate"><span class="pre">random_seed</span></code> remain
+configurable. Inferred OU uses <code class="docutils literal notranslate"><span class="pre">sampling.sigma_target_accept</span></code> (default 0.8)
+and <code class="docutils literal notranslate"><span class="pre">sampling.state_target_accept</span></code> (default 0.9), each strictly between zero
+and one. These tuning controls are not likelihood options.
+For example, replace the likelihood section with:</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[likelihood]</span>
+<span class="n">kind</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"fixed_ou"</span>
+<span class="n">tau_hours</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">MHD</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mf">24.0</span><span class="p">,</span><span class="w"> </span><span class="n">TAC</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mf">18.0</span><span class="w"> </span><span class="p">}</span>
+<span class="n">site_amplitude_prior</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">pdf</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">"gamma"</span><span class="p">,</span><span class="w"> </span><span class="n">alpha</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mf">2.0</span><span class="p">,</span><span class="w"> </span><span class="n">beta</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mf">3.0</span><span class="w"> </span><span class="p">}</span>
+</pre></div>
+</div>
+<p>The model can infer amplitudes even when every flux and baseline coefficient
+is fixed. In that case the matched update has no state NUTS step.
+Fixed flux with an active boundary or offset still requires the state step.
+The trace and sample manifest record the actual algorithm and explicit
+target-accept values alongside the sampling counts and backend. With ordinary
+sampling, an omitted <code class="docutils literal notranslate"><span class="pre">target_accept</span></code> is passed through to <code class="docutils literal notranslate"><span class="pre">pm.sample</span></code>; the
+record stores <code class="docutils literal notranslate"><span class="pre">target_accept_source=&quot;pm.sample_default&quot;</span></code> without inventing a
+numeric value. Product replay retains that record without constructing a sampler.</p>
 <p>Equivalently, <code class="docutils literal notranslate"><span class="pre">rhime.run(model=&quot;co2&quot;,</span> <span class="pre">config_file=&quot;my-co2.toml&quot;)</span></code> selects the
 same runner. Output choices remain separate from the scientific trace.
 <code class="docutils literal notranslate"><span class="pre">prepared_inputs.path</span></code>, <code class="docutils literal notranslate"><span class="pre">prepared_inputs.reconstruction_path</span></code> and
@@ -716,8 +787,8 @@ forms. Scalar-or-site-map values use one number or an inline table such as
 <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">MHD</span> <span class="pre">=</span> <span class="pre">24.0,</span> <span class="pre">TAC</span> <span class="pre">=</span> <span class="pre">12.0</span> <span class="pre">}</span></code>; the component-specific sign constraints are below.
 Site maps validate every supplied value, including entries for dropped sites,
 require retained-site coverage, then select retained labels.</p>
-<div class="pst-scrollable-table-container"><table class="table" id="id1">
-<caption><span class="caption-text">Ordinary CO2 likelihood configuration</span><a class="headerlink" href="#id1" title="Link to this table">#</a></caption>
+<div class="pst-scrollable-table-container"><table class="table" id="id2">
+<caption><span class="caption-text">Ordinary CO2 likelihood configuration</span><a class="headerlink" href="#id2" title="Link to this table">#</a></caption>
 <colgroup>
 <col style="width: 18.0%" />
 <col style="width: 34.0%" />
@@ -782,8 +853,8 @@ only <code class="docutils literal notranslate"><span class="pre">y</span></code
 <p>The optional <code class="docutils literal notranslate"><span class="pre">[sampling]</span></code> table is shared by the supported setups.
 Defaults below apply when an option is omitted; linked fixed-error sampling
 uses NumPyro, while both linked OU routes default to and require PyMC.</p>
-<div class="pst-scrollable-table-container"><table class="table" id="id2">
-<caption><span class="caption-text">Sampling configuration</span><a class="headerlink" href="#id2" title="Link to this table">#</a></caption>
+<div class="pst-scrollable-table-container"><table class="table" id="id3">
+<caption><span class="caption-text">Sampling configuration</span><a class="headerlink" href="#id3" title="Link to this table">#</a></caption>
 <colgroup>
 <col style="width: 23.0%" />
 <col style="width: 18.0%" />
@@ -819,10 +890,11 @@ uses NumPyro, while both linked OU routes default to and require PyMC.</p>
 <td><p>Positive integer.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">nuts_sampler</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">&quot;pymc&quot;</span></code></p></td>
+<td><p>Chosen from the likelihood</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;numpyro&quot;</span></code> for fixed error; <code class="docutils literal notranslate"><span class="pre">&quot;pymc&quot;</span></code> for OU</p></td>
-<td><p>One of <code class="docutils literal notranslate"><span class="pre">&quot;pymc&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;nutpie&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;numpyro&quot;</span></code>, or <code class="docutils literal notranslate"><span class="pre">&quot;blackjax&quot;</span></code>;
-cached variants and linked <code class="docutils literal notranslate"><span class="pre">fixed_ou</span></code> require <code class="docutils literal notranslate"><span class="pre">&quot;pymc&quot;</span></code>.</p></td>
+<td><p>Configured <code class="docutils literal notranslate"><span class="pre">run_co2</span></code> rejects this option. The retained cached stage
+interface requires <code class="docutils literal notranslate"><span class="pre">&quot;pymc&quot;</span></code>. Linked configuration accepts supported
+backends, with <code class="docutils literal notranslate"><span class="pre">&quot;pymc&quot;</span></code> required for <code class="docutils literal notranslate"><span class="pre">fixed_ou</span></code>.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">progressbar</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
@@ -841,10 +913,20 @@ cached variants and linked <code class="docutils literal notranslate"><span clas
 listed names are restricted to <code class="docutils literal notranslate"><span class="pre">&quot;y&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;concentration&quot;</span></code>.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">target_accept</span></code></p></td>
-<td><p>Not set</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.8</span></code> for ordinary NUTS</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">0.95</span></code></p></td>
-<td><p>Number strictly between zero and one. It is not accepted for the cached
-variant; use the two likelihood target-accept controls described above.</p></td>
+<td><p>Number strictly between zero and one. Inferred fixed-OU amplitudes use
+the separate controls below instead.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sigma_target_accept</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.8</span></code></p></td>
+<td><p>See linked likelihood controls above</p></td>
+<td><p>CO2 inferred fixed-OU only; number strictly between zero and one.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">state_target_accept</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.9</span></code></p></td>
+<td><p>See linked likelihood controls above</p></td>
+<td><p>CO2 inferred fixed-OU only; used when flux, boundary or offset states exist.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">random_seed</span></code></p></td>
 <td><p>Not set</p></td>

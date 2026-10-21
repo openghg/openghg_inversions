@@ -466,6 +466,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html">openghg_inversions.rhime.co2.configuration</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html">openghg_inversions.rhime.co2.stages</a></li>
 </ul>
 </details></li>
@@ -2790,7 +2791,9 @@ artifacts are loaded through their scientific owners without stage digests.</p>
 <p>An optional sample manifest supplies descriptive run context, without
 authenticating the posterior file. When <code class="docutils literal notranslate"><span class="pre">posterior</span></code> is omitted, resolve
 its reference beside the sample manifest. Diagnosis needs no preparation,
-model construction or inference; explicit posterior paths take precedence.</p>
+model construction or inference; explicit posterior paths take precedence.
+A draw diverges when either its ordinary or cached-amplitude NUTS flag is
+true. Missing both flags leaves divergence assessment unknown.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>
@@ -3532,7 +3535,7 @@ or execute inference.</p>
 <dd><p>Prepare or load ordinary CO2 inputs, sample and create requested products.</p>
 <p>This configured product entry point consumes <code class="docutils literal notranslate"><span class="pre">model</span></code>, <code class="docutils literal notranslate"><span class="pre">likelihood</span></code>,
 <code class="docutils literal notranslate"><span class="pre">sampling</span></code> and <code class="docutils literal notranslate"><span class="pre">outputs</span></code> without intermediate manifests. Trace-only
-callers compose the materialize, build and sample operations directly. Supplied canonical
+callers use the model-selected inference steps directly. Supplied canonical
 inputs and their coherent reduction are prepared together; an existing
 preparation is reused unchanged. Imported runs must supply requested dates
 and domain explicitly or retain them in preparation provenance.</p>
@@ -3988,7 +3991,6 @@ according to the configured export settings before returning.</p>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.load_co2_family_config"><code class="docutils literal notranslate"><span class="pre">load_co2_family_config()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.resolve_co2_family_config"><code class="docutils literal notranslate"><span class="pre">resolve_co2_family_config()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.resolve_co2_model"><code class="docutils literal notranslate"><span class="pre">resolve_co2_model()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.resolve_co2_sampler"><code class="docutils literal notranslate"><span class="pre">resolve_co2_sampler()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.resolve_co2_prior_seed"><code class="docutils literal notranslate"><span class="pre">resolve_co2_prior_seed()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.resolve_co2_preparation"><code class="docutils literal notranslate"><span class="pre">resolve_co2_preparation()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.validate_co2_config"><code class="docutils literal notranslate"><span class="pre">validate_co2_config()</span></code></a></li>
@@ -4010,6 +4012,15 @@ according to the configured export settings before returning.</p>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html#openghg_inversions.rhime.co2.handoffs.load_samples"><code class="docutils literal notranslate"><span class="pre">load_samples()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html#openghg_inversions.rhime.co2.handoffs.postprocess"><code class="docutils literal notranslate"><span class="pre">postprocess()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html#openghg_inversions.rhime.co2.handoffs.prior_predictive"><code class="docutils literal notranslate"><span class="pre">prior_predictive()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html#openghg_inversions.rhime.co2.inference.uses_cached_ou"><code class="docutils literal notranslate"><span class="pre">uses_cached_ou()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html#openghg_inversions.rhime.co2.inference.validate_co2_inference"><code class="docutils literal notranslate"><span class="pre">validate_co2_inference()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html#openghg_inversions.rhime.co2.inference.build_co2_inference"><code class="docutils literal notranslate"><span class="pre">build_co2_inference()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html#openghg_inversions.rhime.co2.inference.annotate_co2_inference"><code class="docutils literal notranslate"><span class="pre">annotate_co2_inference()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html#openghg_inversions.rhime.co2.inference.describe_co2_inference"><code class="docutils literal notranslate"><span class="pre">describe_co2_inference()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html#openghg_inversions.rhime.co2.inference.sample_co2_inference"><code class="docutils literal notranslate"><span class="pre">sample_co2_inference()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html">openghg_inversions.rhime.co2.stages</a><ul>

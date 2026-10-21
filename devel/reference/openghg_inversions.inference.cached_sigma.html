@@ -466,6 +466,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html">openghg_inversions.rhime.co2.configuration</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html">openghg_inversions.rhime.co2.stages</a></li>
 </ul>
 </details></li>
@@ -727,7 +728,8 @@ call <a class="reference internal" href="#openghg_inversions.inference.cached_si
 <p>At the start of each sweep, the sigma step evaluates <code class="docutils literal notranslate"><span class="pre">modelled_mean</span></code> at
 the current state point. It then updates sigma and refreshes the quadratic
 for the value returned by that transition before the following stock NUTS
-step jointly updates <code class="docutils literal notranslate"><span class="pre">states</span></code>.</p>
+step jointly updates <code class="docutils literal notranslate"><span class="pre">states</span></code>. With no active states, the sweep contains
+only the amplitude step.</p>
 <p>Observed models require an explicit <code class="docutils literal notranslate"><span class="pre">cached_state_logp</span></code> expression. The
 state function combines this quadratic with the model’s free-variable
 priors and transform Jacobians, excluding the observed likelihood. Legacy

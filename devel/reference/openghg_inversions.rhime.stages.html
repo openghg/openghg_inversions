@@ -466,6 +466,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html">openghg_inversions.rhime.co2.configuration</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html">openghg_inversions.rhime.co2.stages</a></li>
 </ul>
 </details></li>
@@ -851,7 +852,9 @@ without constructing a model or applying output policy.</p>
 <p>An optional sample manifest supplies descriptive run context, without
 authenticating the posterior file. When <code class="docutils literal notranslate"><span class="pre">posterior</span></code> is omitted, resolve
 its reference beside the sample manifest. Diagnosis needs no preparation,
-model construction or inference; explicit posterior paths take precedence.</p>
+model construction or inference; explicit posterior paths take precedence.
+A draw diverges when either its ordinary or cached-amplitude NUTS flag is
+true. Missing both flags leaves divergence assessment unknown.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>

@@ -58,7 +58,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.rhime.co2.stages" href="openghg_inversions.rhime.co2.stages.html" />
+    <link rel="next" title="openghg_inversions.rhime.co2.inference" href="openghg_inversions.rhime.co2.inference.html" />
     <link rel="prev" title="openghg_inversions.rhime.co2.execution" href="openghg_inversions.rhime.co2.execution.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -466,6 +466,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html">openghg_inversions.rhime.co2.configuration</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4 current active"><a class="current reference internal" href="#">openghg_inversions.rhime.co2.handoffs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html">openghg_inversions.rhime.co2.stages</a></li>
 </ul>
 </details></li>
@@ -684,13 +685,12 @@ Affine references stay unloaded until scientific output replay consumes them.</p
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.handoffs.sample">
-<span class="sig-name descname"><span class="pre">sample</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">preparation_manifest</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'default'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.handoffs.sample" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">sample</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">preparation_manifest</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampling</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.handoffs.sample" title="Link to this definition">#</a></dt>
 <dd><p>Build and sample ordinary CO2 using current science and its resolved sampler.</p>
 <p>Compatible independent BC/offset priors and supported likelihood choices can
 reuse preparation; the defining coherent native reduction stays unchanged.
 Full execution and saved sampling share the explicit build and sample owners.
-<code class="docutils literal notranslate"><span class="pre">sampler=&quot;default&quot;</span></code> selects fresh defaults; an explicit sampler supplies
-configured sampling choices. Direct runner trace returns remain unchanged.</p>
+Current sampling choices select fresh model-matched defaults and tuning.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a></p>
@@ -799,11 +799,11 @@ report. The check never repairs absent posterior/replay evidence.</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.rhime.co2.stages.html"
+       href="openghg_inversions.rhime.co2.inference.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.rhime.co2.stages</p>
+        <p class="prev-next-title">openghg_inversions.rhime.co2.inference</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

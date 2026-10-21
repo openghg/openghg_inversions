@@ -23,9 +23,8 @@ Current support
        cross-channel covariance.
    * - Public entry point
      - :func:`openghg_inversions.rhime.co2.run_co2` consumes a
-       configured product request in Python or through model selection; see the
-       :ref:`package-supported cached-sigma specialization
-       <co2-cached-sigma-recipe>` for its prepared-input runner.
+       configured product request in Python or through model selection.
+       Scientific likelihood choices select the matching inference implementation.
      - :func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs`
        and the matched fixed-OU
        :func:`~openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs`.
@@ -41,14 +40,13 @@ Current support
        <linked-prepared-replay>` describes NetCDF/Zarr persistence, including
        optional labelled independent errors.
    * - Configuration
-     - A packaged TOML template and strict resolver produce explicit arguments
-       for the ordinary or cached fixed-OU prepared-input Python runner.
-       Ordinary full and saved operations resolve their own applicable choices.
+     - TOML selects the likelihood, priors and baseline choices for ``run_co2``.
+       Full and shared saved operations resolve their own applicable choices.
      - A packaged TOML template configures linked saved phases. The direct
        Python runners retain their separate configuration resolver.
    * - Fixed-OU mismatch
-     - Fixed tau and fixed or inferred site amplitudes; optional matched
-       cached quadratic sampler.
+     - Fixed tau and fixed or inferred site amplitudes. Inferred amplitudes
+       automatically use the matched cached quadratic sampler.
      - Fixed tau and fixed or inferred amplitudes by species/site, preserving
        cross-channel aggregation covariance. The matched cached sampler
        updates all active affine coefficients. Requires the same channel units.
@@ -71,7 +69,7 @@ Current support
        for the same-unit joint model; see `Staged linked CO₂/O₂ commands`_.
    * - Outputs and postprocessing
      - Scientific operation composition and the cached runner retain an
-       annotated xarray ``DataTree``. Configured ordinary execution returns
+       annotated xarray ``DataTree``. Configured execution returns
        ``Co2Output`` with its trace,
        in-memory products and requested file paths.
        :ref:`Conditional native-flux and country summaries
@@ -167,7 +165,6 @@ An ordinary TOML configuration can contain:
    draws = 1000
    tune = 1000
    chains = 4
-   nuts_sampler = "pymc"
    random_seed = 12345
    sample_prior_predictive = 100
    sample_posterior_predictive = true
@@ -181,6 +178,25 @@ Configured execution from prepared inputs writes the selected products:
 .. code-block:: bash
 
    rhime run --model co2 -c co2.toml --output-path run/full
+
+To infer independent site amplitudes with fixed OU correlation, replace the
+likelihood table with:
+
+.. code-block:: toml
+
+   [likelihood]
+   kind = "fixed_ou"
+   tau_hours = 24.0
+   site_amplitude_prior = { pdf = "gamma", alpha = 2.0, beta = 3.0 }
+
+``run_co2`` selects the matched cached update automatically. Configure draw
+counts, tuning length, chains and seed in ``sampling``; do not specify
+``nuts_sampler``. Additive sigma uses NumPyro; site sigma, scalar sigma and
+fixed-amplitude OU use PyMC. The :doc:`inference policy table <co2_models>`
+explains which choices are technical requirements and which are defaults.
+Inferred-OU tuning belongs to ``sampling.sigma_target_accept`` and
+``sampling.state_target_accept``. Saved Python sampling takes the same
+``sampling`` mapping as the full configuration.
 
 ``rhime run-co2`` remains an alias. This configured CLI route uses
 ``run_co2`` and writes requested products. Python
@@ -230,7 +246,12 @@ decide scientific compatibility.
 Replay loads saved trace roles, inference provenance and affine associations.
 It performs no acquisition, preparation, model construction or inference, and
 returns ``Co2Output`` without a live sampler. Missing descriptive facts remain
-unavailable. Records include package version and Git revision/checkout status
+unavailable. Trace and sample records retain the actual algorithm and effective
+target-accept settings, including whether the matched state step ran. Ordinary
+sampling without an explicit ``target_accept`` delegates to ``pm.sample`` and
+records ``target_accept_source="pm.sample_default"`` rather than assuming a
+numerical default. Replay preserves this marker.
+Records include package version and Git revision/checkout status
 when available; unavailable VCS facts are ``null`` and do not prevent execution.
 
 ``prior-predictive --strict`` exits unsuccessfully for a failed readiness check;
