@@ -100,8 +100,9 @@ def sample_co2_inference(
     else:
         active = sampler
         actual = {**active.describe(), "algorithm": "nuts"}
-        if "target_accept" in (sampler.sample_kwargs or {}):
-            actual["target_accept"] = sampler.sample_kwargs["target_accept"]
+        sample_kwargs = sampler.sample_kwargs or {}
+        if "target_accept" in sample_kwargs:
+            actual["target_accept"] = sample_kwargs["target_accept"]
         else:
             actual["target_accept_source"] = "pm.sample_default"
     trace = sample_rhime_model(built, active)
