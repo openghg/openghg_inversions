@@ -7079,7 +7079,7 @@ def test_multisector_none_skips_postprocessing() -> None:
 
 @pytest.mark.rhime_contract
 def test_multisector_products_build_latest_paris_flux(
-    europe_country_file: Path,
+    tiny_paris_country_file: Path,
     fake_multisector_basis_functions_matching_country_grid: Callable[..., BasisFunctions],
     multisector_postprocessing_inv_out: Callable[..., InversionOutput],
     tmp_path: Path,
@@ -7119,7 +7119,7 @@ def test_multisector_products_build_latest_paris_flux(
         model_spec,
         output_spec,
     )
-    basis_functions = fake_multisector_basis_functions_matching_country_grid(europe_country_file)
+    basis_functions = fake_multisector_basis_functions_matching_country_grid(tiny_paris_country_file)
     basis_functions.flux.attrs["time_period"] = "not-a-parseable-period"
     inv_inputs = _minimal_output_inv_inputs()
     assert basis_functions.source_labels is not None
@@ -7138,7 +7138,7 @@ def test_multisector_products_build_latest_paris_flux(
     posterior["epsilon"] = (("chain", "draw", "nmeasure"), np.ones((1, 2, 1)))
     idata["posterior"] = posterior
 
-    output_spec = replace(config.output, country_file=str(europe_country_file))
+    output_spec = replace(config.output, country_file=str(tiny_paris_country_file))
     inv_out = _fixture_output(config, idata, prepared, model_spec=model_spec, multisector=True)
     products = rhime_outputs.postprocess_multisector_outputs(inv_out, output_spec)
     rhime_outputs.save_inversion_output(inv_out, output_spec)
@@ -7158,9 +7158,22 @@ def test_multisector_products_build_latest_paris_flux(
     assert paris_concentration_path.exists()
     assert diagnostics_path.exists()
     with xr.open_dataset(paris_flux_path) as reloaded_paris_flux:
-        assert "flux_total_posterior" in reloaded_paris_flux
-        assert "flux_ff_posterior" in reloaded_paris_flux
-        assert "flux_ocean_posterior" in reloaded_paris_flux
+        assert tuple(reloaded_paris_flux.country.values) == PARIS_LATEST_COUNTRIES
+        assert tuple(reloaded_paris_flux.sector.values) == ("ff", "ocean")
+        for name in (
+            "flux_total_posterior",
+            "flux_ff_posterior",
+            "flux_ocean_posterior",
+            "covariance_flux_total_posterior_country",
+            "covariance_flux_ff_posterior_country",
+            "covariance_flux_ocean_posterior_country",
+            "covariance_flux_sectors_posterior_country",
+        ):
+            actual = reloaded_paris_flux[name]
+            expected = paris_flux[name]
+            assert actual.dims == expected.dims
+            assert actual.dtype == expected.dtype == np.dtype("float32")
+            np.testing.assert_allclose(actual.values, expected.values, rtol=1e-6, atol=0.0)
     with xr.open_dataset(paris_concentration_path) as reloaded_concentration:
         assert reloaded_concentration.attrs["paris_concentration_template_version"] == "v04"
     with xr.open_dataset(diagnostics_path) as reloaded_diagnostics:
