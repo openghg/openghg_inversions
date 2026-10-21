@@ -612,7 +612,10 @@ installed paths. Copy the closest template for a run; do not edit the installed
 resource. The templates configure the existing prepared-input Python seams.
 The CO2-only templates also underpin <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2</span></code> staged commands; see
 <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for the staged output table and complete command
-sequence. Linked CO2/O2 templates remain Python-only.</p>
+sequence, including <a class="reference internal" href="co2_model_family.html#linked-staged-commands"><span class="std std-ref">linked saved phases</span></a>.
+The packaged linked template uses that phase interface without a <code class="docutils literal notranslate"><span class="pre">variant</span></code>
+selector; the retained direct-runner resolver described below uses its own
+explicit <code class="docutils literal notranslate"><span class="pre">linked</span></code> or <code class="docutils literal notranslate"><span class="pre">cached_fixed_ou</span></code> variant.</p>
 <p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.load_co2_family_config" title="openghg_inversions.rhime.co2.load_co2_family_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.load_co2_family_config()</span></code></a> reads TOML. Ordinary
 CO₂ uses <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_co2" title="openghg_inversions.rhime.co2.run_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_co2()</span></code></a> or the Python/CLI model
 selector. Preparation, model, sampler and output values are resolved at their
@@ -923,20 +926,22 @@ The linked <a class="reference internal" href="../reference/openghg_inversions.r
 supports NetCDF and Zarr save/load at the prepared-input Python boundary.
 Construct it through the documented preparation boundary or restore it before
 binding the configured runner arguments; see <a class="reference internal" href="#linked-prepared-replay"><span class="std std-ref">Save and replay linked prepared inputs</span></a>.
-These methods do not add linked staged CLI routing.</p>
-<p>The linked template therefore follows a prepare, bind, and run sequence. The
-scientific array names below are the labelled inputs documented by
+The installed linked phases consume the same artifact; see
+<a class="reference internal" href="co2_model_family.html#linked-staged-commands"><span class="std std-ref">Staged linked CO₂/O₂ commands</span></a>.</p>
+<p>The retained direct-runner configuration follows a prepare, bind, and run
+sequence. The scientific array names below are the labelled inputs documented by
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_o2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_co2_o2_inputs()</span></code></a>; replace them with
 the products from one coherent reduction. Exactly one of
 <code class="docutils literal notranslate"><span class="pre">o2_co2_flux_ratio</span></code> and <code class="docutils literal notranslate"><span class="pre">o2_co2_flux_ratio_unavailable_reason</span></code> must be
 non-null:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">load_co2_family_config</span><span class="p">,</span>
     <span class="n">prepare_co2_o2_inputs</span><span class="p">,</span>
     <span class="n">resolve_co2_family_config</span><span class="p">,</span>
 <span class="p">)</span>
 
-<span class="n">config</span> <span class="o">=</span> <span class="n">load_co2_family_config</span><span class="p">(</span><span class="s2">"my-co2-o2.toml"</span><span class="p">)</span>
+<span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"format_version"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"recipe"</span><span class="p">:</span> <span class="s2">"co2_o2"</span><span class="p">,</span> <span class="s2">"variant"</span><span class="p">:</span> <span class="s2">"linked"</span><span class="p">,</span>
+          <span class="s2">"channels"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"co2"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"units"</span><span class="p">:</span> <span class="s2">"ppm"</span><span class="p">,</span> <span class="s2">"independent_error_sd"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
+                       <span class="s2">"o2"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"units"</span><span class="p">:</span> <span class="s2">"ppm"</span><span class="p">,</span> <span class="s2">"independent_error_sd"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">}}}</span>
 <span class="n">setup</span> <span class="o">=</span> <span class="n">resolve_co2_family_config</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
 
 <span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_co2_o2_inputs</span><span class="p">(</span>
@@ -1294,7 +1299,8 @@ leave the caller’s input arrays unchanged.</p>
 projects one linked posterior into separate CO2 and O2 products. It supports
 <code class="docutils literal notranslate"><span class="pre">template_version=&quot;latest&quot;</span></code>: concentration v04 and native flux v03. The
 adapter operates after sampling, using the prepared inputs and restored trace;
-it does not add a staged model route:</p>
+the staged linked route also exposes these products through
+<code class="docutils literal notranslate"><span class="pre">output_format=&quot;paris&quot;</span></code> (see <a class="reference internal" href="co2_model_family.html#linked-staged-commands"><span class="std std-ref">Staged linked CO₂/O₂ commands</span></a>). Direct callers can use:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.postprocessing.linked_paris_outputs</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">make_co2_o2_paris_outputs</span><span class="p">,</span>
 <span class="p">)</span>

@@ -363,7 +363,8 @@ Missing imported request facts must be supplied explicitly. See
 :doc:`co2_model_family` for configuration, readiness/diagnosis, affine
 compatibility and the distinct cached-CO₂ boundary, and
 :download:`co2_handoffs.py <../../examples/co2_handoffs.py>` for an executable
-full/saved scientific comparison. Linked CO₂/O₂ and nested workflows are separate.
+full/saved scientific comparison. Linked CO₂/O₂ has a separate joint handoff
+interface described below; nested workflows remain separate.
 
 The separate cached fixed-OU postprocessing route also returns ``Co2Output``.
 It keeps the existing matched-file arguments, observed-day reporting window
@@ -415,7 +416,12 @@ requires ``--posterior`` and ``--sample-manifest``. Ordinary CO2 uses the
 manifest-only interface described above; cached CO2 takes an existing coherent
 preparation through its separate interface. See :doc:`co2_model_family` for
 supported CO2 outputs.
-Linked CO2/O2 staging remains separate work.
+Linked CO₂/O₂ saved phases use ``--model co2_o2`` and one preparation or sample
+manifest, with the complete joint covariance and unequal channel axes retained.
+See :ref:`linked-staged-commands` for configuration, the five installed commands,
+common-unit restrictions and supported scientific products. The runnable
+:download:`co2_o2_handoffs.py <../../examples/co2_o2_handoffs.py>` example uses
+synthetic scientific arrays and no private campaign inputs.
 
 The new standard and multisector handoff formats replace their historical staged
 envelopes and multi-artifact argument lists. For multisector, replace

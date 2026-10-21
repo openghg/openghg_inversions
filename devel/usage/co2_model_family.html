@@ -513,8 +513,8 @@ optional labelled independent errors.</p></td>
 <td><p>A packaged TOML template and strict resolver produce explicit arguments
 for the ordinary or cached fixed-OU prepared-input Python runner.
 Ordinary full and saved operations resolve their own applicable choices.</p></td>
-<td><p>A packaged TOML template and strict resolver produce explicit arguments
-for the linked ordinary and cached fixed-OU prepared-input Python runners.</p></td>
+<td><p>A packaged TOML template configures linked saved phases. The direct
+Python runners retain their separate configuration resolver.</p></td>
 </tr>
 <tr class="row-even"><td><p>Fixed-OU mismatch</p></td>
 <td><p>Fixed tau and fixed or inferred site amplitudes; optional matched
@@ -540,7 +540,8 @@ matched cached sampler.</p></td>
 <td><p>Ordinary <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2</span></code> phases consume one preparation or sample
 manifest. Cached fixed-OU retains its separate staged interface; see
 <a class="reference internal" href="#staged-co2-commands">Staged CO₂ commands</a> below.</p></td>
-<td><p>Not supported by the staged CLI.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2_o2</span></code> phases consume one preparation or sample manifest
+for the same-unit joint model; see <a class="reference internal" href="#staged-linked-co2-o2-commands">Staged linked CO₂/O₂ commands</a>.</p></td>
 </tr>
 <tr class="row-even"><td><p>Outputs and postprocessing</p></td>
 <td><p>Scientific operation composition and the cached runner retain an
@@ -550,9 +551,10 @@ in-memory products and requested file paths.
 <a class="reference internal" href="affine_flux_map.html#co2-affine-flux-summaries"><span class="std std-ref">Conditional native-flux and country summaries</span></a> are available from a bound affine artifact;
 staged basic, concentration, conditional native-flux and country products
 are available, with supported PARIS exports.</p></td>
-<td><p>Returns an annotated xarray <code class="docutils literal notranslate"><span class="pre">DataTree</span></code>. A bounded Python adapter produces
-separate CO2/O2 PARIS concentration products and supported native flux
-products; staged output integration remains future work.</p></td>
+<td><p>Direct runners return an annotated xarray <code class="docutils literal notranslate"><span class="pre">DataTree</span></code>. Saved replay
+returns <code class="docutils literal notranslate"><span class="pre">Co2O2Output</span></code> with channel components, predictions, residuals,
+shared state scaling and separate CO2/O2 products. Supported PARIS
+concentration and conditional bucket-native products are available.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Validation and acceptance</p></td>
 <td><p>Coherent preparation, dedicated serialization, model construction,
@@ -576,8 +578,8 @@ in the observation likelihood. The shared pages on <a class="reference internal"
 <a class="reference internal" href="coherent_reduction.html"><span class="doc">coherent reduction</span></a> provide that background without
 making those concepts specific to CO₂.</p>
 <p>The family page records present software support, not evidence that a selected
-recipe is scientifically suitable for a particular inversion. Linked
-staged integration and scientist acceptance are tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-79">OPE-79</a>. The CO₂ commands reuse
+recipe is scientifically suitable for a particular inversion. Remaining
+scientist acceptance is tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-79">OPE-79</a>. The CO₂ commands reuse
 the TOML configuration boundary and prepared-input scientific operations.</p>
 <p>The CO2-only handoff is intentionally separate from both the generic
 <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> boundary and the linked CO2/O2 preparation contract.
@@ -761,9 +763,128 @@ first observed day through the day after the final observation. Cached stage
 products retain their literal filenames such as <code class="docutils literal notranslate"><span class="pre">basic.nc</span></code> and
 <code class="docutils literal notranslate"><span class="pre">concentration_components.nc</span></code> and their postprocess manifest. Recorded sampler
 settings are descriptive provenance and do not construct a sampler during replay.
-Linked CO₂/O₂ staged routing remains separate in OPE-165; nested workflows are
-outside these CO₂ commands.</p>
+Linked CO₂/O₂ uses its own joint handoffs below; nested workflows are outside
+these CO₂ commands.</p>
 </section>
+</section>
+<section id="staged-linked-co2-o2-commands">
+<span id="linked-staged-commands"></span><h2>Staged linked CO₂/O₂ commands<a class="headerlink" href="#staged-linked-co2-o2-commands" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2_o2</span></code> selects one joint model with shared GPP/TER/fossil states,
+separate ocean states and cross-channel aggregation covariance. The CO₂ and
+O₂ observations can have different lengths, sites and times. Prepare their
+scientific arrays with
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_o2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_o2_inputs()</span></code></a>, then save the
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparedInputs" title="openghg_inversions.rhime.co2.Co2O2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2O2PreparedInputs</span></code></a> artifact to NetCDF
+or Zarr. Product discovery and campaign policy belong to the caller.</p>
+<p>The packaged <code class="docutils literal notranslate"><span class="pre">co2_o2.toml</span></code> template configures these saved phases. It has no
+<code class="docutils literal notranslate"><span class="pre">variant</span></code> selector. A minimal request using the saved independent-error vector
+is:</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="n">format_version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span>
+<span class="n">recipe</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"co2_o2"</span>
+
+<span class="k">[prepared_inputs]</span>
+<span class="n">path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"linked-inputs.nc"</span>
+<span class="n">start_date</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"2020-01-01"</span>
+<span class="n">end_date</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"2020-02-01"</span>
+<span class="n">domain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"EUROPE"</span>
+
+<span class="k">[channels.co2]</span>
+<span class="n">units</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"ppm"</span>
+
+<span class="k">[channels.o2]</span>
+<span class="n">units</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"ppm"</span>
+
+<span class="k">[sampling]</span>
+<span class="n">draws</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1000</span>
+<span class="n">tune</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1000</span>
+<span class="n">chains</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span>
+<span class="n">nuts_sampler</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"pymc"</span>
+<span class="n">random_seed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">12345</span>
+<span class="n">sample_prior_predictive</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span>
+<span class="n">sample_posterior_predictive</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+
+<span class="k">[outputs]</span>
+<span class="n">output_format</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"basic"</span>
+<span class="n">output_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"linked"</span>
+<span class="n">save_concentrations</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</pre></div>
+</div>
+<p>Both configured channel labels and the imported artifact must use the same
+concentration unit and numerical scale. Heterogeneous CO₂ ppm plus
+<code class="docutils literal notranslate"><span class="pre">delta(O2/N2)</span></code> per-meg operation is unsupported until the scientific transform
+in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-86">OPE-86</a> is defined.
+The existing numerical codec can retain mixed-unit metadata; that does not
+establish support for executing such an artifact through these phases.</p>
+<p>With the current PyMC 6/Numba backend, native multivariate-normal predictive
+draws require <code class="docutils literal notranslate"><span class="pre">floatX=float64</span></code> in <code class="docutils literal notranslate"><span class="pre">PYTENSOR_FLAGS</span></code> before starting Python or
+the CLI. Its float32 random implementation currently fails during compilation;
+the workflow below is checked with float64. If <code class="docutils literal notranslate"><span class="pre">PYTENSOR_FLAGS</span></code> is unset:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">export</span><span class="w"> </span><span class="nv">PYTENSOR_FLAGS</span><span class="o">=</span><span class="nv">floatX</span><span class="o">=</span>float64
+</pre></div>
+</div>
+<p>If flags are already set, retain the other entries and add or replace the
+<code class="docutils literal notranslate"><span class="pre">floatX</span></code> entry with <code class="docutils literal notranslate"><span class="pre">floatX=float64</span></code>. The application does not override an
+explicit precision choice.</p>
+<p>The default likelihood combines saved independent errors and the complete
+joint aggregation covariance once. Alternatively configure
+<code class="docutils literal notranslate"><span class="pre">likelihood.kind</span> <span class="pre">=</span> <span class="pre">&quot;fixed_ou&quot;</span></code> with positive <code class="docutils literal notranslate"><span class="pre">tau_hours</span></code> and nonnegative
+<code class="docutils literal notranslate"><span class="pre">fixed_site_amplitudes</span></code>. Linked OU mappings use <code class="docutils literal notranslate"><span class="pre">&quot;co2:MHD&quot;</span></code> and
+<code class="docutils literal notranslate"><span class="pre">&quot;o2:MHD&quot;</span></code> species/site keys. The installed route supports fixed OU
+amplitudes and requires PyMC for OU sampling. Inferred OU amplitude and cached
+sampler consolidation remain separate work; existing direct Python runners
+retain those interfaces.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>rhime<span class="w"> </span>prepare<span class="w"> </span>--model<span class="w"> </span>co2_o2<span class="w"> </span>-c<span class="w"> </span>co2_o2.toml<span class="w"> </span>--output-dir<span class="w"> </span>run/prepare
+rhime<span class="w"> </span>prior-predictive<span class="w"> </span>--model<span class="w"> </span>co2_o2<span class="w"> </span>-c<span class="w"> </span>co2_o2.toml<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--preparation-manifest<span class="w"> </span>run/prepare/prepare-manifest.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--draws<span class="w"> </span><span class="m">100</span><span class="w"> </span>--strict<span class="w"> </span>--output-dir<span class="w"> </span>run/prior
+rhime<span class="w"> </span>sample<span class="w"> </span>--model<span class="w"> </span>co2_o2<span class="w"> </span>-c<span class="w"> </span>co2_o2.toml<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--preparation-manifest<span class="w"> </span>run/prepare/prepare-manifest.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span>run/sample
+rhime<span class="w"> </span>diagnose<span class="w"> </span>--sample-manifest<span class="w"> </span>run/sample/sample-manifest.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span>run/diagnose
+rhime<span class="w"> </span>postprocess<span class="w"> </span>--model<span class="w"> </span>co2_o2<span class="w"> </span>-c<span class="w"> </span>co2_o2.toml<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--sample-manifest<span class="w"> </span>run/sample/sample-manifest.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span>run/products
+</pre></div>
+</div>
+<p>Preparation references the imported artifact in place. Retain it with the
+manifests. Requested dates/domain must be explicit or present in preparation
+provenance; they are preserved independently of retained observation times.
+Sampling and prior checks consume current channel/likelihood settings;
+postprocessing consumes current output settings without loading model or
+sampler choices. Relative configuration paths use the invocation directory;
+manifest references use the declaring manifest’s directory. Replacing a
+preparation invalidates samples associated with its previous generation.</p>
+<p>Python callers can use
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.co2_o2_handoffs.html#module-openghg_inversions.rhime.co2.co2_o2_handoffs" title="openghg_inversions.rhime.co2.co2_o2_handoffs"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.co2_o2_handoffs</span></code></a> to save an in-memory
+preparation, sample from it, and replay products. <code class="docutils literal notranslate"><span class="pre">load_samples</span></code> and
+<code class="docutils literal notranslate"><span class="pre">postprocess</span></code> return a borrowed <code class="docutils literal notranslate"><span class="pre">Co2O2Output</span></code> retaining the full joint
+trace, preparation, requested window and recorded inference provenance. Replay
+constructs no model or sampler. Channel products preserve shared draw labels;
+keep the joint posterior for cross-channel uncertainty calculations.</p>
+<p><code class="docutils literal notranslate"><span class="pre">basic</span></code> produces per-channel component summaries and shared retained-state draws;
+<code class="docutils literal notranslate"><span class="pre">save_concentrations</span></code> also exports component draws. Contributions retain
+GPP/TER/fossil, channel ocean, coherent intercept and optional boundary/offset
+meaning. Mean residuals use observed minus modelled concentrations. Observation
+predictions are included only when the corresponding predictive draws were
+saved; replay does not manufacture them.</p>
+<p><code class="docutils literal notranslate"><span class="pre">output_format=&quot;none&quot;</span></code> suppresses derived products while still honoring an
+explicit <code class="docutils literal notranslate"><span class="pre">save_trace</span></code> path (or <code class="docutils literal notranslate"><span class="pre">save_trace=true</span></code> with <code class="docutils literal notranslate"><span class="pre">output_path</span></code>).
+Trace destinations must not overlap referenced artifacts or derived product
+paths, including Zarr directories containing those files.</p>
+<p><code class="docutils literal notranslate"><span class="pre">paris</span></code> requires prior draws and produces separate CO₂/O₂ concentration
+products. Optional <code class="docutils literal notranslate"><span class="pre">native_flux_bases</span></code> and <code class="docutils literal notranslate"><span class="pre">country_file</span></code> use the existing
+conditional single-source bucket flux support, with its tracer exclusions;
+see <a class="reference internal" href="co2_models.html#linked-prepared-replay"><span class="std std-ref">Save and replay linked prepared inputs</span></a> and the linked PARIS section in
+<a class="reference internal" href="co2_models.html"><span class="doc">CO₂ model recipes</span></a>. <code class="docutils literal notranslate"><span class="pre">none</span></code> suppresses products. Output validation and product
+calculation precede file writing.</p>
+<p>A self-contained synthetic example uses unequal axes and nonzero cross
+covariance without a private data store:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>examples.co2_o2_handoffs<span class="w"> </span>/tmp/co2-o2-handoffs
+</pre></div>
+</div>
+<p>Its short chains exercise persistence, prediction and replay, and do not
+establish convergence or scientific acceptance.</p>
 </section>
 </section>
 
@@ -820,6 +941,7 @@ outside these CO₂ commands.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#cached-and-linked-boundaries">Cached and linked boundaries</a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#staged-linked-co2-o2-commands">Staged linked CO₂/O₂ commands</a></li>
 </ul>
   </nav></div>
 

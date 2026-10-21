@@ -44,8 +44,8 @@ Current support
      - A packaged TOML template and strict resolver produce explicit arguments
        for the ordinary or cached fixed-OU prepared-input Python runner.
        Ordinary full and saved operations resolve their own applicable choices.
-     - A packaged TOML template and strict resolver produce explicit arguments
-       for the linked ordinary and cached fixed-OU prepared-input Python runners.
+     - A packaged TOML template configures linked saved phases. The direct
+       Python runners retain their separate configuration resolver.
    * - Fixed-OU mismatch
      - Fixed tau and fixed or inferred site amplitudes; optional matched
        cached quadratic sampler.
@@ -67,7 +67,8 @@ Current support
      - Ordinary ``--model co2`` phases consume one preparation or sample
        manifest. Cached fixed-OU retains its separate staged interface; see
        `Staged CO₂ commands`_ below.
-     - Not supported by the staged CLI.
+     - ``--model co2_o2`` phases consume one preparation or sample manifest
+       for the same-unit joint model; see `Staged linked CO₂/O₂ commands`_.
    * - Outputs and postprocessing
      - Scientific operation composition and the cached runner retain an
        annotated xarray ``DataTree``. Configured ordinary execution returns
@@ -77,9 +78,10 @@ Current support
        <co2-affine-flux-summaries>` are available from a bound affine artifact;
        staged basic, concentration, conditional native-flux and country products
        are available, with supported PARIS exports.
-     - Returns an annotated xarray ``DataTree``. A bounded Python adapter produces
-       separate CO2/O2 PARIS concentration products and supported native flux
-       products; staged output integration remains future work.
+     - Direct runners return an annotated xarray ``DataTree``. Saved replay
+       returns ``Co2O2Output`` with channel components, predictions, residuals,
+       shared state scaling and separate CO2/O2 products. Supported PARIS
+       concentration and conditional bucket-native products are available.
    * - Validation and acceptance
      - Coherent preparation, dedicated serialization, model construction,
        configuration resolution, replay, provenance, and cached-sampler
@@ -101,8 +103,8 @@ in the observation likelihood. The shared pages on :doc:`grouped basis layouts
 making those concepts specific to CO₂.
 
 The family page records present software support, not evidence that a selected
-recipe is scientifically suitable for a particular inversion. Linked
-staged integration and scientist acceptance are tracked in `OPE-79
+recipe is scientifically suitable for a particular inversion. Remaining
+scientist acceptance is tracked in `OPE-79
 <https://linear.app/openghg-inversions/issue/OPE-79>`_. The CO₂ commands reuse
 the TOML configuration boundary and prepared-input scientific operations.
 
@@ -309,5 +311,144 @@ first observed day through the day after the final observation. Cached stage
 products retain their literal filenames such as ``basic.nc`` and
 ``concentration_components.nc`` and their postprocess manifest. Recorded sampler
 settings are descriptive provenance and do not construct a sampler during replay.
-Linked CO₂/O₂ staged routing remains separate in OPE-165; nested workflows are
-outside these CO₂ commands.
+Linked CO₂/O₂ uses its own joint handoffs below; nested workflows are outside
+these CO₂ commands.
+
+
+.. _linked-staged-commands:
+
+Staged linked CO₂/O₂ commands
+-----------------------------
+
+``--model co2_o2`` selects one joint model with shared GPP/TER/fossil states,
+separate ocean states and cross-channel aggregation covariance. The CO₂ and
+O₂ observations can have different lengths, sites and times. Prepare their
+scientific arrays with
+:func:`openghg_inversions.rhime.co2.prepare_co2_o2_inputs`, then save the
+:class:`~openghg_inversions.rhime.co2.Co2O2PreparedInputs` artifact to NetCDF
+or Zarr. Product discovery and campaign policy belong to the caller.
+
+The packaged ``co2_o2.toml`` template configures these saved phases. It has no
+``variant`` selector. A minimal request using the saved independent-error vector
+is:
+
+.. code-block:: toml
+
+   format_version = 1
+   recipe = "co2_o2"
+
+   [prepared_inputs]
+   path = "linked-inputs.nc"
+   start_date = "2020-01-01"
+   end_date = "2020-02-01"
+   domain = "EUROPE"
+
+   [channels.co2]
+   units = "ppm"
+
+   [channels.o2]
+   units = "ppm"
+
+   [sampling]
+   draws = 1000
+   tune = 1000
+   chains = 4
+   nuts_sampler = "pymc"
+   random_seed = 12345
+   sample_prior_predictive = 100
+   sample_posterior_predictive = true
+
+   [outputs]
+   output_format = "basic"
+   output_name = "linked"
+   save_concentrations = true
+
+Both configured channel labels and the imported artifact must use the same
+concentration unit and numerical scale. Heterogeneous CO₂ ppm plus
+``delta(O2/N2)`` per-meg operation is unsupported until the scientific transform
+in `OPE-86 <https://linear.app/openghg-inversions/issue/OPE-86>`_ is defined.
+The existing numerical codec can retain mixed-unit metadata; that does not
+establish support for executing such an artifact through these phases.
+
+With the current PyMC 6/Numba backend, native multivariate-normal predictive
+draws require ``floatX=float64`` in ``PYTENSOR_FLAGS`` before starting Python or
+the CLI. Its float32 random implementation currently fails during compilation;
+the workflow below is checked with float64. If ``PYTENSOR_FLAGS`` is unset:
+
+.. code-block:: bash
+
+   export PYTENSOR_FLAGS=floatX=float64
+
+If flags are already set, retain the other entries and add or replace the
+``floatX`` entry with ``floatX=float64``. The application does not override an
+explicit precision choice.
+
+The default likelihood combines saved independent errors and the complete
+joint aggregation covariance once. Alternatively configure
+``likelihood.kind = "fixed_ou"`` with positive ``tau_hours`` and nonnegative
+``fixed_site_amplitudes``. Linked OU mappings use ``"co2:MHD"`` and
+``"o2:MHD"`` species/site keys. The installed route supports fixed OU
+amplitudes and requires PyMC for OU sampling. Inferred OU amplitude and cached
+sampler consolidation remain separate work; existing direct Python runners
+retain those interfaces.
+
+.. code-block:: bash
+
+   rhime prepare --model co2_o2 -c co2_o2.toml --output-dir run/prepare
+   rhime prior-predictive --model co2_o2 -c co2_o2.toml \
+     --preparation-manifest run/prepare/prepare-manifest.json \
+     --draws 100 --strict --output-dir run/prior
+   rhime sample --model co2_o2 -c co2_o2.toml \
+     --preparation-manifest run/prepare/prepare-manifest.json \
+     --output-dir run/sample
+   rhime diagnose --sample-manifest run/sample/sample-manifest.json \
+     --output-dir run/diagnose
+   rhime postprocess --model co2_o2 -c co2_o2.toml \
+     --sample-manifest run/sample/sample-manifest.json \
+     --output-dir run/products
+
+Preparation references the imported artifact in place. Retain it with the
+manifests. Requested dates/domain must be explicit or present in preparation
+provenance; they are preserved independently of retained observation times.
+Sampling and prior checks consume current channel/likelihood settings;
+postprocessing consumes current output settings without loading model or
+sampler choices. Relative configuration paths use the invocation directory;
+manifest references use the declaring manifest's directory. Replacing a
+preparation invalidates samples associated with its previous generation.
+
+Python callers can use
+:mod:`openghg_inversions.rhime.co2.co2_o2_handoffs` to save an in-memory
+preparation, sample from it, and replay products. ``load_samples`` and
+``postprocess`` return a borrowed ``Co2O2Output`` retaining the full joint
+trace, preparation, requested window and recorded inference provenance. Replay
+constructs no model or sampler. Channel products preserve shared draw labels;
+keep the joint posterior for cross-channel uncertainty calculations.
+
+``basic`` produces per-channel component summaries and shared retained-state draws;
+``save_concentrations`` also exports component draws. Contributions retain
+GPP/TER/fossil, channel ocean, coherent intercept and optional boundary/offset
+meaning. Mean residuals use observed minus modelled concentrations. Observation
+predictions are included only when the corresponding predictive draws were
+saved; replay does not manufacture them.
+
+``output_format="none"`` suppresses derived products while still honoring an
+explicit ``save_trace`` path (or ``save_trace=true`` with ``output_path``).
+Trace destinations must not overlap referenced artifacts or derived product
+paths, including Zarr directories containing those files.
+
+``paris`` requires prior draws and produces separate CO₂/O₂ concentration
+products. Optional ``native_flux_bases`` and ``country_file`` use the existing
+conditional single-source bucket flux support, with its tracer exclusions;
+see :ref:`linked-prepared-replay` and the linked PARIS section in
+:doc:`co2_models`. ``none`` suppresses products. Output validation and product
+calculation precede file writing.
+
+A self-contained synthetic example uses unequal axes and nonzero cross
+covariance without a private data store:
+
+.. code-block:: bash
+
+   python -m examples.co2_o2_handoffs /tmp/co2-o2-handoffs
+
+Its short chains exercise persistence, prediction and replay, and do not
+establish convergence or scientific acceptance.

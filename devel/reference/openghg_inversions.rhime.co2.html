@@ -453,8 +453,11 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html">openghg_inversions.rhime.co2.co2_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_cached_sigma_model.html">openghg_inversions.rhime.co2.co2_o2_cached_sigma_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_cached_sigma_runner.html">openghg_inversions.rhime.co2.co2_o2_cached_sigma_runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_configuration.html">openghg_inversions.rhime.co2.co2_o2_configuration</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_fixed_ou.html">openghg_inversions.rhime.co2.co2_o2_fixed_ou</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_handoffs.html">openghg_inversions.rhime.co2.co2_o2_handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_model.html">openghg_inversions.rhime.co2.co2_o2_model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_outputs.html">openghg_inversions.rhime.co2.co2_o2_outputs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html">openghg_inversions.rhime.co2.co2_o2_preparation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html">openghg_inversions.rhime.co2.co2_o2_runner</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html">openghg_inversions.rhime.co2.co2_outputs</a></li>
@@ -785,6 +788,68 @@ infer the format from the destination’s .nc or .zarr suffix.</p></li>
 </dd></dl>
 
 <dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.Co2O2Output">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Co2O2Output</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">idata</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">start_date</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">end_date</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">output_metadata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">outputs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.Co2O2Output" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Borrowed linked posterior, preparation, reporting window and products.</p>
+<p><code class="docutils literal notranslate"><span class="pre">idata</span></code> retains one joint posterior and its covariance; channel products
+are marginals with shared draw labels. Replay has no live inference object.</p>
+<dl class="field-list simple">
+</dl>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.Co2O2OutputOptions">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Co2O2OutputOptions</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">output_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'basic'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">output_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">output_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'rhime'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">save_trace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">save_concentrations</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">country_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">paris_postprocessing_kwargs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">native_flux_bases</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.Co2O2OutputOptions" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Linked concentration, state and supported bucket-native reporting choices.</p>
+<p><code class="docutils literal notranslate"><span class="pre">basic</span></code> accepts posterior-only draws; <code class="docutils literal notranslate"><span class="pre">paris</span></code> requires saved prior draws.
+<code class="docutils literal notranslate"><span class="pre">native_flux_bases</span></code> maps co2/o2 to explicit <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> or saved basis
+paths, for the existing conditional single-source bucket PARIS products.
+<code class="docutils literal notranslate"><span class="pre">save_concentrations</span></code> also exports full component draws. Paths resolve from
+the invocation directory; validation and calculation precede writing.
+<code class="docutils literal notranslate"><span class="pre">none</span></code> suppresses derived products while honoring an explicit <code class="docutils literal notranslate"><span class="pre">save_trace</span></code>.</p>
+<dl class="field-list simple">
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.Co2O2OutputOptions.from_params">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.Co2O2OutputOptions.from_params" title="Link to this definition">#</a></dt>
+<dd><p>Resolve only the linked recipe’s supported output settings.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_outputs.html#openghg_inversions.rhime.co2.co2_o2_outputs.Co2O2OutputOptions" title="openghg_inversions.rhime.co2.co2_o2_outputs.Co2O2OutputOptions"><em>Co2O2OutputOptions</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.Co2PreparedInputs">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Co2PreparedInputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rhime_inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregation_error_mode</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">provenance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.Co2PreparedInputs" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
@@ -1103,6 +1168,21 @@ provenance, never executable replay instructions.</p></li>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>The annotated trace.</p>
 </dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.annotate_co2_o2_trace">
+<span class="sig-name descname"><span class="pre">annotate_co2_o2_trace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trace</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">built</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.annotate_co2_o2_trace" title="Link to this definition">#</a></dt>
+<dd><p>Attach the built joint model’s scientific meaning after coordinate restoration.</p>
+<p>Both posterior and native prior-predictive traces retain roles, units,
+preparation provenance and used priors. Fixed-OU traces additionally retain
+species/site grouping and joint likelihood/predictive scope. The trace is
+updated and returned; no graph is constructed or inference performed.</p>
+<dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a></p>
 </dd>
@@ -1632,6 +1712,46 @@ linear signal, coherent affine intercept, and joint Gaussian likelihood.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.3.2)"><em>Model</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.build_rhime_co2_o2">
+<span class="sig-name descname"><span class="pre">build_rhime_co2_o2</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">independent_error_sd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">offset_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">offset_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">tau_hours</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">fixed_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.build_rhime_co2_o2" title="Link to this definition">#</a></dt>
+<dd><p>Materialize borrowed linked inputs and build their joint scientific graph.</p>
+<p>The scientific arguments have the meanings documented by
+<a class="reference internal" href="#openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs" title="openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_rhime_co2_o2_from_prepared_inputs()</span></code></a>. Saved and explicit independent
+errors must agree. Related sensitivities, errors and auxiliary coordinates
+are computed together at this PyMC boundary without mutating the inputs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The concrete model with scientific roles, units and preparation
+provenance, ready for native prior prediction or sampling.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If input labels, errors, channel baseline choices, state
+    activity or covariance are inconsistent with the linked model.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="openghg_inversions.rhime.builders.RhimeModelBuildResult"><em>RhimeModelBuildResult</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -2448,13 +2568,48 @@ by the sampler. No artifact is written to disk.</p>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_cached_sigma_runner.html#openghg_inversions.rhime.co2.co2_o2_cached_sigma_runner.run_rhime_co2_o2_cached_sigma_from_prepared_inputs"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2_cached_sigma_from_prepared_inputs()</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_configuration.html">openghg_inversions.rhime.co2.co2_o2_configuration</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_configuration.html#openghg_inversions.rhime.co2.co2_o2_configuration.load_co2_o2_params"><code class="docutils literal notranslate"><span class="pre">load_co2_o2_params()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_configuration.html#openghg_inversions.rhime.co2.co2_o2_configuration.resolve_co2_o2_preparation"><code class="docutils literal notranslate"><span class="pre">resolve_co2_o2_preparation()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_configuration.html#openghg_inversions.rhime.co2.co2_o2_configuration.resolve_co2_o2_model"><code class="docutils literal notranslate"><span class="pre">resolve_co2_o2_model()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_configuration.html#openghg_inversions.rhime.co2.co2_o2_configuration.resolve_co2_o2_sampler"><code class="docutils literal notranslate"><span class="pre">resolve_co2_o2_sampler()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_configuration.html#openghg_inversions.rhime.co2.co2_o2_configuration.resolve_co2_o2_prior_seed"><code class="docutils literal notranslate"><span class="pre">resolve_co2_o2_prior_seed()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_configuration.html#openghg_inversions.rhime.co2.co2_o2_configuration.validate_co2_o2_units"><code class="docutils literal notranslate"><span class="pre">validate_co2_o2_units()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_fixed_ou.html">openghg_inversions.rhime.co2.co2_o2_fixed_ou</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_fixed_ou.html#openghg_inversions.rhime.co2.co2_o2_fixed_ou.linked_fixed_ou_alignment"><code class="docutils literal notranslate"><span class="pre">linked_fixed_ou_alignment()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_handoffs.html">openghg_inversions.rhime.co2.co2_o2_handoffs</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_handoffs.html#openghg_inversions.rhime.co2.co2_o2_handoffs.Co2O2Preparation"><code class="docutils literal notranslate"><span class="pre">Co2O2Preparation</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_handoffs.html#openghg_inversions.rhime.co2.co2_o2_handoffs.prepare"><code class="docutils literal notranslate"><span class="pre">prepare()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_handoffs.html#openghg_inversions.rhime.co2.co2_o2_handoffs.save_preparation"><code class="docutils literal notranslate"><span class="pre">save_preparation()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_handoffs.html#openghg_inversions.rhime.co2.co2_o2_handoffs.load_preparation"><code class="docutils literal notranslate"><span class="pre">load_preparation()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_handoffs.html#openghg_inversions.rhime.co2.co2_o2_handoffs.sample"><code class="docutils literal notranslate"><span class="pre">sample()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_handoffs.html#openghg_inversions.rhime.co2.co2_o2_handoffs.save_samples"><code class="docutils literal notranslate"><span class="pre">save_samples()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_handoffs.html#openghg_inversions.rhime.co2.co2_o2_handoffs.load_samples"><code class="docutils literal notranslate"><span class="pre">load_samples()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_handoffs.html#openghg_inversions.rhime.co2.co2_o2_handoffs.postprocess"><code class="docutils literal notranslate"><span class="pre">postprocess()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_handoffs.html#openghg_inversions.rhime.co2.co2_o2_handoffs.prior_predictive"><code class="docutils literal notranslate"><span class="pre">prior_predictive()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_model.html">openghg_inversions.rhime.co2.co2_o2_model</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_model.html#openghg_inversions.rhime.co2.co2_o2_model.evaluate_co2_o2_prior_forward_mean"><code class="docutils literal notranslate"><span class="pre">evaluate_co2_o2_prior_forward_mean()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_model.html#openghg_inversions.rhime.co2.co2_o2_model.build_co2_o2_model"><code class="docutils literal notranslate"><span class="pre">build_co2_o2_model()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_outputs.html">openghg_inversions.rhime.co2.co2_o2_outputs</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_outputs.html#openghg_inversions.rhime.co2.co2_o2_outputs.Co2O2Output"><code class="docutils literal notranslate"><span class="pre">Co2O2Output</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_outputs.html#openghg_inversions.rhime.co2.co2_o2_outputs.Co2O2OutputOptions"><code class="docutils literal notranslate"><span class="pre">Co2O2OutputOptions</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_outputs.html#openghg_inversions.rhime.co2.co2_o2_outputs.Co2O2OutputOptions.from_params"><code class="docutils literal notranslate"><span class="pre">Co2O2OutputOptions.from_params()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_outputs.html#openghg_inversions.rhime.co2.co2_o2_outputs.make_co2_o2_output"><code class="docutils literal notranslate"><span class="pre">make_co2_o2_output()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_outputs.html#openghg_inversions.rhime.co2.co2_o2_outputs.resolve_co2_o2_output"><code class="docutils literal notranslate"><span class="pre">resolve_co2_o2_output()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_outputs.html#openghg_inversions.rhime.co2.co2_o2_outputs.validate_co2_o2_trace"><code class="docutils literal notranslate"><span class="pre">validate_co2_o2_trace()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_outputs.html#openghg_inversions.rhime.co2.co2_o2_outputs.validate_co2_o2_product_request"><code class="docutils literal notranslate"><span class="pre">validate_co2_o2_product_request()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_outputs.html#openghg_inversions.rhime.co2.co2_o2_outputs.calculate_co2_o2_products"><code class="docutils literal notranslate"><span class="pre">calculate_co2_o2_products()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_outputs.html#openghg_inversions.rhime.co2.co2_o2_outputs.save_co2_o2_products"><code class="docutils literal notranslate"><span class="pre">save_co2_o2_products()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html">openghg_inversions.rhime.co2.co2_o2_preparation</a><ul>
@@ -2469,7 +2624,9 @@ by the sampler. No artifact is written to disk.</p>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html">openghg_inversions.rhime.co2.co2_o2_runner</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html#openghg_inversions.rhime.co2.co2_o2_runner.build_rhime_co2_o2"><code class="docutils literal notranslate"><span class="pre">build_rhime_co2_o2()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html#openghg_inversions.rhime.co2.co2_o2_runner.run_rhime_co2_o2_from_prepared_inputs"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2_from_prepared_inputs()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html#openghg_inversions.rhime.co2.co2_o2_runner.annotate_co2_o2_trace"><code class="docutils literal notranslate"><span class="pre">annotate_co2_o2_trace()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html">openghg_inversions.rhime.co2.co2_outputs</a><ul>
@@ -2624,6 +2781,11 @@ by the sampler. No artifact is written to disk.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs.load"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.load()</span></code></a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2O2Output"><code class="docutils literal notranslate"><span class="pre">Co2O2Output</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2O2OutputOptions"><code class="docutils literal notranslate"><span class="pre">Co2O2OutputOptions</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2O2OutputOptions.from_params"><code class="docutils literal notranslate"><span class="pre">Co2O2OutputOptions.from_params()</span></code></a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2PreparedInputs.inv_inputs"><code class="docutils literal notranslate"><span class="pre">Co2PreparedInputs.inv_inputs</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2PreparedInputs.basis_functions"><code class="docutils literal notranslate"><span class="pre">Co2PreparedInputs.basis_functions</span></code></a></li>
@@ -2651,6 +2813,7 @@ by the sampler. No artifact is written to disk.</p>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2Output"><code class="docutils literal notranslate"><span class="pre">Co2Output</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.annotate_co2_trace"><code class="docutils literal notranslate"><span class="pre">annotate_co2_trace()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.annotate_co2_o2_trace"><code class="docutils literal notranslate"><span class="pre">annotate_co2_o2_trace()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.materialize_co2_inputs"><code class="docutils literal notranslate"><span class="pre">materialize_co2_inputs()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.build_co2_from_materialized"><code class="docutils literal notranslate"><span class="pre">build_co2_from_materialized()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.sample_co2_cached_prior_predictive"><code class="docutils literal notranslate"><span class="pre">sample_co2_cached_prior_predictive()</span></code></a></li>
@@ -2659,6 +2822,7 @@ by the sampler. No artifact is written to disk.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma"><code class="docutils literal notranslate"><span class="pre">build_rhime_co2_cached_sigma()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_cached_sigma_build_result"><code class="docutils literal notranslate"><span class="pre">co2_cached_sigma_build_result()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.build_co2_o2_model"><code class="docutils literal notranslate"><span class="pre">build_co2_o2_model()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.build_rhime_co2_o2"><code class="docutils literal notranslate"><span class="pre">build_rhime_co2_o2()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.build_co2_o2_cached_sigma_model"><code class="docutils literal notranslate"><span class="pre">build_co2_o2_cached_sigma_model()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_model_input_names"><code class="docutils literal notranslate"><span class="pre">co2_model_input_names()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_config_templates"><code class="docutils literal notranslate"><span class="pre">co2_config_templates()</span></code></a></li>

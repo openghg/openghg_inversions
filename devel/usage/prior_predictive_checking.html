@@ -494,7 +494,9 @@ conditional check, not a wholly pre-data prior predictive distribution.</p>
 supports <code class="docutils literal notranslate"><span class="pre">multisector</span></code>. The <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> has
 a separate staged prepared-input route for CO₂-only models. Both cached-sigma
 CO₂ and linked CO₂/O₂ models expose an observed distribution for native PyMC
-prior and posterior prediction. Linked CO₂/O₂ staging remains unavailable.</p>
+prior and posterior prediction. The linked <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2_o2</span></code> route also supports
+native joint prior checks with unequal channel axes and cross-channel covariance; see
+<a class="reference internal" href="co2_model_family.html#linked-staged-commands"><span class="std std-ref">Staged linked CO₂/O₂ commands</span></a>.</p>
 <section id="prerequisites">
 <h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading">#</a></h2>
 <p>Install the package and populate the companion tutorial store by following
