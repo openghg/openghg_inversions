@@ -579,8 +579,8 @@ def test_conditional_density_and_gradient_match_independent_positive_prior(prior
     value_name = step.sigma_value_name
     assert point[value_name].dtype == graph_precision
     assert step.conditional_sigma.dtype == graph_precision
-    logp = step.conditional_model.compile_logp()
-    dlogp = step.conditional_model.compile_dlogp()
+    logp_dlogp = step.nuts_step._logp_dlogp_func
+    logp_dlogp.set_extra_values({})
     family = prior["pdf"]
     if family == "halfnormal":
         distribution = stats.halfnorm(scale=0.75)
@@ -612,12 +612,13 @@ def test_conditional_density_and_gradient_match_independent_positive_prior(prior
     tolerance = max(1e-10, 16 * np.finfo(graph_precision).eps)
     for eta in (point[value_name], np.array([-0.7, 0.2]), np.array([1.0, -1.5])):
         eta = np.asarray(eta, dtype=graph_precision)
-        np.testing.assert_allclose(logp({value_name: eta}), expected(eta), rtol=max(tolerance, 1e-7), atol=tolerance)
+        actual_logp, actual_gradient = logp_dlogp(DictToArrayBijection.map({value_name: eta}))
+        np.testing.assert_allclose(actual_logp, expected(eta), rtol=max(tolerance, 1e-7), atol=tolerance)
         gradient = np.array([
             (expected(eta + np.eye(2)[axis] * 1e-5) - expected(eta - np.eye(2)[axis] * 1e-5)) / 2e-5
             for axis in range(2)
         ])
-        np.testing.assert_allclose(dlogp({value_name: eta}), gradient, rtol=max(tolerance, 1e-7), atol=max(tolerance, 1e-7))
+        np.testing.assert_allclose(actual_gradient, gradient, rtol=max(tolerance, 1e-7), atol=max(tolerance, 1e-7))
 
 
 @pytest.mark.parametrize("bounded", [False, True])
