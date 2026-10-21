@@ -36,7 +36,7 @@ from openghg_inversions.models._gaussian_observation import (
 )
 from openghg_inversions.models.components import add_model_data
 from openghg_inversions.models.coords import add_coords
-from openghg_inversions.models.priors import parse_prior, positive_prior_args
+from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.observation_error import (
     AggregationError,
     validate_observation_error_arrays,
@@ -171,7 +171,8 @@ def add_site_sigma_gaussian_likelihood(
         add_coords({SITE_SIGMA_DIM: site_coord})
         sigma_site = parse_prior(
             SITE_SIGMA,
-            positive_prior_args(site_amplitude_prior),
+            site_amplitude_prior,
+            positive=True,
             dims=SITE_SIGMA_DIM,
         )
 

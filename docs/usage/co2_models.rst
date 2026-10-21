@@ -255,7 +255,7 @@ callable imports:
    * - ``co2``
      - ``cached_fixed_ou``
      - ``run_rhime_co2_cached_sigma``
-     - Fixed positive OU timescales and HalfNormal site amplitudes, using the
+     - Fixed positive OU timescales and independent positive site amplitudes, using the
        runner-owned PyMC sampler.
    * - ``co2_o2``
      - ``linked``
@@ -265,7 +265,7 @@ callable imports:
    * - ``co2_o2``
      - ``cached_fixed_ou``
      - ``run_rhime_co2_o2_cached_sigma_from_prepared_inputs``
-     - Fixed OU timescales and HalfNormal species/site amplitudes, using the
+     - Fixed OU timescales and independent positive species/site amplitudes, using the
        runner-owned PyMC sampler; one shared channel-unit label.
 
 For ``variant = "ordinary"``, the ``[likelihood]`` table accepts these closed
@@ -320,8 +320,8 @@ false). A global offset (``per_site = false``) cannot set a frequency or use
 
 For ``variant = "cached_fixed_ou"``, ``[likelihood]`` requires
 ``kind = "fixed_ou"``, positive scalar-or-site-map ``tau_hours`` (species/site
-keys such as ``"co2:MHD"`` for the linked recipe), and positive
-``site_amplitude_prior_scale``. It optionally accepts positive
+keys such as ``"co2:MHD"`` for the linked recipe), and a positive-support
+``site_amplitude_prior`` table. It optionally accepts positive
 ``initial_site_amplitudes`` and the zero-to-one controls
 ``sigma_target_accept`` and ``state_target_accept``. Its ``[sampling]`` table
 must use ``nuts_sampler = "pymc"``; posterior-predictive name lists may contain
@@ -1058,7 +1058,7 @@ For example::
    idata = run_rhime_co2_cached_sigma(
        prepared_inputs=prepared,
        tau_hours={"BSD": 24.0, "TAC": 18.0},
-       site_amplitude_prior_scale=0.75,  # concentration units
+       site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
        use_bc=True,
        bc_prior={
            "pdf": "truncatednormal",
@@ -1114,18 +1114,26 @@ observation variable), or a boolean; an empty sequence disables prediction.
 Only ``random_seed`` is supported in ``posterior_predictive_kwargs``.
 
 The builder returns ``initial_values`` containing physical amplitude defaults
-and any boundary/offset prior start strategies. The runner merges caller
+from the prior's PyMC support point and any boundary/offset prior start strategies.
+Explicit ``initial_site_amplitudes`` must lie strictly inside the prior support
+and have finite transformed values. The runner merges caller
 ``sample_kwargs["initvals"]`` over these defaults, including transformed keys
 and per-chain mappings. For direct low-level sampling, pass this mapping as
 ``initvals`` and construct the matched step with ``cached_state_logp`` and an
 initial point resolved from those defaults. The public graph carries no custom
 initial-value metadata, so generic log-likelihood computation works directly.
 
-This route deliberately supports only independent HalfNormal site-amplitude
-priors and fixed positive OU timescales. Sampled tau and alternative amplitude
-priors are separate extensions. The route is PyMC-only because it constructs
-and owns a PyMC ``CompoundStep``. The ordinary stock-PyMC fixed-OU likelihood
-above remains the log-density/gradient oracle and fallback.
+This route supports independent HalfNormal, HalfStudentT, Exponential, Gamma,
+LogNormal and Uniform amplitude priors with non-negative support, and fixed
+positive OU timescales. The conditional amplitude update derives its prior density
+and transform Jacobian from the scientific graph, including the interval transform
+for a bounded Uniform prior. The matched sampler uses a direct LogNormal variable
+and warns when an explicit ``reparameterise = true`` request is normalized to
+that construction; the physical distribution is unchanged.
+Sampled tau and hierarchical amplitude priors are not supported.
+The route is PyMC-only because it constructs and owns a PyMC ``CompoundStep``.
+The ordinary stock-PyMC fixed-OU likelihood above remains an independent
+log-density/gradient reference.
 
 The exponential within-site covariance follows the stationary process of
 `Uhlenbeck and Ornstein (1930)
@@ -1182,13 +1190,13 @@ For example, the ordinary linked configuration can include:
 Replace ``fixed_site_amplitudes`` with a ``site_amplitude_prior`` table to infer
 amplitudes with stock PyMC. The optimized runner
 :func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs`
-uses independent HalfNormal amplitude priors and the existing CO2
+uses independent positive amplitude priors and the existing CO2
 sigma-then-state ``CompoundStep``. It refreshes the exact state quadratic only
 when returned amplitude values change, then updates all active flux, boundary,
 and offset coefficients against that cache. Its builder is
 :func:`openghg_inversions.rhime.co2.build_co2_o2_cached_sigma_model`.
 
-Select ``variant = "cached_fixed_ou"`` and supply ``site_amplitude_prior_scale``
+Select ``variant = "cached_fixed_ou"`` and supply ``site_amplitude_prior``
 in ``[likelihood]`` in place of fixed amplitudes. Optional
 ``initial_site_amplitudes`` accepts the same scalar or species/site mapping.
 Sampler options match the CO2 cached recipe, including separate

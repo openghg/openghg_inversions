@@ -312,7 +312,7 @@ def test_cached_joint_draws_with_baseline_emit_paris(tmp_path, native_multiindex
         prepared_inputs=prepared,
         independent_error_sd=_independent_error(prepared),
         tau_hours=12.0,
-        site_amplitude_prior_scale=0.5,
+        site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.5},
         bc_prior={"co2": {"pdf": "normal", "mu": 1.0, "sigma": 0.1}},
         offset_prior={"o2": {"pdf": "normal", "mu": 0.0, "sigma": 0.1}},
         offset_args={"o2": {"per_site": False}},

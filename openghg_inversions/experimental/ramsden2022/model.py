@@ -606,7 +606,7 @@ def _ratio_tensors(
     )
     prior_dims = state_dim if sector.ratio_resolution == "spatial" else None
     if sector.ratio_prior is not None:
-        kwargs = {"dims": prior_dims} if prior_dims is not None else {}
+        kwargs: dict[str, Any] = {"dims": prior_dims} if prior_dims is not None else {}
         parameter = parse_prior(parameter_name, sector.ratio_prior, **kwargs)
     else:
         assert sector.fixed_ratio is not None

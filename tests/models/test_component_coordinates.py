@@ -100,7 +100,7 @@ def _co2_model(sensitivity, boundary, bc_prior, *, partial_activity=False, cache
         bc_prior=bc_prior,
         state_activity=StateActivity(active=np.array([True, False, True])) if partial_activity else None,
         bc_state_activity=StateActivity(active=np.array([True, False])) if partial_activity else None,
-        **({"tau_hours": 6., "site_amplitude_prior_scale": .5} if cached else {}),
+        **({"tau_hours": 6., "site_amplitude_prior": {"pdf": "halfnormal", "sigma": .5}} if cached else {}),
     )
     return result.model if cached else result
 

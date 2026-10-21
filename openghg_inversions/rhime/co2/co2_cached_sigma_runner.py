@@ -154,7 +154,6 @@ def _sampler_for_cached_graph(
             target=cached_model.target,
             shared_cache=cached_model.shared_cache,
             initial_cache=cached_model.initial_cache,
-            prior_scale=cached_model.site_amplitude_prior_scale,
             cached_state_logp=cached_model.cached_state_logp,
             initial_point=baseline,
             sigma_target_accept=sigma_target_accept,
@@ -220,7 +219,7 @@ def build_rhime_co2_cached_sigma(
     *,
     prepared_inputs: Co2PreparedInputs,
     tau_hours: float | Mapping[str, float],
-    site_amplitude_prior_scale: float,
+    site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     use_bc: bool = False,
     bc_prior: PriorArgs | None = None,
@@ -235,10 +234,10 @@ def build_rhime_co2_cached_sigma(
             time coordinates and the selected aggregation-error representation.
         tau_hours: Fixed OU decorrelation time in hours, as a scalar or a
             mapping covering all observed sites.
-        site_amplitude_prior_scale: HalfNormal site-amplitude prior scale in
+        site_amplitude_prior: Independent positive site-amplitude prior in
             observation concentration units.
         initial_site_amplitudes: Positive scalar or site mapping in the same
-            units; defaults to the prior scale.
+            units; defaults to the prior support point.
         use_bc: Include prepared boundary sensitivity ``H_bc``.
         bc_prior: Optional boundary-scaling prior.
         bc_state_activity: Optional active/fixed boundary-state policy.
@@ -282,7 +281,7 @@ def build_rhime_co2_cached_sigma(
         observation_error=model_inputs["mf_error"],
         aggregation_error=aggregation_error,
         tau_hours=tau_hours,
-        site_amplitude_prior_scale=site_amplitude_prior_scale,
+        site_amplitude_prior=site_amplitude_prior,
         initial_site_amplitudes=initial_site_amplitudes,
         state_activity=cast(StateActivity | None, _state_activity_from_inputs(model_inputs)),
         boundary_sensitivity=model_inputs.get("H_bc") if use_bc else None,
@@ -399,7 +398,7 @@ def run_rhime_co2_cached_sigma(
     *,
     prepared_inputs: Co2PreparedInputs,
     tau_hours: float | Mapping[str, float],
-    site_amplitude_prior_scale: float,
+    site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     sampler: RhimeSampler | Literal["default"] = "default",
     sigma_target_accept: float = 0.8,
@@ -429,11 +428,11 @@ def run_rhime_co2_cached_sigma(
             aggregation-error representation must also be present.
         tau_hours: Fixed OU decorrelation time in hours. A scalar applies to
             every site; a mapping must cover every observed site label.
-        site_amplitude_prior_scale: Scale of the independent HalfNormal site-
-            amplitude priors, in the observations' concentration units.
+        site_amplitude_prior: Independent positive prior for site amplitudes,
+            in the observations' concentration units.
         initial_site_amplitudes: Optional positive initial amplitude in the
             same units, supplied as one scalar or a mapping covering every
-            observed site. Defaults to ``site_amplitude_prior_scale``.
+            observed site. Defaults to the prior support point.
         sampler: Sampler configuration or ``"default"``; explicit ``None`` is invalid. This recipe requires PyMC,
             constructs its own step, and supports only ``random_seed`` in
             ``posterior_predictive_kwargs``.
@@ -467,7 +466,7 @@ def run_rhime_co2_cached_sigma(
     cached_model = build_rhime_co2_cached_sigma(
         prepared_inputs=prepared_inputs,
         tau_hours=tau_hours,
-        site_amplitude_prior_scale=site_amplitude_prior_scale,
+        site_amplitude_prior=site_amplitude_prior,
         initial_site_amplitudes=initial_site_amplitudes,
         use_bc=use_bc,
         bc_prior=bc_prior,

@@ -24,7 +24,7 @@ def _config(path):
         "recipe": "co2",
         "variant": "cached_fixed_ou",
         "prepared_inputs": {"path": str(path)},
-        "likelihood": {"kind": "fixed_ou", "tau_hours": 24.0, "site_amplitude_prior_scale": 1.0},
+        "likelihood": {"kind": "fixed_ou", "tau_hours": 24.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.0}},
         "sampling": {"draws": 4, "tune": 4, "chains": 1, "nuts_sampler": "pymc"},
     }
 
@@ -82,7 +82,7 @@ def test_invalid_cached_site_mapping_has_no_destination(tmp_path):
         likelihood={
             "kind": "fixed_ou",
             "tau_hours": {"wrong": 24.0},
-            "site_amplitude_prior_scale": 1.0,
+            "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.0},
         },
     )
     setup = resolve_co2_stage_setup(params)
@@ -247,7 +247,7 @@ def test_cached_tuning_is_sampling_configuration(tmp_path):
         likelihood={
             "kind": "fixed_ou",
             "tau_hours": 24.0,
-            "site_amplitude_prior_scale": 1.0,
+            "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.0},
         },
     )
     first = co2_configuration_identity(resolve_co2_stage_setup(params))

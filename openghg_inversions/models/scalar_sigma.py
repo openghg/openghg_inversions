@@ -27,7 +27,7 @@ import xarray as xr
 
 from openghg_inversions.array_ops import to_dense, validate_covariance_coordinates
 from openghg_inversions.models.components import add_model_data
-from openghg_inversions.models.priors import parse_prior, positive_prior_args
+from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.serialization import decode_cf_multiindexes, encode_cf_multiindexes
 
@@ -669,7 +669,7 @@ def add_scalar_sigma_eigen_likelihood(
     """
     observed = add_model_data(observations.transpose(output_dim), "Y")
     reported_error = add_model_data(observation_error.transpose(output_dim), "error")
-    sigma = parse_prior("sigma_global", positive_prior_args(sigma_prior))
+    sigma = parse_prior("sigma_global", sigma_prior, positive=True)
     pm.Deterministic(
         "epsilon",
         pt.sqrt(

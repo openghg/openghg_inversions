@@ -85,7 +85,7 @@ def _configuration(directory: Path, variant: str) -> Path:
     likelihood = (
         'kind = "additive_sigma"\nno_model_error = true\nfixed_model_mismatch = 0.0'
         if variant == "ordinary"
-        else 'kind = "fixed_ou"\ntau_hours = 24.0\nsite_amplitude_prior_scale = 0.3'
+        else 'kind = "fixed_ou"\ntau_hours = 24.0\nsite_amplitude_prior = {pdf = "halfnormal", sigma = 0.3}'
     )
     path = directory / f"{variant}.toml"
     path.write_text(

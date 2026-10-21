@@ -52,7 +52,7 @@ def build_co2_o2_cached_sigma_model(
     retained_prior: CorrelatedLognormalPrior,
     independent_error_sd: xr.DataArray,
     tau_hours: float | Mapping[str, float],
-    site_amplitude_prior_scale: float,
+    site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary_sensitivity: Mapping[str, xr.DataArray] | None = None,
@@ -69,8 +69,8 @@ def build_co2_o2_cached_sigma_model(
     use the same concentration unit. OU blocks are independent by
     ``(species, site)`` while the prepared aggregation covariance retains all
     cross-channel entries. ``tau_hours`` is fixed, in hours; mappings use
-    ``co2:SITE``/``o2:SITE`` keys. Amplitudes have independent HalfNormal priors
-    with ``site_amplitude_prior_scale`` in concentration units. Optional positive
+    ``co2:SITE``/``o2:SITE`` keys. Amplitudes have independent positive priors
+    specified by ``site_amplitude_prior`` in concentration units. Optional positive
     initial amplitudes use the same scalar or species/site mapping convention.
     The returned graph must be sampled with the CO2 sigma-then-state
     CompoundStep and its explicit cached state function. The observed joint
@@ -78,8 +78,6 @@ def build_co2_o2_cached_sigma_model(
     values are returned separately for sampling; observations, designs,
     activity masks, and covariance stay fixed after construction.
     """
-    if not np.isfinite(site_amplitude_prior_scale) or site_amplitude_prior_scale <= 0:
-        raise ValueError("site_amplitude_prior_scale must be finite and strictly positive.")
     validate_observation_error_arrays(
         observations,
         independent_error_sd,
@@ -93,7 +91,6 @@ def build_co2_o2_cached_sigma_model(
     initial_amplitudes = _site_values(
         initial_site_amplitudes,
         site_coord=site_coord,
-        default=site_amplitude_prior_scale,
     )
     joint = _gather_co2_o2_sensitivity(co2_sensitivity, o2_sensitivity, output_dim=output_dim)
     joint = joint.sel({output_dim: observations[output_dim]})
@@ -188,6 +185,6 @@ def build_co2_o2_cached_sigma_model(
             site_coord=site_coord,
             site_index=site_index,
             initial_amplitudes=initial_amplitudes,
-            site_amplitude_prior_scale=site_amplitude_prior_scale,
+            site_amplitude_prior=site_amplitude_prior,
             output_dim=output_dim,
         )

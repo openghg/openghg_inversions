@@ -2,6 +2,28 @@
 
 ## Context
 
+The maintainer's 20 October 2026 amendment is delivered as OPE-219 → OPE-220 →
+OPE-221. It supersedes earlier cached public-runner preservation: one configured
+`run_co2` returns `Co2Output`, and the scientific fixed-OU/inferred-amplitude choice
+selects the matched cached sampler internally. There is no public cached variant,
+algorithm switch, silent fallback or CO2 compatibility alias requirement.
+Existing other likelihoods retain their appropriate inference operations.
+
+OPE-219 first constructs a supported independent positive amplitude prior once
+in the scientific graph. The conditional amplitude update consumes that graph's
+prior density with its Jacobian and physical-amplitude transform. This avoids
+duplicating a HalfNormal distribution or assuming every sampling coordinate is a
+log amplitude. Initialization uses the prior's support point or explicit physical
+values and must be valid in physical and transformed coordinates. The covariance
+target and accepted-cache lifecycle remain unchanged.
+
+OPE-220 supplies shared scientific inference selection and configured full
+execution; OPE-221 migrates saved phases onto the ordinary CO2 handoff/product
+owners. The complete trace and bound affine reconstruction already fit the merged
+`Co2Output`, so the 17 October common-carrier proposal does not require another
+carrier migration. Linked numerical callers follow shared prior changes;
+linked saved workflows and programme closeout retain their separate owners.
+
 See [proposal.md](proposal.md) for the replacement's motivation. The inspected
 landed base is `devel` at `7269f50f` (12 October 2026). PRs #773/#774 and #822–#825
 provide acquisition, prepared-value, inference and concrete configuration owners.
@@ -182,7 +204,8 @@ calls explicitly passing `None` must omit it or pass `"default"` instead, with a
 clear migration error. Update signatures, docstrings, examples and tests together.
 Lower-level operations that require an already resolved sampler can retain their
 object-only argument rather than gain another default-selection boundary.
-For cached CO2, defaults and explicit samplers still enter its matched construction,
+The 20 October amendment above supersedes explicit sampler selection for configured
+CO2 fixed-OU inference. In the earlier cached interface, defaults and explicit samplers enter its matched construction,
 step and prediction operation, never a generic sampler substitution.
 
 These meanings are consistent even though each interface accepts only its
