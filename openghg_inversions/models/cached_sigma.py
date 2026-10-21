@@ -9,7 +9,7 @@ from typing import cast
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy.linalg import cho_solve
-from scipy.linalg.lapack import dpocon
+from scipy.linalg.lapack import dpocon  # type: ignore[attr-defined]  # Generated SciPy wrapper.
 
 from openghg_inversions.models.fixed_ou import (
     FixedOuLikelihoodEvaluation,
