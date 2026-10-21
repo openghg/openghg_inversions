@@ -18,6 +18,10 @@ Repository plans retain delivery history, proposals, research, and validation ev
   21 October 2026 guarded low-rank cache implementation, preceding research,
   rank-256/full-rank timings, Python 3.12/3.13 validation and numerical limits.
   Sampled-chain acceptance and operational adoption remain with OPE-152.
+- [OPE-152 native amplitude prototype](ope152_native_amplitude_performance.md):
+  21 October 2026 native-kernel iterations, short CVM/native sampling comparison,
+  startup costs and mixed ESS results. This dated evidence does not establish a
+  supported backend; operational adoption remains with OPE-152.
 
 ## Inventory and remaining cleanup
 

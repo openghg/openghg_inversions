@@ -326,7 +326,10 @@ work should prioritize the amplitude numerical kernel over the flux/boundary
 update. The local geometry evidence above and short amplitude trees still give
 no reason to prefer a full metric. Native Numba support could remove Python
 callbacks too, but material extra savings over CVM would require improving numerical
-work or allocations; no native-kernel speedup has been measured.
+work or allocations. No native-kernel speedup had been measured at this stage.
+The subsequent [native amplitude prototype comparison](ope152_native_amplitude_performance.md)
+records the numerical changes, measured savings, startup costs and mixed ESS/s
+results from the next experiment; the CVM measurements above remain unchanged.
 
 The [compiler profiler](../../scripts/profile_ope152_amplitude_cvm.py) reproduces
 the six-anchor microbenchmark and separate sampling processes with the same
