@@ -190,7 +190,6 @@ def test_shared_inference_preserves_coherent_equations_and_products(
     assert result.outputs["concentration_components"].sizes["prior_draw"] == 8
     assert result.outputs["concentration_components"].sizes["draw"] == 12
     assert result.outputs["concentration_components"].modelled_posterior.attrs["units"] == "ppm"
-    assert "active_flux_scale_posterior" in result.outputs["concentration_components"]
 
     built, cached = built_models[0]
     point = built.model.initial_point()

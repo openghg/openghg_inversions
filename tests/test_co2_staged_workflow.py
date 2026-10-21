@@ -24,6 +24,7 @@ from openghg_inversions.rhime.co2.co2_affine_output import (
     prepared_inputs_content_id,
     produce_bucket_affine_flux_map,
 )
+from openghg_inversions.rhime.co2.co2_outputs import reconstruct_co2_concentrations
 from openghg_inversions.serialization import load_trace
 from test_co2_preparation import _canonical_inputs, _reduction
 
@@ -157,7 +158,7 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(
     """Keep installed cached inference, scientific handoff and two-chain diagnosis."""
     monkeypatch.delenv("RUN_ROOT", raising=False)
     monkeypatch.chdir(tmp_path)
-    source, _ = _handoff(tmp_path)
+    source, prepared = _handoff(tmp_path)
     config = _configuration(tmp_path, "fixed_ou")
     common = ["--model", "co2", "--config", str(config)]
     preparation = tmp_path / "prepare" / "prepare-manifest.json"
@@ -183,6 +184,7 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(
     assert trace.prior.sizes["draw"] == 8
     roles = json.loads(trace.attrs["rhime_variable_roles"])
     np.testing.assert_allclose(trace.posterior[roles["flux_scale"]].sel(region=1), 0.9)
+    assert "active_flux_scale_posterior" in reconstruct_co2_concentrations(trace, prepared)
     saved_prior = trace.prior_predictive[roles["concentration"]]
     assert saved_prior.sizes["draw"] == 8
     assert np.isfinite(saved_prior).all()
