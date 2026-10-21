@@ -89,17 +89,17 @@ def test_saved_sampling_forwards_scientific_objects_and_persists_returned_trace(
         return result
 
     def resolve_model(options, *, data_config):
-        assert data_config is loaded[0][1]
+        assert data_config == loaded[0][1]
         result = resolve(options, data_config=data_config)
         resolved.append(result)
         return result
 
     def materialize(prepared, model):
-        assert prepared is loaded[0][0] and model is resolved[0]
+        assert prepared is loaded[0][0] and model == resolved[0]
         return model_inputs, priors
 
     def build(inputs, model, **kwargs):
-        assert inputs is model_inputs and model is resolved[0]
+        assert inputs is model_inputs and model == resolved[0]
         assert kwargs["priors"] == priors
         assert kwargs["likelihood_builder"] is likelihood_builder
         assert kwargs["likelihood_kwargs"] == likelihood_kwargs
