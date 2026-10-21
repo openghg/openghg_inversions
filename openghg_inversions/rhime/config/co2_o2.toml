@@ -1,8 +1,13 @@
-# Linked CO2/O2 replay from an in-memory prepared-input artifact.
+# Linked CO2/O2 execution from a public prepared-input artifact.
 # The current configuration requires one shared concentration-unit label.
 format_version = 1
 recipe = "co2_o2"
-variant = "linked"
+
+[prepared_inputs]
+path = "co2-o2-prepared.nc"
+start_date = "2020-01-01"
+end_date = "2020-02-01"
+domain = "EUROPE"
 
 [channels.co2]
 units = "ppm"
@@ -12,6 +17,13 @@ independent_error_sd = 1.0
 units = "ppm"
 independent_error_sd = 1.0
 
+[likelihood]
+kind = "fixed_independent"
+# Fixed-amplitude OU alternative (requires sampling.nuts_sampler = "pymc"):
+# kind = "fixed_ou"
+# tau_hours = 24.0
+# fixed_site_amplitudes = 0.5
+
 [sampling]
 draws = 1000
 tune = 1000
@@ -19,6 +31,9 @@ chains = 4
 nuts_sampler = "numpyro"
 target_accept = 0.95
 random_seed = 12345
+
+[outputs]
+output_format = "basic"
 
 # Optional channel-specific baseline settings (require matching prepared H_bc).
 # [channels.co2.boundary]

@@ -177,7 +177,10 @@ installed paths. Copy the closest template for a run; do not edit the installed
 resource. The templates configure the existing prepared-input Python seams.
 The CO2-only templates also underpin ``--model co2`` staged commands; see
 :doc:`co2_model_family` for the staged output table and complete command
-sequence. Linked CO2/O2 templates remain Python-only.
+sequence, including :ref:`linked saved phases <linked-staged-commands>`.
+The packaged linked template uses that phase interface without a ``variant``
+selector; the retained direct-runner resolver described below uses its own
+explicit ``linked`` or ``cached_fixed_ou`` variant.
 
 :func:`openghg_inversions.rhime.co2.load_co2_family_config` reads TOML. Ordinary
 CO₂ uses :func:`~openghg_inversions.rhime.co2.run_co2` or the Python/CLI model
@@ -456,22 +459,24 @@ The linked :class:`~openghg_inversions.rhime.co2.Co2O2PreparedInputs` artifact
 supports NetCDF and Zarr save/load at the prepared-input Python boundary.
 Construct it through the documented preparation boundary or restore it before
 binding the configured runner arguments; see :ref:`linked-prepared-replay`.
-These methods do not add linked staged CLI routing.
+The installed linked phases consume the same artifact; see
+:ref:`linked-staged-commands`.
 
-The linked template therefore follows a prepare, bind, and run sequence. The
-scientific array names below are the labelled inputs documented by
+The retained direct-runner configuration follows a prepare, bind, and run
+sequence. The scientific array names below are the labelled inputs documented by
 :func:`~openghg_inversions.rhime.co2.prepare_co2_o2_inputs`; replace them with
 the products from one coherent reduction. Exactly one of
 ``o2_co2_flux_ratio`` and ``o2_co2_flux_ratio_unavailable_reason`` must be
 non-null::
 
    from openghg_inversions.rhime.co2 import (
-       load_co2_family_config,
        prepare_co2_o2_inputs,
        resolve_co2_family_config,
    )
 
-   config = load_co2_family_config("my-co2-o2.toml")
+   config = {"format_version": 1, "recipe": "co2_o2", "variant": "linked",
+             "channels": {"co2": {"units": "ppm", "independent_error_sd": 1.0},
+                          "o2": {"units": "ppm", "independent_error_sd": 1.0}}}
    setup = resolve_co2_family_config(config)
 
    prepared = prepare_co2_o2_inputs(
@@ -879,7 +884,8 @@ Separate linked PARIS products
 projects one linked posterior into separate CO2 and O2 products. It supports
 ``template_version="latest"``: concentration v04 and native flux v03. The
 adapter operates after sampling, using the prepared inputs and restored trace;
-it does not add a staged model route::
+the staged linked route also exposes these products through
+``output_format="paris"`` (see :ref:`linked-staged-commands`). Direct callers can use::
 
    from openghg_inversions.postprocessing.linked_paris_outputs import (
        make_co2_o2_paris_outputs,
