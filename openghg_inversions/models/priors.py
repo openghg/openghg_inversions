@@ -106,6 +106,7 @@ def parse_prior(
     name: str, prior_params: PriorArgs, *,
     active_indices: np.ndarray | None = None,
     record_name: str | None = None,
+    positive: bool = False,
     **kwargs,
 ) -> TensorVariable:
     """Create a continuous PyMC prior from a prior-parameter dictionary.
@@ -116,6 +117,8 @@ def parse_prior(
             parameters accepted by the chosen PyMC distribution.
         active_indices: Optional graph selection from canonical registered arrays.
         record_name: Scientific variable name owning an active-only prior record.
+        positive: Require a prior with non-negative support after materializing
+            its parameters together.
         **kwargs: Additional keyword arguments forwarded to the created PyMC
             variable, such as ``dims``.
 
@@ -143,6 +146,8 @@ def parse_prior(
 
     params = prior_params.copy()
     pdf = str(params.pop("pdf")).lower()
+    if positive:
+        pdf = positive_prior_args({"pdf": pdf})["pdf"]
 
     try:
         dist = getattr(continuous, pdf_dict[pdf])
@@ -205,6 +210,9 @@ def parse_prior(
     # Compute whole labelled arrays together, including lazy auxiliaries.
     values = compute(*params.values())
     params = dict(zip(params, values, strict=True))
+    if positive:
+        params = positive_prior_args({"pdf": pdf, **params})
+        params.pop("pdf")
     if pdf == "uniform":
         lower, upper = params.get("lower", 0.0), params.get("upper", 1.0)
         for bound in (lower, upper):

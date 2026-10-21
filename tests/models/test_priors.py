@@ -97,7 +97,8 @@ def test_uniform_accepts_valid_effective_default_bounds(bounds):
     assert np.isfinite(model.compile_logp()(model.initial_point()))
 
 
-def test_uniform_aligns_lazy_bound_pairs_once_without_mutating_inputs():
+@pytest.mark.parametrize("positive", [False, True])
+def test_uniform_aligns_lazy_bound_pairs_once_without_mutating_inputs(positive):
     import dask.array as da
     from dask import delayed
     from openghg_inversions.models.coords import registered_model
@@ -114,7 +115,7 @@ def test_uniform_aligns_lazy_bound_pairs_once_without_mutating_inputs():
     upper = xr.DataArray(payload[1], dims="region", coords={"region": ["a", "b"]})
     prior = {"pdf": "uniform", "lower": lower, "upper": upper}
     with registered_model(coords={"region": ["a", "b"]}) as model:
-        parse_prior("bounded", prior, dims="region")
+        parse_prior("bounded", prior, positive=positive, dims="region")
     assert executions == [1]
     np.testing.assert_array_equal(model["bounded_prior_lower"].get_value(), [0.1, 0.6])
     assert prior["lower"] is lower and isinstance(lower.data, da.Array)
@@ -139,3 +140,32 @@ def test_uniform_bound_validation_matches_positional_tensor_broadcasting(dims, l
         parse_prior("bounded", {"pdf": "uniform", "lower": lower, "upper": upper},
                     dims=dims, shape=1 if active is not None else 2, active_indices=active)
     assert np.isfinite(model.compile_logp()(model.initial_point()))
+
+
+@pytest.mark.parametrize("labelled", [False, True])
+def test_positive_uniform_accepts_sparse_bounds_without_mutating_inputs(labelled):
+    import sparse
+
+    lower = sparse.COO.from_numpy(np.array([0.0, 0.2]))
+    upper = sparse.COO.from_numpy(np.array([1.0, 1.2]))
+    if labelled:
+        lower = xr.DataArray(lower, dims="region", coords={"region": ["a", "b"]})
+        upper = xr.DataArray(upper, dims="region", coords={"region": ["a", "b"]})
+    with pm.Model(coords={"region": ["a", "b"]}) as model:
+        parse_prior("bounded", {"pdf": "uniform", "lower": lower, "upper": upper},
+                    positive=True, dims="region")
+    np.testing.assert_array_equal(model["bounded_prior_lower"].get_value(), [0.0, 0.2])
+    assert isinstance(lower.data if labelled else lower, sparse.COO)
+    assert np.isfinite(model.compile_logp()(model.initial_point()))
+
+
+def test_positive_uniform_rejects_negative_array_bounds():
+    with pm.Model(coords={"region": ["a", "b"]}), pytest.raises(ValueError, match="lower bound >= 0"):
+        parse_prior("bounded", {"pdf": "uniform", "lower": [0.0, -0.2], "upper": 1.0},
+                    positive=True, dims="region")
+
+
+def test_positive_uniform_rejects_symbolic_lower_bounds_without_evaluating_them():
+    with pm.Model(), pytest.raises(ValueError, match="numeric lower bound"):
+        lower = pm.Normal("lower", initval=-1.0)
+        parse_prior("bounded", {"pdf": "uniform", "lower": lower, "upper": lower + 2.0}, positive=True)

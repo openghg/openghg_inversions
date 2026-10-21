@@ -33,7 +33,7 @@ from openghg_inversions.models.components import (
 )
 from openghg_inversions.models.coords import add_coords, registered_model
 from openghg_inversions.models.fixed_ou import FixedOuLowRank, prepare_fixed_ou_low_rank
-from openghg_inversions.models.priors import PriorArgs, parse_prior, positive_prior_args
+from openghg_inversions.models.priors import PriorArgs, parse_prior
 from openghg_inversions.models.state_activity import (
     PreparedLinearSensitivity,
     ResolvedStateActivity,
@@ -190,7 +190,8 @@ def _add_cached_likelihood(
         design=np.column_stack([term.active_design for term in active_terms]),
     )
     add_coords({OU_SITE_DIM: site_coord})
-    amplitude_prior = positive_prior_args(site_amplitude_prior)
+    amplitude_prior = dict(site_amplitude_prior)
+    amplitude_prior["pdf"] = str(amplitude_prior.get("pdf", "")).casefold().replace("-", "")
     if amplitude_prior["pdf"] == "lognormal":
         if amplitude_prior.get("reparameterise", False):
             warn(
@@ -200,7 +201,7 @@ def _add_cached_likelihood(
                 stacklevel=2,
             )
         amplitude_prior["reparameterise"] = False
-    amplitude = parse_prior(OU_SITE_AMPLITUDE, amplitude_prior, dims=OU_SITE_DIM)
+    amplitude = parse_prior(OU_SITE_AMPLITUDE, amplitude_prior, positive=True, dims=OU_SITE_DIM)
     model = pm.modelcontext(None)
     amplitude_value = model.rvs_to_values[amplitude]
     physical_amplitude = model.replace_rvs_by_values([amplitude])[0]

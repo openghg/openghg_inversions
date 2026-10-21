@@ -73,7 +73,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             independent species/site OU amplitudes, in concentration units.
         initial_site_amplitudes: Optional finite positive starting amplitudes,
             in concentration units. A scalar applies to every group; mappings
-            use the same keys as tau_hours. Defaults to the prior scale.
+            use the same keys as tau_hours. Defaults to the prior support point.
         state_activity: Optional labelled active/fixed retained-state policy.
             Omitted states follow the model's structural activity policy.
         use_bc: Optional co2/o2 boolean mapping selecting prepared boundary

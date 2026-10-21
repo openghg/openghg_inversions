@@ -1098,3 +1098,29 @@ def test_cached_lognormal_normalizes_optional_reparameterization_without_mutatin
     assert cached.amplitude in cached.model.free_RVs
     assert prior_records(cached.model)["ou_site_amplitude"] == {**prior, "reparameterise": False}
     assert np.isfinite(cached.model.compile_logp()(_initial_point(cached)))
+
+
+@pytest.mark.parametrize("storage", ["sparse", "lazy"])
+def test_cached_uniform_prior_materializes_bounds_together_once(storage):
+    import dask.array as da
+    from dask import delayed
+    import sparse
+
+    executions = []
+    values = np.array([[0.0, 0.2], [1.0, 1.2]])
+    if storage == "sparse":
+        lower, upper = (sparse.COO.from_numpy(value) for value in values)
+    else:
+        @delayed
+        def bounds():
+            executions.append(1)
+            return values
+
+        payload = da.from_delayed(bounds(), shape=(2, 2), dtype=float)
+        lower, upper = payload[0], payload[1]
+    prior = {"pdf": "uniform", "lower": lower, "upper": upper}
+    cached = _build(site_amplitude_prior=prior, initial_site_amplitudes=None)
+    np.testing.assert_allclose(cached.initial_cache.sigma, [0.5, 0.7])
+    assert executions == ([1] if storage == "lazy" else [])
+    assert prior["lower"] is lower and prior["upper"] is upper
+    assert isinstance(lower, sparse.COO if storage == "sparse" else da.Array)
