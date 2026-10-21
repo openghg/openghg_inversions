@@ -5,9 +5,17 @@ from threading import Event
 from types import SimpleNamespace
 
 from filelock import FileLock, Timeout
+import numpy as np
 import pytest
+import xarray as xr
 
 from openghg.retrieve import search
+
+
+_SATELLITE_TIMES = np.array(
+    ["2016-01-01T14:59:12.500", "2016-01-01T16:40:42", "2016-01-01T16:43:46"],
+    dtype="datetime64[ns]",
+)
 
 
 def _test_fixture_module():
@@ -244,12 +252,54 @@ def test_satellite_bc_in_test_store(openghg_satellite_test_store):
     _assert_january_bc_coverage("southamerica", 2016, "inversions_satellite_tests")
 
 
-def test_satellite_inputs_in_test_store(openghg_satellite_test_store):
+def test_satellite_footprint_fixture_retains_matched_soundings(raw_data_path):
+    """A small time subset keeps the original footprint and particle-boundary layout."""
+    satellite = raw_data_path / "satellite"
+    with (
+        xr.open_dataset(satellite / "footprints" / "GOSAT-BRAZIL-column_SOUTHAMERICA_201601.nc") as footprint,
+        xr.open_dataset(satellite / "column" / "gosat-fts_gosat_20160101_ch4-column.nc") as column,
+    ):
+        assert dict(footprint.sizes) == {"lat": 357, "lon": 190, "time": 3, "height": 20, "lev": 1}
+        dimensions = {"fp": ("lat", "lon", "time")}
+        dimensions.update({
+            name: ("time",)
+            for name in ("temperature", "pressure", "wind_speed", "wind_direction", "PBLH", "release_lon", "release_lat")
+        })
+        dimensions.update({
+            f"particle_locations_{side}": ("height", axis, "time")
+            for side, axis in (("n", "lon"), ("e", "lat"), ("s", "lon"), ("w", "lat"))
+        })
+        assert set(footprint.data_vars) == set(dimensions)
+        for name, dims in dimensions.items():
+            assert footprint[name].dims == dims
+            assert footprint[name].dtype == np.dtype("float32")
+        np.testing.assert_array_equal(footprint.time, _SATELLITE_TIMES)
+        np.testing.assert_array_equal(footprint.height, np.arange(500, 20_000, 1_000))
+        np.testing.assert_allclose(footprint.lat.values[[0, -1]], [-60.981, 22.323])
+        np.testing.assert_allclose(footprint.lon.values[[0, -1]], [-91.329, -24.801])
+        assert footprint.fp.attrs["units"] == "(mol/mol)/(mol/m2/s)"
+        matched_column = column.sel(time=footprint.time)
+        # Original NAME release coordinates were quantized to four decimal places.
+        np.testing.assert_allclose(footprint.release_lat, matched_column.lat, rtol=0, atol=1e-4)
+        np.testing.assert_allclose(footprint.release_lon, matched_column.lon, rtol=0, atol=1e-4)
+
+
+def test_satellite_inputs_in_test_store(openghg_satellite_test_store, raw_data_path):
     """Bundled column, footprint and flux files remain compatible with OpenGHG ingestion."""
+    products = {}
     for data_type in ("column", "footprints", "flux"):
         results = search(data_type=data_type, domain="southamerica", store="inversions_satellite_tests")
         assert results
-        assert results.retrieve_all().data.sizes["time"] > 0
+        products[data_type] = results.retrieve_all().data
+        assert products[data_type].sizes["time"] > 0
+    footprint = products["footprints"]
+    np.testing.assert_array_equal(footprint.time, _SATELLITE_TIMES)
+    np.testing.assert_array_equal(products["column"].sel(time=footprint.time).time, _SATELLITE_TIMES)
+    with xr.open_dataset(
+        raw_data_path / "satellite" / "footprints" / "GOSAT-BRAZIL-column_SOUTHAMERICA_201601.nc"
+    ) as source:
+        for name in ("fp", *(f"particle_locations_{side}" for side in "nesw")):
+            xr.testing.assert_allclose(footprint[name].transpose(*source[name].dims), source[name])
 
 
 def test_flux_in_test_store(openghg_test_store):

@@ -136,7 +136,7 @@ def _single_sector_paris_inv_out(country_file: Path) -> InversionOutput:
 
 
 def test_legacy_paris_global_attrs_use_inversion_species_and_domain(europe_country_file: Path) -> None:
-    """Legacy concentration and flux products retain inversion metadata."""
+    """Keep packaged EUROPE country-file integration through both legacy products."""
     inv_out = _single_sector_paris_inv_out(europe_country_file)
 
     concentration = paris_concentration_outputs(inv_out)
@@ -231,7 +231,7 @@ def test_latest_paris_sector_names_are_template_safe(
 
 
 def test_latest_paris_flux_output_processes_multisector_sectors(
-    europe_country_file: Path,
+    tiny_paris_country_file: Path,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     fake_multisector_basis_functions_matching_country_grid: Callable[..., BasisFunctions],
@@ -240,7 +240,7 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
     """Latest multisector PARIS output projects countries before population covariance."""
     inv_out = multisector_postprocessing_inv_out(
         fake_multisector_basis_functions_matching_country_grid(
-            europe_country_file,
+            tiny_paris_country_file,
             coord_offset=1e-10,
         )
     )
@@ -273,7 +273,7 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
 
     flux_outputs = paris_flux_output(
         inv_out,
-        country_file=europe_country_file,
+        country_file=tiny_paris_country_file,
         country_selections=PARIS_LATEST_COUNTRIES,
         inversion_grid=True,
         template_version="latest",
@@ -327,7 +327,7 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
     assert not np.isnan(np.asarray(country_fraction_data)).any()
     assert not np.isnan(np.asarray(cell_area_data)).any()
     countries = Countries.from_file(
-        country_file=europe_country_file,
+        country_file=tiny_paris_country_file,
         country_code="alpha3",
         country_selections=list(PARIS_LATEST_COUNTRIES),
         domain="EUROPE",
@@ -359,6 +359,7 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
     )
     largest_country = int(np.asarray(expected_sector_country.data.todense()).argmax())
     expected_sector_variance = np.asarray(expected_sector_country.data.todense())[largest_country] ** 2
+    assert expected_sector_variance > 0.0
     np.testing.assert_allclose(
         flux_outputs["covariance_flux_ff_posterior_country"]
         .transpose("time", "country", "country_2")
@@ -676,12 +677,12 @@ def test_single_sector_country_statistics_promote_before_unit_conversion(
 
 
 def test_latest_paris_flux_output_renames_overlapping_sector_suffixes_exactly(
-    europe_country_file: Path,
+    tiny_paris_country_file: Path,
     fake_multisector_basis_functions_matching_country_grid: Callable[..., BasisFunctions],
     multisector_postprocessing_inv_out: Callable[..., InversionOutput],
 ) -> None:
     """Overlapping sector suffixes and a legitimate total prefix retain exact normalized names."""
-    basis_functions = fake_multisector_basis_functions_matching_country_grid(europe_country_file)
+    basis_functions = fake_multisector_basis_functions_matching_country_grid(tiny_paris_country_file)
     total_ff_flux = basis_functions.flux.sel(source="ff-inventory", drop=True).expand_dims(
         source=["total-ff-inventory"]
     )
@@ -715,7 +716,7 @@ def test_latest_paris_flux_output_renames_overlapping_sector_suffixes_exactly(
 
     flux_outputs = paris_flux_output(
         inv_out,
-        country_file=europe_country_file,
+        country_file=tiny_paris_country_file,
         country_selections=PARIS_LATEST_COUNTRIES,
         inversion_grid=False,
         template_version="latest",

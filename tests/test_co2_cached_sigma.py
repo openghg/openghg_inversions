@@ -358,6 +358,8 @@ def test_lifted_prior_starts_and_caller_transforms_preserve_complete_state_targe
         cached.model.replace_rvs_by_values([cached.modelled_mean])[0],
         inputs=cached.model.value_vars, on_unused_input="ignore",
     )
+    public_logp = cached.model.compile_logp()
+    public_gradient = cached.model.compile_dlogp(vars=list(cached.states))
     for point in starts:
         amplitude = np.exp(point["ou_site_amplitude_log__"])
         cached.shared_cache.update(cached.target.refresh(amplitude))
@@ -382,9 +384,9 @@ def test_lifted_prior_starts_and_caller_transforms_preserve_complete_state_targe
             cov=_dense_fixed_ou_covariance(inputs, amplitude, {"AAA": 3.0, "BBB": 7.0}),
         )
         np.testing.assert_allclose(actual, expected, atol=1e-8)
-        np.testing.assert_allclose(actual, cached.model.compile_logp()(point), atol=1e-8)
+        np.testing.assert_allclose(actual, public_logp(point), atol=1e-8)
         np.testing.assert_allclose(
-            gradient, cached.model.compile_dlogp(vars=list(cached.states))(point), atol=1e-8,
+            gradient, public_gradient(point), atol=1e-8,
         )
 
 
