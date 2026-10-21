@@ -13,20 +13,43 @@ import xarray as xr
 
 from examples.multisector_handoffs import model_options, synthetic_inputs
 from openghg_inversions import serialization
+from openghg_inversions.basis import BasisFunctions
 from openghg_inversions.cli import main
+from openghg_inversions.inference.sampling import RhimeSampler
+from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime import multisector_stages as stages
 from openghg_inversions.rhime.params import DataConfig, resolve_model_options
 from openghg_inversions.rhime.specs import RhimeOutputSpec
 from tests.helpers import make_trace
+from tests.test_staged_workflow import _prepared
 
 
 @pytest.fixture
-def preparation(tmp_path):
-    merged, options, _, _, _ = synthetic_inputs(tmp_path / "inputs")
-    data = DataConfig.from_params({**options, "sites": ["TAC", "MHD"],
-                                  "averaging_period": ["1h", "3h"]}, multisector=True)
-    manifest = stages.prepare(data, merged_data=merged, output_dir=tmp_path / "prepared")
+def data_config():
+    return DataConfig.from_params({
+        "species": "ch4", "domain": "EUROPE", "start_date": "2019-01-01", "end_date": "2019-02-01",
+        "sites": ["TAC", "MHD"], "averaging_period": ["1h", "3h"], "use_bc": False,
+        "flux_sources": ["supplemental", "inventory"],
+    }, multisector=True)
+
+
+@pytest.fixture
+def preparation(tmp_path, data_config):
+    single = _prepared()
+    sources = xr.IndexVariable("source", ["inventory", "supplemental"])
+    inputs = single.inv_inputs.rename(region="state")
+    inputs = inputs.assign_coords(source=sources)
+    inputs["H"] = (("source", "state", "nmeasure"), np.stack([inputs.H.data, inputs.H.data * 2]))
+    basis = BasisFunctions.from_flat_basis(
+        single.basis_functions.flat_basis(),
+        flux=xr.concat([single.basis_functions.flux, single.basis_functions.flux * 3], dim=sources),
+        operator_kwargs={"state_dim": "state"},
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=inputs, basis_functions=basis, site_metadata=single.site_metadata,
+    )
+    manifest = stages.save_preparation(prepared, data_config=data_config, output_dir=tmp_path / "prepared")
     return manifest, stages.load_preparation(manifest)
 
 
@@ -58,8 +81,12 @@ def _save_sample(tmp_path, preparation):
     )
 
 
-def test_preparation_preserves_retained_subset_and_original_window(preparation):
-    manifest, (prepared, data, generation) = preparation
+def test_preparation_preserves_retained_subset_and_original_window(tmp_path):
+    merged, options, _, _, _ = synthetic_inputs(tmp_path / "inputs")
+    data = DataConfig.from_params({**options, "sites": ["TAC", "MHD"],
+                                  "averaging_period": ["1h", "3h"]}, multisector=True)
+    manifest = stages.prepare(data, merged_data=merged, output_dir=tmp_path / "prepared")
+    prepared, data, generation = stages.load_preparation(manifest)
     assert manifest.is_absolute() and generation
     assert prepared.sites == ("TAC",)
     assert data.site_options.sites == ("TAC", "MHD")
@@ -119,11 +146,10 @@ def test_wrong_family_fails_before_numerical_load(preparation, monkeypatch):
         stages.load_preparation(manifest)
 
 
-def test_direct_wrong_family_fails_before_acquisition(preparation, tmp_path, monkeypatch):
-    _, (_, data, _) = preparation
+def test_direct_wrong_family_fails_before_acquisition(data_config, tmp_path, monkeypatch):
     monkeypatch.setattr(stages, "acquire_merged_data", lambda *a, **k: pytest.fail("acquired data"))
     with pytest.raises(ValueError, match="split_by_sectors=True"):
-        stages.prepare(replace(data, split_by_sectors=False), output_dir=tmp_path / "wrong")
+        stages.prepare(replace(data_config, split_by_sectors=False), output_dir=tmp_path / "wrong")
 
 
 @pytest.mark.parametrize("contents", [None, "not a prepared NetCDF"])
@@ -152,11 +178,86 @@ def test_external_sample_save_requires_declared_roles(preparation, tmp_path):
 
 
 def test_replay_uses_recorded_inference_with_no_live_sampler(preparation, tmp_path, monkeypatch):
-    sampled = _save_sample(tmp_path, preparation)
+    manifest, (prepared, _, generation) = preparation
+    posterior, contract = _trace_and_contract(prepared)
+    posterior.attrs["sampler_reference"] = "controlled source-resolved trace"
+    constructed_priors = json.loads(posterior.attrs.pop("rhime_priors"))
+    contract = replace(contract, metadata={"construction_reference": "multisector adapter"})
+    built = SimpleNamespace(model=SimpleNamespace(_openghg_prior_records=constructed_priors), output_contract=contract)
+    sampler = RhimeSampler(draws=3, tune=7, chains=2, sample_prior_predictive=False,
+                           sample_posterior_predictive=False)
+    inference = sampler.describe()
+    provenance = {"version": "recorded version", "revision": "recorded revision", "dirty": False}
+    loaded = []
+    resolved = []
+    load = stages._load_preparation
+    resolve = stages.resolve_model_options
+    model_inputs = xr.Dataset({"eager_reference": ("state", [3.0])})
+    priors = {"biosphere": constructed_priors["x_biosphere"], "fossil": constructed_priors["x_fossil"]}
+
+    def likelihood_builder(**kwargs):
+        pytest.fail("adapter executed likelihood instead of forwarding it")
+
+    likelihood_kwargs = {"scale": 0.25}
+
+    def load_preparation(*args, **kwargs):
+        result = load(*args, **kwargs)
+        loaded.append(result)
+        return result
+
+    def resolve_model(options, *, data_config):
+        assert data_config == loaded[0][1]
+        result = resolve(options, data_config=data_config)
+        resolved.append(result)
+        return result
+
+    def materialize(actual_prepared, model):
+        assert actual_prepared is loaded[0][0] and model == resolved[0]
+        return model_inputs, priors
+
+    def build(inputs, model, **kwargs):
+        assert inputs is model_inputs and model == resolved[0]
+        assert kwargs["priors"] == priors
+        assert kwargs["likelihood_builder"] is likelihood_builder
+        assert kwargs["likelihood_kwargs"] == likelihood_kwargs
+        return built
+
+    def sample(actual_sampler, model, *, variable_roles):
+        assert actual_sampler.describe() == inference
+        assert model is built.model and variable_roles == contract.variable_roles
+        return posterior
+
+    monkeypatch.setattr(stages, "_load_preparation", load_preparation)
+    monkeypatch.setattr(stages, "resolve_model_options", resolve_model)
+    monkeypatch.setattr(stages, "materialize_multisector_inputs", materialize)
+    monkeypatch.setattr(stages, "build_multisector_model", build)
+    monkeypatch.setattr(RhimeSampler, "sample", sample)
+    monkeypatch.setattr(stages, "installed_ogi_provenance", lambda: provenance)
+    sampled = stages.sample(
+        manifest, model=model_options(0.2, student_t=True), sampler=sampler, output_dir=tmp_path / "samples",
+        likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs,
+    )
+    record = json.loads(sampled.read_text())
+    assert sampler.describe() == inference
+    assert record["preparation_generation"] == generation
+    assert record["output_contract"] == contract.to_dict()
+    assert record["actual_inference"] == inference
+    assert record["provenance"] == provenance
+    for sector in record["model"]["sectors"]:
+        assert sector["x_prior"] == constructed_priors[f"x_{sector['variable_suffix']}"]
+    assert json.loads(posterior.attrs["rhime_likelihood_kwargs"]) == likelihood_kwargs
+    assert json.loads(posterior.attrs["rhime_likelihood_builder"]) == {
+        "module": likelihood_builder.__module__, "qualname": likelihood_builder.__qualname__,
+    }
     monkeypatch.setattr(stages, "resolve_sampler", lambda *a, **k: pytest.fail("fresh sampler"))
     monkeypatch.setattr(stages, "build_multisector_model", lambda *a, **k: pytest.fail("built graph"))
+    monkeypatch.setattr(stages, "materialize_multisector_inputs", lambda *a, **k: pytest.fail("materialized model inputs"))
+    monkeypatch.setattr(RhimeSampler, "sample", lambda *a, **k: pytest.fail("inference"))
+    monkeypatch.setattr(stages, "installed_ogi_provenance", lambda: pytest.fail("replaced recorded provenance"))
     result = stages.postprocess(sampled, output=RhimeOutputSpec(output_format="none"))
-    assert result.output_metadata["sampler"] == {"draws": 3, "chains": 2}
+    xr.testing.assert_identical(result.trace, posterior)
+    assert result.provenance == provenance
+    assert result.output_metadata["sampler"] == inference
     assert result.run_metadata["end_date"] == "2019-02-01" and result.run_metadata["sites"] == ["TAC"]
 
 
