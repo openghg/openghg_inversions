@@ -662,7 +662,7 @@ rhime<span class="w"> </span>postprocess<span class="w"> </span>--sample-manifes
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">standard</span></code> is the default for these commands. A manifest’s family must
-match the selected route. Ordinary CO₂ configured full execution is available
+match the selected route. CO₂ configured full execution is available
 through <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span> <span class="pre">--model</span> <span class="pre">co2</span></code>; see <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for its
 prepared-input configuration.</p>
 <p>Python callers can use the same handoffs:</p>
@@ -765,9 +765,9 @@ state variables remain readable at the output boundary. A saved canonical
 This compatibility does not restore historical staged envelopes or add alias
 variables to new graphs.</p>
 </section>
-<section id="ordinary-co2-handoffs">
-<h2>Ordinary CO₂ handoffs<a class="headerlink" href="#ordinary-co2-handoffs" title="Link to this heading">#</a></h2>
-<p>Ordinary CO₂ uses its own coherent preparation and conditional affine output
+<section id="co2-handoffs">
+<h2>CO₂ handoffs<a class="headerlink" href="#co2-handoffs" title="Link to this heading">#</a></h2>
+<p>CO₂ uses its own coherent preparation and conditional affine output
 meaning. <code class="docutils literal notranslate"><span class="pre">run_co2</span></code> and its saved phases call the same preparation,
 materialization, construction, sampling and product operations; full execution
 requires no manifests. <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span> <span class="pre">--model</span> <span class="pre">co2</span></code> consumes the configured model,
@@ -787,18 +787,14 @@ meaning and provenance without constructing a graph or sampling. It returns a
 concentration and conditional native/country products as full execution.
 Missing imported request facts must be supplied explicitly. See
 <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for configuration, readiness/diagnosis, affine
-compatibility and the distinct cached-CO₂ boundary, and
+compatibility, and
 <a class="reference download internal" download="" href="../_downloads/9b5fde691f83b7ffe1ac2fa12eaa650f/co2_handoffs.py"><code class="xref download docutils literal notranslate"><span class="pre">co2_handoffs.py</span></code></a> for an executable
 full/saved scientific comparison. Linked CO₂/O₂ has a separate joint handoff
 interface described below; nested workflows remain separate.</p>
-<p>The separate cached fixed-OU postprocessing route also returns <code class="docutils literal notranslate"><span class="pre">Co2Output</span></code>.
-It keeps the existing matched-file arguments, observed-day reporting window
-and stage product filenames described in <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a>. Products use
-the shared CO2 writer; replay writes no additional standalone trace.
-Manifest output settings now use <code class="docutils literal notranslate"><span class="pre">Co2OutputOptions</span></code> fields. The manifest
-records the completed sampling configuration, while returned output metadata
-contains its available five-field sampler description and saved provenance;
-see <a class="reference internal" href="legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a>.</p>
+<p>All supported CO2 likelihoods, including fixed OU with inferred amplitudes,
+use these handoffs. Replay uses the completed inference description and saved
+provenance; it does not select current sampler defaults. See
+<a class="reference internal" href="legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a> for retired entry points.</p>
 </section>
 <section id="readiness-and-independent-diagnosis">
 <h2>Readiness and independent diagnosis<a class="headerlink" href="#readiness-and-independent-diagnosis" title="Link to this heading">#</a></h2>
@@ -806,7 +802,7 @@ see <a class="reference internal" href="legacy_and_migration.html"><span class="
 the selected model and draws prior predictions without posterior inference.
 <code class="docutils literal notranslate"><span class="pre">--draws</span></code> controls its sample count. Loading and serialization errors
 propagate; for standard and multisector, supported model/input failures produce
-a readiness <code class="docutils literal notranslate"><span class="pre">fail</span></code> result. Ordinary CO₂ construction and inference errors
+a readiness <code class="docutils literal notranslate"><span class="pre">fail</span></code> result. CO₂ construction and inference errors
 propagate; evaluated missing, empty or non-finite predictive evidence produces
 a failed check.
 Select <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">multisector</span></code> for prior predictions from a multisector preparation
@@ -829,14 +825,7 @@ and stage label.</p>
 </section>
 <section id="other-families-and-migration">
 <h2>Other families and migration<a class="headerlink" href="#other-families-and-migration" title="Link to this heading">#</a></h2>
-<p>Cached CO2 retains its existing staged interface pending separate handoff adoption.
-It requires explicit <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2</span></code>, a full configuration and
-<code class="docutils literal notranslate"><span class="pre">--prepared-inputs</span></code>/<code class="docutils literal notranslate"><span class="pre">--preparation-manifest</span></code> for sampling. Postprocessing also
-requires <code class="docutils literal notranslate"><span class="pre">--posterior</span></code> and <code class="docutils literal notranslate"><span class="pre">--sample-manifest</span></code>. Ordinary CO2 uses the
-manifest-only interface described above; cached CO2 takes an existing coherent
-preparation through its separate interface. See <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for
-supported CO2 outputs.
-Linked CO₂/O₂ saved phases use <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2_o2</span></code> and one preparation or sample
+<p>Linked CO₂/O₂ saved phases use <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2_o2</span></code> and one preparation or sample
 manifest, with the complete joint covariance and unequal channel axes retained.
 See <a class="reference internal" href="co2_model_family.html#linked-staged-commands"><span class="std std-ref">Staged linked CO₂/O₂ commands</span></a> for configuration, the five installed commands,
 common-unit restrictions and supported scientific products. The runnable
@@ -906,7 +895,7 @@ multisector prepared-input entry point and retained custom-builder boundary.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#standard-saved-phases">Standard saved phases</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuration-and-cli">Configuration and CLI</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#multisector-saved-phases">Multisector saved phases</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#ordinary-co2-handoffs">Ordinary CO₂ handoffs</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-handoffs">CO₂ handoffs</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#readiness-and-independent-diagnosis">Readiness and independent diagnosis</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#other-families-and-migration">Other families and migration</a></li>
 </ul>

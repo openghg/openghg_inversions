@@ -523,7 +523,7 @@ cross-channel aggregation covariance. The matched cached sampler
 updates all active affine coefficients. Requires the same channel units.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Boundary conditions and offsets</p></td>
-<td><p>The ordinary and cached-sigma runners can select prepared <code class="docutils literal notranslate"><span class="pre">H_bc</span></code>
+<td><p>Model configuration can select prepared <code class="docutils literal notranslate"><span class="pre">H_bc</span></code>
 boundary sensitivity and add global, site, or site-by-period offsets.</p></td>
 <td><p>Channel-labelled boundary sensitivities, priors and activity, plus
 independent global, site, or site-by-period offsets (same-unit channels).</p></td>
@@ -536,15 +536,14 @@ a joint log likelihood, preserving cross-channel covariance with the
 matched cached sampler.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Staged workflow</p></td>
-<td><p>Ordinary <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2</span></code> phases consume one preparation or sample
-manifest. Cached fixed-OU retains its separate staged interface; see
-<a class="reference internal" href="#staged-co2-commands">Staged CO₂ commands</a> below.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2</span></code> phases consume one preparation or sample manifest for
+every supported likelihood, including inferred fixed OU.</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2_o2</span></code> phases consume one preparation or sample manifest
 for the same-unit joint model; see <a class="reference internal" href="#staged-linked-co2-o2-commands">Staged linked CO₂/O₂ commands</a>.</p></td>
 </tr>
 <tr class="row-even"><td><p>Outputs and postprocessing</p></td>
-<td><p>Scientific operation composition and the cached runner retain an
-annotated xarray <code class="docutils literal notranslate"><span class="pre">DataTree</span></code>. Configured execution returns
+<td><p>Scientific operation composition retains an annotated xarray
+<code class="docutils literal notranslate"><span class="pre">DataTree</span></code>. Configured execution returns
 <code class="docutils literal notranslate"><span class="pre">Co2Output</span></code> with its trace,
 in-memory products and requested file paths.
 <a class="reference internal" href="affine_flux_map.html#co2-affine-flux-summaries"><span class="std std-ref">Conditional native-flux and country summaries</span></a> are available from a bound affine artifact;
@@ -558,8 +557,7 @@ concentration and conditional bucket-native products are available.</p></td>
 <tr class="row-odd"><td><p>Validation and acceptance</p></td>
 <td><p>Coherent preparation, dedicated serialization, model construction,
 configuration resolution, replay, provenance, and cached-sampler
-behavior have automated regression tests, including installed ordinary
-and cached stage sequences. Scientist acceptance remains future work.</p></td>
+behavior have automated regression tests, including installed CLI stage sequences. Scientist acceptance remains future work.</p></td>
 <td><p>Preparation, graph construction, mixed-unit metadata, replay, and
 provenance have automated regression tests. Configuration currently
 limits linked replay to one shared concentration-unit label. Production
@@ -592,7 +590,7 @@ standard and multisector runners or to <code class="docutils literal notranslate
 </section>
 <section id="staged-co2-commands">
 <h2>Staged CO₂ commands<a class="headerlink" href="#staged-co2-commands" title="Link to this heading">#</a></h2>
-<p>Ordinary CO₂ starts from canonical scientific inputs and a coherent reduction,
+<p>CO₂ starts from canonical scientific inputs and a coherent reduction,
 or an existing <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a> artifact.
 It does not acquire OpenGHG data or infer a coherent reduction from a gas name.
 <code class="docutils literal notranslate"><span class="pre">run_co2</span></code> prepares or loads inputs, explicitly materializes the
@@ -613,10 +611,9 @@ original request. Missing imported facts fail clearly; supply
 <code class="docutils literal notranslate"><span class="pre">prepared_inputs.start_date</span></code>, <code class="docutils literal notranslate"><span class="pre">end_date</span></code> and <code class="docutils literal notranslate"><span class="pre">domain</span></code>, or retain those facts
 in preparation provenance. Sites and averaging periods come from the retained
 numerical preparation.</p>
-<p>An ordinary TOML configuration can contain:</p>
+<p>A TOML configuration can contain:</p>
 <div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="n">format_version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span>
 <span class="n">recipe</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"co2"</span>
-<span class="n">variant</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"ordinary"</span>
 
 <span class="k">[prepared_inputs]</span>
 <span class="n">path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"prepared-co2.nc"</span>
@@ -684,11 +681,11 @@ rhime<span class="w"> </span>postprocess<span class="w"> </span>--model<span cla
 <span class="w">  </span>--output-dir<span class="w"> </span>run/postprocess
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">prepare</span></code> and <code class="docutils literal notranslate"><span class="pre">sample</span></code> each print one absolute manifest path. Ordinary
-sampling needs only that preparation manifest and current inference choices;
+<p><code class="docutils literal notranslate"><span class="pre">prepare</span></code> and <code class="docutils literal notranslate"><span class="pre">sample</span></code> each print one absolute manifest path.
+Sampling needs only that preparation manifest and current inference choices;
 postprocessing needs only the sample manifest and current output choices.
 Separate <code class="docutils literal notranslate"><span class="pre">--prepared-inputs</span></code> or <code class="docutils literal notranslate"><span class="pre">--posterior</span></code> arguments are not accepted on
-these ordinary scientific phases. Each phase resolves its own configuration
+these scientific phases. Each phase resolves its own configuration
 sections; prior readiness requires no posterior sampler or final-product choices.
 Relative configuration paths resolve from the invocation working directory.
 Manifest references resolve relative to their declaring manifest; absolute
@@ -696,7 +693,7 @@ shared-cache references are also supported. Keep manifests and their dependencie
 <p>Compatible BC/offset priors and supported mismatch changes can sample the same
 preparation into another destination. Per-site model mappings validate every
 supplied value, including values for dropped sites, require retained-site
-coverage, then select retained labels. Ordinary fixed sigma is nonnegative;
+coverage, then select retained labels. Fixed sigma is nonnegative;
 OU time scales are positive. Defining native priors, covariance, operators and
 projections determine coherent preparation and require a coherent new preparation
 when changed. Full-configuration equality and callable representations do not
@@ -741,13 +738,13 @@ and country products carry <code class="docutils literal notranslate"><span clas
 they exclude unresolved native-state posterior uncertainty tracked in OPE-68.</p>
 <p><code class="docutils literal notranslate"><span class="pre">Co2Output</span></code> borrows the preparation and complete annotated trace DataTree,
 retaining separate prior, posterior, predictive and diagnostic groups with
-their own coordinates. Ordinary CO2 retains the original requested window, optional
+their own coordinates. CO2 retains the original requested window, optional
 bound affine reconstruction, in-memory products and descriptive provenance.
 It carries no writing policy or live sampler field. Concentration products
 deliberately use a derived Dataset with separate prior sample axes; this does not
 flatten the original trace.</p>
 <p>Pass <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.co2_outputs.html#openghg_inversions.rhime.co2.co2_outputs.Co2OutputOptions" title="openghg_inversions.rhime.co2.co2_outputs.Co2OutputOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.co2_outputs.Co2OutputOptions</span></code></a> to
-calculation and export operations. Its ordinary CO₂ fields are
+calculation and export operations. Its CO₂ fields are
 <code class="docutils literal notranslate"><span class="pre">output_format</span></code> (<code class="docutils literal notranslate"><span class="pre">none</span></code>, <code class="docutils literal notranslate"><span class="pre">basic</span></code> or <code class="docutils literal notranslate"><span class="pre">paris</span></code>), <code class="docutils literal notranslate"><span class="pre">output_path</span></code>,
 <code class="docutils literal notranslate"><span class="pre">output_name</span></code>, <code class="docutils literal notranslate"><span class="pre">save_trace</span></code>, <code class="docutils literal notranslate"><span class="pre">country_file</span></code> and
 <code class="docutils literal notranslate"><span class="pre">paris_postprocessing_kwargs</span></code>. Naming uses the RHIME convention. Reporting
@@ -767,22 +764,9 @@ See <a class="reference download internal" download="" href="../_downloads/9b5fd
 coherent preparation, filtering at both edges, full/saved comparison and signed
 affine products. <code class="docutils literal notranslate"><span class="pre">Co2Output</span></code> retains the conditional affine meaning; a standard
 multiplicative <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> cannot represent that reconstruction.</p>
-<section id="cached-and-linked-boundaries">
-<h3>Cached and linked boundaries<a class="headerlink" href="#cached-and-linked-boundaries" title="Link to this heading">#</a></h3>
-<p>Cached CO₂ handoff adoption remains separate. Its existing
-<code class="docutils literal notranslate"><span class="pre">variant</span> <span class="pre">=</span> <span class="pre">&quot;cached_fixed_ou&quot;</span></code> staged interface continues to use explicit
-<code class="docutils literal notranslate"><span class="pre">--prepared-inputs</span></code>, <code class="docutils literal notranslate"><span class="pre">--preparation-manifest</span></code>, <code class="docutils literal notranslate"><span class="pre">--posterior</span></code> and
-<code class="docutils literal notranslate"><span class="pre">--sample-manifest</span></code> arguments where applicable. It does not consume the new
-ordinary handoff format. Use <code class="docutils literal notranslate"><span class="pre">likelihood.kind</span> <span class="pre">=</span> <span class="pre">&quot;fixed_ou&quot;</span></code>, a positive
-<code class="docutils literal notranslate"><span class="pre">tau_hours</span></code>, <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code> and <code class="docutils literal notranslate"><span class="pre">sampling.nuts_sampler</span> <span class="pre">=</span> <span class="pre">&quot;pymc&quot;</span></code>
-for that existing route. Preserve its original configuration and matched files.
-Cached postprocessing also returns <code class="docutils literal notranslate"><span class="pre">Co2Output</span></code>, with its matched preparation,
-trace and optional affine reconstruction. Its reporting window remains the
-first observed day through the day after the final observation. Cached stage
-products retain their literal filenames such as <code class="docutils literal notranslate"><span class="pre">basic.nc</span></code> and
-<code class="docutils literal notranslate"><span class="pre">concentration_components.nc</span></code> and their postprocess manifest. Recorded sampler
-settings are descriptive provenance and do not construct a sampler during replay.
-Linked CO₂/O₂ uses its own joint handoffs below; nested workflows are outside
+<section id="linked-boundary">
+<h3>Linked boundary<a class="headerlink" href="#linked-boundary" title="Link to this heading">#</a></h3>
+<p>Linked CO₂/O₂ uses its own joint handoffs below; nested workflows are outside
 these CO₂ commands.</p>
 </section>
 </section>
@@ -957,7 +941,7 @@ establish convergence or scientific acceptance.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#current-support">Current support</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#prerequisites">Prerequisites</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#staged-co2-commands">Staged CO₂ commands</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#cached-and-linked-boundaries">Cached and linked boundaries</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#linked-boundary">Linked boundary</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#staged-linked-co2-o2-commands">Staged linked CO₂/O₂ commands</a></li>

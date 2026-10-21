@@ -467,7 +467,6 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4 current active"><a class="current reference internal" href="#">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
-<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html">openghg_inversions.rhime.co2.stages</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.api.html">openghg_inversions.rhime.api</a></li>
@@ -579,7 +578,7 @@
                   
   <section id="module-openghg_inversions.rhime.co2.handoffs">
 <span id="openghg-inversions-rhime-co2-handoffs"></span><h1>openghg_inversions.rhime.co2.handoffs<a class="headerlink" href="#module-openghg_inversions.rhime.co2.handoffs" title="Link to this heading">#</a></h1>
-<p>Save and reopen the ordinary CO2 recipe’s scientific handoffs.</p>
+<p>Save and reopen the CO2 recipe’s scientific handoffs.</p>
 <p>Manifests retain original requested dates and point to existing numerical
 codecs. They do not authenticate model configuration or execute recorded code.
 Callers allocate checkpoint directories; writers publish completion last.</p>
@@ -686,7 +685,7 @@ Affine references stay unloaded until scientific output replay consumes them.</p
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.handoffs.sample">
 <span class="sig-name descname"><span class="pre">sample</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">preparation_manifest</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampling</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.handoffs.sample" title="Link to this definition">#</a></dt>
-<dd><p>Build and sample ordinary CO2 using current science and its resolved sampler.</p>
+<dd><p>Build and sample CO2 using current science and its resolved sampler.</p>
 <p>Compatible independent BC/offset priors and supported likelihood choices can
 reuse preparation; the defining coherent native reduction stays unchanged.
 Full execution and saved sampling share the explicit build and sample owners.

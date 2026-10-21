@@ -728,14 +728,23 @@ rather than read <code class="docutils literal notranslate"><span class="pre">x_
 when scientific sector names differ from inventory names. Existing current-format
 built-in sample handoffs with <code class="docutils literal notranslate"><span class="pre">x_&lt;suffix&gt;</span></code> state names remain readable. This
 does not restore the retired historical staged-envelope format.</p>
-<p><code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> and <code class="docutils literal notranslate"><span class="pre">RhimeResult</span></code> are removed after their final cached CO2
-consumer migrates to <code class="docutils literal notranslate"><span class="pre">Co2Output</span></code>. Cached postprocessing retains the prepared
-inputs on <code class="docutils literal notranslate"><span class="pre">result.prepared</span></code>, the trace on <code class="docutils literal notranslate"><span class="pre">result.idata</span></code>, calculated products
-on <code class="docutils literal notranslate"><span class="pre">result.outputs</span></code> and conditional affine reconstruction on <code class="docutils literal notranslate"><span class="pre">result.bound</span></code>.
-It retains no live model or sampler. CLI stage filenames are retained; manifest
-output settings now use the <code class="docutils literal notranslate"><span class="pre">Co2OutputOptions</span></code> fields, without the retired
-<code class="docutils literal notranslate"><span class="pre">save_inversion_output</span></code> and <code class="docutils literal notranslate"><span class="pre">output_filename_convention</span></code> keys. Cached products
-use the same writer as ordinary CO2 products.
+<p><code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> and <code class="docutils literal notranslate"><span class="pre">RhimeResult</span></code> are removed. All configured CO2 likelihoods
+use <code class="docutils literal notranslate"><span class="pre">run_co2</span></code> (or <code class="docutils literal notranslate"><span class="pre">rhime.run(model=&quot;co2&quot;)</span></code>) and return <code class="docutils literal notranslate"><span class="pre">Co2Output</span></code>:
+prepared inputs on <code class="docutils literal notranslate"><span class="pre">result.prepared</span></code>, the complete trace on <code class="docutils literal notranslate"><span class="pre">result.idata</span></code>,
+calculated products on <code class="docutils literal notranslate"><span class="pre">result.outputs</span></code> and conditional affine reconstruction
+on <code class="docutils literal notranslate"><span class="pre">result.bound</span></code>. Replay retains no live model or sampler.</p>
+<p>Replace <code class="docutils literal notranslate"><span class="pre">run_rhime_co2_cached_sigma</span></code> and <code class="docutils literal notranslate"><span class="pre">model=&quot;co2_cached_sigma&quot;</span></code> with
+<code class="docutils literal notranslate"><span class="pre">run_co2</span></code> and a <code class="docutils literal notranslate"><span class="pre">fixed_ou</span></code> likelihood containing <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code>.
+Remove CO2 <code class="docutils literal notranslate"><span class="pre">variant</span></code> and <code class="docutils literal notranslate"><span class="pre">sampling.nuts_sampler</span></code> settings. The likelihood
+selects the matched cached sampler automatically. Use a supported positive-prior
+table rather than <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior_scale</span></code>. The packaged example is now
+<code class="docutils literal notranslate"><span class="pre">co2_fixed_ou.toml</span></code>.</p>
+<p>All CO2 stages use the shared preparation/sample manifests, original requested
+dates/domain, and shared product naming. Sampling consumes one preparation
+manifest; postprocessing consumes one sample manifest plus current output choices.
+Regenerate retired cached-stage envelopes; there is no compatibility adapter.
+Output settings use <code class="docutils literal notranslate"><span class="pre">Co2OutputOptions</span></code> fields, without the retired
+<code class="docutils literal notranslate"><span class="pre">save_inversion_output</span></code> and <code class="docutils literal notranslate"><span class="pre">output_filename_convention</span></code> keys.
 The <code class="docutils literal notranslate"><span class="pre">make_co2_rhime_result</span></code> and <code class="docutils literal notranslate"><span class="pre">make_co2_rhime_outputs</span></code> adapters,
 <code class="docutils literal notranslate"><span class="pre">retained_run_spec</span></code> and <code class="docutils literal notranslate"><span class="pre">with_prepared_sites</span></code> helpers, and
 <code class="docutils literal notranslate"><span class="pre">with_prepared_rhime_sites</span></code> alias are removed. Copied CO2 runners use
@@ -744,7 +753,7 @@ and <code class="docutils literal notranslate"><span class="pre">save_co2_produc
 <p>Replay <code class="docutils literal notranslate"><span class="pre">output_metadata[&quot;sampler&quot;]</span></code> retains available <code class="docutils literal notranslate"><span class="pre">draws</span></code>, <code class="docutils literal notranslate"><span class="pre">burn</span></code>,
 <code class="docutils literal notranslate"><span class="pre">tune</span></code>, <code class="docutils literal notranslate"><span class="pre">chains</span></code> and <code class="docutils literal notranslate"><span class="pre">nuts_sampler</span></code> values from completed inference.
 Missing or invalid descriptions are <code class="docutils literal notranslate"><span class="pre">{}</span></code>; partial descriptions stay partial
-without selecting current defaults. Cached <code class="docutils literal notranslate"><span class="pre">output_metadata[&quot;provenance&quot;]</span></code>
+without selecting current defaults. <code class="docutils literal notranslate"><span class="pre">output_metadata[&quot;provenance&quot;]</span></code>
 comes from the sample manifest. The former <code class="docutils literal notranslate"><span class="pre">build_and_sample_seconds</span></code> replay
 placeholder is removed: replay does not measure the earlier inference duration.</p>
 <p>Remove multisector

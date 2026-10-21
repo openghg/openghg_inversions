@@ -508,8 +508,8 @@ guide. New configuration files should use the RHIME vocabulary documented in
 validated production-shape examples are used by
 <a class="reference internal" href="rhime_standard_tutorial.html"><span class="doc">Standard RHIME tutorial</span></a> and <a class="reference internal" href="rhime_multisector_tutorial.html"><span class="doc">Multisector RHIME tutorial</span></a>.</p>
 </section>
-<section id="ordinary-co2-runs">
-<h2>Ordinary CO₂ runs<a class="headerlink" href="#ordinary-co2-runs" title="Link to this heading">#</a></h2>
+<section id="co2-runs">
+<h2>CO₂ runs<a class="headerlink" href="#co2-runs" title="Link to this heading">#</a></h2>
 <p>Use <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span> <span class="pre">--model</span> <span class="pre">co2</span></code> with a CO₂ TOML configuration and prepared
 scientific inputs:</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>rhime<span class="w"> </span>run<span class="w"> </span>--model<span class="w"> </span>co2<span class="w"> </span>--config<span class="w"> </span>co2.toml<span class="w"> </span>--output-path<span class="w"> </span>run/full
@@ -542,12 +542,11 @@ preparation/two-model/two-output sequence and the separate CO2 interface.</p>
 </div>
 <p>Python <code class="docutils literal notranslate"><span class="pre">run(model=&quot;co2&quot;)</span></code> and CLI <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span> <span class="pre">--model</span> <span class="pre">co2</span></code> both use
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_co2" title="openghg_inversions.rhime.co2.run_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.run_co2()</span></code></a>, consuming a configured product
-request and returning <code class="docutils literal notranslate"><span class="pre">Co2Output</span></code> in Python. Ordinary CO₂ uses prepared
+request and returning <code class="docutils literal notranslate"><span class="pre">Co2Output</span></code> in Python. CO₂ uses prepared
 scientific inputs and explicit requested dates/domain; it has no configured
 OpenGHG acquisition or native-reduction preparation route. The
-<code class="docutils literal notranslate"><span class="pre">co2_cached_sigma</span></code>, <code class="docutils literal notranslate"><span class="pre">co2_o2</span></code> and <code class="docutils literal notranslate"><span class="pre">co2_o2_cached_sigma</span></code> Python choices retain
-their existing <code class="docutils literal notranslate"><span class="pre">prepared_inputs</span></code> interfaces and trace returns. Cached and
-linked recipes are not choices for the configuration-driven <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span></code> command.
+<code class="docutils literal notranslate"><span class="pre">co2_o2</span></code> and <code class="docutils literal notranslate"><span class="pre">co2_o2_cached_sigma</span></code> Python choices retain
+their existing <code class="docutils literal notranslate"><span class="pre">prepared_inputs</span></code> interfaces and trace returns. Linked recipes are not choices for the configuration-driven <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span></code> command.
 See <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for the TOML configuration and handoff commands.</p>
 <p><code class="docutils literal notranslate"><span class="pre">openghg-inversions</span></code> and its <code class="docutils literal notranslate"><span class="pre">run-rhime</span></code>, <code class="docutils literal notranslate"><span class="pre">run-rhime-multisector</span></code> and
 <code class="docutils literal notranslate"><span class="pre">run-rhime-nested</span></code> subcommands remain supported through the 0.9 compatibility
@@ -680,12 +679,11 @@ separate a run into persisted handoffs. Select <code class="docutils literal not
 scientific stages; <code class="docutils literal notranslate"><span class="pre">diagnose</span></code> reads the posterior independently of the recipe.
 See
 <a class="reference internal" href="staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> for the shared stage interface and
-<a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for CO2-family TOML examples, including the same-unit
-joint linked route.
-Ordinary CO₂ and linked CO₂/O₂ sampling consume one preparation manifest;
-replay consumes only its sample manifest plus current output choices. Saved
-scientific meaning and provenance drive replay without constructing a graph. The existing cached
-CO₂ stage interface remains separate; see <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a>. Git revision
+<a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for CO2-family TOML examples, including inferred fixed OU
+and the same-unit joint linked route. CO₂ and linked CO₂/O₂ sampling consume
+one preparation manifest; replay consumes only its sample manifest plus current
+output choices. Saved scientific meaning and provenance drive replay without
+constructing a graph. Git revision
 and checkout status are recorded when available, with unavailable values left
 explicitly unknown.</p>
 </section>
@@ -739,7 +737,7 @@ explicitly unknown.</p>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#standard-multisector-and-nested-runs">Standard, multisector, and nested runs</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#ordinary-co2-runs">Ordinary CO₂ runs</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-runs">CO₂ runs</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#saved-standard-and-multisector-phases">Saved standard and multisector phases</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#python-model-selection-and-compatibility">Python model selection and compatibility</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#translating-the-older-batch-example">Translating the older batch example</a><ul class="nav section-nav flex-column">

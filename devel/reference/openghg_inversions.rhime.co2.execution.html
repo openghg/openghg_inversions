@@ -467,7 +467,6 @@
 <li class="toctree-l4 current active"><a class="current reference internal" href="#">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
-<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html">openghg_inversions.rhime.co2.stages</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.api.html">openghg_inversions.rhime.api</a></li>
@@ -579,7 +578,7 @@
                   
   <section id="module-openghg_inversions.rhime.co2.execution">
 <span id="openghg-inversions-rhime-co2-execution"></span><h1>openghg_inversions.rhime.co2.execution<a class="headerlink" href="#module-openghg_inversions.rhime.co2.execution" title="Link to this heading">#</a></h1>
-<p>Configured ordinary CO2 execution and independently resolved phase choices.</p>
+<p>Configured CO2 execution and independently resolved phase choices.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.execution.load_co2_params">
 <span class="sig-name descname"><span class="pre">load_co2_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">config_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overrides</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.execution.load_co2_params" title="Link to this definition">#</a></dt>
@@ -626,7 +625,7 @@ references are resolved separately beside their declaring manifest.</p>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.execution.run_co2" title="Link to this definition">#</a></dt>
-<dd><p>Prepare or load ordinary CO2 inputs, sample and create requested products.</p>
+<dd><p>Prepare or load CO2 inputs, sample and create requested products.</p>
 <p>This configured product entry point consumes <code class="docutils literal notranslate"><span class="pre">model</span></code>, <code class="docutils literal notranslate"><span class="pre">likelihood</span></code>,
 <code class="docutils literal notranslate"><span class="pre">sampling</span></code> and <code class="docutils literal notranslate"><span class="pre">outputs</span></code> without intermediate manifests. Trace-only
 callers use the model-selected inference steps directly. Supplied canonical

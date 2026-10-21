@@ -59,7 +59,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="openghg_inversions.rhime.builders" href="openghg_inversions.rhime.builders.html" />
-    <link rel="prev" title="openghg_inversions.rhime.co2.stages" href="openghg_inversions.rhime.co2.stages.html" />
+    <link rel="prev" title="openghg_inversions.rhime.co2.inference" href="openghg_inversions.rhime.co2.inference.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="devel" />
@@ -467,7 +467,6 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
-<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html">openghg_inversions.rhime.co2.stages</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.rhime.api</a></li>
@@ -585,18 +584,18 @@
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>model</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – <code class="docutils literal notranslate"><span class="pre">standard</span></code> (default), <code class="docutils literal notranslate"><span class="pre">multisector</span></code>, <code class="docutils literal notranslate"><span class="pre">nested</span></code>, <code class="docutils literal notranslate"><span class="pre">co2</span></code>,
-<code class="docutils literal notranslate"><span class="pre">co2_cached_sigma</span></code>, <code class="docutils literal notranslate"><span class="pre">co2_o2</span></code> or <code class="docutils literal notranslate"><span class="pre">co2_o2_cached_sigma</span></code>.</p></li>
+<code class="docutils literal notranslate"><span class="pre">co2_o2</span></code> or <code class="docutils literal notranslate"><span class="pre">co2_o2_cached_sigma</span></code>.</p></li>
 <li><p><strong>**kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>) – Forwarded unchanged to the selected recipe. Standard,
 multisector and nested accept their existing INI/Python inputs.
-Ordinary CO2 accepts its configured prepared-input product request.
-Cached and linked CO2-family recipes require <code class="docutils literal notranslate"><span class="pre">prepared_inputs</span></code>;
+CO2 accepts its configured prepared-input product request.
+Linked CO2/O2 recipes require <code class="docutils literal notranslate"><span class="pre">prepared_inputs</span></code>;
 selection does not add acquisition or checkpoint routes.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>The selected recipe’s scientific result. Standard and multisector return
-InversionOutput, ordinary CO2 returns Co2Output, nested returns NestedOutput
-with two native output views, and cached/linked CO2 recipes return an inference DataTree.</p>
+InversionOutput, CO2 returns Co2Output, nested returns NestedOutput
+with two native output views, and linked CO2/O2 recipes return an inference DataTree.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -625,12 +624,12 @@ behavior. Standard, multisector and nested callers may supply <code class="docut
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="openghg_inversions.rhime.co2.stages.html"
+       href="openghg_inversions.rhime.co2.inference.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">openghg_inversions.rhime.co2.stages</p>
+        <p class="prev-next-title">openghg_inversions.rhime.co2.inference</p>
       </div>
     </a>
     <a class="right-next"

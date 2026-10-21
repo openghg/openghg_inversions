@@ -467,7 +467,6 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.execution.html">openghg_inversions.rhime.co2.execution</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.handoffs.html">openghg_inversions.rhime.co2.handoffs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.inference.html">openghg_inversions.rhime.co2.inference</a></li>
-<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html">openghg_inversions.rhime.co2.stages</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.api.html">openghg_inversions.rhime.api</a></li>
@@ -579,7 +578,7 @@
                   
   <section id="module-openghg_inversions.rhime.co2.co2_outputs">
 <span id="openghg-inversions-rhime-co2-co2-outputs"></span><h1>openghg_inversions.rhime.co2.co2_outputs<a class="headerlink" href="#module-openghg_inversions.rhime.co2.co2_outputs" title="Link to this heading">#</a></h1>
-<p>Scientific output adapters for the ordinary and cached CO2 recipes.</p>
+<p>Scientific output adapters for the CO2 recipe.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_outputs.Co2Output">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Co2Output</span></span><span class="sig-paren">(</span>
@@ -598,8 +597,8 @@
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_outputs.Co2Output" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Borrowed CO2 scientific output and its reporting window.</p>
-<p>Ordinary execution retains requested dates; cached stages retain the observed
-day range. <code class="docutils literal notranslate"><span class="pre">bound</span></code> preserves conditional affine reconstruction rather than standard
+<p>Execution retains the original requested
+reporting window. <code class="docutils literal notranslate"><span class="pre">bound</span></code> preserves conditional affine reconstruction rather than standard
 multiplicative flux scaling. <code class="docutils literal notranslate"><span class="pre">idata</span></code> remains the borrowed full DataTree,
 including distinct sample groups and their coordinates. Inference provenance
 remains descriptive in <code class="docutils literal notranslate"><span class="pre">output_metadata</span></code>; no live sampler or writing policy
@@ -624,7 +623,7 @@ belongs to this scientific view. Products remain accessible in
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_outputs.Co2OutputOptions" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Ordinary and cached CO2 concentration and conditional-flux reporting choices.</p>
+<p>CO2 concentration and conditional-flux reporting choices.</p>
 <p><code class="docutils literal notranslate"><span class="pre">none</span></code> suppresses products and exports; <code class="docutils literal notranslate"><span class="pre">basic</span></code> retains scientific
 summaries, and <code class="docutils literal notranslate"><span class="pre">paris</span></code> adds supported latest-template products. With no
 output directory products remain in memory. <code class="docutils literal notranslate"><span class="pre">save_trace</span></code> exports the full
@@ -698,12 +697,10 @@ scope. Full component draws remain available in <code class="docutils literal no
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_outputs.save_co2_products">
-<span class="sig-name descname"><span class="pre">save_co2_products</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">result</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">product_paths</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_outputs.save_co2_products" title="Link to this definition">#</a></dt>
-<dd><p>Export products and the optional trace, using explicit paths for staged outputs.</p>
-<p>Without <code class="docutils literal notranslate"><span class="pre">product_paths</span></code>, output options determine the ordinary filenames
-and full concentration-component draws remain in memory. Explicit paths
-select the products to export and preserve the cached stage filenames.
-Both routes use the same MultiIndex-aware product codecs.</p>
+<span class="sig-name descname"><span class="pre">save_co2_products</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">result</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_outputs.save_co2_products" title="Link to this definition">#</a></dt>
+<dd><p>Export configured products and the optional trace.</p>
+<p>Full concentration-component draws remain available in memory. Product
+filenames follow the configured RHIME naming convention.</p>
 <dl class="field-list simple">
 </dl>
 </dd></dl>

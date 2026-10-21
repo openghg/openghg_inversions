@@ -571,8 +571,8 @@ conditions, offsets, and outer flux remain distinct scientific terms. Sector
 combinations are likewise a general state-grouping choice rather than an
 outer-region model option.</p>
 </section>
-<section id="compose-ordinary-co2-scientific-operations">
-<h3>Compose ordinary CO2 scientific operations<a class="headerlink" href="#compose-ordinary-co2-scientific-operations" title="Link to this heading">#</a></h3>
+<section id="compose-co2-scientific-operations">
+<h3>Compose CO2 scientific operations<a class="headerlink" href="#compose-co2-scientific-operations" title="Link to this heading">#</a></h3>
 <p>The concrete model builder accepts explicit scientific arrays. For durable
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a>, scientific callers can
 compose <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.co2_runner.html#openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs" title="openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">materialize_co2_inputs()</span></code></a>,
@@ -608,12 +608,12 @@ concentration units.</p>
 <section id="configure-prepared-input-execution-from-toml">
 <h3>Configure prepared-input execution from TOML<a class="headerlink" href="#configure-prepared-input-execution-from-toml" title="Link to this heading">#</a></h3>
 <p>The CO2 family provides three installed TOML templates:
-<code class="docutils literal notranslate"><span class="pre">co2.toml</span></code>, <code class="docutils literal notranslate"><span class="pre">co2_cached_sigma.toml</span></code>, and <code class="docutils literal notranslate"><span class="pre">co2_o2.toml</span></code>. Use
+<code class="docutils literal notranslate"><span class="pre">co2.toml</span></code>, <code class="docutils literal notranslate"><span class="pre">co2_fixed_ou.toml</span></code>, and <code class="docutils literal notranslate"><span class="pre">co2_o2.toml</span></code>. Use
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.co2_config_templates" title="openghg_inversions.rhime.co2.co2_config_templates"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.co2_config_templates()</span></code></a> to discover their
 installed paths. Copy the closest template for a run; do not edit the installed
 resource. The templates configure the existing prepared-input Python seams.
-Despite its historical filename, <code class="docutils literal notranslate"><span class="pre">co2_cached_sigma.toml</span></code> now configures
-<code class="docutils literal notranslate"><span class="pre">run_co2</span></code> with inferred fixed-OU amplitudes and sampling-owned tuning controls.
+<code class="docutils literal notranslate"><span class="pre">co2_fixed_ou.toml</span></code> configures <code class="docutils literal notranslate"><span class="pre">run_co2</span></code> with inferred fixed-OU amplitudes
+and sampling-owned tuning controls.
 The CO2-only templates also underpin <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2</span></code> staged commands; see
 <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for the staged output table and complete command
 sequence, including <a class="reference internal" href="co2_model_family.html#linked-staged-commands"><span class="std std-ref">linked saved phases</span></a>.
@@ -627,18 +627,15 @@ concrete owners; saved sampling accepts decoded model/likelihood choices and a
 separate <code class="docutils literal notranslate"><span class="pre">sampling</span></code> mapping. The model selects the backend and update.
 Native-resolution acquisition and coherent-reduction construction
 are separate from this configured prepared-input route.</p>
-<p>Cached and linked recipes retain
+<p>Linked recipes retain
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.resolve_co2_family_config" title="openghg_inversions.rhime.co2.resolve_co2_family_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.resolve_co2_family_config()</span></code></a>, which accepts a
-mapping and returns <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2RunSetup" title="openghg_inversions.rhime.co2.Co2RunSetup"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2RunSetup</span></code></a> or
-<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2RunSetup" title="openghg_inversions.rhime.co2.Co2O2RunSetup"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2O2RunSetup</span></code></a>. Those setups retain their
-explicit runner binding. For linked data, <code class="docutils literal notranslate"><span class="pre">setup.runner_arguments(prepared)</span></code>
-expands configured independent errors over the joint observation axis and checks
-species/unit labels. The ordinary branch of that resolver is retired; use
-<code class="docutils literal notranslate"><span class="pre">run_co2</span></code> or the concrete scientific operations above.</p>
-<p>For example, the ordinary TOML settings:</p>
+mapping and returns <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2RunSetup" title="openghg_inversions.rhime.co2.Co2O2RunSetup"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2O2RunSetup</span></code></a>.
+<code class="docutils literal notranslate"><span class="pre">setup.runner_arguments(prepared)</span></code> expands independent errors over the joint
+observation axis and checks species/unit labels. CO2 uses <code class="docutils literal notranslate"><span class="pre">run_co2</span></code> or the
+concrete scientific operations above.</p>
+<p>For example, the CO2 TOML settings:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">format_version</span> <span class="o">=</span> <span class="mi">1</span>
 <span class="n">recipe</span> <span class="o">=</span> <span class="s2">"co2"</span>
-<span class="n">variant</span> <span class="o">=</span> <span class="s2">"ordinary"</span>
 
 <span class="p">[</span><span class="n">prepared_inputs</span><span class="p">]</span>
 <span class="n">path</span> <span class="o">=</span> <span class="s2">"co2-coherent-dense.zarr"</span>
@@ -735,9 +732,8 @@ same runner. Output choices remain separate from the scientific trace.
 <code class="docutils literal notranslate"><span class="pre">prepared_inputs.path</span></code>, <code class="docutils literal notranslate"><span class="pre">prepared_inputs.reconstruction_path</span></code> and
 <code class="docutils literal notranslate"><span class="pre">likelihood.eigenbasis_path</span></code> become ordinary <code class="docutils literal notranslate"><span class="pre">pathlib.Path</span></code> values.
 Relative values are interpreted from the process working directory, not the
-directory containing the ordinary TOML file. Use absolute paths when the run
-may start from another directory. The retained cached staged interface keeps its
-existing configuration-file-relative path behavior.</p>
+directory containing the TOML file. Use absolute paths when the run
+may start from another directory.</p>
 <p>Configuration deliberately supports a closed matrix rather than arbitrary
 callable imports:</p>
 <div class="pst-scrollable-table-container"><table class="table">
@@ -756,24 +752,18 @@ callable imports:</p>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">co2</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">ordinary</span></code></p></td>
+<td><p>Not used</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">run_co2</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">additive_sigma</span></code>, <code class="docutils literal notranslate"><span class="pre">site_sigma</span></code>, <code class="docutils literal notranslate"><span class="pre">fixed_ou</span></code>, or <code class="docutils literal notranslate"><span class="pre">scalar_sigma</span></code>
 likelihood; boundary conditions and offsets are available.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">co2</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">cached_fixed_ou</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_cached_sigma</span></code></p></td>
-<td><p>Fixed positive OU timescales and independent positive site amplitudes, using the
-runner-owned PyMC sampler.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">co2_o2</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">co2_o2</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">linked</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2_from_prepared_inputs</span></code></p></td>
 <td><p>Fixed independent error, or <code class="docutils literal notranslate"><span class="pre">fixed_ou</span></code> with fixed or inferred
 species/site amplitudes; one shared channel-unit label.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">co2_o2</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">co2_o2</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">cached_fixed_ou</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2_cached_sigma_from_prepared_inputs</span></code></p></td>
 <td><p>Fixed OU timescales and independent positive species/site amplitudes, using the
@@ -782,13 +772,13 @@ runner-owned PyMC sampler; one shared channel-unit label.</p></td>
 </tbody>
 </table>
 </div>
-<p>For <code class="docutils literal notranslate"><span class="pre">variant</span> <span class="pre">=</span> <span class="pre">&quot;ordinary&quot;</span></code>, the <code class="docutils literal notranslate"><span class="pre">[likelihood]</span></code> table accepts these closed
+<p>For <code class="docutils literal notranslate"><span class="pre">recipe</span> <span class="pre">=</span> <span class="pre">&quot;co2&quot;</span></code>, the <code class="docutils literal notranslate"><span class="pre">[likelihood]</span></code> table accepts these closed
 forms. Scalar-or-site-map values use one number or an inline table such as
 <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">MHD</span> <span class="pre">=</span> <span class="pre">24.0,</span> <span class="pre">TAC</span> <span class="pre">=</span> <span class="pre">12.0</span> <span class="pre">}</span></code>; the component-specific sign constraints are below.
 Site maps validate every supplied value, including entries for dropped sites,
 require retained-site coverage, then select retained labels.</p>
 <div class="pst-scrollable-table-container"><table class="table" id="id2">
-<caption><span class="caption-text">Ordinary CO2 likelihood configuration</span><a class="headerlink" href="#id2" title="Link to this table">#</a></caption>
+<caption><span class="caption-text">CO2 likelihood configuration</span><a class="headerlink" href="#id2" title="Link to this table">#</a></caption>
 <colgroup>
 <col style="width: 18.0%" />
 <col style="width: 34.0%" />
@@ -842,14 +832,15 @@ cannot specify a prior. <code class="docutils literal notranslate"><span class="
 accepts <code class="docutils literal notranslate"><span class="pre">frequency</span></code>, <code class="docutils literal notranslate"><span class="pre">per_site</span></code> (default true), and <code class="docutils literal notranslate"><span class="pre">drop_first</span></code> (default
 false). A global offset (<code class="docutils literal notranslate"><span class="pre">per_site</span> <span class="pre">=</span> <span class="pre">false</span></code>) cannot set a frequency or use
 <code class="docutils literal notranslate"><span class="pre">drop_first</span> <span class="pre">=</span> <span class="pre">true</span></code>.</p>
-<p>For <code class="docutils literal notranslate"><span class="pre">variant</span> <span class="pre">=</span> <span class="pre">&quot;cached_fixed_ou&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">[likelihood]</span></code> requires
-<code class="docutils literal notranslate"><span class="pre">kind</span> <span class="pre">=</span> <span class="pre">&quot;fixed_ou&quot;</span></code>, positive scalar-or-site-map <code class="docutils literal notranslate"><span class="pre">tau_hours</span></code> (species/site
-keys such as <code class="docutils literal notranslate"><span class="pre">&quot;co2:MHD&quot;</span></code> for the linked recipe), and a positive-support
-<code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code> table. It optionally accepts positive
-<code class="docutils literal notranslate"><span class="pre">initial_site_amplitudes</span></code> and the zero-to-one controls
-<code class="docutils literal notranslate"><span class="pre">sigma_target_accept</span></code> and <code class="docutils literal notranslate"><span class="pre">state_target_accept</span></code>. Its <code class="docutils literal notranslate"><span class="pre">[sampling]</span></code> table
-must use <code class="docutils literal notranslate"><span class="pre">nuts_sampler</span> <span class="pre">=</span> <span class="pre">&quot;pymc&quot;</span></code>; posterior-predictive name lists may contain
-only <code class="docutils literal notranslate"><span class="pre">y</span></code> or <code class="docutils literal notranslate"><span class="pre">concentration</span></code>.</p>
+<p>CO2 fixed OU with inferred amplitudes also accepts positive
+<code class="docutils literal notranslate"><span class="pre">initial_site_amplitudes</span></code> in <code class="docutils literal notranslate"><span class="pre">[likelihood]</span></code>. The zero-to-one controls
+<code class="docutils literal notranslate"><span class="pre">sigma_target_accept</span></code> and <code class="docutils literal notranslate"><span class="pre">state_target_accept</span></code> belong in <code class="docutils literal notranslate"><span class="pre">[sampling]</span></code>.
+Posterior-predictive name lists may contain only <code class="docutils literal notranslate"><span class="pre">y</span></code> or <code class="docutils literal notranslate"><span class="pre">concentration</span></code>.
+The implementation selects the matched cached sampler automatically.</p>
+<p>Linked <code class="docutils literal notranslate"><span class="pre">variant</span> <span class="pre">=</span> <span class="pre">&quot;cached_fixed_ou&quot;</span></code> retains its target-accept controls in
+<code class="docutils literal notranslate"><span class="pre">[likelihood]</span></code>, alongside positive <code class="docutils literal notranslate"><span class="pre">tau_hours</span></code> and <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code>,
+with species/site keys such as <code class="docutils literal notranslate"><span class="pre">&quot;co2:MHD&quot;</span></code>.
+Linked cached sampling requires <code class="docutils literal notranslate"><span class="pre">nuts_sampler</span> <span class="pre">=</span> <span class="pre">&quot;pymc&quot;</span></code>.</p>
 <p>The optional <code class="docutils literal notranslate"><span class="pre">[sampling]</span></code> table is shared by the supported setups.
 Defaults below apply when an option is omitted; linked fixed-error sampling
 uses NumPyro, while both linked OU routes default to and require PyMC.</p>
@@ -863,7 +854,7 @@ uses NumPyro, while both linked OU routes default to and require PyMC.</p>
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Option</p></th>
-<th class="head"><p>Ordinary/cached default</p></th>
+<th class="head"><p>CO2 default</p></th>
 <th class="head"><p>Linked default</p></th>
 <th class="head"><p>Accepted value and constraint</p></th>
 </tr>
@@ -892,8 +883,7 @@ uses NumPyro, while both linked OU routes default to and require PyMC.</p>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">nuts_sampler</span></code></p></td>
 <td><p>Chosen from the likelihood</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;numpyro&quot;</span></code> for fixed error; <code class="docutils literal notranslate"><span class="pre">&quot;pymc&quot;</span></code> for OU</p></td>
-<td><p>Configured <code class="docutils literal notranslate"><span class="pre">run_co2</span></code> rejects this option. The retained cached stage
-interface requires <code class="docutils literal notranslate"><span class="pre">&quot;pymc&quot;</span></code>. Linked configuration accepts supported
+<td><p>Configured <code class="docutils literal notranslate"><span class="pre">run_co2</span></code> rejects this option. Linked configuration accepts supported
 backends, with <code class="docutils literal notranslate"><span class="pre">&quot;pymc&quot;</span></code> required for <code class="docutils literal notranslate"><span class="pre">fixed_ou</span></code>.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">progressbar</span></code></p></td>
@@ -909,7 +899,7 @@ backends, with <code class="docutils literal notranslate"><span class="pre">&quo
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sample_posterior_predictive</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">[&quot;y&quot;]</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">[&quot;y&quot;]</span></code></p></td>
-<td><p>Boolean or list of non-empty variable names. For the cached variant,
+<td><p>Boolean or list of non-empty variable names. For inferred fixed OU,
 listed names are restricted to <code class="docutils literal notranslate"><span class="pre">&quot;y&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;concentration&quot;</span></code>.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">target_accept</span></code></p></td>
@@ -1460,11 +1450,10 @@ ratio-free O2 sensitivity. The <a class="reference internal" href="../experiment
 ratio. That future CO2/O2 coupling work is tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-118">OPE-118</a>.</p>
 </section>
 </section>
-<section id="run-the-package-supported-cached-sigma-co2-runner">
-<span id="co2-cached-sigma-recipe"></span><h2>Run the package-supported cached-sigma CO2 runner<a class="headerlink" href="#run-the-package-supported-cached-sigma-co2-runner" title="Link to this heading">#</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_cached_sigma</span></code> is the package-supported cached-sigma runner at
-the prepared-input boundary for the fixed-tau OU likelihood with independently
-inferred site amplitudes. It owns the matched PyMC graph and sampler: the
+<section id="fixed-ou-with-inferred-site-amplitudes">
+<span id="co2-cached-sigma-recipe"></span><h2>Fixed OU with inferred site amplitudes<a class="headerlink" href="#fixed-ou-with-inferred-site-amplitudes" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">run_co2</span></code> selects the matched cached implementation for fixed-tau OU with
+independently inferred site amplitudes. It owns the PyMC graph and sampler: the
 sigma-only No-U-Turn Sampler (NUTS) step runs first against
 the exact conditional likelihood. The sampler then rebuilds the
 state-likelihood quadratic for the site amplitudes returned by that transition,
@@ -1485,12 +1474,12 @@ The observation array must also have observation-aligned <code class="docutils l
 coordinates. Times must be finite and unique within each site, although rows
 may be interleaved or unsorted. Datetime coordinates are converted to elapsed
 hours; numeric time coordinates are interpreted directly as hours. If
-<code class="docutils literal notranslate"><span class="pre">tau_hours</span></code> is a mapping, its keys must exactly match every observed site
-label.</p>
-<p>Boundary and offset selection uses the same prepared-input contract as the
-ordinary runner. Set <code class="docutils literal notranslate"><span class="pre">use_bc=True</span></code> to select a prepared <code class="docutils literal notranslate"><span class="pre">H_bc</span></code>;
-<code class="docutils literal notranslate"><span class="pre">bc_prior</span></code> and <code class="docutils literal notranslate"><span class="pre">bc_state_activity</span></code> configure its labelled scaling state.
-Supplying <code class="docutils literal notranslate"><span class="pre">offset_prior</span></code> adds the offset described by <code class="docutils literal notranslate"><span class="pre">offset_args</span></code>.
+<code class="docutils literal notranslate"><span class="pre">tau_hours</span></code> is a mapping, it must cover every retained site label; all supplied values are validated,
+including entries for dropped sites.</p>
+<p>Boundary and offset selection uses <code class="docutils literal notranslate"><span class="pre">[model.boundary]</span></code> and
+<code class="docutils literal notranslate"><span class="pre">[model.offset]</span></code> as for other CO2 likelihoods. The numerical builder also
+accepts <code class="docutils literal notranslate"><span class="pre">use_bc</span></code>, <code class="docutils literal notranslate"><span class="pre">bc_prior</span></code>, <code class="docutils literal notranslate"><span class="pre">bc_state_activity</span></code>, <code class="docutils literal notranslate"><span class="pre">offset_prior</span></code> and
+<code class="docutils literal notranslate"><span class="pre">offset_args</span></code> for direct scientific composition.
 Its location and scale parameters use the observations’ concentration units.
 These coefficients join the flux coefficients only inside the private cached
 likelihood calculation; their public scientific variables and contributions
@@ -1526,46 +1515,39 @@ site-amplitude, and OU profiles, especially when model-mismatch error is
 small. See <a class="reference internal" href="coherent_reduction.html"><span class="doc">Coherent Gaussian Reduction</span></a> for the dense preparation cost and the
 other retained-spectrum and reconstruction diagnostics.</p>
 <p>For example:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeSampler</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">Co2PreparedInputs</span><span class="p">,</span>
-    <span class="n">run_rhime_co2_cached_sigma</span><span class="p">,</span>
-<span class="p">)</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_co2</span>
 
-<span class="n">prepared</span> <span class="o">=</span> <span class="n">Co2PreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"co2-coherent-low-rank.zarr"</span><span class="p">)</span>
-<span class="n">idata</span> <span class="o">=</span> <span class="n">run_rhime_co2_cached_sigma</span><span class="p">(</span>
-    <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
-    <span class="n">tau_hours</span><span class="o">=</span><span class="p">{</span><span class="s2">"BSD"</span><span class="p">:</span> <span class="mf">24.0</span><span class="p">,</span> <span class="s2">"TAC"</span><span class="p">:</span> <span class="mf">18.0</span><span class="p">},</span>
-    <span class="n">site_amplitude_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"halfnormal"</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.75</span><span class="p">},</span>
-    <span class="n">use_bc</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-    <span class="n">bc_prior</span><span class="o">=</span><span class="p">{</span>
-        <span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"truncatednormal"</span><span class="p">,</span>
-        <span class="s2">"mu"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
-        <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span>
-        <span class="s2">"lower"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">run_co2</span><span class="p">(</span><span class="n">params</span><span class="o">=</span><span class="p">{</span>
+    <span class="s2">"recipe"</span><span class="p">:</span> <span class="s2">"co2"</span><span class="p">,</span>
+    <span class="s2">"prepared_inputs"</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">"path"</span><span class="p">:</span> <span class="s2">"co2-coherent-low-rank.zarr"</span><span class="p">,</span>
+        <span class="s2">"start_date"</span><span class="p">:</span> <span class="s2">"2020-01-01"</span><span class="p">,</span> <span class="s2">"end_date"</span><span class="p">:</span> <span class="s2">"2020-02-01"</span><span class="p">,</span>
+        <span class="s2">"domain"</span><span class="p">:</span> <span class="s2">"EUROPE"</span><span class="p">,</span>
     <span class="p">},</span>
-    <span class="n">offset_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"normal"</span><span class="p">,</span> <span class="s2">"mu"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">},</span>
-    <span class="n">offset_args</span><span class="o">=</span><span class="p">{</span><span class="s2">"per_site"</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
-    <span class="n">sigma_target_accept</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>
-    <span class="n">state_target_accept</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>
-    <span class="n">sampler</span><span class="o">=</span><span class="n">RhimeSampler</span><span class="p">(</span>
-        <span class="n">draws</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
-        <span class="n">tune</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
-        <span class="n">chains</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
-        <span class="n">nuts_sampler</span><span class="o">=</span><span class="s2">"pymc"</span><span class="p">,</span>
-        <span class="n">sample_kwargs</span><span class="o">=</span><span class="p">{</span><span class="s2">"random_seed"</span><span class="p">:</span> <span class="mi">20260913</span><span class="p">},</span>
-        <span class="n">sample_prior_predictive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-    <span class="p">),</span>
-<span class="p">)</span>
+    <span class="s2">"likelihood"</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">"kind"</span><span class="p">:</span> <span class="s2">"fixed_ou"</span><span class="p">,</span> <span class="s2">"tau_hours"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"BSD"</span><span class="p">:</span> <span class="mf">24.0</span><span class="p">,</span> <span class="s2">"TAC"</span><span class="p">:</span> <span class="mf">18.0</span><span class="p">},</span>
+        <span class="s2">"site_amplitude_prior"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"gamma"</span><span class="p">,</span> <span class="s2">"alpha"</span><span class="p">:</span> <span class="mf">2.0</span><span class="p">,</span> <span class="s2">"beta"</span><span class="p">:</span> <span class="mf">3.0</span><span class="p">},</span>
+    <span class="p">},</span>
+    <span class="s2">"model"</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">"boundary"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"enabled"</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">"prior"</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"truncatednormal"</span><span class="p">,</span> <span class="s2">"mu"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span> <span class="s2">"lower"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+        <span class="p">}},</span>
+        <span class="s2">"offset"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"prior"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"normal"</span><span class="p">,</span> <span class="s2">"mu"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">},</span>
+                   <span class="s2">"per_site"</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
+    <span class="p">},</span>
+    <span class="s2">"sampling"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"draws"</span><span class="p">:</span> <span class="mi">1000</span><span class="p">,</span> <span class="s2">"tune"</span><span class="p">:</span> <span class="mi">1000</span><span class="p">,</span> <span class="s2">"chains"</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span>
+                 <span class="s2">"random_seed"</span><span class="p">:</span> <span class="mi">20260913</span><span class="p">},</span>
+    <span class="s2">"outputs"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"output_format"</span><span class="p">:</span> <span class="s2">"none"</span><span class="p">},</span>
+<span class="p">})</span>
+<span class="n">idata</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">idata</span>
 </pre></div>
 </div>
-<p>The runner constructs the required <code class="docutils literal notranslate"><span class="pre">site</span> <span class="pre">amplitude</span> <span class="pre">-&gt;</span> <span class="pre">state</span></code> <code class="docutils literal notranslate"><span class="pre">CompoundStep</span></code> and
-uses process spawning for multiple chains. Do not pass another step method in
-<code class="docutils literal notranslate"><span class="pre">sample_kwargs</span></code>. Set <code class="docutils literal notranslate"><span class="pre">sigma_target_accept</span></code> and <code class="docutils literal notranslate"><span class="pre">state_target_accept</span></code> on
-the runner rather than putting a generic <code class="docutils literal notranslate"><span class="pre">target_accept</span></code> in
-<code class="docutils literal notranslate"><span class="pre">RhimeSampler.sample_kwargs</span></code>. The state-likelihood quadratic cache and
-fixed-OU generalized eigenbasis are runtime numerical state derived from the
-materialized prepared inputs; they are not external cache artifacts.</p>
+<p>The runner updates site amplitudes before any active state coefficients
+and uses process spawning for multiple chains. Optional <code class="docutils literal notranslate"><span class="pre">sigma_target_accept</span></code>
+and <code class="docutils literal notranslate"><span class="pre">state_target_accept</span></code> belong in <code class="docutils literal notranslate"><span class="pre">[sampling]</span></code>; a generic
+<code class="docutils literal notranslate"><span class="pre">sampling.target_accept</span></code> is rejected for this model. The state-likelihood
+quadratic cache and fixed-OU generalized eigenbasis are runtime numerical state
+derived from materialized prepared inputs, not external cache artifacts.</p>
 <p>The graph exposes one exact observed <code class="docutils literal notranslate"><span class="pre">y</span></code> distribution. Native
 <code class="docutils literal notranslate"><span class="pre">pm.sample_prior_predictive</span></code>, <code class="docutils literal notranslate"><span class="pre">pm.sample_posterior_predictive</span></code> and
 <code class="docutils literal notranslate"><span class="pre">pm.compute_log_likelihood</span></code> therefore use each draw’s complete mean and
@@ -1578,20 +1560,19 @@ masks must remain fixed; rebuild the recipe to replace them.</p>
 the complete observation vector. Its <code class="docutils literal notranslate"><span class="pre">rhime_likelihood_scope</span></code> is
 <code class="docutils literal notranslate"><span class="pre">joint_observation_vector</span></code>; it is unsuitable for pointwise LOO or WAIC.
 Both predictive groups contain complete correlated observation vectors and
-carry the same joint scope and concentration units. Set
-<code class="docutils literal notranslate"><span class="pre">sample_kwargs={&quot;idata_kwargs&quot;:</span> <span class="pre">{&quot;log_likelihood&quot;:</span> <span class="pre">False}}</span></code> to omit density
-output. Prediction can be disabled independently.</p>
+carry the same joint scope and concentration units. Prediction can be disabled
+independently through the sampling configuration.</p>
 <p>The shared sampler derives separate prior and posterior prediction streams
-from <code class="docutils literal notranslate"><span class="pre">sample_kwargs[&quot;random_seed&quot;]</span></code>. Toggling prior prediction does not
-change posterior prediction or MCMC. An explicit predictive <code class="docutils literal notranslate"><span class="pre">random_seed</span></code>
+from <code class="docutils literal notranslate"><span class="pre">sampling.random_seed</span></code>. Toggling prior prediction does not
+change posterior prediction or MCMC. For low-level <code class="docutils literal notranslate"><span class="pre">RhimeSampler</span></code> callers, an explicit predictive <code class="docutils literal notranslate"><span class="pre">random_seed</span></code>
 overrides the posterior stream, including <code class="docutils literal notranslate"><span class="pre">None</span></code> for an unseeded draw.
-Cached runners accept posterior names <code class="docutils literal notranslate"><span class="pre">y</span></code> and <code class="docutils literal notranslate"><span class="pre">concentration</span></code> (the same
+The matched implementation accepts posterior names <code class="docutils literal notranslate"><span class="pre">y</span></code> and <code class="docutils literal notranslate"><span class="pre">concentration</span></code> (the same
 observation variable), or a boolean; an empty sequence disables prediction.
 Only <code class="docutils literal notranslate"><span class="pre">random_seed</span></code> is supported in <code class="docutils literal notranslate"><span class="pre">posterior_predictive_kwargs</span></code>.</p>
 <p>The builder returns <code class="docutils literal notranslate"><span class="pre">initial_values</span></code> containing physical amplitude defaults
 from the prior’s PyMC support point and any boundary/offset prior start strategies.
 Explicit <code class="docutils literal notranslate"><span class="pre">initial_site_amplitudes</span></code> must lie strictly inside the prior support
-and have finite transformed values. The runner merges caller
+and have finite transformed values. Low-level <code class="docutils literal notranslate"><span class="pre">RhimeSampler</span></code> callers may merge
 <code class="docutils literal notranslate"><span class="pre">sample_kwargs[&quot;initvals&quot;]</span></code> over these defaults, including transformed keys
 and per-chain mappings. For direct low-level sampling, pass this mapping as
 <code class="docutils literal notranslate"><span class="pre">initvals</span></code> and construct the matched step with <code class="docutils literal notranslate"><span class="pre">cached_state_logp</span></code> and an
@@ -1726,7 +1707,7 @@ The joint likelihood must not be treated as pointwise observation densities.</p>
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-coherent-reduction-model">CO2 coherent-reduction model</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-grouped-inner-and-outer-states">CO2 grouped inner and outer states</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#compose-ordinary-co2-scientific-operations">Compose ordinary CO2 scientific operations</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#compose-co2-scientific-operations">Compose CO2 scientific operations</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#configure-prepared-input-execution-from-toml">Configure prepared-input execution from TOML</a></li>
 </ul>
 </li>
@@ -1737,7 +1718,7 @@ The joint likelihood must not be treated as pointwise observation densities.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#signed-oxidation-ratios">Signed oxidation ratios</a></li>
 </ul>
 </li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-the-package-supported-cached-sigma-co2-runner">Run the package-supported cached-sigma CO2 runner</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#fixed-ou-with-inferred-site-amplitudes">Fixed OU with inferred site amplitudes</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#linked-fixed-ou-mismatch-and-cached-sampling">Linked fixed-OU mismatch and cached sampling</a></li>
 </ul>
   </nav></div>
