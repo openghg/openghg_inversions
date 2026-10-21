@@ -1058,7 +1058,6 @@ and does not check that it belongs to the prepared artifact.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">modelled_mean</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">cached_state_logp</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">initial_values</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior_scale</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.Co2CachedSigmaModel" title="Link to this definition">#</a></dt>
@@ -1356,7 +1355,7 @@ retaining the full covariance independently of the mutable sampler cache.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">observation_error</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">tau_hours</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior_scale</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">initial_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">boundary_sensitivity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -1399,11 +1398,11 @@ observations’ concentration units.</p></li>
 squared concentration units.</p></li>
 <li><p><strong>tau_hours</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>]</em>) – Fixed OU decorrelation time in hours. A scalar applies to
 every site; a mapping must cover every observed site label.</p></li>
-<li><p><strong>site_amplitude_prior_scale</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a>) – Scale of the independent HalfNormal site-
-amplitude priors, in the observations’ concentration units.</p></li>
+<li><p><strong>site_amplitude_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – Independent positive prior specification for site
+amplitudes, in the observations’ concentration units.</p></li>
 <li><p><strong>initial_site_amplitudes</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Optional positive initial amplitude in the
 same units, supplied as one scalar or a mapping covering every
-observed site. Defaults to <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior_scale</span></code>.</p></li>
+observed site. Defaults to the prior support point.</p></li>
 <li><p><strong>state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional labelled active/fixed policy for retained flux
 states. Fixed values are dimensionless flux scalings.</p></li>
 <li><p><strong>boundary_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional atmospheric boundary-condition
@@ -1555,7 +1554,7 @@ and Gaussian likelihood.</p>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">tau_hours</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior_scale</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">initial_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -1573,10 +1572,10 @@ and Gaussian likelihood.</p>
 time coordinates and the selected aggregation-error representation.</p></li>
 <li><p><strong>tau_hours</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>]</em>) – Fixed OU decorrelation time in hours, as a scalar or a
 mapping covering all observed sites.</p></li>
-<li><p><strong>site_amplitude_prior_scale</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a>) – HalfNormal site-amplitude prior scale in
+<li><p><strong>site_amplitude_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – Independent positive site-amplitude prior in
 observation concentration units.</p></li>
 <li><p><strong>initial_site_amplitudes</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Positive scalar or site mapping in the same
-units; defaults to the prior scale.</p></li>
+units; defaults to the prior support point.</p></li>
 <li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Include prepared boundary sensitivity <code class="docutils literal notranslate"><span class="pre">H_bc</span></code>.</p></li>
 <li><p><strong>bc_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional boundary-scaling prior.</p></li>
 <li><p><strong>bc_state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional active/fixed boundary-state policy.</p></li>
@@ -1770,7 +1769,7 @@ provenance, ready for native prior prediction or sampling.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">retained_prior</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">independent_error_sd</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">tau_hours</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior_scale</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">initial_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">boundary_sensitivity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -1788,8 +1787,8 @@ embedded O2-ratio contract as <a class="reference internal" href="#openghg_inver
 use the same concentration unit. OU blocks are independent by
 <code class="docutils literal notranslate"><span class="pre">(species,</span> <span class="pre">site)</span></code> while the prepared aggregation covariance retains all
 cross-channel entries. <code class="docutils literal notranslate"><span class="pre">tau_hours</span></code> is fixed, in hours; mappings use
-<code class="docutils literal notranslate"><span class="pre">co2:SITE</span></code>/<code class="docutils literal notranslate"><span class="pre">o2:SITE</span></code> keys. Amplitudes have independent HalfNormal priors
-with <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior_scale</span></code> in concentration units. Optional positive
+<code class="docutils literal notranslate"><span class="pre">co2:SITE</span></code>/<code class="docutils literal notranslate"><span class="pre">o2:SITE</span></code> keys. Amplitudes have independent positive priors
+specified by <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code> in concentration units. Optional positive
 initial amplitudes use the same scalar or species/site mapping convention.
 The returned graph must be sampled with the CO2 sigma-then-state
 CompoundStep and its explicit cached state function. The observed joint
@@ -2260,7 +2259,7 @@ requested conditional affine products, with configured files written.</p>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">tau_hours</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior_scale</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">initial_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'default'</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">sigma_target_accept</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.8</span></span></em>,</dd>
@@ -2292,11 +2291,11 @@ must have aligned <code class="docutils literal notranslate"><span class="pre">s
 aggregation-error representation must also be present.</p></li>
 <li><p><strong>tau_hours</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>]</em>) – Fixed OU decorrelation time in hours. A scalar applies to
 every site; a mapping must cover every observed site label.</p></li>
-<li><p><strong>site_amplitude_prior_scale</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a>) – Scale of the independent HalfNormal site-
-amplitude priors, in the observations’ concentration units.</p></li>
+<li><p><strong>site_amplitude_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – Independent positive prior for site amplitudes,
+in the observations’ concentration units.</p></li>
 <li><p><strong>initial_site_amplitudes</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Optional positive initial amplitude in the
 same units, supplied as one scalar or a mapping covering every
-observed site. Defaults to <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior_scale</span></code>.</p></li>
+observed site. Defaults to the prior support point.</p></li>
 <li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><em>RhimeSampler</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'default'</em><em>]</em>) – Sampler configuration or <code class="docutils literal notranslate"><span class="pre">&quot;default&quot;</span></code>; explicit <code class="docutils literal notranslate"><span class="pre">None</span></code> is invalid. This recipe requires PyMC,
 constructs its own step, and supports only <code class="docutils literal notranslate"><span class="pre">random_seed</span></code> in
 <code class="docutils literal notranslate"><span class="pre">posterior_predictive_kwargs</span></code>.</p></li>
@@ -2433,7 +2432,7 @@ JSON model metadata.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">independent_error_sd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">tau_hours</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior_scale</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">initial_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -2470,11 +2469,11 @@ vectors must agree in labels, units, and values when both exist.</p></li>
 <li><p><strong>tau_hours</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>]</em>) – Finite positive fixed OU timescale in hours, applied to each
 species/site group. A mapping uses co2:SITE and o2:SITE keys and
 must cover every observed group.</p></li>
-<li><p><strong>site_amplitude_prior_scale</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a>) – Finite positive HalfNormal scale for the
+<li><p><strong>site_amplitude_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – Independent positive prior specification for the
 independent species/site OU amplitudes, in concentration units.</p></li>
 <li><p><strong>initial_site_amplitudes</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Optional finite positive starting amplitudes,
 in concentration units. A scalar applies to every group; mappings
-use the same keys as tau_hours. Defaults to the prior scale.</p></li>
+use the same keys as tau_hours. Defaults to the prior support point.</p></li>
 <li><p><strong>state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional labelled active/fixed retained-state policy.
 Omitted states follow the model’s structural activity policy.</p></li>
 <li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a><em>] </em><em>| </em><em>None</em>) – Optional co2/o2 boolean mapping selecting prepared boundary

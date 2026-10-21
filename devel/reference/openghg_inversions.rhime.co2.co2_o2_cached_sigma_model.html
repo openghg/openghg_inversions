@@ -593,7 +593,7 @@
 <dd><em class="sig-param"><span class="n"><span class="pre">retained_prior</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">independent_error_sd</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">tau_hours</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior_scale</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">initial_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">boundary_sensitivity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -611,8 +611,8 @@ embedded O2-ratio contract as <code class="xref py py-func docutils literal notr
 use the same concentration unit. OU blocks are independent by
 <code class="docutils literal notranslate"><span class="pre">(species,</span> <span class="pre">site)</span></code> while the prepared aggregation covariance retains all
 cross-channel entries. <code class="docutils literal notranslate"><span class="pre">tau_hours</span></code> is fixed, in hours; mappings use
-<code class="docutils literal notranslate"><span class="pre">co2:SITE</span></code>/<code class="docutils literal notranslate"><span class="pre">o2:SITE</span></code> keys. Amplitudes have independent HalfNormal priors
-with <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior_scale</span></code> in concentration units. Optional positive
+<code class="docutils literal notranslate"><span class="pre">co2:SITE</span></code>/<code class="docutils literal notranslate"><span class="pre">o2:SITE</span></code> keys. Amplitudes have independent positive priors
+specified by <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code> in concentration units. Optional positive
 initial amplitudes use the same scalar or species/site mapping convention.
 The returned graph must be sampled with the CO2 sigma-then-state
 CompoundStep and its explicit cached state function. The observed joint
