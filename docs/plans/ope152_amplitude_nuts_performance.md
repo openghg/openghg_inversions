@@ -343,5 +343,18 @@ Validation job `19593205` passed all 211 related tests on each of Python 3.12
 and 3.13. Its PyMC 6.0 check passed 30 cases and exposed a test-setup omission
 in twelve direct density/gradient oracle cases: the older wrapper requires
 `set_extra_values(point)` before a direct call. Production sampling cases
-passed. A one-line test-only correction and the documentation build are being
-checked by isolated-snapshot job `19593979`; that result remains pending.
+passed. Isolated-snapshot job `19593979` validated the one-line test-only
+correction: all twelve affected cases passed again on each current Python
+version, and all 42 cases passed with PyMC 6.0 / PyTensor 3.0.2. The applied test
+file is byte-identical to that tested snapshot. The full documentation build
+also succeeded with twelve existing duplicate-object/ambiguous-reference
+warnings; the earlier isolated-build missing-download warnings were eliminated
+by including the repository's OpenSpec download targets. No specification changed.
+The retry completed in 9m22s on `bp1-compute084`, using two CPUs and 8 GiB,
+with sampled MaxRSS 5,801,560 KiB.
+
+The documentation build used the frozen implementation snapshot. Subsequent
+performance-report text, CSV and profiling-script additions passed link and
+table checks separately. The public compiler profiler also passed normalized
+source/AST equivalence with the frozen benchmark harness, Ruff, command-line
+help, microbenchmark parity and a bounded two-chain sampling smoke check.

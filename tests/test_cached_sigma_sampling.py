@@ -694,6 +694,7 @@ def test_conditional_density_and_gradient_match_independent_positive_prior(prior
     assert point[value_name].dtype == graph_precision
     assert step.conditional_sigma.dtype == graph_precision
     density = step.nuts_step._logp_dlogp_func
+    density.set_extra_values(point)
     family = prior["pdf"]
     if family == "halfnormal":
         distribution = stats.halfnorm(scale=0.75)
