@@ -395,6 +395,8 @@ tac_footprints_metadata = {
     "domain": "europe",
     "model": "name",
     "inlet": "185m",
+    # Bound temporary index arrays when the ACRG parser transposes the source.
+    "chunks": {"time": 24},
     # "metmodel": "ukv",
 }
 tac_footprints_data_path = _raw_data_path / "footprints_tac_europe_name_185m_2019-01-01_2019-01-07_data.nc"
