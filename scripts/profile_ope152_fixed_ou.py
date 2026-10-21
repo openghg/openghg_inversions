@@ -2,6 +2,8 @@
 
 Run large inputs on Slurm. ``--self-check`` uses only tiny synthetic arrays.
 Historical Woodbury is a benchmark reference, not a supported runtime option.
+``--aggregation-error-rank`` prepares a shared low-rank-plus-diagonal target
+from the source artifact before comparing algorithms; the source stays intact.
 """
 
 from __future__ import annotations
@@ -82,6 +84,43 @@ def historical_woodbury(self, rhs, site_amplitude):
     return fixed_ou.FixedOuCovarianceSolve(np.asarray(solution), logdet)
 
 
+def derive_low_rank_inputs(prepared, rank, source_sha256):
+    """Use the CO2 preparation helper, preserving the discarded diagonal tail."""
+    from openghg_inversions.inversion_data import RhimePreparedInputs
+    from openghg_inversions.observation_error import prepare_low_rank_aggregation_error
+    from openghg_inversions.rhime.co2 import Co2PreparedInputs
+
+    source = prepared.inv_inputs
+    covariance = source["aggregation_error_covariance"]
+    approximation = prepare_low_rank_aggregation_error(
+        covariance, rank=min(rank, source.sizes["nmeasure"]),
+    )
+    selected = approximation.aggregation_error
+    assert selected.factor is not None and selected.diagonal_variance is not None
+    units = source["mf"].attrs["units"]
+    derived = source.drop_vars("aggregation_error_covariance").assign(
+        low_rank_factor=selected.factor.reset_index("nmeasure", drop=True).assign_attrs(units=units),
+        diagonal_residual_variance=selected.diagonal_variance.reset_index("nmeasure", drop=True).assign_attrs(
+            units=covariance.attrs.get("units", f"({units})^2"),
+        ),
+    )
+    np.testing.assert_allclose(
+        selected.marginal_variance, np.diag(covariance.values), rtol=1e-12, atol=1e-12,
+    )
+    return Co2PreparedInputs(
+        RhimePreparedInputs(
+            inv_inputs=derived, basis_functions=prepared.basis_functions,
+            site_metadata=prepared.site_metadata,
+        ),
+        aggregation_error_mode="low_rank",
+        provenance={
+            **prepared.provenance, "aggregation_error_rank": rank,
+            "aggregation_error": dict(approximation.diagnostics),
+            "benchmark_source_sha256": source_sha256,
+        },
+    )
+
+
 def line_profile(call, method):
     """Time source lines in the selected kernel and its fixed-OU helpers.
 
@@ -105,6 +144,11 @@ def line_profile(call, method):
             active.pop(key, None)
             if frame.f_code.co_name in ("solve", "historical_woodbury") and arg is not None:
                 diagnostics["logdet"] = float(arg.logdet)
+                factor = frame.f_locals.get("whitened_factor", frame.f_locals.get("weighted_factor"))
+                if factor is not None:
+                    diagnostics["whitened_factor_squared_frobenius_norm"] = float(
+                        np.einsum("ij,ij->", factor, factor)
+                    )
             if "reciprocal_condition" in frame.f_locals:
                 diagnostics["reciprocal_condition"] = float(frame.f_locals["reciprocal_condition"])
                 diagnostics["condition_estimator_info"] = int(frame.f_locals["info"])
@@ -174,6 +218,7 @@ def main():
     parser.add_argument("--prepared", type=Path)
     parser.add_argument("--out", type=Path)
     parser.add_argument("--expected-sha256", default=PREPARED_SHA256)
+    parser.add_argument("--aggregation-error-rank", type=int)
     parser.add_argument("--baseline-revision", default=BASELINE_REVISION)
     parser.add_argument("--algorithms", nargs="+", choices=("baseline", "current", "historical"),
                         default=["baseline", "current", "historical"])
@@ -185,6 +230,8 @@ def main():
         parser.error("Set PYTHONPATH to this checkout so the current kernel is profiled")
     if args.repeats < 1:
         parser.error("--repeats must be positive")
+    if args.aggregation_error_rank is not None and args.aggregation_error_rank < 1:
+        parser.error("--aggregation-error-rank must be positive")
     baseline, baseline_source = baseline_solve(args.baseline_revision)
     methods = {"baseline": baseline, "current": fixed_ou.FixedOuLowRank.solve,
                "historical": historical_woodbury}
@@ -252,6 +299,24 @@ def main():
             if prepared.aggregation_error_mode != "dense":
                 raise ValueError("Expected the unchanged dense aggregation covariance")
             np.testing.assert_allclose(prepared.inv_inputs.alpha_prior_mean, 1.0, rtol=0, atol=1e-12)
+        if args.aggregation_error_rank is not None:
+            with phase("derive_low_rank_aggregation_error"):
+                prepared = derive_low_rank_inputs(
+                    prepared, args.aggregation_error_rank, manifest["prepared_sha256"],
+                )
+                manifest["derived_aggregation_error"] = {
+                    "mode": prepared.aggregation_error_mode,
+                    "requested_rank": args.aggregation_error_rank,
+                    "actual_rank": prepared.inv_inputs.sizes["agg_rank"],
+                    "source_sha256": manifest["prepared_sha256"],
+                    "diagnostics": dict(prepared.provenance["aggregation_error"]),
+                }
+            with phase("save_derived_prepared"):
+                derived_path = args.out / f"prepared-inputs-rank{args.aggregation_error_rank}.nc"
+                prepared.save(derived_path)
+                manifest["derived_aggregation_error"].update(
+                    prepared=str(derived_path.resolve()), prepared_sha256=sha256(derived_path),
+                )
         with phase("build_current_including_initial_refresh"):
             cached = build_rhime_co2_cached_sigma(
                 prepared_inputs=prepared, tau_hours=5.0,
