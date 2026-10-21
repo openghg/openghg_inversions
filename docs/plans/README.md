@@ -14,6 +14,10 @@ Repository plans retain delivery history, proposals, research, and validation ev
   21 October 2026 rank-256 and full-rank refresh measurements, numerical
   alternatives, and validation limits. Implementation follow-up belongs to
   OPE-152; these timings are not posterior sampling acceptance evidence.
+- [OPE-152 sum-of-squares experiment](ope152_sum_squares_performance.md):
+  21 October 2026 cache-only alternative, with paired rank-256/full-rank
+  timings and remaining numerical limitations. This is research evidence;
+  production code is unchanged and follow-up belongs to OPE-152.
 
 ## Inventory and remaining cleanup
 

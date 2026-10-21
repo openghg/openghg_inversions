@@ -24,15 +24,21 @@ from openghg_inversions.models.cached_sigma import FixedOuCachedSigmaTarget, Mar
 from openghg_inversions.models.fixed_ou import prepare_fixed_ou_low_rank
 
 
-def sum_squares_gram(factor, rhs, *, guarded=False, diagnostics=None):
+_REPEAT_ORDERS = ((0, 1, 3, 2), (1, 2, 0, 3), (2, 3, 1, 0), (3, 0, 2, 1))
+
+
+def sum_squares_gram(factor, rhs, *, guarded=False, residual_guard=False, diagnostics=None):
     """Return ``B.T (I + W W.T)^-1 B`` and its covariance logdet update.
 
     Inputs are already whitened. A guarded rejection returns ``(None, None)``
     for the caller to fall back. Raw Cholesky failures propagate. Supplying a
     diagnostics dictionary adds phase timings, norms, and a raw-route condition
     estimate; omit it for uninstrumented timings. Conditioning alone does not
-    bound cancellation in the computed conditional residual.
+    bound cancellation in the computed conditional residual. ``residual_guard``
+    also bounds rounding of that residual relative to each column's energy;
+    it implies the core condition check and does not certify the latent solve.
     """
+    guarded = guarded or residual_guard
     if diagnostics is not None:
         diagnostics.update(factor_squared_norm=float(np.einsum("ij,ij->", factor, factor)),
                            rhs_squared_norm=float(np.einsum("ij,ij->", rhs, rhs)))
@@ -85,6 +91,35 @@ def sum_squares_gram(factor, rhs, *, guarded=False, diagnostics=None):
     if diagnostics is not None:
         diagnostics["conditional_residual_seconds"] = perf_counter() - start
         start = perf_counter()
+    if residual_guard:
+        eps = np.finfo(np.float64).eps
+        gamma = (factor.shape[1] + 1) * eps / (1.0 - (factor.shape[1] + 1) * eps)
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            factor_norm = np.sqrt(np.einsum("ij,ij->", factor, factor))
+            rhs_norm = np.sqrt(np.einsum("ij,ij->j", rhs, rhs))
+            latent_norm = np.sqrt(np.einsum("ij,ij->j", latent, latent))
+            conditional_norm = np.sqrt(np.einsum("ij,ij->j", conditional, conditional))
+            root_energy = np.hypot(conditional_norm, latent_norm)
+            delta = gamma * (rhs_norm + factor_norm * latent_norm)
+            relative = np.divide(delta, root_energy, out=np.zeros_like(delta), where=root_energy > 0)
+            relative[((root_energy == 0) & (delta > 0))
+                     | ~np.isfinite(delta) | ~np.isfinite(root_energy)] = np.inf
+            worst_relative = float(np.max(relative, initial=0.0))
+            # Residual rounding perturbs each Gram entry by at most this scaled column-energy bound.
+            gram_roundoff_bound = 2.0 * worst_relative + worst_relative * worst_relative
+        if diagnostics is not None:
+            diagnostics.update(
+                residual_guard_seconds=perf_counter() - start,
+                residual_roundoff_ratio=worst_relative,
+                residual_gram_roundoff_bound=gram_roundoff_bound,
+                residual_guard_worst_column=int(np.argmax(relative)) if relative.size else None,
+                residual_roundoff_budget=float(np.sqrt(eps)),
+            )
+        if not np.isfinite(gram_roundoff_bound) or gram_roundoff_bound > np.sqrt(eps):
+            if diagnostics is not None:
+                diagnostics["route"] = "residual_roundoff_rejection"
+            return None, None
+        start = perf_counter() if diagnostics is not None else 0.0
     gram = conditional.T @ conditional + latent.T @ latent
     logdet = float(2.0 * np.log(np.diag(cholesky)).sum())
     if diagnostics is not None:
@@ -96,7 +131,7 @@ def sum_squares_gram(factor, rhs, *, guarded=False, diagnostics=None):
     return gram, logdet
 
 
-def sum_squares_refresh(target, sigma, *, guarded=False, diagnostics=None):
+def sum_squares_refresh(target, sigma, *, guarded=False, residual_guard=False, diagnostics=None):
     """Return the experimental cache and route; fallback includes all wasted work."""
     start = perf_counter() if diagnostics is not None else 0.0
     amplitude = np.asarray(sigma, dtype=np.float64)
@@ -110,7 +145,9 @@ def sum_squares_refresh(target, sigma, *, guarded=False, diagnostics=None):
     rhs = scale * target._transformed_rhs
     if diagnostics is not None:
         diagnostics["weights_and_whitening_seconds"] = perf_counter() - start
-    gram, logdet_update = sum_squares_gram(factor, rhs, guarded=guarded, diagnostics=diagnostics)
+    gram, logdet_update = sum_squares_gram(
+        factor, rhs, guarded=guarded, residual_guard=residual_guard, diagnostics=diagnostics,
+    )
     if gram is None:
         if diagnostics is None:
             return target.refresh(amplitude), "fallback_current"
@@ -160,6 +197,9 @@ def failed_scalar_diagnostics(diagnostics):
 
 
 def self_check():
+    assert all(sorted(order) == list(range(4)) for order in _REPEAT_ORDERS)
+    assert all(sorted(order[position] for order in _REPEAT_ORDERS) == list(range(4))
+               for position in range(4))
     rng = np.random.default_rng(152)
     cases = []
     for rank in (0, 3, 8, 12):
@@ -179,19 +219,35 @@ def self_check():
         rhs = np.column_stack((target.observations - target.fixed_contribution, target.design))
         expected_gram = rhs.T @ np.linalg.solve(covariance, rhs)
         expected_logdet = np.linalg.slogdet(covariance)[1]
-        for guarded in (False, True):
+        for options in ({}, {"guarded": True}, {"residual_guard": True}):
             diagnostics = {}
-            cache, route = sum_squares_refresh(target, amplitude, guarded=guarded, diagnostics=diagnostics)
+            cache, route = sum_squares_refresh(target, amplitude, **options, diagnostics=diagnostics)
             np.testing.assert_allclose(cache_gram(cache, diagnostics["logdet"], 8), expected_gram, rtol=1e-10, atol=1e-10)
             np.testing.assert_allclose(diagnostics["logdet"], expected_logdet, rtol=1e-10, atol=1e-10)
             current = target.refresh(amplitude)
             for state in (np.zeros(3), np.ones(3), rng.normal(size=3)):
                 np.testing.assert_allclose(cache.log_likelihood(state), current.log_likelihood(state), rtol=1e-10, atol=1e-10)
                 np.testing.assert_allclose(cache.gradient(state), current.gradient(state), rtol=1e-10, atol=1e-10)
-            timed_cache, timed_route = sum_squares_refresh(target, amplitude, guarded=guarded)
+            timed_cache, timed_route = sum_squares_refresh(target, amplitude, **options)
             np.testing.assert_array_equal(timed_cache.precision, cache.precision)
             assert route == timed_route
-            cases.append({"rank": rank, "guarded": guarded, "route": route})
+            cases.append({"rank": rank, **options, "route": route})
+    diagnostics = {}
+    gram, logdet = sum_squares_gram(
+        np.full((2, 1), 1e10), np.column_stack((np.full(2, 1e10), [1., -1.])),
+        residual_guard=True, diagnostics=diagnostics,
+    )
+    assert gram is None and logdet is None and diagnostics["route"] == "residual_roundoff_rejection"
+    assert diagnostics["reciprocal_condition"] > np.sqrt(np.finfo(np.float64).eps)
+    gram, logdet = sum_squares_gram(np.full((2, 1), 0.2), np.zeros((2, 3)), residual_guard=True)
+    np.testing.assert_array_equal(gram, np.zeros((3, 3)))
+    assert np.isfinite(logdet)
+    diagnostics = {}
+    gram, logdet = sum_squares_gram(
+        np.full((2, 1), 0.2), np.full((2, 1), 1e200),
+        residual_guard=True, diagnostics=diagnostics,
+    )
+    assert gram is None and logdet is None and diagnostics["route"] == "residual_roundoff_rejection"
     diagnostics = {}
     gram, logdet = sum_squares_gram(np.diag([1e5, 1.]), np.eye(2), guarded=True, diagnostics=diagnostics)
     assert gram is None and logdet is None and diagnostics["route"] == "condition_rejection"
@@ -243,7 +299,7 @@ def main():
     manifest = {
         "issue": "OPE-152", "status": "started", "started_at": datetime.now(UTC).isoformat(),
         "scope": "experimental sum-of-squares; no production change or posterior sampling",
-        "guard_caveat": "DPOCON > sqrt(float64 epsilon) screens the core; it does not guarantee residual accuracy.",
+        "guard_caveat": "DPOCON screens the core. The residual guard bounds residual-rounding contributions relative to column energies; neither certifies latent-solve accuracy.",
         "revision": baseline.git("rev-parse", "HEAD").strip(), "python": sys.version,
         "versions": {name: baseline.version(name) for name in ("openghg_inversions", "numpy", "scipy", "pymc", "pytensor")},
         "threadpools": baseline.threadpool_info(),
@@ -253,7 +309,7 @@ def main():
         "science": {"tau_hours": 5.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.75},
                     "bc_prior": baseline.BC_PRIOR, "offset": None},
         "phase_timings": [], "evaluations": [],
-        "timing_note": "One warmup per method/amplitude; rotated-order repeats exclude diagnostics and validation. Fallback repeats include attempted Gram/guard and current refresh. RSS is process-wide cumulative, not per method.",
+        "timing_note": "One warmup per method/amplitude; four Williams-balanced orders repeat, balancing positions and within-round predecessors every four rounds. Timings exclude diagnostics and validation. Fallback repeats include attempted Gram/guard and current refresh. RSS is process-wide cumulative, not per method.",
     }
     (args.out / "working-tree.patch").write_text(baseline.git("diff", "HEAD", "--binary"))
     manifest["diff_sha256"] = baseline.sha256(args.out / "working-tree.patch")
@@ -319,10 +375,13 @@ def main():
         all_passed = True
         for amplitude in (0.3, 0.75, 1.2):
             sigma = np.full(target.n_group, amplitude)
+            method_options = {"raw": {}, "guarded": {"guarded": True},
+                              "residual_guarded": {"residual_guard": True}}
             methods = {
                 "current": lambda: (target.refresh(sigma), "current"),
                 "raw": lambda: sum_squares_refresh(target, sigma),
                 "guarded": lambda: sum_squares_refresh(target, sigma, guarded=True),
+                "residual_guarded": lambda: sum_squares_refresh(target, sigma, residual_guard=True),
             }
             record = {"site_amplitude_ppm": amplitude, "warmups": {}, "repeat_order": [],
                       "algorithms": {name: {"repeats": []} for name in methods}}
@@ -340,7 +399,7 @@ def main():
             with phase(f"repeats_{amplitude}"):
                 names = list(methods)
                 for repeat in range(repeats):
-                    order = names[repeat % len(names):] + names[:repeat % len(names)]
+                    order = [names[index] for index in _REPEAT_ORDERS[repeat % 4]]
                     record["repeat_order"].append(order)
                     for name in order:
                         start = perf_counter()
@@ -375,7 +434,7 @@ def main():
                     diagnostics = profile if name == "current" else {}
                     try:
                         cache, route = ((reference, "current") if name == "current" else
-                                        sum_squares_refresh(target, sigma, guarded=name == "guarded", diagnostics=diagnostics))
+                                        sum_squares_refresh(target, sigma, **method_options[name], diagnostics=diagnostics))
                         require_finite_cache(cache)
                         logdet = diagnostics["logdet"]
                         if not np.isfinite(logdet):
