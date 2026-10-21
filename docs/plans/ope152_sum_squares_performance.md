@@ -2,7 +2,7 @@
 
 Measured on 21 October 2026 at research commit
 `f0cbebc2c5dafc09de937f87ea1d16887b09a7ff`, based on PR #922 at `c61ef039`.
-This experiment changes no production numerical code. It follows the
+The experiments below changed no production numerical code. They follow the
 [cached fixed-OU investigation](ope152_cached_ou_performance.md); implementation
 and acceptance remain tracked in
 [OPE-152](https://linear.app/openghg-inversions/issue/OPE-152/validate-vg-sampling-and-hpc-operation-for-specialised-co-runners).
@@ -99,7 +99,7 @@ incorrect determinant. A condition-only screen is therefore insufficient for
 a general stability claim. The current QR/SVD route also has extreme-scale
 limitations, documented in the earlier investigation.
 
-The next experiment adds a per-column screen for residual rounding. Starting
+The follow-up experiment adds a per-column screen for residual rounding. Starting
 from the standard matrix-product bound in
 [Higham and Mary, section 4](https://tmary.perso.lip6.fr/doc/surveyMixed.pdf),
 our conservative norm estimate is
@@ -112,6 +112,48 @@ accepts this estimate only below `sqrt(eps)`, alongside the existing core
 condition screen. It does not certify latent-solve error, determinant error,
 or relative accuracy of small cross entries. Zero columns are handled
 explicitly, and nonfinite estimates reject the candidate.
+
+## Balanced rank-256 follow-up
+
+Job `19584440` measured research commit `9c626754` using twelve repetitions
+per method and amplitude. Four Williams-balanced orders balance each method's
+position and every within-round predecessor pair three times. The new method
+uses both the core-condition and residual-rounding screens. All 144 calls and
+228 numerical comparisons passed; all 36 calls of the new method used
+sum-of-squares without falling back. Its coefficients were bitwise identical
+to the raw candidate at every measured amplitude.
+
+| Amplitude (ppm) | PR #922 cache (s) | Raw (s) | Core screen (s) | Both screens (s) | Speedup with both screens |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 0.30 | 0.381981 | 0.105423 | 0.125795 | 0.149470 | 2.56 times |
+| 0.75 | 0.380209 | 0.098861 | 0.135498 | 0.134750 | 2.82 times |
+| 1.20 | 0.368970 | 0.105766 | 0.151092 | 0.136570 | 2.70 times |
+
+[All follow-up timings](ope152_sum_squares_guarded_timings.csv) retain the
+144 samples and their positions. The slowest residual-screened call was
+0.199604 s, below the fastest current call, 0.355674 s. Individual candidate
+calls still vary substantially, so differences between candidate medians do
+not isolate the cost of a screen. Separate diagnostic calls spent 0.004–0.017 s
+in the residual screen and about 0.00056 s in the condition estimator.
+
+Worst-column residual-rounding estimates were 4.12e-11, 3.17e-11 and 2.57e-11,
+against the 1.49e-8 budget: a margin of 362–580 times. Column 47 was worst at
+all three amplitudes. Core-condition estimates and numerical discrepancies
+match the first rank-256 run. Independent review verified source/input/artifact
+hashes, all numerical comparisons, the accepted routes, and execution ordering.
+
+The job completed with exit status zero in 2m04s on `bp1-compute052`, using
+four CPUs and 4 GiB; sampled peak RSS was 1,274,492 KiB. Artifacts are under
+`inversion_outputs/ope152-sos-20261021-r2/`. Reproduce at commit `9c626754`
+with `--aggregation-error-rank 256 --repeats 12` and the same source input.
+Full rank was not repeated because the first run established that sum-of-squares
+was slower there.
+
+This supports preparing a guarded cache-only implementation for factors
+narrower than the observation vector. It does not establish acceptance rates
+or fallback frequency along a sampled chain, performance on other networks,
+or a universal stability guarantee. Implementation validation is separate
+from these frozen experiment results.
 
 ## Provenance and reproduction
 
