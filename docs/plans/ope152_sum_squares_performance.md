@@ -1,18 +1,142 @@
-# OPE-152 sum-of-squares cache experiment
+# OPE-152 sum-of-squares cache implementation and experiments
 
-Measured on 21 October 2026 at research commit
-`f0cbebc2c5dafc09de937f87ea1d16887b09a7ff`, based on PR #922 at `c61ef039`.
-The experiments below changed no production numerical code. They follow the
+Measured on 21 October 2026, following PR #922 at `c61ef039` and the
 [cached fixed-OU investigation](ope152_cached_ou_performance.md); implementation
 and acceptance remain tracked in
 [OPE-152](https://linear.app/openghg-inversions/issue/OPE-152/validate-vg-sampling-and-hpc-operation-for-specialised-co-runners).
 
-Sum-of-squares is a promising further optimization for the usual
-`aggregation_error_rank=256` configuration. Every measured rank-256 candidate
-refresh was faster than every current refresh, and all numerical comparisons
-passed. Full rank was slower than PR #922's observation-space Cholesky route.
-The condition-only guard tested here does not resolve every cancellation case;
-these measurements do not establish readiness for production.
+The guarded implementation at `5fa4a2bb` materially speeds up cache refreshes
+for the usual `aggregation_error_rank=256` configuration. A balanced comparison
+against PR #922 measured a 4.73-fold median speedup with four BLAS threads and
+6.28-fold with one, at amplitude 0.75 ppm. All numerical checks passed, and
+180 relevant tests passed on each of Python 3.12 and 3.13. These are isolated
+cache measurements on one network, not sampled-chain or general scaling results.
+
+## Implementation validation
+
+`FixedOuCachedSigmaTarget.refresh` now forms all quadratic coefficients together
+as a sum of squares when `0 < rank < n_observations`. It accepts the result
+only after the core-condition and residual-rounding screens described below.
+Rejected candidates use the existing solver, preserving the dominant-factor
+cancellation regressions. Zero-rank and full-width factors keep their existing
+routes. The covariance, priors, amplitude evaluation/gradients, and cache
+lifecycle are unchanged; no runtime setting or dependency was added.
+
+Job `19585464` compared the actual frozen implementation with PR #922 on the
+same 4,557-observation, 268-state, rank-256 target at amplitude 0.75 ppm. Each
+thread block warmed both methods, then used twelve alternating AB/BA pairs,
+giving each method six first and six second positions. Both NumPy and SciPy
+BLAS pools were checked inside each thread-limit context. Timings include a
+lightweight call counter; numerical checks and separate tracing are outside
+the timer. Checks and manifest writes occur between calls symmetrically.
+
+| BLAS threads | PR #922 median (s) | Sum-of-squares median (s) | Median speedup | Baseline range (s) | Candidate range (s) |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 4 | 0.491182 | 0.103846 | 4.73 times | 0.484574–0.509917 | 0.075141–0.193805 |
+| 1 | 0.406038 | 0.064621 | 6.28 times | 0.404624–0.408443 | 0.062747–0.066556 |
+
+Every candidate call was faster than every baseline call within its thread
+block. All 24 candidate calls avoided `_solve_transformed`; all 24 baseline
+calls used it once. Four-thread median process CPU time fell from 1.955391 to
+0.413861 seconds, and one-thread CPU time from 0.404399 to 0.064337 seconds.
+The four allocated logical CPUs were two physical cores with simultaneous
+multithreading, one core on each socket. Four-thread candidate timings remain
+order-sensitive: first-position median 0.159225 s versus second-position
+0.076196 s. Balanced ordering limits bias but does not explain this effect.
+The one-thread block followed the four-thread block; these data do not establish
+thread-scaling recommendations.
+
+All cache coefficients and likelihood/state gradients at three nonzero states
+passed comparison with the baseline and direct likelihood. The maximum
+coefficient difference was 1.31e-8; candidate/direct likelihood and gradient
+differences were at most 8.32e-9 and 5.14e-9. Diagnostic log determinants matched
+exactly. The residual-rounding estimate was 3.17e-11 against a 1.49e-8 budget,
+with core reciprocal condition estimate 1.28e-4. These screens limit known
+failure modes; they do not provide a universal forward-error guarantee.
+
+The preceding implementation run, job `19584931`, measured all three amplitudes
+at rank 256 and full rank, taking all baseline repeats before all candidate
+repeats. Its medians were:
+
+| Factor width | Amplitude (ppm) | PR #922 (s) | Candidate (s) |
+| ---: | ---: | ---: | ---: |
+| 256 | 0.30 | 0.482663 | 0.144111 |
+| 256 | 0.75 | 0.483055 | 0.495577 |
+| 256 | 1.20 | 0.483113 | 0.145483 |
+| 4557 | 0.30 | 2.429175 | 2.431741 |
+| 4557 | 0.75 | 2.445658 | 2.562079 |
+| 4557 | 1.20 | 2.393841 | 2.402150 |
+
+At rank 256/amplitude 0.75, four consecutive candidate calls took 0.799–0.829 s
+and four took 0.101–0.193 s. Separate diagnostic calls accepted sum-of-squares
+at every amplitude, but that run did not count routes during timed calls.
+Unchanged full-rank baseline/candidate paths also had outliers of 6.54/7.62 s.
+The interleaved follow-up above did not reproduce these large delays; their
+cause remains unresolved. All samples are retained in the
+[implementation timing CSV](ope152_sum_squares_implementation_timings.csv),
+including the anomalous first run. Empty CPU-time/route-count fields denote
+measurements not taken in that run. No outliers were removed. Full-rank
+numerical checks passed with identical baseline/candidate densities, gradients
+and determinants; this implementation makes no full-rank algorithm change.
+
+Job `19584933` ran the repository's Slurm tox runner with two CPUs, 8 GiB,
+one numerical thread and two Dask workers. Both `py312-openghgCur` and
+`py313-openghgCur` passed all 180 tests across `test_fixed_ou`,
+`test_cached_sigma`, `test_fixed_ou_rhime`, `test_cached_sigma_sampling`,
+`test_co2_cached_sigma` and `test_co2_o2_fixed_ou`. Coverage includes dense
+oracles, determinant/gradient parity, both rejection screens, dominant factors,
+input ownership, finite-overflow rejection, sampler cache lifecycle, and public
+CO₂/linked-model integration. Focused Ruff, Mypy, public-loader smoke and
+independent implementation/evidence reviews also passed.
+
+| Job | Purpose | Elapsed | Allocated CPUs / GiB | Process peak RSS (KiB) | Slurm sampled MaxRSS (KiB) |
+| ---: | --- | ---: | --- | ---: | ---: |
+| 19584931 | Both-rank implementation comparison | 4m14s | 4 / 4 | 1,948,320 | 1,874,808 |
+| 19585464 | Interleaved rank-256 follow-up | 1m01s | 4 / 4 | 723,416 | 645,572 |
+| 19584933 | Python 3.12/3.13 tests | 17m30s | 2 / 8 | — | 6,780,024 |
+
+All jobs completed with exit status zero. Benchmarks ran on `bp1-compute052`
+with Python 3.13.7, NumPy 2.2.6 and SciPy 1.15.3; NumPy/SciPy OpenBLAS versions
+were 0.3.29/0.3.28. The follow-up loaded the already-derived rank-256 public
+artifact, so its setup memory excludes dense-covariance preparation.
+
+Reproduce the first implementation run with
+`scripts/profile_ope152_fixed_ou.py --baseline-revision c61ef039 --algorithms baseline current`,
+using `--aggregation-error-rank 256 --repeats 8` or full rank with `--repeats 3`.
+The [interleaved driver](../../scripts/profile_ope152_sum_squares_interleaved.py)
+preserves the measured timing/check loop and pins numerical source hashes,
+while allowing documentation-only commits after the frozen implementation.
+Use the first run's saved low-rank artifact through the public loader:
+
+```bash
+OPENBLAS_NUM_THREADS=4 OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 PYTHONPATH=. \
+python scripts/profile_ope152_sum_squares_interleaved.py \
+  --prepared PREPARED_RANK256 --out NEW_RESULTS_DIR \
+  --expected-sha256 22313f482e0eb2143804f2a290cddc5f247ad293db11776977b75d631df06353
+```
+
+Run production-sized inputs on Slurm with the node-local cache setup from the
+earlier investigation. A newly serialized artifact may have a different file
+hash; validate its derivation and pass its actual SHA256. The measured driver
+starts with four BLAS threads, then reduces to one. Starting this particular
+runtime at one thread and raising it to four caused a native SciPy triangular
+solve crash, independently reproduced without OGI; starting at four passed.
+The driver rejects the untested startup configuration before timing.
+
+Full manifests, frozen sources, the original driver, native-runtime reproducer,
+logs and tickets are retained under
+`inversion_outputs/ope152-sos-candidate-20261021-r1/` and
+`inversion_outputs/ope152-sos-candidate-20261021-r2/`. No production inversion
+was run. Acceptance rates, fallback frequency along a sampled chain and
+end-to-end sampler throughput remain unmeasured.
+
+## Initial research experiment
+
+Research commit `f0cbebc2c5dafc09de937f87ea1d16887b09a7ff` changed no production
+numerical code. Every rank-256 candidate refresh in that experiment was faster
+than every current refresh, and all numerical comparisons passed. Full rank
+was slower than PR #922's observation-space Cholesky route. The condition-only
+guard did not resolve every cancellation case, motivating the second screen.
 
 ## Paired measurements
 
@@ -180,4 +304,5 @@ artifacts, logs, batch script, and callback ticket are retained under
 profiler's tiny dense-oracle self-check, public-loader smoke test, injected
 nonfinite-result recovery, and focused Ruff checks passed before submission.
 Independent review checked numerical results, provenance, and timing fairness.
-The production test suite was not rerun because production code was unchanged.
+Those research-only jobs did not rerun the production test suite; the separate
+implementation validation above covers the subsequent numerical-code change.
