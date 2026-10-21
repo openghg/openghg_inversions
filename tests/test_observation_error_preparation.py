@@ -166,7 +166,7 @@ def test_nested_domains_prepare_errors_before_outer_aggregation_and_inner_alignm
         output_format="none", flux_sources=["inventory"], filters="daily_median", use_bc=False,
     ), multisector=False)
     monkeypatch.setattr(RhimeMergedData, "from_options", lambda **kw: inner if kw["domain"] == "EUROPE-6km" else outer)
-    monkeypatch.setattr(nested, "mask_outer_merged_for_inner_domain", lambda outer, inner: outer)
+    monkeypatch.setattr(nested, "_mask_outer_for_aligned_inner_domain", lambda outer, inner: outer)
     captured = []
 
     class PreparedBothDomains(Exception):

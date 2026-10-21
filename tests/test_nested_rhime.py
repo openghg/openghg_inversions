@@ -512,7 +512,7 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
         "align_inner_merged_to_outer_observations",
         lambda outer, inner, time_tolerance: inner,
     )
-    monkeypatch.setattr(nested_module, "mask_outer_merged_for_inner_domain", lambda outer, inner: outer)
+    monkeypatch.setattr(nested_module, "_mask_outer_for_aligned_inner_domain", lambda outer, inner: outer)
     monkeypatch.setattr(nested_module, "_prepare_one_domain", fake_prepare)
 
     class BeforeSampling(Exception):
@@ -670,7 +670,7 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
         "align_inner_merged_to_outer_observations",
         lambda outer, inner, time_tolerance: inner,
     )
-    monkeypatch.setattr(nested_module, "mask_outer_merged_for_inner_domain", lambda outer, inner: outer)
+    monkeypatch.setattr(nested_module, "_mask_outer_for_aligned_inner_domain", lambda outer, inner: outer)
     monkeypatch.setattr(nested_module, "_prepare_one_domain", fake_prepare)
 
     class BeforeSampling(Exception):

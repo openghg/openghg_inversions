@@ -673,6 +673,13 @@ def mask_outer_merged_for_inner_domain(
 
     outer = _align_domain_sites(outer, domain=outer_domain, label="Outer")
     inner = _align_domain_sites(inner, domain=inner_domain, label="Inner")
+    return _mask_outer_for_aligned_inner_domain(outer, inner)
+
+
+def _mask_outer_for_aligned_inner_domain(
+    outer: _NestedDomainData, inner: _NestedDomainData,
+) -> _NestedDomainData:
+    """Remove inner support from already aligned nested-domain inputs."""
     outer_grid = outer.site_data[outer.sites[0]]
     inner_grid = inner.site_data[inner.sites[0]]
     site_mask = rectangular_extent_mask(
@@ -775,6 +782,15 @@ def _prepare_one_domain(
 ) -> RhimePreparedInputs:
     """Build one native basis and its labelled sensitivities from resolved choices."""
     runtime_flux = resolve_runtime_flux(merged.flux_data, split_by_sectors=False)
+    basis_inputs = dict(basis_inputs)
+    if (partition := basis_inputs.get("basis_partition")) is not None:
+        if domain.upper() in get_domain_info():
+            try:
+                partition = align_lat_lon(partition, domain)
+            except ValueError:
+                # Partitions on a different native inventory grid use its labels.
+                pass
+        basis_inputs["basis_partition"] = force_align(partition, runtime_flux, dims=("lat", "lon"))
     with timed("rhime.prepare_inputs.basis_build", basis_algorithm=basis_algorithm):
         basis_functions = prepare_basis(
             site_data=merged.site_data, runtime_flux=runtime_flux,
@@ -944,7 +960,7 @@ def prepare_nested_rhime_inputs(
     )
     outer_filtered = _align_domain_sites(outer_filtered, domain=domain, label="Outer")
     inner_filtered = _align_domain_sites(inner_filtered, domain=inner_domain, label="Inner")
-    masked_outer = mask_outer_merged_for_inner_domain(outer_filtered, inner_filtered)
+    masked_outer = _mask_outer_for_aligned_inner_domain(outer_filtered, inner_filtered)
     # Masking established one shared footprint grid; basis flux labels may differ.
     inner_grid = inner_filtered.site_data[inner_filtered.sites[0]]
     inner_lat = inner_grid.get_index("lat")

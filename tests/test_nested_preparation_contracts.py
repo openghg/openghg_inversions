@@ -209,6 +209,80 @@ def test_corresponding_flux_uses_site_reference_lazily_with_metadata(domain):
     np.testing.assert_array_equal(flux.lat, data.site_data["A"].lat + 1e-7)
 
 
+@pytest.mark.parametrize("domain, shift", [("EUROPE", 1e-7), ("EUROPE", .01), ("CUSTOM", 1e-7)])
+@pytest.mark.parametrize("plural", [False, True])
+def test_supplied_partition_reconstructs_on_normalized_runtime_grid(domain, shift, plural, tmp_path):
+    from contextlib import nullcontext
+    from openghg.util import find_domain
+    from openghg_inversions.rhime.nested import _prepare_one_domain
+    from openghg_inversions.rhime.params import DataConfig
+    from openghg_inversions.rhime.preparation import resolve_basis_inputs
+
+    lat, lon = find_domain("EUROPE")[:2] if domain == "EUROPE" else ([50., 51.], [-2., -1.])
+    lat, lon = np.asarray(lat), np.asarray(lon)
+    data = _data(lat + shift, lon + shift)
+    data = replace(data, site_data={
+        site: dataset.assign(fp_x_flux=dataset.fp, mf=("time", [10.]), mf_error=("time", [1.]),
+                             mf_repeatability=("time", [1.]), mf_variability=("time", [0.]))
+        for site, dataset in data.site_data.items()
+    })
+    partition = xr.ones_like(data.site_data["A"].fp.isel(time=0, drop=True), dtype=int).compute()
+    if domain == "CUSTOM":
+        partition = partition.assign_coords(lat=partition.lat + shift, lon=partition.lon + shift)
+    partition.lat.attrs["units"] = "degrees_north"
+    path = tmp_path / "partition.nc"
+    partition.expand_dims(time=[pd.Timestamp("2019-01-01")]).rename("basis").to_netcdf(path)
+    config = DataConfig(domain=domain, start_date="2019-01-01", end_date="2019-01-02", species="ch4",
+                        site_options=data.site_options, flux_sources=("inventory",),
+                        basis_partition_path=None if plural else path,
+                        basis_partition_paths=[path] if plural else None)
+    basis_inputs = resolve_basis_inputs(config)
+    borrowed = basis_inputs["basis_partition"].copy(deep=True)
+    notice = pytest.warns(UserWarning, match="CUSTOM") if domain == "CUSTOM" else nullcontext()
+    with notice:
+        aligned = _align_domain_sites(data, domain=domain, label="Inner")
+    prepared = _prepare_one_domain(
+        aligned, domain=domain, start_date="2019-01-01", flux_sources=("inventory",),
+        basis_algorithm=None, nbasis=1, fix_basis_outer_regions=False,
+        use_bc=False, bc_freq=None, min_error=0., min_error_options={"by_site": False},
+        basis_inputs=basis_inputs,
+    )
+    basis = prepared.basis_functions
+    state = xr.ones_like(prepared.inv_inputs.H.isel(nmeasure=0, drop=True))
+    reconstructed = basis.state_to_flux(state)
+    xr.testing.assert_equal(reconstructed.lat, aligned.flux_data["inventory"].lat)
+    xr.testing.assert_equal(reconstructed.lon, aligned.flux_data["inventory"].lon)
+    np.testing.assert_array_equal(reconstructed.compute(), np.ones(reconstructed.shape))
+    xr.testing.assert_identical(basis_inputs["basis_partition"], borrowed)
+    np.testing.assert_array_equal(data.flux_data["inventory"].lat, lat + shift)
+    assert isinstance(basis.flux.data, da.Array)
+
+
+def test_supplied_partition_on_distinct_inventory_grid_reconstructs_without_domain_relabeling(monkeypatch):
+    from openghg.util import find_domain
+    from openghg_inversions.rhime import nested
+
+    lat, lon, *_ = find_domain("EUROPE")
+    data = _data(lat, lon)
+    flux = data.flux_data["inventory"].assign_coords(lat=lat + 5., lon=lon + 5.)
+    data = replace(data, flux_data={"inventory": flux})
+    partition = xr.ones_like(flux.flux.isel(time=0, drop=True), dtype=int).compute()
+    partition = partition.assign_coords(lat=partition.lat + 1e-7, lon=partition.lon + 1e-7)
+    # Observation projection is independent of native prior-flux reconstruction.
+    monkeypatch.setattr(nested, "build_sensitivities", lambda *args, **kwargs: {})
+    monkeypatch.setattr(nested, "assemble_rhime_inputs", lambda sites, basis, **kwargs: basis)
+    basis = nested._prepare_one_domain(
+        data, domain="EUROPE", start_date="2019-01-01", flux_sources=("inventory",),
+        basis_algorithm=None, nbasis=1, fix_basis_outer_regions=False,
+        use_bc=False, bc_freq=None, min_error=0., min_error_options={"by_site": False},
+        basis_inputs={"basis_partition": partition},
+    )
+    reconstructed = basis.state_to_flux(xr.DataArray([1.], dims="region", coords={"region": [0]}))
+    xr.testing.assert_equal(reconstructed.lat, flux.lat)
+    xr.testing.assert_equal(reconstructed.lon, flux.lon)
+    np.testing.assert_array_equal(reconstructed.compute(), np.ones(reconstructed.shape))
+
+
 @pytest.mark.parametrize("domain", [None, "EUROPE"])
 @pytest.mark.parametrize("grid_change", ["extent", "resolution"])
 def test_genuinely_different_flux_grid_is_retained(domain, grid_change):

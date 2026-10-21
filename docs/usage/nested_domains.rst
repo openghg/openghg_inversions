@@ -22,7 +22,9 @@ domain. Both domains must be available for each retained site. Preparation
 uses OpenGHG's domain definitions to normalize footprint coordinates and
 matching runtime flux coordinates before masking and basis generation. For an
 unregistered domain, it warns and uses the first retained site's grid as the
-reference. Incompatible site grids are rejected before masking or basis projection.
+reference. Supplied basis partitions are aligned to their runtime flux grid
+before constructing the basis. Incompatible site grids are rejected before
+masking or basis projection.
 The shared inner rectangle is applied separately to each actual target
 footprint or flux grid.
 Masking borrows the original arrays and preserves Dask laziness.
