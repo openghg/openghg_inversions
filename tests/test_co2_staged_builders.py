@@ -105,7 +105,10 @@ def test_unsampled_builders_and_correlated_cached_prior(monkeypatch: Any, tmp_pa
     posterior = xr.DataTree.from_dict({"posterior": trace.prior.to_dataset().isel(draw=slice(0, 2))})
     with cached.model:
         pm.compute_log_likelihood(posterior)
-        pm.sample_posterior_predictive(posterior, extend_inferencedata=True, random_seed=918)
+        pm.sample_posterior_predictive(
+            posterior, extend_inferencedata=True, random_seed=918,
+            freeze_vars=["flux_scaling_latent", "ou_site_amplitude"],
+        )
     posterior = annotate_co2_inference(posterior, built, prepared, options, cached)
     path = tmp_path / "cached-posterior.nc"
     save_trace(posterior, path)
