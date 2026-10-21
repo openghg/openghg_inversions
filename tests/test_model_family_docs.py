@@ -99,7 +99,8 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     workflow = " ".join(workflow.split())
     assert "Ordinary ``--model co2``" in workflow and "manifest" in workflow
     assert "Cached fixed-OU" in workflow and "separate staged interface" in workflow
-    assert "Not supported by the staged CLI" in workflow
+    assert "``--model co2_o2`` phases" in workflow
+    assert "same-unit joint model" in workflow
     ordinary, cached = family.split("Cached and linked boundaries\n", 1)
     assert "rhime run --model co2" in ordinary
     assert "``rhime run-co2`` remains an alias" in ordinary
@@ -113,7 +114,7 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert '``variant = "cached_fixed_ou"``' in cached
     assert "--prepared-inputs" in cached and "--posterior" in cached
     assert "ordinary handoff format" in cached
-    assert "Linked CO₂/O₂" in cached and "OPE-165" in cached
+    assert "Linked CO₂/O₂ uses its own joint handoffs" in cached
     assert "packaged TOML template" in family
     assert "scientist acceptance" in family
     assert "Scientist acceptance remains future work" in family

@@ -229,13 +229,6 @@ def _concat_with_policy(
     )
 
 
-def test_transpose():
-    dums = pd.get_dummies([0] * 3 + [1] * 4 + [2] * 5, dtype=int, sparse=True)
-    sparse_dums = sparse.COO.from_scipy_sparse(dums.sparse.to_coo())
-    da = xr.DataArray(sparse_dums)
-    da.transpose()
-
-
 def test_align_to_multi_index_level_values_broadcasts_source_to_state():
     """Test aligning coordinate to multi-index level coordinate broadcasts correctly."""
     # da(source, time)

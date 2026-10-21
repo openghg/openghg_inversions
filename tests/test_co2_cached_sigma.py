@@ -901,10 +901,37 @@ def test_native_joint_outputs_use_each_draw_and_ignore_sampler_cache():
 
 
 @pytest.mark.parametrize("prior_predictive", [8, True, False])
+def test_cached_sampler_preserves_prior_predictive_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    prior_predictive: bool | int,
+) -> None:
+    """The cached adapter leaves draw-count policy to the generic sampler."""
+    monkeypatch.setattr(
+        co2_cached_sigma_runner,
+        "make_cached_sigma_compound_step",
+        lambda **_: object(),
+    )
+    sampler = RhimeSampler(
+        draws=3,
+        burn=1,
+        chains=2,
+        sample_prior_predictive=prior_predictive,
+    )
+
+    configured = co2_cached_sigma_runner._sampler_for_cached_graph(
+        sampler,
+        cached_model=_build(),
+        sigma_target_accept=0.8,
+        state_target_accept=0.9,
+    )
+
+    assert configured.sample_prior_predictive == prior_predictive
+    assert type(configured.sample_prior_predictive) is type(prior_predictive)
+
+
 def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    prior_predictive: bool | int,
 ) -> None:
     """The named runner samples the real graph and labels every cached output."""
     inputs = _boundary_inputs()
@@ -948,7 +975,7 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
             "cores": 1,
             "compute_convergence_checks": False,
         },
-        sample_prior_predictive=prior_predictive,
+        sample_prior_predictive=8,
         sample_posterior_predictive=("concentration", "y", "concentration"),
         posterior_predictive_kwargs={"random_seed": 148},
     )
@@ -1026,13 +1053,8 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     ]
     assert result.posterior.attrs["rhime_recipe"] == "co2"
 
-    if not prior_predictive:
-        assert "prior" not in result.children
-        assert "prior_predictive" not in result.children
-        return
-    prior_count = 2 if prior_predictive is True else int(prior_predictive)
-    assert result.prior.sizes["draw"] == prior_count
-    assert result.prior_predictive["y"].shape == (1, prior_count, 4)
+    assert result.prior.sizes["draw"] == 8
+    assert result.prior_predictive["y"].shape == (1, 8, 4)
     assert result.prior_predictive["y"].attrs["rhime_predictive_scope"] == "joint_observation_vector"
     assert result.prior_predictive["y"].attrs["units"] == "ppm"
     np.testing.assert_array_equal(result.prior["site"], inputs["site"])

@@ -88,6 +88,12 @@ def test_loader_only_parses_toml(tmp_path: Path) -> None:
 
 
 def test_installed_templates_pass_the_semantic_resolver() -> None:
+    from openghg_inversions.rhime.co2.co2_o2_configuration import (
+        load_co2_o2_params,
+        resolve_co2_o2_preparation,
+        resolve_co2_o2_sampler,
+    )
+
     templates = co2_config_templates()
 
     assert tuple(templates) == (
@@ -97,7 +103,11 @@ def test_installed_templates_pass_the_semantic_resolver() -> None:
     )
     for resource in templates.values():
         config = load_co2_family_config(resource)
-        if config.get("variant") == "ordinary":
+        if config.get("recipe") == "co2_o2":
+            load_co2_o2_params(params=config)
+            resolve_co2_o2_preparation(config, require_path=True)
+            resolve_co2_o2_sampler(config)
+        elif config.get("variant") == "ordinary":
             validate_co2_config(config)
             resolve_co2_preparation(config, require_path=True)
             resolve_co2_model(config)
