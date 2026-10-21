@@ -68,6 +68,8 @@ class MarginalQuadraticCache:
 class FixedOuCachedSigmaTarget:
     """Build state quadratics from the OGI fixed-OU covariance preparation.
 
+    Construction transforms the fixed residual and design into prepared mode
+    coordinates once.
     ``refresh`` solves the zero-state residual and all state-design columns
     together using the fixed-OU covariance solver for the supplied site
     amplitudes. State evaluations on the returned cache are then pure dense
@@ -98,7 +100,13 @@ class FixedOuCachedSigmaTarget:
             )
         if self.design.shape[0] != prepared.n_observation:
             raise ValueError("design must have one row per observation.")
-        self._residual_at_zero = self.observations - self.fixed_contribution
+        self._residual_at_zero = _vector(
+            self.observations - self.fixed_contribution, "zero-state residual"
+        )
+        self._transformed_rhs = cast(
+            FloatArray,
+            prepared.mode_transform @ np.column_stack((self._residual_at_zero, self.design)),
+        )
 
     @property
     def n_obs(self) -> int:
@@ -124,17 +132,15 @@ class FixedOuCachedSigmaTarget:
             raise ValueError(
                 f"sigma must be scalar or have shape {(self.n_group,)}, got {sigma_value.shape}."
             )
-        rhs = np.column_stack((self._residual_at_zero, self.design))
-        covariance_solve = self.prepared.solve(rhs, sigma_value)
-        solved_residual = covariance_solve.solution[:, 0]
-        solved_design = covariance_solve.solution[:, 1:]
-        precision = self.design.T @ solved_design
+        covariance_solve = self.prepared._solve_transformed(self._transformed_rhs, sigma_value)
+        quadratic = self._transformed_rhs.T @ covariance_solve.solution
+        precision = quadratic[1:, 1:]
         precision = (precision + precision.T) * 0.5
-        linear = self.design.T @ solved_residual
+        linear = quadratic[1:, 0].copy()
         constant = -0.5 * (
             self.n_obs * math.log(2.0 * math.pi)
             + covariance_solve.logdet
-            + float(self._residual_at_zero @ solved_residual)
+            + float(quadratic[0, 0])
         )
         return MarginalQuadraticCache(
             constant=constant,

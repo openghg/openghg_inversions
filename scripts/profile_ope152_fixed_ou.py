@@ -29,7 +29,7 @@ import numpy as np
 from scipy.linalg import cho_solve
 from threadpoolctl import threadpool_info
 
-from openghg_inversions.models import fixed_ou
+from openghg_inversions.models import cached_sigma, fixed_ou
 from openghg_inversions.models.cached_sigma import FixedOuCachedSigmaTarget
 
 
@@ -50,18 +50,19 @@ def sha256(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def baseline_solve(revision):
+def baseline_method(revision, module, class_name, method_name):
     """Extract the original method unchanged, using current compatible types."""
-    source = git("show", f"{revision}:{SOURCE_PATH}")
+    source_path = Path(module.__file__).resolve().relative_to(ROOT)
+    source = git("show", f"{revision}:{source_path}")
     cls = next(node for node in ast.parse(source).body if isinstance(node, ast.ClassDef)
-               and node.name == "FixedOuLowRank")
+               and node.name == class_name)
     method = next(node for node in cls.body if isinstance(node, ast.FunctionDef)
-                  and node.name == "solve")
-    filename = f"<fixed_ou:{revision}>"
+                  and node.name == method_name)
+    filename = f"<{module.__name__}:{revision}>"
     linecache.cache[filename] = (len(source), None, source.splitlines(keepends=True), filename)
-    namespace = dict(vars(fixed_ou))
+    namespace = dict(vars(module))
     exec(compile(ast.Module(body=[method], type_ignores=[]), filename, "exec"), namespace)
-    return namespace["solve"], source
+    return namespace[method_name], source
 
 
 def historical_woodbury(self, rhs, site_amplitude):
@@ -121,13 +122,14 @@ def derive_low_rank_inputs(prepared, rank, source_sha256):
     )
 
 
-def line_profile(call, method):
+def line_profile(call, *methods):
     """Time source lines in the selected kernel and its fixed-OU helpers.
 
     Times include callees, so nested function rows must not be added together.
     This separate diagnostic call is excluded from uninstrumented repeat times.
     """
-    filenames = {method.__code__.co_filename, fixed_ou.__file__}
+    filenames = {method.__code__.co_filename for method in methods}
+    filenames.update((fixed_ou.__file__, cached_sigma.__file__))
     elapsed = defaultdict(float)
     active = {}
     diagnostics = {}
@@ -142,7 +144,7 @@ def line_profile(call, method):
             elapsed[(frame.f_code.co_filename, frame.f_code.co_name, previous_line)] += now - start
         if event == "return":
             active.pop(key, None)
-            if frame.f_code.co_name in ("solve", "historical_woodbury") and arg is not None:
+            if isinstance(arg, fixed_ou.FixedOuCovarianceSolve):
                 diagnostics["logdet"] = float(arg.logdet)
                 factor = frame.f_locals.get("whitened_factor", frame.f_locals.get("weighted_factor"))
                 if factor is not None:
@@ -176,6 +178,7 @@ def line_profile(call, method):
 def self_check(methods):
     """Exercise method substitution, line profiling, and independent dense parity."""
     original = fixed_ou.FixedOuLowRank.solve
+    original_refresh = FixedOuCachedSigmaTarget.refresh
     rng = np.random.default_rng(152)
     cases = []
     for rank in (0, 3, 8, 12):
@@ -197,18 +200,26 @@ def self_check(methods):
         rhs = np.column_stack((target.observations, target.design))
         expected = np.linalg.solve(covariance, rhs)
         expected_logdet = np.linalg.slogdet(covariance)[1]
-        for name, method in methods.items():
+        for name, (solve_method, refresh_method) in methods.items():
             start = perf_counter()
-            with patch.object(fixed_ou.FixedOuLowRank, "solve", method):
+            with (
+                patch.object(fixed_ou.FixedOuLowRank, "solve", solve_method),
+                patch.object(FixedOuCachedSigmaTarget, "refresh", refresh_method),
+            ):
                 actual = prepared.solve(rhs, amplitude)
                 vector = prepared.solve(rhs[:, 0], amplitude)
-                cache, profile = line_profile(lambda: target.refresh(amplitude), method)
+                cache, profile = line_profile(lambda: target.refresh(amplitude), solve_method, refresh_method)
             assert fixed_ou.FixedOuLowRank.solve is original
+            assert FixedOuCachedSigmaTarget.refresh is original_refresh
             np.testing.assert_allclose(actual.solution, expected, rtol=1e-10, atol=1e-10)
             np.testing.assert_allclose(vector.solution, expected[:, 0], rtol=1e-10, atol=1e-10)
             np.testing.assert_allclose(actual.logdet, expected_logdet, rtol=1e-10, atol=1e-10)
             np.testing.assert_allclose(profile["logdet"], actual.logdet)
             np.testing.assert_allclose(cache.precision, target.design.T @ expected[:, 1:])
+            np.testing.assert_allclose(cache.linear, target.design.T @ expected[:, 0])
+            np.testing.assert_allclose(cache.constant, -0.5 * (
+                8 * np.log(2 * np.pi) + expected_logdet + target.observations @ expected[:, 0]
+            ))
             cases.append({"rank": rank, "algorithm": name, "seconds": perf_counter() - start})
     return cases
 
@@ -232,9 +243,17 @@ def main():
         parser.error("--repeats must be positive")
     if args.aggregation_error_rank is not None and args.aggregation_error_rank < 1:
         parser.error("--aggregation-error-rank must be positive")
-    baseline, baseline_source = baseline_solve(args.baseline_revision)
-    methods = {"baseline": baseline, "current": fixed_ou.FixedOuLowRank.solve,
-               "historical": historical_woodbury}
+    baseline, baseline_source = baseline_method(
+        args.baseline_revision, fixed_ou, "FixedOuLowRank", "solve",
+    )
+    baseline_refresh, baseline_cache_source = baseline_method(
+        args.baseline_revision, cached_sigma, "FixedOuCachedSigmaTarget", "refresh",
+    )
+    methods = {
+        "baseline": (baseline, baseline_refresh),
+        "current": (fixed_ou.FixedOuLowRank.solve, FixedOuCachedSigmaTarget.refresh),
+        "historical": (historical_woodbury, baseline_refresh),
+    }
     if args.self_check:
         print(json.dumps({"status": "self-check-passed", "cases": self_check(methods)}, indent=2))
         return
@@ -250,6 +269,7 @@ def main():
         "baseline_revision": git("rev-parse", args.baseline_revision).strip(),
         "historical_revision": git("rev-parse", HISTORICAL_REVISION).strip(),
         "historical_note": "benchmark-only pre-stability algebra; removed timing result fields omitted",
+        "refresh_comparison": "Baseline/historical use pinned original refresh; current uses live refresh.",
         "versions": {name: version(name) for name in
                      ("openghg_inversions", "numpy", "scipy", "pymc", "pytensor")},
         "python": sys.version, "threadpools": threadpool_info(),
@@ -265,10 +285,13 @@ def main():
     (args.out / "working-tree.patch").write_text(diff)
     manifest["diff_sha256"] = hashlib.sha256(diff.encode()).hexdigest()
     (args.out / "baseline_fixed_ou.py").write_text(baseline_source)
+    (args.out / "baseline_cached_sigma.py").write_text(baseline_cache_source)
     (args.out / "historical_fixed_ou.py").write_text(git("show", f"{HISTORICAL_REVISION}:{SOURCE_PATH}"))
     (args.out / "current_fixed_ou.py").write_text(Path(fixed_ou.__file__).read_text())
+    (args.out / "current_cached_sigma.py").write_text(Path(cached_sigma.__file__).read_text())
     (args.out / Path(__file__).name).write_text(Path(__file__).read_text())
     manifest["current_source_sha256"] = sha256(args.out / "current_fixed_ou.py")
+    manifest["current_cache_source_sha256"] = sha256(args.out / "current_cached_sigma.py")
 
     def save():
         manifest["elapsed_seconds"] = perf_counter() - started
@@ -358,12 +381,19 @@ def main():
             for name in args.algorithms:
                 result = {"refresh_seconds": []}
                 record["algorithms"][name] = result
-                with phase(f"refresh_{name}_{amplitude}"), patch.object(fixed_ou.FixedOuLowRank, "solve", methods[name]):
+                solve_method, refresh_method = methods[name]
+                with (
+                    phase(f"refresh_{name}_{amplitude}"),
+                    patch.object(fixed_ou.FixedOuLowRank, "solve", solve_method),
+                    patch.object(FixedOuCachedSigmaTarget, "refresh", refresh_method),
+                ):
                     for _ in range(args.repeats):
                         start = perf_counter()
                         quadratic = target.refresh(sigma)
                         result["refresh_seconds"].append(perf_counter() - start)
-                    _, result["refresh_profile"] = line_profile(lambda: target.refresh(sigma), methods[name])
+                    _, result["refresh_profile"] = line_profile(
+                        lambda: target.refresh(sigma), solve_method, refresh_method,
+                    )
                     value = quadratic.log_likelihood(coefficients)
                     gradient = quadratic.gradient(coefficients)
                     result["cached_log_likelihood"] = value

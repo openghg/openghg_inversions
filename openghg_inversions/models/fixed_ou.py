@@ -345,6 +345,19 @@ class FixedOuLowRank:
             )
         if not np.isfinite(rhs_value).all():
             raise ValueError("rhs must contain only finite values.")
+        transformed_rhs = cast(FloatArray, self.mode_transform @ rhs_value)
+        transformed_solve = self._solve_transformed(transformed_rhs, site_amplitude)
+        return FixedOuCovarianceSolve(
+            solution=cast(FloatArray, np.asarray(self.mode_transform.T @ transformed_solve.solution)),
+            logdet=transformed_solve.logdet,
+        )
+
+    def _solve_transformed(
+        self,
+        rhs: FloatArray,
+        site_amplitude: ArrayLike | float,
+    ) -> FixedOuCovarianceSolve:
+        """Solve prepared-mode RHS and retain the full covariance log determinant."""
         amplitude = _site_values(
             site_amplitude,
             self.n_site,
@@ -352,8 +365,7 @@ class FixedOuLowRank:
             positive=False,
         )
         weights, logdet = self._mode_weights_and_logdet(amplitude)
-        transformed_rhs = cast(FloatArray, self.mode_transform @ rhs_value)
-        rhs_2d = transformed_rhs[:, None] if transformed_rhs.ndim == 1 else transformed_rhs
+        rhs_2d = rhs[:, None] if rhs.ndim == 1 else rhs
         square_root_weights = np.sqrt(weights)
         whitened_rhs = square_root_weights[:, None] * rhs_2d
         if self.rank:
@@ -386,11 +398,8 @@ class FixedOuLowRank:
         else:
             whitened_solution = whitened_rhs
         solved = square_root_weights[:, None] * whitened_solution
-        solution = self.mode_transform.T @ (
-            solved[:, 0] if transformed_rhs.ndim == 1 else solved
-        )
         return FixedOuCovarianceSolve(
-            solution=cast(FloatArray, np.asarray(solution)),
+            solution=cast(FloatArray, solved[:, 0] if rhs.ndim == 1 else solved),
             logdet=logdet,
         )
 

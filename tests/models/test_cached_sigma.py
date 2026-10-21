@@ -55,9 +55,12 @@ def _target(*, full_width: bool = False) -> tuple[FixedOuCachedSigmaTarget, np.n
 
 
 @pytest.mark.parametrize("full_width", [False, True])
-def test_cached_quadratic_value_and_gradient_match_dense_oracle(full_width: bool) -> None:
+@pytest.mark.parametrize("sigma_values", [[0.23, 0.41], [0.0, 0.0], [0.12, 0.83]])
+def test_cached_quadratic_value_and_gradient_match_dense_oracle(
+    full_width: bool, sigma_values: list[float]
+) -> None:
     target, factor, diagonal = _target(full_width=full_width)
-    sigma = np.array([0.23, 0.41])
+    sigma = np.asarray(sigma_values)
     state = np.array([0.3, -0.7])
 
     cache = target.refresh(sigma)
@@ -117,6 +120,12 @@ def test_refresh_factorizes_once_and_state_evaluations_do_not_refactorize(
     monkeypatch.setattr(np.linalg, "qr", counted_qr)
     monkeypatch.setattr(np.linalg, "svd", counted_svd)
     monkeypatch.setattr(np.linalg, "cholesky", counted_cholesky)
+
+    def unexpected_transform(*args: object, **kwargs: object) -> None:
+        pytest.fail("Refresh must reuse transformed fixed inputs and keep its quadratic in mode coordinates.")
+
+    for matrix_type in {type(target.prepared.mode_transform), type(target.prepared.mode_transform.T)}:
+        monkeypatch.setattr(matrix_type, "__matmul__", unexpected_transform)
 
     cache = target.refresh(np.array([0.23, 0.41]))
     expected_calls = (0, 0, 1) if full_width else (1, 1, 0)
