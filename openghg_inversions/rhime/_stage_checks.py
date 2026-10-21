@@ -170,6 +170,8 @@ def diagnose_rhime_stage(
     authenticating the posterior file. When ``posterior`` is omitted, resolve
     its reference beside the sample manifest. Diagnosis needs no preparation,
     model construction or inference; explicit posterior paths take precedence.
+    A draw diverges when either its ordinary or cached-amplitude NUTS flag is
+    true. Missing both flags leaves divergence assessment unknown.
     """
     stage = _check_stage(stage)
     _validate_diagnostic_thresholds(
@@ -237,9 +239,15 @@ def diagnose_rhime_stage(
     tail_ess, tail_ess_variable, unassessable_tail_ess = finite_extreme("ess_tail", "min")
     posterior_group = idata["posterior"].to_dataset() if "posterior" in idata.children else None
     sample_stats = idata["sample_stats"].to_dataset() if "sample_stats" in idata.children else None
+    diverging = None
+    if sample_stats is not None:
+        for name in ("diverging", "sigma_nuts_diverging"):
+            if name in sample_stats:
+                flags = sample_stats[name].astype(bool)
+                diverging = flags if diverging is None else diverging | flags
     divergences_by_chain = (
-        np.asarray(sample_stats["diverging"].sum("draw").values, dtype=int).tolist()
-        if sample_stats is not None and "diverging" in sample_stats
+        np.asarray(diverging.sum("draw").values, dtype=int).tolist()
+        if diverging is not None
         else None
     )
     divergences: int | None = sum(divergences_by_chain) if divergences_by_chain is not None else None

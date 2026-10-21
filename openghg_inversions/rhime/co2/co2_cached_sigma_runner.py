@@ -114,7 +114,7 @@ def validate_cached_co2_sampler(sampler: RhimeSampler) -> None:
         unsupported_names = set(requested) - {"y", "concentration"}
         if unsupported_names:
             raise ValueError(
-                "Cached-sigma predictive variables must be y or concentration; "
+                "Cached-sigma prediction supports only y or concentration; "
                 f"got {sorted(unsupported_names)!r}."
             )
     unsupported = set(sampler.posterior_predictive_kwargs or {}) - {"random_seed"}

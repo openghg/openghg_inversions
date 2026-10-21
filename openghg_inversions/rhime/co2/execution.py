@@ -19,10 +19,10 @@ from .co2_outputs import (
     validate_co2_product_request,
 )
 from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs, requested_co2_facts
-from .inference import sample_co2_inference, validate_co2_inference
+from .inference import sample_co2_inference
 from .configuration import (
     load_co2_family_config, validate_co2_config, resolve_co2_preparation,
-    resolve_co2_model, resolve_co2_sampling,
+    resolve_co2_model, _resolve_co2_sampling,
 )
 
 
@@ -96,9 +96,8 @@ def run_co2(
         raise ValueError("run_co2 requires variant='ordinary'; cached execution has its own runner.")
     preparation = resolve_co2_preparation(options)
     model = resolve_co2_model(options)
-    sampling = resolve_co2_sampling(options, model=model)
+    sampling = _resolve_co2_sampling(options, model=model)
     sampler = sampling.sampler
-    validate_co2_inference(model, sampler)
     output_choices = resolve_co2_output(options)
     output = output_choices["output"]
     affine_path = preparation["affine_path"]

@@ -245,7 +245,10 @@ Replay loads saved trace roles, inference provenance and affine associations.
 It performs no acquisition, preparation, model construction or inference, and
 returns ``Co2Output`` without a live sampler. Missing descriptive facts remain
 unavailable. Trace and sample records retain the actual algorithm and effective
-target-accept settings, including whether the matched state step ran.
+target-accept settings, including whether the matched state step ran. Ordinary
+sampling without an explicit ``target_accept`` delegates to ``pm.sample`` and
+records ``target_accept_source="pm.sample_default"`` rather than assuming a
+numerical default. Replay preserves this marker.
 Records include package version and Git revision/checkout status
 when available; unavailable VCS facts are ``null`` and do not prevent execution.
 

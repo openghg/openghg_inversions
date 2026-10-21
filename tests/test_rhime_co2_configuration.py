@@ -23,7 +23,7 @@ from openghg_inversions.rhime.co2.configuration import (
     load_co2_family_config,
     resolve_co2_family_config,
     resolve_co2_model,
-    resolve_co2_sampling,
+    _resolve_co2_sampling,
     resolve_co2_prior_seed,
     resolve_co2_preparation,
     validate_co2_config,
@@ -101,7 +101,7 @@ def test_installed_templates_pass_the_semantic_resolver() -> None:
             validate_co2_config(config)
             resolve_co2_preparation(config, require_path=True)
             resolve_co2_model(config)
-            resolve_co2_sampling(config, model=resolve_co2_model(config)).sampler
+            _resolve_co2_sampling(config, model=resolve_co2_model(config)).sampler
         else:
             assert resolve_co2_family_config(config)
 
@@ -113,7 +113,7 @@ def test_ordinary_configuration_matches_explicit_scientific_arguments() -> None:
         "sigma_prior": {"pdf": "halfnormal", "sigma": 0.75},
     }
     assert resolve_co2_preparation(config, require_path=True)["prepared_path"] == Path("prepared.zarr").resolve()
-    assert resolve_co2_sampling(config, model=resolve_co2_model(_ordinary())).sampler == RhimeSampler(
+    assert _resolve_co2_sampling(config, model=resolve_co2_model(_ordinary())).sampler == RhimeSampler(
         draws=20, tune=10, chains=2, nuts_sampler="numpyro",
         sample_kwargs={"target_accept": 0.95, "random_seed": 42},
         posterior_predictive_kwargs={"random_seed": 42},
@@ -430,7 +430,7 @@ def test_sampling_rejects_burn_that_removes_every_draw(
     config["sampling"] = sampling
 
     with pytest.raises(ValueError, match="burn must be less than"):
-        resolve_co2_sampling(config, model=resolve_co2_model(_ordinary())).sampler
+        _resolve_co2_sampling(config, model=resolve_co2_model(_ordinary())).sampler
 
 
 def test_cached_variant_rejects_unsupported_posterior_predictive_names() -> None:
@@ -584,11 +584,11 @@ def test_model_resolution_consumes_only_owned_choices_without_an_envelope() -> N
 
 def test_sampler_resolution_consumes_only_owned_choices_without_an_envelope() -> None:
     config = {"sampling": cast(dict, _ordinary()["sampling"]), "model": object(), "outputs": object()}
-    assert resolve_co2_sampling(config, model=resolve_co2_model(_ordinary())).sampler.draws == 20
-    assert resolve_co2_sampling({}, model=resolve_co2_model(_ordinary())).sampler is not resolve_co2_sampling({}, model=resolve_co2_model(_ordinary())).sampler
+    assert _resolve_co2_sampling(config, model=resolve_co2_model(_ordinary())).sampler.draws == 20
+    assert _resolve_co2_sampling({}, model=resolve_co2_model(_ordinary())).sampler is not _resolve_co2_sampling({}, model=resolve_co2_model(_ordinary())).sampler
     config["sampling"] = object()
     with pytest.raises(TypeError, match="sampling must be a table"):
-        resolve_co2_sampling(config, model=resolve_co2_model(_ordinary())).sampler
+        _resolve_co2_sampling(config, model=resolve_co2_model(_ordinary())).sampler
 
 
 def test_model_resolution_owns_eigenbasis_path_from_invocation_directory(tmp_path, monkeypatch) -> None:
@@ -615,7 +615,7 @@ def test_component_resolution_preserves_selected_caller_values() -> None:
     }
     before = deepcopy(config)
     model = resolve_co2_model(config)
-    sampler = resolve_co2_sampling(config, model=resolve_co2_model(_ordinary())).sampler
+    sampler = _resolve_co2_sampling(config, model=resolve_co2_model(_ordinary())).sampler
     assert model["use_bc"] is True
     assert model["bc_prior"] == {"pdf": "normal", "mu": 1.0, "sigma": 0.1}
     assert model["offset_prior"] == {"pdf": "normal", "mu": 0.0, "sigma": 0.2}
@@ -629,12 +629,12 @@ def test_prior_seed_consumes_only_its_owned_sampling_option() -> None:
     assert resolve_co2_prior_seed({}) is None
     assert resolve_co2_prior_seed({"sampling": {"draws": -1}}) is None
     with pytest.raises(ValueError, match="sampling.nuts_sampler"):
-        resolve_co2_sampling(config, model=resolve_co2_model(_ordinary())).sampler
+        _resolve_co2_sampling(config, model=resolve_co2_model(_ordinary())).sampler
 
 
 @pytest.mark.parametrize("seed", [True, -1, 0.5, "42", None])
 def test_prior_and_posterior_share_random_seed_validation(seed: object) -> None:
-    for resolve in (resolve_co2_prior_seed, lambda config: resolve_co2_sampling(config, model=resolve_co2_model(_ordinary()))):
+    for resolve in (resolve_co2_prior_seed, lambda config: _resolve_co2_sampling(config, model=resolve_co2_model(_ordinary()))):
         with pytest.raises(ValueError, match="random_seed must be a non-negative integer"):
             resolve({"sampling": {"random_seed": seed}})
 
@@ -668,3 +668,20 @@ def test_cached_configuration_accepts_positive_prior_families(prior):
     config["likelihood"] = {"kind": "fixed_ou", "tau_hours": 24.0, "site_amplitude_prior": prior}
     setup = resolve_co2_family_config(config)
     assert setup.runner_kwargs["site_amplitude_prior"] == prior
+
+
+@pytest.mark.parametrize("sampling,match", [
+    ({"nuts_sampler": "numpyro"}, "Linked cached_fixed_ou.*pymc"),
+    ({"target_accept": 0.9}, "likelihood.sigma_target_accept.*likelihood.state_target_accept"),
+    ({"sample_posterior_predictive": ["flux_scaling"]}, "supports only"),
+])
+def test_linked_cached_sampler_policy_remains_at_configuration_boundary(sampling, match):
+    config = _linked()
+    config["variant"] = "cached_fixed_ou"
+    config["likelihood"] = {
+        "kind": "fixed_ou", "tau_hours": 24.0,
+        "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.0},
+    }
+    config["sampling"] = sampling
+    with pytest.raises(ValueError, match=match):
+        resolve_co2_family_config(config)

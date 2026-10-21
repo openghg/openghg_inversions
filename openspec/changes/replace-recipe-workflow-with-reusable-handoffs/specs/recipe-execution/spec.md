@@ -71,25 +71,30 @@ policy SHALL be:
 
 | Likelihood | Backend / update | Reason |
 | --- | --- | --- |
-| `additive_sigma` | NumPyro NUTS | Retain the packaged additive template's backend |
+| `additive_sigma` | NumPyro NUTS | All steps are NUTS and the model runs under JAX via NumPyro |
 | `site_sigma`, fixed or inferred amplitudes | PyMC NUTS | Conservative default, not an inherent backend restriction |
 | `scalar_sigma` | PyMC NUTS | Conservative default, not an inherent backend restriction |
 | `fixed_ou`, fixed amplitudes | PyMC NUTS | Custom likelihood operation has no JAX implementation |
-| `fixed_ou`, inferred amplitudes | Matched PyMC amplitude update followed by state NUTS when states exist | Requires the ordered cached update |
+| `fixed_ou`, inferred amplitudes | Matched PyMC amplitude update followed by state NUTS when states exist | Requires the custom cached amplitude update and, when states exist, its ordered compound step in PyMC |
+
+Timing evidence does not cover PyMC's Numba mode or nutpie, and does not
+establish NumPyro as the fastest backend. Site/scalar choices remain conservative
+policy choices rather than inherent backend restrictions.
 
 This explicit policy replaces the previous template-wide NumPyro setting and
 PyMC default when the backend was omitted. Matched target-accept controls SHALL
 belong to `sampling`, not the scientific likelihood. Inference selection SHALL
-use one predicate on the resolved model. The actual algorithm and effective
-target-accept values SHALL be recorded in the trace and sample manifest and
-retained by product replay without constructing a sampler. Presence of any
+use one predicate on the resolved model. The actual algorithm and explicit
+target-accept values, or a `target_accept_source="pm.sample_default"` marker
+when ordinary acceptance is omitted, SHALL be recorded in the trace and sample
+manifest and retained by product replay without constructing a sampler. Presence of any
 active flux, boundary or offset state SHALL require the state update.
 
 #### Scenario: Full and saved sampling retain actual inference details
 
 - **WHEN** equivalent CO2 model and sampling choices run through full or saved execution
 - **THEN** both choose the same backend, update sequence and tuning controls
-- **AND** trace serialization and replay retain the actual algorithm and effective tuning
+- **AND** trace serialization and replay retain the actual algorithm and explicit tuning or the delegated-default marker
 - **AND** absent historical descriptions are not replaced by current execution defaults
 
 #### Scenario: All affine coefficients are fixed

@@ -68,8 +68,9 @@ def test_ordinary_output_options_normalize_only_their_paths(tmp_path, monkeypatc
     assert options.output_name == "rhime"
 
 
+@pytest.mark.parametrize("target_accept", [None, 0.93])
 @pytest.mark.parametrize("imported", [False, True], ids=["new-pair", "imported-pair"])
-def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, monkeypatch, imported):
+def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, monkeypatch, imported, target_accept):
     """Every product route uses retained scientific meaning, including signed flux."""
     from openghg_inversions.rhime.co2 import handoffs, run_co2
     from openghg_inversions.rhime.co2 import execution
@@ -77,6 +78,8 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
 
     canonical, reduction, prepared, affine, countries = synthetic_inputs(tmp_path)
     params = configuration(tmp_path / "full-products", countries)
+    if target_accept is not None:
+        params["sampling"]["target_accept"] = target_accept
     choices = {name: params[name] for name in ("model", "likelihood")}
     model = resolve_co2_model(choices)
     if imported:
@@ -127,7 +130,12 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
     assert full.output_metadata["sampler"] == staged.output_metadata["sampler"]
     assert full.output_metadata["sampler"]["algorithm"] == "nuts"
     assert full.output_metadata["sampler"]["nuts_sampler"] == "numpyro"
-    assert full.output_metadata["sampler"]["target_accept"] == 0.8
+    if target_accept is None:
+        assert full.output_metadata["sampler"]["target_accept_source"] == "pm.sample_default"
+        assert "target_accept" not in full.output_metadata["sampler"]
+    else:
+        assert full.output_metadata["sampler"]["target_accept"] == target_accept
+        assert "target_accept_source" not in full.output_metadata["sampler"]
     assert json.loads(full.idata.attrs["rhime_actual_inference"]) == full.output_metadata["sampler"]
     assert not hasattr(full, "output_spec")
     assert not hasattr(full, "source_to_sector")

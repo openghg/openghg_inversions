@@ -239,7 +239,7 @@ automatic policy:
      - Reason
    * - ``additive_sigma``
      - NumPyro NUTS
-     - Keeps the backend used by the packaged additive example.
+     - All steps are NUTS and the model runs under JAX via NumPyro.
    * - ``site_sigma`` (fixed or inferred amplitudes)
      - PyMC NUTS
      - Conservative default; this likelihood does not inherently require PyMC.
@@ -252,6 +252,13 @@ automatic policy:
    * - ``fixed_ou`` with inferred amplitudes
      - PyMC cached amplitude update, then state NUTS when states exist
      - Requires the matched cache and ordered amplitude/state update.
+
+The inferred-amplitude OU path needs its custom cached amplitude update, and
+an ordered compound step when states exist. These require PyMC; NumPyro cannot
+execute the matched custom step.
+Timing evidence does not cover PyMC's Numba mode or nutpie and does not establish
+NumPyro as the fastest backend. Site/scalar choices remain conservative policy
+choices. Configured execution exposes no backend selector.
 
 This is a new explicit policy. Previously the packaged template selected NumPyro
 regardless of a subsequent likelihood edit, while omitting the backend selected
@@ -272,9 +279,11 @@ For example, replace the likelihood section with:
 The model can infer amplitudes even when every flux and baseline coefficient
 is fixed. In that case the matched update has no state NUTS step.
 Fixed flux with an active boundary or offset still requires the state step.
-The trace and sample manifest record the actual algorithm and effective
-target-accept values alongside the sampling counts and backend. Product replay
-retains that record without constructing a sampler.
+The trace and sample manifest record the actual algorithm and explicit
+target-accept values alongside the sampling counts and backend. With ordinary
+sampling, an omitted ``target_accept`` is passed through to ``pm.sample``; the
+record stores ``target_accept_source="pm.sample_default"`` without inventing a
+numeric value. Product replay retains that record without constructing a sampler.
 
 Equivalently, ``rhime.run(model="co2", config_file="my-co2.toml")`` selects the
 same runner. Output choices remain separate from the scientific trace.

@@ -43,9 +43,9 @@ from .co2_preparation import (
     Co2PreparedInputs, prepare_co2_inputs, requested_co2_facts,
 )
 from .inference import (
-    annotate_co2_inference, build_co2_inference, sample_co2_inference, validate_co2_inference, describe_co2_inference,
+    annotate_co2_inference, build_co2_inference, sample_co2_inference, describe_co2_inference,
 )
-from .configuration import resolve_co2_model, resolve_co2_sampling
+from .configuration import resolve_co2_model, _resolve_co2_sampling
 
 
 @dataclass(frozen=True)
@@ -236,8 +236,7 @@ def sample(
     Current sampling choices select fresh model-matched defaults and tuning.
     """
     model_options = resolve_co2_model(model)
-    choices = resolve_co2_sampling({"sampling": sampling if sampling is not None else {}}, model=model_options)
-    validate_co2_inference(model_options, choices.sampler)
+    choices = _resolve_co2_sampling({"sampling": sampling if sampling is not None else {}}, model=model_options)
     preparation = load_preparation(preparation_manifest)
     check_checkpoint_targets(
         Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),

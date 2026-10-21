@@ -12,7 +12,7 @@ from openghg_inversions.inference.sampling import RhimeSampler
 from openghg_inversions.rhime.co2 import execution, handoffs, inference
 from openghg_inversions.rhime.co2.co2_outputs import Co2Output
 from openghg_inversions.rhime.co2.co2_affine_output import produce_bucket_affine_flux_map
-from openghg_inversions.rhime.co2.configuration import resolve_co2_model, resolve_co2_sampling
+from openghg_inversions.rhime.co2.configuration import resolve_co2_model, _resolve_co2_sampling
 from test_co2_affine_output import _prepared
 
 
@@ -41,7 +41,7 @@ def _request():
 ])
 def test_scientific_likelihood_selects_backend_and_matched_graph(kind, choices, backend, cached):
     request = {"likelihood": {"kind": kind, **choices}}
-    assert resolve_co2_sampling(request, model=resolve_co2_model(request)).sampler.nuts_sampler == backend
+    assert _resolve_co2_sampling(request, model=resolve_co2_model(request)).sampler.nuts_sampler == backend
     assert inference.uses_cached_ou(resolve_co2_model(request)) is cached
 
 
@@ -193,3 +193,25 @@ def test_invalid_tuning_metadata_does_not_block_replay(value):
     assert inference.describe_co2_inference({"algorithm": "nuts", "target_accept": value}) == {
         "algorithm": "nuts",
     }
+
+
+@pytest.mark.parametrize("target", [None, 0.93])
+def test_ordinary_inference_preserves_sampler_default_and_records_source(monkeypatch, target):
+    sampler = RhimeSampler(sample_kwargs={} if target is None else {"target_accept": target})
+    monkeypatch.setattr(inference, "build_co2_inference", lambda *args: (object(), None))
+    monkeypatch.setattr(inference, "annotate_co2_inference", lambda trace, *args: trace)
+
+    def sample(built, active):
+        assert active is sampler
+        assert (active.sample_kwargs or {}) == ({} if target is None else {"target_accept": target})
+        return xr.DataTree()
+
+    monkeypatch.setattr(inference, "sample_rhime_model", sample)
+    trace, actual = inference.sample_co2_inference(object(), {}, sampler)
+    assert inference.describe_co2_inference(json.loads(trace.attrs["rhime_actual_inference"])) == actual
+    if target is None:
+        assert actual["target_accept_source"] == "pm.sample_default"
+        assert "target_accept" not in actual
+    else:
+        assert actual["target_accept"] == target
+        assert "target_accept_source" not in actual

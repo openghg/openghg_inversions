@@ -2,7 +2,6 @@
 
 from collections.abc import Mapping
 from typing import Any
-import copy
 import json
 
 import xarray as xr
@@ -73,6 +72,8 @@ def describe_co2_inference(recorded: object) -> dict[str, Any]:
         return record
     if isinstance(recorded.get("algorithm"), str):
         record["algorithm"] = recorded["algorithm"]
+    if recorded.get("target_accept_source") == "pm.sample_default":
+        record["target_accept_source"] = "pm.sample_default"
     for name in ("target_accept", "sigma_target_accept", "state_target_accept"):
         value = recorded.get(name)
         if isinstance(value, int | float) and not isinstance(value, bool) and 0 < value < 1:
@@ -97,9 +98,12 @@ def sample_co2_inference(
         if cached.states:
             actual.update(algorithm="cached_ou_sigma_then_state_nuts", state_target_accept=state_target_accept)
     else:
-        active = copy.copy(sampler)
-        active.sample_kwargs = {"target_accept": 0.8, **(sampler.sample_kwargs or {})}
-        actual = {**active.describe(), "algorithm": "nuts", "target_accept": active.sample_kwargs["target_accept"]}
+        active = sampler
+        actual = {**active.describe(), "algorithm": "nuts"}
+        if "target_accept" in (sampler.sample_kwargs or {}):
+            actual["target_accept"] = sampler.sample_kwargs["target_accept"]
+        else:
+            actual["target_accept_source"] = "pm.sample_default"
     trace = sample_rhime_model(built, active)
     trace = annotate_co2_inference(trace, built, prepared, model, cached)
     trace.attrs["rhime_actual_inference"] = json.dumps(actual)

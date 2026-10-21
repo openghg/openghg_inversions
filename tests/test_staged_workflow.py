@@ -394,3 +394,43 @@ def test_co2_stage_override_paths_use_invocation_directory(tmp_path, monkeypatch
     assert loaded["prepared_inputs"]["path"] == str(tmp_path / "selected.nc")
     assert loaded["outputs"]["country_file"] == str(source.parent / "country.nc")
     assert overrides["prepared_inputs"]["path"] == "selected.nc"
+
+
+@pytest.mark.parametrize("ordinary,sigma,expected", [
+    ([False, True], None, 1),
+    (None, [True, False], 1),
+    ([False, True], [True, False], 2),
+    ([True, False], [True, False], 1),
+    (None, None, None),
+])
+def test_diagnostics_count_any_nuts_divergence_and_strict_cli(
+    tmp_path, monkeypatch, ordinary, sigma, expected,
+):
+    from openghg_inversions.cli import main
+
+    stats = {
+        name: (("chain", "draw"), [flags])
+        for name, flags in (("diverging", ordinary), ("sigma_nuts_diverging", sigma))
+        if flags is not None
+    }
+    idata = make_trace(
+        posterior=xr.Dataset({"x": (("chain", "draw"), [[0.0, 1.0]])}),
+        sample_stats=xr.Dataset(stats),
+    )
+    posterior = tmp_path / "posterior.nc"
+    save_trace(idata, posterior)
+    monkeypatch.setattr(inference_diagnostics.az, "summary", lambda *args, **kwargs: xr.Dataset(
+        {"x": ("metric", [1.0, 800.0, 700.0])},
+        coords={"metric": ["r_hat", "ess_bulk", "ess_tail"]},
+    ))
+    result = diagnose_rhime_stage(posterior=posterior, output_dir=tmp_path / "diagnose")
+    assert result["measured_values"]["divergences"] == expected
+    assert result["measured_values"]["divergences_by_chain"] == ([expected] if expected is not None else None)
+    assert result["status"] == ("fail" if expected else "unknown")
+    args = ["diagnose", "--posterior", str(posterior), "--output-dir", str(tmp_path / "cli"), "--strict"]
+    if expected:
+        with pytest.raises(SystemExit) as caught:
+            main(args)
+        assert caught.value.code == 1
+    else:
+        main(args)
