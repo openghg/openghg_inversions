@@ -94,6 +94,71 @@ def _solve_full_width_factor(
     return cast(FloatArray, solution), logdet
 
 
+def _fixed_ou_cho_solve(cholesky: FloatArray, rhs: FloatArray) -> FloatArray:
+    """Solve with the lower factor without overwriting either borrowed input."""
+    return cast(FloatArray, cho_solve((cholesky, True), rhs, check_finite=False))
+
+
+def _fixed_ou_solve_triangular(cholesky: FloatArray, rhs: FloatArray) -> FloatArray:
+    """Solve the lower triangular system for one or more borrowed RHS."""
+    return cast(FloatArray, solve_triangular(cholesky, rhs, lower=True, check_finite=False))
+
+
+def _evaluate_mode_arrays(
+    transformed_residual: FloatArray,
+    amplitude: FloatArray,
+    mode_variance: FloatArray,
+    transformed_factor: FloatArray,
+    mode_site_index: IntArray,
+    base_logdet: float,
+) -> tuple[float, FloatArray, FloatArray, FloatArray]:
+    """Evaluate validated mode arrays using the shared Gaussian calculation."""
+    n_observation, rank = transformed_factor.shape
+    weights = np.reciprocal(mode_variance)
+    square_root_weights = np.sqrt(weights)
+    whitened_residual = transformed_residual * square_root_weights
+
+    if rank:
+        whitened_factor = transformed_factor * square_root_weights[:, None]
+        core = np.eye(rank, dtype=np.float64) + (
+            whitened_factor.T @ whitened_factor
+        )
+        core = (core + core.T) * 0.5
+        cholesky = np.linalg.cholesky(core)
+        projected = whitened_factor.T @ whitened_residual
+        latent_mode = _fixed_ou_cho_solve(cholesky, projected)
+        conditional_whitened = whitened_residual - whitened_factor @ latent_mode
+        quadratic = float(
+            conditional_whitened @ conditional_whitened
+            + latent_mode @ latent_mode
+        )
+        logdet_core = float(2.0 * np.log(np.diag(cholesky)).sum())
+        conditional_residual = (
+            transformed_residual - transformed_factor @ latent_mode
+        )
+        transformed = _fixed_ou_solve_triangular(cholesky, transformed_factor.T)
+        leverage = np.square(transformed).sum(axis=0)
+    else:
+        quadratic = float(whitened_residual @ whitened_residual)
+        logdet_core = 0.0
+        conditional_residual = transformed_residual
+        leverage = np.zeros(n_observation, dtype=np.float64)
+
+    logdet = base_logdet + float(np.log(mode_variance).sum()) + logdet_core
+    log_likelihood = -0.5 * (
+        n_observation * math.log(2.0 * math.pi) + logdet + quadratic
+    )
+    mode_score = (
+        np.square(weights) * (np.square(conditional_residual) + leverage) - weights
+    )
+    gradient_amplitude = amplitude * np.bincount(
+        mode_site_index,
+        weights=mode_score,
+        minlength=amplitude.size,
+    )
+    return float(log_likelihood), weights, conditional_residual, gradient_amplitude
+
+
 class _FixedOuLogpOp(Op):
     """Instance-local PyTensor bridge to one prepared NumPy/SciPy target."""
 
@@ -280,55 +345,12 @@ class FixedOuLowRank:
                 None if amplitude_only else np.zeros(self.n_observation, dtype=np.float64),
                 np.zeros(self.n_site, dtype=np.float64),
             )
-        weights = np.reciprocal(mode_variance)
         transformed_residual = (
             residual_value if amplitude_only else cast(FloatArray, self.mode_transform @ residual_value)
         )
-        square_root_weights = np.sqrt(weights)
-        whitened_residual = transformed_residual * square_root_weights
-
-        if self.rank:
-            whitened_factor = self.transformed_factor * square_root_weights[:, None]
-            core = np.eye(self.rank, dtype=np.float64) + (
-                whitened_factor.T @ whitened_factor
-            )
-            core = (core + core.T) * 0.5
-            cholesky = np.linalg.cholesky(core)
-            projected = whitened_factor.T @ whitened_residual
-            latent_mode = cho_solve((cholesky, True), projected, check_finite=False)
-            conditional_whitened = whitened_residual - whitened_factor @ latent_mode
-            quadratic = float(
-                conditional_whitened @ conditional_whitened
-                + latent_mode @ latent_mode
-            )
-            logdet_core = float(2.0 * np.log(np.diag(cholesky)).sum())
-            conditional_residual = (
-                transformed_residual - self.transformed_factor @ latent_mode
-            )
-            transformed = solve_triangular(
-                cholesky,
-                self.transformed_factor.T,
-                lower=True,
-                check_finite=False,
-            )
-            leverage = np.square(transformed).sum(axis=0)
-        else:
-            quadratic = float(whitened_residual @ whitened_residual)
-            logdet_core = 0.0
-            conditional_residual = transformed_residual
-            leverage = np.zeros(self.n_observation, dtype=np.float64)
-
-        logdet = self.base_logdet + float(np.log(mode_variance).sum()) + logdet_core
-        log_likelihood = -0.5 * (
-            self.n_observation * math.log(2.0 * math.pi) + logdet + quadratic
-        )
-        mode_score = (
-            np.square(weights) * (np.square(conditional_residual) + leverage) - weights
-        )
-        gradient_amplitude = amplitude * np.bincount(
-            self.mode_site_index,
-            weights=mode_score,
-            minlength=self.n_site,
+        log_likelihood, weights, conditional_residual, gradient_amplitude = _evaluate_mode_arrays(
+            transformed_residual, amplitude, mode_variance, self.transformed_factor,
+            self.mode_site_index, self.base_logdet,
         )
         gradient_residual = None
         if not amplitude_only:
