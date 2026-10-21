@@ -103,7 +103,7 @@ def positive_prior_args(prior_params: Mapping[str, Any]) -> PriorArgs:
 
 
 def parse_prior(
-    name: str, prior_params: PriorArgs, *,
+    name: str, prior_params: Mapping[str, Any], *,
     active_indices: np.ndarray | None = None,
     record_name: str | None = None,
     positive: bool = False,
@@ -144,7 +144,7 @@ def parse_prior(
     """
     pdf_dict = {cd.lower(): cd for cd in continuous.__all__}
 
-    params = prior_params.copy()
+    params = dict(prior_params)
     pdf = str(params.pop("pdf")).lower()
     if positive:
         pdf = positive_prior_args({"pdf": pdf})["pdf"]
