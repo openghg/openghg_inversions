@@ -252,6 +252,105 @@ def _annotate_co2_o2_trace(
     return trace
 
 
+def build_rhime_co2_o2(
+    *,
+    prepared_inputs: Co2O2PreparedInputs,
+    independent_error_sd: xr.DataArray | None = None,
+    state_activity: StateActivity | None = None,
+    use_bc: Mapping[str, bool] | None = None,
+    bc_prior: Mapping[str, PriorArgs] | None = None,
+    bc_state_activity: Mapping[str, StateActivity] | None = None,
+    offset_prior: Mapping[str, PriorArgs] | None = None,
+    offset_args: Mapping[str, Mapping[str, Any]] | None = None,
+    tau_hours: float | Mapping[str, float] | None = None,
+    fixed_site_amplitudes: float | Mapping[str, float] | None = None,
+    site_amplitude_prior: Mapping[str, Any] | None = None,
+) -> RhimeModelBuildResult:
+    """Materialize borrowed linked inputs and build their joint scientific graph.
+
+    The scientific arguments have the meanings documented by
+    :func:`run_rhime_co2_o2_from_prepared_inputs`. Saved and explicit independent
+    errors must agree. Related sensitivities, errors and auxiliary coordinates
+    are computed together at this PyMC boundary without mutating the inputs.
+
+    Returns:
+        The concrete model with scientific roles, units and preparation
+        provenance, ready for native prior prediction or sampling.
+
+    Raises:
+        ValueError: If input labels, errors, channel baseline choices, state
+            activity or covariance are inconsistent with the linked model.
+    """
+    prepared = prepared_inputs
+    boundaries = dict(getattr(prepared, "boundary_sensitivity", {}))
+    if use_bc is not None:
+        if (
+            not isinstance(use_bc, Mapping)
+            or set(use_bc) - {"co2", "o2"}
+            or any(not isinstance(value, bool) for value in use_bc.values())
+        ):
+            raise ValueError("use_bc must map co2/o2 to booleans.")
+        for channel, enabled in use_bc.items():
+            if enabled and channel not in boundaries:
+                raise ValueError(f"{channel} use_bc requires prepared boundary_sensitivity.")
+            if not enabled:
+                boundaries.pop(channel, None)
+    _validate_channel_baseline_options(boundaries, bc_prior, bc_state_activity, offset_prior, offset_args)
+    materialized, boundaries = _materialize_co2_o2_replay_inputs(
+        prepared, independent_error_sd, boundaries
+    )
+    observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd = materialized
+    model = build_co2_o2_model(
+        observations=observations,
+        fixed_prior_contribution=fixed_prior_contribution,
+        co2_sensitivity=co2_sensitivity,
+        o2_sensitivity=o2_sensitivity,
+        aggregation_error=prepared.aggregation_error,
+        retained_prior=prepared.retained_prior,
+        independent_error_sd=independent_error_sd,
+        state_activity=state_activity,
+        tau_hours=tau_hours,
+        fixed_site_amplitudes=fixed_site_amplitudes,
+        site_amplitude_prior=site_amplitude_prior,
+        boundary_sensitivity=boundaries,
+        bc_prior=bc_prior,
+        bc_state_activity=bc_state_activity,
+        offset_prior=offset_prior,
+        offset_args=offset_args,
+    )
+    variable_roles = dict(_CO2_O2_VARIABLE_ROLES)
+    for channel in ("co2", "o2"):
+        if channel in boundaries:
+            variable_roles.update(
+                {
+                    f"{channel}_boundary_concentration": f"{channel}_mu_bc",
+                    f"{channel}_boundary_scale": f"{channel}_bc",
+                    f"{channel}_boundary_sensitivity": f"{channel}_hbc",
+                }
+            )
+        if channel in (offset_prior or {}):
+            variable_roles[f"{channel}_offset_concentration"] = f"{channel}_offset"
+    if boundaries:
+        variable_roles["boundary_concentration"] = "boundary_concentration"
+    if offset_prior:
+        variable_roles["offset_concentration"] = "offset_concentration"
+    if boundaries or offset_prior:
+        variable_roles["baseline_concentration"] = "baseline_concentration"
+    metadata = _co2_o2_metadata(prepared, observations=observations)
+    if tau_hours is not None:
+        variable_roles.update({"independent_error": "error", "fixed_ou_site_amplitude": "ou_site_amplitude",
+                      "observation_to_fixed_ou_site_index": "ou_site_index",
+                      "fixed_ou_timescale": "ou_tau_hours"})
+        metadata["likelihood"] = "joint Gaussian with fixed OU blocks by (species, site)"
+    return RhimeModelBuildResult(
+        model=model,
+        output_contract=OutputContract(
+            variable_roles=variable_roles,
+            metadata=metadata,
+        ),
+    )
+
+
 def run_rhime_co2_o2_from_prepared_inputs(
     *,
     prepared_inputs: Co2O2PreparedInputs,
@@ -334,79 +433,21 @@ def run_rhime_co2_o2_from_prepared_inputs(
     )
     if tau_hours is not None and sampler.nuts_sampler != "pymc":
         raise ValueError("Linked fixed-OU requires nuts_sampler='pymc'.")
-    prepared = prepared_inputs
-    boundaries = dict(getattr(prepared, "boundary_sensitivity", {}))
-    if use_bc is not None:
-        if (
-            not isinstance(use_bc, Mapping)
-            or set(use_bc) - {"co2", "o2"}
-            or any(not isinstance(value, bool) for value in use_bc.values())
-        ):
-            raise ValueError("use_bc must map co2/o2 to booleans.")
-        for channel, enabled in use_bc.items():
-            if enabled and channel not in boundaries:
-                raise ValueError(f"{channel} use_bc requires prepared boundary_sensitivity.")
-            if not enabled:
-                boundaries.pop(channel, None)
-    _validate_channel_baseline_options(boundaries, bc_prior, bc_state_activity, offset_prior, offset_args)
-    materialized, boundaries = _materialize_co2_o2_replay_inputs(
-        prepared, independent_error_sd, boundaries
-    )
-    observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd = materialized
-    model = build_co2_o2_model(
-        observations=observations,
-        fixed_prior_contribution=fixed_prior_contribution,
-        co2_sensitivity=co2_sensitivity,
-        o2_sensitivity=o2_sensitivity,
-        aggregation_error=prepared.aggregation_error,
-        retained_prior=prepared.retained_prior,
+    built = build_rhime_co2_o2(
+        prepared_inputs=prepared_inputs,
         independent_error_sd=independent_error_sd,
         state_activity=state_activity,
-        tau_hours=tau_hours,
-        fixed_site_amplitudes=fixed_site_amplitudes,
-        site_amplitude_prior=site_amplitude_prior,
-        boundary_sensitivity=boundaries,
+        use_bc=use_bc,
         bc_prior=bc_prior,
         bc_state_activity=bc_state_activity,
         offset_prior=offset_prior,
         offset_args=offset_args,
-    )
-    variable_roles = dict(_CO2_O2_VARIABLE_ROLES)
-    for channel in ("co2", "o2"):
-        if channel in boundaries:
-            variable_roles.update(
-                {
-                    f"{channel}_boundary_concentration": f"{channel}_mu_bc",
-                    f"{channel}_boundary_scale": f"{channel}_bc",
-                    f"{channel}_boundary_sensitivity": f"{channel}_hbc",
-                }
-            )
-        if channel in (offset_prior or {}):
-            variable_roles[f"{channel}_offset_concentration"] = f"{channel}_offset"
-    if boundaries:
-        variable_roles["boundary_concentration"] = "boundary_concentration"
-    if offset_prior:
-        variable_roles["offset_concentration"] = "offset_concentration"
-    if boundaries or offset_prior:
-        variable_roles["baseline_concentration"] = "baseline_concentration"
-    metadata = _co2_o2_metadata(prepared, observations=observations)
-    if tau_hours is not None:
-        variable_roles.update({"independent_error": "error", "fixed_ou_site_amplitude": "ou_site_amplitude",
-                      "observation_to_fixed_ou_site_index": "ou_site_index",
-                      "fixed_ou_timescale": "ou_tau_hours"})
-        metadata["likelihood"] = "joint Gaussian with fixed OU blocks by (species, site)"
-    built = RhimeModelBuildResult(
-        model=model,
-        output_contract=OutputContract(
-            variable_roles=variable_roles,
-            metadata=metadata,
-        ),
+        tau_hours=tau_hours,
+        fixed_site_amplitudes=fixed_site_amplitudes,
+        site_amplitude_prior=site_amplitude_prior,
     )
     trace = sample_rhime_model(built, sampler)
-    trace = _annotate_co2_o2_trace(trace, built=built)
-    if tau_hours is not None:
-        trace = _annotate_linked_fixed_ou_trace(trace, observations=observations)
-    return trace
+    return annotate_co2_o2_trace(trace, built=built)
 
 
 def _annotate_linked_fixed_ou_trace(
@@ -439,4 +480,31 @@ def _annotate_linked_fixed_ou_trace(
         if group_name in {"prior_predictive", "posterior_predictive"} and "y" in group:
             group.y.attrs["rhime_predictive_scope"] = "joint_observation_vector"
         trace[group_name] = group
+    return trace
+
+
+def annotate_co2_o2_trace(
+    trace: xr.DataTree, *, built: RhimeModelBuildResult,
+) -> xr.DataTree:
+    """Attach the built joint model's scientific meaning after coordinate restoration.
+
+    Both posterior and native prior-predictive traces retain roles, units,
+    preparation provenance and used priors. Fixed-OU traces additionally retain
+    species/site grouping and joint likelihood/predictive scope. The trace is
+    updated and returned; no graph is constructed or inference performed.
+    """
+    trace = _annotate_co2_o2_trace(trace, built=built)
+    if "log_likelihood" in trace.children and "y" in trace["log_likelihood"]:
+        likelihood = trace["log_likelihood"]["y"]
+        likelihood.attrs.pop("units", None)
+        likelihood.attrs.update(
+            rhime_scientific_roles=json.dumps(["joint_log_likelihood"]),
+            rhime_likelihood_scope="joint_observation_vector",
+            rhime_normalized_log_likelihood=1,
+        )
+    for name in ("prior_predictive", "posterior_predictive"):
+        if name in trace.children and "y" in trace[name]:
+            trace[name]["y"].attrs["rhime_predictive_scope"] = "joint_observation_vector"
+    if "fixed_ou_timescale" in built.output_contract.variable_roles:
+        trace = _annotate_linked_fixed_ou_trace(trace, observations=trace["observed_data"]["y"])
     return trace

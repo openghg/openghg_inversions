@@ -16,7 +16,7 @@ import pandas as pd
 from scipy.stats import norm, t
 import xarray as xr
 
-from examples.rhime_cookiecutter.my_inversion.likelihoods import likelihood_builder
+from examples.rhime_customisation.likelihoods import likelihood_builder
 from openghg_inversions.basis import BasisFunctions
 from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
 from openghg_inversions.postprocessing.make_outputs import make_sector_flux_outputs

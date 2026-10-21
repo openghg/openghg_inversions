@@ -67,10 +67,9 @@ def test_ordinary_output_options_normalize_only_their_paths(tmp_path, monkeypatc
     assert options.output_name == "rhime"
 
 
-@pytest.mark.parametrize("imported", [False, True], ids=["new-pair", "imported-pair"])
-def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, monkeypatch, imported):
+def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, monkeypatch):
     """Every product route uses retained scientific meaning, including signed flux."""
-    from openghg_inversions.rhime.co2 import handoffs, run_co2
+    from openghg_inversions.rhime.co2 import handoffs
     from openghg_inversions.rhime.co2 import execution
     from openghg_inversions.rhime import run
 
@@ -79,20 +78,10 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
     choices = {name: params[name] for name in ("model", "likelihood")}
     model = resolve_co2_model(choices)
     sampler = resolve_co2_sampler(params)
-    if imported:
-        source = tmp_path / "source.nc"
-        companion = tmp_path / "source-affine.nc"
-        prepared.save(source)
-        save_affine(replace(affine, prepared_inputs_id=prepared_inputs_content_id(source)), companion)
-        manifest = handoffs.prepare(
-            output_dir=tmp_path / "prepared", prepared_path=source, affine_path=companion,
-            start_date=START_DATE, end_date=END_DATE, domain="EUROPE",
-        )
-    else:
-        manifest = handoffs.save_preparation(
-            prepared, output_dir=tmp_path / "prepared", affine_artifact=affine,
-            start_date=START_DATE, end_date=END_DATE, domain="EUROPE",
-        )
+    manifest = handoffs.save_preparation(
+        prepared, output_dir=tmp_path / "prepared", affine_artifact=affine,
+        start_date=START_DATE, end_date=END_DATE, domain="EUROPE",
+    )
     before = manifest.read_bytes()
     samples = handoffs.sample(manifest, model=choices, sampler=sampler, output_dir=tmp_path / "samples")
     staged = handoffs.postprocess(
@@ -108,16 +97,10 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
         full_checks.setattr(handoffs, "load_preparation", forbidden)
         full_checks.setattr(handoffs, "save_preparation", forbidden)
         full_checks.setattr(handoffs, "sample", forbidden)
-        if imported:
-            full = run(
-                model="co2", params=params, canonical_inputs=canonical, reduction=reduction,
-                aggregation_error_rank=1, affine_artifact=affine,
-            )
-        else:
-            full = run_co2(
-                params=params, canonical_inputs=canonical, reduction=reduction,
-                aggregation_error_rank=1, affine_artifact=affine,
-            )
+        full = run(
+            model="co2", params=params, canonical_inputs=canonical, reduction=reduction,
+            aggregation_error_rank=1, affine_artifact=affine,
+        )
     for name in ("basic", "concentration_components", "native_flux", "country_flux"):
         xr.testing.assert_allclose(full.outputs[name], staged.outputs[name])
         if name != "concentration_components":

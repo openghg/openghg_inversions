@@ -473,7 +473,6 @@ def _assert_prepared_identical(
 @pytest.fixture(scope="module")
 def prepared_from_real_route(
     tac_ch4_data_args: dict[str, Any],
-    default_bc_basis_directory: Path,
 ) -> RhimePreparedInputs:
     """Prepare durable inputs through the real RHIME route and test object store."""
     preparation_args = dict(tac_ch4_data_args)

@@ -95,7 +95,7 @@ Run specifications and results
 
 Standard and multisector runners return ``InversionOutput``, including prepared
 execution and graph-free saved replay. Ordinary and cached CO2 postprocessing
-use ``Co2Output``. Nested execution returns ``NestedOutput``
+use ``Co2Output``; linked saved replay uses ``Co2O2Output``. Nested execution returns ``NestedOutput``
 with two native ``InversionOutput`` views borrowing one trace. Model choices,
 inference and output policy have separate owners.
 The sampler's former ``rhime`` imports remain compatible; its implementation is
@@ -165,6 +165,16 @@ value and its unchanged version-1 schema live in
    openghg_inversions.rhime.co2.load_and_bind_affine_flux_map
    openghg_inversions.rhime.co2.prepared_inputs_content_id
    openghg_inversions.rhime.co2.Co2O2PreparedInputs
+   openghg_inversions.rhime.co2.co2_o2_outputs.Co2O2Output
+   openghg_inversions.rhime.co2.co2_o2_outputs.Co2O2OutputOptions
+   openghg_inversions.rhime.co2.co2_o2_handoffs.prepare
+   openghg_inversions.rhime.co2.co2_o2_handoffs.save_preparation
+   openghg_inversions.rhime.co2.co2_o2_handoffs.load_preparation
+   openghg_inversions.rhime.co2.co2_o2_handoffs.sample
+   openghg_inversions.rhime.co2.co2_o2_handoffs.save_samples
+   openghg_inversions.rhime.co2.co2_o2_handoffs.load_samples
+   openghg_inversions.rhime.co2.co2_o2_handoffs.prior_predictive
+   openghg_inversions.rhime.co2.co2_o2_handoffs.postprocess
    openghg_inversions.rhime.co2.prepare_co2_inputs
    openghg_inversions.rhime.co2.stages.prepare_co2_stage
    openghg_inversions.rhime.co2.handoffs.prepare

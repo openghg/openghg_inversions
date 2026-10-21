@@ -244,13 +244,15 @@ Staged execution
 
 ``prepare``, ``prior-predictive``, ``sample``, ``diagnose`` and ``postprocess``
 separate a run into persisted handoffs. Select ``--model standard``,
-``--model multisector`` or ``--model co2`` explicitly on scientific stages;
-``diagnose`` reads the posterior independently of the recipe. See
+``--model multisector``, ``--model co2`` or ``--model co2_o2`` explicitly on
+scientific stages; ``diagnose`` reads the posterior independently of the recipe.
+See
 :doc:`staged_workflow` for the shared stage interface and
-:doc:`co2_model_family` for ordinary and cached fixed-OU CO2 TOML examples.
-Ordinary CO₂ sampling consumes only its preparation manifest, and replay consumes
-only its sample manifest plus current output choices. Saved scientific meaning
-and provenance drive replay without constructing a graph. The existing cached
+:doc:`co2_model_family` for CO2-family TOML examples, including the same-unit
+joint linked route.
+Ordinary CO₂ and linked CO₂/O₂ sampling consume one preparation manifest;
+replay consumes only its sample manifest plus current output choices. Saved
+scientific meaning and provenance drive replay without constructing a graph. The existing cached
 CO₂ stage interface remains separate; see :doc:`co2_model_family`. Git revision
 and checkout status are recorded when available, with unavailable values left
 explicitly unknown.

@@ -50,7 +50,7 @@ reporting retain both associations.
    sys.path.insert(0, str(repository))
 
    from examples.multisector_handoffs import model_options, synthetic_inputs
-   from examples.rhime_cookiecutter.my_inversion.likelihoods import likelihood_builder
+   from examples.rhime_customisation.likelihoods import likelihood_builder
    from openghg_inversions.postprocessing.make_outputs import make_sector_flux_outputs
    from openghg_inversions.rhime import multisector_stages as handoffs
    from openghg_inversions.rhime.multisector import run_multisector
