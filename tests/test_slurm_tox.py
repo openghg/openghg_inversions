@@ -23,6 +23,7 @@ from scripts import check_pytensor_compiler
         (
             {
                 "PYTEST_XDIST_WORKERS": "2",
+                "DASK_NUM_WORKERS": "1",
                 "OPENBLAS_NUM_THREADS": "3",
                 "OMP_NUM_THREADS": "4",
                 "UV_PYTHON_PREFERENCE": "only-system",
@@ -49,6 +50,7 @@ def test_slurm_tox_isolates_scratch_preserves_flags_and_cleans_up(
         "    'argv': sys.argv[1:], 'work': str(work),\n"
         "    'tmp': os.environ['TMPDIR'], 'flags': os.environ['PYTENSOR_FLAGS'],\n"
         "    'mpl': os.environ['MPLCONFIGDIR'], 'workers': os.environ['PYTEST_XDIST_WORKERS'],\n"
+        "    'dask_workers': os.environ['DASK_NUM_WORKERS'],\n"
         "    'blas_threads': os.environ['OPENBLAS_NUM_THREADS'], 'omp_threads': os.environ['OMP_NUM_THREADS'],\n"
         "    'python_preference': os.environ['UV_PYTHON_PREFERENCE'],\n"
         "}))\n"
@@ -61,6 +63,7 @@ def test_slurm_tox_isolates_scratch_preserves_flags_and_cleans_up(
         if key
         not in {
             "PYTEST_XDIST_WORKERS",
+            "DASK_NUM_WORKERS",
             "OPENBLAS_NUM_THREADS",
             "OMP_NUM_THREADS",
             "UV_PYTHON_PREFERENCE",
@@ -94,6 +97,7 @@ def test_slurm_tox_isolates_scratch_preserves_flags_and_cleans_up(
     assert Path(recorded["tmp"]) == work / "tmp"
     assert Path(recorded["mpl"]) == work / "matplotlib"
     assert recorded["workers"] == overrides.get("PYTEST_XDIST_WORKERS", "0")
+    assert recorded["dask_workers"] == overrides.get("DASK_NUM_WORKERS", "2")
     assert recorded["blas_threads"] == overrides.get("OPENBLAS_NUM_THREADS", "1")
     assert recorded["omp_threads"] == overrides.get("OMP_NUM_THREADS", "1")
     assert recorded["python_preference"] == overrides.get("UV_PYTHON_PREFERENCE", "managed")

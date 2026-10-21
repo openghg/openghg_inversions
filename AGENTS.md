@@ -81,11 +81,17 @@ existing environment. Submit the required CI environments with
 (for example, `sbatch scripts/slurm_tox.sh -e py312-openghgCur,py313-openghgCur`).
 The runner builds tox environments on node-local storage and removes them when
 the job exits. It runs tox environments and pytest serially by default, with
-one numerical thread per process. Explicit tox `-p` and `PYTEST_XDIST_WORKERS`
-overrides enable concurrency; budget their combined memory within the Slurm
-allocation. Each tox environment gets its own temporary directory.
+two Dask workers and one numerical thread per process. Set `DASK_NUM_WORKERS`
+explicitly to override the Dask limit; the runner preserves it through tox.
+Explicit tox `-p` and `PYTEST_XDIST_WORKERS` overrides enable concurrency;
+budget their combined memory, Dask workers and numerical threads within the
+Slurm allocation. Each tox environment gets its own temporary directory.
 Real-data fixtures use a fresh store per pytest invocation, shared by that run's
 local workers, with separate ground and satellite stores.
+
+Direct pytest and GitHub Actions bypass the Slurm runner. For bounded real-data
+setup in a direct run, use `DASK_NUM_WORKERS=2 uv run pytest <test-path>`.
+The worker limit applies per process, not to the job's total memory.
 
 The runner prefers uv-managed Python installations, which include development
 headers. Set `UV_PYTHON_PREFERENCE` explicitly to override this choice. Scientific

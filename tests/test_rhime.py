@@ -4368,8 +4368,9 @@ def test_rhime_sampler_preserves_disabled_log_likelihood(
         sample_posterior_predictive=False,
     )
 
-    sampler.sample(pm.Model())
+    result = sampler.sample(pm.Model())
 
+    assert {"prior", "prior_predictive", "posterior_predictive"}.isdisjoint(result.children)
     assert seen["nuts_sampler"] == "pymc"
     assert seen["compute_convergence_checks"] is False
     assert seen["idata_kwargs"] == {"log_likelihood": False}
