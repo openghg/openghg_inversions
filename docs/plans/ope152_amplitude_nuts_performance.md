@@ -7,7 +7,13 @@ This records a bounded implementation and sampling comparison for
 It is engineering evidence on one target, not production convergence or a
 general sampler-performance guarantee.
 
-Candidate `2a440c9827aa2906c79b3b1056fe0952f27e15be` reduced pooled retained
+The final compiler candidate `6560e9d145e11b80687064ddd9f654de197ed0d0`
+reduced pooled retained transition time from 271.670 to 172.534 seconds,
+**36.49% less**, against the already optimized `2a440c98` numerical kernel.
+Warmup took 37.24% less time. This comparison and its short-trace limitations
+are recorded in the final section below.
+
+The earlier numerical candidate `2a440c9827aa2906c79b3b1056fe0952f27e15be` reduced pooled retained
 transition time from 282.004 to 265.044 seconds, **6.01% less**, against PR #926
 at `9acd0c579b1ce61247f07892965fa1f44105e258`. One seed produced identical draws
 and work counts, with a 5.04% reduction; the other followed a different
@@ -227,10 +233,115 @@ older PyTensor versions without the `CVM` string alias; `FAST_RUN` alone selects
 Numba under this runtime's automatic linker. State compilation, global settings,
 priors, covariance, metric and adaptation stay unchanged. No runtime option was
 added. The implementation passed 26 focused tests and 13 tests with C++
-compilation disabled; full candidate CI and representative sampling remain pending.
+compilation disabled. Subsequent validation and sampling are recorded below.
 
-This one-anchor graph result is not a sampled-chain speedup. The next paired
-run will isolate `2a440c98`/Numba against the CVM candidate, preserving the
+This one-anchor graph result is not a sampled-chain speedup. The paired
+run below isolates `2a440c98`/Numba against the CVM candidate, preserving the
 earlier `9acd0c57`-to-`2a440c98` evidence separately. Frozen graph sources,
 48 call records, manifests and the independent audit remain under the local
 `inversion_outputs/ope152-amplitude-20261021-r3/` artifact directory.
+
+## CVM sampling comparison and final priority
+
+Job `19593208` compared frozen compiler candidate `6560e9d1` with the exact
+amplitude-step constructor from `2a440c98`. An AST check verified that only the
+private compiler mode and its import differed; both shared numerical modules
+and earlier profiling helpers were byte-identical. It used the same target,
+runtime, one-thread BLAS settings, ABBA order, seeds and 300/200 warmup/retained
+protocol described above. It completed successfully in 24m44s on
+`bp1-compute057`, requesting one CPU and 4 GiB and receiving two logical CPUs.
+Maximum recorded process peak RSS was 1,880,980 KiB; Slurm sampled MaxRSS was
+1,813,768 KiB. Every source/input hash and every
+per-sweep likelihood and refresh count passed the independent audit.
+
+Six historical conditioning anchors each used twelve balanced AB/BA pairs.
+Median compiled evaluations took 75.08–77.07 ms with Numba and 44.28–44.95 ms
+with CVM, **40.94–41.81% less time** at the corresponding anchors. Likelihoods
+matched exactly and the largest transformed-amplitude gradient difference was
+3.55e-15. These deliberately chosen anchors are not posterior-weighted timing
+samples. This run omitted the earlier callback-size counter.
+
+The [compiler comparison CSV](ope152_amplitude_cvm_timings.csv) preserves all
+eight per-chain phase rows separately from the earlier numerical comparison.
+
+| Quantity | Optimized Numba baseline | CVM candidate |
+| --- | ---: | ---: |
+| Warmup transition time, 600 sweeps | 557.348 s | 349.795 s |
+| Retained transition time, 400 sweeps | 271.670 s | 172.534 s |
+| Retained likelihood calls | 3,188 | 3,180 |
+| Retained numerical likelihood time per call | 44.570 ms | 44.481 ms |
+| Retained amplitude trajectory | 240.648 s | 142.144 s |
+| Retained residual installation | 1.222 s | 1.246 s |
+| Retained cache refresh, 400 each | 26.078 s | 25.610 s |
+| Retained state trajectory | 3.201 s | 3.000 s |
+| Total `pm.sample` wall, both chains | 830.161 s | 523.055 s |
+
+Retained reductions were 38.63% and 34.23% for the two seeds; pooled retained
+and warmup reductions were 36.49% and 37.24%. The unchanged numerical kernel
+took nearly the same time per call. Time outside it within the amplitude
+trajectory fell from 30.915 to 0.218 ms per likelihood call. This remainder
+includes graph and trajectory bookkeeping, not just payload copying.
+
+Neither seed has identical trajectories: tiny initial rounding differences
+grow during adaptation and eventually change work counts. The fixed-point
+oracle and compiler-scope checks establish numerical agreement independently
+of those trajectories. These two seeds provide no reliable confidence interval
+or universal speedup estimate. Do not multiply this reduction by the earlier
+6.01% result and present it as a directly measured combined gain.
+
+Startup was measured separately: model construction, sampler construction and
+initial density compilation/evaluation totalled 19.034/8.035 s for the two
+Numba processes and 2.169/2.125 s for CVM. Processes shared the job's compilation
+caches, so this is execution-order-dependent startup evidence, not a cold-start
+guarantee. The retained transition denominator continues to exclude startup,
+warmup and serialization; `pm.sample` wall includes its own setup and recording.
+
+Both variants had zero retained divergences or maximum-depth flags in either
+block; each had four amplitude and six state divergences during warmup.
+Retained amplitude trees remained three or seven steps, with step sizes
+0.482–0.590 for Numba and 0.513–0.515 for CVM. State trees used 31 or 63 steps.
+No metric, acceptance target or tree-depth limit changed.
+
+| Variables | Maximum R-hat, Numba / CVM | Minimum bulk ESS/s, Numba / CVM | Minimum tail ESS/s, Numba / CVM |
+| --- | ---: | ---: | ---: |
+| Site amplitudes | 1.0180 / 1.0096 | 1.274 / 2.902 | 0.917 / 1.153 |
+| Physical flux coefficients | 1.0239 / 1.0397 | 0.852 / 1.069 | 0.507 / 0.862 |
+| Latent flux variables | 1.0304 / 1.0402 | 0.874 / 1.068 | 0.603 / 0.914 |
+| Boundary coefficients | 1.0198 / 1.0100 | 1.341 / 1.523 | 0.837 / 1.191 |
+
+ESS/s here uses 271.670/172.534 s of pooled retained transition time.
+The minimum bulk ESS over physical flux coordinates fell from 231.4 to 184.4, and the
+largest R-hat increased to 1.0402. Short-chain adaptation variability therefore
+matters despite the better group-minimum ESS/s values. Two chains of 200
+retained draws do not demonstrate convergence or improved mixing. Longer
+scientific runs still require joint amplitude, flux and boundary checks.
+Efficiency did not improve at every coordinate: bulk ESS/s fell for 46/264
+physical flux coefficients, 47/264 latent flux variables, 1/12 amplitudes and
+1/4 boundary coefficients. Tail ESS/s fell for 9/264 physical flux coefficients,
+8/264 latent variables and 1/12 amplitudes, with no boundary decreases.
+
+CVM retained runtime was 82.39% amplitude trajectory, 14.84% cache refresh,
+0.72% residual installation and 1.74% state trajectory. Further performance
+work should prioritize the amplitude numerical kernel over the flux/boundary
+update. The local geometry evidence above and short amplitude trees still give
+no reason to prefer a full metric. Native Numba support could remove Python
+callbacks too, but material extra savings over CVM would require improving numerical
+work or allocations; no native-kernel speedup has been measured.
+
+The [compiler profiler](../../scripts/profile_ope152_amplitude_cvm.py) reproduces
+the six-anchor microbenchmark and separate sampling processes with the same
+arguments and ABBA seed order as the earlier profiler. It pins baseline
+`2a440c98`, checks the compiler-only source difference and records complete
+source snapshots. CVM's inner timer is bound before graph construction; Numba
+is compiled and warmed with stock `perform` before its runtime timer is
+installed. Both modes warm the same initial densities without advancing the
+chain or RNG. Startup inner-call counts are not comparable between modes.
+Frozen original harnesses, manifests, traces and analysis remain under the
+local `inversion_outputs/ope152-amplitude-20261021-r4/` directory.
+
+Validation job `19593205` passed all 211 related tests on each of Python 3.12
+and 3.13. Its PyMC 6.0 check passed 30 cases and exposed a test-setup omission
+in twelve direct density/gradient oracle cases: the older wrapper requires
+`set_extra_values(point)` before a direct call. Production sampling cases
+passed. A one-line test-only correction and the documentation build are being
+checked by isolated-snapshot job `19593979`; that result remains pending.
