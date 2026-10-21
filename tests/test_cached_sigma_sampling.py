@@ -12,6 +12,7 @@ import pytensor
 import pytensor.tensor as pt
 import pytest
 from pymc.blocking import DictToArrayBijection
+from pytensor.compile.mode import Mode, get_mode
 from scipy.stats import multivariate_normal
 
 from openghg_inversions.models.cached_sigma import FixedOuCachedSigmaTarget
@@ -151,6 +152,20 @@ def test_observed_graph_requires_explicit_cached_expression():
     *_, arguments = _observed_context()
     with pytest.raises(ValueError, match="explicit cached_state_logp"):
         make_cached_sigma_compound_step(**arguments)
+
+
+def test_amplitude_backend_preserves_state_and_runtime_configuration():
+    configuration = (pytensor.config.mode, pytensor.config.linker, pytensor.config.floatX)
+    *_, quadratic, arguments = _observed_context()
+    compound = make_cached_sigma_compound_step(**arguments, cached_state_logp=quadratic)
+    amplitude_step, state_step = compound.methods
+    amplitude_linker = amplitude_step.nuts_step._logp_dlogp_func._pytensor_function.maker.mode.linker
+    state_linker = state_step._logp_dlogp_func._pytensor_function.maker.mode.linker
+
+    assert type(amplitude_linker) is type(Mode(linker="cvm", optimizer="fast_run").linker)
+    assert amplitude_linker.use_cloop
+    assert type(state_linker) is type(get_mode().linker)
+    assert configuration == (pytensor.config.mode, pytensor.config.linker, pytensor.config.floatX)
 
 
 def test_supplied_state_function_matches_public_density_without_covariance_work(monkeypatch):
@@ -678,8 +693,7 @@ def test_conditional_density_and_gradient_match_independent_positive_prior(prior
     value_name = step.sigma_value_name
     assert point[value_name].dtype == graph_precision
     assert step.conditional_sigma.dtype == graph_precision
-    logp = step.conditional_model.compile_logp()
-    dlogp = step.conditional_model.compile_dlogp()
+    density = step.nuts_step._logp_dlogp_func
     family = prior["pdf"]
     if family == "halfnormal":
         distribution = stats.halfnorm(scale=0.75)
@@ -711,12 +725,13 @@ def test_conditional_density_and_gradient_match_independent_positive_prior(prior
     tolerance = max(1e-10, 16 * np.finfo(graph_precision).eps)
     for eta in (point[value_name], np.array([-0.7, 0.2]), np.array([1.0, -1.5])):
         eta = np.asarray(eta, dtype=graph_precision)
-        np.testing.assert_allclose(logp({value_name: eta}), expected(eta), rtol=max(tolerance, 1e-7), atol=tolerance)
+        actual, actual_gradient = density(DictToArrayBijection.map({value_name: eta}))
+        np.testing.assert_allclose(actual, expected(eta), rtol=max(tolerance, 1e-7), atol=tolerance)
         gradient = np.array([
             (expected(eta + np.eye(2)[axis] * 1e-5) - expected(eta - np.eye(2)[axis] * 1e-5)) / 2e-5
             for axis in range(2)
         ])
-        np.testing.assert_allclose(dlogp({value_name: eta}), gradient, rtol=max(tolerance, 1e-7), atol=max(tolerance, 1e-7))
+        np.testing.assert_allclose(actual_gradient, gradient, rtol=max(tolerance, 1e-7), atol=max(tolerance, 1e-7))
 
 
 @pytest.mark.parametrize("bounded", [False, True])

@@ -24,6 +24,7 @@ from numpy.typing import ArrayLike, NDArray
 import pymc as pm
 import pytensor
 import pytensor.tensor as pt
+from pytensor.compile.mode import Mode
 from pymc.blocking import PointType, StatsType
 from pymc.model import ValueGradFunction, modelcontext
 from pymc.step_methods.compound import BlockedStep, Competence, StepMethodState
@@ -323,6 +324,9 @@ class PymcCachedSigmaNutsStep(BlockedStep):
             rng=nuts_rng,
             dtype=point_dtype.name,
             potential=potential,
+            # The numerical Op already runs in NumPy/SciPy. CVM avoids copying
+            # its captured target through Numba's object-mode callback per call.
+            compile_kwargs={"mode": Mode(linker="cvm", optimizer="fast_run")},
         )
 
     def _point_values(self, point: PointType) -> tuple[FloatArray, FloatArray]:

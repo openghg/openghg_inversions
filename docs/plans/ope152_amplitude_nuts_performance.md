@@ -179,12 +179,58 @@ Frozen sources, manifests, traces and analysis are retained in
 `inversion_outputs/ope152-amplitude-20261021-r2/`; those local artifacts are not
 distributed with the source repository.
 
-The next performance question is the amplitude trajectory's remaining cost.
+Before the compiler follow-up below, the next performance question was the
+amplitude trajectory's remaining cost.
 A separate tiny synthetic PyTensor/Numba experiment found that increasing an
 unused captured array from zero to 8 MiB increased time outside a constant
 Python Op from about 0.021 to 1.604 ms per call, despite memoized unpickling.
-This supports investigating callback payload handling in the installed runtime.
-The production callback payload has not been measured, so it does not explain
-the whole 29.826 ms remainder. Measure its payload and warmed outer/inner call
-times before changing compilation or serialization. Evaluation cost currently
-has stronger supporting evidence as a priority than metric adaptation.
+This motivated investigating callback payload handling in the installed runtime.
+At that stage the production callback payload had not been measured, so the
+synthetic result did not explain the whole 29.826 ms remainder. The follow-up
+measured its payload and warmed outer/inner call times before implementing a
+compiler candidate. Evaluation cost had stronger supporting evidence as a
+priority than metric adaptation.
+
+## Compiler follow-up — 21 October 2026
+
+Job `19590092` compared the actual frozen `2a440c98` amplitude graph under Numba
+and PyTensor's C virtual machine (CVM), at one verified posterior anchor from
+the same input. Twelve balanced AB/BA pairs per stage followed compilation and
+five warmups per graph. Both BLAS pools used one thread. The job requested one
+CPU and 4 GiB, received two logical CPUs, and completed in 56 s with exit status
+zero. Process peak RSS was 1,749,408 KiB; sampled Slurm MaxRSS was 1,752,840 KiB.
+
+Stock compiled-call median fell from **70.517 to 41.094 ms, 41.72% less**.
+Every CVM call was faster than every Numba call in that stage. Each Numba call
+passed a 79,638,136-byte callback buffer plus four 32-byte buffers, even though
+every unpickle lookup was a memo hit. The buffer pattern was identical before
+and after adding the inner timer; CVM used no Numba callbacks.
+
+| Instrumented quantity | Numba median (ms) | CVM median (ms) |
+| --- | ---: | ---: |
+| Whole compiled call | 71.087 | 42.169 |
+| Numerical likelihood Op | 42.005 | 42.103 |
+| Outside the numerical Op | 29.233 | 0.0646 |
+
+The stock Op was compiled and warmed before instrumentation. Numba reused that
+graph; CVM's timed graph was recompiled and warmed outside the clock because
+it binds `perform` during compilation. Both stages include callback-counter
+bookkeeping. The nearly equal numerical work and large difference outside it
+support avoiding the callback path; they do not attribute every microsecond to
+payload copying. Both modes matched direct likelihood plus prior/Jacobian:
+likelihoods were exactly equal and maximum gradient difference was 3.55e-15.
+Input/source hashes and numerical array ownership checks passed.
+
+The candidate selects `Mode(linker="cvm", optimizer="fast_run")` only for the
+private amplitude NUTS graph. Constructing the mode explicitly also supports
+older PyTensor versions without the `CVM` string alias; `FAST_RUN` alone selects
+Numba under this runtime's automatic linker. State compilation, global settings,
+priors, covariance, metric and adaptation stay unchanged. No runtime option was
+added. The implementation passed 26 focused tests and 13 tests with C++
+compilation disabled; full candidate CI and representative sampling remain pending.
+
+This one-anchor graph result is not a sampled-chain speedup. The next paired
+run will isolate `2a440c98`/Numba against the CVM candidate, preserving the
+earlier `9acd0c57`-to-`2a440c98` evidence separately. Frozen graph sources,
+48 call records, manifests and the independent audit remain under the local
+`inversion_outputs/ope152-amplitude-20261021-r3/` artifact directory.
