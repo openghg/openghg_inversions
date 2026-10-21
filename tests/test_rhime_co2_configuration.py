@@ -208,7 +208,7 @@ def test_boundary_offset_and_inferred_ou_choices_lower_to_component_arguments() 
     config["sampling"] = {"chains": 2, "sigma_target_accept": 0.82, "state_target_accept": 0.91}
 
     model = resolve_co2_model(config)
-    sampling = resolve_co2_sampling(config, model=model)
+    sampling = _resolve_co2_sampling(config, model=model)
     assert sampling.sigma_target_accept == 0.82
     assert sampling.state_target_accept == 0.91
     assert model.pop("likelihood_builder") is add_fixed_ou_gaussian_likelihood
@@ -404,7 +404,7 @@ def test_cached_variant_rejects_generic_sampler_controls() -> None:
     config["sampling"] = {"target_accept": 0.9}
 
     with pytest.raises(ValueError, match="sigma_target_accept"):
-        resolve_co2_sampling(config, model=resolve_co2_model(config))
+        _resolve_co2_sampling(config, model=resolve_co2_model(config))
 
 
 @pytest.mark.parametrize(
@@ -436,7 +436,7 @@ def test_cached_variant_rejects_unsupported_posterior_predictive_names() -> None
     }
 
     with pytest.raises(ValueError, match="supports only"):
-        resolve_co2_sampling(config, model=resolve_co2_model(config))
+        _resolve_co2_sampling(config, model=resolve_co2_model(config))
 
 
 @pytest.mark.parametrize(
