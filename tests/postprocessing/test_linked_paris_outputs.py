@@ -177,18 +177,18 @@ def test_fixed_state_prior_draws_are_preserved():
     )
 
 
-def test_native_flux_reuses_joint_state_and_roundtrips(tmp_path, europe_country_file):
+def test_native_flux_reuses_joint_state_and_roundtrips(tmp_path):
     from dataclasses import replace
     from openghg_inversions.basis.basis_functions import BasisFunctions
 
     prepared, trace = _joint_fixture(baseline=False, numeric_state=True)
     original_posterior = trace["posterior"].copy(deep=True)
     original_prior = trace["prior"].copy(deep=True)
-    country = xr.load_dataset(europe_country_file).isel(
-        lat=slice(0, 2), lon=slice(0, 5), ncountries=slice(0, 1)
+    country = xr.Dataset(
+        {"country": (("lat", "lon"), np.zeros((2, 5), dtype=int)),
+         "name": ("ncountries", ["United Kingdom"])},
+        coords={"lat": [50.0, 51.0], "lon": [-2.0, -1.0, 0.0, 1.0, 2.0]},
     )
-    country["name"] = ("ncountries", ["United Kingdom"])
-    country["country"] = xr.zeros_like(country.country)
     country_path = tmp_path / "countries.nc"
     country.to_netcdf(country_path)
     flat = xr.DataArray(
