@@ -29,4 +29,4 @@ openghg\_inversions.rhime.co2
    openghg_inversions.rhime.co2.configuration
    openghg_inversions.rhime.co2.execution
    openghg_inversions.rhime.co2.handoffs
-   openghg_inversions.rhime.co2.stages
+   openghg_inversions.rhime.co2.inference

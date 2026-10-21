@@ -1,6 +1,6 @@
 """Public preparation, model-building, and runner APIs for the CO2 family.
 
-The package exposes separate CO2-only, cached fixed-OU, and linked CO2/O2
+The package exposes CO2-only and separate linked CO2/O2
 recipes while reusing canonical RHIME inputs through explicit composition.
 """
 
@@ -24,9 +24,7 @@ from .co2_cached_sigma_model import Co2CachedSigmaModel, build_co2_cached_sigma_
 from .co2_cached_sigma_runner import (
     build_rhime_co2_cached_sigma,
     co2_cached_sigma_build_result,
-    sample_co2_cached_prior_predictive,
     co2_cached_sigma_input_names,
-    run_rhime_co2_cached_sigma,
 )
 from .co2_o2_model import (
     build_co2_o2_model,
@@ -42,7 +40,6 @@ from .co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
 from .co2_o2_cached_sigma_runner import run_rhime_co2_o2_cached_sigma_from_prepared_inputs
 from .configuration import (
     Co2O2RunSetup,
-    Co2RunSetup,
     co2_config_templates,
     load_co2_family_config,
     resolve_co2_family_config,
@@ -59,13 +56,11 @@ __all__ = [
     "Co2PreparedInputs",
     "BoundCo2AffineFluxMap",
     "Co2CachedSigmaModel",
-    "Co2RunSetup",
     "Co2Output",
     "annotate_co2_trace",
     "annotate_co2_o2_trace",
     "materialize_co2_inputs",
     "build_co2_from_materialized",
-    "sample_co2_cached_prior_predictive",
     "build_co2_cached_sigma_model",
     "build_co2_model",
     "build_rhime_co2_cached_sigma",
@@ -87,7 +82,6 @@ __all__ = [
     "produce_bucket_affine_flux_map",
     "resolve_co2_family_config",
     "run_co2",
-    "run_rhime_co2_cached_sigma",
     "run_rhime_co2_o2_from_prepared_inputs",
     "run_rhime_co2_o2_cached_sigma_from_prepared_inputs",
 ]

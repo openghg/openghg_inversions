@@ -227,9 +227,10 @@ def test_postprocess_cli_requires_only_current_output_choices(tmp_path, monkeypa
 
 
 def test_multisector_cli_rejects_retired_artifact_arguments(tmp_path):
-    with pytest.raises(ValueError, match="one manifest"):
+    with pytest.raises(SystemExit) as error:
         main(["sample", "--model", "multisector", "--preparation-manifest", "saved.json",
               "--prepared-inputs", "inputs.nc", "--output-dir", str(tmp_path)])
+    assert error.value.code == 2
 
 
 def test_multisector_cli_strict_readiness_keeps_failure_status(tmp_path, monkeypatch):
@@ -265,12 +266,6 @@ def test_prepare_cli_resolves_data_without_other_phase_choices(tmp_path, monkeyp
     assert calls[0][0].flux_sources == ("supplemental", "inventory")
     assert "prepare-manifest.json" in capsys.readouterr().out
     assert merged.split_by_sectors
-
-
-def test_multisector_facade_names_concrete_replacement(tmp_path):
-    from openghg_inversions.rhime import stages as facade
-    with pytest.raises(ValueError, match=r"multisector_stages\.prepare"):
-        facade.prepare_rhime_stage(setup=None, model="multisector", output_dir=tmp_path)
 
 
 @pytest.mark.parametrize("corruption", ["schema", "version", "generation", "missing_posterior", "contract"])

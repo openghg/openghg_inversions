@@ -13,12 +13,12 @@ import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.cli import build_parser
+from openghg_inversions.rhime.requests import load_params
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.inference import diagnostics as inference_diagnostics
 from openghg_inversions.rhime.stages import (
     CONVERGENCE_CHECK_NAME,
     diagnose_rhime_stage,
-    load_stage_params,
 )
 from openghg_inversions.serialization import save_trace
 from tests.helpers import make_trace
@@ -115,8 +115,6 @@ def test_downstream_stage_parser_requires_handoff_manifests() -> None:
                 "/run/effective.json",
                 "--model",
                 "standard",
-                "--prepared-inputs",
-                "/run/prepared.nc",
                 "--output-dir",
                 "/run/sample",
             ]
@@ -136,7 +134,7 @@ def test_stage_config_paths_are_relative_to_the_invocation(
     )
     monkeypatch.chdir(tmp_path.parent)
 
-    loaded = load_stage_params(params_file=params_path)
+    loaded = load_params(params_file=params_path)
 
     assert loaded["data"]["bc_basis_paths"] == (tmp_path.parent / "relative/bc.nc",)
     assert loaded["output"]["country_file"] == tmp_path.parent / "relative/country.nc"
@@ -331,7 +329,7 @@ def test_diagnostics_accept_digest_free_sample_manifest(tmp_path: Path, model: s
             "schema_version": 1,
             "producer": "openghg_inversions",
             "stage": "sample",
-            "effective_configuration": {"model": model},
+            "schema": f"openghg_inversions.{model}.sample",
         },
     )
 
@@ -342,10 +340,7 @@ def test_diagnostics_accept_digest_free_sample_manifest(tmp_path: Path, model: s
     )
     assert result["measured_values"]["chains"] == 2
     assert result["measured_values"]["draws_per_chain"] == 4
-    if model == "co2":
-        manifest = json.loads((tmp_path / "diagnose" / "diagnose-manifest.json").read_text())
-        assert manifest["configuration_identity"] is None
-
+    assert not (tmp_path / "diagnose" / "diagnose-manifest.json").exists()
 
 @pytest.mark.parametrize("use_override", [False, True])
 @pytest.mark.parametrize("absolute", [False, True])
@@ -382,7 +377,8 @@ def test_resource_origins_match_full_requests(tmp_path, monkeypatch, use_overrid
 
 
 def test_co2_stage_override_paths_use_invocation_directory(tmp_path, monkeypatch):
-    from openghg_inversions.rhime.co2.stages import load_co2_stage_params
+    from openghg_inversions.rhime.co2.execution import load_co2_params, resolve_co2_output
+    from openghg_inversions.rhime.co2.configuration import resolve_co2_preparation
 
     source = tmp_path / "configs" / "co2.json"
     source.parent.mkdir()
@@ -390,9 +386,9 @@ def test_co2_stage_override_paths_use_invocation_directory(tmp_path, monkeypatch
                                  "outputs": {"country_file": "country.nc"}}))
     monkeypatch.chdir(tmp_path)
     overrides = {"prepared_inputs": {"path": "selected.nc"}}
-    loaded = load_co2_stage_params(params_file=source, overrides=overrides)
-    assert loaded["prepared_inputs"]["path"] == str(tmp_path / "selected.nc")
-    assert loaded["outputs"]["country_file"] == str(source.parent / "country.nc")
+    loaded = load_co2_params(params_file=source, overrides=overrides)
+    assert resolve_co2_preparation(loaded)["prepared_path"] == tmp_path / "selected.nc"
+    assert resolve_co2_output(loaded)["output"].country_file == tmp_path / "country.nc"
     assert overrides["prepared_inputs"]["path"] == "selected.nc"
 
 

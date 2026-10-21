@@ -713,6 +713,15 @@ included. Nothing is merged.
 
 ## 4. Cached CO2 reusable-handoff adoption
 
+20 October 2026 implementation stack (not merged): OPE-219 / [#904](https://github.com/openghg/openghg_inversions/pull/904)
+generalizes positive amplitude priors; OPE-220 / [#910](https://github.com/openghg/openghg_inversions/pull/910)
+selects matched inference from model configuration; OPE-221 adopts the shared CLI
+handoffs and retires redundant cached entry points. Full and saved execution are
+checked for additive and Gamma fixed-OU likelihoods with new/imported affine pairs,
+original request dates, independent density references, unequal prior/posterior
+axes, and graph-free products. Merge and final validation evidence remain pending;
+these changes do not complete the wider programme or linked staging.
+
 - [ ] 4.0 OPE-219: replace HalfNormal-only amplitude scale arguments with the
   existing independent positive-prior specification. Derive the conditional
   density/Jacobian and physical amplitude transform from the scientific model;

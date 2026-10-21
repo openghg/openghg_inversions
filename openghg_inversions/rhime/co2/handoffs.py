@@ -1,4 +1,4 @@
-"""Save and reopen the ordinary CO2 recipe's scientific handoffs.
+"""Save and reopen the CO2 recipe's scientific handoffs.
 
 Manifests retain original requested dates and point to existing numerical
 codecs. They do not authenticate model configuration or execute recorded code.
@@ -228,7 +228,7 @@ def sample(
     preparation_manifest: str | Path, *, model: Mapping[str, Any], output_dir: str | Path,
     sampling: Mapping[str, Any] | None = None,
 ) -> Path:
-    """Build and sample ordinary CO2 using current science and its resolved sampler.
+    """Build and sample CO2 using current science and its resolved sampler.
 
     Compatible independent BC/offset priors and supported likelihood choices can
     reuse preparation; the defining coherent native reduction stays unchanged.

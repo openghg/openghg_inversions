@@ -152,16 +152,14 @@ def test_unsupported_requests_are_rejected_before_destinations_exist(tmp_path):
     assert not (tmp_path / "unopened").exists()
 
 
-def test_cached_output_options_preserve_unsupported_inversion_output_guard(tmp_path):
-    from openghg_inversions.rhime.co2.stages import resolve_co2_stage_setup
-    from test_co2_stage_contracts import _config
+def test_output_options_preserve_unsupported_inversion_output_guard(tmp_path):
+    from openghg_inversions.rhime.co2.execution import resolve_co2_output
 
-    params = _config(tmp_path / "absent.nc")
-    params["outputs"] = {"output_format": "basic", "save_inversion_output": True}
+    params = {"outputs": {"output_format": "basic", "save_inversion_output": True}}
     with pytest.raises(ValueError, match="save_inversion_output"):
-        resolve_co2_stage_setup(params)
-    params["outputs"]["save_inversion_output"] = False
-    assert isinstance(resolve_co2_stage_setup(params).output, Co2OutputOptions)
+        resolve_co2_output(params)
+    del params["outputs"]["save_inversion_output"]
+    assert isinstance(resolve_co2_output(params)["output"], Co2OutputOptions)
 
 
 def test_basic_native_product_uses_affine_nonunit_reference_and_signed_flux():

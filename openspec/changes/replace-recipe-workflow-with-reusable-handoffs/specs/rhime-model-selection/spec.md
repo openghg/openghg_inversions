@@ -68,8 +68,7 @@ sampler and output choices and return/write the corresponding products.
 Trace-only scientific callers SHALL compose the existing materialization,
 eager construction, sampling and annotation operations. The redundant ordinary
 `run_rhime_co2`, bundled `build_rhime_co2` and unshipped `run_co2_from_config`
-entry points SHALL NOT retain aliases. When cached stage callers migrate, the
-redundant `run_rhime_co2_cached_sigma` runner and `co2_cached_sigma` Python selector
+entry points SHALL NOT retain aliases. The redundant `run_rhime_co2_cached_sigma` runner and `co2_cached_sigma` Python selector
 SHALL also be removed without compatibility aliases.
 
 Linked CO2-family selection SHALL retain the existing `prepared_inputs`

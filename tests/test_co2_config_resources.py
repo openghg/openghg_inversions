@@ -7,8 +7,8 @@ import tomllib
 
 _CONFIG_DIRECTORY = files("openghg_inversions.rhime").joinpath("config")
 _EXPECTED_TEMPLATES = {
-    "co2.toml": ("co2", "ordinary"),
-    "co2_cached_sigma.toml": ("co2", "ordinary"),
+    "co2.toml": ("co2", None),
+    "co2_fixed_ou.toml": ("co2", None),
     "co2_o2.toml": ("co2_o2", None),
 }
 
@@ -27,10 +27,10 @@ def test_co2_family_templates_are_discoverable_and_parseable() -> None:
             config = tomllib.load(stream)
         assert config["format_version"] == 1
         assert config["recipe"] == recipe
-        if variant is None:
+        assert config.get("variant") == variant
+        if recipe == "co2":
             assert "variant" not in config
-        else:
-            assert config["variant"] == variant
+            assert "nuts_sampler" not in config["sampling"]
 
 
 def test_co2_family_templates_are_declared_as_package_data() -> None:

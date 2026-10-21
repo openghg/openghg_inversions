@@ -285,9 +285,9 @@ class PymcCachedSigmaNutsStep(BlockedStep):
                 [prior_logp, physical_sigma],
                 replace={value_vars[0]: conditional_model.rvs_to_values[conditional_sigma]},
             )
-            likelihood, _ = self.likelihood_op(
-                conditional_physical,
-                self.likelihood_op.residual,
+            likelihood, _ = cast(
+                list[TensorVariable],
+                self.likelihood_op(conditional_physical, self.likelihood_op.residual),
             )
             pm.Potential("sigma_conditional_likelihood", likelihood + conditional_prior)
         conditional_initial = conditional_model.initial_point()

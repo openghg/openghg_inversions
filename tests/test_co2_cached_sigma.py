@@ -23,9 +23,10 @@ from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
+from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.rhime.co2.inference import sample_co2_inference
 from openghg_inversions.rhime.co2 import (
     build_co2_cached_sigma_model,
-    run_rhime_co2_cached_sigma,
 )
 from openghg_inversions.rhime.co2 import co2_cached_sigma_runner
 from openghg_inversions.rhime.co2 import co2_cached_sigma_model
@@ -980,27 +981,33 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
         posterior_predictive_kwargs={"random_seed": 148},
     )
 
-    result = run_rhime_co2_cached_sigma(
-        prepared_inputs=cast(Any, PreparedInputsStub()),
-        tau_hours={"AAA": 3.0, "BBB": 7.0},
-        site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
-        initial_site_amplitudes=0.4,
-        sampler=sampler,
-        sigma_target_accept=0.82,
-        state_target_accept=0.93,
-        use_bc=True,
-        bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
-        bc_state_activity=StateActivity(
-            active=np.asarray([True, False, False, False, False, False, False, False]),
-            fixed_value=1.0,
-        ),
-        offset_prior={"pdf": "normal", "mu": 0.2, "sigma": 0.1},
+    result, actual = sample_co2_inference(
+        cast(Any, PreparedInputsStub()),
+        {
+            "use_bc": True,
+            "bc_prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+            "bc_state_activity": StateActivity(
+                active=np.asarray([True, False, False, False, False, False, False, False]),
+                fixed_value=1.0,
+            ),
+            "offset_prior": {"pdf": "normal", "mu": 0.2, "sigma": 0.1},
+            "likelihood_builder": add_fixed_ou_gaussian_likelihood,
+            "likelihood_kwargs": {
+                "tau_hours": {"AAA": 3.0, "BBB": 7.0},
+                "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.75},
+                "initial_site_amplitudes": 0.4,
+            },
+        },
+        sampler, sigma_target_accept=0.82, state_target_accept=0.93,
     )
 
     assert step_settings == {
         "sigma_target_accept": 0.82,
         "state_target_accept": 0.93,
     }
+    assert actual["sigma_target_accept"] == 0.82
+    assert actual["state_target_accept"] == 0.93
+    assert json.loads(result.attrs["rhime_actual_inference"]) == actual
     assert len(selected) == 1
     assert selected[0].count("H_bc") == 1
     assert result.posterior["flux_scaling"].shape == (2, 2, 2)
@@ -1028,12 +1035,8 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     assert roles["boundary_sensitivity"] == "hbc"
     assert "baseline_concentration" not in roles
     assert "baseline_scale" not in roles
-    assert json.loads(result.posterior["bc"].attrs["rhime_scientific_roles"]) == [
-        "boundary_scale"
-    ]
-    assert json.loads(result.posterior["mu_bc"].attrs["rhime_scientific_roles"]) == [
-        "boundary_concentration"
-    ]
+    assert json.loads(result.posterior["bc"].attrs["rhime_scientific_roles"]) == ["boundary_scale"]
+    assert json.loads(result.posterior["mu_bc"].attrs["rhime_scientific_roles"]) == ["boundary_concentration"]
     assert metadata["recipe"] == "co2"
     assert "sampler" not in metadata
     assert "numerical_preparation" not in metadata
@@ -1044,13 +1047,9 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     }
     assert result.posterior["ou_site_amplitude"].attrs["units"] == "ppm"
     assert result.posterior_predictive["y"].attrs["units"] == "ppm"
-    assert json.loads(result.posterior_predictive["y"].attrs["rhime_scientific_roles"]) == [
-        "concentration"
-    ]
+    assert json.loads(result.posterior_predictive["y"].attrs["rhime_scientific_roles"]) == ["concentration"]
     assert "units" not in result.log_likelihood["y"].attrs
-    assert json.loads(result.log_likelihood["y"].attrs["rhime_scientific_roles"]) == [
-        "joint_log_likelihood"
-    ]
+    assert json.loads(result.log_likelihood["y"].attrs["rhime_scientific_roles"]) == ["joint_log_likelihood"]
     assert result.posterior.attrs["rhime_recipe"] == "co2"
 
     assert result.prior.sizes["draw"] == 8
@@ -1068,6 +1067,7 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
 
 def test_cached_runner_rejects_generic_target_accept() -> None:
     """The cached runner rejects one target acceptance rate for its two samplers."""
+
     class PreparedInputsStub:
         inv_inputs = _inputs()
         aggregation_error_mode = "dense"
@@ -1079,11 +1079,16 @@ def test_cached_runner_rejects_generic_target_accept() -> None:
         ValueError,
         match="sigma_target_accept.*state_target_accept",
     ):
-        run_rhime_co2_cached_sigma(
-            prepared_inputs=cast(Any, prepared),
-            tau_hours={"AAA": 3.0, "BBB": 7.0},
-            site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
-            sampler=RhimeSampler(sample_kwargs={"target_accept": 0.95}),
+        sample_co2_inference(
+            cast(Any, prepared),
+            {
+                "likelihood_builder": add_fixed_ou_gaussian_likelihood,
+                "likelihood_kwargs": {
+                    "tau_hours": {"AAA": 3.0, "BBB": 7.0},
+                    "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.75},
+                },
+            },
+            RhimeSampler(sample_kwargs={"target_accept": 0.95}),
         )
 
 

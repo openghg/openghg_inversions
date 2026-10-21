@@ -116,7 +116,7 @@ def test_modern_routes_reject_historical_resource_selectors_before_acquisition(m
     module = import_module(
         "examples.rhime_customisation.custom_basis_runner" if route == "custom_basis" else
         "examples.rhime_customisation.runner" if route == "example"
-        else f"openghg_inversions.rhime.{'stages' if route == 'staged' else route}"
+        else f"openghg_inversions.rhime.{'requests' if route == 'staged' else route}"
     )
     options = _params(output_format="none", bc_basis_case="NESW", bc_basis_directory=None)
 

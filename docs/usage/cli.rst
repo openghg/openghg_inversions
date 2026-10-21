@@ -48,7 +48,7 @@ guide. New configuration files should use the RHIME vocabulary documented in
 validated production-shape examples are used by
 :doc:`rhime_standard_tutorial` and :doc:`rhime_multisector_tutorial`.
 
-Ordinary CO₂ runs
+CO₂ runs
 ------------------
 
 Use ``rhime run --model co2`` with a CO₂ TOML configuration and prepared
@@ -89,12 +89,11 @@ The public Python selector is :func:`openghg_inversions.rhime.run`:
 
 Python ``run(model="co2")`` and CLI ``rhime run --model co2`` both use
 :func:`openghg_inversions.rhime.co2.run_co2`, consuming a configured product
-request and returning ``Co2Output`` in Python. Ordinary CO₂ uses prepared
+request and returning ``Co2Output`` in Python. CO₂ uses prepared
 scientific inputs and explicit requested dates/domain; it has no configured
 OpenGHG acquisition or native-reduction preparation route. The
-``co2_cached_sigma``, ``co2_o2`` and ``co2_o2_cached_sigma`` Python choices retain
-their existing ``prepared_inputs`` interfaces and trace returns. Cached and
-linked recipes are not choices for the configuration-driven ``rhime run`` command.
+``co2_o2`` and ``co2_o2_cached_sigma`` Python choices retain
+their existing ``prepared_inputs`` interfaces and trace returns. Linked recipes are not choices for the configuration-driven ``rhime run`` command.
 See :doc:`co2_model_family` for the TOML configuration and handoff commands.
 
 ``openghg-inversions`` and its ``run-rhime``, ``run-rhime-multisector`` and
@@ -248,11 +247,10 @@ separate a run into persisted handoffs. Select ``--model standard``,
 scientific stages; ``diagnose`` reads the posterior independently of the recipe.
 See
 :doc:`staged_workflow` for the shared stage interface and
-:doc:`co2_model_family` for CO2-family TOML examples, including the same-unit
-joint linked route.
-Ordinary CO₂ and linked CO₂/O₂ sampling consume one preparation manifest;
-replay consumes only its sample manifest plus current output choices. Saved
-scientific meaning and provenance drive replay without constructing a graph. The existing cached
-CO₂ stage interface remains separate; see :doc:`co2_model_family`. Git revision
+:doc:`co2_model_family` for CO2-family TOML examples, including inferred fixed OU
+and the same-unit joint linked route. CO₂ and linked CO₂/O₂ sampling consume
+one preparation manifest; replay consumes only its sample manifest plus current
+output choices. Saved scientific meaning and provenance drive replay without
+constructing a graph. Git revision
 and checkout status are recorded when available, with unavailable values left
 explicitly unknown.

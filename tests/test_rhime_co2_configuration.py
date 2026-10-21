@@ -18,7 +18,6 @@ from openghg_inversions.models.scalar_sigma import add_scalar_sigma_eigen_likeli
 from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
 from openghg_inversions.rhime.co2.configuration import (
     Co2O2RunSetup,
-    Co2RunSetup,
     co2_config_templates,
     load_co2_family_config,
     resolve_co2_family_config,
@@ -27,9 +26,6 @@ from openghg_inversions.rhime.co2.configuration import (
     resolve_co2_prior_seed,
     resolve_co2_preparation,
     validate_co2_config,
-)
-from openghg_inversions.rhime.co2.co2_cached_sigma_runner import (
-    run_rhime_co2_cached_sigma,
 )
 from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs
 from openghg_inversions.rhime.co2.co2_o2_runner import (
@@ -44,7 +40,6 @@ def _ordinary() -> dict[str, object]:
     return {
         "format_version": 1,
         "recipe": "co2",
-        "variant": "ordinary",
         "prepared_inputs": {"path": "prepared.zarr"},
         "likelihood": {
             "kind": "additive_sigma",
@@ -76,14 +71,13 @@ def _linked() -> dict[str, object]:
 def test_loader_only_parses_toml(tmp_path: Path) -> None:
     path = tmp_path / "co2.toml"
     path.write_text(
-        'format_version = 1\nrecipe = "co2"\nvariant = "ordinary"\n',
+        'format_version = 1\nrecipe = "co2"\n',
         encoding="utf-8",
     )
 
     assert load_co2_family_config(path) == {
         "format_version": 1,
         "recipe": "co2",
-        "variant": "ordinary",
     }
 
 
@@ -98,7 +92,7 @@ def test_installed_templates_pass_the_semantic_resolver() -> None:
 
     assert tuple(templates) == (
         "co2.toml",
-        "co2_cached_sigma.toml",
+        "co2_fixed_ou.toml",
         "co2_o2.toml",
     )
     for resource in templates.values():
@@ -107,7 +101,7 @@ def test_installed_templates_pass_the_semantic_resolver() -> None:
             load_co2_o2_params(params=config)
             resolve_co2_o2_preparation(config, require_path=True)
             resolve_co2_o2_sampler(config)
-        elif config.get("variant") == "ordinary":
+        elif config["recipe"] == "co2":
             validate_co2_config(config)
             resolve_co2_preparation(config, require_path=True)
             resolve_co2_model(config)
@@ -131,7 +125,7 @@ def test_ordinary_configuration_matches_explicit_scientific_arguments() -> None:
 
 
 def test_ordinary_legacy_family_facade_is_retired() -> None:
-    with pytest.raises(ValueError, match="Ordinary CO2 no longer uses Co2RunSetup"):
+    with pytest.raises(ValueError, match="use run_co2"):
         resolve_co2_family_config(_ordinary())
 
 
@@ -201,9 +195,8 @@ def test_resolved_nested_options_are_json_serializable_for_provenance() -> None:
     }
 
 
-def test_boundary_offset_and_cached_variant_lower_to_runner_arguments() -> None:
+def test_boundary_offset_and_inferred_ou_choices_lower_to_component_arguments() -> None:
     config = _ordinary()
-    config["variant"] = "cached_fixed_ou"
     config["model"] = {
         "boundary": {
             "enabled": True,
@@ -221,15 +214,16 @@ def test_boundary_offset_and_cached_variant_lower_to_runner_arguments() -> None:
         "tau_hours": {"MHD": 24.0},
         "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.5},
         "initial_site_amplitudes": 0.5,
-        "sigma_target_accept": 0.82,
-        "state_target_accept": 0.91,
     }
-    config["sampling"] = {"chains": 2, "nuts_sampler": "pymc"}
+    config["sampling"] = {"chains": 2, "sigma_target_accept": 0.82, "state_target_accept": 0.91}
 
-    setup = cast(Co2RunSetup, resolve_co2_family_config(config))
-
-    assert setup.runner is run_rhime_co2_cached_sigma
-    assert setup.runner_kwargs == {
+    model = resolve_co2_model(config)
+    sampling = _resolve_co2_sampling(config, model=model)
+    assert sampling.sigma_target_accept == 0.82
+    assert sampling.state_target_accept == 0.91
+    assert model.pop("likelihood_builder") is add_fixed_ou_gaussian_likelihood
+    likelihood = model.pop("likelihood_kwargs")
+    assert {**model, **likelihood} == {
         "use_bc": True,
         "bc_prior": {"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.1, "lower": 0.0},
         "offset_prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.1},
@@ -237,8 +231,6 @@ def test_boundary_offset_and_cached_variant_lower_to_runner_arguments() -> None:
         "tau_hours": {"MHD": 24.0},
         "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.5},
         "initial_site_amplitudes": 0.5,
-        "sigma_target_accept": 0.82,
-        "state_target_accept": 0.91,
     }
 
 
@@ -414,16 +406,15 @@ def test_lognormal_prior_accepts_supported_moment_parameterization() -> None:
 
 def test_cached_variant_rejects_generic_sampler_controls() -> None:
     config = _ordinary()
-    config["variant"] = "cached_fixed_ou"
     config["likelihood"] = {
         "kind": "fixed_ou",
         "tau_hours": 24.0,
         "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.0},
     }
-    config["sampling"] = {"nuts_sampler": "pymc", "target_accept": 0.9}
+    config["sampling"] = {"target_accept": 0.9}
 
     with pytest.raises(ValueError, match="sigma_target_accept"):
-        resolve_co2_family_config(config)
+        _resolve_co2_sampling(config, model=resolve_co2_model(config))
 
 
 @pytest.mark.parametrize(
@@ -445,18 +436,17 @@ def test_sampling_rejects_burn_that_removes_every_draw(
 
 def test_cached_variant_rejects_unsupported_posterior_predictive_names() -> None:
     config = _ordinary()
-    config["variant"] = "cached_fixed_ou"
     config["likelihood"] = {
         "kind": "fixed_ou",
         "tau_hours": 24.0,
         "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.0},
     }
     config["sampling"] = {
-                "sample_posterior_predictive": ["y", "flux_scaling"],
+        "sample_posterior_predictive": ["y", "flux_scaling"],
     }
 
     with pytest.raises(ValueError, match="supports only"):
-        resolve_co2_family_config(config)
+        _resolve_co2_sampling(config, model=resolve_co2_model(config))
 
 
 @pytest.mark.parametrize(
@@ -584,7 +574,7 @@ def test_imported_preparation_facts_are_explicit_and_optional() -> None:
 
 def test_model_resolution_consumes_only_owned_choices_without_an_envelope() -> None:
     config = _ordinary()
-    for name in ("format_version", "recipe", "variant", "prepared_inputs"):
+    for name in ("format_version", "recipe", "prepared_inputs"):
         del config[name]
     config["outputs"] = object()
     config["sampling"] = object()
@@ -673,11 +663,9 @@ def test_preparation_owner_rejects_invalid_or_unknown_options(prepared: object) 
 ])
 def test_cached_configuration_accepts_positive_prior_families(prior):
     config = _ordinary()
-    config["variant"] = "cached_fixed_ou"
-    config["sampling"] = {"nuts_sampler": "pymc"}
     config["likelihood"] = {"kind": "fixed_ou", "tau_hours": 24.0, "site_amplitude_prior": prior}
-    setup = resolve_co2_family_config(config)
-    assert setup.runner_kwargs["site_amplitude_prior"] == prior
+    model = resolve_co2_model(config)
+    assert model["likelihood_kwargs"]["site_amplitude_prior"] == prior
 
 
 @pytest.mark.parametrize("sampling,match", [

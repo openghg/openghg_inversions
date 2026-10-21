@@ -1,6 +1,4 @@
 """Real coherent CO2 full/staged/replay products and independent equations."""
-from openghg_inversions.rhime.co2 import inference as co2_inference
-
 from dataclasses import replace
 import json
 from pathlib import Path
@@ -12,7 +10,7 @@ import xarray as xr
 
 from examples.co2_handoffs import END_DATE, START_DATE, configuration, synthetic_inputs
 from openghg_inversions.basis.affine_flux_map_io import save as save_affine
-from openghg_inversions.rhime.co2 import co2_runner
+from openghg_inversions.rhime.co2 import co2_runner, inference as co2_inference
 from openghg_inversions.rhime.co2.co2_affine_output import prepared_inputs_content_id
 from openghg_inversions.rhime.co2.co2_outputs import (
     Co2OutputOptions, calculate_co2_products, make_co2_output, validate_co2_product_request,
@@ -20,11 +18,24 @@ from openghg_inversions.rhime.co2.co2_outputs import (
 from openghg_inversions.rhime.co2.configuration import resolve_co2_model
 
 
-def test_scientific_view_and_products_preserve_complete_trace(monkeypatch):
+def test_scientific_view_and_products_preserve_complete_trace(monkeypatch, tmp_path):
     """Sample groups keep separate axes and remain the caller's original tree."""
+    from openghg_inversions.rhime.co2 import handoffs
     from test_co2_staged_outputs import _components_fixture
 
     prepared, trace = _components_fixture()
+    for name in tuple(trace.children):
+        dataset = trace[name].to_dataset()
+        if name.startswith("prior"):
+            dataset = dataset.assign_coords(chain=[10], draw=[100, 101, 102, 103])
+        else:
+            reversed_draws = dataset.isel(draw=slice(None, None, -1)).assign_coords(draw=dataset.draw)
+            dataset = xr.concat([dataset, reversed_draws], dim="chain").assign_coords(
+                chain=[20, 30], draw=[7, 8, 9],
+            )
+        for variable in dataset.data_vars:
+            dataset[variable].attrs["units"] = "1" if variable == "state_custom" else "ppm"
+        trace[name] = dataset
     before = trace.copy(deep=True)
     view = make_co2_output(
         prepared=prepared, trace=trace, start_date=START_DATE, end_date=END_DATE, domain="EUROPE",
@@ -51,6 +62,27 @@ def test_scientific_view_and_products_preserve_complete_trace(monkeypatch):
     assert view.idata is trace
     assert view.outputs["concentration_components"].sizes["prior_draw"] == 4
     assert view.outputs["concentration_components"].sizes["draw"] == 3
+    assert view.outputs["concentration_components"].sizes["prior_chain"] == 1
+    assert view.outputs["concentration_components"].sizes["chain"] == 2
+    np.testing.assert_allclose(
+        view.outputs["basic"].modelled_prior_mean, trace.prior.mean_custom.mean(("chain", "draw")),
+    )
+    np.testing.assert_allclose(
+        view.outputs["basic"].modelled_posterior_mean, trace.posterior.mean_custom.mean(("chain", "draw")),
+    )
+    preparation = handoffs.save_preparation(
+        prepared, output_dir=tmp_path / "preparation", start_date=START_DATE,
+        end_date=END_DATE, domain="EUROPE",
+    )
+    samples = handoffs.save_samples(
+        preparation, trace, actual_inference={"draws": 3, "chains": 2},
+        preparation_generation=handoffs.load_preparation(preparation).generation,
+        output_dir=tmp_path / "samples",
+    )
+    replay = handoffs.postprocess(samples, output=Co2OutputOptions(output_path=tmp_path / "products"))
+    xr.testing.assert_identical(replay.idata, trace)
+    xr.testing.assert_allclose(replay.outputs["basic"], view.outputs["basic"])
+    xr.testing.assert_allclose(replay.outputs["concentration_components"], view.outputs["concentration_components"])
     xr.testing.assert_identical(trace, before)
 
 
@@ -68,18 +100,28 @@ def test_ordinary_output_options_normalize_only_their_paths(tmp_path, monkeypatc
     assert options.output_name == "rhime"
 
 
-@pytest.mark.parametrize("target_accept", [None, 0.93])
 @pytest.mark.parametrize("imported", [False, True], ids=["new-pair", "imported-pair"])
-def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, monkeypatch, imported, target_accept):
+@pytest.mark.parametrize("likelihood_kind,target_accept", [
+    ("additive_sigma", None), ("additive_sigma", 0.93), ("fixed_ou", None),
+])
+def test_configured_full_saved_and_replay_preserve_coherent_products(
+    tmp_path, monkeypatch, imported, likelihood_kind, target_accept,
+):
     """Every product route uses retained scientific meaning, including signed flux."""
     from openghg_inversions.rhime.co2 import handoffs
     from openghg_inversions.rhime.co2 import execution
     from openghg_inversions.rhime import run
 
     canonical, reduction, prepared, affine, countries = synthetic_inputs(tmp_path)
+    prepared_before = prepared.inv_inputs.copy(deep=True)
     params = configuration(tmp_path / "full-products", countries)
     if target_accept is not None:
         params["sampling"]["target_accept"] = target_accept
+    if likelihood_kind == "fixed_ou":
+        params["likelihood"] = {
+            "kind": "fixed_ou", "tau_hours": 24.0,
+            "site_amplitude_prior": {"pdf": "gamma", "alpha": 2.0, "beta": 3.0},
+        }
     choices = {name: params[name] for name in ("model", "likelihood")}
     model = resolve_co2_model(choices)
     if imported:
@@ -87,6 +129,7 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
         companion = tmp_path / "source-affine.nc"
         prepared.save(source)
         save_affine(replace(affine, prepared_inputs_id=prepared_inputs_content_id(source)), companion)
+        params["prepared_inputs"].update(path=str(source), reconstruction_path=str(companion))
         manifest = handoffs.prepare(
             output_dir=tmp_path / "prepared", prepared_path=source, affine_path=companion,
             start_date=START_DATE, end_date=END_DATE, domain="EUROPE",
@@ -111,10 +154,15 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
         full_checks.setattr(handoffs, "load_preparation", forbidden)
         full_checks.setattr(handoffs, "save_preparation", forbidden)
         full_checks.setattr(handoffs, "sample", forbidden)
-        full = run(
-            model="co2", params=params, canonical_inputs=canonical, reduction=reduction,
-            aggregation_error_rank=1, affine_artifact=affine,
-        )
+        full_checks.setattr(handoffs, "save_samples", forbidden)
+        if imported:
+            full = run(model="co2", params=params)
+        else:
+            full = run(
+                model="co2",
+                params=params, canonical_inputs=canonical, reduction=reduction,
+                aggregation_error_rank=1, affine_artifact=affine,
+            )
     for name in ("basic", "concentration_components", "native_flux", "country_flux"):
         xr.testing.assert_allclose(full.outputs[name], staged.outputs[name])
         if name != "concentration_components":
@@ -122,14 +170,20 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
             assert Path(staged.output_metadata[f"{name}_path"]).is_file()
     assert full.output_metadata["sampler"]["draws"] == 12
     assert full.output_metadata["sampler"] == staged.output_metadata["sampler"]
-    assert full.output_metadata["sampler"]["algorithm"] == "nuts"
-    assert full.output_metadata["sampler"]["nuts_sampler"] == "numpyro"
-    if target_accept is None:
-        assert full.output_metadata["sampler"]["target_accept_source"] == "pm.sample_default"
-        assert "target_accept" not in full.output_metadata["sampler"]
+    if likelihood_kind == "fixed_ou":
+        assert full.output_metadata["sampler"]["algorithm"] == "cached_ou_sigma_then_state_nuts"
+        assert full.output_metadata["sampler"]["nuts_sampler"] == "pymc"
+        assert full.output_metadata["sampler"]["sigma_target_accept"] == 0.8
+        assert full.output_metadata["sampler"]["state_target_accept"] == 0.9
     else:
-        assert full.output_metadata["sampler"]["target_accept"] == target_accept
-        assert "target_accept_source" not in full.output_metadata["sampler"]
+        assert full.output_metadata["sampler"]["algorithm"] == "nuts"
+        assert full.output_metadata["sampler"]["nuts_sampler"] == "numpyro"
+        if target_accept is None:
+            assert full.output_metadata["sampler"]["target_accept_source"] == "pm.sample_default"
+            assert "target_accept" not in full.output_metadata["sampler"]
+        else:
+            assert full.output_metadata["sampler"]["target_accept"] == target_accept
+            assert "target_accept_source" not in full.output_metadata["sampler"]
     assert json.loads(full.idata.attrs["rhime_actual_inference"]) == full.output_metadata["sampler"]
     assert not hasattr(full, "output_spec")
     assert not hasattr(full, "source_to_sector")
@@ -141,6 +195,8 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
     assert str(prepared.inv_inputs.time.min().values)[:10] == "2020-01-02"
     assert str(prepared.inv_inputs.time.max().values)[:10] == "2020-01-04"
     assert manifest.read_bytes() == before
+    assert not list((tmp_path / "full-products").glob("*manifest*"))
+    xr.testing.assert_identical(prepared.inv_inputs, prepared_before)
 
     trace = staged.idata
     roles = json.loads(trace.attrs["rhime_variable_roles"])
@@ -168,8 +224,7 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
     assert staged.outputs["concentration_components"].sizes["draw"] == 12
     assert staged.outputs["concentration_components"].modelled_posterior.attrs["units"] == "ppm"
 
-    model_inputs, priors = co2_runner.materialize_co2_inputs(prepared_inputs=prepared, **model)
-    built = co2_runner.build_co2_from_materialized(model_inputs, prepared_inputs=prepared, priors=priors, **model)
+    built, _ = co2_inference.build_co2_inference(prepared, model)
     point = built.model.initial_point()
     mean_function = built.model.compile_fn(
         built.model.replace_rvs_by_values([built.model[roles["model_mean"]]])[0],
@@ -180,6 +235,22 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
     covariance = factor @ factor.T + np.diag(
         prepared.inv_inputs.diagonal_residual_variance.values + prepared.inv_inputs.mf_error.values**2
     )
+    if likelihood_kind == "fixed_ou":
+        amplitude_function = built.model.compile_fn(
+            built.model.replace_rvs_by_values([built.model["ou_site_amplitude"]])[0],
+            inputs=built.model.value_vars, on_unused_input="ignore",
+        )
+        times = prepared.inv_inputs.time.values
+        hours = (times[:, None] - times[None, :]) / np.timedelta64(1, "h")
+        correlation = np.exp(-np.abs(hours) / 24.0)
+        draw_amplitude = posterior.ou_site_amplitude.isel(chain=0, draw=0).item()
+        draw_mean = posterior[roles["model_mean"]].isel(chain=0, draw=0).values
+        draw_reference = multivariate_normal.logpdf(
+            prepared.inv_inputs.mf.values, mean=draw_mean,
+            cov=covariance + draw_amplitude**2 * correlation,
+        )
+        assert trace.log_likelihood.y.isel(chain=0, draw=0).item() == pytest.approx(draw_reference, abs=1e-4)
+        covariance += amplitude_function(point).item()**2 * correlation
     reference = multivariate_normal.logpdf(prepared.inv_inputs.mf.values, mean=mean_function(point), cov=covariance)
     assert likelihood == pytest.approx(reference, rel=1e-5, abs=1e-4)
 
@@ -191,6 +262,9 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
     monkeypatch.setattr(co2_inference, "materialize_co2_inputs", forbidden)
     monkeypatch.setattr(co2_inference, "build_co2_from_materialized", forbidden)
     monkeypatch.setattr(co2_inference, "sample_rhime_model", forbidden)
+    monkeypatch.setattr(co2_inference, "build_co2_inference", forbidden)
+    monkeypatch.setattr(co2_inference, "build_rhime_co2_cached_sigma", forbidden)
+    monkeypatch.setattr(co2_inference, "_sampler_for_cached_graph", forbidden)
     monkeypatch.setattr(execution, "run_co2", forbidden)
     replay = handoffs.postprocess(
         samples, output=Co2OutputOptions(

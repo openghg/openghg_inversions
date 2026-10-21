@@ -277,7 +277,8 @@ def test_state_labels_and_country_grid_must_match_exactly(group):
         co2_country_flux_outputs(trace, bound, countries)
 
 
-def test_missing_prior_role_and_linked_recipe_fail_explicitly():
+@pytest.mark.parametrize("recipe", ["co2_o2", "co2_cached_sigma_fixed_ou"])
+def test_missing_prior_role_and_unsupported_recipe_fail_explicitly(recipe):
     bound, trace, _ = _fixture()
     del trace["prior"]
     with pytest.raises(ValueError, match="prior"):
@@ -287,7 +288,7 @@ def test_missing_prior_role_and_linked_recipe_fail_explicitly():
     with pytest.raises(ValueError, match="flux_scale|absent"):
         co2_native_flux_outputs(trace, bound)
     _, trace, _ = _fixture()
-    trace.attrs["rhime_model_metadata"] = json.dumps({"recipe": "co2_o2"})
+    trace.attrs["rhime_model_metadata"] = json.dumps({"recipe": recipe})
     with pytest.raises(ValueError, match="co2_o2|CO2.O2|recipe"):
         co2_native_flux_outputs(trace, bound)
 

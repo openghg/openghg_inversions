@@ -10,7 +10,6 @@ from collections.abc import Callable, Mapping
 from openghg_inversions.inference.diagnostics import posterior_summary
 import numpy as np
 
-from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.serialization import load_trace, reset_serialisation_multiindexes
 
 from ._stage_artifacts import (
@@ -304,23 +303,5 @@ def diagnose_rhime_stage(
         artifact_paths=[_artifact_path(summary_path)],
         stage=stage,
     )
-    check_path = _write_json(_output_path(destination, check_output, "sampler-convergence.json"), result)
-    if (
-        sample_contract is not None
-        and sample_contract.get("effective_configuration", {}).get("model") == "co2"
-    ):
-        _write_json(
-            destination / "diagnose-manifest.json",
-            {
-                "schema_version": 1,
-                "producer": "openghg_inversions",
-                "stage": "diagnose",
-                "configuration_identity": sample_contract.get("configuration_identity"),
-                "ogi": installed_ogi_provenance(),
-                "artifacts": {
-                    "diagnostics": _artifact_path(summary_path),
-                    "check": _artifact_path(check_path),
-                },
-            },
-        )
+    _write_json(_output_path(destination, check_output, "sampler-convergence.json"), result)
     return result
