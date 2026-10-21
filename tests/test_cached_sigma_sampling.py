@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+import pickle
+import warnings
+
 import numpy as np
 import pymc as pm
 import pytensor
@@ -15,6 +19,7 @@ from openghg_inversions.models.fixed_ou import FixedOuLowRank, prepare_fixed_ou_
 from openghg_inversions.inference.cached_sigma import (
     PymcCachedSigmaNutsStep,
     PytensorMarginalQuadraticCache,
+    _PytensorSigmaLikelihoodOp,
     make_cached_sigma_compound_step,
 )
 
@@ -225,6 +230,100 @@ def test_sigma_step_reuses_passed_initial_cache() -> None:
     )
 
     assert step.current_cache is initial_cache
+
+
+def test_sigma_likelihood_transforms_once_per_installed_residual(monkeypatch) -> None:
+    target = _target()
+    op = _PytensorSigmaLikelihoodOp(target)
+    sigma = pt.dvector("sigma")
+    evaluate = pytensor.function([sigma], op(sigma, op.residual))
+    residuals = [target.observations - target.fixed_contribution - target.design[:, 0] * state
+                 for state in (0.7, 1.3)]
+    amplitudes = [np.array([0.3, 0.8]), np.array([0.5, 0.2])]
+    expected = [[target.evaluate_from_residual(residual, amplitude) for amplitude in amplitudes]
+                for residual in residuals]
+    forward_calls = 0
+    backward_calls = 0
+    transform_type = type(target.prepared.mode_transform)
+    original_transform = transform_type.__matmul__
+
+    def counted_transform(matrix, value):
+        nonlocal forward_calls
+        forward_calls += 1
+        return original_transform(matrix, value)
+
+    def unexpected_backward(*args, **kwargs):
+        nonlocal backward_calls
+        backward_calls += 1
+        pytest.fail("Amplitude trajectories must not compute the observation-residual gradient.")
+
+    monkeypatch.setattr(transform_type, "__matmul__", counted_transform)
+    monkeypatch.setattr(type(target.prepared.mode_transform.T), "__matmul__", unexpected_backward)
+    for index, (residual, references) in enumerate(zip(residuals, expected, strict=True), start=1):
+        borrowed = residual.copy()
+        op.install_residual(borrowed)
+        borrowed[:] = 0.0
+        for amplitude, reference in zip(amplitudes, references, strict=True):
+            logp, gradient = evaluate(amplitude)
+            assert logp == reference.log_likelihood
+            np.testing.assert_array_equal(gradient, reference.gradient_site_amplitude)
+        assert forward_calls == index
+        assert backward_calls == 0
+
+
+@pytest.mark.parametrize("invalid", [np.nan, np.inf, -np.inf, np.finfo(np.float64).max])
+def test_sigma_likelihood_install_rejects_nonfinite_or_overflowing_residual_safely(invalid) -> None:
+    target = _target()
+    op = _PytensorSigmaLikelihoodOp(target)
+    residual = np.array([invalid, -invalid, -invalid, invalid])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        op.install_residual(residual)
+        outputs = [[None], [None]]
+        op.perform(None, [np.array([0.3, 0.8]), op.residual.get_value()], outputs)
+    assert outputs[0][0] == -np.inf
+    np.testing.assert_array_equal(outputs[1][0], np.zeros(target.n_group))
+
+
+@pytest.mark.parametrize("clone", [deepcopy, lambda op: pickle.loads(pickle.dumps(op))])
+def test_copied_sigma_likelihood_keeps_mode_residual_chain_local(clone) -> None:
+    target = _target()
+    original = _PytensorSigmaLikelihoodOp(target)
+    original.install_residual(np.array([0.1, 0.2, 0.3, 0.4]))
+    original_modes = original.residual.get_value().copy()
+    copied = clone(original)
+    copied.install_residual(np.array([0.4, 0.3, 0.2, 0.1]))
+
+    np.testing.assert_array_equal(original.residual.get_value(), original_modes)
+    assert not np.shares_memory(original.residual.get_value(borrow=True), copied.residual.get_value(borrow=True))
+    sigma = pt.dvector("sigma")
+    for op, residual in ((original, [0.1, 0.2, 0.3, 0.4]), (copied, [0.4, 0.3, 0.2, 0.1])):
+        evaluate = pytensor.function([sigma], op(sigma, op.residual))
+        logp, gradient = evaluate(np.array([0.3, 0.8]))
+        expected = target.evaluate_from_residual(residual, [0.3, 0.8])
+        assert logp == expected.log_likelihood
+        np.testing.assert_array_equal(gradient, expected.gradient_site_amplitude)
+
+
+def test_sigma_step_reinstalls_modes_when_conditioning_state_changes(monkeypatch) -> None:
+    target, _, _, _, _, _, point, step = _step_context()
+    sigma = np.exp(point[step.sigma_value_name])
+    recorded = []
+
+    def unchanged_transition(conditional_point):
+        outputs = [[None], [None]]
+        step.likelihood_op.perform(None, [sigma, step.likelihood_op.residual.get_value()], outputs)
+        recorded.append(float(outputs[0][0]))
+        return conditional_point, _nuts_stats()
+
+    monkeypatch.setattr(step.nuts_step, "step", unchanged_transition)
+    for state in (0.3, -0.4):
+        point = {**point, "state": np.array([state])}
+        _, stats = step.step(point)
+        expected = target.log_likelihood(np.exp([state]), sigma)
+        assert recorded[-1] == pytest.approx(expected, rel=1e-14, abs=1e-14)
+        assert stats[0]["cache_refreshes"] == 0
+    assert recorded[0] != recorded[1]
 
 
 def test_sigma_step_refreshes_once_only_when_the_returned_value_changes(
