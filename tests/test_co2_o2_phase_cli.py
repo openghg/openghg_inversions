@@ -77,8 +77,8 @@ def test_installed_unequal_axis_sequence_retains_joint_science(tmp_path, monkeyp
     products = list((tmp_path / "products").glob("*.nc"))
     assert products
     for species, count in (("co2", 2), ("o2", 3)):
-        matching = [path for path in products if species in path.name and "components" in path.name]
-        assert matching
+        matching = [path for path in products if path.name.startswith(f"linked_{species}_concentration_components_")]
+        assert len(matching) == 1
         with xr.open_dataset(matching[0]) as components:
             assert components.sizes["observation"] == count
     loaded = handoffs.load_samples(sample_manifest)
