@@ -38,6 +38,8 @@ from openghg_inversions.observation_error import (
 )
 from openghg_inversions.serialization import open_datatree_loaded, save_datatree
 
+from .co2_o2_preparation import Co2O2PreparedInputs
+
 
 CO2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_prepared_inputs"
 CO2_PREPARED_INPUTS_SCHEMA_VERSION = 1
@@ -465,7 +467,7 @@ class Co2PreparedInputs:
 
 
 def requested_co2_facts(
-    prepared: Co2PreparedInputs, *, start_date: str | None = None,
+    prepared: Co2PreparedInputs | Co2O2PreparedInputs, *, start_date: str | None = None,
     end_date: str | None = None, domain: str | None = None,
     recorded_facts: Mapping[str, object] | None = None,
 ) -> dict[str, str]:

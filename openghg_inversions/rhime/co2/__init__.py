@@ -31,7 +31,11 @@ from .co2_o2_model import (
     evaluate_co2_o2_prior_forward_mean,
 )
 from .co2_o2_preparation import Co2O2PreparedInputs, prepare_co2_o2_inputs
-from .co2_o2_runner import run_rhime_co2_o2_from_prepared_inputs
+from .co2_o2_runner import (
+    annotate_co2_o2_trace,
+    build_rhime_co2_o2,
+    run_rhime_co2_o2_from_prepared_inputs,
+)
 from .co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
 from .co2_o2_cached_sigma_runner import run_rhime_co2_o2_cached_sigma_from_prepared_inputs
 from .configuration import (
@@ -42,15 +46,19 @@ from .configuration import (
 )
 from .execution import run_co2
 from .co2_outputs import Co2Output
+from .co2_o2_outputs import Co2O2Output, Co2O2OutputOptions
 
 __all__ = [
     "Co2O2RunSetup",
     "Co2O2PreparedInputs",
+    "Co2O2Output",
+    "Co2O2OutputOptions",
     "Co2PreparedInputs",
     "BoundCo2AffineFluxMap",
     "Co2CachedSigmaModel",
     "Co2Output",
     "annotate_co2_trace",
+    "annotate_co2_o2_trace",
     "materialize_co2_inputs",
     "build_co2_from_materialized",
     "build_co2_cached_sigma_model",
@@ -58,6 +66,7 @@ __all__ = [
     "build_rhime_co2_cached_sigma",
     "co2_cached_sigma_build_result",
     "build_co2_o2_model",
+    "build_rhime_co2_o2",
     "build_co2_o2_cached_sigma_model",
     "co2_model_input_names",
     "co2_config_templates",

@@ -99,7 +99,8 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     workflow = " ".join(workflow.split())
     assert "``--model co2`` phases" in workflow and "manifest" in workflow
     assert "including inferred fixed OU" in workflow
-    assert "Not supported by the staged CLI" in workflow
+    assert "``--model co2_o2`` phases" in workflow
+    assert "same-unit joint model" in workflow
     co2, linked = family.split("Linked boundary\n", 1)
     assert "rhime run --model co2" in co2
     assert "``rhime run-co2`` remains an alias" in co2
@@ -110,7 +111,7 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert co2.count("--preparation-manifest run/prepare/prepare-manifest.json") == 2
     assert co2.count("--sample-manifest run/sample/sample-manifest.json") == 2
     assert "--prepared-inputs run/" not in co2
-    assert "Linked CO₂/O₂" in linked and "OPE-165" in linked
+    assert "Linked CO₂/O₂ uses its own joint handoffs" in linked
     assert "packaged TOML template" in family
     assert "scientist acceptance" in family
     assert "Scientist acceptance remains future work" in family

@@ -1103,7 +1103,7 @@ def test_add_averaging_error(tac_ch4_data_args):
     """Check that "add averaging error" adds variability to repeatability."""
     # we need to use "mock" to add mf_repeatability to our data
     # since our test data is from picarro and only has variability
-    real_obs = get_obs_surface(site="tac", species="ch4", inlet="185m")
+    real_obs = get_obs_surface(site="tac", species="ch4", inlet="185m", store="inversions_tests")
     real_obs_data = real_obs.data
     real_obs_metadata = real_obs.metadata
     real_obs_data["mf_repeatability"] = xr.ones_like(real_obs_data["mf_variability"])
@@ -1116,8 +1116,8 @@ def test_add_averaging_error(tac_ch4_data_args):
         fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
         ds1 = fp_all["TAC"]
 
-        tac_ch4_data_args["averagingerror"] = False
-        fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
+        data_args = {**tac_ch4_data_args, "averagingerror": False}
+        fp_all, *_ = data_processing_surface_notracer(**data_args)
         ds2 = fp_all["TAC"]
 
         # check that "mf_error", "mf_repeatability", and "mf_variability" are present

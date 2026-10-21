@@ -18,12 +18,15 @@ import xarray as xr
 from openghg_inversions.postprocessing.contracts import OutputContract
 
 from openghg_inversions.models.priors import parse_prior
+from openghg_inversions.models import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime import co2 as co2_public
 from openghg_inversions.rhime.co2 import co2_o2_cached_sigma_runner, co2_o2_runner
 from openghg_inversions.rhime.co2.co2_o2_runner import (
     _CO2_O2_VARIABLE_ROLES,
     _materialize_co2_o2_pymc_inputs,
+    annotate_co2_o2_trace,
+    build_rhime_co2_o2,
     run_rhime_co2_o2_from_prepared_inputs,
 )
 
@@ -70,6 +73,41 @@ def test_trace_annotation_labels_total_marginal_error() -> None:
     assert trace["posterior"]["epsilon"].attrs["units"] == (
         "mixed; see observation_units coordinate"
     )
+
+
+@pytest.mark.parametrize("fixed_ou", [False, True])
+def test_reusable_builder_and_annotation_support_native_prior_prediction(fixed_ou):
+    from test_co2_o2_fixed_ou import _prepared
+    from test_rhime_co2_o2 import _independent_error
+
+    prepared = _prepared()
+    options = {"tau_hours": 6, "fixed_site_amplitudes": 0.5} if fixed_ou else {}
+    built = build_rhime_co2_o2(
+        prepared_inputs=prepared, independent_error_sd=_independent_error(prepared), **options,
+    )
+    with built.model:
+        trace = pm.sample_prior_predictive(draws=3, random_seed=165)
+    trace = restore_inferencedata_coords(trace, get_coord_registry(built.model))
+    annotate_co2_o2_trace(trace, built=built)
+
+    assert trace.prior_predictive.y.shape == (1, 3, 5)
+    assert trace.prior_predictive.indexes["observation"].equals(prepared.observations.indexes["observation"])
+    assert trace.prior_predictive.y.attrs["units"] == "ppm"
+    assert trace.prior_predictive.y.attrs["rhime_predictive_scope"] == "joint_observation_vector"
+    assert json.loads(trace.attrs["rhime_variable_roles"])["modelled_concentration"] == "modelled_concentration"
+    assert json.loads(trace.attrs["rhime_model_metadata"])["o2_sensitivity_ratio"]["convention"] == "embedded_signed_o2_per_co2"
+    if fixed_ou:
+        assert trace.constant_data.ou_species.values.tolist() == ["co2", "o2", "o2"]
+        assert trace.constant_data.ou_tau_hours.attrs["units"] == "hours"
+
+
+def test_public_annotation_labels_joint_density_without_concentration_units():
+    trace = xr.DataTree.from_dict({"log_likelihood": xr.Dataset({"y": (("chain", "draw"), [[-4.0]])})})
+    built = RhimeModelBuildResult(model=pm.Model(), output_contract=OutputContract(variable_roles=_CO2_O2_VARIABLE_ROLES))
+    annotate_co2_o2_trace(trace, built=built)
+    assert trace.log_likelihood.y.attrs["rhime_likelihood_scope"] == "joint_observation_vector"
+    assert json.loads(trace.log_likelihood.y.attrs["rhime_scientific_roles"]) == ["joint_log_likelihood"]
+    assert "units" not in trace.log_likelihood.y.attrs
 
 
 def _prepared_stub(array: xr.DataArray) -> SimpleNamespace:

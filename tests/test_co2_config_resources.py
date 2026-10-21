@@ -9,7 +9,7 @@ _CONFIG_DIRECTORY = files("openghg_inversions.rhime").joinpath("config")
 _EXPECTED_TEMPLATES = {
     "co2.toml": ("co2", None),
     "co2_fixed_ou.toml": ("co2", None),
-    "co2_o2.toml": ("co2_o2", "linked"),
+    "co2_o2.toml": ("co2_o2", None),
 }
 
 

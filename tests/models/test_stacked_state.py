@@ -31,7 +31,7 @@ def _inputs(h: xr.DataArray) -> xr.Dataset:
 
 def _evaluate(model: pm.Model, values: dict[str, np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
     function = pytensor.function(model.free_RVs, [model["x"], model["mu"]])
-    return function(*(values[str(rv.name)] for rv in model.free_RVs))
+    return function(*(np.asarray(values[str(rv.name)], dtype=rv.dtype) for rv in model.free_RVs))
 
 
 @pytest.mark.parametrize("local_dim", ["region", "state"])

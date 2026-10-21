@@ -89,3 +89,48 @@ behalf of their prepared-input scientific runners.
 - **THEN** it calls `run_co2`, consumes the model/sampler/output choices and
   returns the scientific result with the full trace DataTree and requested products
 - **AND** it uses the same recipe as `rhime run --model co2`
+
+## ADDED Requirements
+
+### Requirement: Select linked CO2/O2 saved execution
+
+The installed `prepare`, `prior-predictive`, `sample` and `postprocess` commands
+SHALL accept `--model co2_o2`. Preparation SHALL reference the existing joint
+NetCDF/Zarr codec, preserving its unequal channel observation axes, shared and
+tracer-specific states, cross-channel covariance, units and signed-ratio
+provenance. Requested dates and domain SHALL remain distinct from retained
+observation extrema.
+
+Linked staged configuration SHALL select the scientific likelihood without a
+cached variant selector. This delivery SHALL support fixed independent error
+and fixed-amplitude fixed OU. Configured inferred OU amplitudes SHALL fail
+explicitly pending their matched inference adoption. The existing prepared-input
+Python scientific runners SHALL remain usable independently of checkpoints.
+
+#### Scenario: Execute one joint linked model
+
+- **WHEN** a common-unit unequal-axis linked artifact is prepared and passed
+  through prior prediction, sampling, diagnosis and output replay
+- **THEN** each phase consumes the existing shared scientific operations
+- **AND** cross-channel aggregation covariance enters the likelihood once
+- **AND** saved roles identify the full joint mean, channel predictions and
+  residuals, retained-state scaling and source/tracer contributions
+- **AND** the embedded signed O2/CO2 ratio is not applied again
+
+#### Scenario: Replay linked outputs
+
+- **WHEN** postprocessing receives a linked sample manifest and current output
+  choices
+- **THEN** it restores saved scientific meaning and original reporting facts
+  without resolving current model/sampler choices or constructing a graph
+- **AND** basic products can use posterior-only draws
+- **AND** PARIS products require the saved prior evidence and supported explicit
+  native reporting bases appropriate to each requested product
+
+#### Scenario: Reject unsupported scientific units
+
+- **WHEN** a staged linked artifact uses heterogeneous concentration units or
+  delta(O2/N2) per-meg units without the scientific transform
+- **THEN** preparation or model binding rejects it clearly
+- **AND** this delivery does not claim the OPE-86 transformation or uncertainty
+  propagation capability

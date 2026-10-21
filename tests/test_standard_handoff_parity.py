@@ -66,44 +66,6 @@ def test_lazy_array_prior_uses_same_full_prepared_and_saved_construction(tmp_pat
         np.testing.assert_allclose(built.model.compile_logp()({"x": np.array([x])}), reference, rtol=1e-6)
 
 
-def test_cookiecutter_project_runs_real_student_t_recipe(tmp_path):
-    import numpy as np
-    from scipy.stats import norm, t
-
-    from examples.rhime_cookiecutter.my_inversion.runner import run
-    from examples.standard_handoffs import synthetic_inputs
-
-    merged, options, _, _, h, y = synthetic_inputs(tmp_path)
-    result = run(**options, merged_data=merged, output_name="project", output_format="none",
-                 x_prior={"pdf": "normal", "mu": 1., "sigma": .2},
-                 draws=10, tune=10, chains=1, sample_kwargs={"random_seed": 42})
-    from examples.rhime_cookiecutter.my_inversion.likelihoods import likelihood_builder
-    from openghg_inversions.rhime import stages, DataConfig, RhimeConfig, RhimeOutputSpec
-    from openghg_inversions.rhime.standard import build_standard_model, materialize_standard_inputs
-
-    manifest = stages.prepare(DataConfig.from_params(options), merged_data=merged,
-                              output_dir=tmp_path / "custom-prepared")
-    prepared, _, _ = stages.load_preparation(manifest)
-    config = RhimeConfig.from_params({**options, "output_name": "project", "output_format": "none",
-                                     "mismatch_model": None, "x_prior": {"pdf": "normal", "mu": 1., "sigma": .2}},
-                                    multisector=False)
-    model_inputs, priors = materialize_standard_inputs(prepared, config.model)
-    built = build_standard_model(model_inputs, config.model, priors=priors, likelihood_builder=likelihood_builder)
-    logp = built.model.compile_logp()
-    for state in (.7, 1., 1.4):
-        reference = norm.logpdf(state, 1., .2) + t.logpdf(y, df=4., loc=h * state, scale=.1).sum()
-        np.testing.assert_allclose(logp({"x": np.array([state])}), reference, rtol=1e-6, atol=1e-5)
-    assert result.trace["posterior"].sizes["draw"] == 10
-    samples = stages.save_samples(
-        manifest, result.trace, output_contract=built.output_contract, model=config.model,
-        actual_inference=result.output_metadata["sampler"],
-        output_dir=tmp_path / "custom-samples",
-        preparation_generation=stages.load_preparation(manifest)[2],
-    )
-    replay = stages.postprocess(samples, output=RhimeOutputSpec(output_format="inv_out", save_inversion_output=False))
-    np.testing.assert_array_equal(replay.trace["posterior"]["x"], result.trace["posterior"]["x"])
-
-
 def test_saved_preparation_retains_subset_and_borrows_lazy_inputs(tmp_path):
     from dataclasses import replace
     import dask.array as da
@@ -258,25 +220,60 @@ def test_scientific_offset_is_required_but_predictive_samples_are_optional(tmp_p
 
 
 def test_custom_likelihood_saved_sampling_matches_full_route(tmp_path):
+    from dataclasses import replace
     import numpy as np
-    from examples.rhime_cookiecutter.my_inversion.likelihoods import likelihood_builder
+    from scipy.stats import norm, t
+    import xarray as xr
+
+    from examples.rhime_customisation.likelihoods import likelihood_builder
     from examples.standard_handoffs import synthetic_inputs
     from openghg_inversions.rhime import DataConfig, RhimeConfig, RhimeOutputSpec, RhimeSampler, run_standard, stages
+    from openghg_inversions.rhime.standard import build_standard_model, materialize_standard_inputs
 
-    merged, options, *_ = synthetic_inputs(tmp_path)
-    prior = {"x_prior": {"pdf": "normal", "mu": 1., "sigma": .2}}
-    sampler = RhimeSampler(draws=10, tune=10, chains=1, sample_kwargs={"random_seed": 42})
-    manifest = stages.prepare(DataConfig.from_params(options), merged_data=merged, output_dir=tmp_path / "prepared")
-    sampled = stages.sample(manifest, model=prior, sampler=sampler, output_dir=tmp_path / "samples",
-                            likelihood_builder=likelihood_builder)
+    merged, options, _, _, h, y = synthetic_inputs(tmp_path)
+    model = {"mismatch_model": None, "x_prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.2}}
+    sampler = RhimeSampler(draws=10, tune=10, chains=1, sample_kwargs={"cores": 1, "random_seed": 42})
+    manifest = stages.prepare(
+        DataConfig.from_params(options), merged_data=merged, output_dir=tmp_path / "prepared",
+    )
+    prepared, _, generation = stages.load_preparation(manifest)
+    config = RhimeConfig.from_params(
+        {**options, **model, "output_name": "rhime", "output_format": "none"}, multisector=False,
+    )
+    config = replace(config, sampler=sampler)
+    model_inputs, priors = materialize_standard_inputs(prepared, config.model)
+    built = build_standard_model(
+        model_inputs, config.model, priors=priors, likelihood_builder=likelihood_builder,
+    )
+    logp = built.model.compile_logp()
+    for state in (0.7, 1.0, 1.4):
+        reference = norm.logpdf(state, 1.0, 0.2) + t.logpdf(y, df=4.0, loc=h * state, scale=0.1).sum()
+        np.testing.assert_allclose(logp({"x": np.array([state])}), reference, rtol=1e-6, atol=1e-5)
+
+    sampled = stages.sample(
+        manifest, model=model, sampler=sampler, output_dir=tmp_path / "samples",
+        likelihood_builder=likelihood_builder,
+    )
     replay = stages.postprocess(sampled, output=RhimeOutputSpec(output_format="none"))
-    config = RhimeConfig.from_params({**options, **prior, "mismatch_model": None, "draws": 10, "tune": 10,
-                                      "chains": 1, "sample_kwargs": {"random_seed": 42},
-                                      "output_name": "rhime", "output_format": "none"}, multisector=False)
     full = run_standard(config=config, merged_data=merged, likelihood_builder=likelihood_builder)
-    np.testing.assert_allclose(replay.trace["posterior"]["x"], full.trace["posterior"]["x"])
-    assert "rhime_likelihood_builder" in replay.trace.attrs
+    xr.testing.assert_allclose(
+        replay.trace["posterior"]["x"], full.trace["posterior"]["x"], rtol=1e-7, atol=0,
+    )
+    np.testing.assert_array_equal(replay.trace["posterior"]["state"], prepared.inv_inputs["state"])
+    assert full.trace["posterior"].sizes["draw"] == 10
+    assert replay.trace.attrs["rhime_likelihood_builder"] == full.trace.attrs["rhime_likelihood_builder"]
     assert replay.model_metadata["builder"] == full.model_metadata["builder"]
+
+    samples = stages.save_samples(
+        manifest, full.trace, output_contract=built.output_contract, model=config.model,
+        actual_inference=full.output_metadata["sampler"], output_dir=tmp_path / "external-samples",
+        preparation_generation=generation,
+    )
+    external = stages.postprocess(
+        samples, output=RhimeOutputSpec(output_format="inv_out", save_inversion_output=False),
+    )
+    xr.testing.assert_equal(external.trace["posterior"]["x"], full.trace["posterior"]["x"])
+    assert external.trace.attrs["rhime_likelihood_builder"] == full.trace.attrs["rhime_likelihood_builder"]
 
 
 def test_standard_model_and_enabled_priors_share_computation_before_zero_pruning(tmp_path):

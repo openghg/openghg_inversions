@@ -108,7 +108,7 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(
     tmp_path, monkeypatch, imported, likelihood_kind, target_accept,
 ):
     """Every product route uses retained scientific meaning, including signed flux."""
-    from openghg_inversions.rhime.co2 import handoffs, run_co2
+    from openghg_inversions.rhime.co2 import handoffs
     from openghg_inversions.rhime.co2 import execution
     from openghg_inversions.rhime import run
 
@@ -158,7 +158,8 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(
         if imported:
             full = run(model="co2", params=params)
         else:
-            full = run_co2(
+            full = run(
+                model="co2",
                 params=params, canonical_inputs=canonical, reduction=reduction,
                 aggregation_error_rank=1, affine_artifact=affine,
             )
