@@ -17,6 +17,7 @@ from pytensor.graph.basic import Apply, Variable
 from pytensor.graph.op import Op, OutputStorageType
 from pytensor.tensor.variable import TensorVariable
 from scipy.linalg import cho_solve, eigh, solve_triangular
+from scipy.linalg.lapack import dpocon
 from scipy.sparse import csr_matrix
 
 from openghg_inversions.array_ops import expand_mapping
@@ -67,6 +68,30 @@ def _rejection_gradient_amplitude(amplitude: FloatArray) -> FloatArray:
     finite_large = np.isfinite(amplitude) & (amplitude > 1.0)
     gradient[finite_large] = -np.reciprocal(amplitude[finite_large])
     return gradient
+
+
+def _solve_full_width_factor(
+    factor: FloatArray,
+    rhs: FloatArray,
+) -> tuple[FloatArray, float] | None:
+    """Use primal Cholesky when conditioning estimates permit half the digits.
+
+    Return ``None`` when forming ``I + factor factor.T`` is unsafe, preserving
+    the square-root QR/SVD route for dominant, nearly dependent factor columns.
+    """
+    core = factor @ factor.T
+    core.flat[:: core.shape[0] + 1] += 1.0
+    try:
+        cholesky = np.linalg.cholesky(core)
+    except np.linalg.LinAlgError:
+        return None
+    # Forming the Gram matrix can erase the identity even if Cholesky succeeds.
+    reciprocal_condition, info = dpocon(cholesky, np.linalg.norm(core, 1), uplo="L")
+    if info or not reciprocal_condition > np.sqrt(np.finfo(np.float64).eps):
+        return None
+    solution = cho_solve((cholesky, True), rhs, check_finite=False)
+    logdet = float(2.0 * np.log(np.diag(cholesky)).sum())
+    return cast(FloatArray, solution), logdet
 
 
 class _FixedOuLogpOp(Op):
@@ -308,7 +333,9 @@ class FixedOuLowRank:
         state-likelihood cache conditioned on supplied site amplitudes. It
         reuses the generalized eigenbasis prepared by
         :func:`prepare_fixed_ou_low_rank` and never constructs a second
-        eigensolver.
+        eigensolver. Factors at least as wide as the observation vector use
+        observation-space Cholesky when well conditioned; otherwise the
+        square-root QR/SVD solve preserves small covariance directions.
         """
         rhs_value = np.asarray(rhs, dtype=np.float64)
         if rhs_value.ndim not in (1, 2) or rhs_value.shape[0] != self.n_observation:
@@ -331,22 +358,31 @@ class FixedOuLowRank:
         whitened_rhs = square_root_weights[:, None] * rhs_2d
         if self.rank:
             whitened_factor = self.transformed_factor * square_root_weights[:, None]
-            basis, _ = np.linalg.qr(
-                np.column_stack((whitened_factor, whitened_rhs)),
-                mode="reduced",
+            dense_solution = (
+                _solve_full_width_factor(whitened_factor, whitened_rhs)
+                if self.rank >= self.n_observation
+                else None
             )
-            factor_coordinates = basis.T @ whitened_factor
-            rhs_coordinates = basis.T @ whitened_rhs
-            left_vectors, singular_values, _ = np.linalg.svd(
-                factor_coordinates,
-                full_matrices=True,
-            )
-            rotated_rhs = left_vectors.T @ rhs_coordinates
-            rotated_rhs[: singular_values.size] /= (
-                1.0 + np.square(singular_values)
-            )[:, None]
-            whitened_solution = basis @ (left_vectors @ rotated_rhs)
-            logdet += float(np.log1p(np.square(singular_values)).sum())
+            if dense_solution is not None:
+                whitened_solution, logdet_update = dense_solution
+                logdet += logdet_update
+            else:
+                basis, _ = np.linalg.qr(
+                    np.column_stack((whitened_factor, whitened_rhs)),
+                    mode="reduced",
+                )
+                factor_coordinates = basis.T @ whitened_factor
+                rhs_coordinates = basis.T @ whitened_rhs
+                left_vectors, singular_values, _ = np.linalg.svd(
+                    factor_coordinates,
+                    full_matrices=True,
+                )
+                rotated_rhs = left_vectors.T @ rhs_coordinates
+                rotated_rhs[: singular_values.size] /= (
+                    1.0 + np.square(singular_values)
+                )[:, None]
+                whitened_solution = basis @ (left_vectors @ rotated_rhs)
+                logdet += float(np.log1p(np.square(singular_values)).sum())
         else:
             whitened_solution = whitened_rhs
         solved = square_root_weights[:, None] * whitened_solution

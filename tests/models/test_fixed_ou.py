@@ -461,3 +461,130 @@ def test_evaluate_avoids_cancellation_for_dominant_low_rank_factor() -> None:
     )
 
     assert actual == pytest.approx(expected, rel=1.0e-12)
+
+
+@pytest.mark.parametrize("width", [0, 2, 5, 8])
+@pytest.mark.parametrize("matrix_rhs", [False, True])
+@pytest.mark.parametrize("amplitude", [np.zeros(2), np.array([0.23, 1.2])])
+def test_solve_matches_dense_across_factor_widths_and_rhs_shapes(
+    width: int,
+    matrix_rhs: bool,
+    amplitude: np.ndarray,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, _, diagonal, times, sites = _prepared()
+    diagonal = diagonal + 0.05
+    rng = np.random.default_rng(152)
+    factor = rng.normal(size=(5, width)) * 0.2 + np.eye(5, width)
+    prepared = prepare_fixed_ou_low_rank(
+        factor,
+        diagonal,
+        times,
+        sites,
+        {"MHD": 4.0, "TAC": 8.0},
+        site_labels=("MHD", "TAC"),
+    )
+    rhs = rng.normal(size=(5, 3) if matrix_rhs else 5)
+    original_rhs = rhs.copy()
+    original_factor = prepared.transformed_factor.copy()
+    covariance = _direct_covariance(factor, diagonal, times, sites, amplitude)
+
+    def unexpected_factorization(*args: object, **kwargs: object) -> None:
+        raise AssertionError("Well-conditioned full-width solve must use Cholesky")
+
+    if width >= prepared.n_observation:
+        monkeypatch.setattr(np.linalg, "qr", unexpected_factorization)
+        monkeypatch.setattr(np.linalg, "svd", unexpected_factorization)
+    actual = prepared.solve(rhs, amplitude)
+
+    np.testing.assert_allclose(actual.solution, np.linalg.solve(covariance, rhs), rtol=1e-11, atol=1e-12)
+    assert actual.logdet == pytest.approx(np.linalg.slogdet(covariance)[1], rel=1e-11, abs=1e-12)
+    np.testing.assert_array_equal(rhs, original_rhs)
+    np.testing.assert_array_equal(prepared.transformed_factor, original_factor)
+
+
+@pytest.mark.parametrize("scale, fallback", [(8000.0, False), (8500.0, True)])
+def test_full_width_solve_condition_cutoff_preserves_small_covariance_direction(
+    scale: float,
+    fallback: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = prepare_fixed_ou_low_rank(
+        np.array([[scale, 0.0], [scale, 0.0]]),
+        np.ones(2),
+        np.zeros(2),
+        np.arange(2),
+        1.0,
+    )
+    rhs = np.array([[scale, 1.0], [scale, -1.0]])
+    expected = np.column_stack((np.full(2, scale / (2.0 + 2.0 * scale**2)), [0.5, -0.5]))
+    original_svd = np.linalg.svd
+    calls = 0
+
+    def counted_svd(*args: object, **kwargs: object):
+        nonlocal calls
+        calls += 1
+        return original_svd(*args, **kwargs)
+
+    monkeypatch.setattr(np.linalg, "svd", counted_svd)
+    actual = prepared.solve(rhs, np.ones(2))
+
+    assert calls == int(fallback)
+    tolerance = 1e-12 if fallback else 1e-8
+    np.testing.assert_allclose(actual.solution, expected, rtol=tolerance)
+    expected_logdet = math.log(2.0) + math.log(2.0 + 2.0 * scale**2)
+    assert actual.logdet == pytest.approx(expected_logdet, rel=0.0, abs=tolerance)
+
+
+@pytest.mark.parametrize("factor_case", ["anisotropic", "singular", "rounded_singular"])
+def test_full_width_solve_retains_dominant_factor_fallback(
+    factor_case: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    factor = {
+        "anisotropic": np.diag([1e10, 1.0]),
+        "singular": np.array([[1e10, 0.0], [1e10, 0.0]]),
+        # Cholesky can succeed after rounding has erased the identity.
+        "rounded_singular": np.full((2, 2), np.nextafter(1e10, 0.0)),
+    }[factor_case]
+    prepared = prepare_fixed_ou_low_rank(
+        factor,
+        np.ones(2),
+        np.zeros(2),
+        np.array([0, 1]),
+        1.0,
+    )
+    if factor_case != "anisotropic":
+        rhs = np.column_stack((factor[:, 0], [1.0, -1.0]))
+        large_eigenvalue = 2.0 * (factor[0] @ factor[0]) + 2.0
+        expected_solution = np.column_stack((rhs[:, 0] / large_eigenvalue, [0.5, -0.5]))
+        expected_logdet = math.log(2.0) + math.log(large_eigenvalue)
+    else:
+        rhs = np.array([1e10, 3.0])
+        expected_solution = rhs / np.array([1e20 + 2.0, 3.0])
+        expected_logdet = math.log(1e20 + 2.0) + math.log(3.0)
+    original_cholesky = np.linalg.cholesky
+    original_svd = np.linalg.svd
+    calls = 0
+    successful_cholesky_calls = 0
+
+    def counted_cholesky(*args: object, **kwargs: object):
+        nonlocal successful_cholesky_calls
+        result = original_cholesky(*args, **kwargs)
+        successful_cholesky_calls += 1
+        return result
+
+    def counted_svd(*args: object, **kwargs: object):
+        nonlocal calls
+        calls += 1
+        return original_svd(*args, **kwargs)
+
+    monkeypatch.setattr(np.linalg, "cholesky", counted_cholesky)
+    monkeypatch.setattr(np.linalg, "svd", counted_svd)
+    actual = prepared.solve(rhs, np.ones(2))
+
+    assert calls == 1
+    if factor_case == "anisotropic":
+        assert successful_cholesky_calls == 1
+    np.testing.assert_allclose(actual.solution, expected_solution, rtol=1e-12)
+    assert actual.logdet == pytest.approx(expected_logdet, rel=1e-12)

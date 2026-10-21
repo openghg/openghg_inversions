@@ -6,7 +6,7 @@ from openghg_inversions.models.cached_sigma import FixedOuCachedSigmaTarget
 from openghg_inversions.models.fixed_ou import prepare_fixed_ou_low_rank
 
 
-def _target() -> tuple[FixedOuCachedSigmaTarget, np.ndarray, np.ndarray]:
+def _target(*, full_width: bool = False) -> tuple[FixedOuCachedSigmaTarget, np.ndarray, np.ndarray]:
     factor = np.array(
         [
             [0.8, -0.2],
@@ -17,6 +17,8 @@ def _target() -> tuple[FixedOuCachedSigmaTarget, np.ndarray, np.ndarray]:
             [0.1, 0.2],
         ]
     )
+    if full_width:
+        factor = np.column_stack((factor, 0.3 * np.eye(6)))
     diagonal = np.array([0.16, 0.25, 0.09, 0.36, 0.20, 0.11])
     times = np.array([0.0, 0.25, 1.5, 2.0, 7.0, 8.5])
     sites = np.array([0, 1, 0, 1, 0, 1])
@@ -52,8 +54,9 @@ def _target() -> tuple[FixedOuCachedSigmaTarget, np.ndarray, np.ndarray]:
     )
 
 
-def test_cached_quadratic_value_and_gradient_match_dense_oracle() -> None:
-    target, factor, diagonal = _target()
+@pytest.mark.parametrize("full_width", [False, True])
+def test_cached_quadratic_value_and_gradient_match_dense_oracle(full_width: bool) -> None:
+    target, factor, diagonal = _target(full_width=full_width)
     sigma = np.array([0.23, 0.41])
     state = np.array([0.3, -0.7])
 
@@ -78,14 +81,17 @@ def test_cached_quadratic_value_and_gradient_match_dense_oracle() -> None:
     )
 
     assert cache.log_likelihood(state) == pytest.approx(expected_value, rel=2e-12)
+    assert cache.log_likelihood(state) == pytest.approx(target.log_likelihood(state, sigma), rel=2e-12)
     np.testing.assert_allclose(cache.gradient(state), expected_gradient, rtol=2e-12)
     np.testing.assert_allclose(cache.sigma, sigma)
 
 
-def test_refresh_uses_one_rank_space_svd_and_state_evaluations_do_not_refactorize(
+@pytest.mark.parametrize("full_width", [False, True])
+def test_refresh_factorizes_once_and_state_evaluations_do_not_refactorize(
+    full_width: bool,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    target, _, _ = _target()
+    target, _, _ = _target(full_width=full_width)
     qr_calls = 0
     svd_calls = 0
     cholesky_calls = 0
@@ -113,16 +119,13 @@ def test_refresh_uses_one_rank_space_svd_and_state_evaluations_do_not_refactoriz
     monkeypatch.setattr(np.linalg, "cholesky", counted_cholesky)
 
     cache = target.refresh(np.array([0.23, 0.41]))
-    assert qr_calls == 1
-    assert svd_calls == 1
-    assert cholesky_calls == 0
+    expected_calls = (0, 0, 1) if full_width else (1, 1, 0)
+    assert (qr_calls, svd_calls, cholesky_calls) == expected_calls
 
     for state in (np.zeros(2), np.ones(2), np.array([-0.5, 0.25])):
         assert np.isfinite(cache.log_likelihood(state))
         assert np.isfinite(cache.gradient(state)).all()
-    assert qr_calls == 1
-    assert svd_calls == 1
-    assert cholesky_calls == 0
+    assert (qr_calls, svd_calls, cholesky_calls) == expected_calls
 
 
 def test_exact_sigma_conditional_reuses_fixed_ou_target() -> None:

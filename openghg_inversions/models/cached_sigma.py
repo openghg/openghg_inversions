@@ -68,9 +68,9 @@ class MarginalQuadraticCache:
 class FixedOuCachedSigmaTarget:
     """Build state quadratics from the OGI fixed-OU covariance preparation.
 
-    ``refresh`` performs one rank-space factorization for the supplied site
-    amplitudes and solves the zero-state residual and all state-design columns
-    together. State evaluations on the returned cache are then pure dense
+    ``refresh`` solves the zero-state residual and all state-design columns
+    together using the fixed-OU covariance solver for the supplied site
+    amplitudes. State evaluations on the returned cache are then pure dense
     quadratic algebra.
     """
 
