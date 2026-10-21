@@ -15,6 +15,11 @@ on:
       - 'newsfragments/**'
   # Allow manual runs from the Actions UI with the same checks as automatic runs
   workflow_dispatch:
+    inputs:
+      runtime_comparison:
+        description: "Compare one/two numerical threads with serial pytest in the locked environments"
+        type: boolean
+        default: false
 
 jobs:
   test:
@@ -85,7 +90,31 @@ jobs:
       - name: Prime ArviZ cache
         run: uv run --no-sync python -c "import arviz"
       - name: Run tests
+        if: github.event_name != 'workflow_dispatch' || !inputs.runtime_comparison
         run: uv run --no-sync pytest tests/ -n 2 --dist=worksteal --ignore=tests/typing --durations=25
+      - name: Profile serial suite
+        if: github.event_name == 'workflow_dispatch' && inputs.runtime_comparison
+        env:
+          DASK_NUM_WORKERS: '2'
+          OPENBLAS_NUM_THREADS: '1'
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+          OGI_TEST_RUNTIME_REPORT: runtime-suite/runtime.json
+        run: |
+          mkdir runtime-suite
+          /usr/bin/time -v -o runtime-suite/time.txt uv run --no-sync python -m pytest tests/ -p no:xdist -p tests.ci_runtime --ignore=tests/typing --durations=25 --junitxml=runtime-suite/results.xml
+      - name: Compare numerical thread limits
+        if: github.event_name == 'workflow_dispatch' && inputs.runtime_comparison
+        run: uv run --no-sync python scripts/compare_test_runtime.py runtime-comparison
+      - name: Upload test runtime diagnostics
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.runtime_comparison
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-runtime-locked-py${{ matrix.python-version }}
+          path: |
+            runtime-suite/
+            runtime-comparison/
+          retention-days: 7
 
   lint:
     name: Run lint
