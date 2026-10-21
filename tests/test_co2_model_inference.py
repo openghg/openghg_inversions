@@ -111,8 +111,10 @@ def test_configured_inferred_ou_returns_products_and_saved_prior(tmp_path, monke
     )
     report = handoffs.prior_predictive(manifest, model=request, output_dir=tmp_path / "prior", draws=2, random_seed=13)
     assert report["status"] == "pass"
-    saved = handoffs.sample(
-        manifest, model=request, sampling=request["sampling"], output_dir=tmp_path / "samples",
+    saved = handoffs.save_samples(
+        manifest, result.idata, actual_inference=actual,
+        preparation_generation=handoffs.load_preparation(manifest).generation,
+        output_dir=tmp_path / "samples",
     )
     record = json.loads(saved.read_text())
     assert record["actual_inference"] == actual
@@ -197,7 +199,12 @@ def test_invalid_tuning_metadata_does_not_block_replay(value):
 
 @pytest.mark.parametrize("target", [None, 0.93])
 def test_ordinary_inference_preserves_sampler_default_and_records_source(monkeypatch, target):
-    sampler = RhimeSampler(sample_kwargs={} if target is None else {"target_accept": target})
+    request = {
+        "likelihood": {"kind": "additive_sigma", "no_model_error": True},
+        "sampling": {} if target is None else {"target_accept": target},
+    }
+    model = resolve_co2_model(request)
+    sampler = _resolve_co2_sampling(request, model=model).sampler
     monkeypatch.setattr(inference, "build_co2_inference", lambda *args: (object(), None))
     monkeypatch.setattr(inference, "annotate_co2_inference", lambda trace, *args: trace)
 
@@ -207,7 +214,7 @@ def test_ordinary_inference_preserves_sampler_default_and_records_source(monkeyp
         return xr.DataTree()
 
     monkeypatch.setattr(inference, "sample_rhime_model", sample)
-    trace, actual = inference.sample_co2_inference(object(), {}, sampler)
+    trace, actual = inference.sample_co2_inference(object(), model, sampler)
     assert inference.describe_co2_inference(json.loads(trace.attrs["rhime_actual_inference"])) == actual
     if target is None:
         assert actual["target_accept_source"] == "pm.sample_default"
