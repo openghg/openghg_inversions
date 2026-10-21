@@ -18,7 +18,16 @@ overlap twice. The workflow:
    boundary-condition, model-error, and likelihood components.
 
 All retained sites currently use the same outer domain and the same inner
-domain. Both domains must be available for each retained site.
+domain. Both domains must be available for each retained site. Preparation
+uses OpenGHG's domain definitions to normalize footprint coordinates and
+matching runtime flux coordinates before masking and basis generation. For an
+unregistered domain, it warns and uses the first retained site's grid as the
+reference. Supplied basis partitions are aligned to their runtime flux grid
+before constructing the basis. Incompatible site grids are rejected before
+masking or basis projection.
+The shared inner rectangle is applied separately to each actual target
+footprint or flux grid.
+Masking borrows the original arrays and preserves Dask laziness.
 
 The two grids are not RHIME emissions sectors or grouped basis regions. A
 sector separates different flux sources on one spatial layout; a nested domain
@@ -169,6 +178,7 @@ These exports also run with ``run_nested(config=config, prepared=nested,
 inner_basis_output_path=...)``. Each returned native basis and its saved
 ``InversionOutput`` retain the export destination as provenance; the borrowed
 prepared inputs remain unchanged.
+Without an export destination, the validated preparations are reused directly.
 ``landsea_path`` and ``inner_landsea_path`` select each grid's class map when
 weighted generation needs one; support-map selection fails for missing files
 or unsupported domains before acquisition. If no inner basis file or algorithm
@@ -310,7 +320,10 @@ explicit acknowledgement shown below and run from that boundary:
 This uses the same materialization, model construction, inference and output
 operations as a complete run. Supplied preparation is validated at entry;
 acquisition and scientific preparation are skipped. No staged manifest is
-required. For direct graph inspection, call ``materialize_nested_inputs`` on
+required. Prepared-input request-window semantics are being considered across
+workflows in `issue 913 <https://github.com/openghg/openghg_inversions/issues/913>`_.
+
+For direct graph inspection, call ``materialize_nested_inputs`` on
 ``nested.combined`` and ``config.model``, then pass its returned Dataset and
 ``priors`` to ``build_nested_rhime_model`` with the same model specification.
 
@@ -355,23 +368,35 @@ trace is unchanged. This produces three products:
   including its own country totals (a coarse country-definition file is
   nearest-neighbour resampled onto the inner grid and cached below the run's
   output path, since a fine domain rarely has a matching country file at its
-  native resolution; the cache key includes the source country file and exact
-  target coordinates, preventing reuse against a changed grid);
+  native resolution; the cache uses the inner domain and source country file,
+  reuses compatible grids across small coordinate differences, and regenerates
+  a map when the actual target grid changes);
 - one shared PARIS concentration file, since the combined forward model
   (``mu = mu_outer + mu_inner + baseline``) already reports one concentration
   per observation -- there is no separate "inner concentration" product.
 
 ``run_rhime_nested`` requires ``output_path`` for PARIS and writes all three, using the
 inner domain's label (e.g. ``EUROPE-6km``) in the inner flux file's name.
+Before acquisition or inference, shared PARIS option resolution validates the
+postprocessing option names, template version, time point, explicit flux
+frequency and any explicit
+``inner_country_file``. These checks create no output or country cache. They
+also apply when calling ``make_nested_paris_products`` directly; options that
+depend on the sampled data are resolved during product construction.
 The returned ``NestedOutput.products`` retains ``paris_flux``,
 ``paris_flux_inner`` and ``paris_concentration`` so Python callers can inspect
 the products without reconstructing them. ``NestedOutput.paths`` records the
 corresponding ``paris_*_path`` destinations and any written
 ``inversion_output_path``, ``inversion_output_inner_path`` and ``trace_path``.
 When inversion-output artifacts are requested, each domain view also retains
-its actual outer/inner identity, coordinate-grid fingerprints and extents,
+its actual outer/inner identity, coordinate-grid sizes and extents,
 the explicit trace-to-basis state-dimension mapping, and the outer overlap
 mask policy. These fields survive an ``InversionOutput`` save/load round trip.
+The applied mask bounds are retained from the inner footprint grid. For
+externally pre-masked inputs, pass ``outer_overlap_mask_extent`` as
+``(lat_min, lat_max, lon_min, lon_max)`` to ``combine_nested_rhime_inputs`` when
+known; omission records an unknown extent rather than deriving it from the
+inner flux grid.
 The inner view records its own state-activity policy.
 Use ``make_nested_paris_products(result.outer, result.inner,
 inner_domain_label="EUROPE-6km", country_file=...)`` for explicit product

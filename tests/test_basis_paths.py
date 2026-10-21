@@ -206,7 +206,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
     sites, sources = _inputs()
     partition = xr.ones_like(sources["a"].flux.isel(time=0, drop=True), dtype=int)
     options = _params(
-        sites=["A", "B"], averaging_period="1h", flux_sources=list(sources),
+        sites=["A", "B"], averaging_period="1h", flux_sources=list(sources), domain="TEST",
         basis_algorithm="quadtree", nbasis=4, output_format="none",
         basis_output_path=f"runs/prepared/basis{suffix}" if suffix else None,
     )
@@ -263,7 +263,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
             return result
 
         monkeypatch.setattr(module, "export_basis", export)
-        monkeypatch.setattr(module, "mask_outer_merged_for_inner_domain", lambda outer, inner: outer)
+        monkeypatch.setattr(module, "_mask_outer_for_aligned_inner_domain", lambda outer, inner: outer)
     if route in {"standard", "multisector", "staged", "nested"}:
         # Scientific preparation completes before runners and staged handoffs
         # export the basis and use the prepared inputs.

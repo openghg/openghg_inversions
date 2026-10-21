@@ -18,6 +18,7 @@ from openghg_inversions.inference.sampling import describe_recorded_sampler
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.output_views import make_inversion_output
+from openghg_inversions.postprocessing.paris_options import NestedParisOptions, ParisOptions
 from openghg_inversions.rhime.builders import RhimeModelBuildResult, callable_metadata, RhimeLikelihoodBuilder
 from openghg_inversions.rhime.specs import (
     OutputFilenameConvention,
@@ -68,6 +69,8 @@ def validate_standard_output_resources(output_spec: RhimeOutputSpec) -> None:
     validate_output_resources(output_spec)
     if output_spec.output_format in ("paris", "legacy") and output_spec.output_path is None:
         raise ValueError("`output_path` is required for standard PARIS or legacy products.")
+    if output_spec.output_format == "paris":
+        ParisOptions.from_params(output_spec.paris_postprocessing_kwargs)
 
 
 def validate_multisector_output_resources(output_spec: RhimeOutputSpec) -> None:
@@ -85,6 +88,12 @@ def validate_multisector_output_resources(output_spec: RhimeOutputSpec) -> None:
     validate_output_resources(output_spec)
     if output_spec.output_format == "paris" and output_spec.output_path is None:
         raise ValueError("`output_path` is required for multisector PARIS products.")
+    if output_spec.output_format == "paris":
+        options = ParisOptions.from_params(
+            output_spec.paris_postprocessing_kwargs, default_template_version="latest",
+        )
+        if options.template_version != "latest":
+            raise ValueError("Multi-sector PARIS output supports only template_version='latest'.")
 
 
 def validate_nested_output_resources(output_spec: RhimeOutputSpec) -> None:
@@ -94,6 +103,8 @@ def validate_nested_output_resources(output_spec: RhimeOutputSpec) -> None:
     validate_output_resources(output_spec)
     if output_spec.output_format == "paris" and output_spec.output_path is None:
         raise ValueError("`output_path` is required for nested PARIS products.")
+    if output_spec.output_format == "paris":
+        NestedParisOptions.from_params(output_spec.paris_postprocessing_kwargs)
 
 
 def annotate_likelihood_trace(
@@ -252,14 +263,19 @@ def postprocess_standard_outputs(inv_out: InversionOutput, output_spec: RhimeOut
         from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
 
         obs_avg_period = inv_out.run_metadata["averaging_period"][0] or "0h"
-        kwargs = output_spec.paris_postprocessing_kwargs or {}
+        options = ParisOptions.from_params(output_spec.paris_postprocessing_kwargs)
         with timed("rhime.output.paris_postprocess"):
             flux_outs, conc_outs = make_paris_outputs(
                 inv_out,
                 country_file=output_spec.country_file,
                 domain=inv_out.model_metadata["domain"],
                 obs_avg_period=obs_avg_period,
-                **kwargs,
+                template_version=options.template_version,
+                time_point=options.time_point,
+                flux_frequency=options.flux_frequency,
+                report_mode=options.report_mode,
+                inversion_grid=options.inversion_grid,
+                country_selections=options.country_selections,
             )
 
         if output_spec.output_path is not None:
@@ -351,25 +367,6 @@ def postprocess_multisector_outputs(
     if output_spec.output_format == "none":
         return {}
 
-    paris_kwargs = dict(output_spec.paris_postprocessing_kwargs or {})
-    if output_spec.output_format == "paris":
-        template_version = paris_kwargs.pop("template_version", "latest")
-        if template_version != "latest":
-            raise ValueError(
-                "Multi-sector PARIS output supports only template_version='latest'."
-            )
-        supported = {
-            "country_selections",
-            "flux_frequency",
-            "inversion_grid",
-            "report_mode",
-            "time_point",
-        }
-        if unexpected := ", ".join(sorted(paris_kwargs.keys() - supported)):
-            raise ValueError(
-                f"Unsupported multi-sector latest PARIS postprocessing kwargs: {unexpected}."
-            )
-
     for name, value in (("species", inv_out.model_metadata["species"]),
                         ("domain", inv_out.model_metadata["domain"]),
                         ("output_name", output_spec.output_name),
@@ -388,32 +385,29 @@ def postprocess_multisector_outputs(
             paris_flux_output,
         )
 
-        flux_frequency = paris_kwargs.pop("flux_frequency", None)
+        options = ParisOptions.from_params(
+            output_spec.paris_postprocessing_kwargs, default_template_version="latest",
+        )
+        flux_frequency = options.flux_frequency
         if flux_frequency is None:
             flux_frequency = infer_flux_frequency(inv_out.flux)
-        time_point = paris_kwargs.pop("time_point", "midpoint")
-        report_mode = paris_kwargs.pop("report_mode", False)
-        inversion_grid = paris_kwargs.pop("inversion_grid", True)
-        country_selection_kwargs = {}
-        if "country_selections" in paris_kwargs:
-            country_selection_kwargs["country_selections"] = paris_kwargs.pop("country_selections")
 
         obs_avg_period = inv_out.run_metadata["averaging_period"][0] or "0h"
         conc_outs = paris_concentration_outputs(
             inv_out,
-            report_mode=report_mode,
+            report_mode=options.report_mode,
             obs_avg_period=obs_avg_period,
             template_version="latest",
         )
         flux_outs = paris_flux_output(
             inv_out,
             country_file=output_spec.country_file,
-            time_point=time_point,
-            report_mode=report_mode,
-            inversion_grid=inversion_grid,
+            time_point=options.time_point,
+            report_mode=options.report_mode,
+            inversion_grid=options.inversion_grid,
             flux_frequency=flux_frequency,
             template_version="latest",
-            **country_selection_kwargs,
+            country_selections=options.country_selections,
         )
         outputs.update(
             {

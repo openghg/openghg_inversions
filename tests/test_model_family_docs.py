@@ -184,7 +184,7 @@ def test_nested_reader_path_exposes_transport_grid_boundary() -> None:
     assert guide.count('mismatch_model="pollution_event"') == 2
     assert "outer_overlap_masked=True" in guide
     assert "rather than appending a duplicate section" in guide
-    assert "source country file and exact\n  target coordinates" in guide
+    assert "reuses compatible grids across small coordinate differences" in " ".join(guide.split())
     assert "sampling-only" not in readme
 
 

@@ -796,3 +796,48 @@ def test_latest_paris_country_selection_normalizes_names_to_alpha3(
 
     assert tuple(countries.matrix.country.values) == ("FRA", "GBR")
     xr.testing.assert_identical(countries.matrix, expected)
+
+
+def test_matching_products_forward_explicit_frequency_without_inference(monkeypatch):
+    calls = {}
+    monkeypatch.setattr(make_paris_outputs, "infer_flux_frequency", lambda flux: pytest.fail("inferred explicit frequency"))
+    monkeypatch.setattr(make_paris_outputs, "paris_concentration_outputs", lambda *a, **kw: xr.Dataset())
+
+    def flux_product(*args, **kwargs):
+        calls.update(kwargs)
+        return xr.Dataset()
+
+    monkeypatch.setattr(make_paris_outputs, "paris_flux_output", flux_product)
+    make_paris_outputs.make_paris_outputs(
+        object(), flux_frequency="monthly", country_selections=None,
+    )
+    assert calls["flux_frequency"] == "monthly"
+    assert calls["country_selections"] is None
+
+
+def test_matching_products_validate_before_constructing_concentration(monkeypatch):
+    monkeypatch.setattr(make_paris_outputs, "paris_concentration_outputs", lambda *a, **kw: pytest.fail("constructed invalid product"))
+    with pytest.raises(ValueError, match="midpoint"):
+        make_paris_outputs.make_paris_outputs(object(), template_version="latest", time_point="start")
+
+
+def test_legacy_country_fraction_preserves_cells_with_coordinate_roundoff(europe_country_file):
+    original = _single_sector_paris_inv_out(europe_country_file)
+    expected = paris_flux_output(original, country_file=europe_country_file, inversion_grid=False)
+    basis = original.basis_functions
+    flat_basis = basis.flat_basis()
+    shifted = BasisFunctions.from_flat_basis(
+        basis_flat=flat_basis.assign_coords(
+            lat=flat_basis.lat + 1e-7, lon=flat_basis.lon - 1e-7,
+        ),
+        flux=basis.flux.assign_coords(lat=basis.flux.lat + 1e-7, lon=basis.flux.lon - 1e-7),
+        operator_kwargs={"state_dim": "region"},
+    )
+    from dataclasses import replace
+    actual = paris_flux_output(
+        replace(original, basis_functions=shifted), country_file=europe_country_file,
+        inversion_grid=False,
+    )
+    np.testing.assert_array_equal(actual.country_fraction, expected.country_fraction)
+    assert actual.sizes["latitude"] == expected.sizes["latitude"]
+    assert actual.sizes["longitude"] == expected.sizes["longitude"]

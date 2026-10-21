@@ -216,3 +216,71 @@ def test_multisector_paris_requires_destination_before_work(tmp_path, monkeypatc
             multisector.run_multisector(config=config, prepared=_prepared())
         else:
             multisector_stages.postprocess(tmp_path / "absent-manifest.json", output=config.output)
+
+
+@pytest.mark.parametrize("family", ["standard", "multisector", "nested"])
+@pytest.mark.parametrize("params, message", [
+    ({"domain": "override"}, "domain"),
+    ({"time_point": "end"}, "time_point"),
+    ({"template_version": "latest", "time_point": "start"}, "midpoint"),
+    ({"flux_frequency": "-1h"}, "positive fixed duration"),
+])
+def test_paris_options_fail_preflight_before_work(tmp_path, monkeypatch, family, params, message):
+    country = tmp_path / "country.nc"
+    country.touch()
+    destination = tmp_path / "outputs"
+    config = RhimeConfig.from_params(_params(
+        output_format="paris", country_file=country, output_path=destination,
+        paris_postprocessing_kwargs=params,
+        flux_sources=["inventory", "ocean"] if family == "multisector" else ["inventory"],
+    ), multisector=family == "multisector")
+    monkeypatch.setattr(standard, "acquire_merged_data", lambda *a, **kw: pytest.fail("acquired before preflight"))
+    monkeypatch.setattr(multisector, "acquire_merged_data", lambda *a, **kw: pytest.fail("acquired before preflight"))
+    monkeypatch.setattr(nested, "acquire_merged_data", lambda *a, **kw: pytest.fail("acquired before preflight"))
+    with pytest.raises(ValueError, match=message):
+        if family == "standard":
+            standard.run_standard(config=config)
+        elif family == "multisector":
+            multisector.run_multisector(config=config)
+        else:
+            nested.run_nested(config=config, inner_domain="6km")
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("family", ["standard", "multisector"])
+def test_paris_writers_forward_resolved_options(tmp_path, monkeypatch, family):
+    from openghg_inversions.postprocessing import make_paris_outputs as paris
+
+    country = tmp_path / "country.nc"
+    country.touch()
+    spec = RhimeOutputSpec(
+        output_format="paris", country_file=country, output_path=tmp_path / "products",
+        paris_postprocessing_kwargs={"flux_frequency": "monthly", "country_selections": None},
+    )
+    inv_out = SimpleNamespace(
+        model_metadata={"species": "ch4", "domain": "EUROPE", "supported_output_formats": ["paris"]},
+        run_metadata={"start_date": "2019-01-01", "averaging_period": ["1h"]},
+    )
+    calls = {}
+
+    def products(*args, **kwargs):
+        calls.update(kwargs)
+        return (xr.Dataset(), xr.Dataset()) if family == "standard" else xr.Dataset()
+
+    monkeypatch.setattr(paris, "make_paris_outputs", products)
+    monkeypatch.setattr(paris, "paris_flux_output", products)
+    monkeypatch.setattr(paris, "paris_concentration_outputs", lambda *a, **kw: xr.Dataset())
+    monkeypatch.setattr(paris, "infer_flux_frequency", lambda *a: pytest.fail("inferred explicit frequency"))
+    monkeypatch.setattr(outputs, "_make_multisector_flux_diagnostics", lambda *a: xr.Dataset())
+    monkeypatch.setattr(outputs, "write_netcdf_preserving_bounds_attrs", lambda *a, **kw: None)
+    monkeypatch.setattr(xr.Dataset, "to_netcdf", lambda *a, **kw: None)
+    if family == "standard":
+        outputs.postprocess_standard_outputs(inv_out, spec)
+    else:
+        outputs.postprocess_multisector_outputs(inv_out, spec)
+    assert calls["template_version"] == ("legacy" if family == "standard" else "latest")
+    assert calls["flux_frequency"] == "monthly"
+    assert calls["country_selections"] is None
+    assert calls["time_point"] == "midpoint"
+    assert calls["inversion_grid"] is True
+    assert calls["report_mode"] is False
