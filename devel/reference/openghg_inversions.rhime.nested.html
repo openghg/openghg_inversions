@@ -440,6 +440,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.metrics.html">openghg_inversions.postprocessing.metrics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html">openghg_inversions.postprocessing.output_views</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.paris_options.html">openghg_inversions.postprocessing.paris_options</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
@@ -595,6 +596,7 @@ built, and combines only the two observation-aligned sensitivity matrices.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">inner_domain_label</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">outer_overlap_masked</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">outer_overlap_mask_policy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'caller_supplied_pre_masked_outer_sensitivity'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">outer_overlap_mask_extent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.nested.NestedRhimePreparedInputs" title="Link to this definition">#</a></dt>
@@ -622,6 +624,9 @@ observations to the outer observation index.</p></li>
 response was masked before basis projection.</p></li>
 <li><p><strong>outer_overlap_mask_policy</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Machine-readable description of how the
 overlapping outer response was removed.</p></li>
+<li><p><strong>outer_overlap_mask_extent</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Applied inclusive rectangle as latitude minimum,
+latitude maximum, longitude minimum and longitude maximum. Omission
+leaves the actual mask bounds unknown, including for supplied inputs.</p></li>
 </ul>
 </dd>
 </dl>
@@ -767,6 +772,7 @@ site-local and requires an explicit tolerance.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">inner_domain_label</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">outer_overlap_masked</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">outer_overlap_mask_policy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'caller_supplied_pre_masked_outer_sensitivity'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">outer_overlap_mask_extent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.nested.combine_nested_rhime_inputs" title="Link to this definition">#</a></dt>
@@ -782,7 +788,9 @@ from the outer merged data before preparing <code class="docutils literal notran
 that masking itself. Requiring the acknowledgement here prevents ordinary,
 overlapping prepared inputs from being combined silently. Prepared-input
 callers may also provide a more specific <code class="docutils literal notranslate"><span class="pre">outer_overlap_mask_policy</span></code>;
-otherwise the durable metadata records that the mask was caller supplied.</p>
+otherwise the durable metadata records that the mask was caller supplied.
+<code class="docutils literal notranslate"><span class="pre">outer_overlap_mask_extent</span></code> records the actual applied rectangle, when
+known; it is never inferred from inner basis or flux coordinates.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.rhime.nested.NestedRhimePreparedInputs" title="openghg_inversions.rhime.nested.NestedRhimePreparedInputs"><em>NestedRhimePreparedInputs</em></a></p>
@@ -835,12 +843,25 @@ domain for both views. The actual inner label lives in nested metadata.</p></li>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.nested.mask_outer_merged_for_inner_domain">
-<span class="sig-name descname"><span class="pre">mask_outer_merged_for_inner_domain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">outer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inner</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.nested.mask_outer_merged_for_inner_domain" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">mask_outer_merged_for_inner_domain</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">outer</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">inner</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">outer_domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">inner_domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.nested.mask_outer_merged_for_inner_domain" title="Link to this definition">#</a></dt>
 <dd><p>Mask outer footprint response and prior flux over the inner extent.</p>
 <p>The returned preparation record holds shallow dataset copies and
 <code class="docutils literal notranslate"><span class="pre">where</span></code> preserves Dask laziness. Acquired <code class="docutils literal notranslate"><span class="pre">MergedData</span></code> inputs remain
-borrowed and unmodified; masked values are never wrapped in that type.  The union of all retained inner site extents is applied to the
-retained outer flux used by basis generation and post-run reconstruction.</p>
+borrowed and unmodified; masked values are never wrapped in that type.
+All retained sites must share one grid per domain. The shared inner
+rectangle is also removed from each retained outer flux grid. Optional
+<code class="docutils literal notranslate"><span class="pre">outer_domain</span></code> and <code class="docutils literal notranslate"><span class="pre">inner_domain</span></code> names select OpenGHG domain definitions;
+unknown names use the first retained site as the coordinate reference.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><em>_NestedDomainData</em></p>

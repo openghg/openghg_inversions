@@ -494,6 +494,19 @@ warning; its old `get_data` import alias SHALL remain removed.
   time alignment; only sites with both domains can enter nested preparation
 - **AND** `averaging_error` is preparation policy, not a binding acquisition fact
 
+#### Scenario: Shared nested spatial support
+
+- **WHEN** retained nested sites share one outer domain and one inner domain
+- **THEN** preparation normalizes coordinate labels against their domain
+  definitions, falling back to the first retained site with a warning for an
+  unregistered domain
+- **AND** incompatible grids are rejected before overlap masking or basis projection
+- **AND** compatible sites share one inner rectangular extent, applied on each
+  actual outer footprint and flux grid without mutating or eagerly computing
+  borrowed arrays
+- **AND** output metadata retains the applied footprint rectangle; externally
+  pre-masked inputs with no supplied extent retain an unknown mask extent
+
 #### Scenario: Direct scientific stages use named inputs
 
 - **WHEN** a caller supplies acquired data and named required scientific choices

@@ -440,6 +440,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.metrics.html">openghg_inversions.postprocessing.metrics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html">openghg_inversions.postprocessing.output_views</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.paris_options.html">openghg_inversions.postprocessing.paris_options</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
@@ -890,6 +891,24 @@ default value of “yearly” is returned.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.postprocessing.make_paris_outputs.validate_paris_options">
+<span class="sig-name descname"><span class="pre">validate_paris_options</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">template_version</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">time_point</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flux_frequency</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.make_paris_outputs.validate_paris_options" title="Link to this definition">#</a></dt>
+<dd><p>Validate scalar reporting choices before constructing PARIS products.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>template_version</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'legacy'</em><em>, </em><em>'latest'</em><em>]</em>) – Selected PARIS CDL schema.</p></li>
+<li><p><strong>time_point</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'start'</em><em>, </em><em>'midpoint'</em><em>]</em>) – Flux interval timestamp convention.</p></li>
+<li><p><strong>flux_frequency</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Explicit calendar period or positive duration; None requests inference.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the schema, timestamp, or explicit frequency is unsupported.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.postprocessing.make_paris_outputs.make_paris_outputs">
 <span class="sig-name descname"><span class="pre">make_paris_outputs</span></span><span class="sig-paren">(</span>
 
@@ -903,6 +922,7 @@ default value of “yearly” is returned.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">template_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'legacy'</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">country_selections</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('AUT',</span> <span class="pre">'BEL',</span> <span class="pre">'CHE',</span> <span class="pre">'CZE',</span> <span class="pre">'DEU',</span> <span class="pre">'DNK',</span> <span class="pre">'ESP',</span> <span class="pre">'FIN',</span> <span class="pre">'FRA',</span> <span class="pre">'GBR',</span> <span class="pre">'HRV',</span> <span class="pre">'HUN',</span> <span class="pre">'IRL',</span> <span class="pre">'ITA',</span> <span class="pre">'LUX',</span> <span class="pre">'NLD',</span> <span class="pre">'NOR',</span> <span class="pre">'POL',</span> <span class="pre">'PRT',</span> <span class="pre">'SVK',</span> <span class="pre">'SVN',</span> <span class="pre">'SWE')</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux_frequency</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.make_paris_outputs.make_paris_outputs" title="Link to this definition">#</a></dt>
@@ -924,6 +944,8 @@ concentration v04 and flux v03.</p></li>
 <li><p><strong>country_selections</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable" title="(in Python v3.15)"><em>Iterable</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>] </em><em>| </em><em>None</em>) – Optional latest-template country names or codes.
 The default emits the canonical 22-country EUROPE v03 schema; pass
 <code class="docutils literal notranslate"><span class="pre">None</span></code> to include all countries from another domain file.</p></li>
+<li><p><strong>flux_frequency</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Explicit calendar period or positive fixed duration.
+If omitted, infer it from the retained prior flux.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -1008,6 +1030,7 @@ dataset.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.make_paris_outputs.paris_flux_output"><code class="docutils literal notranslate"><span class="pre">paris_flux_output()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.make_paris_outputs.paris_flux_output_latest"><code class="docutils literal notranslate"><span class="pre">paris_flux_output_latest()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.make_paris_outputs.infer_flux_frequency"><code class="docutils literal notranslate"><span class="pre">infer_flux_frequency()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.make_paris_outputs.validate_paris_options"><code class="docutils literal notranslate"><span class="pre">validate_paris_options()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.make_paris_outputs.make_paris_outputs"><code class="docutils literal notranslate"><span class="pre">make_paris_outputs()</span></code></a></li>
 </ul>
   </nav></div>

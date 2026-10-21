@@ -440,6 +440,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.metrics.html">openghg_inversions.postprocessing.metrics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html">openghg_inversions.postprocessing.output_views</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.paris_options.html">openghg_inversions.postprocessing.paris_options</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
@@ -918,9 +919,25 @@ Missing, <code class="docutils literal notranslate"><span class="pre">None</span
 Recorded selectors and unrelated model choices are not compared.
 Validation reads metadata only and never computes borrowed arrays.</p>
 <dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>species</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Requested species, compared without case when recorded.</p></li>
+<li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Requested transport domain, compared without case when recorded.</p></li>
+<li><p><strong>start_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Requested start as a date/time string. Naive values mean UTC.</p></li>
+<li><p><strong>end_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Requested end as a date/time string. Equivalent UTC instants
+agree even when their string spellings differ.</p></li>
+<li><p><strong>split_by_sectors</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether preparation expects separate flux sources.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None. Compatible data and their borrowed arrays remain unchanged.</p>
+</dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If a known fact or the source layout conflicts with the
-    requested preparation, or a recorded date is invalid.</p>
+    requested preparation, or a compared recorded/requested date is invalid.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1730,6 +1747,7 @@ arrays. Scalar-only prior records need no trace lookup.</p></li>
 <dd><em class="sig-param"><span class="n"><span class="pre">inner_domain_label</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">outer_overlap_masked</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">outer_overlap_mask_policy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'caller_supplied_pre_masked_outer_sensitivity'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">outer_overlap_mask_extent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.NestedRhimePreparedInputs" title="Link to this definition">#</a></dt>
@@ -1757,6 +1775,9 @@ observations to the outer observation index.</p></li>
 response was masked before basis projection.</p></li>
 <li><p><strong>outer_overlap_mask_policy</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Machine-readable description of how the
 overlapping outer response was removed.</p></li>
+<li><p><strong>outer_overlap_mask_extent</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Applied inclusive rectangle as latitude minimum,
+latitude maximum, longitude minimum and longitude maximum. Omission
+leaves the actual mask bounds unknown, including for supplied inputs.</p></li>
 </ul>
 </dd>
 </dl>
@@ -2800,6 +2821,7 @@ true. Missing both flags leaves divergence assessment unknown.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">inner_domain_label</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">outer_overlap_masked</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">outer_overlap_mask_policy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'caller_supplied_pre_masked_outer_sensitivity'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">outer_overlap_mask_extent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.combine_nested_rhime_inputs" title="Link to this definition">#</a></dt>
@@ -2815,7 +2837,9 @@ from the outer merged data before preparing <code class="docutils literal notran
 that masking itself. Requiring the acknowledgement here prevents ordinary,
 overlapping prepared inputs from being combined silently. Prepared-input
 callers may also provide a more specific <code class="docutils literal notranslate"><span class="pre">outer_overlap_mask_policy</span></code>;
-otherwise the durable metadata records that the mask was caller supplied.</p>
+otherwise the durable metadata records that the mask was caller supplied.
+<code class="docutils literal notranslate"><span class="pre">outer_overlap_mask_extent</span></code> records the actual applied rectangle, when
+known; it is never inferred from inner basis or flux coordinates.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.nested.html#openghg_inversions.rhime.nested.NestedRhimePreparedInputs" title="openghg_inversions.rhime.nested.NestedRhimePreparedInputs"><em>NestedRhimePreparedInputs</em></a></p>
@@ -2825,12 +2849,25 @@ otherwise the durable metadata records that the mask was caller supplied.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.mask_outer_merged_for_inner_domain">
-<span class="sig-name descname"><span class="pre">mask_outer_merged_for_inner_domain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">outer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inner</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.mask_outer_merged_for_inner_domain" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">mask_outer_merged_for_inner_domain</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">outer</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">inner</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">outer_domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">inner_domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.mask_outer_merged_for_inner_domain" title="Link to this definition">#</a></dt>
 <dd><p>Mask outer footprint response and prior flux over the inner extent.</p>
 <p>The returned preparation record holds shallow dataset copies and
 <code class="docutils literal notranslate"><span class="pre">where</span></code> preserves Dask laziness. Acquired <code class="docutils literal notranslate"><span class="pre">MergedData</span></code> inputs remain
-borrowed and unmodified; masked values are never wrapped in that type.  The union of all retained inner site extents is applied to the
-retained outer flux used by basis generation and post-run reconstruction.</p>
+borrowed and unmodified; masked values are never wrapped in that type.
+All retained sites must share one grid per domain. The shared inner
+rectangle is also removed from each retained outer flux grid. Optional
+<code class="docutils literal notranslate"><span class="pre">outer_domain</span></code> and <code class="docutils literal notranslate"><span class="pre">inner_domain</span></code> names select OpenGHG domain definitions;
+unknown names use the first retained site as the coordinate reference.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><em>_NestedDomainData</em></p>

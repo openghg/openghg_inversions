@@ -1350,6 +1350,16 @@ inversion outputs, traces and basis exports.</p>
 <p>Single-sector <code class="docutils literal notranslate"><span class="pre">paris</span></code> keeps the legacy template by default. Pass
 <code class="docutils literal notranslate"><span class="pre">paris_postprocessing_kwargs={&quot;template_version&quot;:</span> <span class="pre">&quot;latest&quot;}</span></code> to write the
 PARIS concentration v04 and flux v03 templates.</p>
+<p>Standard, multisector, nested and ordinary CO₂ recipes resolve their PARIS
+choices through shared typed options, including template version, time point
+and optional <code class="docutils literal notranslate"><span class="pre">flux_frequency</span></code>.
+Set these through the existing <code class="docutils literal notranslate"><span class="pre">paris_postprocessing_kwargs</span></code> mapping; omitted
+frequency is inferred from the retained flux. Invalid option names, explicit
+frequencies and incompatible template/time-point choices fail before inference.
+Each recipe retains its own supported defaults and restrictions: multisector
+and CO₂ products require the latest templates, while standard and nested output
+keep the legacy default. Nested output adds the inner country file and cache
+directory; see <a class="reference internal" href="nested_domains.html"><span class="doc">Run a nested-domain RHIME inversion</span></a>.</p>
 <p>PARIS global attributes automatically use the selected prior flux sources and
 metadata read from the footprint files; scripts do not need to pass these
 attributes to <code class="docutils literal notranslate"><span class="pre">make_paris_outputs</span></code>. A missing footprint model version is

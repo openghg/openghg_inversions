@@ -42,6 +42,11 @@ Current support
      - One standard flux sector. When boundary conditions are enabled, their
        contribution comes from the outer domain; multisector nested runs and a
        second inner boundary condition are not supported.
+   * - Shared spatial support
+     - Every retained site has both domains, with the same indexed outer grid
+       and the same indexed inner grid across sites. Outer-only sites remain
+       deferred in GitHub issue #897 pending a scientific decision about their
+       interior emissions states and output interpretation.
 
 Continue with the nested-domain guide for configuration, basis construction,
 time alignment, prepared inputs, and output details.
