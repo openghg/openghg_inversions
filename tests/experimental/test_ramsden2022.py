@@ -132,26 +132,30 @@ def _model_spec(
     )
 
 
-def _initial_value(model: pm.Model, variable: str) -> np.ndarray:
-    """Evaluate one model variable at the PyMC initial point."""
+def _initial_values(model: pm.Model, *variables: str) -> dict[str, np.ndarray]:
+    """Evaluate requested variables together at one PyMC initial point."""
     function = model.compile_fn(
-        model.replace_rvs_by_values([model[variable]])[0],
+        model.replace_rvs_by_values([model[variable] for variable in variables]),
         inputs=model.value_vars,
         on_unused_input="ignore",
     )
-    return np.asarray(function(model.initial_point()))
+    return {
+        variable: np.asarray(value)
+        for variable, value in zip(variables, function(model.initial_point()), strict=True)
+    }
 
 
 def test_two_sector_equations_share_x_and_only_fossil_emits_tracer() -> None:
     """Both gases share fossil x while the biogenic state affects methane only."""
     prepared = _prepared_inputs()
     model = build_ramsden_model(prepared, _model_spec())
+    values = _initial_values(model, "x_fossil", "mu_ch4_fossil", "mu_ch4_biogenic", "mu_ch4", "mu_c2h6")
 
-    np.testing.assert_allclose(_initial_value(model, "x_fossil"), [2.0, 3.0])
-    np.testing.assert_allclose(_initial_value(model, "mu_ch4_fossil"), [2.0, 6.0, 5.0])
-    np.testing.assert_allclose(_initial_value(model, "mu_ch4_biogenic"), [1.0, 3.0, 2.5])
-    np.testing.assert_allclose(_initial_value(model, "mu_ch4"), [3.0, 9.0, 7.5])
-    np.testing.assert_allclose(_initial_value(model, "mu_c2h6"), [2.0, 3.75])
+    np.testing.assert_allclose(values["x_fossil"], [2.0, 3.0])
+    np.testing.assert_allclose(values["mu_ch4_fossil"], [2.0, 6.0, 5.0])
+    np.testing.assert_allclose(values["mu_ch4_biogenic"], [1.0, 3.0, 2.5])
+    np.testing.assert_allclose(values["mu_ch4"], [3.0, 9.0, 7.5])
+    np.testing.assert_allclose(values["mu_c2h6"], [2.0, 3.75])
     assert "mu_c2h6_biogenic" not in model.named_vars
     assert "emission_ratio_biogenic" not in model.named_vars
 
@@ -191,8 +195,9 @@ def test_differently_retained_channel_sensitivities_use_distinct_backend_axes() 
     np.testing.assert_array_equal(
         registry.auxiliary_coords["basis_group_retained_fossil_c2h6"], ["outer"]
     )
-    np.testing.assert_allclose(_initial_value(model, "mu_ch4_fossil"), [0.0, 6.0, 3.0])
-    np.testing.assert_allclose(_initial_value(model, "mu_c2h6_fossil"), [2.0, 0.0])
+    values = _initial_values(model, "mu_ch4_fossil", "mu_c2h6_fossil")
+    np.testing.assert_allclose(values["mu_ch4_fossil"], [0.0, 6.0, 3.0])
+    np.testing.assert_allclose(values["mu_c2h6_fossil"], [2.0, 0.0])
 
 
 def test_direct_and_reference_ratio_multiplier_contracts_are_equivalent() -> None:
@@ -208,13 +213,15 @@ def test_direct_and_reference_ratio_multiplier_contracts_are_equivalent() -> Non
         compatible_inputs,
         _model_spec(fixed_ratio=2.0, reference_ratio=0.1),
     )
+    direct_values = _initial_values(direct, "mu_c2h6")
+    compatible_values = _initial_values(compatible, "mu_c2h6", "emission_ratio_fossil", "ratio_multiplier_fossil")
 
     np.testing.assert_allclose(
-        _initial_value(direct, "mu_c2h6"),
-        _initial_value(compatible, "mu_c2h6"),
+        direct_values["mu_c2h6"],
+        compatible_values["mu_c2h6"],
     )
-    np.testing.assert_allclose(_initial_value(compatible, "emission_ratio_fossil"), 0.2)
-    np.testing.assert_allclose(_initial_value(compatible, "ratio_multiplier_fossil"), 2.0)
+    np.testing.assert_allclose(compatible_values["emission_ratio_fossil"], 0.2)
+    np.testing.assert_allclose(compatible_values["ratio_multiplier_fossil"], 2.0)
 
 
 @pytest.mark.parametrize(
@@ -236,7 +243,8 @@ def test_ratio_resolution_controls_labelled_parameter_shape(
     )
 
     assert model.named_vars_to_dims.get("emission_ratio_fossil", ()) == expected_dims
-    assert _initial_value(model, "emission_ratio_fossil").shape == expected_shape
+    values = _initial_values(model, "emission_ratio_fossil")
+    assert values["emission_ratio_fossil"].shape == expected_shape
 
 
 def test_unequal_observation_axes_have_namespaced_error_models() -> None:
@@ -247,8 +255,9 @@ def test_unequal_observation_axes_have_namespaced_error_models() -> None:
     assert model.named_vars_to_dims["y_c2h6"] == ("nmeasure_c2h6",)
     assert model.named_vars_to_dims["sigma_ch4"] == ("nsigma_site_ch4", "nsigma_period_ch4")
     assert model.named_vars_to_dims["sigma_c2h6"] == ("nsigma_site_c2h6", "nsigma_period_c2h6")
-    assert _initial_value(model, "epsilon_ch4").shape == (3,)
-    assert _initial_value(model, "epsilon_c2h6").shape == (2,)
+    values = _initial_values(model, "epsilon_ch4", "epsilon_c2h6")
+    assert values["epsilon_ch4"].shape == (3,)
+    assert values["epsilon_c2h6"].shape == (2,)
     for base in ("Y", "error", "min_error", "sigma_site_index", "sigma_period_index"):
         assert f"{base}_ch4" in model.named_vars
         assert f"{base}_c2h6" in model.named_vars
@@ -258,9 +267,10 @@ def test_absolute_error_equation_and_minimum_floor() -> None:
     """Epsilon follows the paper's absolute error equation plus RHIME's floor."""
     prepared = _prepared_inputs()
     model = build_ramsden_model(prepared, _model_spec())
-    sigma = _initial_value(model, "sigma_ch4")
+    values = _initial_values(model, "sigma_ch4", "epsilon_ch4")
+    sigma = values["sigma_ch4"]
     expected = np.sqrt(0.1**2 + sigma[[0, 1, 0], 0] ** 2)
-    np.testing.assert_allclose(_initial_value(model, "epsilon_ch4"), expected)
+    np.testing.assert_allclose(values["epsilon_ch4"], expected)
 
     floored_primary = prepared.primary.copy()
     floored_primary["min_error"] = xr.full_like(prepared.primary.mf, 0.5).assign_attrs(units="ppm")
@@ -270,7 +280,8 @@ def test_absolute_error_equation_and_minimum_floor() -> None:
         tracer_design_reference_ratios=prepared.tracer_design_reference_ratios,
     )
     floored_model = build_ramsden_model(floored, _model_spec())
-    np.testing.assert_allclose(_initial_value(floored_model, "epsilon_ch4"), 0.5)
+    floored_values = _initial_values(floored_model, "epsilon_ch4")
+    np.testing.assert_allclose(floored_values["epsilon_ch4"], 0.5)
 
 
 def test_state_coordinate_mismatch_is_rejected() -> None:
