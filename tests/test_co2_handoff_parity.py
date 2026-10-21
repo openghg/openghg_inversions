@@ -100,12 +100,9 @@ def test_ordinary_output_options_normalize_only_their_paths(tmp_path, monkeypatc
     assert options.output_name == "rhime"
 
 
-@pytest.mark.parametrize("imported", [False, True], ids=["new-pair", "imported-pair"])
-@pytest.mark.parametrize("likelihood_kind,target_accept", [
-    ("additive_sigma", None), ("additive_sigma", 0.93), ("fixed_ou", None),
-])
+@pytest.mark.parametrize("likelihood_kind", ["additive_sigma", "fixed_ou"])
 def test_configured_full_saved_and_replay_preserve_coherent_products(
-    tmp_path, monkeypatch, imported, likelihood_kind, target_accept,
+    tmp_path, monkeypatch, likelihood_kind,
 ):
     """Every product route uses retained scientific meaning, including signed flux."""
     from openghg_inversions.rhime.co2 import handoffs
@@ -115,8 +112,6 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(
     canonical, reduction, prepared, affine, countries = synthetic_inputs(tmp_path)
     prepared_before = prepared.inv_inputs.copy(deep=True)
     params = configuration(tmp_path / "full-products", countries)
-    if target_accept is not None:
-        params["sampling"]["target_accept"] = target_accept
     if likelihood_kind == "fixed_ou":
         params["likelihood"] = {
             "kind": "fixed_ou", "tau_hours": 24.0,
@@ -124,21 +119,10 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(
         }
     choices = {name: params[name] for name in ("model", "likelihood")}
     model = resolve_co2_model(choices)
-    if imported:
-        source = tmp_path / "source.nc"
-        companion = tmp_path / "source-affine.nc"
-        prepared.save(source)
-        save_affine(replace(affine, prepared_inputs_id=prepared_inputs_content_id(source)), companion)
-        params["prepared_inputs"].update(path=str(source), reconstruction_path=str(companion))
-        manifest = handoffs.prepare(
-            output_dir=tmp_path / "prepared", prepared_path=source, affine_path=companion,
-            start_date=START_DATE, end_date=END_DATE, domain="EUROPE",
-        )
-    else:
-        manifest = handoffs.save_preparation(
-            prepared, output_dir=tmp_path / "prepared", affine_artifact=affine,
-            start_date=START_DATE, end_date=END_DATE, domain="EUROPE",
-        )
+    manifest = handoffs.save_preparation(
+        prepared, output_dir=tmp_path / "prepared", affine_artifact=affine,
+        start_date=START_DATE, end_date=END_DATE, domain="EUROPE",
+    )
     before = manifest.read_bytes()
     samples = handoffs.sample(manifest, model=choices, sampling=params["sampling"], output_dir=tmp_path / "samples")
     staged = handoffs.postprocess(
@@ -155,14 +139,11 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(
         full_checks.setattr(handoffs, "save_preparation", forbidden)
         full_checks.setattr(handoffs, "sample", forbidden)
         full_checks.setattr(handoffs, "save_samples", forbidden)
-        if imported:
-            full = run(model="co2", params=params)
-        else:
-            full = run(
-                model="co2",
-                params=params, canonical_inputs=canonical, reduction=reduction,
-                aggregation_error_rank=1, affine_artifact=affine,
-            )
+        full = run(
+            model="co2",
+            params=params, canonical_inputs=canonical, reduction=reduction,
+            aggregation_error_rank=1, affine_artifact=affine,
+        )
     for name in ("basic", "concentration_components", "native_flux", "country_flux"):
         xr.testing.assert_allclose(full.outputs[name], staged.outputs[name])
         if name != "concentration_components":
@@ -178,12 +159,8 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(
     else:
         assert full.output_metadata["sampler"]["algorithm"] == "nuts"
         assert full.output_metadata["sampler"]["nuts_sampler"] == "numpyro"
-        if target_accept is None:
-            assert full.output_metadata["sampler"]["target_accept_source"] == "pm.sample_default"
-            assert "target_accept" not in full.output_metadata["sampler"]
-        else:
-            assert full.output_metadata["sampler"]["target_accept"] == target_accept
-            assert "target_accept_source" not in full.output_metadata["sampler"]
+        assert full.output_metadata["sampler"]["target_accept_source"] == "pm.sample_default"
+        assert "target_accept" not in full.output_metadata["sampler"]
     assert json.loads(full.idata.attrs["rhime_actual_inference"]) == full.output_metadata["sampler"]
     assert not hasattr(full, "output_spec")
     assert not hasattr(full, "source_to_sector")

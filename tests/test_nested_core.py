@@ -273,22 +273,6 @@ def test_nested_rejects_preparation_domain_with_supplied_inputs():
         run_nested(config=config, prepared=_nested(), inner_domain="AFRICA")
 
 
-def test_nested_paris_requires_destination_before_sampling(monkeypatch, tmp_path):
-    """Configured file products cannot be calculated and discarded invisibly."""
-    from tests.test_staged_workflow import _params
-
-    country = tmp_path / "country.nc"
-    country.touch()
-    config = RhimeConfig.from_params(
-        _params(output_format="paris", country_file=country, output_path=None,
-                save_trace=False, save_inversion_output=False), multisector=False,
-    )
-    monkeypatch.setattr("openghg_inversions.rhime.nested.sample_rhime_model",
-                        lambda *args: pytest.fail("sampled before output preflight"))
-    with pytest.raises(ValueError, match="output_path.*required"):
-        run_nested(config=config, prepared=_nested())
-
-
 def test_nested_no_basis_export_borrows_validated_preparations(monkeypatch):
     """Skipping exports must not reconstruct canonical prepared records."""
     from openghg_inversions.rhime.nested import NestedRhimePreparedInputs

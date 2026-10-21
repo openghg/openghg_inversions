@@ -61,9 +61,10 @@ def test_lazy_array_prior_uses_same_full_prepared_and_saved_construction(tmp_pat
     h = prepared.inv_inputs.H.values.squeeze()
     y = prepared.inv_inputs.mf.values
     np.testing.assert_allclose(full.trace["posterior"]["x"], replay.trace["posterior"]["x"])
+    logp = built.model.compile_logp()
     for x in (.7, 1., 1.4):
         reference = norm.logpdf(x, 1.2, .3) + norm.logpdf(y, h * x, .1).sum()
-        np.testing.assert_allclose(built.model.compile_logp()({"x": np.array([x])}), reference, rtol=1e-6)
+        np.testing.assert_allclose(logp({"x": np.array([x])}), reference, rtol=1e-6)
 
 
 def test_saved_preparation_retains_subset_and_borrows_lazy_inputs(tmp_path):

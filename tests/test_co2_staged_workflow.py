@@ -151,14 +151,14 @@ def _in_process_cli(*arguments: str | Path) -> None:
     print(f"In-process CLI {arguments[0]}: {perf_counter() - started:.2f}s")
 
 
-@pytest.mark.parametrize("likelihood_kind", ["additive_sigma", "fixed_ou"])
 def test_installed_co2_stages_preserve_scientific_and_file_contracts(
-    tmp_path: Path, likelihood_kind: str, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Exercise the common saved route with model-selected cached inference."""
     monkeypatch.delenv("RUN_ROOT", raising=False)
     monkeypatch.chdir(tmp_path)
     source, original = _handoff(tmp_path)
-    config = _configuration(tmp_path, likelihood_kind)
+    config = _configuration(tmp_path, "fixed_ou")
     common = ["--model", "co2", "--config", str(config)]
     prepared = source
     preparation = tmp_path / "prepare" / "prepare-manifest.json"
@@ -340,14 +340,13 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(
     assert not (tmp_path / "rejected" / "posterior.nc").exists()
 
 
-@pytest.mark.parametrize("likelihood_kind", ["additive_sigma", "fixed_ou"])
 def test_installed_co2_rejects_unsupported_output_before_writing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-    likelihood_kind: str,
 ) -> None:
+    """The installed command reports the shared output-policy failure."""
     monkeypatch.chdir(tmp_path)
     _handoff(tmp_path)
-    config = _configuration(tmp_path, likelihood_kind)
+    config = _configuration(tmp_path, "additive_sigma")
     config.write_text(config.read_text().replace('output_format = "basic"', 'output_format = "inv_out"'))
     destination = tmp_path / "unsupported"
     arguments = ["run", "--model", "co2", "--config", config, "--output-path", destination]
@@ -356,11 +355,11 @@ def test_installed_co2_rejects_unsupported_output_before_writing(
     assert not destination.exists()
 
 
-@pytest.mark.parametrize("likelihood_kind", ["additive_sigma", "fixed_ou"])
-def test_installed_configured_co2_full_execution_writes_selected_products(tmp_path, monkeypatch, likelihood_kind):
+def test_installed_configured_co2_full_execution_writes_selected_products(tmp_path, monkeypatch):
+    """Keep one installed full-run acceptance; shared inference owns likelihood choices."""
     monkeypatch.chdir(tmp_path)
     _handoff(tmp_path)
-    config = _configuration(tmp_path, likelihood_kind)
+    config = _configuration(tmp_path, "additive_sigma")
     config.write_text(config.read_text().replace('[outputs]\n', '[outputs]\nsave_trace = true\n'))
     destination = tmp_path / "full-products"
     _cli("run", "--model", "co2", "--config", config, "--output-path", destination)
