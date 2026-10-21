@@ -22,11 +22,12 @@ from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelih
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.rhime.sampling import RhimeSampler
 
-from .co2_cached_sigma_runner import run_rhime_co2_cached_sigma
+from .co2_cached_sigma_runner import run_rhime_co2_cached_sigma, validate_cached_co2_sampler
 from .co2_o2_cached_sigma_runner import run_rhime_co2_o2_cached_sigma_from_prepared_inputs
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .co2_o2_runner import run_rhime_co2_o2_from_prepared_inputs
 from .co2_preparation import Co2PreparedInputs
+from .inference import uses_cached_ou
 
 
 Runner = Callable[..., Any]
@@ -348,7 +349,7 @@ def resolve_co2_prior_seed(config: Mapping[str, object]) -> int | None:
     return _random_seed(options["random_seed"]) if "random_seed" in options else None
 
 
-def _sampling(value: object, *, cached: bool) -> RhimeSampler:
+def _sampling(value: object) -> RhimeSampler:
     options = _table(value, "sampling")
     kwargs: dict[str, Any] = {}
     for name in ("draws", "burn", "tune", "chains"):
@@ -389,11 +390,6 @@ def _sampling(value: object, *, cached: bool) -> RhimeSampler:
 
     sample_kwargs: dict[str, Any] = {}
     if "target_accept" in options:
-        if cached:
-            raise ValueError(
-                "sampling.target_accept is not valid for cached_fixed_ou; use "
-                "likelihood.sigma_target_accept and likelihood.state_target_accept."
-            )
         target_accept = _number(options.pop("target_accept"), "sampling.target_accept")
         if not 0.0 < target_accept < 1.0:
             raise ValueError("sampling.target_accept must be between zero and one.")
@@ -411,16 +407,6 @@ def _sampling(value: object, *, cached: bool) -> RhimeSampler:
     sampler = RhimeSampler(**kwargs)
     if sampler.burn >= sampler.draws:
         raise ValueError("sampling.burn must be less than sampling.draws.")
-    if cached and sampler.nuts_sampler != "pymc":
-        raise ValueError("The cached_fixed_ou variant requires sampling.nuts_sampler='pymc'.")
-    posterior_predictive = sampler.sample_posterior_predictive
-    if cached and not isinstance(posterior_predictive, bool):
-        unsupported = set(posterior_predictive) - {"y", "concentration"}
-        if unsupported:
-            raise ValueError(
-                "cached_fixed_ou sampling.sample_posterior_predictive supports only "
-                f"'y' or 'concentration'; got {sorted(unsupported)!r}."
-            )
     return sampler
 
 
@@ -460,7 +446,7 @@ def _model(value: object) -> dict[str, Any]:
     return result
 
 
-def _ordinary_likelihood(value: object) -> dict[str, Any]:
+def _ordinary_likelihood(value: object, *, matched_ou: bool = False) -> dict[str, Any]:
     options = _table(value, "likelihood")
     kind = _string(_take(options, "kind", "likelihood"), "likelihood.kind")
     result: dict[str, Any] = {}
@@ -532,6 +518,10 @@ def _ordinary_likelihood(value: object) -> dict[str, Any]:
             raise ValueError(
                 "fixed_ou requires exactly one of fixed_site_amplitudes or site_amplitude_prior."
             )
+        if matched_ou and "site_amplitude_prior" in kwargs and "initial_site_amplitudes" in options:
+            kwargs["initial_site_amplitudes"] = _number_or_mapping(
+                options.pop("initial_site_amplitudes"), "likelihood.initial_site_amplitudes", positive=True,
+            )
         result.update(
             likelihood_builder=add_fixed_ou_gaussian_likelihood,
             likelihood_kwargs=_frozen(kwargs),
@@ -601,7 +591,7 @@ def _resolve_co2(options: dict[str, object], variant: str) -> Co2RunSetup:
     if variant == "ordinary":
         raise ValueError(
             "Ordinary CO2 no longer uses Co2RunSetup. Use run_co2 for configured "
-            "products, or resolve_co2_model/resolve_co2_sampler and the explicit "
+            "products, or resolve_co2_model, RhimeSampler and the explicit "
             "materialize_co2_inputs, build_co2_from_materialized and sampling operations."
         )
     if variant != "cached_fixed_ou":
@@ -609,7 +599,8 @@ def _resolve_co2(options: dict[str, object], variant: str) -> Co2RunSetup:
     prepared = _prepared_inputs(options)
     model = _model(options.pop("model", {}))
     likelihood = _take(options, "likelihood", "config")
-    sampler = _sampling(options.pop("sampling", {}), cached=True)
+    sampler = _sampling(options.pop("sampling", {}))
+    validate_cached_co2_sampler(sampler)
     _reject_unknown(options, "config")
     runner: Runner = run_rhime_co2_cached_sigma
     runner_kwargs = {**model, **_cached_likelihood(likelihood)}
@@ -678,7 +669,16 @@ def _resolve_linked(options: dict[str, object], variant: str) -> Co2O2RunSetup:
     sampling.setdefault("nuts_sampler", "pymc" if likelihood is not None or cached else "numpyro")
     if not cached:
         sampling.setdefault("target_accept", 0.95)
-    sampler = _sampling(sampling, cached=cached)
+    sampler = _sampling(sampling)
+    if cached:
+        if sampler.nuts_sampler != "pymc":
+            raise ValueError("Linked cached_fixed_ou requires sampling.nuts_sampler='pymc'.")
+        if "target_accept" in (sampler.sample_kwargs or {}):
+            raise ValueError(
+                "Linked cached_fixed_ou requires likelihood.sigma_target_accept and "
+                "likelihood.state_target_accept instead of sampling.target_accept."
+            )
+        validate_cached_co2_sampler(sampler)
     if likelihood is not None and sampler.nuts_sampler != "pymc":
         raise ValueError("The linked fixed_ou likelihood requires sampling.nuts_sampler='pymc'.")
     _reject_unknown(options, "config")
@@ -747,7 +747,8 @@ def resolve_co2_model(config: Mapping[str, object]) -> dict[str, Any]:
     """
     options = _table(config, "config")
     model = _model(options.get("model", {}))
-    likelihood = _ordinary_likelihood(_take(options, "likelihood", "config"))
+    likelihood_options = _table(_take(options, "likelihood", "config"), "likelihood")
+    likelihood = _ordinary_likelihood(likelihood_options, matched_ou=True)
     likelihood_kwargs = likelihood.get("likelihood_kwargs", {})
     if "eigenbasis_path" in likelihood_kwargs:
         likelihood["likelihood_kwargs"] = {
@@ -757,20 +758,43 @@ def resolve_co2_model(config: Mapping[str, object]) -> dict[str, Any]:
     return {**model, **likelihood}
 
 
-def resolve_co2_sampler(config: Mapping[str, object]) -> RhimeSampler:
-    """Resolve ordinary CO2 sampling choices without touching other components.
+@dataclass(frozen=True)
+class _Co2Sampling:
+    """Resolved sampler and the matched OU transition tuning controls."""
 
-    Args:
-        config: Component or full configuration with an optional ``sampling``
-            section. No preparation, model or file-envelope fields are required.
+    sampler: RhimeSampler
+    sigma_target_accept: float = 0.8
+    state_target_accept: float = 0.9
 
-    Returns:
-        A fresh sampler with validated ordinary CO2 options.
 
-    Raises:
-        ValueError: If supplied sampling choices are unsupported.
+def _resolve_co2_sampling(config: Mapping[str, object], *, model: Mapping[str, Any]) -> _Co2Sampling:
+    """Resolve sampling options after the scientific model has selected its graph.
+
+    The configured backend is selected from resolved scientific choices.
+    Additive sigma uses NumPyro; supported custom likelihoods use PyMC. Inferred
+    OU amplitudes use the matched PyMC transition and its two explicit controls.
     """
-    return _sampling(_table(config, "config").get("sampling", {}), cached=False)
+    options = _table(config, "config")
+    sampling = _table(options.get("sampling", {}), "sampling")
+    if "nuts_sampler" in sampling:
+        raise ValueError("Configured CO2 selects its sampler from the likelihood; remove sampling.nuts_sampler.")
+    cached = uses_cached_ou(model)
+    targets = {}
+    for name, default in (("sigma_target_accept", 0.8), ("state_target_accept", 0.9)):
+        if name in sampling and not cached:
+            raise ValueError(f"sampling.{name} requires inferred fixed-OU amplitudes.")
+        target = _number(sampling.pop(name, default), f"sampling.{name}")
+        if not 0.0 < target < 1.0:
+            raise ValueError(f"sampling.{name} must be between zero and one.")
+        targets[name] = target
+    sampling["nuts_sampler"] = "pymc" if model.get("likelihood_builder") is not None else "numpyro"
+    sampler = _sampling(sampling)
+    if cached:
+        validate_cached_co2_sampler(sampler)
+    return _Co2Sampling(
+        sampler=sampler,
+        sigma_target_accept=targets["sigma_target_accept"], state_target_accept=targets["state_target_accept"],
+    )
 
 
 __all__ = [
@@ -780,7 +804,6 @@ __all__ = [
     "load_co2_family_config",
     "resolve_co2_family_config",
     "resolve_co2_model",
-    "resolve_co2_sampler",
     "resolve_co2_prior_seed",
     "resolve_co2_preparation",
     "validate_co2_config",

@@ -10,10 +10,8 @@ from typing import Any
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load as load_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
-from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.rhime._stage_artifacts import _validate_filename_component
-from openghg_inversions.rhime.sampling import sample_rhime_model
 
 from .co2_affine_output import _bind_affine_flux_map, prepared_inputs_content_id
 from .co2_outputs import (
@@ -21,12 +19,10 @@ from .co2_outputs import (
     validate_co2_product_request,
 )
 from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs, requested_co2_facts
-from .co2_runner import (
-    annotate_co2_trace, materialize_co2_inputs, build_co2_from_materialized,
-)
+from .inference import sample_co2_inference
 from .configuration import (
     load_co2_family_config, validate_co2_config, resolve_co2_preparation,
-    resolve_co2_model, resolve_co2_sampler,
+    resolve_co2_model, _resolve_co2_sampling,
 )
 
 
@@ -80,7 +76,7 @@ def run_co2(
 
     This configured product entry point consumes ``model``, ``likelihood``,
     ``sampling`` and ``outputs`` without intermediate manifests. Trace-only
-    callers compose the materialize, build and sample operations directly. Supplied canonical
+    callers use the model-selected inference steps directly. Supplied canonical
     inputs and their coherent reduction are prepared together; an existing
     preparation is reused unchanged. Imported runs must supply requested dates
     and domain explicitly or retain them in preparation provenance.
@@ -100,7 +96,8 @@ def run_co2(
         raise ValueError("run_co2 requires variant='ordinary'; cached execution has its own runner.")
     preparation = resolve_co2_preparation(options)
     model = resolve_co2_model(options)
-    sampler = resolve_co2_sampler(options)
+    sampling = _resolve_co2_sampling(options, model=model)
+    sampler = sampling.sampler
     output_choices = resolve_co2_output(options)
     output = output_choices["output"]
     affine_path = preparation["affine_path"]
@@ -138,18 +135,12 @@ def run_co2(
     )
     if bound is not None and output.output_format != "none" and not sampler.sample_prior_predictive:
         raise ValueError("CO2 affine products require prior draws; enable sample_prior_predictive.")
-    active_sampler = resolve_sampler(sampler)
-    model_inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, **model)
-    built = build_co2_from_materialized(model_inputs, prepared_inputs=prepared,
-                                       priors=priors, **model)
-    trace = sample_rhime_model(built, active_sampler)
-    annotate_co2_trace(
-        trace, built, concentration_units=prepared.inv_inputs["mf"].attrs.get("units"),
-        likelihood_builder=model.get("likelihood_builder"),
-        likelihood_kwargs=model.get("likelihood_kwargs"),
+    trace, actual = sample_co2_inference(
+        prepared, model, sampler, sigma_target_accept=sampling.sigma_target_accept,
+        state_target_accept=sampling.state_target_accept,
     )
     result = make_co2_output(prepared=prepared, trace=trace, bound=bound,
-                            output_metadata={"sampler": active_sampler.describe(),
+                            output_metadata={"sampler": actual,
                             "provenance": installed_ogi_provenance()}, **facts)
     calculate_co2_products(result=result, prepared=prepared, bound=bound,
                            source_to_sector=output_choices["source_to_sector"], countries=countries, output=output)

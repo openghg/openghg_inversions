@@ -1,4 +1,5 @@
 """Real coherent CO2 full/staged/replay products and independent equations."""
+from openghg_inversions.rhime.co2 import inference as co2_inference
 
 from dataclasses import replace
 import json
@@ -16,7 +17,7 @@ from openghg_inversions.rhime.co2.co2_affine_output import prepared_inputs_conte
 from openghg_inversions.rhime.co2.co2_outputs import (
     Co2OutputOptions, calculate_co2_products, make_co2_output, validate_co2_product_request,
 )
-from openghg_inversions.rhime.co2.configuration import resolve_co2_model, resolve_co2_sampler
+from openghg_inversions.rhime.co2.configuration import resolve_co2_model
 
 
 def test_scientific_view_and_products_preserve_complete_trace(monkeypatch):
@@ -67,7 +68,9 @@ def test_ordinary_output_options_normalize_only_their_paths(tmp_path, monkeypatc
     assert options.output_name == "rhime"
 
 
-def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, monkeypatch):
+@pytest.mark.parametrize("target_accept", [None, 0.93])
+@pytest.mark.parametrize("imported", [False, True], ids=["new-pair", "imported-pair"])
+def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, monkeypatch, imported, target_accept):
     """Every product route uses retained scientific meaning, including signed flux."""
     from openghg_inversions.rhime.co2 import handoffs
     from openghg_inversions.rhime.co2 import execution
@@ -75,15 +78,26 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
 
     canonical, reduction, prepared, affine, countries = synthetic_inputs(tmp_path)
     params = configuration(tmp_path / "full-products", countries)
+    if target_accept is not None:
+        params["sampling"]["target_accept"] = target_accept
     choices = {name: params[name] for name in ("model", "likelihood")}
     model = resolve_co2_model(choices)
-    sampler = resolve_co2_sampler(params)
-    manifest = handoffs.save_preparation(
-        prepared, output_dir=tmp_path / "prepared", affine_artifact=affine,
-        start_date=START_DATE, end_date=END_DATE, domain="EUROPE",
-    )
+    if imported:
+        source = tmp_path / "source.nc"
+        companion = tmp_path / "source-affine.nc"
+        prepared.save(source)
+        save_affine(replace(affine, prepared_inputs_id=prepared_inputs_content_id(source)), companion)
+        manifest = handoffs.prepare(
+            output_dir=tmp_path / "prepared", prepared_path=source, affine_path=companion,
+            start_date=START_DATE, end_date=END_DATE, domain="EUROPE",
+        )
+    else:
+        manifest = handoffs.save_preparation(
+            prepared, output_dir=tmp_path / "prepared", affine_artifact=affine,
+            start_date=START_DATE, end_date=END_DATE, domain="EUROPE",
+        )
     before = manifest.read_bytes()
-    samples = handoffs.sample(manifest, model=choices, sampler=sampler, output_dir=tmp_path / "samples")
+    samples = handoffs.sample(manifest, model=choices, sampling=params["sampling"], output_dir=tmp_path / "samples")
     staged = handoffs.postprocess(
         samples, output=Co2OutputOptions(
             output_format="basic", output_name="co2",
@@ -107,6 +121,16 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
             assert Path(full.output_metadata[f"{name}_path"]).is_file()
             assert Path(staged.output_metadata[f"{name}_path"]).is_file()
     assert full.output_metadata["sampler"]["draws"] == 12
+    assert full.output_metadata["sampler"] == staged.output_metadata["sampler"]
+    assert full.output_metadata["sampler"]["algorithm"] == "nuts"
+    assert full.output_metadata["sampler"]["nuts_sampler"] == "numpyro"
+    if target_accept is None:
+        assert full.output_metadata["sampler"]["target_accept_source"] == "pm.sample_default"
+        assert "target_accept" not in full.output_metadata["sampler"]
+    else:
+        assert full.output_metadata["sampler"]["target_accept"] == target_accept
+        assert "target_accept_source" not in full.output_metadata["sampler"]
+    assert json.loads(full.idata.attrs["rhime_actual_inference"]) == full.output_metadata["sampler"]
     assert not hasattr(full, "output_spec")
     assert not hasattr(full, "source_to_sector")
     assert not hasattr(staged, "model")
@@ -164,9 +188,9 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
     monkeypatch.setattr(co2_runner, "materialize_co2_inputs", forbidden)
     monkeypatch.setattr(co2_runner, "materialize_pymc_inputs", forbidden)
     monkeypatch.setattr(handoffs, "prepare_co2_inputs", forbidden)
-    monkeypatch.setattr(handoffs, "materialize_co2_inputs", forbidden)
-    monkeypatch.setattr(handoffs, "build_co2_from_materialized", forbidden)
-    monkeypatch.setattr(handoffs, "sample_rhime_model", forbidden)
+    monkeypatch.setattr(co2_inference, "materialize_co2_inputs", forbidden)
+    monkeypatch.setattr(co2_inference, "build_co2_from_materialized", forbidden)
+    monkeypatch.setattr(co2_inference, "sample_rhime_model", forbidden)
     monkeypatch.setattr(execution, "run_co2", forbidden)
     replay = handoffs.postprocess(
         samples, output=Co2OutputOptions(
@@ -189,7 +213,6 @@ def test_configured_full_saved_and_replay_preserve_coherent_products(tmp_path, m
 def test_configured_full_uses_output_policy_before_sampling(tmp_path, monkeypatch):
     """Unsupported output choices fail before expensive scientific execution."""
     from openghg_inversions.rhime.co2 import run_co2
-    from openghg_inversions.rhime.co2 import execution
 
     _, _, prepared, affine, countries = synthetic_inputs(tmp_path)
     params = configuration(tmp_path / "unsupported", countries)
@@ -198,8 +221,8 @@ def test_configured_full_uses_output_policy_before_sampling(tmp_path, monkeypatc
     def forbidden(*args, **kwargs):
         raise AssertionError("Unsupported output must fail before model construction")
 
-    monkeypatch.setattr(execution, "materialize_co2_inputs", forbidden)
-    monkeypatch.setattr(execution, "build_co2_from_materialized", forbidden)
+    monkeypatch.setattr(co2_inference, "materialize_co2_inputs", forbidden)
+    monkeypatch.setattr(co2_inference, "build_co2_from_materialized", forbidden)
     with pytest.raises(ValueError, match="support"):
         run_co2(params=params, prepared=prepared, affine_artifact=affine)
     assert not (tmp_path / "unsupported").exists()
@@ -219,8 +242,8 @@ def test_affine_basic_requires_prior_draws_before_materialization(tmp_path, monk
     def forbidden(*args, **kwargs):
         raise AssertionError("Missing affine prior draws must fail before materialization or sampling")
 
-    monkeypatch.setattr(execution, "materialize_co2_inputs", forbidden)
-    monkeypatch.setattr(execution, "sample_rhime_model", forbidden)
+    monkeypatch.setattr(co2_inference, "materialize_co2_inputs", forbidden)
+    monkeypatch.setattr(co2_inference, "sample_rhime_model", forbidden)
     with pytest.raises(ValueError, match="prior draws|prior.*flux_scale|sample_prior_predictive"):
         execution.run_co2(params=params, prepared=prepared, affine_artifact=affine)
     assert not (tmp_path / "rejected").exists()
@@ -258,7 +281,7 @@ def test_configured_concentration_only_basic_accepts_no_prior_draws(tmp_path, mo
         sampled.append(built)
         return trace
 
-    monkeypatch.setattr(execution, "sample_rhime_model", reference_draws)
+    monkeypatch.setattr(co2_inference, "sample_rhime_model", reference_draws)
     result = execution.run_co2(params=params, prepared=prepared)
     assert len(sampled) == 1
     assert result.idata is trace
@@ -293,8 +316,8 @@ def test_full_rejects_supplied_preparation_with_an_unrelated_saved_affine_pair(t
     def forbidden(*args, **kwargs):
         raise AssertionError("A conflicting prepared/affine pair must fail before inference")
 
-    monkeypatch.setattr(execution, "sample_rhime_model", forbidden)
-    monkeypatch.setattr(execution, "materialize_co2_inputs", forbidden)
+    monkeypatch.setattr(co2_inference, "sample_rhime_model", forbidden)
+    monkeypatch.setattr(co2_inference, "materialize_co2_inputs", forbidden)
     with pytest.raises(ValueError, match="prepar|affine|source"):
         execution.run_co2(params=params, prepared=supplied)
     assert not (tmp_path / "rejected").exists()
@@ -313,8 +336,8 @@ def test_full_rejects_bucket_affine_flux_mismatch_before_inference(tmp_path, mon
     def forbidden(*args, **kwargs):
         raise AssertionError("An incompatible bucket flux must fail before inference")
 
-    monkeypatch.setattr(execution, "sample_rhime_model", forbidden)
-    monkeypatch.setattr(execution, "materialize_co2_inputs", forbidden)
+    monkeypatch.setattr(co2_inference, "sample_rhime_model", forbidden)
+    monkeypatch.setattr(co2_inference, "materialize_co2_inputs", forbidden)
     with pytest.raises(ValueError, match="flux"):
         execution.run_co2(params=params, prepared=prepared, affine_artifact=altered)
     assert not (tmp_path / "rejected").exists()

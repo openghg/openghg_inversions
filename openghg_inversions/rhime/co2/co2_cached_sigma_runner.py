@@ -93,21 +93,15 @@ def co2_cached_sigma_input_names(
     return tuple(names)
 
 
-def _sampler_for_cached_graph(
-    sampler: RhimeSampler,
-    *,
-    cached_model: Co2CachedSigmaModel,
-    sigma_target_accept: float,
-    state_target_accept: float,
-) -> RhimeSampler:
+def validate_cached_co2_sampler(sampler: RhimeSampler) -> None:
+    """Reject incompatible inference choices before preparing any arrays."""
     if sampler.nuts_sampler != "pymc":
         raise ValueError("The cached-sigma CO2 recipe requires nuts_sampler='pymc'.")
     sample_kwargs = dict(sampler.sample_kwargs or {})
     if "target_accept" in sample_kwargs:
         raise ValueError(
             "The cached-sigma CO2 recipe owns two NUTS tuning controls; pass "
-            "`sigma_target_accept` and `state_target_accept` to "
-            "`run_rhime_co2_cached_sigma` instead of "
+            "separate `sigma_target_accept` and `state_target_accept` controls instead of "
             "sampler.sample_kwargs['target_accept']."
         )
     if sample_kwargs.get("step") is not None:
@@ -120,7 +114,7 @@ def _sampler_for_cached_graph(
         unsupported_names = set(requested) - {"y", "concentration"}
         if unsupported_names:
             raise ValueError(
-                "Cached-sigma predictive variables must be y or concentration; "
+                "Cached-sigma prediction supports only y or concentration; "
                 f"got {sorted(unsupported_names)!r}."
             )
     unsupported = set(sampler.posterior_predictive_kwargs or {}) - {"random_seed"}
@@ -129,6 +123,17 @@ def _sampler_for_cached_graph(
             "Cached-sigma prediction supports only random_seed; "
             f"got {sorted(unsupported)!r}."
         )
+
+
+def _sampler_for_cached_graph(
+    sampler: RhimeSampler,
+    *,
+    cached_model: Co2CachedSigmaModel,
+    sigma_target_accept: float,
+    state_target_accept: float,
+) -> RhimeSampler:
+    validate_cached_co2_sampler(sampler)
+    sample_kwargs = dict(sampler.sample_kwargs or {})
     model = cached_model.model
     defaults = convert_str_to_rv_dict(model, cached_model.initial_values)
 
@@ -178,7 +183,7 @@ def _annotate_cached_co2_trace(
         concentration_units=concentration_units,
     )
     for group in trace.children.values():
-        group.attrs["rhime_recipe"] = "co2_cached_sigma_fixed_ou"
+        group.attrs["rhime_recipe"] = built.output_contract.metadata["recipe"]
 
     if "log_likelihood" in trace.children and "y" in trace["log_likelihood"]:
         likelihood = trace["log_likelihood"]["y"]
@@ -310,7 +315,7 @@ def co2_cached_sigma_build_result(
         Model build result with scientific roles and serializable provenance.
     """
     metadata = {
-        "recipe": "co2_cached_sigma_fixed_ou",
+        "recipe": "co2",
         "kind": "builtin",
         "prior": "correlated arithmetic-moment lognormal",
         "mismatch_component": "fixed_within_site_ou",
@@ -463,6 +468,7 @@ def run_rhime_co2_cached_sigma(
             ``target_accept``, or has unsupported predictive keywords.
     """
     requested_sampler = resolve_sampler(sampler)
+    validate_cached_co2_sampler(requested_sampler)
     cached_model = build_rhime_co2_cached_sigma(
         prepared_inputs=prepared_inputs,
         tau_hours=tau_hours,

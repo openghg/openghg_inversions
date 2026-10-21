@@ -309,12 +309,11 @@ def _sample_command(args: argparse.Namespace) -> None:
         from openghg_inversions.rhime.co2.handoffs import sample as sample_co2
 
         _reject_co2_artifact_args(args)
-        from openghg_inversions.rhime.co2.configuration import resolve_co2_sampler
 
         params = _co2_params(args)
         choices: dict[str, Any] = {name: params[name] for name in ("model", "likelihood") if name in params}
         result = sample_co2(args.preparation_manifest, model=choices,
-                            sampler=resolve_co2_sampler(params), output_dir=_stage_output_dir(args))
+                            sampling=params.get("sampling", {}), output_dir=_stage_output_dir(args))
         print(result)
     elif args.model in {"standard", "multisector"}:
         _reject_envelope_artifact_args(args)

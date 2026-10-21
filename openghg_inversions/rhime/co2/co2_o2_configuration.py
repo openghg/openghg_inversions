@@ -180,7 +180,7 @@ def resolve_co2_o2_sampler(config: Mapping[str, object]) -> RhimeSampler:
     sampling = _table(options.get("sampling", {}), "sampling")
     sampling.setdefault("nuts_sampler", "pymc" if fixed_ou else "numpyro")
     sampling.setdefault("target_accept", 0.95)
-    sampler = _sampling(sampling, cached=False)
+    sampler = _sampling(sampling)
     if fixed_ou and sampler.nuts_sampler != "pymc":
         raise ValueError("Linked fixed-OU requires sampling.nuts_sampler='pymc'.")
     return sampler

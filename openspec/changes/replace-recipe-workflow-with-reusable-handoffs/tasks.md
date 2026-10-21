@@ -725,8 +725,9 @@ included. Nothing is merged.
   order and accepted-cache lifecycle; reject unsupported generic sampler/tuning
   substitutions before expensive work. OPE-220 makes scientific model choices
   select inference automatically and unifies configured execution through
-  `run_co2`/`Co2Output`; migrate and remove redundant cached public selectors and
-  runners without compatibility aliases. OPE-221 adopts the shared saved handoffs.
+  `run_co2`/`Co2Output`. OPE-221 adopts the shared saved handoffs and removes the
+  redundant cached public selectors/runners together with their dependent stage
+  callers, without compatibility aliases.
 - [ ] 4.2 Validate cached per-site initialization and OU time scales as positive,
   requiring retained coverage after checking all supplied values. Verify compatible
   mismatch changes reuse numerical preparation while dependent runtime caches are

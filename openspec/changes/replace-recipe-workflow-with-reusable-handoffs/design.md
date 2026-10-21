@@ -738,3 +738,29 @@ source/total flux products and current-format replay. Existing source coverage,
 array ownership, minimum-error and baked BC checks remain at their owners.
 Documentation/examples and the bounded tasks in group 6 follow this amendment;
 multisector, ordinary CO2 and integrated acceptance gates remain separate.
+
+## OPE-214 review amendment — 2026-10-20
+
+The maintainer reconfirmed removal of the configured CO2 backend selector.
+One decision on the resolved scientific model selects inference; full and saved
+execution consume the same sampling controls. Saved Python execution accepts a
+sampling mapping rather than a second sampler override. This keeps the change
+local to CO2 and does not introduce a sampler registry or change linked APIs.
+
+The explicit policy is NumPyro for additive sigma, PyMC for site sigma,
+scalar sigma and fixed-amplitude OU, and matched cached PyMC for inferred OU.
+Site/scalar choices are conservative defaults, not inherent restrictions;
+fixed OU currently has a custom operation without a JAX implementation.
+This is a new policy, not preservation of every historical template edit.
+The normative per-likelihood table is in the recipe-execution delta.
+
+Matched target-accept controls belong to sampling. Construction determines
+whether any flux, boundary or offset states exist; the sampling boundary records
+the actual algorithm and effective controls in the trace and manifest. Replay
+reads those plain fields without constructing a sampler. `rhime_recipe="co2"`
+continues to identify the scientific recipe independently of its update.
+
+Explicit LogNormal reparameterisation requests warn and retain the physical prior
+while recording the direct representation required by the matched sampler.
+Both public independence checks remain. Float32/64 dense-reference tests cover
+the model's own transforms; the cache is not forced to a different precision.

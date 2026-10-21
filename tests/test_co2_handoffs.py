@@ -1,4 +1,5 @@
 """Ordinary CO2 checkpoint integrity and graph-free scientific replay."""
+from openghg_inversions.rhime.co2 import inference as co2_inference
 
 from dataclasses import replace
 import json
@@ -129,7 +130,7 @@ def test_affine_routes_load_prepared_inputs_once(tmp_path, monkeypatch, route):
         def model_boundary(**kwargs):
             raise RuntimeError("model boundary reached")
 
-        monkeypatch.setattr(execution, "materialize_co2_inputs", model_boundary)
+        monkeypatch.setattr(co2_inference, "materialize_co2_inputs", model_boundary)
         with pytest.raises(RuntimeError, match="model boundary reached"):
             execution.run_co2(params={
                 "format_version": 1, "recipe": "co2", "variant": "ordinary",
@@ -209,9 +210,9 @@ def test_graph_free_replay_keeps_recorded_sampler_and_provenance(tmp_path, monke
     monkeypatch.setattr(RhimeSampler, "__init__", forbidden)
     monkeypatch.setattr(handoffs, "prepare_co2_inputs", forbidden)
     monkeypatch.setattr(handoffs.pm, "sample_prior_predictive", forbidden)
-    monkeypatch.setattr(handoffs, "sample_rhime_model", forbidden)
-    monkeypatch.setattr(handoffs, "build_co2_from_materialized", forbidden)
-    monkeypatch.setattr(handoffs, "materialize_co2_inputs", forbidden)
+    monkeypatch.setattr(co2_inference, "sample_rhime_model", forbidden)
+    monkeypatch.setattr(co2_inference, "build_co2_from_materialized", forbidden)
+    monkeypatch.setattr(co2_inference, "materialize_co2_inputs", forbidden)
     monkeypatch.setattr(handoffs, "installed_ogi_provenance", forbidden)
     output = Co2OutputOptions(output_format="basic")
     result = handoffs.postprocess(sample, output=output)
@@ -239,7 +240,7 @@ def test_readiness_scientific_and_loading_failures_propagate_before_destination(
     def invalid(**kwargs):
         raise ValueError("invalid coherent likelihood")
 
-    monkeypatch.setattr(handoffs, "materialize_co2_inputs", invalid)
+    monkeypatch.setattr(co2_inference, "materialize_co2_inputs", invalid)
     with pytest.raises(ValueError, match="invalid coherent likelihood"):
         handoffs.prior_predictive(prep, model=_model(), output_dir=tmp_path / "check", draws=2)
     assert not (tmp_path / "check").exists()
@@ -288,10 +289,10 @@ def test_missing_or_malformed_descriptive_metadata_stays_unavailable(tmp_path, r
     assert loaded.output_metadata["provenance"] == {}
 
 
-@pytest.mark.parametrize("sampler", [None, "unknown"])
-def test_invalid_live_sampler_fails_before_loading_preparation(tmp_path, sampler):
-    with pytest.raises((TypeError, ValueError), match="sampler"):
-        handoffs.sample(tmp_path / "missing.json", model=_model(), sampler=sampler, output_dir=tmp_path / "sample")
+@pytest.mark.parametrize("backend", [None, "unknown"])
+def test_configured_backend_is_rejected_before_loading_preparation(tmp_path, backend):
+    with pytest.raises(ValueError, match="sampling.nuts_sampler"):
+        handoffs.sample(tmp_path / "missing.json", model=_model(), sampling={"nuts_sampler": backend}, output_dir=tmp_path / "sample")
     assert not (tmp_path / "sample").exists()
 
 
@@ -338,7 +339,7 @@ def test_inference_loads_decoded_model_without_reading_unused_affine(tmp_path, m
         raise RuntimeError("model boundary reached")
 
     monkeypatch.setattr(handoffs, "load_and_bind_affine_flux_map", forbidden)
-    monkeypatch.setattr(handoffs, "materialize_co2_inputs", model_boundary)
+    monkeypatch.setattr(co2_inference, "materialize_co2_inputs", model_boundary)
     with pytest.raises(RuntimeError, match="model boundary reached"):
         getattr(handoffs, phase)(
             prep, model={"model": {"boundary": {"enabled": False}},
