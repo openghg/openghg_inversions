@@ -320,12 +320,19 @@ def test_genuine_preparation_incompatibilities_fail_without_inference(tmp_path, 
 
 
 def test_fresh_process_replay_uses_original_science_and_current_output_without_graph(tmp_path):
+    from tests.test_multisector_handoffs import _trace_and_contract
+
     merged, options, *_ = synthetic_inputs(tmp_path)
-    prepared = stages.prepare(DataConfig.from_params(options, multisector=True), merged_data=merged,
-                              output_dir=tmp_path / "prepared")
-    sampler = RhimeSampler(draws=4, tune=4, chains=1, sample_kwargs={"cores": 1, "random_seed": 42},
-                           sample_prior_predictive=False, sample_posterior_predictive=False)
-    sampled = stages.sample(prepared, model=model_options(.2), sampler=sampler, output_dir=tmp_path / "samples")
+    preparation = stages.prepare(DataConfig.from_params(options, multisector=True), merged_data=merged,
+                                 output_dir=tmp_path / "prepared")
+    prepared, data, generation = stages.load_preparation(preparation)
+    trace, contract = _trace_and_contract(prepared)
+    sampled = stages.save_samples(
+        preparation, trace, output_contract=contract,
+        model=resolve_model_options(model_options(.2), data_config=data),
+        actual_inference={"draws": 3, "chains": 2}, output_dir=tmp_path / "samples",
+        preparation_generation=generation,
+    )
     # The retained scientific basis is sufficient; replay needs no original operator file.
     (tmp_path / "operator.nc").unlink()
     script = '''
@@ -350,7 +357,9 @@ result = stages.postprocess(root / "samples/sample-manifest.json", output=RhimeO
     output_format="inv_out", output_name="current-report", output_path=str(root / "current-products")))
 assert not hasattr(result, "model") and not hasattr(result, "sampler")
 assert result.run_metadata["start_date"] == "2019-01-01" and result.run_metadata["end_date"] == "2019-02-01"
-assert result.output_metadata["sampler"]["draws"] == 4
+assert result.output_metadata["sampler"] == {"draws": 3, "chains": 2}
+np.testing.assert_array_equal(result.trace["posterior"]["x_biosphere"], np.ones((2, 3, 1)))
+np.testing.assert_array_equal(result.trace["posterior"]["x_fossil"], np.full((2, 3, 1), 1.2))
 assert [sector["name"] for sector in result.model_metadata["sectors"]] == ["biosphere", "fossil"]
 assert [sector["flux_source"] for sector in result.model_metadata["sectors"]] == ["supplemental", "inventory"]
 np.testing.assert_allclose(result.basis_functions.flux.sel(source="inventory"), [[1.,2.],[3.,4.]])
