@@ -1,7 +1,8 @@
 """Experimental native lowering of the shared fixed-OU amplitude calculation.
 
 This prototype targets PyTensor 3.3.2 / Numba 0.63.1. Its native POTRS/TRSM
-helpers are private dependency APIs; it is not a production backend selection.
+helpers are private dependency APIs; its direct SYRK pointer forbids persistent
+native code caching. It is not a production backend selection.
 All covariance arrays are explicit shared graph inputs, never closure payloads.
 """
 
@@ -13,17 +14,21 @@ configure_pytensor()
 
 from contextlib import contextmanager
 from functools import wraps
+import ctypes
 from unittest.mock import patch
 
 import numba
 import numpy as np
 import pytensor
 import pytensor.tensor as pt
-from numba.extending import overload, register_jitable
+from numba.extending import get_cython_function_address, overload, register_jitable
+from pytensor.compile.mode import Mode
 from pytensor.gradient import DisconnectedType, grad_not_implemented
 from pytensor.graph.basic import Apply
 from pytensor.graph.op import Op
+from pytensor.link.numba.linker import NumbaLinker
 from pytensor.link.numba.dispatch.basic import numba_funcify
+from pytensor.link.numba.dispatch.linalg._LAPACK import val_to_dptr, val_to_int_ptr
 from pytensor.link.numba.dispatch.linalg.solvers.cholesky import _cho_solve
 from pytensor.link.numba.dispatch.linalg.solvers.triangular import _solve_triangular
 
@@ -31,8 +36,57 @@ from openghg_inversions.inference import cached_sigma as inference
 from openghg_inversions.models.fixed_ou import (
     _evaluate_mode_arrays,
     _fixed_ou_cho_solve,
+    _fixed_ou_column_norms,
+    _fixed_ou_gram,
     _fixed_ou_solve_triangular,
 )
+
+
+# shortcut: this SciPy ABI pointer is process-local; persistent native code
+# caching must stay disabled until a cache-safe BLAS binding replaces it.
+_int_pointer = ctypes.POINTER(ctypes.c_int32)
+_double_pointer = ctypes.POINTER(ctypes.c_double)
+# The installed PyTensor BLAS wrappers pass ASCII flags through int32 pointers.
+_dsyrk = ctypes.CFUNCTYPE(
+    None, _int_pointer, _int_pointer, _int_pointer, _int_pointer,
+    _double_pointer, _double_pointer, _int_pointer, _double_pointer,
+    _double_pointer, _int_pointer,
+)(get_cython_function_address("scipy.linalg.cython_blas", "dsyrk"))
+
+
+@overload(_fixed_ou_gram)
+def _native_gram(factor):
+    def gram(factor):
+        observations, rank = factor.shape
+        if not observations or not rank:
+            return np.zeros((rank, rank), dtype=np.float64)
+        borrowed = np.ascontiguousarray(factor)
+        result = np.empty((rank, rank), dtype=np.float64)
+        # C-order W is Fortran-order W.T; lower Fortran output is upper C output.
+        n = val_to_int_ptr(np.int32(rank))
+        k = val_to_int_ptr(np.int32(observations))
+        _dsyrk(val_to_int_ptr(ord("L")), val_to_int_ptr(ord("N")), n, k,
+               val_to_dptr(1.0), borrowed.ctypes, n, val_to_dptr(0.0), result.ctypes, n)
+        for row in range(rank):
+            for column in range(row + 1, rank):
+                result[column, row] = result[row, column]
+        return result
+
+    return gram
+
+
+@overload(_fixed_ou_column_norms)
+def _native_column_norms(value):
+    def norms(value):
+        result = np.empty(value.shape[1], dtype=np.float64)
+        for column in range(value.shape[1]):
+            total = 0.0
+            for row in range(value.shape[0]):
+                total += value[row, column] * value[row, column]
+            result[column] = total
+        return result
+
+    return norms
 
 
 @overload(_fixed_ou_cho_solve)
@@ -160,6 +214,23 @@ class NativeAmplitudeAdapter(inference._PytensorSigmaLikelihoodOp):
         return self.native_op(amplitude, residual, *self.array_inputs)
 
 
+class StrictNumbaLinker(NumbaLinker):
+    """Retain exact flags and process-local pointers when PyTensor rebuilds."""
+
+    def fgraph_convert(self, fgraph, **kwargs):
+        with pytensor.config.change_flags(numba__fastmath=False, numba__cache=False):
+            return super().fgraph_convert(fgraph, **kwargs)
+
+    def jit_compile(self, fn_and_cache):
+        with pytensor.config.change_flags(numba__fastmath=False, numba__cache=False):
+            return super().jit_compile(fn_and_cache)
+
+
+def native_amplitude_mode():
+    """Return the prototype mode, including its reconstruction-time safeguards."""
+    return Mode(linker=StrictNumbaLinker(), optimizer="fast_run")
+
+
 @contextmanager
 def native_amplitude_context():
     """Temporarily build only the private amplitude NUTS graph with native NUMBA.
@@ -173,14 +244,14 @@ def native_amplitude_context():
 
     def native_nuts(*args, **kwargs):
         compile_kwargs = dict(kwargs.get("compile_kwargs", {}))
-        compile_kwargs["mode"] = "NUMBA"
+        compile_kwargs["mode"] = native_amplitude_mode()
         kwargs["compile_kwargs"] = compile_kwargs
         return original_nuts(*args, **kwargs)
 
     @wraps(original_init)
     def initialize(self, *args, **kwargs):
         with (
-            pytensor.config.change_flags(numba__fastmath=False),
+            pytensor.config.change_flags(numba__fastmath=False, numba__cache=False),
             patch.object(inference, "_PytensorSigmaLikelihoodOp", NativeAmplitudeAdapter),
             patch.object(inference.pm, "NUTS", native_nuts),
         ):
@@ -194,9 +265,9 @@ def self_check():
     """Bounded compile and parity check; real-data timings belong on Slurm."""
     inputs = [pt.dvector(), pt.dvector(), pt.dmatrix(), pt.dvector(), pt.lvector(), pt.dscalar()]
     outputs = NativeAmplitudeOp()(*inputs)
-    with pytensor.config.change_flags(numba__fastmath=False):
-        compiled = pytensor.function(inputs, outputs, mode="NUMBA")
+    compiled = pytensor.function(inputs, outputs, mode=native_amplitude_mode())
     assert not compiled.vm.jit_fn.targetoptions["fastmath"]
+    assert isinstance(compiled.vm.jit_fn._cache, numba.core.caching.NullCache)
     args = (
         np.array([0.7, 1.2]), np.array([0.2, -0.1, 0.4, 0.3]),
         np.arange(8, dtype=np.float64).reshape(4, 2) * 0.03,

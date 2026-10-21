@@ -104,6 +104,16 @@ def _fixed_ou_solve_triangular(cholesky: FloatArray, rhs: FloatArray) -> FloatAr
     return cast(FloatArray, solve_triangular(cholesky, rhs, lower=True, check_finite=False))
 
 
+def _fixed_ou_gram(factor: FloatArray) -> FloatArray:
+    """Form the symmetric Gram matrix without changing the borrowed factor."""
+    return factor.T @ factor
+
+
+def _fixed_ou_column_norms(value: FloatArray) -> FloatArray:
+    """Return squared column norms without changing the borrowed array."""
+    return np.square(value).sum(axis=0)
+
+
 def _evaluate_mode_arrays(
     transformed_residual: FloatArray,
     amplitude: FloatArray,
@@ -120,11 +130,9 @@ def _evaluate_mode_arrays(
 
     if rank:
         whitened_factor = transformed_factor * square_root_weights[:, None]
-        core = np.eye(rank, dtype=np.float64) + (
-            whitened_factor.T @ whitened_factor
-        )
+        core = np.eye(rank, dtype=np.float64) + _fixed_ou_gram(whitened_factor)
         core = (core + core.T) * 0.5
-        cholesky = np.linalg.cholesky(core)
+        cholesky: Any = np.linalg.cholesky(core)
         projected = whitened_factor.T @ whitened_residual
         latent_mode = _fixed_ou_cho_solve(cholesky, projected)
         conditional_whitened = whitened_residual - whitened_factor @ latent_mode
@@ -137,7 +145,7 @@ def _evaluate_mode_arrays(
             transformed_residual - transformed_factor @ latent_mode
         )
         transformed = _fixed_ou_solve_triangular(cholesky, transformed_factor.T)
-        leverage = np.square(transformed).sum(axis=0)
+        leverage = _fixed_ou_column_norms(transformed)
     else:
         quadratic = float(whitened_residual @ whitened_residual)
         logdet_core = 0.0

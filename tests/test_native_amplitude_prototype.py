@@ -6,6 +6,7 @@ import multiprocessing
 import pickle
 import warnings
 
+import numba
 import numpy as np
 import pymc as pm
 import pytensor
@@ -16,9 +17,12 @@ from pymc.blocking import DictToArrayBijection
 
 from openghg_inversions.inference.cached_sigma import PymcCachedSigmaNutsStep, PytensorMarginalQuadraticCache
 from openghg_inversions.models.cached_sigma import FixedOuCachedSigmaTarget
-from openghg_inversions.models.fixed_ou import prepare_fixed_ou_low_rank
+from openghg_inversions.models.fixed_ou import (
+    _fixed_ou_column_norms, _fixed_ou_gram, prepare_fixed_ou_low_rank,
+)
 from scripts.ope152_native_amplitude import (
     NativeAmplitudeAdapter, NativeAmplitudeOp, native_amplitude_context, native_amplitude_evaluate,
+    native_amplitude_mode,
 )
 
 
@@ -77,15 +81,88 @@ def _target():
 
 def _compile_adapter(adapter):
     amplitude = pt.dvector("amplitude")
-    with pytensor.config.change_flags(numba__fastmath=False):
-        return pytensor.function([amplitude], adapter(amplitude, adapter.residual), mode="NUMBA")
+    return pytensor.function([amplitude], adapter(amplitude, adapter.residual), mode=native_amplitude_mode())
 
 
-def _evaluate_spawned(adapter, amplitude, connection):
+def _evaluate_spawned(adapter, compiled, amplitude, connection):
     try:
-        connection.send(_compile_adapter(adapter)(amplitude))
+        rebuilt = _compile_adapter(adapter)
+        args = _arguments(adapter.target.prepared, amplitude, adapter.residual.get_value())
+        results = []
+        for function, arguments in ((rebuilt, (amplitude,)), (compiled, args)):
+            values = function(*arguments)
+            dispatcher = function.vm.jit_fn
+            results.append((values, dispatcher.targetoptions.get("fastmath", False), type(dispatcher._cache).__name__))
+        connection.send(results)
     finally:
         connection.close()
+
+
+@pytest.fixture(scope="module")
+def compiled_array_helpers():
+    # Calls through wrappers exercise the overloads used by the shared kernel.
+    return (
+        numba.njit(lambda value: _fixed_ou_column_norms(value), fastmath=False),
+        numba.njit(lambda value: _fixed_ou_gram(value), fastmath=False),
+    )
+
+
+def _array_layout(value, layout):
+    if layout == "strided":
+        backing = np.zeros(tuple(2 * size for size in value.shape))
+        backing[::2, ::2] = value
+        return backing[::2, ::2]
+    return np.array(value, order=layout)
+
+
+@pytest.mark.parametrize("layout", ["C", "F", "strided"])
+def test_native_column_norms_match_scalar_oracle_without_mutation(compiled_array_helpers, layout):
+    values = np.arange(-3.0, 4.0)[:, None] * np.array([0.0, 1e-200, 0.3, 1e150, -2.0])
+    values = _array_layout(values, layout)
+    before = values.copy()
+    expected = np.array([math.fsum(float(value) ** 2 for value in column) for column in values.T])
+    for function in (_fixed_ou_column_norms, compiled_array_helpers[0]):
+        actual = function(values)
+        np.testing.assert_allclose(actual, expected, rtol=3e-15, atol=0)
+        assert actual.shape == (values.shape[1],)
+        assert not np.shares_memory(actual, values)
+        np.testing.assert_array_equal(values, before)
+
+
+@pytest.mark.parametrize("layout", ["C", "F", "strided"])
+def test_native_gram_matches_scalar_oracle_without_mutation(compiled_array_helpers, layout):
+    rng = np.random.default_rng(152)
+    for width in (0, 1, 4):
+        values = rng.normal(size=(17, width))
+        if width == 4:
+            values[:, 2] = values[:, 0] * 1e10
+            values[:, 3] = values[:, 2]
+        values = _array_layout(values, layout)
+        before = values.copy()
+        expected = np.empty((width, width))
+        error_bound = np.empty_like(expected)
+        for i in range(width):
+            for j in range(width):
+                terms = [float(a) * float(b) for a, b in zip(values[:, i], values[:, j])]
+                expected[i, j] = math.fsum(terms)
+                error_bound[i, j] = 17 * np.finfo(float).eps * math.fsum(abs(value) for value in terms)
+        for function in (_fixed_ou_gram, compiled_array_helpers[1]):
+            actual = function(values)
+            assert actual.shape == expected.shape
+            assert np.all(np.abs(actual - expected) <= error_bound)
+            np.testing.assert_array_equal(actual, actual.T)
+            np.testing.assert_array_equal(values, before)
+            assert not np.shares_memory(actual, values)
+
+
+def test_native_column_norms_preserve_zero_and_nonfinite_results(compiled_array_helpers):
+    for values in (np.empty((0, 3)), np.empty((3, 0)), np.array([[np.nan, np.inf, 1e200]])):
+        before = values.copy()
+        with np.errstate(over="ignore", invalid="ignore"):
+            expected = _fixed_ou_column_norms(values)
+            actual = compiled_array_helpers[0](values)
+        np.testing.assert_array_equal(actual, expected)
+        np.testing.assert_array_equal(values, before)
 
 
 @pytest.fixture(scope="module")
@@ -99,11 +176,11 @@ def compiled_graphs():
     inputs = [amplitude, residual, factor, eigenvalues, sites, base_logdet]
     logp, gradient = NativeAmplitudeOp()(*inputs)
     outputs = [logp, gradient, pt.grad(logp, amplitude)]
-    with warnings.catch_warnings(), pytensor.config.change_flags(numba__fastmath=False):
+    with warnings.catch_warnings():
         warnings.filterwarnings("error", message="Numba will use object mode.*")
         functions = {
             "cvm": pytensor.function(inputs, outputs, mode=Mode(linker="cvm", optimizer="fast_run")),
-            "native": pytensor.function(inputs, outputs, mode="NUMBA"),
+            "native": pytensor.function(inputs, outputs, mode=native_amplitude_mode()),
         }
         prepared, value, *_ = _case()
         functions["native"](*_arguments(prepared, [0.4, 0.7], prepared.mode_transform @ value))
@@ -197,10 +274,29 @@ def test_native_execution_does_not_call_python_perform(compiled_graphs, monkeypa
     assert native_amplitude_evaluate.nopython_signatures
     assert all(not result.objectmode for result in native_amplitude_evaluate.overloads.values())
     assert not native_amplitude_evaluate.targetoptions.get("fastmath", False)
+    assert isinstance(native_amplitude_evaluate._cache, numba.core.caching.NullCache)
     graph_dispatcher = compiled_graphs["native"].vm.jit_fn
     assert graph_dispatcher.nopython_signatures
     assert all(not result.objectmode for result in graph_dispatcher.overloads.values())
     assert not graph_dispatcher.targetoptions.get("fastmath", False)
+    assert isinstance(graph_dispatcher._cache, numba.core.caching.NullCache)
+
+
+@pytest.mark.parametrize("clone", [deepcopy, lambda function: pickle.loads(pickle.dumps(function))])
+def test_copied_native_graph_preserves_strict_compiler_settings(compiled_graphs, clone):
+    prepared, residual, *_ = _case()
+    args = _arguments(prepared, [0.4, 0.7], prepared.mode_transform @ residual)
+    original = compiled_graphs["native"]
+    with pytensor.config.change_flags(numba__fastmath=True, numba__cache=True):
+        copied = clone(original)
+        for actual, expected in zip(copied(*args), original(*args)):
+            np.testing.assert_array_equal(actual, expected)
+        assert pytensor.config.numba__fastmath
+        assert pytensor.config.numba__cache
+    dispatcher = copied.vm.jit_fn
+    assert not dispatcher.targetoptions.get("fastmath", False)
+    assert isinstance(dispatcher._cache, numba.core.caching.NullCache)
+    assert dispatcher.nopython_signatures
 
 
 @pytest.mark.parametrize("argument", [0, 1])
@@ -281,6 +377,7 @@ def test_native_conditional_gradient_in_log_coordinates(precision):
     amplitude = np.array([0.4, 0.7], dtype=precision)
     original_nuts = pm.NUTS
     original_fastmath = pytensor.config.numba__fastmath
+    original_cache = pytensor.config.numba__cache
     with pytensor.config.change_flags(floatX=precision):
         with pm.Model() as model:
             state = pm.Normal("state", shape=1)
@@ -298,6 +395,7 @@ def test_native_conditional_gradient_in_log_coordinates(precision):
             )
         assert pm.NUTS is original_nuts
         assert pytensor.config.numba__fastmath == original_fastmath
+        assert pytensor.config.numba__cache == original_cache
         step.likelihood_op.install_residual(target.observations)
         density = step.nuts_step._logp_dlogp_func
         density.set_extra_values(point)
@@ -314,9 +412,10 @@ def test_native_conditional_gradient_in_log_coordinates(precision):
             assert logp == pytest.approx(expected_logp, rel=tolerance, abs=tolerance)
             np.testing.assert_allclose(gradient, expected, rtol=tolerance, atol=tolerance)
         assert not density._pytensor_function.vm.jit_fn.targetoptions.get("fastmath", False)
+        assert isinstance(density._pytensor_function.vm.jit_fn._cache, numba.core.caching.NullCache)
 
 
-def test_adapter_supports_spawned_native_graph():
+def test_adapter_and_compiled_graph_support_spawn(compiled_graphs):
     target = _target()
     adapter = NativeAmplitudeAdapter(target)
     adapter.install_residual(target.observations)
@@ -324,16 +423,19 @@ def test_adapter_supports_spawned_native_graph():
     expected = target.prepared.evaluate(target.observations, amplitude)
     context = multiprocessing.get_context("spawn")
     receive, send = context.Pipe(duplex=False)
-    process = context.Process(target=_evaluate_spawned, args=(adapter, amplitude, send))
+    process = context.Process(target=_evaluate_spawned, args=(adapter, compiled_graphs["native"], amplitude, send))
     process.start()
     send.close()
     try:
         process.join(timeout=60)
         assert process.exitcode == 0, "Spawned native graph did not finish successfully."
         assert receive.poll()
-        logp, gradient = receive.recv()
-        assert logp == pytest.approx(expected.log_likelihood, rel=2e-12, abs=2e-12)
-        np.testing.assert_allclose(gradient, expected.gradient_site_amplitude, rtol=2e-12, atol=2e-12)
+        for values, fastmath, cache_type in receive.recv():
+            logp, gradient = values[:2]
+            assert logp == pytest.approx(expected.log_likelihood, rel=2e-12, abs=2e-12)
+            np.testing.assert_allclose(gradient, expected.gradient_site_amplitude, rtol=2e-12, atol=2e-12)
+            assert not fastmath
+            assert cache_type == "NullCache"
     finally:
         if process.is_alive():
             process.terminate()
