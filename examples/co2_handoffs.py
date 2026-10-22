@@ -141,7 +141,9 @@ def run_example(destination: Path) -> None:
         end_date=END_DATE, domain="EUROPE", affine_artifact=affine,
     )
     preparation_bytes = manifest.read_bytes()
-    model = {name: params[name] for name in ("model", "likelihood")}
+    from openghg_inversions.rhime.co2 import Co2ModelConfig
+
+    model = Co2ModelConfig.from_params(params)
     samples = handoffs.sample(
         manifest, model=model, sampling=params["sampling"], output_dir=destination / "sample",
     )
@@ -160,7 +162,7 @@ def run_example(destination: Path) -> None:
     alternative["model"]["boundary"]["prior"]["sigma"] = .2
     alternative["model"]["offset"]["prior"]["mu"] = .05
     alternative["likelihood"]["tau_hours"] = 18.0
-    changed_model = {name: alternative[name] for name in ("model", "likelihood")}
+    changed_model = Co2ModelConfig.from_params(alternative)
     other_samples = handoffs.sample(
         manifest, model=changed_model, sampling=params["sampling"], output_dir=destination / "alternative-sample",
     )

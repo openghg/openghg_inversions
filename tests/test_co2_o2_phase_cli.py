@@ -12,7 +12,7 @@ import xarray as xr
 
 from examples.co2_o2_handoffs import FACTS, synthetic_inputs
 from openghg_inversions.cli import main
-from openghg_inversions.rhime.co2 import co2_o2_handoffs as handoffs
+from openghg_inversions.rhime.co2 import Co2O2ModelConfig, co2_o2_handoffs as handoffs
 from openghg_inversions.serialization import load_trace
 
 
@@ -101,7 +101,10 @@ def test_sample_ignores_inactive_preparation_and_outputs(tmp_path, monkeypatch):
               "prepared_inputs": {"path": 42}, "outputs": {"output_path": 42},
           })])
     assert calls[0][0] == str(manifest)
-    assert calls[0][1]["channels"] == CHANNELS
+    assert isinstance(calls[0][1], Co2O2ModelConfig)
+    assert calls[0][1].co2_units == CHANNELS["co2"]["units"]
+    assert calls[0][1].o2_units == CHANNELS["o2"]["units"]
+    assert calls[0][1].independent_error_sd == {}
     assert calls[0][2] == 7
 
 

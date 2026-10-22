@@ -152,20 +152,20 @@ def _prepare_command(args: argparse.Namespace) -> None:
                            output_dir=_stage_output_dir(args))
         print(manifest)
     elif args.model == "co2_o2":
-        from openghg_inversions.rhime.co2.co2_o2_configuration import resolve_co2_o2_preparation
+        from openghg_inversions.rhime.co2.co2_o2_configuration import Co2O2PreparationConfig
         from openghg_inversions.rhime.co2.co2_o2_handoffs import prepare as prepare_linked
 
         print(prepare_linked(
-            **resolve_co2_o2_preparation(_co2_o2_params(args), require_path=True),
+            **Co2O2PreparationConfig.from_params(_co2_o2_params(args), require_path=True).preparation_arguments(),
             output_dir=_stage_output_dir(args),
         ))
     elif args.model == "co2":
         from openghg_inversions.rhime.co2.execution import load_co2_params
-        from openghg_inversions.rhime.co2.configuration import resolve_co2_preparation
+        from openghg_inversions.rhime.co2.configuration import Co2PreparationConfig
         from openghg_inversions.rhime.co2.handoffs import prepare as prepare_co2
 
         params = load_co2_params(config_file=args.config, params_file=args.params_file, overrides=args.kwargs)
-        print(prepare_co2(**resolve_co2_preparation(params, require_path=True), output_dir=_stage_output_dir(args)))
+        print(prepare_co2(**Co2PreparationConfig.from_params(params, require_path=True).preparation_arguments(), output_dir=_stage_output_dir(args)))
 
 
 def _check_saved_family(args: argparse.Namespace) -> dict[str, Any] | None:
@@ -240,11 +240,12 @@ def _sample_command(args: argparse.Namespace) -> None:
     _check_saved_family(args)
     if args.model == "co2_o2":
         from openghg_inversions.rhime.co2.co2_o2_handoffs import sample as sample_linked
-        from openghg_inversions.rhime.co2.co2_o2_configuration import resolve_co2_o2_sampler
+        from openghg_inversions.rhime.co2.co2_o2_configuration import Co2O2ModelConfig, resolve_co2_o2_sampler
 
         params = _co2_o2_params(args)
+        model = Co2O2ModelConfig.from_params(params)
         result = sample_linked(
-            args.preparation_manifest, model=params, sampler=resolve_co2_o2_sampler(params),
+            args.preparation_manifest, model=model, sampler=resolve_co2_o2_sampler(params, model=model),
             output_dir=_stage_output_dir(args),
         )
         print(result)

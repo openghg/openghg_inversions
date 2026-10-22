@@ -10,7 +10,7 @@ import xarray as xr
 
 from openghg_inversions.inference.sampling import RhimeSampler
 from openghg_inversions.rhime.co2 import execution, handoffs, inference
-from openghg_inversions.rhime.co2.configuration import resolve_co2_model, _resolve_co2_sampling
+from openghg_inversions.rhime.co2.configuration import Co2ModelConfig, _resolve_co2_sampling
 from test_co2_affine_output import _prepared
 
 
@@ -39,8 +39,8 @@ def _request():
 ])
 def test_scientific_likelihood_selects_backend_and_matched_graph(kind, choices, backend, cached):
     request = {"likelihood": {"kind": kind, **choices}}
-    assert _resolve_co2_sampling(request, model=resolve_co2_model(request)).sampler.nuts_sampler == backend
-    assert inference.uses_cached_ou(resolve_co2_model(request)) is cached
+    assert _resolve_co2_sampling(request, model=Co2ModelConfig.from_params(request).model_arguments()).sampler.nuts_sampler == backend
+    assert inference.uses_cached_ou(Co2ModelConfig.from_params(request).model_arguments()) is cached
 
 
 @pytest.mark.parametrize("sampling", [
@@ -68,7 +68,7 @@ def test_configured_sampler_rejection_precedes_input_loading(monkeypatch, sampli
 def test_direct_sampler_policy_is_validated_before_model_building(monkeypatch, sampler):
     monkeypatch.setattr(inference, "build_co2_inference", lambda *args: pytest.fail("built graph"))
     with pytest.raises(ValueError, match="pymc|CompoundStep|only random_seed"):
-        inference.sample_co2_inference(object(), resolve_co2_model(_request()), sampler)
+        inference.sample_co2_inference(object(), Co2ModelConfig.from_params(_request()).model_arguments(), sampler)
 
 
 @pytest.mark.parametrize("fixed_states,baseline", [(False, None), (True, None), (True, "boundary"), (True, "offset")])
@@ -86,7 +86,7 @@ def test_shared_inferred_ou_preserves_states_predictions_and_inference(fixed_sta
         request["model"] = {"boundary": {"enabled": True, "prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1}}}
     elif baseline == "offset":
         request["model"] = {"offset": {"prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.1}, "per_site": False}}
-    model = resolve_co2_model(request)
+    model = Co2ModelConfig.from_params(request).model_arguments()
     sampling = _resolve_co2_sampling(request, model=model)
     trace, actual = inference.sample_co2_inference(
         prepared, model, sampling.sampler,
@@ -173,7 +173,7 @@ def test_prior_prediction_ignores_invalid_posterior_tuning(tmp_path):
 ])
 def test_prior_resolution_still_validates_scientific_choices(likelihood, error, match):
     with pytest.raises(error, match=match):
-        resolve_co2_model({"likelihood": likelihood})
+        Co2ModelConfig.from_params({"likelihood": likelihood}).model_arguments()
 
 
 def test_all_fixed_ou_empty_state_graph_uses_float32():
@@ -181,7 +181,7 @@ def test_all_fixed_ou_empty_state_graph_uses_float32():
     inputs = prepared.inv_inputs.assign(state_is_active=xr.zeros_like(prepared.inv_inputs.alpha_prior_mean, dtype=bool))
     prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
     with pytensor.config.change_flags(floatX="float32"):
-        built, cached = inference.build_co2_inference(prepared, resolve_co2_model(_request()))
+        built, cached = inference.build_co2_inference(prepared, Co2ModelConfig.from_params(_request()).model_arguments())
     assert cached is not None and not cached.states
     assert cached.cached_state_logp.dtype == "float32"
     assert built.model["ou_site_amplitude"].dtype == "float32"
@@ -200,7 +200,7 @@ def test_ordinary_inference_preserves_sampler_default_and_records_source(monkeyp
         "likelihood": {"kind": "additive_sigma", "no_model_error": True},
         "sampling": {} if target is None else {"target_accept": target},
     }
-    model = resolve_co2_model(request)
+    model = Co2ModelConfig.from_params(request).model_arguments()
     sampler = _resolve_co2_sampling(request, model=model).sampler
     monkeypatch.setattr(inference, "build_co2_inference", lambda *args: (object(), None))
     monkeypatch.setattr(inference, "annotate_co2_inference", lambda trace, *args: trace)

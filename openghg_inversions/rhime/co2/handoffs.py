@@ -45,7 +45,7 @@ from .co2_preparation import (
 from .inference import (
     annotate_co2_inference, build_co2_inference, sample_co2_inference, describe_co2_inference,
 )
-from .configuration import resolve_co2_model, _resolve_co2_sampling
+from .configuration import Co2ModelConfig, _resolve_co2_sampling
 
 
 @dataclass(frozen=True)
@@ -225,7 +225,7 @@ def save_samples(
 
 
 def sample(
-    preparation_manifest: str | Path, *, model: Mapping[str, Any], output_dir: str | Path,
+    preparation_manifest: str | Path, *, model: Co2ModelConfig | Mapping[str, Any], output_dir: str | Path,
     sampling: Mapping[str, Any] | None = None,
 ) -> Path:
     """Build and sample CO2 using current science and its resolved sampler.
@@ -235,7 +235,8 @@ def sample(
     Full execution and saved sampling share the explicit build and sample owners.
     Current sampling choices select fresh model-matched defaults and tuning.
     """
-    model_options = resolve_co2_model(model)
+    model_config = model if isinstance(model, Co2ModelConfig) else Co2ModelConfig.from_params(model)
+    model_options = model_config.model_arguments()
     choices = _resolve_co2_sampling({"sampling": sampling if sampling is not None else {}}, model=model_options)
     preparation = load_preparation(preparation_manifest)
     check_checkpoint_targets(
@@ -311,7 +312,7 @@ def postprocess(
 
 
 def prior_predictive(
-    preparation_manifest: str | Path, *, model: Mapping[str, Any], output_dir: str | Path,
+    preparation_manifest: str | Path, *, model: Co2ModelConfig | Mapping[str, Any], output_dir: str | Path,
     draws: int = 100, check_output: str | Path | None = None, stage: str = "prior-predictive",
     random_seed: int | None = None,
 ) -> dict[str, Any]:
@@ -324,7 +325,8 @@ def prior_predictive(
     _check_draws(draws)
     stage = _check_stage(stage)
     preparation = load_preparation(preparation_manifest)
-    model_options = resolve_co2_model(model)
+    model_config = model if isinstance(model, Co2ModelConfig) else Co2ModelConfig.from_params(model)
+    model_options = model_config.model_arguments()
     destination = Path(output_dir).resolve()
     report = _output_path(destination, check_output, "prior-predictive-readiness.json")
     check_checkpoint_targets(
