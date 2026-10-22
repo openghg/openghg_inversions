@@ -1134,6 +1134,8 @@ Sampled tau and hierarchical amplitude priors are not supported.
 The route is PyMC-only because it constructs and owns a PyMC ``CompoundStep``.
 The ordinary stock-PyMC fixed-OU likelihood above remains an independent
 log-density/gradient reference.
+For the covariance transform, cached quadratic, numerical routing and cache
+lifecycle, see :doc:`../development/fixed_ou_likelihood`.
 
 The exponential within-site covariance follows the stationary process of
 `Uhlenbeck and Ornstein (1930)

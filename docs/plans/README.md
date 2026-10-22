@@ -10,18 +10,7 @@ Repository plans retain delivery history, proposals, research, and validation ev
 
 ## Additional validation evidence
 
-- [OPE-152 cached fixed-OU performance](ope152_cached_ou_performance.md):
-  21 October 2026 rank-256 and full-rank refresh measurements, numerical
-  alternatives, and validation limits. Implementation follow-up belongs to
-  OPE-152; these timings are not posterior sampling acceptance evidence.
-- [OPE-152 sum-of-squares implementation and experiments](ope152_sum_squares_performance.md):
-  21 October 2026 guarded low-rank cache implementation, preceding research,
-  rank-256/full-rank timings, Python 3.12/3.13 validation and numerical limits.
-  Sampled-chain acceptance and operational adoption remain with OPE-152.
-- [OPE-152 amplitude evaluator follow-up ideas](ope152_amplitude_followups.md):
-  22 October 2026 research record prioritizing the stability defect, preserving
-  unmeasured numerical alternatives and an auxiliary-variable proposal, and
-  distinguishing historical mixing failures from the current target.
+- OPE-152: the [fixed-OU likelihood and cached quadratic explanation](../development/fixed_ou_likelihood.rst) is maintained in the developer guide. The [evidence index](../development/fixed_ou_evidence.rst) preserves immutable links to the dated reports, scripts, timing tables and research proposals removed from the current tree.
 
 ## Inventory and remaining cleanup
 
