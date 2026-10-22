@@ -225,6 +225,22 @@ class FixedOuLowRank:
         Raises:
             ValueError: If either input has the wrong shape.
         """
+        log_likelihood, gradient_residual, gradient_amplitude = self._evaluate(residual, site_amplitude)
+        assert gradient_residual is not None
+        return FixedOuLikelihoodEvaluation(log_likelihood, gradient_residual, gradient_amplitude)
+
+    def _evaluate(
+        self,
+        residual: ArrayLike,
+        site_amplitude: ArrayLike | float,
+        *,
+        amplitude_only: bool = False,
+    ) -> tuple[float, FloatArray | None, FloatArray]:
+        """Evaluate in observation coordinates, or cached mode coordinates for amplitudes only.
+
+        ``amplitude_only`` requires an already transformed residual and omits
+        the observation-residual gradient, returning ``None`` in its place.
+        """
         residual_value = np.asarray(residual, dtype=np.float64)
         amplitude = np.atleast_1d(np.asarray(site_amplitude, dtype=np.float64))
         if residual_value.shape != (self.n_observation,):
@@ -244,30 +260,30 @@ class FixedOuLowRank:
             or not np.isfinite(amplitude_squared).all()
         )
         if invalid_amplitude:
-            return FixedOuLikelihoodEvaluation(
-                log_likelihood=-np.inf,
-                gradient_residual=np.zeros(self.n_observation, dtype=np.float64),
-                gradient_site_amplitude=_rejection_gradient_amplitude(amplitude),
+            return (
+                -np.inf,
+                None if amplitude_only else np.zeros(self.n_observation, dtype=np.float64),
+                _rejection_gradient_amplitude(amplitude),
             )
         if not np.isfinite(residual_value).all():
-            gradient_residual = np.zeros(self.n_observation, dtype=np.float64)
-            infinite = np.isinf(residual_value)
-            gradient_residual[infinite] = -np.sign(residual_value[infinite])
-            return FixedOuLikelihoodEvaluation(
-                log_likelihood=-np.inf,
-                gradient_residual=gradient_residual,
-                gradient_site_amplitude=np.zeros(self.n_site, dtype=np.float64),
-            )
+            gradient_residual: FloatArray | None = None
+            if not amplitude_only:
+                gradient_residual = np.zeros(self.n_observation, dtype=np.float64)
+                infinite = np.isinf(residual_value)
+                gradient_residual[infinite] = -np.sign(residual_value[infinite])
+            return -np.inf, gradient_residual, np.zeros(self.n_site, dtype=np.float64)
 
         mode_variance = self.mode_eigenvalues + amplitude_squared[self.mode_site_index]
         if not np.isfinite(mode_variance).all() or np.any(mode_variance <= 0.0):
-            return FixedOuLikelihoodEvaluation(
-                log_likelihood=-np.inf,
-                gradient_residual=np.zeros(self.n_observation, dtype=np.float64),
-                gradient_site_amplitude=np.zeros(self.n_site, dtype=np.float64),
+            return (
+                -np.inf,
+                None if amplitude_only else np.zeros(self.n_observation, dtype=np.float64),
+                np.zeros(self.n_site, dtype=np.float64),
             )
         weights = np.reciprocal(mode_variance)
-        transformed_residual = cast(FloatArray, self.mode_transform @ residual_value)
+        transformed_residual = (
+            residual_value if amplitude_only else cast(FloatArray, self.mode_transform @ residual_value)
+        )
         square_root_weights = np.sqrt(weights)
         whitened_residual = transformed_residual * square_root_weights
 
@@ -314,13 +330,11 @@ class FixedOuLowRank:
             weights=mode_score,
             minlength=self.n_site,
         )
-        solved_transformed = weights * conditional_residual
-        gradient_residual = -(self.mode_transform.T @ solved_transformed)
-        return FixedOuLikelihoodEvaluation(
-            log_likelihood=float(log_likelihood),
-            gradient_residual=cast(FloatArray, np.asarray(gradient_residual)),
-            gradient_site_amplitude=cast(FloatArray, gradient_amplitude),
-        )
+        gradient_residual = None
+        if not amplitude_only:
+            solved_transformed = weights * conditional_residual
+            gradient_residual = cast(FloatArray, np.asarray(-(self.mode_transform.T @ solved_transformed)))
+        return float(log_likelihood), gradient_residual, cast(FloatArray, gradient_amplitude)
 
     def solve(
         self,

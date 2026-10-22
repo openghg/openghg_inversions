@@ -224,6 +224,17 @@ class FixedOuCachedSigmaTarget:
         """Evaluate the exact sigma conditional for a fixed state residual."""
         return self.prepared.evaluate(residual, sigma)
 
+    def _evaluate_from_transformed_residual(
+        self,
+        transformed_residual: FloatArray,
+        sigma: ArrayLike | float,
+    ) -> tuple[float, FloatArray]:
+        """Evaluate only the amplitude conditional from an installed mode residual."""
+        log_likelihood, _, gradient_amplitude = self.prepared._evaluate(
+            transformed_residual, sigma, amplitude_only=True,
+        )
+        return log_likelihood, gradient_amplitude
+
     def log_likelihood(self, state: ArrayLike, sigma: ArrayLike | float) -> float:
         """Evaluate the uncached exact likelihood for output construction."""
         state_value = _vector(state, "state")

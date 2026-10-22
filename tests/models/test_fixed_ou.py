@@ -75,6 +75,50 @@ def test_preparation_preserves_interleaved_rows_and_labelled_tau() -> None:
 
 
 @pytest.mark.parametrize("rank", [0, 2])
+def test_amplitude_only_mode_evaluation_reuses_transform_and_omits_residual_gradient(
+    rank: int, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared, *_ = _prepared(rank=rank)
+    residual = np.array([0.4, -0.1, -0.1, 0.5, -0.2])
+    transformed = prepared.mode_transform @ residual
+    original_transformed = transformed.copy()
+    amplitudes = [np.array([0.7, 1.2]), np.array([0.2, 0.9])]
+    expected = [prepared.evaluate(residual, amplitude) for amplitude in amplitudes]
+
+    def unexpected_transform(*args: object, **kwargs: object) -> None:
+        pytest.fail("The amplitude-only kernel must use installed modes and omit the residual gradient.")
+
+    for matrix_type in {type(prepared.mode_transform), type(prepared.mode_transform.T)}:
+        monkeypatch.setattr(matrix_type, "__matmul__", unexpected_transform)
+    for amplitude, reference in zip(amplitudes, expected, strict=True):
+        logp, gradient_residual, gradient_amplitude = prepared._evaluate(
+            transformed, amplitude, amplitude_only=True,
+        )
+        assert logp == reference.log_likelihood
+        assert gradient_residual is None
+        np.testing.assert_array_equal(gradient_amplitude, reference.gradient_site_amplitude)
+    np.testing.assert_array_equal(transformed, original_transformed)
+
+
+@pytest.mark.parametrize("residual_value", [0.5, np.nan, np.inf, -np.inf])
+@pytest.mark.parametrize("amplitude", [[0.2, 0.9], [-0.1, 0.9], [np.nan, 0.9], [np.inf, 0.9], [1e200, 0.9]])
+def test_amplitude_only_rejection_matches_general_evaluator(residual_value: float, amplitude: list[float]) -> None:
+    prepared, *_ = _prepared()
+    residual = np.full(prepared.n_observation, residual_value)
+    transformed = prepared.mode_transform @ residual if np.isfinite(residual).all() else residual
+    reference = prepared.evaluate(residual, amplitude)
+    logp, gradient_residual, gradient_amplitude = prepared._evaluate(
+        transformed, amplitude, amplitude_only=True,
+    )
+    assert logp == reference.log_likelihood
+    assert gradient_residual is None
+    np.testing.assert_array_equal(gradient_amplitude, reference.gradient_site_amplitude)
+    if not np.isfinite(residual_value) and amplitude == [0.2, 0.9]:
+        expected_gradient = np.full(residual.size, -np.sign(residual_value) if np.isinf(residual_value) else 0.0)
+        np.testing.assert_array_equal(reference.gradient_residual, expected_gradient)
+
+
+@pytest.mark.parametrize("rank", [0, 2])
 def test_pytensor_logp_matches_dense_oracle_with_zero_diagonal_tail(rank: int) -> None:
     prepared, factor, diagonal, times, sites = _prepared(rank=rank)
     observed = np.array([0.5, -0.1, 0.2, 0.7, -0.4])

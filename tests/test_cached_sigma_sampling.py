@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+import pickle
+import warnings
+
 import numpy as np
 import pymc as pm
 import pytensor
 import pytensor.tensor as pt
 import pytest
 from pymc.blocking import DictToArrayBijection
+from pytensor.compile.mode import Mode, get_mode
 from scipy.stats import multivariate_normal
 
 from openghg_inversions.models.cached_sigma import FixedOuCachedSigmaTarget
@@ -15,6 +20,7 @@ from openghg_inversions.models.fixed_ou import FixedOuLowRank, prepare_fixed_ou_
 from openghg_inversions.inference.cached_sigma import (
     PymcCachedSigmaNutsStep,
     PytensorMarginalQuadraticCache,
+    _PytensorSigmaLikelihoodOp,
     make_cached_sigma_compound_step,
 )
 
@@ -148,6 +154,20 @@ def test_observed_graph_requires_explicit_cached_expression():
         make_cached_sigma_compound_step(**arguments)
 
 
+def test_amplitude_backend_preserves_state_and_runtime_configuration():
+    configuration = (pytensor.config.mode, pytensor.config.linker, pytensor.config.floatX)
+    *_, quadratic, arguments = _observed_context()
+    compound = make_cached_sigma_compound_step(**arguments, cached_state_logp=quadratic)
+    amplitude_step, state_step = compound.methods
+    amplitude_linker = amplitude_step.nuts_step._logp_dlogp_func._pytensor_function.maker.mode.linker
+    state_linker = state_step._logp_dlogp_func._pytensor_function.maker.mode.linker
+
+    assert type(amplitude_linker) is type(Mode(linker="cvm", optimizer="fast_run").linker)
+    assert amplitude_linker.use_cloop
+    assert type(state_linker) is type(get_mode().linker)
+    assert configuration == (pytensor.config.mode, pytensor.config.linker, pytensor.config.floatX)
+
+
 def test_supplied_state_function_matches_public_density_without_covariance_work(monkeypatch):
     target, shared, model, point, quadratic, arguments = _observed_context()
     compound = make_cached_sigma_compound_step(**arguments, cached_state_logp=quadratic)
@@ -230,6 +250,100 @@ def test_sigma_step_reuses_passed_initial_cache() -> None:
     )
 
     assert step.current_cache is initial_cache
+
+
+def test_sigma_likelihood_transforms_once_per_installed_residual(monkeypatch) -> None:
+    target = _target()
+    op = _PytensorSigmaLikelihoodOp(target)
+    sigma = pt.dvector("sigma")
+    evaluate = pytensor.function([sigma], op(sigma, op.residual))
+    residuals = [target.observations - target.fixed_contribution - target.design[:, 0] * state
+                 for state in (0.7, 1.3)]
+    amplitudes = [np.array([0.3, 0.8]), np.array([0.5, 0.2])]
+    expected = [[target.evaluate_from_residual(residual, amplitude) for amplitude in amplitudes]
+                for residual in residuals]
+    forward_calls = 0
+    backward_calls = 0
+    transform_type = type(target.prepared.mode_transform)
+    original_transform = transform_type.__matmul__
+
+    def counted_transform(matrix, value):
+        nonlocal forward_calls
+        forward_calls += 1
+        return original_transform(matrix, value)
+
+    def unexpected_backward(*args, **kwargs):
+        nonlocal backward_calls
+        backward_calls += 1
+        pytest.fail("Amplitude trajectories must not compute the observation-residual gradient.")
+
+    monkeypatch.setattr(transform_type, "__matmul__", counted_transform)
+    monkeypatch.setattr(type(target.prepared.mode_transform.T), "__matmul__", unexpected_backward)
+    for index, (residual, references) in enumerate(zip(residuals, expected, strict=True), start=1):
+        borrowed = residual.copy()
+        op.install_residual(borrowed)
+        borrowed[:] = 0.0
+        for amplitude, reference in zip(amplitudes, references, strict=True):
+            logp, gradient = evaluate(amplitude)
+            assert logp == reference.log_likelihood
+            np.testing.assert_array_equal(gradient, reference.gradient_site_amplitude)
+        assert forward_calls == index
+        assert backward_calls == 0
+
+
+@pytest.mark.parametrize("invalid", [np.nan, np.inf, -np.inf, np.finfo(np.float64).max])
+def test_sigma_likelihood_install_rejects_nonfinite_or_overflowing_residual_safely(invalid) -> None:
+    target = _target()
+    op = _PytensorSigmaLikelihoodOp(target)
+    residual = np.array([invalid, -invalid, -invalid, invalid])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        op.install_residual(residual)
+        outputs = [[None], [None]]
+        op.perform(None, [np.array([0.3, 0.8]), op.residual.get_value()], outputs)
+    assert outputs[0][0] == -np.inf
+    np.testing.assert_array_equal(outputs[1][0], np.zeros(target.n_group))
+
+
+@pytest.mark.parametrize("clone", [deepcopy, lambda op: pickle.loads(pickle.dumps(op))])
+def test_copied_sigma_likelihood_keeps_mode_residual_chain_local(clone) -> None:
+    target = _target()
+    original = _PytensorSigmaLikelihoodOp(target)
+    original.install_residual(np.array([0.1, 0.2, 0.3, 0.4]))
+    original_modes = original.residual.get_value().copy()
+    copied = clone(original)
+    copied.install_residual(np.array([0.4, 0.3, 0.2, 0.1]))
+
+    np.testing.assert_array_equal(original.residual.get_value(), original_modes)
+    assert not np.shares_memory(original.residual.get_value(borrow=True), copied.residual.get_value(borrow=True))
+    sigma = pt.dvector("sigma")
+    for op, residual in ((original, [0.1, 0.2, 0.3, 0.4]), (copied, [0.4, 0.3, 0.2, 0.1])):
+        evaluate = pytensor.function([sigma], op(sigma, op.residual))
+        logp, gradient = evaluate(np.array([0.3, 0.8]))
+        expected = target.evaluate_from_residual(residual, [0.3, 0.8])
+        assert logp == expected.log_likelihood
+        np.testing.assert_array_equal(gradient, expected.gradient_site_amplitude)
+
+
+def test_sigma_step_reinstalls_modes_when_conditioning_state_changes(monkeypatch) -> None:
+    target, _, _, _, _, _, point, step = _step_context()
+    sigma = np.exp(point[step.sigma_value_name])
+    recorded = []
+
+    def unchanged_transition(conditional_point):
+        outputs = [[None], [None]]
+        step.likelihood_op.perform(None, [sigma, step.likelihood_op.residual.get_value()], outputs)
+        recorded.append(float(outputs[0][0]))
+        return conditional_point, _nuts_stats()
+
+    monkeypatch.setattr(step.nuts_step, "step", unchanged_transition)
+    for state in (0.3, -0.4):
+        point = {**point, "state": np.array([state])}
+        _, stats = step.step(point)
+        expected = target.log_likelihood(np.exp([state]), sigma)
+        assert recorded[-1] == pytest.approx(expected, rel=1e-14, abs=1e-14)
+        assert stats[0]["cache_refreshes"] == 0
+    assert recorded[0] != recorded[1]
 
 
 def test_sigma_step_refreshes_once_only_when_the_returned_value_changes(
@@ -584,8 +698,8 @@ def test_conditional_density_and_gradient_match_independent_positive_prior(prior
     value_name = step.sigma_value_name
     assert point[value_name].dtype == graph_precision
     assert step.conditional_sigma.dtype == graph_precision
-    logp_dlogp = step.nuts_step._logp_dlogp_func
-    logp_dlogp.set_extra_values({})
+    density = step.nuts_step._logp_dlogp_func
+    density.set_extra_values(point)
     family = prior["pdf"]
     if family == "halfnormal":
         distribution = stats.halfnorm(scale=0.75)
@@ -617,8 +731,8 @@ def test_conditional_density_and_gradient_match_independent_positive_prior(prior
     tolerance = max(1e-10, 16 * np.finfo(graph_precision).eps)
     for eta in (point[value_name], np.array([-0.7, 0.2]), np.array([1.0, -1.5])):
         eta = np.asarray(eta, dtype=graph_precision)
-        actual_logp, actual_gradient = logp_dlogp(DictToArrayBijection.map({value_name: eta}))
-        np.testing.assert_allclose(actual_logp, expected(eta), rtol=max(tolerance, 1e-7), atol=tolerance)
+        actual, actual_gradient = density(DictToArrayBijection.map({value_name: eta}))
+        np.testing.assert_allclose(actual, expected(eta), rtol=max(tolerance, 1e-7), atol=tolerance)
         gradient = np.array([
             (expected(eta + np.eye(2)[axis] * 1e-5) - expected(eta - np.eye(2)[axis] * 1e-5)) / 2e-5
             for axis in range(2)
