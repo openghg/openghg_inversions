@@ -29,4 +29,6 @@
 - Final direct-builder boundary suite: 84 passed.
 - Actual two-frequency preparation/sample/replay checks: 2 passed, covering standard and multisector with recalculation disabled on replay.
 - Full changed-area Ruff, diff checks and strict change validation pass. Higher-effort configuration/core/persistence/documentation reviews completed; reported anchor, direct-builder and tutorial findings were fixed. Counts overlap and are not a combined total.
-- Final Slurm Python 3.12/3.13 CI-equivalent validation remains pending.
+- Slurm job 19635769 ran the complete Python 3.12/3.13 suites: each had 3,925 passed, 8 skipped, 4 deselected and the same single stale-test failure. Lint and all 4 borrowed-typing tests passed.
+- The failing model-option test incorrectly called the now data-only test preparation helper. A test-only correction exercises both public runners with retrieval guarded; both corrected cases and 181 nearby/configuration tests pass locally, with Ruff and independent higher-effort review clear.
+- Final tox retry of the full affected `tests/test_rhime.py` module on Python 3.12/3.13 remains pending. The original full-suite failures are retained as evidence; a successful module retry will not be described as a fresh complete-matrix pass.

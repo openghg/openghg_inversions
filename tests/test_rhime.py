@@ -5984,10 +5984,12 @@ def test_canonical_preparation_keeps_min_error_at_model_boundary(
 
 
 
+@pytest.mark.parametrize("runner", [run_standard, run_rhime_multisector], ids=["standard", "multisector"])
 def test_model_floor_options_are_validated_before_preparation(
     monkeypatch: pytest.MonkeyPatch,
+    runner: Callable[..., InversionOutput],
 ) -> None:
-    """Model choice resolution rejects invalid floor options before data access."""
+    """Public runners reject invalid model-owned floor options before data access."""
 
     def fail_data_processing(**kwargs: object) -> RhimeMergedData:
         """Fail if invalid options reach the retrieval boundary."""
@@ -5999,8 +6001,8 @@ def test_model_floor_options_are_validated_before_preparation(
         fail_data_processing,
     )
 
-    with pytest.raises(ValueError, match="unsupported option"):
-        prepare_inputs(
+    with pytest.raises(ValueError, match="min_error_options.*unsupported option.*robust"):
+        runner(
             species="ch4",
             sites=["TAC"],
             domain="EUROPE",
@@ -6008,7 +6010,12 @@ def test_model_floor_options_are_validated_before_preparation(
             start_date="2019-01-01",
             end_date="2019-02-01",
             output_name="invalid_min_error_options",
-            flux_sources=["total-ukghg-edgar7"],
+            output_format="none",
+            flux_sources=(
+                ["total-ukghg-edgar7", "ocean"]
+                if runner is run_rhime_multisector
+                else ["total-ukghg-edgar7"]
+            ),
             mismatch_model="pollution_event",
             min_error_options={"robust": False},
             use_bc=False,
