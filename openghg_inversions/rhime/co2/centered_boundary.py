@@ -35,12 +35,12 @@ def bind_boundary_operands(operands, observations, *, frequency=None, anchor_tim
         raise ValueError("Centered boundary reference units must match observation units.")
     native_dim = str(observations.dims[0])
     raw_dim = "time" if "time" in operands.H_bc_anomaly.dims else "nmeasure"
-    labels = observations.rename({native_dim: raw_dim}) if native_dim != raw_dim else observations
+    labels = xr.DataArray(observations[native_dim].data, dims=raw_dim)
     aligned = align_boundary_operands(
         operands,
         frequency=frequency,
         anchor_time=anchor_time,
-        observation_labels=labels[raw_dim],
+        observation_labels=labels,
     )
     if raw_dim != native_dim:
         aligned = aligned.rename({raw_dim: native_dim})

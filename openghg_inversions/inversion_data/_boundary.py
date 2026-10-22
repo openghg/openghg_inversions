@@ -3,6 +3,8 @@
 import numpy as np
 import xarray as xr
 
+from ._units import mole_fraction_unit_scale
+
 
 def baseline_reference_sensitivities(
     bc: xr.Dataset,
@@ -18,7 +20,8 @@ def baseline_reference_sensitivities(
     Each native curtain retains its dimensions. All four curtains are normalized
     together per observation, then ``anomaly = mass * (vmr - reference)``.
     Reconstruct absolute contributions as ``anomaly + bc_reference * mass``.
-    Concentrations and the scalar reference use the north curtain's units.
+    Arithmetic uses the north curtain's scale. Output units retain its units,
+    with any explicit numerical factor absorbed into the output values.
 
     BC timestamps mark interval starts, with validity given by the dataset's
     ``time_period`` attribute (OpenGHG period syntax, e.g. ``1 month``). Forward
@@ -49,7 +52,6 @@ def baseline_reference_sensitivities(
             coverage, reference or mass tolerance.
     """
     import pandas as pd
-    from pint.errors import PintError
 
     from openghg.util import relative_time_offset
     from openghg.util._units import cf_ureg
@@ -86,12 +88,12 @@ def baseline_reference_sensitivities(
 
     def conversion(source: str, target: str) -> float:
         try:
-            source_unit = cf_ureg.Unit(source)
-            target_unit = cf_ureg.Unit(target)
-            if not source_unit.dimensionless or not target_unit.dimensionless:
-                raise ValueError("Expected concentration or dimensionless units.")
-            return float(cf_ureg.Quantity(1.0, source_unit).to(target_unit).magnitude)
-        except (PintError, ValueError, TypeError) as exc:
+            source_scale = mole_fraction_unit_scale(source, context="boundary")
+            target_scale = mole_fraction_unit_scale(target, context="boundary")
+            if not all(np.isfinite(scale) and scale > 0 for scale in (source_scale, target_scale)):
+                raise ValueError("Boundary unit scales must be finite and positive.")
+            return source_scale / target_scale
+        except (ValueError, TypeError) as exc:
             raise ValueError(f"Invalid boundary units: {source!r} -> {target!r}.") from exc
 
     units = bc["vmr_n"].attrs.get("units")
@@ -100,6 +102,10 @@ def baseline_reference_sensitivities(
     converted_reference = np.float64(reference) * conversion(reference_units, units)
     if not np.isfinite(converted_reference):
         raise ValueError("Converted boundary reference must be finite.")
+    # Pint array quantification needs a unit, rather than a scaled expression.
+    expression = cf_ureg.parse_expression(units)
+    output_scale = float(getattr(expression, "magnitude", expression))
+    output_units = units if output_scale == 1 else str(getattr(expression, "units", "1"))
 
     def checked_values(values: np.ndarray, *, nonnegative: bool = False) -> np.ndarray:
         if not np.isfinite(values).all() or (nonnegative and (values < 0).any()):
@@ -164,7 +170,9 @@ def baseline_reference_sensitivities(
     for direction in "nesw":
         mass = weights[direction] / total
         anomaly = mass * (concentrations[direction] - converted_reference)
+        if output_scale != 1:
+            anomaly = anomaly * output_scale
         result[f"bc_mass_{direction}"] = mass.assign_attrs(units="1")
-        result[f"bc_anomaly_{direction}"] = anomaly.assign_attrs(units=units)
-    result["bc_reference"] = xr.DataArray(converted_reference, attrs={"units": units})
+        result[f"bc_anomaly_{direction}"] = anomaly.assign_attrs(units=output_units)
+    result["bc_reference"] = xr.DataArray(converted_reference * output_scale, attrs={"units": output_units})
     return xr.Dataset(result)

@@ -306,7 +306,15 @@ def test_fresh_rejects_mixed_native_axes(inputs, monkeypatch):
 
 
 @pytest.mark.parametrize("species", ["co2", "o2"])
-def test_local_boundary_operands_with_released_provider(inputs, species, monkeypatch):
+@pytest.mark.parametrize("north_units,reference_units,output_units", [
+    ("ppm", "ppm", "ppm"),
+    ("ppm", "1e-06 mol/mol", "ppb"),
+    ("1e-06 mol/mol", "ppm", "ppb"),
+    ("1e-06 mol/mol", "1e-06 mol/mol", "ppm"),
+])
+def test_local_boundary_operands_with_released_provider(
+    inputs, species, monkeypatch, north_units, reference_units, output_units
+):
     import openghg.analyse._modelled_baseline as provider
 
     monkeypatch.delattr(provider, "baseline_reference_sensitivities", raising=False)
@@ -325,6 +333,8 @@ def test_local_boundary_operands_with_released_provider(inputs, species, monkeyp
         bc[f"vmr_{d}"] = xr.DataArray(
             np.full((1, 1, 1), 400.123456), dims=("height", side, "time"), attrs={"units": "ppm"}
         )
+    bc.vmr_n.attrs["units"] = north_units
+    bc["vmr_e"] = (bc.vmr_e * 1000).assign_attrs(units="1e-09 mol/mol")
     saved_bc, saved_fp = bc.copy(deep=True), fp.copy(deep=True)
     result = prepare_surface_site(
         obs,
@@ -334,11 +344,15 @@ def test_local_boundary_operands_with_released_provider(inputs, species, monkeyp
         transport={"a": "integrated"},
         boundary_data=bc,
         boundary_reference=400.0,
-        boundary_reference_units="ppm",
+        boundary_reference_units=reference_units,
         boundary_mass_tolerance=0.001,
+        output_units=output_units,
     )
-    np.testing.assert_allclose(result.bc_mod, 400.123456, rtol=0, atol=1.0e-12)
-    np.testing.assert_allclose(result.bc_anomaly_n, 0.123456 / 4, rtol=0, atol=1.0e-12)
+    scale = 1000 if output_units == "ppb" else 1
+    np.testing.assert_allclose(result.bc_mod, 400.123456 * scale, rtol=0, atol=1.0e-12 * scale)
+    np.testing.assert_allclose(result.bc_anomaly_n, 0.123456 / 4 * scale, rtol=0, atol=1.0e-12 * scale)
+    assert result.bc_reference.item() == pytest.approx(400 * scale)
+    assert result.bc_anomaly_n.attrs["units"] == result.mf.attrs["units"]
     np.testing.assert_allclose(result.bc_mass_n, 0.25)
     assert result.bc_anomaly_n.dtype == np.float64
     assert result.attrs["boundary_representation"] == "centered-v1"
@@ -352,6 +366,27 @@ def test_local_boundary_operands_with_released_provider(inputs, species, monkeyp
     assert result.attrs["surface_policy_revision"] == "957-source-wise-v1"
     xr.testing.assert_identical(bc, saved_bc)
     xr.testing.assert_identical(fp, saved_fp)
+
+
+@pytest.mark.parametrize("target,bad_units", [
+    ("reference", "m"), ("reference", "nonsense"),
+    ("n", "0 mol/mol"), ("e", "m"), ("e", "nonsense"),
+])
+def test_surface_rejects_invalid_boundary_units(inputs, target, bad_units):
+    obs, fp, flux = inputs
+    bc = xr.Dataset(coords=fp.coords, attrs={"time_period": "1 hour"})
+    for direction in "nesw":
+        fp[f"particle_locations_{direction}"] = xr.full_like(fp.fp, 0.25).assign_attrs(units="1")
+        bc[f"vmr_{direction}"] = xr.full_like(fp.fp, 400).assign_attrs(units="1e-06 mol/mol")
+    reference_units = bad_units if target == "reference" else "1e-06 mol/mol"
+    if target != "reference":
+        bc[f"vmr_{target}"].attrs["units"] = bad_units
+    with pytest.raises(ValueError, match="Invalid boundary units"):
+        prepare_surface_site(
+            obs, fp, {"a": flux}, species="co2", transport={"a": "integrated"},
+            boundary_data=bc, boundary_reference=400, boundary_reference_units=reference_units,
+            boundary_mass_tolerance=0.001,
+        )
 
 
 def test_resolved_acquisition_requests_history_and_complete_months(inputs, monkeypatch, compatible_provider):

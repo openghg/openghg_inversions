@@ -96,6 +96,39 @@ def test_absolute_centered_normalized_logp_and_gradients(constant, fixed):
         np.testing.assert_allclose(absolute_gradient(point), centered_gradient(point), rtol=2e-12, atol=1e-8)
 
 
+@pytest.mark.parametrize("frequency", [None, "monthly"])
+def test_centered_operand_dimensions_use_observation_dimension_labels(frequency):
+    labels = np.asarray(["2021-01-02", "2021-01-01"], dtype="datetime64[D]")
+    inputs = _golden_inputs().assign_coords(
+        nmeasure=labels,
+        time=("nmeasure", labels),
+    )
+    operands = _operands(inputs.mf)
+    options = dict(
+        retained_prior=CorrelatedLognormalPrior(
+            inputs.alpha_prior_mean, inputs.alpha_prior_covariance, covariance_dim="region_cov"
+        ),
+        fixed_prior_contribution=inputs.fixed_prior_contribution,
+        observations=inputs.mf,
+        observation_error=xr.full_like(inputs.mf, 0.3),
+        aggregation_error=resolve_aggregation_error(inputs, "dense"),
+        bc_freq=frequency,
+    )
+    models = [
+        build_co2_model(inputs.H, boundary_operands=raw, **options)
+        for raw in (
+            operands.isel(nmeasure=[1, 0]),
+            operands.drop_vars("time").rename(nmeasure="time").isel(time=[1, 0]),
+        )
+    ]
+    for name in ("H_bc_anomaly", "H_bc_mass"):
+        expected = operands[name].transpose("nmeasure", "bc_region").data
+        for model in models:
+            np.testing.assert_allclose(model[name].get_value(), expected)
+    point = models[0].initial_point()
+    np.testing.assert_allclose(models[0].compile_logp()(point), models[1].compile_logp()(point))
+
+
 def test_trace_restoration_idempotent_without_model(tmp_path):
     _, model = _single_models(True, True)
     with model:

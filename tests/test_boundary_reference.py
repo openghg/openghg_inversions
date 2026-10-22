@@ -99,15 +99,21 @@ def test_nonconstant_oracle_and_reference_invariance(dtype):
         )
 
 
-def test_reference_and_curtain_unit_conversion():
+@pytest.mark.parametrize("reference_units", ["mol/mol", "1e-06 mol/mol"])
+@pytest.mark.parametrize("curtain_units", ["ppm", "1e-06 mol/mol"])
+def test_reference_and_curtain_unit_conversion(reference_units, curtain_units):
     bc, fp = inputs(constant=True)
+    bc.vmr_n.attrs["units"] = curtain_units
     bc.vmr_e.data *= 1000
-    bc.vmr_e.attrs["units"] = "ppb"
+    bc.vmr_e.attrs["units"] = "1e-09 mol/mol"
     result = baseline_reference_sensitivities(
-        bc, fp, species="CO2", reference=0.2093, reference_units="mol/mol", mass_tolerance=3e-5
+        bc, fp, species="CO2", reference=0.2093 if reference_units == "mol/mol" else 209300,
+        reference_units=reference_units, mass_tolerance=3e-5
     )
-    assert result.bc_reference.item() == pytest.approx(209300)
-    np.testing.assert_allclose(reconstruct(result), 209300, rtol=0, atol=6e-11)
+    scale = 1 if curtain_units == "ppm" else 1e-6
+    expected = 209300 * scale
+    assert result.bc_reference.item() == pytest.approx(expected)
+    np.testing.assert_allclose(reconstruct(result), expected, rtol=0, atol=6e-11 * scale)
 
 
 @pytest.mark.parametrize("bad", [np.nan, np.inf, -0.01, 0.0, 0.1])
@@ -128,7 +134,10 @@ def test_invalid_concentrations_even_at_zero_weight(bad):
         calculate(bc, fp)
 
 
-@pytest.mark.parametrize("target,unit", [("vmr_n", None), ("vmr_e", "m"), ("vmr_s", "nonsense")])
+@pytest.mark.parametrize("target,unit", [
+    ("vmr_n", None), ("vmr_e", "m"), ("vmr_s", "nonsense"),
+    ("vmr_n", "0 mol/mol"), ("vmr_e", "-1e-06 mol/mol"), ("vmr_e", "inf mol/mol"),
+])
 def test_invalid_concentration_units(target, unit):
     bc, fp = inputs()
     bc[target].attrs["units"] = unit
@@ -211,8 +220,10 @@ def test_invalid_time_indexes(which):
         calculate(bc, fp)
 
 
-def test_dask_is_lazy_preserves_borrowed_arrays_metadata_and_chunks():
+@pytest.mark.parametrize("north_units", ["ppm", "1e-06 mol/mol"])
+def test_dask_is_lazy_preserves_borrowed_arrays_metadata_and_chunks(north_units):
     bc, fp = inputs()
+    bc.vmr_n.attrs["units"] = north_units
     bc = bc.chunk({"time": 1, "height": 1})
     fp = fp.chunk({"time": 1, "height": 1})
     before_bc, before_fp = bc.copy(deep=True), fp.copy(deep=True)
@@ -228,8 +239,10 @@ def test_dask_is_lazy_preserves_borrowed_arrays_metadata_and_chunks():
         assert result[f"bc_mass_{d}"].chunks == fp[f"particle_locations_{d}"].chunks
         assert not any("rechunk" in name for name in result[f"bc_anomaly_{d}"].data.dask.layers)
     with dask.config.set(scheduler="synchronous"):
+        scale = 1 if north_units == "ppm" else 1e-6
         np.testing.assert_allclose(
-            reconstruct(result).compute(), oracle(before_bc, before_fp), rtol=0, atol=9e-11
+            reconstruct(result).compute(),
+            oracle(before_bc, before_fp) * scale, rtol=0, atol=9e-11 * scale
         )
     for ds in (bc, fp):
         for name, value in ds.data_vars.items():
@@ -270,13 +283,16 @@ def test_nonuniform_native_operands_match_per_cell_oracle():
         np.testing.assert_allclose(result[f"bc_anomaly_{d}"], expected_anomaly, rtol=2e-15)
 
 
-def test_float64_preserves_input_contrast_but_cannot_restore_float32_contrast():
+@pytest.mark.parametrize("north_units", ["ppm", "1e-06 mol/mol"])
+def test_float64_preserves_input_contrast_but_cannot_restore_float32_contrast(north_units):
     bc, fp = inputs(constant=True)
+    bc.vmr_n.attrs["units"] = north_units
     for d in "nesw":
         bc[f"vmr_{d}"].data += 0.001
     accurate = calculate(bc, fp)
     rounded = calculate(bc.astype("float32"), fp)
-    assert sum(float(accurate[f"bc_anomaly_{d}"].sum()) for d in "nesw") == pytest.approx(0.002)
+    expected = 0.002 * (1 if north_units == "ppm" else 1e-6)
+    assert sum(float(accurate[f"bc_anomaly_{d}"].sum()) for d in "nesw") == pytest.approx(expected)
     assert all(not rounded[f"bc_anomaly_{d}"].values.any() for d in "nesw")
 
 
