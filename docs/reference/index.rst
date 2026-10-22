@@ -43,7 +43,9 @@ recipe-specific options, then construct canonical ``RhimeConfig.from_params``.
 Pass the result to the corresponding
 runner's ``config`` argument to reuse the resolved choices. The
 :doc:`configuration guide </usage/rhime_configuration>` explains requested site selectors,
-retained execution metadata and compatibility helpers.
+retained execution metadata and compatibility helpers. For artifact-only CO2
+and linked CO2/O2 requests, load the file and apply overrides, then construct the
+preparation and model owners below; see :doc:`CO2 configuration </usage/co2_models>`.
 
 .. autosummary::
    :nosignatures:
@@ -54,6 +56,10 @@ retained execution metadata and compatibility helpers.
    openghg_inversions.rhime.DataConfig
    openghg_inversions.rhime.DataConfig.from_params
    openghg_inversions.rhime.DataConfig.select
+   openghg_inversions.rhime.co2.Co2PreparationConfig
+   openghg_inversions.rhime.co2.Co2ModelConfig
+   openghg_inversions.rhime.co2.Co2O2PreparationConfig
+   openghg_inversions.rhime.co2.Co2O2ModelConfig
    openghg_inversions.inversion_data.SiteOptions
 
 Reuse standard and multisector preparation and samples

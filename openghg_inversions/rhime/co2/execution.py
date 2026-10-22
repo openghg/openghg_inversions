@@ -21,8 +21,8 @@ from .co2_outputs import (
 from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs, requested_co2_facts
 from .inference import sample_co2_inference
 from .configuration import (
-    load_co2_family_config, validate_co2_config, resolve_co2_preparation,
-    resolve_co2_model, _resolve_co2_sampling,
+    load_co2_family_config, validate_co2_config, Co2PreparationConfig,
+    Co2ModelConfig, _resolve_co2_sampling,
 )
 
 
@@ -92,18 +92,18 @@ def run_co2(
     options = load_co2_params(config_file=config_file, params_file=params_file, params=params, overrides=overrides)
     if output_path is not None:
         options["outputs"] = {**options.get("outputs", {}), "output_path": Path(output_path).expanduser().resolve()}
-    preparation = resolve_co2_preparation(options)
-    model = resolve_co2_model(options)
+    preparation = Co2PreparationConfig.from_params(options)
+    model = Co2ModelConfig.from_params(options).model_arguments()
     sampling = _resolve_co2_sampling(options, model=model)
     sampler = sampling.sampler
     output_choices = resolve_co2_output(options)
     output = output_choices["output"]
-    affine_path = preparation["affine_path"]
+    affine_path = preparation.affine_path
     if (canonical_inputs is None) != (reduction is None):
         raise ValueError("Pass canonical_inputs and reduction together.")
     if prepared is not None and canonical_inputs is not None:
         raise ValueError("Pass prepared or canonical_inputs/reduction, not both.")
-    source = preparation["prepared_path"]
+    source = preparation.prepared_path
     supplied_prepared = prepared is not None
     if canonical_inputs is not None and reduction is not None:
         prepared = prepare_co2_inputs(canonical_inputs, reduction, aggregation_error_rank=aggregation_error_rank)
@@ -113,7 +113,7 @@ def run_co2(
         prepared = Co2PreparedInputs.load(source)
     facts = requested_co2_facts(
         prepared, start_date=start_date, end_date=end_date,
-        recorded_facts={name: preparation[name] for name in ("start_date", "end_date", "domain")},
+        recorded_facts={name: getattr(preparation, name) for name in ("start_date", "end_date", "domain")},
     )
     for name in ("domain", "start_date"):
         _validate_filename_component(name, facts[name])

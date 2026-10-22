@@ -124,19 +124,19 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "Compose CO2 scientific operations" in recipes
     assert "Configure prepared-input execution from TOML" in recipes
     assert "load_co2_family_config" in recipes
-    assert "resolve_co2_family_config" in recipes
+    assert "Co2O2ModelConfig" in recipes
     assert "co2_fixed_ou.toml" in recipes
     assert "Relative values are interpreted from the process" in recipes
     assert "CO2 likelihood configuration" in recipes
     assert "Exactly one of ``fixed_site_amplitudes``" in recipes
     assert "Sampling configuration" in recipes
     assert "Non-negative integer strictly less than ``draws``" in recipes
-    assert "both linked OU routes default to and require PyMC" in recipes
+    assert "configured linked fixed OU defaults to and requires PyMC" in recipes
     assert "``[channels.co2]`` and ``[channels.o2]``" in recipes
     assert "standard deviations are 1 ppm\nand 2 ppm" in recipes
     assert "The resolver does not convert these values" in recipes
     assert "prepare_co2_o2_inputs(" in recipes
-    assert 'co2_units=setup.preparation_kwargs["co2_units"]' in recipes
+    assert 'co2_units=model.co2_units' in recipes
     assert "A runnable CO2 configuration and resolver are\ntracked" not in recipes
     assert "``co2_o2``" in recipes
     assert "heterogeneous ppm/per-meg" in recipes

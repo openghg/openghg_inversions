@@ -240,7 +240,7 @@ def test_saving_lazy_units_runs_shared_payload_once_and_publishes_only_supported
 def test_loaded_joint_likelihood_matches_dense_covariance_once(tmp_path, ou_amplitude):
     from scipy.stats import multivariate_normal
 
-    from openghg_inversions.rhime.co2.co2_o2_configuration import resolve_co2_o2_model
+    from openghg_inversions.rhime.co2.co2_o2_configuration import Co2O2ModelConfig
 
     prep = handoffs.save_preparation(synthetic_inputs(), output_dir=tmp_path / "prepare")
     loaded = handoffs.load_preparation(prep).prepared
@@ -253,7 +253,7 @@ def test_loaded_joint_likelihood_matches_dense_covariance_once(tmp_path, ou_ampl
         same_block = ((observations.species.values[:, None] == observations.species.values[None, :])
                       & (observations.site.values[:, None] == observations.site.values[None, :]))
         covariance = covariance + ou_amplitude ** 2 * np.exp(-time_difference / 12.) * same_block
-    built = handoffs.build_rhime_co2_o2(prepared_inputs=loaded, **resolve_co2_o2_model(choices, loaded))
+    built = handoffs.build_rhime_co2_o2(prepared_inputs=loaded, **Co2O2ModelConfig.from_params(choices).bind(loaded))
     model = built.model
     point = model.initial_point()
     mean = model.compile_fn(model.replace_rvs_by_values([model["modelled_concentration"]]))(point)[0]

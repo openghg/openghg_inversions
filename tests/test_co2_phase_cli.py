@@ -7,7 +7,7 @@ import pytest
 
 from openghg_inversions.cli import main
 from openghg_inversions.rhime.co2.execution import load_co2_params, resolve_co2_output
-from openghg_inversions.rhime.co2.configuration import resolve_co2_model, resolve_co2_preparation
+from openghg_inversions.rhime.co2.configuration import Co2ModelConfig, Co2PreparationConfig
 
 
 def test_inference_phase_ignores_inactive_resources_and_uses_current_sampler(tmp_path, monkeypatch, capsys):
@@ -81,11 +81,11 @@ def test_configured_full_rejects_mismatched_country_grid_before_materialization(
 
 
 def test_co2_prior_choices_need_no_sampling_or_output_sections():
-    choices = resolve_co2_model({
+    choices = Co2ModelConfig.from_params({
         "likelihood": {"kind": "additive_sigma", "no_model_error": True},
         "sampling": {"draws": "invalid inactive value"},
         "outputs": {"output_format": "invalid inactive value"},
-    })
+    }).model_arguments()
     assert choices["no_model_error"] is True
 
 
@@ -105,7 +105,7 @@ def test_co2_file_and_override_paths_use_one_invocation_base(tmp_path, monkeypat
     invocation.mkdir()
     monkeypatch.chdir(invocation)
     options = load_co2_params(params_file=source, overrides={"outputs": {"country_file": "other.nc"}})
-    assert resolve_co2_preparation(options)["prepared_path"] == invocation / "prepared.nc"
+    assert Co2PreparationConfig.from_params(options).preparation_arguments()["prepared_path"] == invocation / "prepared.nc"
     assert resolve_co2_output(options)["output"].country_file == invocation / "other.nc"
 
 

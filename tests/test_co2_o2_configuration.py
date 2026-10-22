@@ -9,8 +9,8 @@ import pytest
 
 from openghg_inversions.rhime.co2.co2_o2_configuration import (
     load_co2_o2_params,
-    resolve_co2_o2_model,
-    resolve_co2_o2_preparation,
+    Co2O2ModelConfig,
+    Co2O2PreparationConfig,
     resolve_co2_o2_prior_seed,
     resolve_co2_o2_sampler,
     validate_co2_o2_units,
@@ -66,22 +66,22 @@ def test_loader_rejects_unsupported_headers(changes, message):
 
 def test_phase_resolution_ignores_inactive_choices_and_keeps_requested_facts(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    assert resolve_co2_o2_preparation({
+    assert Co2O2PreparationConfig.from_params({
         "prepared_inputs": {"path": "inputs.nc", "start_date": "2019-12-01", "end_date": "2020-02-01", "domain": "EUROPE"},
         "channels": "invalid", "sampling": "invalid", "outputs": "invalid",
-    }, require_path=True) == {
+    }, require_path=True).preparation_arguments() == {
         "prepared_path": tmp_path / "inputs.nc", "start_date": "2019-12-01", "end_date": "2020-02-01", "domain": "EUROPE",
     }
     config = {**_config(), "prepared_inputs": "invalid", "sampling": "invalid", "outputs": "invalid"}
-    arguments = resolve_co2_o2_model(config, _prepared())
+    arguments = Co2O2ModelConfig.from_params(config).bind(_prepared())
     np.testing.assert_allclose(arguments["independent_error_sd"], [0.2, 0.2, 0.3, 0.3, 0.3])
     assert "sampler" not in arguments and "prepared_inputs" not in arguments
     assert resolve_co2_o2_prior_seed({"sampling": {"random_seed": 7, "draws": "invalid"}}) == 7
-    sampler = resolve_co2_o2_sampler({"sampling": {"draws": 8}, "channels": "invalid", "outputs": "invalid"})
+    sampler = resolve_co2_o2_sampler({"sampling": {"draws": 8}, "channels": "invalid", "outputs": "invalid"}, model=Co2O2ModelConfig.from_params(_config()))
     assert sampler.draws == 8
     assert sampler.nuts_sampler == "numpyro"
     with pytest.raises(ValueError, match="prepared_inputs.path"):
-        resolve_co2_o2_preparation({}, require_path=True)
+        Co2O2PreparationConfig.from_params({}, require_path=True).preparation_arguments()
 
 
 def test_model_uses_saved_errors_and_replay_boundary_rejects_conflicting_values():
@@ -91,12 +91,12 @@ def test_model_uses_saved_errors_and_replay_boundary_rejects_conflicting_values(
     config = _config()
     for channel in config["channels"].values():
         channel.pop("independent_error_sd")
-    arguments = resolve_co2_o2_model(config, prepared)
+    arguments = Co2O2ModelConfig.from_params(config).bind(prepared)
     assert arguments["independent_error_sd"] is saved
     with pytest.raises(ValueError, match="match the prepared artifact values"):
-        build_rhime_co2_o2(prepared_inputs=prepared, **resolve_co2_o2_model(_config(), prepared))
+        build_rhime_co2_o2(prepared_inputs=prepared, **Co2O2ModelConfig.from_params(_config()).bind(prepared))
     with pytest.raises(ValueError, match="prepared artifact"):
-        resolve_co2_o2_model(config, replace(prepared, independent_error_sd=None))
+        Co2O2ModelConfig.from_params(config).bind(replace(prepared, independent_error_sd=None))
 
 
 def test_fixed_ou_configuration_retains_species_site_mappings_and_backend():
@@ -105,12 +105,12 @@ def test_fixed_ou_configuration_retains_species_site_mappings_and_backend():
         "kind": "fixed_ou", "tau_hours": {"co2:A": 6, "o2:A": 8, "o2:B": 2},
         "fixed_site_amplitudes": {"co2:A": 0.4, "o2:A": 0.6, "o2:B": 0.0},
     }
-    arguments = resolve_co2_o2_model(config, _prepared())
+    arguments = Co2O2ModelConfig.from_params(config).bind(_prepared())
     assert arguments["tau_hours"] == config["likelihood"]["tau_hours"]
     assert arguments["fixed_site_amplitudes"] == config["likelihood"]["fixed_site_amplitudes"]
-    assert resolve_co2_o2_sampler(config).nuts_sampler == "pymc"
+    assert resolve_co2_o2_sampler(config, model=Co2O2ModelConfig.from_params(config)).nuts_sampler == "pymc"
     with pytest.raises(ValueError, match="pymc"):
-        resolve_co2_o2_sampler({**config, "sampling": {"nuts_sampler": "numpyro"}})
+        resolve_co2_o2_sampler({**config, "sampling": {"nuts_sampler": "numpyro"}}, model=Co2O2ModelConfig.from_params({**config, "sampling": {"nuts_sampler": "numpyro"}}))
 
 
 @pytest.mark.parametrize(
@@ -123,7 +123,7 @@ def test_fixed_ou_configuration_retains_species_site_mappings_and_backend():
 )
 def test_new_configured_path_rejects_inferred_ou_explicitly(likelihood):
     with pytest.raises(ValueError, match="inferred OU"):
-        resolve_co2_o2_model({**_config(), "likelihood": likelihood}, _prepared())
+        Co2O2ModelConfig.from_params({**_config(), "likelihood": likelihood}).bind(_prepared())
 
 
 @pytest.mark.parametrize("units", [["ppm", "ppm", "per meg", "per meg", "per meg"], ["bananas"] * 5, ["permeg"] * 5])
@@ -139,4 +139,10 @@ def test_model_rejects_configured_units_that_differ_from_artifact():
     for channel in config["channels"].values():
         channel["units"] = "ppb"
     with pytest.raises(ValueError, match="do not match prepared"):
-        resolve_co2_o2_model(config, _prepared())
+        Co2O2ModelConfig.from_params(config).bind(_prepared())
+
+
+def test_direct_owner_binding_checks_both_configured_channel_units():
+    model = Co2O2ModelConfig.from_params(_config())
+    with pytest.raises(ValueError, match="do not match prepared"):
+        replace(model, o2_units="ppb").bind(_prepared())

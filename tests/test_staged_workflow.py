@@ -378,7 +378,7 @@ def test_resource_origins_match_full_requests(tmp_path, monkeypatch, use_overrid
 
 def test_co2_stage_override_paths_use_invocation_directory(tmp_path, monkeypatch):
     from openghg_inversions.rhime.co2.execution import load_co2_params, resolve_co2_output
-    from openghg_inversions.rhime.co2.configuration import resolve_co2_preparation
+    from openghg_inversions.rhime.co2.configuration import Co2PreparationConfig
 
     source = tmp_path / "configs" / "co2.json"
     source.parent.mkdir()
@@ -387,7 +387,7 @@ def test_co2_stage_override_paths_use_invocation_directory(tmp_path, monkeypatch
     monkeypatch.chdir(tmp_path)
     overrides = {"prepared_inputs": {"path": "selected.nc"}}
     loaded = load_co2_params(params_file=source, overrides=overrides)
-    assert resolve_co2_preparation(loaded)["prepared_path"] == tmp_path / "selected.nc"
+    assert Co2PreparationConfig.from_params(loaded).preparation_arguments()["prepared_path"] == tmp_path / "selected.nc"
     assert resolve_co2_output(loaded)["output"].country_file == tmp_path / "country.nc"
     assert overrides["prepared_inputs"]["path"] == "selected.nc"
 

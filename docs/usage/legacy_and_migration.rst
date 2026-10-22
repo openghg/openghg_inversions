@@ -300,6 +300,15 @@ selects the matched cached sampler automatically. Use a supported positive-prior
 table rather than ``site_amplitude_prior_scale``. The packaged example is now
 ``co2_fixed_ou.toml``.
 
+Replace linked ``Co2O2RunSetup`` and ``resolve_co2_family_config`` with
+``Co2O2ModelConfig.from_params(config)`` and pass ``model.bind(prepared)`` as
+scientific keywords to ``run_rhime_co2_o2_from_prepared_inputs``. Remove linked
+``variant`` settings. Concrete linked configuration supports fixed independent
+error and fixed-amplitude OU; the direct cached scientific runner remains
+available with explicit Python arguments. Ordinary and linked preparation use
+``Co2PreparationConfig`` and ``Co2O2PreparationConfig``. Saved sampling/prior
+phases accept their concrete model owners without reparsing them.
+
 All CO2 stages use the shared preparation/sample manifests, original requested
 dates/domain, and shared product naming. Sampling consumes one preparation
 manifest; postprocessing consumes one sample manifest plus current output choices.

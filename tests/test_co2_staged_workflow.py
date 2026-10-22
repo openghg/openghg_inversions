@@ -354,7 +354,7 @@ def test_co2_sample_cli_adapter_rejects_prepared_input_override(tmp_path, capsys
 
 def test_co2_overrides_replace_sections_before_file_path_conversion(tmp_path, monkeypatch):
     from openghg_inversions.rhime.co2.execution import load_co2_params
-    from openghg_inversions.rhime.co2.configuration import resolve_co2_preparation
+    from openghg_inversions.rhime.co2.configuration import Co2PreparationConfig
 
     file_dir = tmp_path / "config"
     file_dir.mkdir()
@@ -368,6 +368,6 @@ def test_co2_overrides_replace_sections_before_file_path_conversion(tmp_path, mo
 
     params = load_co2_params(params_file=source, overrides=overrides)
 
-    assert resolve_co2_preparation(params)["prepared_path"] == tmp_path / "prepared.nc"
+    assert Co2PreparationConfig.from_params(params).preparation_arguments()["prepared_path"] == tmp_path / "prepared.nc"
     assert params["outputs"] == {"country_file": "countries.nc"}
     assert overrides == {"outputs": {"country_file": "countries.nc"}}

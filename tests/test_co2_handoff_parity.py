@@ -16,7 +16,7 @@ from openghg_inversions.rhime.co2.co2_affine_output import _bind_affine_flux_map
 from openghg_inversions.rhime.co2.co2_outputs import (
     Co2OutputOptions, calculate_co2_products, make_co2_output, validate_co2_product_request,
 )
-from openghg_inversions.rhime.co2.configuration import resolve_co2_model, _resolve_co2_sampling
+from openghg_inversions.rhime.co2.configuration import Co2ModelConfig, _resolve_co2_sampling
 
 
 def test_scientific_view_and_products_preserve_complete_trace(monkeypatch):
@@ -101,7 +101,7 @@ def test_shared_inference_preserves_coherent_equations_and_products(
             "site_amplitude_prior": {"pdf": "gamma", "alpha": 2.0, "beta": 3.0},
         }
     choices = {name: params[name] for name in ("model", "likelihood")}
-    model = resolve_co2_model(choices)
+    model = Co2ModelConfig.from_params(choices).model_arguments()
     sampling = _resolve_co2_sampling(params, model=model)
     built_models = []
     build = co2_inference.build_co2_inference
@@ -266,7 +266,7 @@ def test_co2_execution_adapters_forward_inference_and_preserve_trace(tmp_path, m
         params["sampling"]["target_accept"] = 0.93
         targets = {"sigma_target_accept": 0.8, "state_target_accept": 0.9}
         sample_kwargs = {"random_seed": 17, "target_accept": 0.93}
-    model = resolve_co2_model(params)
+    model = Co2ModelConfig.from_params(params).model_arguments()
     actual = {"draws": 3, "chains": 2, "algorithm": "adapter-test"}
     trace.attrs["rhime_actual_inference"] = json.dumps(actual)
     calls = []
