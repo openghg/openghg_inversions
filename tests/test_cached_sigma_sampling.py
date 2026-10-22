@@ -549,6 +549,7 @@ def test_two_spawn_chains_are_reproducible_and_emit_cached_diagnostics() -> None
 @pytest.mark.parametrize("family", ["halfnormal", "gamma", "uniform"])
 def test_compound_sampler_matches_independent_dense_posterior_moments(family) -> None:
     """The composed amplitude/state transition targets the intended posterior."""
+    import arviz as az
     from scipy.integrate import trapezoid
     from scipy import stats
 
@@ -640,7 +641,8 @@ def test_compound_sampler_matches_independent_dense_posterior_moments(family) ->
             rng=np.random.default_rng(710),
         )
         idata = pm.sample(
-            draws=800,
+            # The posterior means need enough effective samples to resolve 0.05.
+            draws=3200,
             tune=800,
             chains=2,
             cores=1,
@@ -650,14 +652,13 @@ def test_compound_sampler_matches_independent_dense_posterior_moments(family) ->
             compute_convergence_checks=False,
         )
 
-    assert np.asarray(idata.posterior["state"]).mean() == pytest.approx(
-        expected_state,
-        abs=0.05,
-    )
-    assert np.asarray(idata.posterior["site_amplitude"]).mean() == pytest.approx(
-        expected_amplitude,
-        abs=0.05,
-    )
+    for name, expected in [("state", expected_state), ("site_amplitude", expected_amplitude)]:
+        mcse = float(az.mcse(idata, var_names=[name])[name].item())
+        assert np.isfinite(mcse) and mcse <= 0.0125, (name, mcse)
+        assert float(az.rhat(idata, var_names=[name])[name].item()) < 1.01
+        error = abs(float(idata.posterior[name].mean()) - expected)
+        # Finer, expanded quadrature changes these oracle means by < 0.0002.
+        assert error <= min(0.05, 4.0 * mcse + 0.0002), (name, error, mcse)
     assert int(np.asarray(idata.sample_stats["diverging"]).sum()) == 0
 
 
