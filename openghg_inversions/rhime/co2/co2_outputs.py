@@ -1,4 +1,4 @@
-"""Scientific output adapters for the ordinary and cached CO2 recipes."""
+"""Scientific output adapters for the CO2 recipe."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from openghg_inversions.postprocessing.co2_flux_outputs import (
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import trace_group
 from openghg_inversions.postprocessing.stats import calculate_stats
+from openghg_inversions.postprocessing.paris_options import ParisOptions
 from openghg_inversions.rhime.outputs import (
     _define_output_filename,
     _resolve_output_path,
@@ -34,8 +35,8 @@ from .co2_preparation import Co2PreparedInputs, _require_equivalent_units
 class Co2Output:
     """Borrowed CO2 scientific output and its reporting window.
 
-    Ordinary execution retains requested dates; cached stages retain the observed
-    day range. ``bound`` preserves conditional affine reconstruction rather than standard
+    Execution retains the original requested
+    reporting window. ``bound`` preserves conditional affine reconstruction rather than standard
     multiplicative flux scaling. ``idata`` remains the borrowed full DataTree,
     including distinct sample groups and their coordinates. Inference provenance
     remains descriptive in ``output_metadata``; no live sampler or writing policy
@@ -100,32 +101,24 @@ def make_co2_output(
                      output_metadata=dict(output_metadata or {}))
 
 
-def _validate_co2_paris_options(kwargs: Mapping | None) -> None:
-    """Validate supported reporting choices without reading scientific artifacts."""
-    kwargs = kwargs or {}
-    supported = {
-        "template_version",
-        "flux_frequency",
-        "country_selections",
-        "time_point",
-        "report_mode",
-        "inversion_grid",
-    }
-    if unknown := kwargs.keys() - supported:
-        raise ValueError(f"Unsupported CO2 PARIS options: {sorted(unknown)}.")
+def _co2_paris_options(params: Mapping | None) -> ParisOptions:
+    """Resolve and validate the supported CO2 reporting choices."""
+    options = ParisOptions.from_params(
+        params, default_template_version="latest", default_inversion_grid=False,
+        default_country_selections=None,
+    )
     for name, expected in (
-        ("template_version", "latest"),
-        ("time_point", "midpoint"),
-        ("report_mode", False),
-        ("inversion_grid", False),
+        ("template_version", "latest"), ("time_point", "midpoint"),
+        ("report_mode", False), ("inversion_grid", False),
     ):
-        if kwargs.get(name, expected) != expected:
+        if getattr(options, name) != expected:
             raise ValueError(f"CO2 PARIS outputs require {name}={expected!r}.")
+    return options
 
 
 @dataclass(frozen=True)
 class Co2OutputOptions:
-    """Ordinary and cached CO2 concentration and conditional-flux reporting choices.
+    """CO2 concentration and conditional-flux reporting choices.
 
     ``none`` suppresses products and exports; ``basic`` retains scientific
     summaries, and ``paris`` adds supported latest-template products. With no
@@ -159,7 +152,7 @@ class Co2OutputOptions:
                 raise TypeError("CO2 paris_postprocessing_kwargs must be a mapping.")
             object.__setattr__(self, "paris_postprocessing_kwargs", dict(self.paris_postprocessing_kwargs))
         if self.output_format == "paris":
-            _validate_co2_paris_options(self.paris_postprocessing_kwargs)
+            _co2_paris_options(self.paris_postprocessing_kwargs)
 
     @classmethod
     def from_params(cls, params: Mapping) -> Co2OutputOptions:
@@ -227,9 +220,15 @@ def validate_co2_reporting_inputs(
         return None
     if output.output_format == "paris" and output.country_file is None:
         raise ValueError("CO2 PARIS outputs require an explicit outputs.country_file.")
-    kwargs = output.paris_postprocessing_kwargs or {}
-    countries = Countries.from_file(country_file=output.country_file,
-                                   country_selections=kwargs.get("country_selections"))
+    options = _co2_paris_options(output.paris_postprocessing_kwargs) if output.output_format == "paris" else None
+    country_selections = (
+        options.country_selections if options is not None
+        else (output.paris_postprocessing_kwargs or {}).get("country_selections")
+    )
+    countries = Countries.from_file(
+        country_file=output.country_file,
+        country_selections=list(country_selections) if country_selections is not None else None,
+    )
     if bound is None:
         raise ValueError("CO2 country flux outputs require a bound affine reconstruction.")
     xr.align(bound.affine_map.flux, countries.matrix, join="exact", copy=False)
@@ -428,7 +427,7 @@ def _paris_products(components, native, country, countries, result, source_to_se
     start_date = result.start_date
     end_date = result.end_date
     conc = _concentration_product(concentration.compute(), domain=domain, obs_avg_period=prepared_period(result))
-    kwargs = output.paris_postprocessing_kwargs or {}
+    options = _co2_paris_options(output.paris_postprocessing_kwargs)
     sectors = sorted(set(source_to_sector.values())) if source_to_sector else []
     # Affine flux artifacts may retain the producer's ordinary time axis.
     # Normalize it before adding a static interval or inferring its frequency.
@@ -478,7 +477,7 @@ def _paris_products(components, native, country, countries, result, source_to_se
             if name in flux.dims
         }
     )
-    frequency = kwargs.get("flux_frequency")
+    frequency = options.flux_frequency
     if frequency is None:
         frequency = (
             infer_flux_frequency(native.flux_total_prior_mean) if "flux_time" in native.dims else "yearly"
@@ -547,31 +546,27 @@ def calculate_co2_products(
 
 def save_co2_products(
     result: Co2Output, *, output: Co2OutputOptions,
-    product_paths: Mapping[str, Path] | None = None,
 ) -> None:
-    """Export products and the optional trace, using explicit paths for staged outputs.
+    """Export configured products and the optional trace.
 
-    Without ``product_paths``, output options determine the ordinary filenames
-    and full concentration-component draws remain in memory. Explicit paths
-    select the products to export and preserve the cached stage filenames.
-    Both routes use the same MultiIndex-aware product codecs.
+    Full concentration-component draws remain available in memory. Product
+    filenames follow the configured RHIME naming convention.
     """
     if output.output_format == "none":
         return
     domain = result.domain
     start_date = result.start_date
-    if product_paths is None:
-        product_paths = {
-            name: _define_output_filename(
-                output.output_path, "co2", domain, f"{output.output_name}_{name}", start_date,
-                filename_convention="rhime",
-            )
-            for name in result.outputs if name != "concentration_components"
-        } if output.output_path is not None else {}
+    product_paths = {
+        name: _define_output_filename(
+            output.output_path, "co2", domain, f"{output.output_name}_{name}", start_date,
+            filename_convention="rhime",
+        )
+        for name in result.outputs if name != "concentration_components"
+    } if output.output_path is not None else {}
     for name, path in product_paths.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         product = result.outputs[name]
-        if name in {"basic", "concentration_components"}:
+        if name == "basic":
             save_datatree(xr.DataTree(reset_serialisation_multiindexes(product)), path)
         else:
             write_netcdf_preserving_bounds_attrs(product, path)

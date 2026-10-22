@@ -1,0 +1,1 @@
+Use concrete preparation and scientific model configuration owners across ordinary CO2 and linked CO2/O2 workflows, with saved phases parsing only active settings. Replace the linked Co2O2RunSetup/resolve_co2_family_config and variant interface with Co2O2ModelConfig.from_params(...).bind(prepared); the direct cached scientific runner remains available.

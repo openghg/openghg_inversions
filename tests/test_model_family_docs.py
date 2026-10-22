@@ -97,24 +97,21 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
         "   * - Outputs and postprocessing\n", 1
     )[0]
     workflow = " ".join(workflow.split())
-    assert "Ordinary ``--model co2``" in workflow and "manifest" in workflow
-    assert "Cached fixed-OU" in workflow and "separate staged interface" in workflow
+    assert "``--model co2`` phases" in workflow and "manifest" in workflow
+    assert "including inferred fixed OU" in workflow
     assert "``--model co2_o2`` phases" in workflow
     assert "same-unit joint model" in workflow
-    ordinary, cached = family.split("Cached and linked boundaries\n", 1)
-    assert "rhime run --model co2" in ordinary
-    assert "``rhime run-co2`` remains an alias" in ordinary
-    assert "run_co2" in ordinary
+    co2, linked = family.split("Linked boundary\n", 1)
+    assert "rhime run --model co2" in co2
+    assert "``rhime run-co2`` remains an alias" in co2
+    assert "run_co2" in co2
     for stage in ("prepare", "prior-predictive", "sample", "postprocess"):
-        assert f"rhime {stage} --model co2" in ordinary
-    assert "rhime diagnose --posterior" in ordinary
-    assert ordinary.count("--preparation-manifest run/prepare/prepare-manifest.json") == 2
-    assert ordinary.count("--sample-manifest run/sample/sample-manifest.json") == 2
-    assert "--prepared-inputs run/" not in ordinary
-    assert '``variant = "cached_fixed_ou"``' in cached
-    assert "--prepared-inputs" in cached and "--posterior" in cached
-    assert "ordinary handoff format" in cached
-    assert "Linked CO₂/O₂ uses its own joint handoffs" in cached
+        assert f"rhime {stage} --model co2" in co2
+    assert "rhime diagnose --posterior" in co2
+    assert co2.count("--preparation-manifest run/prepare/prepare-manifest.json") == 2
+    assert co2.count("--sample-manifest run/sample/sample-manifest.json") == 2
+    assert "--prepared-inputs run/" not in co2
+    assert "Linked CO₂/O₂ uses its own joint handoffs" in linked
     assert "packaged TOML template" in family
     assert "scientist acceptance" in family
     assert "Scientist acceptance remains future work" in family
@@ -124,22 +121,22 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "aggregation_error_covariance" in recipes
     assert "Unit conversion is caller-owned" in recipes
     assert ".. _co2-cached-sigma-recipe:" in recipes
-    assert "Compose ordinary CO2 scientific operations" in recipes
+    assert "Compose CO2 scientific operations" in recipes
     assert "Configure prepared-input execution from TOML" in recipes
     assert "load_co2_family_config" in recipes
-    assert "resolve_co2_family_config" in recipes
-    assert "co2_cached_sigma.toml" in recipes
+    assert "Co2O2ModelConfig" in recipes
+    assert "co2_fixed_ou.toml" in recipes
     assert "Relative values are interpreted from the process" in recipes
-    assert "Ordinary CO2 likelihood configuration" in recipes
+    assert "CO2 likelihood configuration" in recipes
     assert "Exactly one of ``fixed_site_amplitudes``" in recipes
     assert "Sampling configuration" in recipes
     assert "Non-negative integer strictly less than ``draws``" in recipes
-    assert "both linked OU routes default to and require PyMC" in recipes
+    assert "configured linked fixed OU defaults to and requires PyMC" in recipes
     assert "``[channels.co2]`` and ``[channels.o2]``" in recipes
     assert "standard deviations are 1 ppm\nand 2 ppm" in recipes
     assert "The resolver does not convert these values" in recipes
     assert "prepare_co2_o2_inputs(" in recipes
-    assert 'co2_units=setup.preparation_kwargs["co2_units"]' in recipes
+    assert 'co2_units=model.co2_units' in recipes
     assert "A runnable CO2 configuration and resolver are\ntracked" not in recipes
     assert "``co2_o2``" in recipes
     assert "heterogeneous ppm/per-meg" in recipes
@@ -149,8 +146,8 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "build_co2_from_materialized" in recipes
     assert "annotate_co2_trace" in recipes
     assert "idata = run_rhime_co2(" not in recipes
-    assert "idata = run_rhime_co2_cached_sigma(" in recipes
-    assert recipes.count("use_bc=True") >= 2
+    assert "run_rhime_co2_cached_sigma(" not in recipes
+    assert "``[model.boundary]``" in recipes
     assert "Channel-labelled boundary sensitivities, priors and activity" in family
     assert "independent global, site, or site-by-period offsets" in family
     assert "= \\mathtt{co2\\_flux\\_contribution}" in recipes
@@ -187,7 +184,7 @@ def test_nested_reader_path_exposes_transport_grid_boundary() -> None:
     assert guide.count('mismatch_model="pollution_event"') == 2
     assert "outer_overlap_masked=True" in guide
     assert "rather than appending a duplicate section" in guide
-    assert "source country file and exact\n  target coordinates" in guide
+    assert "reuses compatible grids across small coordinate differences" in " ".join(guide.split())
     assert "sampling-only" not in readme
 
 

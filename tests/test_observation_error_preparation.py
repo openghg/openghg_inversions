@@ -147,16 +147,18 @@ def test_variability_only_and_missing_components_remain_supported(averaging_erro
 def test_nested_domains_prepare_errors_before_outer_aggregation_and_inner_alignment(monkeypatch):
     from openghg_inversions.rhime import nested, RhimeConfig
 
+    # The error-ordering fixture uses a one-cell synthetic domain.
+    monkeypatch.setattr(nested, "get_domain_info", lambda: {})
     time = pd.date_range("2020-01-01", periods=3, freq="h")
     outer = _merged(xr.Dataset(
         {"mf": ("time", [10.0, 20.0, 30.0]),
          "mf_repeatability": ("time", [1.0, 9.0, 3.0]),
          "mf_variability": ("time", [9.0, 1.0, 4.0])},
-        coords={"time": time},
+        coords={"time": time, "lat": [50.0], "lon": [-1.0]},
     ))
     inner = _merged(xr.Dataset(
         {"mf": ("time", [0.0, 10.0, 100.0]), "mf_repeatability": ("time", [0.0, 2.0, 2.0])},
-        coords={"time": time},
+        coords={"time": time, "lat": [50.0], "lon": [-1.0]},
     ).chunk(time=1))
     config = RhimeConfig.from_params(dict(
         species="ch4", domain="EUROPE", sites=["TAC"], averaging_period="1h",
@@ -164,7 +166,7 @@ def test_nested_domains_prepare_errors_before_outer_aggregation_and_inner_alignm
         output_format="none", flux_sources=["inventory"], filters="daily_median", use_bc=False,
     ), multisector=False)
     monkeypatch.setattr(RhimeMergedData, "from_options", lambda **kw: inner if kw["domain"] == "EUROPE-6km" else outer)
-    monkeypatch.setattr(nested, "mask_outer_merged_for_inner_domain", lambda outer, inner: outer)
+    monkeypatch.setattr(nested, "_mask_outer_for_aligned_inner_domain", lambda outer, inner: outer)
     captured = []
 
     class PreparedBothDomains(Exception):

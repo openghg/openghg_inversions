@@ -10,17 +10,17 @@ def run(*, model: str = "standard", **kwargs: Any) -> Any:
 
     Args:
         model: ``standard`` (default), ``multisector``, ``nested``, ``co2``,
-            ``co2_cached_sigma``, ``co2_o2`` or ``co2_o2_cached_sigma``.
+            ``co2_o2`` or ``co2_o2_cached_sigma``.
         **kwargs: Forwarded unchanged to the selected recipe. Standard,
             multisector and nested accept their existing INI/Python inputs.
-            Ordinary CO2 accepts its configured prepared-input product request.
-            Cached and linked CO2-family recipes require ``prepared_inputs``;
+            CO2 accepts its configured prepared-input product request.
+            Linked CO2/O2 recipes require ``prepared_inputs``;
             selection does not add acquisition or checkpoint routes.
 
     Returns:
         The selected recipe's scientific result. Standard and multisector return
-        InversionOutput, ordinary CO2 returns Co2Output, nested returns NestedOutput
-        with two native output views, and cached/linked CO2 recipes return an inference DataTree.
+        InversionOutput, CO2 returns Co2Output, nested returns NestedOutput
+        with two native output views, and linked CO2/O2 recipes return an inference DataTree.
 
     Raises:
         ValueError: If the model name is unsupported.
@@ -45,10 +45,6 @@ def run(*, model: str = "standard", **kwargs: Any) -> Any:
         from .co2 import run_co2
 
         return run_co2(**kwargs)
-    if model == "co2_cached_sigma":
-        from .co2 import run_rhime_co2_cached_sigma
-
-        return run_rhime_co2_cached_sigma(**kwargs)
     if model == "co2_o2":
         from .co2 import run_rhime_co2_o2_from_prepared_inputs
 

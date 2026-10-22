@@ -7052,7 +7052,7 @@ def test_multisector_paris_options_are_checked_before_output_writes(
     output_spec = replace(config.output, country_file=str(europe_country_file))
 
     inv_out = _fixture_output(config, _minimal_output_idata(), prepared, model_spec=model_spec, multisector=True)
-    with pytest.raises(ValueError, match="Unsupported multi-sector.*unexpected"):
+    with pytest.raises(ValueError, match="Unsupported PARIS.*unexpected"):
         rhime_outputs.postprocess_multisector_outputs(inv_out, output_spec)
     assert not any(tmp_path.iterdir())
 
@@ -7079,7 +7079,7 @@ def test_multisector_none_skips_postprocessing() -> None:
 
 @pytest.mark.rhime_contract
 def test_multisector_products_build_latest_paris_flux(
-    europe_country_file: Path,
+    tiny_paris_country_file: Path,
     fake_multisector_basis_functions_matching_country_grid: Callable[..., BasisFunctions],
     multisector_postprocessing_inv_out: Callable[..., InversionOutput],
     tmp_path: Path,
@@ -7119,7 +7119,7 @@ def test_multisector_products_build_latest_paris_flux(
         model_spec,
         output_spec,
     )
-    basis_functions = fake_multisector_basis_functions_matching_country_grid(europe_country_file)
+    basis_functions = fake_multisector_basis_functions_matching_country_grid(tiny_paris_country_file)
     basis_functions.flux.attrs["time_period"] = "not-a-parseable-period"
     inv_inputs = _minimal_output_inv_inputs()
     assert basis_functions.source_labels is not None
@@ -7138,7 +7138,7 @@ def test_multisector_products_build_latest_paris_flux(
     posterior["epsilon"] = (("chain", "draw", "nmeasure"), np.ones((1, 2, 1)))
     idata["posterior"] = posterior
 
-    output_spec = replace(config.output, country_file=str(europe_country_file))
+    output_spec = replace(config.output, country_file=str(tiny_paris_country_file))
     inv_out = _fixture_output(config, idata, prepared, model_spec=model_spec, multisector=True)
     products = rhime_outputs.postprocess_multisector_outputs(inv_out, output_spec)
     rhime_outputs.save_inversion_output(inv_out, output_spec)
@@ -7158,9 +7158,22 @@ def test_multisector_products_build_latest_paris_flux(
     assert paris_concentration_path.exists()
     assert diagnostics_path.exists()
     with xr.open_dataset(paris_flux_path) as reloaded_paris_flux:
-        assert "flux_total_posterior" in reloaded_paris_flux
-        assert "flux_ff_posterior" in reloaded_paris_flux
-        assert "flux_ocean_posterior" in reloaded_paris_flux
+        assert tuple(reloaded_paris_flux.country.values) == PARIS_LATEST_COUNTRIES
+        assert tuple(reloaded_paris_flux.sector.values) == ("ff", "ocean")
+        for name in (
+            "flux_total_posterior",
+            "flux_ff_posterior",
+            "flux_ocean_posterior",
+            "covariance_flux_total_posterior_country",
+            "covariance_flux_ff_posterior_country",
+            "covariance_flux_ocean_posterior_country",
+            "covariance_flux_sectors_posterior_country",
+        ):
+            actual = reloaded_paris_flux[name]
+            expected = paris_flux[name]
+            assert actual.dims == expected.dims
+            assert actual.dtype == expected.dtype == np.dtype("float32")
+            np.testing.assert_allclose(actual.values, expected.values, rtol=1e-6, atol=0.0)
     with xr.open_dataset(paris_concentration_path) as reloaded_concentration:
         assert reloaded_concentration.attrs["paris_concentration_template_version"] == "v04"
     with xr.open_dataset(diagnostics_path) as reloaded_diagnostics:
@@ -7538,13 +7551,13 @@ def test_modern_flux_outputs_backfill_unsanitized_nonfinite_flux(
 
 def test_modern_paris_flux_outputs_use_retained_basis_operator(
     monkeypatch: pytest.MonkeyPatch,
-    europe_country_file: Path,
+    tiny_paris_country_file: Path,
 ) -> None:
     """PARIS flux outputs use retained basis operators for modern flux and country products."""
     from openghg_inversions.postprocessing.make_paris_outputs import paris_flux_output
 
-    basis_functions, operator = _recording_basis_functions_matching_country_grid(europe_country_file)
-    inv_out = _modern_postprocessing_inv_out(europe_country_file, basis_functions=basis_functions)
+    basis_functions, operator = _recording_basis_functions_matching_country_grid(tiny_paris_country_file)
+    inv_out = _modern_postprocessing_inv_out(tiny_paris_country_file, basis_functions=basis_functions)
 
     def fail_flat_basis(self: BasisFunctions) -> xr.DataArray:
         raise AssertionError("modern PARIS flux outputs should not materialise the flat basis view")
@@ -7553,7 +7566,7 @@ def test_modern_paris_flux_outputs_use_retained_basis_operator(
 
     flux_outputs = paris_flux_output(
         inv_out,
-        country_file=europe_country_file,
+        country_file=tiny_paris_country_file,
     )
 
     assert "flux_total_posterior" in flux_outputs
@@ -7570,15 +7583,15 @@ def test_modern_paris_flux_outputs_use_retained_basis_operator(
     assert operator.basis_matrix_accesses
 
 
-def test_modern_paris_flux_outputs_backfill_unsanitized_nonfinite_flux(europe_country_file: Path) -> None:
+def test_modern_paris_flux_outputs_backfill_unsanitized_nonfinite_flux(tiny_paris_country_file: Path) -> None:
     """PARIS flux output completes when old retained flux artifacts contain non-finite values."""
     from openghg_inversions.postprocessing.make_paris_outputs import paris_flux_output
 
-    basis_functions = _unsanitized_nonfinite_basis_functions_matching_country_grid(europe_country_file)
-    inv_out = _modern_postprocessing_inv_out(europe_country_file, basis_functions=basis_functions)
+    basis_functions = _unsanitized_nonfinite_basis_functions_matching_country_grid(tiny_paris_country_file)
+    inv_out = _modern_postprocessing_inv_out(tiny_paris_country_file, basis_functions=basis_functions)
 
     with pytest.warns(NonFiniteFluxWarning, match="applying a lazy zero-fill guard"):
-        flux_outputs = paris_flux_output(inv_out, country_file=europe_country_file)
+        flux_outputs = paris_flux_output(inv_out, country_file=tiny_paris_country_file)
 
     assert "flux_total_posterior" in flux_outputs
     assert np.isfinite(flux_outputs["flux_total_posterior"].values).all()

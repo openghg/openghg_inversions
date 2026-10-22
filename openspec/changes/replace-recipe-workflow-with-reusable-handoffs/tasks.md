@@ -713,6 +713,15 @@ included. Nothing is merged.
 
 ## 4. Cached CO2 reusable-handoff adoption
 
+20 October 2026 implementation stack (not merged): OPE-219 / [#904](https://github.com/openghg/openghg_inversions/pull/904)
+generalizes positive amplitude priors; OPE-220 / [#910](https://github.com/openghg/openghg_inversions/pull/910)
+selects matched inference from model configuration; OPE-221 adopts the shared CLI
+handoffs and retires redundant cached entry points. Full and saved execution are
+checked for additive and Gamma fixed-OU likelihoods with new/imported affine pairs,
+original request dates, independent density references, unequal prior/posterior
+axes, and graph-free products. Merge and final validation evidence remain pending;
+these changes do not complete the wider programme or linked staging.
+
 - [ ] 4.0 OPE-219: replace HalfNormal-only amplitude scale arguments with the
   existing independent positive-prior specification. Derive the conditional
   density/Jacobian and physical amplitude transform from the scientific model;
@@ -725,8 +734,9 @@ included. Nothing is merged.
   order and accepted-cache lifecycle; reject unsupported generic sampler/tuning
   substitutions before expensive work. OPE-220 makes scientific model choices
   select inference automatically and unifies configured execution through
-  `run_co2`/`Co2Output`; migrate and remove redundant cached public selectors and
-  runners without compatibility aliases. OPE-221 adopts the shared saved handoffs.
+  `run_co2`/`Co2Output`. OPE-221 adopts the shared saved handoffs and removes the
+  redundant cached public selectors/runners together with their dependent stage
+  callers, without compatibility aliases.
 - [ ] 4.2 Validate cached per-site initialization and OU time scales as positive,
   requiring retained coverage after checking all supplied values. Verify compatible
   mismatch changes reuse numerical preparation while dependent runtime caches are

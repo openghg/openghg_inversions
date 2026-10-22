@@ -15,11 +15,51 @@ on:
       - 'newsfragments/**'
   # Allow manual runs from the Actions UI with the same checks as automatic runs
   workflow_dispatch:
+    inputs:
+      compiled_backend:
+        description: "Run the full suite with PyTensor's default compiled backend"
+        type: boolean
+        default: false
+      runtime_comparison:
+        description: "Compare one/two numerical threads with serial pytest in the locked environments"
+        type: boolean
+        default: false
 
 jobs:
+  backend:
+    name: Select test backend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      linker: ${{ steps.select.outputs.result }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Check backend selection rules
+        run: node --test .github/scripts/select-test-linker.test.cjs
+      - name: Select full-suite linker
+        id: select
+        uses: actions/github-script@v9
+        with:
+          result-encoding: string
+          script: |
+            const select = require('./.github/scripts/select-test-linker.cjs');
+            return await select({github, context, core});
+
   test:
     name: Run tests against OpenGHG devel (Python 3.12)
+    needs: backend
     runs-on: ubuntu-latest
+    env:
+      PYTENSOR_FLAGS: linker=${{ needs.backend.outputs.linker }}
+      DASK_NUM_WORKERS: '2'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      NUMEXPR_NUM_THREADS: '1'
+      BLIS_NUM_THREADS: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -36,20 +76,31 @@ jobs:
         run: |
           uv pip install --system --upgrade setuptools wheel
           uv pip install --system "git+https://github.com/openghg/openghg.git@devel" -e . pytest pytest-xdist
-      - name: Report scientific I/O versions
+      - name: Report scientific I/O versions and PyTensor backend
         run: >-
           python -c 'import h5py, h5netcdf, netCDF4, numpy, sys, xarray;
+          import pytensor; from pytensor.compile.mode import get_mode;
+          print("PyTensor linker:", pytensor.config.linker, type(get_mode(None).linker).__name__);
           print(f"Python {sys.version.split()[0]}, NumPy {numpy.__version__}, xarray {xarray.__version__},
           h5py {h5py.__version__} (HDF5 {h5py.version.hdf5_version}),
           h5netcdf {h5netcdf.__version__}, netCDF4 {netCDF4.__version__} (HDF5 {netCDF4.__hdf5libversion__})")'
       - name: Prime ArviZ cache
         run: python -c "import arviz"
       - name: Run tests
-        run: pytest tests/ -n 2 --dist=worksteal --durations=25
+        run: pytest tests/ -n 2 --dist=worksteal --ignore=tests/typing --durations=25
 
   locked-test:
     name: Run tests with uv.lock (Python ${{ matrix.python-version }})
+    needs: backend
     runs-on: ubuntu-latest
+    env:
+      PYTENSOR_FLAGS: linker=${{ needs.backend.outputs.linker }}
+      DASK_NUM_WORKERS: '2'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      NUMEXPR_NUM_THREADS: '1'
+      BLIS_NUM_THREADS: '1'
     strategy:
       fail-fast: false
       matrix:
@@ -76,16 +127,42 @@ jobs:
             echo "uv.lock has OpenGHG $locked, but the latest release is $latest. Refresh uv.lock."
             exit 1
           fi
-      - name: Report scientific I/O versions
+      - name: Report scientific I/O versions and PyTensor backend
         run: >-
           uv run --no-sync python -c 'import h5py, h5netcdf, netCDF4, numpy, sys, xarray;
+          import pytensor; from pytensor.compile.mode import get_mode;
+          print("PyTensor linker:", pytensor.config.linker, type(get_mode(None).linker).__name__);
           print(f"Python {sys.version.split()[0]}, NumPy {numpy.__version__}, xarray {xarray.__version__},
           h5py {h5py.__version__} (HDF5 {h5py.version.hdf5_version}),
           h5netcdf {h5netcdf.__version__}, netCDF4 {netCDF4.__version__} (HDF5 {netCDF4.__hdf5libversion__})")'
       - name: Prime ArviZ cache
         run: uv run --no-sync python -c "import arviz"
       - name: Run tests
-        run: uv run --no-sync pytest tests/ -n 2 --dist=worksteal --durations=25
+        if: github.event_name != 'workflow_dispatch' || !inputs.runtime_comparison
+        run: uv run --no-sync pytest tests/ -n 2 --dist=worksteal --ignore=tests/typing --durations=25
+      - name: Profile serial suite
+        if: github.event_name == 'workflow_dispatch' && inputs.runtime_comparison
+        env:
+          DASK_NUM_WORKERS: '2'
+          OPENBLAS_NUM_THREADS: '1'
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+          OGI_TEST_RUNTIME_REPORT: runtime-suite/runtime.json
+        run: |
+          mkdir runtime-suite
+          /usr/bin/time -v -o runtime-suite/time.txt uv run --no-sync python -m pytest tests/ -p no:xdist -p tests.ci_runtime --ignore=tests/typing --durations=25 --junitxml=runtime-suite/results.xml
+      - name: Compare numerical thread limits
+        if: github.event_name == 'workflow_dispatch' && inputs.runtime_comparison
+        run: uv run --no-sync python scripts/compare_test_runtime.py runtime-comparison
+      - name: Upload test runtime diagnostics
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.runtime_comparison
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-runtime-locked-py${{ matrix.python-version }}
+          path: |
+            runtime-suite/
+            runtime-comparison/
+          retention-days: 7
 
   lint:
     name: Run lint

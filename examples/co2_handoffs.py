@@ -1,4 +1,4 @@
-"""Compare ordinary CO2 full execution with saved scientific handoffs.
+"""Compare inferred fixed-OU CO2 full execution with saved scientific handoffs.
 
 Run ``python -m examples.co2_handoffs /tmp/co2-handoffs``. The synthetic
 observations, coherent reduction, signed native fluxes, sampling and products
@@ -108,7 +108,7 @@ def synthetic_inputs(destination: Path) -> tuple:
 def configuration(destination: Path, countries: Path) -> dict:
     """Select explicit inference, requested-window and output choices."""
     return {
-        "format_version": 1, "recipe": "co2", "variant": "ordinary",
+        "format_version": 1, "recipe": "co2",
         "prepared_inputs": {"start_date": START_DATE, "end_date": END_DATE, "domain": "EUROPE"},
         "likelihood": {"kind": "additive_sigma", "no_model_error": True, "fixed_model_mismatch": 0.0},
         "model": {
@@ -116,7 +116,7 @@ def configuration(destination: Path, countries: Path) -> dict:
             "offset": {"prior": {"pdf": "normal", "mu": 0., "sigma": .1}, "per_site": True,
                        "drop_first": False},
         },
-        "sampling": {"draws": 12, "tune": 12, "chains": 1, "nuts_sampler": "pymc",
+        "sampling": {"draws": 12, "tune": 12, "chains": 1,
                      "progressbar": False, "random_seed": 126, "sample_prior_predictive": 8,
                      "sample_posterior_predictive": True},
         "outputs": {"output_format": "basic", "output_name": "co2",
@@ -128,20 +128,24 @@ def run_example(destination: Path) -> None:
     """Save a new prepared/affine pair and compare replay with full execution."""
     from openghg_inversions.rhime.co2 import run_co2
     from openghg_inversions.rhime.co2.execution import resolve_co2_output
-    from openghg_inversions.rhime.co2.configuration import resolve_co2_sampler
     from openghg_inversions.rhime.co2 import handoffs
 
     canonical, reduction, prepared, affine, countries = synthetic_inputs(destination)
     params = configuration(destination / "full", countries)
+    params["likelihood"] = {
+        "kind": "fixed_ou", "tau_hours": 24.0,
+        "site_amplitude_prior": {"pdf": "gamma", "alpha": 2.0, "beta": 3.0},
+    }
     manifest = handoffs.save_preparation(
         prepared, output_dir=destination / "prepare", start_date=START_DATE,
         end_date=END_DATE, domain="EUROPE", affine_artifact=affine,
     )
     preparation_bytes = manifest.read_bytes()
-    model = {name: params[name] for name in ("model", "likelihood")}
-    sampler = resolve_co2_sampler(params)
+    from openghg_inversions.rhime.co2 import Co2ModelConfig
+
+    model = Co2ModelConfig.from_params(params)
     samples = handoffs.sample(
-        manifest, model=model, sampler=sampler, output_dir=destination / "sample",
+        manifest, model=model, sampling=params["sampling"], output_dir=destination / "sample",
     )
     replay_params = {"outputs": {**params["outputs"], "output_path": str(destination / "replay")}}
     replay = handoffs.postprocess(samples, **resolve_co2_output(replay_params))
@@ -157,10 +161,10 @@ def run_example(destination: Path) -> None:
     alternative = deepcopy(params)
     alternative["model"]["boundary"]["prior"]["sigma"] = .2
     alternative["model"]["offset"]["prior"]["mu"] = .05
-    alternative["likelihood"]["fixed_model_mismatch"] = .15
-    changed_model = {name: alternative[name] for name in ("model", "likelihood")}
+    alternative["likelihood"]["tau_hours"] = 18.0
+    changed_model = Co2ModelConfig.from_params(alternative)
     other_samples = handoffs.sample(
-        manifest, model=changed_model, sampler=sampler, output_dir=destination / "alternative-sample",
+        manifest, model=changed_model, sampling=params["sampling"], output_dir=destination / "alternative-sample",
     )
     other = handoffs.postprocess(other_samples, **resolve_co2_output(
         {"outputs": {**params["outputs"], "output_path": str(destination / "alternative-products")}},

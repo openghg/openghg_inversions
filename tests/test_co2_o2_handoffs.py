@@ -9,27 +9,73 @@ import xarray as xr
 
 from examples.co2_o2_handoffs import FACTS, synthetic_inputs
 from openghg_inversions.inference.sampling import RhimeSampler
-from openghg_inversions.rhime.co2 import co2_o2_handoffs as handoffs
+from openghg_inversions.rhime.co2 import co2_o2_handoffs as handoffs, co2_o2_runner
+from openghg_inversions.rhime.co2.co2_o2_model import _gather_co2_o2_sensitivity
 from openghg_inversions.rhime.co2.co2_o2_outputs import Co2O2OutputOptions
-from openghg_inversions.rhime.co2.co2_o2_runner import run_rhime_co2_o2_from_prepared_inputs
 
 
 MODEL = {"channels": {"co2": {"units": "ppm"}, "o2": {"units": "ppm"}}}
 
 
-@pytest.fixture(scope="module")
-def joint_trace():
-    return run_rhime_co2_o2_from_prepared_inputs(
-        prepared_inputs=synthetic_inputs(), sampler=RhimeSampler(
-            draws=4, tune=4, chains=1, nuts_sampler="pymc", sample_prior_predictive=2,
-            sample_posterior_predictive=True,
-            sample_kwargs={"random_seed": 19, "compute_convergence_checks": False},
-        ),
+@pytest.fixture
+def no_inference(monkeypatch):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Linked persistence must not construct a model or sampler")
+
+    monkeypatch.setattr(handoffs.pm.Model, "__init__", forbidden)
+    monkeypatch.setattr(RhimeSampler, "__init__", forbidden)
+    monkeypatch.setattr(handoffs, "sample", forbidden)
+    monkeypatch.setattr(handoffs, "prior_predictive", forbidden)
+    monkeypatch.setattr(handoffs, "build_rhime_co2_o2", forbidden)
+    monkeypatch.setattr(handoffs, "sample_rhime_model", forbidden)
+
+
+@pytest.fixture
+def joint_trace(no_inference):
+    """Use labelled, nonconstant draws to test persistence without fitting a model."""
+    prepared = synthetic_inputs()
+    sensitivity = _gather_co2_o2_sensitivity(prepared.co2_sensitivity, prepared.o2_sensitivity)
+    scaling = xr.DataArray(
+        np.arange(20).reshape(1, 4, 5) / 20 + 0.5,
+        dims=("chain", "draw", "state"),
+        coords={"chain": [0], "draw": np.arange(4), **dict(prepared.retained_prior.mean.coords)},
+        attrs={"units": "dimensionless flux scale"},
     )
+    contribution = xr.dot(sensitivity, scaling, dim="state").transpose("chain", "draw", "observation")
+    mean = contribution + prepared.fixed_prior_contribution
+    error = xr.DataArray(
+        np.sqrt(np.diag(prepared.aggregation_error.covariance) + prepared.independent_error_sd.values**2),
+        dims="observation", coords=prepared.observations.coords,
+    )
+    posterior = xr.Dataset({
+        "flux_scaling": scaling, "co2_o2_flux_contribution": contribution,
+        "modelled_concentration": mean, "epsilon": error.broadcast_like(mean),
+    })
+    for name in ("co2_o2_flux_contribution", "modelled_concentration", "epsilon"):
+        posterior[name].attrs["units"] = "ppm"
+    prior = posterior.isel(draw=[3, 0]).assign_coords(draw=[0, 1])
+    return xr.DataTree.from_dict({
+        "/": xr.Dataset(attrs={
+            "rhime_recipe": "co2_o2",
+            "rhime_variable_roles": json.dumps(co2_o2_runner._CO2_O2_VARIABLE_ROLES),
+            "rhime_model_metadata": json.dumps(co2_o2_runner._co2_o2_metadata(
+                prepared, observations=prepared.observations)),
+        }),
+        "posterior": posterior, "prior": prior,
+        "posterior_predictive": xr.Dataset({"y": posterior.modelled_concentration - 0.25}),
+        "prior_predictive": xr.Dataset({"y": prior.modelled_concentration + 0.125}),
+        "observed_data": xr.Dataset({"y": prepared.observations}),
+        "constant_data": xr.Dataset({
+            "co2_o2_sensitivity": sensitivity,
+            "fixed_prior_contribution": prepared.fixed_prior_contribution,
+            "fixed_independent_error_sd": prepared.independent_error_sd,
+            "aggregation_error_covariance": prepared.aggregation_error.covariance,
+        }),
+    })
 
 
 @pytest.mark.parametrize("extension", [".nc", ".zarr"])
-def test_import_keeps_unequal_axis_artifact_and_original_request(tmp_path, extension):
+def test_import_keeps_unequal_axis_artifact_and_original_request(tmp_path, extension, no_inference):
     prepared = synthetic_inputs()
     original = prepared.observations.copy(deep=True)
     source = tmp_path / f"prepared{extension}"
@@ -53,7 +99,7 @@ def test_import_keeps_unequal_axis_artifact_and_original_request(tmp_path, exten
 
 
 @pytest.mark.parametrize("missing", ["start_date", "end_date", "domain"])
-def test_missing_imported_request_fails_before_destination(tmp_path, missing):
+def test_missing_imported_request_fails_before_destination(tmp_path, missing, no_inference):
     prepared = replace(synthetic_inputs(), provenance={})
     source = tmp_path / "prepared.nc"
     prepared.save(source)
@@ -105,19 +151,11 @@ def test_failed_sample_write_invalidates_completion(tmp_path, monkeypatch, joint
     assert not sample.exists()
 
 
-def test_graph_free_replay_retains_roles_labels_and_inference(tmp_path, monkeypatch, joint_trace):
+def test_graph_free_replay_retains_roles_labels_and_inference(tmp_path, joint_trace):
     prep = handoffs.save_preparation(synthetic_inputs(), output_dir=tmp_path / "prepare")
     sample = handoffs.save_samples(prep, joint_trace, actual_inference={"draws": 4, "chains": 1},
         preparation_generation=handoffs.load_preparation(prep).generation, output_dir=tmp_path / "sample")
 
-    def forbidden(*args, **kwargs):
-        raise AssertionError("Replay must not construct a model or sampler")
-
-    monkeypatch.setattr(RhimeSampler, "__init__", forbidden)
-    monkeypatch.setattr(handoffs, "sample", forbidden)
-    monkeypatch.setattr(handoffs, "prior_predictive", forbidden)
-    monkeypatch.setattr(handoffs, "build_rhime_co2_o2", forbidden)
-    monkeypatch.setattr(handoffs, "sample_rhime_model", forbidden)
     result = handoffs.postprocess(sample, output=Co2O2OutputOptions(
         output_format="basic", output_path=tmp_path / "products", output_name="replayed",
     ))
@@ -129,9 +167,21 @@ def test_graph_free_replay_retains_roles_labels_and_inference(tmp_path, monkeypa
     scales = json.loads(result.idata.attrs["rhime_variable_roles"])["flux_scale"]
     assert result.idata.posterior[scales].source.values.tolist() == ["GPP", "TER", "FF", "ocean", "ocean"]
     assert result.outputs
+    for name in joint_trace.children:
+        xr.testing.assert_identical(result.idata[name], joint_trace[name])
+    for species, count in (("co2", 2), ("o2", 3)):
+        components = result.outputs[f"{species}_concentration_components"]
+        assert components.sizes["observation"] == count
+        assert components.sizes["draw"] == 4
+        assert components.sizes["prior_draw"] == 2
+        xr.testing.assert_allclose(
+            components.modelled_posterior,
+            (components.pollution_posterior + components.boundary_posterior + components.offset_posterior)
+            .transpose(*components.modelled_posterior.dims),
+        )
 
 
-def test_heterogeneous_import_fails_before_checkpoint(tmp_path):
+def test_heterogeneous_import_fails_before_checkpoint(tmp_path, no_inference):
     from openghg_inversions.rhime.co2 import prepare_co2_o2_inputs
     from test_rhime_co2_o2 import _inputs
 
@@ -144,7 +194,7 @@ def test_heterogeneous_import_fails_before_checkpoint(tmp_path):
 
 
 @pytest.mark.parametrize("supported_units", [True, False])
-def test_saving_lazy_units_runs_shared_payload_once_and_publishes_only_supported_units(tmp_path, supported_units):
+def test_saving_lazy_units_runs_shared_payload_once_and_publishes_only_supported_units(tmp_path, supported_units, no_inference):
     import dask.array as da
     from dask import delayed
 
@@ -190,7 +240,7 @@ def test_saving_lazy_units_runs_shared_payload_once_and_publishes_only_supported
 def test_loaded_joint_likelihood_matches_dense_covariance_once(tmp_path, ou_amplitude):
     from scipy.stats import multivariate_normal
 
-    from openghg_inversions.rhime.co2.co2_o2_configuration import resolve_co2_o2_model
+    from openghg_inversions.rhime.co2.co2_o2_configuration import Co2O2ModelConfig
 
     prep = handoffs.save_preparation(synthetic_inputs(), output_dir=tmp_path / "prepare")
     loaded = handoffs.load_preparation(prep).prepared
@@ -203,7 +253,7 @@ def test_loaded_joint_likelihood_matches_dense_covariance_once(tmp_path, ou_ampl
         same_block = ((observations.species.values[:, None] == observations.species.values[None, :])
                       & (observations.site.values[:, None] == observations.site.values[None, :]))
         covariance = covariance + ou_amplitude ** 2 * np.exp(-time_difference / 12.) * same_block
-    built = handoffs.build_rhime_co2_o2(prepared_inputs=loaded, **resolve_co2_o2_model(choices, loaded))
+    built = handoffs.build_rhime_co2_o2(prepared_inputs=loaded, **Co2O2ModelConfig.from_params(choices).bind(loaded))
     model = built.model
     point = model.initial_point()
     mean = model.compile_fn(model.replace_rvs_by_values([model["modelled_concentration"]]))(point)[0]

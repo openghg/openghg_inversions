@@ -1,4 +1,5 @@
 """Ordinary CO2 phases consume their own choices and one scientific handoff."""
+from openghg_inversions.rhime.co2 import inference as co2_inference
 
 import json
 
@@ -6,7 +7,7 @@ import pytest
 
 from openghg_inversions.cli import main
 from openghg_inversions.rhime.co2.execution import load_co2_params, resolve_co2_output
-from openghg_inversions.rhime.co2.configuration import resolve_co2_model, resolve_co2_preparation
+from openghg_inversions.rhime.co2.configuration import Co2ModelConfig, Co2PreparationConfig
 
 
 def test_inference_phase_ignores_inactive_resources_and_uses_current_sampler(tmp_path, monkeypatch, capsys):
@@ -22,8 +23,8 @@ def test_inference_phase_ignores_inactive_resources_and_uses_current_sampler(tmp
     }))
     calls = []
 
-    def sample(preparation, *, model, sampler, output_dir):
-        calls.append((preparation, model, sampler.draws, output_dir))
+    def sample(preparation, *, model, sampling, output_dir):
+        calls.append((preparation, model, sampling["draws"], output_dir))
         return output_dir / "sample-manifest.json"
 
     monkeypatch.setattr(handoffs, "sample", sample)
@@ -73,18 +74,18 @@ def test_configured_full_rejects_mismatched_country_grid_before_materialization(
     def forbidden(*args, **kwargs):
         raise AssertionError("Reporting incompatibility must fail before model materialization")
 
-    monkeypatch.setattr(execution, "materialize_co2_inputs", forbidden)
+    monkeypatch.setattr(co2_inference, "materialize_co2_inputs", forbidden)
     with pytest.raises(ValueError, match="align"):
         execution.run_co2(params=params, prepared=prepared, affine_artifact=affine)
     assert not (tmp_path / "products").exists()
 
 
 def test_co2_prior_choices_need_no_sampling_or_output_sections():
-    choices = resolve_co2_model({
+    choices = Co2ModelConfig.from_params({
         "likelihood": {"kind": "additive_sigma", "no_model_error": True},
         "sampling": {"draws": "invalid inactive value"},
         "outputs": {"output_format": "invalid inactive value"},
-    })
+    }).model_arguments()
     assert choices["no_model_error"] is True
 
 
@@ -104,7 +105,7 @@ def test_co2_file_and_override_paths_use_one_invocation_base(tmp_path, monkeypat
     invocation.mkdir()
     monkeypatch.chdir(invocation)
     options = load_co2_params(params_file=source, overrides={"outputs": {"country_file": "other.nc"}})
-    assert resolve_co2_preparation(options)["prepared_path"] == invocation / "prepared.nc"
+    assert Co2PreparationConfig.from_params(options).preparation_arguments()["prepared_path"] == invocation / "prepared.nc"
     assert resolve_co2_output(options)["output"].country_file == invocation / "other.nc"
 
 
@@ -134,7 +135,7 @@ def test_phase_rejects_unsupported_format_versions(version):
 
 def test_partial_component_override_preserves_the_other_choices():
     original = {"sampling": {"draws": 30, "tune": 11, "chains": 2, "random_seed": 73,
-                             "sample_prior_predictive": 8, "nuts_sampler": "numpyro"},
+                             "sample_prior_predictive": 8},
                 "outputs": {"output_format": "basic", "output_name": "retained", "save_trace": "trace.nc"}}
     override = {"sampling": {"draws": 10}, "outputs": {"output_name": "later"}}
     loaded = load_co2_params(params=original, overrides=override)
@@ -191,7 +192,7 @@ def test_full_rejects_positional_date_conflicts_with_imported_request(tmp_path, 
     def forbidden(*args, **kwargs):
         raise AssertionError("Conflicting request facts must fail before inference")
 
-    monkeypatch.setattr(execution, "materialize_co2_inputs", forbidden)
+    monkeypatch.setattr(co2_inference, "materialize_co2_inputs", forbidden)
     with pytest.raises(ValueError, match="requested|conflict|start_date"):
         execution.run_co2(params=params, prepared=prepared, **claims)
     assert not (tmp_path / "rejected").exists()

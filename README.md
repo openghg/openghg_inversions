@@ -354,6 +354,29 @@ This is the required check before pushing a draft pull request. GitHub Actions
 tests the committed `uv.lock` against the latest OpenGHG release and tests the
 OpenGHG devel branch separately. It fails if the lockfile lags a new release.
 
+Routine pull requests run the full suite with PyTensor's Python linker to avoid
+repeated JIT compilation. Changes to production code, backend-sensitive tests,
+dependencies or CI configuration retain the default compiled backend (currently
+Numba). Pushes also use the compiled backend. The
+[backend selector](.github/scripts/select-test-linker.cjs) owns the path rules;
+incomplete or failed change detection falls back to compiled coverage. The same
+scientific tests and numerical tolerances run in either mode.
+
+For an explicit compiled run from Actions, use:
+
+```bash
+gh workflow run workflow.yaml --ref <branch> -f compiled_backend=true
+```
+
+Local pytest, tox and production defaults are unchanged. To opt into Python
+linking for a focused local check with no existing PyTensor flags, start a new process with
+`PYTENSOR_FLAGS=linker=py DASK_NUM_WORKERS=2 uv run pytest <test-path>`.
+If `PYTENSOR_FLAGS` is already set, preserve its other entries and add or replace
+only `linker`. Python checks do not replace coverage of PyTensor's Numba lowering
+or backend-specific RNG and sampler behaviour; retain a compiled run when
+changing those rules. The suite can still invoke other compiled backends such
+as NumPyro/JAX explicitly.
+
 On a Slurm cluster, submit tox from the repository root instead of creating its
 environments on a shared worktree filesystem:
 
@@ -373,6 +396,38 @@ these defaults; a worker limit is not a total job memory limit.
 
 Direct pytest and GitHub Actions bypass the Slurm runner. To bound Dask during
 a direct real-data test run, set `DASK_NUM_WORKERS=2 uv run pytest <test-path>`.
+GitHub's scientific jobs use two pytest workers, two Dask workers per process
+and set OpenBLAS, OpenMP, MKL, NumExpr and BLIS thread limits to one. These
+per-process limits are not a total job memory bound or a limit on JAX/XLA pools.
+
+An optional serial CI probe records CPU model, affinity/quota, effective loaded
+thread pools and PyTensor cache settings from the actual pytest process.
+Cache-lock acquisition time is an upper bound on waiting, not a measurement of
+compilation time or proof of contention. Installed CLI and sampling subprocesses
+are outside these reports. Diagnostics do not import PyTensor before test
+collection or change scientific settings. To run it in the locked Python
+3.12 and 3.13 GitHub environments:
+
+```bash
+gh workflow run workflow.yaml --ref <branch> -f runtime_comparison=true
+```
+
+This profiles the full suite serially with two Dask workers and one numerical
+thread and selects the default compiled backend, recording elapsed/CPU time and
+peak RSS. Four focused runs then compare
+one/two numerical threads in reverse order, also with xdist disabled and two Dask
+workers per process.
+Every run has fresh PyTensor/Numba caches. The existing float64 scientific probes
+retain their backend, precision and assertions. Logs, JUnit, process diagnostics,
+wall time and aggregate child CPU time are uploaded as `test-runtime-*` artifacts.
+This small sample does not establish the best settings for the complete suite or contention
+between pytest workers. To run locally, choose a fresh output directory:
+
+```bash
+uv run --group test python scripts/compare_test_runtime.py /tmp/ogi-runtime-comparison
+```
+
+Use Slurm for cluster comparisons.
 
 Scientific tox environments check the resolved Python's development headers
 and PyTensor's configured C++ compiler before pytest. The Slurm runner prefers

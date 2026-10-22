@@ -152,16 +152,14 @@ def test_unsupported_requests_are_rejected_before_destinations_exist(tmp_path):
     assert not (tmp_path / "unopened").exists()
 
 
-def test_cached_output_options_preserve_unsupported_inversion_output_guard(tmp_path):
-    from openghg_inversions.rhime.co2.stages import resolve_co2_stage_setup
-    from test_co2_stage_contracts import _config
+def test_output_options_preserve_unsupported_inversion_output_guard(tmp_path):
+    from openghg_inversions.rhime.co2.execution import resolve_co2_output
 
-    params = _config(tmp_path / "absent.nc")
-    params["outputs"] = {"output_format": "basic", "save_inversion_output": True}
+    params = {"outputs": {"output_format": "basic", "save_inversion_output": True}}
     with pytest.raises(ValueError, match="save_inversion_output"):
-        resolve_co2_stage_setup(params)
-    params["outputs"]["save_inversion_output"] = False
-    assert isinstance(resolve_co2_stage_setup(params).output, Co2OutputOptions)
+        resolve_co2_output(params)
+    del params["outputs"]["save_inversion_output"]
+    assert isinstance(resolve_co2_output(params)["output"], Co2OutputOptions)
 
 
 def test_basic_native_product_uses_affine_nonunit_reference_and_signed_flux():
@@ -303,3 +301,25 @@ def test_product_calculation_trusts_the_completed_request_preflight(monkeypatch)
     monkeypatch.setattr(co2_outputs, "validate_co2_reporting_inputs", forbidden)
     calculate_co2_products(result=result, prepared=prepared, output=output, countries=countries)
     assert "basic" in result.outputs
+
+
+@pytest.mark.parametrize("output_format", ["basic", "paris"])
+@pytest.mark.parametrize("select_countries", [False, True])
+def test_reporting_country_selection_accepts_iterables_and_preserves_none(
+    europe_country_file, output_format, select_countries,
+):
+    from types import SimpleNamespace
+    from openghg_inversions.rhime.co2.co2_outputs import validate_co2_reporting_inputs
+
+    with xr.open_dataset(europe_country_file) as source:
+        names = list(map(str, source.name.values))
+    selections = iter(names[:2]) if select_countries else None
+    output = Co2OutputOptions(
+        output_format=output_format, country_file=europe_country_file,
+        paris_postprocessing_kwargs={"country_selections": selections},
+    )
+    countries = validate_co2_reporting_inputs(
+        output, SimpleNamespace(averaging_period=["1h"]),
+        SimpleNamespace(affine_map=SimpleNamespace(flux=xr.DataArray(1.0))),
+    )
+    assert list(countries.matrix.country.values) == (names[:2] if select_countries else names)

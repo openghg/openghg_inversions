@@ -13,12 +13,12 @@ import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.cli import build_parser
+from openghg_inversions.rhime.requests import load_params
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.inference import diagnostics as inference_diagnostics
 from openghg_inversions.rhime.stages import (
     CONVERGENCE_CHECK_NAME,
     diagnose_rhime_stage,
-    load_stage_params,
 )
 from openghg_inversions.serialization import save_trace
 from tests.helpers import make_trace
@@ -115,8 +115,6 @@ def test_downstream_stage_parser_requires_handoff_manifests() -> None:
                 "/run/effective.json",
                 "--model",
                 "standard",
-                "--prepared-inputs",
-                "/run/prepared.nc",
                 "--output-dir",
                 "/run/sample",
             ]
@@ -136,7 +134,7 @@ def test_stage_config_paths_are_relative_to_the_invocation(
     )
     monkeypatch.chdir(tmp_path.parent)
 
-    loaded = load_stage_params(params_file=params_path)
+    loaded = load_params(params_file=params_path)
 
     assert loaded["data"]["bc_basis_paths"] == (tmp_path.parent / "relative/bc.nc",)
     assert loaded["output"]["country_file"] == tmp_path.parent / "relative/country.nc"
@@ -331,7 +329,7 @@ def test_diagnostics_accept_digest_free_sample_manifest(tmp_path: Path, model: s
             "schema_version": 1,
             "producer": "openghg_inversions",
             "stage": "sample",
-            "effective_configuration": {"model": model},
+            "schema": f"openghg_inversions.{model}.sample",
         },
     )
 
@@ -342,10 +340,7 @@ def test_diagnostics_accept_digest_free_sample_manifest(tmp_path: Path, model: s
     )
     assert result["measured_values"]["chains"] == 2
     assert result["measured_values"]["draws_per_chain"] == 4
-    if model == "co2":
-        manifest = json.loads((tmp_path / "diagnose" / "diagnose-manifest.json").read_text())
-        assert manifest["configuration_identity"] is None
-
+    assert not (tmp_path / "diagnose" / "diagnose-manifest.json").exists()
 
 @pytest.mark.parametrize("use_override", [False, True])
 @pytest.mark.parametrize("absolute", [False, True])
@@ -382,7 +377,8 @@ def test_resource_origins_match_full_requests(tmp_path, monkeypatch, use_overrid
 
 
 def test_co2_stage_override_paths_use_invocation_directory(tmp_path, monkeypatch):
-    from openghg_inversions.rhime.co2.stages import load_co2_stage_params
+    from openghg_inversions.rhime.co2.execution import load_co2_params, resolve_co2_output
+    from openghg_inversions.rhime.co2.configuration import Co2PreparationConfig
 
     source = tmp_path / "configs" / "co2.json"
     source.parent.mkdir()
@@ -390,7 +386,47 @@ def test_co2_stage_override_paths_use_invocation_directory(tmp_path, monkeypatch
                                  "outputs": {"country_file": "country.nc"}}))
     monkeypatch.chdir(tmp_path)
     overrides = {"prepared_inputs": {"path": "selected.nc"}}
-    loaded = load_co2_stage_params(params_file=source, overrides=overrides)
-    assert loaded["prepared_inputs"]["path"] == str(tmp_path / "selected.nc")
-    assert loaded["outputs"]["country_file"] == str(source.parent / "country.nc")
+    loaded = load_co2_params(params_file=source, overrides=overrides)
+    assert Co2PreparationConfig.from_params(loaded).preparation_arguments()["prepared_path"] == tmp_path / "selected.nc"
+    assert resolve_co2_output(loaded)["output"].country_file == tmp_path / "country.nc"
     assert overrides["prepared_inputs"]["path"] == "selected.nc"
+
+
+@pytest.mark.parametrize("ordinary,sigma,expected", [
+    ([False, True], None, 1),
+    (None, [True, False], 1),
+    ([False, True], [True, False], 2),
+    ([True, False], [True, False], 1),
+    (None, None, None),
+])
+def test_diagnostics_count_any_nuts_divergence_and_strict_cli(
+    tmp_path, monkeypatch, ordinary, sigma, expected,
+):
+    from openghg_inversions.cli import main
+
+    stats = {
+        name: (("chain", "draw"), [flags])
+        for name, flags in (("diverging", ordinary), ("sigma_nuts_diverging", sigma))
+        if flags is not None
+    }
+    idata = make_trace(
+        posterior=xr.Dataset({"x": (("chain", "draw"), [[0.0, 1.0]])}),
+        sample_stats=xr.Dataset(stats),
+    )
+    posterior = tmp_path / "posterior.nc"
+    save_trace(idata, posterior)
+    monkeypatch.setattr(inference_diagnostics.az, "summary", lambda *args, **kwargs: xr.Dataset(
+        {"x": ("metric", [1.0, 800.0, 700.0])},
+        coords={"metric": ["r_hat", "ess_bulk", "ess_tail"]},
+    ))
+    result = diagnose_rhime_stage(posterior=posterior, output_dir=tmp_path / "diagnose")
+    assert result["measured_values"]["divergences"] == expected
+    assert result["measured_values"]["divergences_by_chain"] == ([expected] if expected is not None else None)
+    assert result["status"] == ("fail" if expected else "unknown")
+    args = ["diagnose", "--posterior", str(posterior), "--output-dir", str(tmp_path / "cli"), "--strict"]
+    if expected:
+        with pytest.raises(SystemExit) as caught:
+            main(args)
+        assert caught.value.code == 1
+    else:
+        main(args)

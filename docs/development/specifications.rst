@@ -44,9 +44,10 @@ The resource-I/O and HBMCMC entries were updated the same day for the accepted
      - :download:`RHIME model selection
        <../../openspec/specs/rhime-model-selection/spec.md>`
      - Baseline of delivered behavior; :doc:`/usage/rhime` and
-       :doc:`/usage/cli`. The :download:`ordinary CO2 selector/runner amendment
+       :doc:`/usage/cli`. The :download:`CO2 selector/runner amendment
        <../../openspec/changes/replace-recipe-workflow-with-reusable-handoffs/specs/rhime-model-selection/spec.md>`
-       is pending review in `PR 886 <https://github.com/openghg/openghg_inversions/pull/886>`_.
+       includes the merged `PR 886 <https://github.com/openghg/openghg_inversions/pull/886>`_
+       runner and the OPE-214 stack for model-driven fixed-OU inference and shared handoffs.
    * - Registered coordinates and custom likelihood composition
      - :download:`RHIME model composition
        <../../openspec/specs/rhime-model-composition/spec.md>`
@@ -93,8 +94,9 @@ The resource-I/O and HBMCMC entries were updated the same day for the accepted
        <../../openspec/changes/replace-recipe-workflow-with-reusable-handoffs/proposal.md>`
        in `PR 802 <https://github.com/openghg/openghg_inversions/pull/802>`_
      - Standard prepared/sample interfaces are implemented, including graph-free
-       replay and the two-model/two-output parity example. Multisector and CO2
-       adoption remain outstanding in the active change. Current routes are documented in
+       replay and the two-model/two-output parity example. CO2 preparation and outputs
+       were adopted in PRs 886 and 900; the OPE-214 stack completes inferred fixed-OU
+       handoffs. Remaining programme work stays in the active change. Current routes are documented in
        :doc:`/usage/staged_workflow` and the family pages.
 
 The older :download:`workflow configuration proposal

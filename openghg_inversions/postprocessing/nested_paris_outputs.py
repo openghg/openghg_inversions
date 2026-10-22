@@ -26,10 +26,11 @@ from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
-import numpy as np
 import xarray as xr
+from openghg.util import align_lat_lon, get_domain_info
 
 from openghg_inversions._country_file import load_country_dataset
+from openghg_inversions.array_ops import force_align
 from openghg_inversions.postprocessing.countries import regrid_country_dataset
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_paris_outputs import (
@@ -40,6 +41,7 @@ from openghg_inversions.postprocessing.make_paris_outputs import (
     paris_concentration_outputs,
     paris_flux_output,
 )
+from openghg_inversions.postprocessing.paris_options import NestedParisOptions
 from openghg_inversions.utils import get_country_file_path
 
 __all__ = [
@@ -47,7 +49,6 @@ __all__ = [
 ]
 
 _CACHE_SOURCE_SHA256_ATTR = "nested_country_source_sha256"
-_CACHE_GRID_SHA256_ATTR = "nested_country_target_grid_sha256"
 
 
 def _file_sha256(path: Path) -> str:
@@ -56,18 +57,6 @@ def _file_sha256(path: Path) -> str:
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
-    return digest.hexdigest()
-
-
-def _coordinate_sha256(*, lat: xr.DataArray, lon: xr.DataArray) -> str:
-    """Return an exact identity digest for the target spatial coordinates."""
-    digest = hashlib.sha256()
-    for name, coordinate in (("lat", lat), ("lon", lon)):
-        values = np.asarray(coordinate.values)
-        digest.update(name.encode())
-        digest.update(str(values.dtype).encode())
-        digest.update(str(values.shape).encode())
-        digest.update(np.ascontiguousarray(values).tobytes())
     return digest.hexdigest()
 
 
@@ -82,22 +71,19 @@ def _cached_country_grid_matches(
     path: Path,
     *,
     source_sha256: str,
-    grid_sha256: str,
-    lat: xr.DataArray,
-    lon: xr.DataArray,
+    inner_domain_label: str,
+    target: xr.Dataset,
 ) -> bool:
-    """Return whether a cached country grid matches its declared inputs."""
+    """Validate a cached domain grid without comparing coordinate bytes."""
     try:
         with xr.open_dataset(path) as cached:
-            return (
-                cached.attrs.get(_CACHE_SOURCE_SHA256_ATTR) == source_sha256
-                and cached.attrs.get(_CACHE_GRID_SHA256_ATTR) == grid_sha256
-                and "lat" in cached.coords
-                and "lon" in cached.coords
-                and np.array_equal(cached["lat"].values, lat.values)
-                and np.array_equal(cached["lon"].values, lon.values)
-            )
-    except (OSError, ValueError):
+            if cached.attrs.get(_CACHE_SOURCE_SHA256_ATTR) != source_sha256:
+                return False
+            if inner_domain_label.upper() in get_domain_info():
+                cached = align_lat_lon(cached, inner_domain_label)
+            force_align(cached, target, dims=("lat", "lon"))
+            return True
+    except (OSError, ValueError, KeyError):
         return False
 
 
@@ -116,34 +102,35 @@ def _regridded_inner_country_file(
     file at their native resolution. Country/region membership does not
     change between repeated runs for the same physical inner domain (e.g.
     monthly array-job tasks), so the regridded file is cached by inner-domain
-    label plus source-file and target-coordinate identity. The default is a
-    per-user cache rather than the source file's directory. Concurrent writers
-    race safely because each writes to a unique temporary path and moves it
-    into place with an atomic rename.
+    label plus source-file content identity. Coordinate noise reuses the
+    existing file; a changed resolution or extent rebuilds that domain cache.
+    The default is a per-user cache rather than the source file's directory.
+    Concurrent writers use unique temporary paths and atomic replacement.
     """
     source_path = Path(get_country_file_path(country_file=country_file, domain=domain))
     target_dir = Path(cache_dir) if cache_dir is not None else _default_country_cache_dir()
     source_sha256 = _file_sha256(source_path)
-    grid_sha256 = _coordinate_sha256(lat=lat, lon=lon)
-    identity = hashlib.sha256(f"{source_sha256}:{grid_sha256}".encode()).hexdigest()[:16]
+    target = xr.Dataset(coords={"lat": lat.variable, "lon": lon.variable})
+    if inner_domain_label.upper() in get_domain_info():
+        target = align_lat_lon(target, inner_domain_label)
+    identity = source_sha256[:16]
     safe_label = str(inner_domain_label).replace("/", "_")
+    # shortcut: concurrent grids need distinct domain names; this cache assumes one grid per name.
     target_path = target_dir / f"country_{safe_label}_{identity}_regridded.nc"
     if target_path.exists() and _cached_country_grid_matches(
         target_path,
         source_sha256=source_sha256,
-        grid_sha256=grid_sha256,
-        lat=lat,
-        lon=lon,
+        inner_domain_label=inner_domain_label,
+        target=target,
     ):
         return target_path
 
     countries_ds = load_country_dataset(source_path)
-    regridded = regrid_country_dataset(countries_ds, lat=lat, lon=lon)
+    regridded = regrid_country_dataset(countries_ds, lat=target["lat"], lon=target["lon"])
     regridded.attrs = dict(regridded.attrs)
     regridded.attrs.update(
         {
             _CACHE_SOURCE_SHA256_ATTR: source_sha256,
-            _CACHE_GRID_SHA256_ATTR: grid_sha256,
             "nested_country_source_path": str(source_path.resolve()),
         }
     )
@@ -205,6 +192,10 @@ def make_nested_paris_products(
         ``flux_inner``. ``flux_inner`` reports genuine native-resolution flux
         and country totals on the inner domain's own grid.
     """
+    NestedParisOptions(
+        inner_country_file=inner_country_file, time_point=time_point,
+        template_version=template_version, flux_frequency=flux_frequency,
+    ).validate()
     conc_outs = paris_concentration_outputs(
         outer_inv_out,
         report_mode=report_mode,

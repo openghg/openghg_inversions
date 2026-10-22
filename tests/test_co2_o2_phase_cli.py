@@ -12,7 +12,7 @@ import xarray as xr
 
 from examples.co2_o2_handoffs import FACTS, synthetic_inputs
 from openghg_inversions.cli import main
-from openghg_inversions.rhime.co2 import co2_o2_handoffs as handoffs
+from openghg_inversions.rhime.co2 import Co2O2ModelConfig, co2_o2_handoffs as handoffs
 from openghg_inversions.serialization import load_trace
 
 
@@ -52,9 +52,11 @@ def test_installed_unequal_axis_sequence_retains_joint_science(tmp_path, monkeyp
     sample = _cli("sample", "--model", "co2_o2", "--params-file", params,
                   "--preparation-manifest", prep_manifest, "--output-dir", sample_dir)
     sample_manifest = Path(sample.stdout.strip().splitlines()[-1])
-    _cli("diagnose", "--sample-manifest", sample_manifest, "--output-dir", tmp_path / "diagnose")
-    _cli("postprocess", "--model", "co2_o2", "--sample-manifest", sample_manifest,
-         "--params-file", params, "--output-dir", tmp_path / "products")
+    # Preparation and inference above cover installed process boundaries.
+    main(["diagnose", "--sample-manifest", str(sample_manifest),
+          "--output-dir", str(tmp_path / "diagnose")])
+    main(["postprocess", "--model", "co2_o2", "--sample-manifest", str(sample_manifest),
+          "--params-file", str(params), "--output-dir", str(tmp_path / "products")])
 
     prior = load_trace(tmp_path / "prior" / "prior-predictive.nc")
     trace = load_trace(sample_dir / "posterior.nc")
@@ -69,14 +71,16 @@ def test_installed_unequal_axis_sequence_retains_joint_science(tmp_path, monkeyp
                                prepared.aggregation_error.covariance)
     assert roles["modelled_concentration"] in trace.posterior
     assert roles["flux_scale"] in trace.posterior
-    assert (tmp_path / "diagnose" / "sampler-convergence.json").exists()
+    diagnostics = json.loads((tmp_path / "diagnose" / "sampler-convergence.json").read_text())
+    assert diagnostics["measured_values"]["chains"] == 2
+    assert diagnostics["measured_values"]["draws_per_chain"] == 6
     products = list((tmp_path / "products").glob("*.nc"))
     assert products
     for species, count in (("co2", 2), ("o2", 3)):
-        matching = [path for path in products if species in path.name and "components" in path.name]
-        assert matching
+        matching = [path for path in products if path.name.startswith(f"linked_{species}_concentration_components_")]
+        assert len(matching) == 1
         with xr.open_dataset(matching[0]) as components:
-            assert count in components.sizes.values()
+            assert components.sizes["observation"] == count
     loaded = handoffs.load_samples(sample_manifest)
     assert (loaded.start_date, loaded.end_date, loaded.domain) == tuple(FACTS.values())
 
@@ -97,7 +101,10 @@ def test_sample_ignores_inactive_preparation_and_outputs(tmp_path, monkeypatch):
               "prepared_inputs": {"path": 42}, "outputs": {"output_path": 42},
           })])
     assert calls[0][0] == str(manifest)
-    assert calls[0][1]["channels"] == CHANNELS
+    assert isinstance(calls[0][1], Co2O2ModelConfig)
+    assert calls[0][1].co2_units == CHANNELS["co2"]["units"]
+    assert calls[0][1].o2_units == CHANNELS["o2"]["units"]
+    assert calls[0][1].independent_error_sd == {}
     assert calls[0][2] == 7
 
 

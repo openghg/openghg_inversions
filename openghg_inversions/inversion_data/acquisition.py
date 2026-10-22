@@ -154,9 +154,20 @@ class MergedData:
         Recorded selectors and unrelated model choices are not compared.
         Validation reads metadata only and never computes borrowed arrays.
 
+        Args:
+            species: Requested species, compared without case when recorded.
+            domain: Requested transport domain, compared without case when recorded.
+            start_date: Requested start as a date/time string. Naive values mean UTC.
+            end_date: Requested end as a date/time string. Equivalent UTC instants
+                agree even when their string spellings differ.
+            split_by_sectors: Whether preparation expects separate flux sources.
+
+        Returns:
+            None. Compatible data and their borrowed arrays remain unchanged.
+
         Raises:
             ValueError: If a known fact or the source layout conflicts with the
-                requested preparation, or a recorded date is invalid.
+                requested preparation, or a compared recorded/requested date is invalid.
         """
         requested = {
             "species": species,

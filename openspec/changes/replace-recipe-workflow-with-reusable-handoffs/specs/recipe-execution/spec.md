@@ -57,6 +57,60 @@ Hierarchical amplitude priors and sampled OU timescales are outside this scope.
 - **THEN** construction warns and records the effective direct LogNormal representation
 - **AND** the physical prior and caller-owned configuration remain unchanged
 
+### Requirement: CO2 inference follows scientific choices
+
+Configured CO2 full execution and shared saved inference SHALL choose their
+implementation from the scientific likelihood and amplitude policy. Fixed OU
+timescales with inferred independent positive site amplitudes SHALL use the
+matched cached update, without a public algorithm switch or silent fallback.
+Sampling lengths, chains and seeds SHALL remain configurable. Unsupported
+sampler substitutions SHALL fail before loading or materializing scientific
+inputs. Prior readiness SHALL resolve only its own scientific and seed choices.
+Configured CO2 SHALL reject `sampling.nuts_sampler`. The supported automatic
+policy SHALL be:
+
+| Likelihood | Backend / update | Reason |
+| --- | --- | --- |
+| `additive_sigma` | NumPyro NUTS | All steps are NUTS and the model runs under JAX via NumPyro |
+| `site_sigma`, fixed or inferred amplitudes | PyMC NUTS | Conservative default, not an inherent backend restriction |
+| `scalar_sigma` | PyMC NUTS | Conservative default, not an inherent backend restriction |
+| `fixed_ou`, fixed amplitudes | PyMC NUTS | Custom likelihood operation has no JAX implementation |
+| `fixed_ou`, inferred amplitudes | Matched PyMC amplitude update followed by state NUTS when states exist | Requires the custom cached amplitude update and, when states exist, its ordered compound step in PyMC |
+
+Timing evidence does not cover PyMC's Numba mode or nutpie, and does not
+establish NumPyro as the fastest backend. Site/scalar choices remain conservative
+policy choices rather than inherent backend restrictions.
+
+This explicit policy replaces the previous template-wide NumPyro setting and
+PyMC default when the backend was omitted. Matched target-accept controls SHALL
+belong to `sampling`, not the scientific likelihood. Inference selection SHALL
+use one predicate on the resolved model. The actual algorithm and explicit
+target-accept values, or a `target_accept_source="pm.sample_default"` marker
+when ordinary acceptance is omitted, SHALL be recorded in the trace and sample
+manifest and retained by product replay without constructing a sampler. Presence of any
+active flux, boundary or offset state SHALL require the state update.
+
+#### Scenario: Full and saved sampling retain actual inference details
+
+- **WHEN** equivalent CO2 model and sampling choices run through full or saved execution
+- **THEN** both choose the same backend, update sequence and tuning controls
+- **AND** trace serialization and replay retain the actual algorithm and explicit tuning or the delegated-default marker
+- **AND** absent historical descriptions are not replaced by current execution defaults
+
+#### Scenario: All affine coefficients are fixed
+
+- **WHEN** fixed-OU amplitudes are inferred while all flux and baseline
+  coefficients are fixed
+- **THEN** the matched amplitude update remains available
+- **AND** no empty state NUTS step is constructed
+- **AND** the complete fixed concentration mean remains in the likelihood
+
+#### Scenario: Dropped-site options are validated before selection
+
+- **WHEN** OU timescales or initial amplitudes include entries for dropped sites
+- **THEN** every supplied entry is validated before selecting retained labels
+- **AND** valid extras are allowed while missing retained-site coverage fails
+
 ### Requirement: Canonical scientific execution across supported routes
 
 Equivalent supported full, prepared-input and staged routes SHALL reuse their
@@ -86,7 +140,7 @@ Runners SHALL consume the resource-I/O contract's save and resource-resolution
 boundary supplied by #868.
 Direct scientific customization, signatures and numerical returns SHALL retain
 their contracts except for the explicit 0.8 standard API/result and eager-builder
-migrations, the sampler-default migration below, the maintainer-approved ordinary CO2
+migrations, the sampler-default migration below, the maintainer-approved CO2
 runner/selector reset to `run_co2`,
 #868's removal of the basis-preparation export argument, and the preparation
 steps' change from `MergedData` to per-site datasets and `SiteOptions`;
@@ -154,6 +208,12 @@ owners without implying additional nested or linked checkpoint support.
   remain available without requiring acquisition, MCMC staging or saved replay
 
 ### Requirement: Existing sampler API and invocation isolation
+
+Configured CO2 full and saved execution are an explicit exception to the
+generic sampler-argument contract below: they SHALL consume a `sampling`
+mapping, and the resolved model SHALL select the backend and update. They SHALL
+NOT retain a second saved-route sampler override. Direct scientific composition
+and linked CO2/O2 retain their separate numerical sampling APIs.
 
 Public live sampling and runner APIs offering default sampler selection,
 including existing prepared-input entry points, SHALL accept `RhimeSampler` or the literal
@@ -237,6 +297,9 @@ Missing provenance SHALL NOT be filled from current defaults, and descriptive
 sampling metadata SHALL NOT impose an additional scientific compatibility gate.
 No strict-metadata mode is required. `"default"` SHALL remain an execution
 request only and SHALL NOT replace actual inference provenance.
+CO2 SHALL additionally retain valid recorded algorithm and effective target-accept
+fields through its plain metadata reader; it SHALL NOT drop them when replaying
+the sample manifest.
 
 #### Scenario: Result without a live sampler
 - **WHEN** a caller constructs a scientific output, or loads saved samples

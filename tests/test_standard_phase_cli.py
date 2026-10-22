@@ -42,10 +42,20 @@ def test_phase_cli_rejects_explicit_wrong_phase_override(tmp_path):
               "--kwargs", '{"filters":"daily_median"}'])
 
 
-def test_standard_cli_rejects_retired_artifact_arguments(tmp_path):
-    with pytest.raises(ValueError, match="one manifest"):
-        main(["sample", "--preparation-manifest", "saved.json", "--prepared-inputs", "inputs.nc",
-              "--output-dir", str(tmp_path / "sample")])
+@pytest.mark.parametrize("model", ["standard", "multisector", "co2"])
+@pytest.mark.parametrize("phase,retired", [
+    ("prior-predictive", "--prepared-inputs"), ("sample", "--prepared-inputs"),
+    ("postprocess", "--prepared-inputs"), ("postprocess", "--posterior"),
+    ("postprocess", "--preparation-manifest"),
+])
+def test_cli_rejects_retired_artifact_arguments_before_execution(tmp_path, capsys, model, phase, retired):
+    manifest_arg = "--sample-manifest" if phase == "postprocess" else "--preparation-manifest"
+    with pytest.raises(SystemExit) as error:
+        main([phase, "--model", model, manifest_arg, "saved.json", retired, "inputs.nc",
+              "--output-dir", str(tmp_path / "unopened")])
+    assert error.value.code == 2
+    assert "unrecognized arguments" in capsys.readouterr().err
+    assert not (tmp_path / "unopened").exists()
 
 
 def test_prior_cli_strict_preserves_scientific_failure(tmp_path, monkeypatch):

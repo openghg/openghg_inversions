@@ -75,6 +75,36 @@ def europe_country_file(raw_data_path):
 
 
 @pytest.fixture
+def tiny_paris_country_file(tmp_path: Path) -> Path:
+    """Keep all PARIS country labels on a small grid with unequal cell areas."""
+    countries = xr.Dataset(
+        {
+            "country": (
+                ("lat", "lon"),
+                [
+                    [0, 1, 2, 3, 4, 5],
+                    [6, 7, 8, 9, 10, 11],
+                    [12, 13, 14, 15, 16, 17],
+                    [18, 19, 20, 21, 22, 10],
+                ],
+            ),
+            "name": (
+                "ncountries",
+                [
+                    "OCEAN", "SWE", "SVN", "SVK", "PRT", "POL", "NOR", "NLD",
+                    "LUX", "ITA", "IRL", "HUN", "HRV", "GBR", "FRA", "FIN",
+                    "ESP", "DNK", "DEU", "CZE", "CHE", "BEL", "AUT",
+                ],
+            ),
+        },
+        coords={"lat": [48.0, 49.0, 50.0, 51.0], "lon": [-3.0, -2.0, -1.0, 0.0, 1.0, 2.0]},
+    )
+    path = tmp_path / "country_TINY_PARIS.nc"
+    countries.to_netcdf(path)
+    return path
+
+
+@pytest.fixture
 def fake_multisector_basis_functions() -> Callable[..., BasisFunctions]:
     """Provide a builder for a one-cell basis artifact with sector prior fluxes."""
 
@@ -365,6 +395,8 @@ tac_footprints_metadata = {
     "domain": "europe",
     "model": "name",
     "inlet": "185m",
+    # Bound temporary index arrays when the ACRG parser transposes the source.
+    "chunks": {"time": 24},
     # "metmodel": "ukv",
 }
 tac_footprints_data_path = _raw_data_path / "footprints_tac_europe_name_185m_2019-01-01_2019-01-07_data.nc"

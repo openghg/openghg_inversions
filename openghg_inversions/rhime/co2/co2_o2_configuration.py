@@ -3,25 +3,28 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass, fields
 import json
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from openghg_inversions.models import StateActivity
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.rhime.sampling import RhimeSampler
+from openghg_inversions.rhime.specs import normalise_optional_mapping
 
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .configuration import (
     _reject_unknown,
-    _resolve_linked,
+    _bool, _number, _take, _model, _co2_likelihood, _frozen,
+    Co2PreparationConfig,
     _sampling,
     _string,
     _table,
     load_co2_family_config,
     resolve_co2_prior_seed,
-    resolve_co2_preparation,
 )
 
 
@@ -75,21 +78,27 @@ def load_co2_o2_params(
     return options
 
 
-def resolve_co2_o2_preparation(
-    config: Mapping[str, object], *, require_path: bool = False,
-) -> dict[str, Any]:
-    """Resolve a prepared artifact path and original requested dates/domain only.
+@dataclass(frozen=True)
+class Co2O2PreparationConfig:
+    """Linked artifact selection and original requested context, without I/O."""
 
-    ``require_path`` selects importing callers; in-memory callers may omit it.
-    Other phases' sections remain unused. Paths resolve from the invocation
-    directory and no artifact is opened here.
-    """
-    prepared = _table(_table(config, "config").get("prepared_inputs", {}), "prepared_inputs")
-    if "reconstruction_path" in prepared:
-        raise ValueError("Linked CO2/O2 preparation does not support prepared_inputs.reconstruction_path.")
-    result = resolve_co2_preparation({"prepared_inputs": prepared}, require_path=require_path)
-    result.pop("affine_path")
-    return result
+    prepared_path: Path | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    domain: str | None = None
+
+    @classmethod
+    def from_params(cls, config: Mapping[str, object], *, require_path: bool = False) -> Co2O2PreparationConfig:
+        """Parse only linked artifact options; reject affine reconstruction."""
+        prepared = _table(_table(config, "config").get("prepared_inputs", {}), "prepared_inputs")
+        if "reconstruction_path" in prepared:
+            raise ValueError("Linked CO2/O2 preparation does not support prepared_inputs.reconstruction_path.")
+        ordinary = Co2PreparationConfig.from_params({"prepared_inputs": prepared}, require_path=require_path)
+        return cls(ordinary.prepared_path, ordinary.start_date, ordinary.end_date, ordinary.domain)
+
+    def preparation_arguments(self) -> dict[str, Any]:
+        """Return keywords for the linked artifact-import boundary."""
+        return {item.name: getattr(self, item.name) for item in fields(self)}
 
 
 def validate_co2_o2_units(prepared: Co2O2PreparedInputs) -> str:
@@ -138,49 +147,110 @@ def _likelihood(config: Mapping[str, object]) -> dict[str, object] | None:
     return options
 
 
-def resolve_co2_o2_model(
-    config: Mapping[str, object], prepared: Co2O2PreparedInputs,
-) -> dict[str, Any]:
-    """Bind configured linked science to one unchanged prepared artifact.
+@dataclass(frozen=True)
+class Co2O2ModelConfig:
+    """Linked channel science independent of prepared arrays and sampling.
 
-    Required ``channels.co2/o2.units`` must match the artifact's common unit.
-    Configure positive independent-error standard deviations for both channels
-    or retain the saved vector. Existing replay validation owns agreement with
-    saved errors. Channel boundary/offset options keep their ordinary meanings.
-    Fixed independent error and fixed-amplitude fixed OU are supported here;
-    inference and reporting settings are not consumed.
-
-    Returns:
-        Keywords for ``build_rhime_co2_o2``, excluding prepared inputs and sampler.
-
-    Raises:
-        ValueError: If channel labels/units or scientific options are invalid,
-            errors are unavailable, or inferred OU amplitudes are selected.
+    Both channels require identical mole-fraction units. Error overrides must
+    be supplied for both channels or omitted for both to use saved errors.
+    Fixed independent error and fixed-amplitude OU are supported; inferred OU
+    and per-meg transformations remain separate work.
     """
-    validate_co2_o2_units(prepared)
-    options = _table(config, "config")
-    selected: dict[str, object] = {"channels": options.get("channels", {})}
-    if likelihood := _likelihood(options):
-        selected["likelihood"] = likelihood
-    setup = _resolve_linked(selected, "linked")
-    arguments = dict(setup.runner_arguments(prepared))
-    arguments.pop("prepared_inputs")
-    arguments.pop("sampler")
-    return arguments
+
+    co2_units: str
+    o2_units: str
+    independent_error_sd: Mapping[str, float]
+    use_bc: Mapping[str, bool] | None = None
+    bc_prior: Mapping[str, Any] | None = None
+    bc_state_activity: Mapping[str, StateActivity] | None = None
+    offset_prior: Mapping[str, Any] | None = None
+    offset_args: Mapping[str, Any] | None = None
+    tau_hours: float | Mapping[str, float] | None = None
+    fixed_site_amplitudes: float | Mapping[str, float] | None = None
+
+    def __post_init__(self) -> None:
+        for item in fields(self):
+            value = getattr(self, item.name)
+            if isinstance(value, Mapping):
+                object.__setattr__(self, item.name, normalise_optional_mapping(value))
+
+    @classmethod
+    def from_params(cls, config: Mapping[str, object]) -> Co2O2ModelConfig:
+        """Parse active channel/likelihood choices without touching arrays."""
+        options = _table(config, "config")
+        channels = _table(options.get("channels", {}), "channels")
+        units: dict[str, str] = {}
+        errors: dict[str, float] = {}
+        model: dict[str, dict[str, Any]] = {}
+        for name in ("co2", "o2"):
+            channel = _table(_take(channels, name, "channels"), f"channels.{name}")
+            units[name] = _string(_take(channel, "units", f"channels.{name}"), f"channels.{name}.units")
+            mole_fraction_unit_scale(units[name], context=f"channels.{name}.units")
+            if "independent_error_sd" in channel:
+                errors[name] = _number(channel.pop("independent_error_sd"), f"channels.{name}.independent_error_sd", positive=True)
+            selected = {key: channel.pop(key) for key in ("boundary", "offset") if key in channel}
+            if "boundary" in selected:
+                boundary = _table(selected["boundary"], f"channels.{name}.boundary")
+                if "activity" in boundary:
+                    activity = _table(boundary.pop("activity"), f"channels.{name}.boundary.activity")
+                    active = _bool(activity.pop("active", True), f"channels.{name}.boundary.activity.active")
+                    fixed = _number(activity.pop("fixed_value", 1.0), f"channels.{name}.boundary.activity.fixed_value")
+                    _reject_unknown(activity, f"channels.{name}.boundary.activity")
+                    if boundary.get("enabled", True) is False:
+                        raise ValueError("Boundary activity requires enabled=true.")
+                    model.setdefault("bc_state_activity", {})[name] = StateActivity(active=active, fixed_value=fixed)
+                selected["boundary"] = boundary
+            for key, value in _model(selected).items():
+                model.setdefault(key, {})[name] = value
+            _reject_unknown(channel, f"channels.{name}")
+        _reject_unknown(channels, "channels")
+        if errors and len(errors) != 2:
+            raise ValueError("Configure independent_error_sd for both linked channels or omit it for both.")
+        if units["co2"] != units["o2"]:
+            raise ValueError("The linked configuration currently requires identical CO2 and O2 channel units.")
+        likelihood = _likelihood(options)
+        kwargs = {} if likelihood is None else _co2_likelihood(likelihood)["likelihood_kwargs"]
+        return cls(units["co2"], units["o2"], _frozen(errors), **_frozen(model), **kwargs)
+
+    def bind(self, prepared: Co2O2PreparedInputs) -> dict[str, Any]:
+        """Bind channel errors and check units at the scientific array boundary.
+
+        The artifact and its saved error vector remain borrowed. Explicit errors
+        expand over labelled observations; agreement with saved errors is checked
+        by model construction at its materialization boundary.
+        """
+        unit = validate_co2_o2_units(prepared)
+        if unit != self.co2_units or unit != self.o2_units:
+            raise ValueError("Configured channels.co2/o2.units do not match prepared observation_units.")
+        observations = prepared.observations
+        if self.independent_error_sd:
+            species = np.asarray(observations.species.values).astype(str)
+            errors = np.empty(observations.size, dtype=np.float64)
+            for name in ("co2", "o2"):
+                errors[species == name] = self.independent_error_sd[name]
+            independent = observations.copy(data=errors).rename("independent_error_sd")
+            independent.attrs = {"units": "mixed; see observation_units coordinate"}
+        else:
+            independent = prepared.independent_error_sd
+            if independent is None:
+                raise ValueError("Omitted channel independent_error_sd requires errors in the prepared artifact.")
+        result = {item.name: getattr(self, item.name) for item in fields(self)
+                  if item.name not in {"co2_units", "o2_units", "independent_error_sd"} and getattr(self, item.name) is not None}
+        return {**result, "independent_error_sd": independent}
 
 
-def resolve_co2_o2_sampler(config: Mapping[str, object]) -> RhimeSampler:
+def resolve_co2_o2_sampler(config: Mapping[str, object], *, model: Co2O2ModelConfig) -> RhimeSampler:
     """Resolve live sampling controls and the backend required by the likelihood.
 
     Fixed OU requires PyMC; fixed independent error defaults to NumPyro.
     Channel, prepared-input and output choices remain unused.
     """
     options = _table(config, "config")
-    fixed_ou = _table(options.get("likelihood", {}), "likelihood").get("kind") == "fixed_ou"
+    fixed_ou = model.tau_hours is not None
     sampling = _table(options.get("sampling", {}), "sampling")
     sampling.setdefault("nuts_sampler", "pymc" if fixed_ou else "numpyro")
     sampling.setdefault("target_accept", 0.95)
-    sampler = _sampling(sampling, cached=False)
+    sampler = _sampling(sampling)
     if fixed_ou and sampler.nuts_sampler != "pymc":
         raise ValueError("Linked fixed-OU requires sampling.nuts_sampler='pymc'.")
     return sampler
@@ -192,6 +262,6 @@ def resolve_co2_o2_prior_seed(config: Mapping[str, object]) -> int | None:
 
 
 __all__ = [
-    "load_co2_o2_params", "resolve_co2_o2_preparation", "resolve_co2_o2_model",
+    "load_co2_o2_params", "Co2O2PreparationConfig", "Co2O2ModelConfig",
     "resolve_co2_o2_sampler", "resolve_co2_o2_prior_seed", "validate_co2_o2_units",
 ]

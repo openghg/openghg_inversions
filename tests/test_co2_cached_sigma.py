@@ -9,6 +9,7 @@ from typing import Any, cast
 import numpy as np
 import pandas as pd
 import pymc as pm
+import pytensor
 import pytensor.tensor as pt
 import pytest
 from scipy.stats import halfnorm, multivariate_normal, norm
@@ -22,14 +23,22 @@ from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
+from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.rhime.co2.inference import sample_co2_inference
 from openghg_inversions.rhime.co2 import (
     build_co2_cached_sigma_model,
-    run_rhime_co2_cached_sigma,
 )
 from openghg_inversions.rhime.co2 import co2_cached_sigma_runner
 from openghg_inversions.rhime.co2 import co2_cached_sigma_model
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.serialization import load_trace, save_trace
+
+
+@pytest.fixture(autouse=True)
+def dense_oracle_precision():
+    """Keep strict double-precision oracles independent of package import order."""
+    with pytensor.config.change_flags(floatX="float64"):
+        yield
 
 
 def _inputs() -> xr.Dataset:
@@ -349,6 +358,8 @@ def test_lifted_prior_starts_and_caller_transforms_preserve_complete_state_targe
         cached.model.replace_rvs_by_values([cached.modelled_mean])[0],
         inputs=cached.model.value_vars, on_unused_input="ignore",
     )
+    public_logp = cached.model.compile_logp()
+    public_gradient = cached.model.compile_dlogp(vars=list(cached.states))
     for point in starts:
         amplitude = np.exp(point["ou_site_amplitude_log__"])
         cached.shared_cache.update(cached.target.refresh(amplitude))
@@ -373,9 +384,9 @@ def test_lifted_prior_starts_and_caller_transforms_preserve_complete_state_targe
             cov=_dense_fixed_ou_covariance(inputs, amplitude, {"AAA": 3.0, "BBB": 7.0}),
         )
         np.testing.assert_allclose(actual, expected, atol=1e-8)
-        np.testing.assert_allclose(actual, cached.model.compile_logp()(point), atol=1e-8)
+        np.testing.assert_allclose(actual, public_logp(point), atol=1e-8)
         np.testing.assert_allclose(
-            gradient, cached.model.compile_dlogp(vars=list(cached.states))(point), atol=1e-8,
+            gradient, public_gradient(point), atol=1e-8,
         )
 
 
@@ -719,26 +730,54 @@ def test_cached_all_fixed_flux_uses_other_active_component(
     np.testing.assert_allclose(gradient, cached.model.compile_dlogp(vars=list(cached.states))(point), atol=1e-8)
 
 
-def test_cached_rejects_model_without_active_affine_coefficients() -> None:
-    """Reject a cached graph with no coefficient for its state transition."""
+def test_cached_all_fixed_states_infer_amplitudes() -> None:
+    """A fixed mean still has an inferred covariance and exact amplitude transition."""
     inputs = _inputs()
     prior = CorrelatedLognormalPrior(
-        inputs["alpha_prior_mean"],
-        inputs["alpha_prior_covariance"],
-        covariance_dim="region_cov",
+        inputs["alpha_prior_mean"], inputs["alpha_prior_covariance"], covariance_dim="region_cov",
     )
+    cached = build_co2_cached_sigma_model(
+        inputs["H"], retained_prior=prior,
+        fixed_prior_contribution=inputs["fixed_prior_contribution"], observations=inputs["mf"],
+        observation_error=inputs["mf_error"], aggregation_error=resolve_aggregation_error(inputs, "dense"),
+        tau_hours={"AAA": 3.0, "BBB": 7.0, "DROPPED": 9.0},
+        site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
+        initial_site_amplitudes={"AAA": 0.5, "BBB": 0.7, "DROPPED": 1.0},
+        state_activity=StateActivity(active=False),
+    )
+    assert cached.states == ()
+    assert cached.target.design.shape == (4, 0)
+    amplitude = np.asarray([0.5, 0.7])
+    expected = multivariate_normal.logpdf(
+        inputs["mf"].values, mean=cached.modelled_mean.eval(),
+        cov=_dense_fixed_ou_covariance(inputs, amplitude, {"AAA": 3.0, "BBB": 7.0}),
+    )
+    np.testing.assert_allclose(cached.target.refresh(amplitude).log_likelihood(np.empty(0)), expected)
+    sampler = co2_cached_sigma_runner._sampler_for_cached_graph(
+        RhimeSampler(draws=3, tune=2, chains=1, nuts_sampler="pymc"), cached_model=cached,
+        sigma_target_accept=0.8, state_target_accept=0.9,
+    )
+    step = sampler.sample_kwargs["step"]
+    assert len(step.methods) == 1
+    point = make_initial_point_fn(model=cached.model, overrides=cached.initial_values, return_transformed=True)(seed=3)
+    updated, _ = step.step(point)
+    assert np.isfinite(updated["ou_site_amplitude_log__"]).all()
 
-    with pytest.raises(ValueError, match="at least one active flux, boundary, or offset"):
+
+@pytest.mark.parametrize("name", ["tau_hours", "initial_site_amplitudes"])
+@pytest.mark.parametrize("invalid", [True, "bad", 0.0, -1.0, float("nan")])
+def test_cached_mapping_validates_dropped_sites(name, invalid):
+    inputs = _inputs()
+    options = {"tau_hours": {"AAA": 3.0, "BBB": 7.0},
+               "initial_site_amplitudes": {"AAA": 0.5, "BBB": 0.7}}
+    options[name]["DROPPED"] = invalid
+    with pytest.raises(ValueError, match="numeric|positive"):
         build_co2_cached_sigma_model(
-            inputs["H"],
-            retained_prior=prior,
-            fixed_prior_contribution=inputs["fixed_prior_contribution"],
-            observations=inputs["mf"],
-            observation_error=inputs["mf_error"],
-            aggregation_error=resolve_aggregation_error(inputs, "dense"),
-            tau_hours={"AAA": 3.0, "BBB": 7.0},
-            site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
-            state_activity=StateActivity(active=False),
+            inputs["H"], retained_prior=CorrelatedLognormalPrior(
+                inputs["alpha_prior_mean"], inputs["alpha_prior_covariance"], covariance_dim="region_cov"),
+            fixed_prior_contribution=inputs["fixed_prior_contribution"], observations=inputs["mf"],
+            observation_error=inputs["mf_error"], aggregation_error=resolve_aggregation_error(inputs, "dense"),
+            site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75}, **options,
         )
 
 
@@ -944,27 +983,33 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
         posterior_predictive_kwargs={"random_seed": 148},
     )
 
-    result = run_rhime_co2_cached_sigma(
-        prepared_inputs=cast(Any, PreparedInputsStub()),
-        tau_hours={"AAA": 3.0, "BBB": 7.0},
-        site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
-        initial_site_amplitudes=0.4,
-        sampler=sampler,
-        sigma_target_accept=0.82,
-        state_target_accept=0.93,
-        use_bc=True,
-        bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
-        bc_state_activity=StateActivity(
-            active=np.asarray([True, False, False, False, False, False, False, False]),
-            fixed_value=1.0,
-        ),
-        offset_prior={"pdf": "normal", "mu": 0.2, "sigma": 0.1},
+    result, actual = sample_co2_inference(
+        cast(Any, PreparedInputsStub()),
+        {
+            "use_bc": True,
+            "bc_prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+            "bc_state_activity": StateActivity(
+                active=np.asarray([True, False, False, False, False, False, False, False]),
+                fixed_value=1.0,
+            ),
+            "offset_prior": {"pdf": "normal", "mu": 0.2, "sigma": 0.1},
+            "likelihood_builder": add_fixed_ou_gaussian_likelihood,
+            "likelihood_kwargs": {
+                "tau_hours": {"AAA": 3.0, "BBB": 7.0},
+                "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.75},
+                "initial_site_amplitudes": 0.4,
+            },
+        },
+        sampler, sigma_target_accept=0.82, state_target_accept=0.93,
     )
 
     assert step_settings == {
         "sigma_target_accept": 0.82,
         "state_target_accept": 0.93,
     }
+    assert actual["sigma_target_accept"] == 0.82
+    assert actual["state_target_accept"] == 0.93
+    assert json.loads(result.attrs["rhime_actual_inference"]) == actual
     assert len(selected) == 1
     assert selected[0].count("H_bc") == 1
     assert result.posterior["flux_scaling"].shape == (2, 2, 2)
@@ -992,13 +1037,9 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     assert roles["boundary_sensitivity"] == "hbc"
     assert "baseline_concentration" not in roles
     assert "baseline_scale" not in roles
-    assert json.loads(result.posterior["bc"].attrs["rhime_scientific_roles"]) == [
-        "boundary_scale"
-    ]
-    assert json.loads(result.posterior["mu_bc"].attrs["rhime_scientific_roles"]) == [
-        "boundary_concentration"
-    ]
-    assert metadata["recipe"] == "co2_cached_sigma_fixed_ou"
+    assert json.loads(result.posterior["bc"].attrs["rhime_scientific_roles"]) == ["boundary_scale"]
+    assert json.loads(result.posterior["mu_bc"].attrs["rhime_scientific_roles"]) == ["boundary_concentration"]
+    assert metadata["recipe"] == "co2"
     assert "sampler" not in metadata
     assert "numerical_preparation" not in metadata
     assert "rhime_sampler_provenance" not in result.attrs
@@ -1008,14 +1049,10 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     }
     assert result.posterior["ou_site_amplitude"].attrs["units"] == "ppm"
     assert result.posterior_predictive["y"].attrs["units"] == "ppm"
-    assert json.loads(result.posterior_predictive["y"].attrs["rhime_scientific_roles"]) == [
-        "concentration"
-    ]
+    assert json.loads(result.posterior_predictive["y"].attrs["rhime_scientific_roles"]) == ["concentration"]
     assert "units" not in result.log_likelihood["y"].attrs
-    assert json.loads(result.log_likelihood["y"].attrs["rhime_scientific_roles"]) == [
-        "joint_log_likelihood"
-    ]
-    assert result.posterior.attrs["rhime_recipe"] == "co2_cached_sigma_fixed_ou"
+    assert json.loads(result.log_likelihood["y"].attrs["rhime_scientific_roles"]) == ["joint_log_likelihood"]
+    assert result.posterior.attrs["rhime_recipe"] == "co2"
 
     assert result.prior.sizes["draw"] == 8
     assert result.prior_predictive["y"].shape == (1, 8, 4)
@@ -1032,6 +1069,7 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
 
 def test_cached_runner_rejects_generic_target_accept() -> None:
     """The cached runner rejects one target acceptance rate for its two samplers."""
+
     class PreparedInputsStub:
         inv_inputs = _inputs()
         aggregation_error_mode = "dense"
@@ -1043,11 +1081,16 @@ def test_cached_runner_rejects_generic_target_accept() -> None:
         ValueError,
         match="sigma_target_accept.*state_target_accept",
     ):
-        run_rhime_co2_cached_sigma(
-            prepared_inputs=cast(Any, prepared),
-            tau_hours={"AAA": 3.0, "BBB": 7.0},
-            site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
-            sampler=RhimeSampler(sample_kwargs={"target_accept": 0.95}),
+        sample_co2_inference(
+            cast(Any, prepared),
+            {
+                "likelihood_builder": add_fixed_ou_gaussian_likelihood,
+                "likelihood_kwargs": {
+                    "tau_hours": {"AAA": 3.0, "BBB": 7.0},
+                    "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.75},
+                },
+            },
+            RhimeSampler(sample_kwargs={"target_accept": 0.95}),
         )
 
 
@@ -1062,7 +1105,10 @@ def test_cached_predictive_options_fail_before_constructing_step(monkeypatch, op
     )
     with pytest.raises(ValueError, match="predict|random_seed"):
         co2_cached_sigma_runner._sampler_for_cached_graph(
-            RhimeSampler(**options), cached_model=_build(), sigma_target_accept=0.8, state_target_accept=0.9,
+            RhimeSampler(**options),
+            cached_model=cast(Any, object()),
+            sigma_target_accept=0.8,
+            state_target_accept=0.9,
         )
 
 

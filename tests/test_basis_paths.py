@@ -206,7 +206,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
     sites, sources = _inputs()
     partition = xr.ones_like(sources["a"].flux.isel(time=0, drop=True), dtype=int)
     options = _params(
-        sites=["A", "B"], averaging_period="1h", flux_sources=list(sources),
+        sites=["A", "B"], averaging_period="1h", flux_sources=list(sources), domain="TEST",
         basis_algorithm="quadtree", nbasis=4, output_format="none",
         basis_output_path=f"runs/prepared/basis{suffix}" if suffix else None,
     )
@@ -263,7 +263,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
             return result
 
         monkeypatch.setattr(module, "export_basis", export)
-        monkeypatch.setattr(module, "mask_outer_merged_for_inner_domain", lambda outer, inner: outer)
+        monkeypatch.setattr(module, "_mask_outer_for_aligned_inner_domain", lambda outer, inner: outer)
     if route in {"standard", "multisector", "staged", "nested"}:
         # Scientific preparation completes before runners and staged handoffs
         # export the basis and use the prepared inputs.
@@ -394,6 +394,25 @@ def test_full_ini_resources_keep_invocation_directory_convention(tmp_path, monke
     monkeypatch.setattr(standard.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquired"))
     with pytest.raises(BeforeAcquisition):
         standard.run_standard(config_file=source, basis_output_path="override.nc")
+
+
+def test_single_and_plural_partition_readers_preserve_values_and_metadata(tmp_path):
+    partition = xr.DataArray(
+        [[[1, 2], [3, 4]]], dims=("time", "lat", "lon"), name="basis",
+        coords={"time": [pd.Timestamp("2020-01-01")], "lat": [50., 51.], "lon": [-2., -1.]},
+        attrs={"long_name": "supplied partition"},
+    )
+    partition.lat.attrs["units"] = "degrees_north"
+    partition.lon.attrs["units"] = "degrees_east"
+    path = tmp_path / "partition.nc"
+    partition.to_netcdf(path)
+    config = RhimeConfig.from_params(_params(basis_partition_path=path), multisector=False)
+    single = resolve_basis_inputs(config.data)["basis_partition"]
+    plural = resolve_basis_inputs(replace(
+        config.data, basis_partition_path=None, basis_partition_paths=(path,),
+    ))["basis_partition"]
+    xr.testing.assert_identical(single, partition)
+    xr.testing.assert_identical(plural, partition)
 
 
 def test_plural_partition_paths_use_sorted_coordinate_reference(tmp_path):

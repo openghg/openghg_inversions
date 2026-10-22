@@ -456,13 +456,21 @@ def test_cli_run_rhime_nested_passes_config(monkeypatch, tmp_path: Path) -> None
 def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
     monkeypatch, capsys, deprecated, output_format, tmp_path,
 ) -> None:
+    monkeypatch.setattr(nested_module, "get_domain_info", lambda: {})
     basis = _basis([50.0], [-2.0], np.array([[1]]))
     prepared = _prepared(
         times=["2019-01-01T00:00"],
         sensitivity=np.array([[1.0]]),
         basis=basis,
     )
-    merged = from_legacy_fp_all(fp_all={"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, site_options=_site_options())
+    merged = from_legacy_fp_all(
+        fp_all={"TAC": xr.Dataset(
+            {"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]),
+             "mf_variability": ("time", [0.0])},
+            coords={"lat": [50.0], "lon": [-2.0]},
+        )},
+        site_options=_site_options(),
+    )
     country = tmp_path / "country.nc"
     country.touch()
     setup = RhimeConfig.from_params(params={
@@ -504,7 +512,7 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
         "align_inner_merged_to_outer_observations",
         lambda outer, inner, time_tolerance: inner,
     )
-    monkeypatch.setattr(nested_module, "mask_outer_merged_for_inner_domain", lambda outer, inner: outer)
+    monkeypatch.setattr(nested_module, "_mask_outer_for_aligned_inner_domain", lambda outer, inner: outer)
     monkeypatch.setattr(nested_module, "_prepare_one_domain", fake_prepare)
 
     class BeforeSampling(Exception):
@@ -618,6 +626,7 @@ def test_nested_automatic_basis_budget_uses_bounded_sensitivity_share() -> None:
 
 
 def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
+    monkeypatch.setattr(nested_module, "get_domain_info", lambda: {})
     basis = _basis([50.0], [-2.0], np.array([[1]]))
     prepared = _prepared(
         times=["2019-01-01T00:00"],
@@ -661,7 +670,7 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
         "align_inner_merged_to_outer_observations",
         lambda outer, inner, time_tolerance: inner,
     )
-    monkeypatch.setattr(nested_module, "mask_outer_merged_for_inner_domain", lambda outer, inner: outer)
+    monkeypatch.setattr(nested_module, "_mask_outer_for_aligned_inner_domain", lambda outer, inner: outer)
     monkeypatch.setattr(nested_module, "_prepare_one_domain", fake_prepare)
 
     class BeforeSampling(Exception):
@@ -738,7 +747,7 @@ def test_regridded_inner_country_cache_uses_writable_identity_key(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The default cache separates changed source files and target grids."""
+    """The default cache keys named domains and source content, rebuilding changed grids."""
     source_path = tmp_path / "country_source.nc"
 
     def write_source(values: np.ndarray) -> None:
@@ -765,14 +774,16 @@ def test_regridded_inner_country_cache_uses_writable_identity_key(
         inner_domain_label="TEST-6km",
         cache_dir=None,
     )
+    first_mtime = first.stat().st_mtime_ns
     repeated = _regridded_inner_country_file(
         country_file=source_path,
         domain="TEST",
-        lat=lat,
-        lon=lon,
+        lat=lat + 1e-8,
+        lon=lon + 1e-8,
         inner_domain_label="TEST-6km",
         cache_dir=None,
     )
+    assert repeated.stat().st_mtime_ns == first_mtime
     changed_grid = _regridded_inner_country_file(
         country_file=source_path,
         domain="TEST",
@@ -793,12 +804,12 @@ def test_regridded_inner_country_cache_uses_writable_identity_key(
 
     assert first == repeated
     assert first.parent == cache_root / "openghg_inversions" / "country_grids"
-    assert changed_grid != first
+    assert changed_grid == first
     assert changed_source != first
     with xr.open_dataset(first) as cached:
         assert cached.sizes["lat"] == 3
         assert "nested_country_source_sha256" in cached.attrs
-        assert "nested_country_target_grid_sha256" in cached.attrs
+        assert "nested_country_target_grid_sha256" not in cached.attrs
 
 
 def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
@@ -825,6 +836,7 @@ def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
         inner,
         inner_domain_label="europe-6km",
         outer_overlap_masked=True,
+        outer_overlap_mask_extent=(50.9, 51.4, -1.6, -1.4),
     )
     model_spec = _model_spec()
 
@@ -888,10 +900,10 @@ def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
     assert inner_nested["view_domain"] == "europe-6km"
     assert outer_nested["outer_support"]["mask_policy"] == "caller_supplied_pre_masked_outer_sensitivity"
     assert outer_nested["outer_support"]["inner_extent"] == {
-        "latitude": [51.0, 51.5],
-        "longitude": [-1.5, -1.5],
+        "latitude": [50.9, 51.4], "longitude": [-1.6, -1.4],
     }
-    assert len(inner_nested["inner_grid"]["coordinate_sha256"]) == 64
+    assert outer_nested["outer_support"]["mask_extent_source"] == "caller_supplied"
+    assert "coordinate_sha256" not in inner_nested["inner_grid"]
 
     reloaded_inner = InversionOutput.from_datatree(inner_inv_out.to_datatree())
     assert reloaded_inner.model_metadata["constructed_priors"] == records

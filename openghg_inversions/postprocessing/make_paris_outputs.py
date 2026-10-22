@@ -1502,7 +1502,7 @@ def paris_flux_output(
             return ds
 
     result = (
-        xr.merge([flux_outs, country_outs, country_fraction.reindex_like(flux_outs)], join="outer")
+        xr.merge([flux_outs, country_outs, align_sparse_lat_lon(country_fraction, flux_outs)], join="outer")
         .rename(dim_rename_dict)
         .pipe(time_func)
         .pipe(convert_time_to_unix_epoch, "1d")
@@ -1845,6 +1845,30 @@ def infer_flux_frequency(flux: xr.DataArray) -> str:
             return flux_frequency
 
 
+
+def validate_paris_options(
+    *, template_version: ParisTemplateVersion, time_point: Literal["start", "midpoint"],
+    flux_frequency: str | None,
+) -> None:
+    """Validate scalar reporting choices before constructing PARIS products.
+
+    Args:
+        template_version: Selected PARIS CDL schema.
+        time_point: Flux interval timestamp convention.
+        flux_frequency: Explicit calendar period or positive duration; None requests inference.
+
+    Raises:
+        ValueError: If the schema, timestamp, or explicit frequency is unsupported.
+    """
+    paris_template_files(template_version)
+    if time_point not in ("start", "midpoint"):
+        raise ValueError("PARIS time_point must be 'start' or 'midpoint'.")
+    if template_version == "latest" and time_point != "midpoint":
+        raise ValueError("Latest PARIS flux output requires midpoint time coordinates and time bounds.")
+    if flux_frequency is not None:
+        _flux_frequency_to_offset(flux_frequency)
+
+
 def make_paris_outputs(
     inv_out: InversionOutput,
     country_file: str | Path | None = None,
@@ -1855,6 +1879,7 @@ def make_paris_outputs(
     domain: str | None = None,
     template_version: ParisTemplateVersion = DEFAULT_PARIS_TEMPLATE_VERSION,
     country_selections: Iterable[str] | None = PARIS_LATEST_COUNTRIES,
+    flux_frequency: str | None = None,
 ) -> tuple[xr.Dataset, xr.Dataset]:
     """Create matching PARIS flux and concentration products.
 
@@ -1873,6 +1898,8 @@ def make_paris_outputs(
         country_selections: Optional latest-template country names or codes.
             The default emits the canonical 22-country EUROPE v03 schema; pass
             ``None`` to include all countries from another domain file.
+        flux_frequency: Explicit calendar period or positive fixed duration.
+            If omitted, infer it from the retained prior flux.
 
     Returns:
         A tuple containing the flux dataset followed by the concentration
@@ -1882,8 +1909,11 @@ def make_paris_outputs(
         ValueError: If required inversion metadata is missing or template
             constraints are not satisfied.
     """
-    # infer flux frequency
-    flux_frequency = infer_flux_frequency(inv_out.flux)
+    validate_paris_options(
+        template_version=template_version, time_point=time_point, flux_frequency=flux_frequency,
+    )
+    if flux_frequency is None:
+        flux_frequency = infer_flux_frequency(inv_out.flux)
     conc_outs = paris_concentration_outputs(
         inv_out,
         report_mode=report_mode,

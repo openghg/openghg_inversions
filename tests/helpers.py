@@ -27,10 +27,8 @@ def lat_lon_data(nlat: int, nlon: int, values: np.ndarray | list | None = None) 
     return xr.DataArray(values, coords=[lat, lon], dims=["lat", "lon"])
 
 
-rng = np.random.default_rng(seed=123)
-
-
 def basis_function(nlat: int, nlon: int, nbasis: int) -> xr.DataArray:
+    rng = np.random.default_rng(seed=123)
     values = rng.integers(1, nbasis, size=nlat * nlon, endpoint=True).reshape((nlat, nlon))
     return lat_lon_data(nlat, nlon, values)
 
