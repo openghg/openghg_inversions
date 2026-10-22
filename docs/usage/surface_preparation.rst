@@ -129,7 +129,7 @@ ordinary CO₂ coherent reduction automatically; see :doc:`coherent_reduction` a
 :doc:`co2_model_family`.
 
 Centering through preparation and inference
-------------------------------------------
+-------------------------------------------
 
 Derive observation errors before filtering, using the existing
 ``prepare_observation_errors`` owner. Project the native ``bc_anomaly_*`` and
