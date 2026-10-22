@@ -144,6 +144,8 @@ def line_profile(call, *methods):
             elapsed[(frame.f_code.co_filename, frame.f_code.co_name, previous_line)] += now - start
         if event == "return":
             active.pop(key, None)
+            if isinstance(arg, cached_sigma.MarginalQuadraticCache) and "logdet" in frame.f_locals:
+                diagnostics["logdet"] = float(frame.f_locals["logdet"])
             if isinstance(arg, fixed_ou.FixedOuCovarianceSolve):
                 diagnostics["logdet"] = float(arg.logdet)
                 factor = frame.f_locals.get("whitened_factor", frame.f_locals.get("weighted_factor"))
@@ -154,7 +156,10 @@ def line_profile(call, *methods):
             if "reciprocal_condition" in frame.f_locals:
                 diagnostics["reciprocal_condition"] = float(frame.f_locals["reciprocal_condition"])
                 diagnostics["condition_estimator_info"] = int(frame.f_locals["info"])
-                diagnostics["dense_route_accepted"] = arg is not None
+                route = "low_rank_route_accepted" if frame.f_code.co_name == "_sum_squares_gram" else "dense_route_accepted"
+                diagnostics[route] = arg is not None
+            if "gram_roundoff_bound" in frame.f_locals:
+                diagnostics["residual_gram_roundoff_bound"] = float(frame.f_locals["gram_roundoff_bound"])
         else:
             active[key] = (frame.f_lineno, now)
         return trace

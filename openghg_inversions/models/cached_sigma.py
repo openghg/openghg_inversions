@@ -8,10 +8,13 @@ from typing import cast
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
+from scipy.linalg import cho_solve
+from scipy.linalg.lapack import dpocon  # type: ignore[attr-defined]  # Generated SciPy wrapper.
 
 from openghg_inversions.models.fixed_ou import (
     FixedOuLikelihoodEvaluation,
     FixedOuLowRank,
+    _site_values,
 )
 
 
@@ -34,6 +37,56 @@ def _matrix(value: ArrayLike, name: str) -> FloatArray:
     if not np.isfinite(array).all():
         raise ValueError(f"{name} must contain only finite values.")
     return cast(FloatArray, array.copy())
+
+
+def _sum_squares_gram(factor: FloatArray, rhs: FloatArray) -> tuple[FloatArray, float] | None:
+    """Return a whitened covariance Gram matrix, or reject its numerical screens.
+
+    The ridge solution ``Z`` gives ``G = (B - W Z).T (B - W Z) + Z.T Z``.
+    Screen core conditioning and residual rounding before accepting this form.
+    The rounding budget bounds Gram errors relative to column energies, not
+    relative to individual cross coefficients or the total latent-solve error.
+    """
+    core = factor.T @ factor
+    core.flat[:: core.shape[0] + 1] += 1.0
+    core = (core + core.T) * 0.5
+    if not np.isfinite(core).all():
+        return None
+    try:
+        cholesky = np.linalg.cholesky(core)
+    except np.linalg.LinAlgError:
+        return None
+    eps = np.finfo(np.float64).eps
+    budget = np.sqrt(eps)
+    reciprocal_condition, info = dpocon(cholesky, np.linalg.norm(core, 1), uplo="L")
+    if info or not reciprocal_condition > budget:
+        return None
+    latent = cho_solve((cholesky, True), factor.T @ rhs, check_finite=False)
+    conditional = rhs - factor @ latent
+    gamma = (factor.shape[1] + 1) * eps / (1.0 - (factor.shape[1] + 1) * eps)
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        factor_norm = np.sqrt(np.einsum("ij,ij->", factor, factor))
+        rhs_norm = np.sqrt(np.einsum("ij,ij->j", rhs, rhs))
+        latent_norm = np.sqrt(np.einsum("ij,ij->j", latent, latent))
+        conditional_norm = np.sqrt(np.einsum("ij,ij->j", conditional, conditional))
+        root_energy = np.hypot(conditional_norm, latent_norm)
+        delta = gamma * (rhs_norm + factor_norm * latent_norm)
+        relative = np.divide(delta, root_energy, out=np.zeros_like(delta), where=root_energy > 0)
+        relative[
+            ((root_energy == 0) & (delta > 0))
+            | ~np.isfinite(delta)
+            | ~np.isfinite(root_energy)
+        ] = np.inf
+        worst_relative = float(np.max(relative, initial=0.0))
+        gram_roundoff_bound = 2.0 * worst_relative + worst_relative * worst_relative
+    # shortcut: these screens do not certify latent-solve error; revisit for new unstable cases.
+    if not np.isfinite(gram_roundoff_bound) or gram_roundoff_bound > budget:
+        return None
+    gram = conditional.T @ conditional + latent.T @ latent
+    logdet = float(2.0 * np.log(np.diag(cholesky)).sum())
+    if not np.isfinite(gram).all() or not np.isfinite(logdet):
+        return None
+    return cast(FloatArray, gram), logdet
 
 
 @dataclass(frozen=True)
@@ -70,10 +123,10 @@ class FixedOuCachedSigmaTarget:
 
     Construction transforms the fixed residual and design into prepared mode
     coordinates once.
-    ``refresh`` solves the zero-state residual and all state-design columns
-    together using the fixed-OU covariance solver for the supplied site
-    amplitudes. State evaluations on the returned cache are then pure dense
-    quadratic algebra.
+    ``refresh`` forms their joint Gram matrix for the supplied site amplitudes,
+    using a screened sum of squares for low-rank factors and the fixed-OU
+    covariance solver otherwise. State evaluations on the returned cache are
+    then pure dense quadratic algebra.
     """
 
     def __init__(
@@ -132,14 +185,28 @@ class FixedOuCachedSigmaTarget:
             raise ValueError(
                 f"sigma must be scalar or have shape {(self.n_group,)}, got {sigma_value.shape}."
             )
-        covariance_solve = self.prepared._solve_transformed(self._transformed_rhs, sigma_value)
-        quadratic = self._transformed_rhs.T @ covariance_solve.solution
+        gram_result = None
+        if 0 < self.prepared.rank < self.n_obs:
+            amplitude = _site_values(sigma_value, self.n_group, "site_amplitude", positive=False)
+            weights, logdet = self.prepared._mode_weights_and_logdet(amplitude)
+            scale = np.sqrt(weights)[:, None]
+            gram_result = _sum_squares_gram(
+                scale * self.prepared.transformed_factor,
+                scale * self._transformed_rhs,
+            )
+        if gram_result is None:
+            covariance_solve = self.prepared._solve_transformed(self._transformed_rhs, sigma_value)
+            quadratic = self._transformed_rhs.T @ covariance_solve.solution
+            logdet = covariance_solve.logdet
+        else:
+            quadratic, logdet_update = gram_result
+            logdet += logdet_update
         precision = quadratic[1:, 1:]
         precision = (precision + precision.T) * 0.5
         linear = quadratic[1:, 0].copy()
         constant = -0.5 * (
             self.n_obs * math.log(2.0 * math.pi)
-            + covariance_solve.logdet
+            + logdet
             + float(quadratic[0, 0])
         )
         return MarginalQuadraticCache(
