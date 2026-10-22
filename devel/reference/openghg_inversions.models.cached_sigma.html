@@ -621,10 +621,10 @@
 <p>Build state quadratics from the OGI fixed-OU covariance preparation.</p>
 <p>Construction transforms the fixed residual and design into prepared mode
 coordinates once.
-<code class="docutils literal notranslate"><span class="pre">refresh</span></code> solves the zero-state residual and all state-design columns
-together using the fixed-OU covariance solver for the supplied site
-amplitudes. State evaluations on the returned cache are then pure dense
-quadratic algebra.</p>
+<code class="docutils literal notranslate"><span class="pre">refresh</span></code> forms their joint Gram matrix for the supplied site amplitudes,
+using a screened sum of squares for low-rank factors and the fixed-OU
+covariance solver otherwise. State evaluations on the returned cache are
+then pure dense quadratic algebra.</p>
 <dl class="field-list simple">
 </dl>
 <dl class="py property">
