@@ -374,6 +374,35 @@ these defaults; a worker limit is not a total job memory limit.
 Direct pytest and GitHub Actions bypass the Slurm runner. To bound Dask during
 a direct real-data test run, set `DASK_NUM_WORKERS=2 uv run pytest <test-path>`.
 
+An optional serial CI probe records CPU model, affinity/quota, effective loaded
+thread pools and PyTensor cache settings from the actual pytest process.
+Cache-lock acquisition time is an upper bound on waiting, not a measurement of
+compilation time or proof of contention. Installed CLI and sampling subprocesses
+are outside these reports. Diagnostics do not import PyTensor before test
+collection or change scientific settings. To run it in the locked Python
+3.12 and 3.13 GitHub environments:
+
+```bash
+gh workflow run workflow.yaml --ref <branch> -f runtime_comparison=true
+```
+
+This profiles the full suite serially with two Dask workers and one numerical
+thread, recording elapsed/CPU time and peak RSS. Four focused runs then compare
+one/two numerical threads in reverse order, also with xdist disabled and two Dask
+workers per process.
+Every run has fresh PyTensor/Numba caches. The existing float64 scientific probes
+retain their backend, precision and assertions. Logs, JUnit, process diagnostics,
+wall time and aggregate child CPU time are uploaded as `test-runtime-*` artifacts.
+Ordinary CI test commands and resource settings remain unchanged. This small
+sample does not establish the best settings for the complete suite or contention
+between pytest workers. To run locally, choose a fresh output directory:
+
+```bash
+uv run --group test python scripts/compare_test_runtime.py /tmp/ogi-runtime-comparison
+```
+
+Use Slurm for cluster comparisons.
+
 Scientific tox environments check the resolved Python's development headers
 and PyTensor's configured C++ compiler before pytest. The Slurm runner prefers
 uv-managed Python installations, which include those headers. If PyTensor's
