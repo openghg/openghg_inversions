@@ -10,7 +10,7 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.array_ops import get_xr_dummies
-from openghg_inversions.inversion_inputs import DatetimeLike, make_freq_indicator
+from openghg_inversions.inversion_inputs import DatetimeLike, make_freq_indicator, normalise_frequency
 
 __all__ = [
     "BoundaryAlignment",
@@ -152,6 +152,19 @@ def validate_boundary_operands(operands: xr.Dataset) -> bool:
     return True
 
 
+def validate_centered_boundary_periods(frequency: str | None, anchor_time: DatetimeLike | None) -> None:
+    """Reject invalid or ignored period settings at each external binding boundary."""
+    normalise_frequency(frequency)
+    if anchor_time is not None:
+        if frequency in (None, "monthly"):
+            raise ValueError("Boundary anchor_time requires a fixed-duration frequency.")
+        try:
+            if np.isnat(np.datetime64(anchor_time)):
+                raise ValueError("NaT is not an anchor")
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Boundary anchor_time must be a valid datetime.") from exc
+
+
 def align_boundary_operands(
     operands: xr.Dataset,
     *,
@@ -164,6 +177,7 @@ def align_boundary_operands(
     The borrowed input stays lazy; scalar reference and variable units survive.
     Returned operands carry the same names and resolved boundary-state labels.
     """
+    validate_centered_boundary_periods(frequency, anchor_time)
     if not validate_boundary_operands(operands):
         raise ValueError("Expected centered boundary operands.")
     observation_dim = "time" if "time" in operands.H_bc_anomaly.dims else "nmeasure"

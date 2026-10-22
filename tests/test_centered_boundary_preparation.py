@@ -57,10 +57,11 @@ def test_arbitrary_basis_projects_both_operands_lazily():
 def test_reusable_alignment_identity(frequency):
     ds = _site().chunk({"time": 1})
     original = ds.copy(deep=True)
+    anchor = None if frequency in (None, "monthly") else "2020-01-01"
     with Callback(posttask=lambda *args: pytest.fail("operand materialized during alignment")):
-        result = align_boundary_operands(ds, frequency=frequency, anchor_time="2020-01-01")
+        result = align_boundary_operands(ds, frequency=frequency, anchor_time=anchor)
     absolute = ds.H_bc_anomaly + ds.bc_reference * ds.H_bc_mass
-    expected = BoundaryAlignment.prepare(absolute, frequency=frequency, anchor_time="2020-01-01").data
+    expected = BoundaryAlignment.prepare(absolute, frequency=frequency, anchor_time=anchor).data
     xr.testing.assert_allclose(result.H_bc_anomaly + result.bc_reference * result.H_bc_mass, expected.rename(None))
     assert result.bc_reference.ndim == 0
     assert result.H_bc_mass.attrs["units"] == "1"
@@ -197,7 +198,7 @@ def test_prepared_boundary_rejects_already_expanded_operands():
     with pytest.raises(ValueError, match="unexpanded spatial operands"):
         validate_boundary_operands(expanded)
     with pytest.raises(ValueError, match="unexpanded spatial operands"):
-        align_boundary_operands(expanded, frequency="daily")
+        align_boundary_operands(expanded, frequency="1D")
 
 
 def test_optional_diagnostic_missing_value_does_not_choose_science_rows():
@@ -219,3 +220,24 @@ def test_unknown_representation_does_not_load_as_legacy_absolute():
         RhimePreparedInputs.from_datatree(tree)
     with pytest.raises(ValueError, match="Unsupported boundary_representation"):
         validate_boundary_operands(xr.Dataset(attrs={"boundary_representation": "centered-v2"}))
+
+
+def test_gather_preserves_site_specific_transport_and_normalization_provenance():
+    import json
+
+    first, second = _site(), _site()
+    for number, data in enumerate((first, second)):
+        data.attrs.update(surface_transport='{"inventory": "integrated"}', surface_provider_revision="abc123",
+                          surface_transport_provenance=f"site-{number}", boundary_mass_tolerance=number * 0.001)
+    prepared = prepare_rhime_inputs_from_xarray({"AAA": first, "BBB": second}, basis_functions=_basis_functions())
+    restored = RhimePreparedInputs.from_datatree(prepared.to_datatree())
+    facts = json.loads(restored.inv_inputs.attrs["surface_preparation_provenance"])
+    assert facts["AAA"]["surface_transport_provenance"] == "site-0"
+    assert facts["BBB"]["boundary_mass_tolerance"] == 0.001
+    assert "surface_transport_provenance" not in restored.inv_inputs.attrs
+
+
+@pytest.mark.parametrize("frequency,anchor", [("1D", "NaT"), (None, "invalid"), ("monthly", "2020-01-01")])
+def test_alignment_rejects_invalid_or_ignored_anchors(frequency, anchor):
+    with pytest.raises(ValueError, match="anchor_time"):
+        align_boundary_operands(_site(), frequency=frequency, anchor_time=anchor)

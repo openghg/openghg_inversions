@@ -164,6 +164,26 @@ jobs:
             runtime-comparison/
           retention-days: 7
 
+  surface-pilot:
+    name: Check pinned surface preparation pilot
+    runs-on: ubuntu-latest
+    env:
+      PYTENSOR_FLAGS: floatX=float64
+      DASK_NUM_WORKERS: '2'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Test explicit provider revision
+        run: uvx --from 'tox>=4.24' --with tox-uv tox -e py312-surfacePilot
+
   lint:
     name: Run lint
     runs-on: ubuntu-latest
@@ -209,7 +229,7 @@ jobs:
   ci-gate:
     name: CI Gate
     runs-on: ubuntu-latest
-    needs: [test, locked-test, lint, borrowed-types]
+    needs: [test, locked-test, surface-pilot, lint, borrowed-types]
     if: ${{ always() }}
     permissions: {}
     steps:
@@ -221,6 +241,10 @@ jobs:
           fi
           if [ "${{ needs.locked-test.result }}" != "success" ]; then
             echo "Lockfile test job failed, was cancelled, or was skipped (result: ${{ needs.locked-test.result }})."
+            exit 1
+          fi
+          if [ "${{ needs.surface-pilot.result }}" != "success" ]; then
+            echo "Pinned surface pilot tests failed, were cancelled, or were skipped."
             exit 1
           fi
           if [ "${{ needs.lint.result }}" != "success" ]; then

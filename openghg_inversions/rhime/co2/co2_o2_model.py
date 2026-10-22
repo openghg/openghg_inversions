@@ -192,11 +192,12 @@ def _add_co2_o2_baseline_components(
     bc_state_activity: Mapping[str, StateActivity] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
-) -> list[tuple[str, LinearComponentResult | OffsetComponentResult, xr.DataArray]]:
+) -> list[tuple[str, LinearComponentResult | OffsetComponentResult, xr.DataArray | None]]:
     """Build independent channel terms with padded joint designs and outputs.
 
     Returned tuples retain the channel, ordinary CO2 component result, and
     full joint design so the fixed-OU recipe can use the same affine terms.
+    Centered boundaries omit that design; the fixed-OU recipe rejects them.
     """
     _validate_channel_baseline_options(
         boundary_sensitivity,
@@ -227,8 +228,7 @@ def _add_co2_o2_baseline_components(
                 activity=(bc_state_activity or {}).get(channel), prefix=f"{channel}_",
                 output_dim=output_dim, owner=channel,
             )
-            design = (padded.H_bc_anomaly + padded.bc_reference * padded.H_bc_mass).transpose(output_dim, "bc_region")
-            components.append((channel, result, design))
+            components.append((channel, result, None))
             boundaries.append(result.output)
             if centered_terms is not None:
                 centered_terms.append((result.output, centered, shift))
@@ -394,6 +394,10 @@ def build_co2_o2_model(
         ValueError: If shared-state sensitivity preparation, activity
             resolution, or registered coordinate alignment fails.
     """
+    if not boundary_operands and (bc_freq is not None or bc_anchor_time is not None):
+        raise ValueError("Boundary period choices require raw centered operands, not absolute sensitivity.")
+    if boundary_sensitivity and (bc_freq is not None or bc_anchor_time is not None):
+        raise ValueError("Boundary period choices require centered operands for every active boundary channel.")
     if boundary_operands:
         if tau_hours is not None:
             raise ValueError("Centered boundaries do not support fixed-OU likelihoods.")

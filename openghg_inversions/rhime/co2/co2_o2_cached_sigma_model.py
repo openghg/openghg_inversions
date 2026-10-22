@@ -155,6 +155,8 @@ def build_co2_o2_cached_sigma_model(
             offset_args=offset_args,
         )
         for _, result, design in baselines:
+            # Centered components (whose unused design is None) are rejected above.
+            assert design is not None
             matrix = np.asarray(design.values, dtype=np.float64)
             if isinstance(result, LinearComponentResult):
                 active = np.asarray(result.activity.active.values, dtype=bool)

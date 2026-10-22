@@ -241,7 +241,7 @@ def test_native_boundaries_forwarded_and_reconstructed_before_rounding(inputs, m
     assert result.bc_reference.dims == ()
     np.testing.assert_allclose(result.bc_anomaly_n, 1.0)
     np.testing.assert_allclose(result.bc_mass_n, 0.25)
-    np.testing.assert_allclose(result.bc_n, 100001.0)
+    assert not any(f"bc_{direction}" in result for direction in "nesw")
     np.testing.assert_allclose(result.bc_mod, 400004.0)
 
 
@@ -340,7 +340,7 @@ def test_actual_provider_boundary_operands(inputs, species):
     np.testing.assert_allclose(result.bc_mod, 400.123456, rtol=0, atol=1.0e-12)
     np.testing.assert_allclose(result.bc_anomaly_n, 0.123456 / 4, rtol=0, atol=1.0e-12)
     np.testing.assert_allclose(result.bc_mass_n, 0.25)
-    assert result.bc_n.dtype == np.float64
+    assert result.bc_anomaly_n.dtype == np.float64
     assert result.attrs["boundary_representation"] == "centered-v1"
     assert result.attrs["boundary_mass_tolerance"] == 0.001
     assert result.attrs["boundary_normalization_policy"] == "joint-curtain-unit-mass-v1"
@@ -631,3 +631,13 @@ def test_resolved_grid_uses_release_and_history_gcd(inputs, compatible_provider)
             obs, fp, {"a": flux.isel(time=slice(None, None, 3))},
             species="co2", transport={"a": "time_resolved"},
         )
+
+
+def test_integrated_declared_year_validity_never_reuses_climatological_year(inputs):
+    obs, fp, flux = inputs
+    obs = obs.assign_coords(time=obs.time + pd.Timedelta(days=366))
+    fp = fp.assign_coords(time=obs.time)
+    annual = flux.isel(time=[0]).assign_coords(time=[pd.Timestamp("2020-12-01")])
+    annual.flux.attrs["time_period"] = "yearly"
+    result = prepare_surface_site(obs, fp, {"annual": annual}, species="co2", transport={"annual": "integrated"})
+    np.testing.assert_allclose(result.mf_mod, 1.0)

@@ -21,6 +21,7 @@ from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import normalise_optional_mapping
 
 from .co2_cached_sigma_runner import validate_cached_co2_sampler
+from .co2_preparation import Co2PreparedInputs
 from .inference import uses_cached_ou
 
 
@@ -288,12 +289,17 @@ def _model(value: object) -> dict[str, Any]:
         boundary = _table(options.pop("boundary"), "model.boundary")
         enabled = _bool(boundary.pop("enabled", True), "model.boundary.enabled")
         prior = _prior(boundary.pop("prior"), "model.boundary.prior") if "prior" in boundary else None
+        periods = {runner: boundary.pop(name) for name, runner in
+                   (("frequency", "bc_freq"), ("anchor_time", "bc_anchor_time")) if name in boundary}
         _reject_unknown(boundary, "model.boundary")
         if not enabled and prior is not None:
             raise ValueError("model.boundary.prior requires model.boundary.enabled=true.")
         result["use_bc"] = enabled
         if prior is not None:
             result["bc_prior"] = prior
+        if not enabled and any(value is not None for value in periods.values()):
+            raise ValueError("Boundary frequency and anchor_time require enabled=true.")
+        result.update(periods)
     if "offset" in options:
         offset = _table(options.pop("offset"), "model.offset")
         result["offset_prior"] = _prior(_take(offset, "prior", "model.offset"), "model.offset.prior")
@@ -439,6 +445,15 @@ def co2_config_templates() -> Mapping[str, Traversable]:
     )
 
 
+def _validate_boundary_periods(frequency: str | None, anchor_time: str | None) -> None:
+    """Validate model-owned period syntax without touching prepared arrays."""
+    from openghg_inversions.boundary_sensitivity import validate_centered_boundary_periods
+
+    if anchor_time is not None:
+        _string(anchor_time, "model.boundary.anchor_time")
+    validate_centered_boundary_periods(frequency, anchor_time)
+
+
 @dataclass(frozen=True)
 class Co2ModelConfig:
     """Scientific choices for ordinary CO2, independent of arrays and inference.
@@ -446,6 +461,8 @@ class Co2ModelConfig:
     Construction through :meth:`from_params` validates only model and likelihood
     sections. Ordinary containers are owned; opaque numerical values are borrowed.
     Defaults omitted here remain owned by the concrete scientific recipe.
+    Boundary frequency and anchor choices require centered prepared operands
+    and bind when inference consumes the preparation.
     """
 
     use_bc: bool | None = None
@@ -457,8 +474,13 @@ class Co2ModelConfig:
     fixed_model_mismatch: float | None = None
     likelihood_builder: Callable[..., Any] | None = None
     likelihood_kwargs: Mapping[str, Any] | None = None
+    bc_freq: str | None = None
+    bc_anchor_time: str | None = None
 
     def __post_init__(self) -> None:
+        _validate_boundary_periods(self.bc_freq, self.bc_anchor_time)
+        if self.use_bc is False and (self.bc_freq is not None or self.bc_anchor_time is not None):
+            raise ValueError("Boundary frequency and anchor_time require enabled=true.")
         for item in fields(self):
             value = getattr(self, item.name)
             if isinstance(value, Mapping):
@@ -480,6 +502,19 @@ class Co2ModelConfig:
     def model_arguments(self) -> dict[str, Any]:
         """Bind these choices as keywords at the ordinary scientific boundary."""
         return {item.name: getattr(self, item.name) for item in fields(self) if getattr(self, item.name) is not None}
+
+    def bind(self, prepared: Co2PreparedInputs) -> dict[str, Any]:
+        """Bind period choices only to centered, unexpanded prepared boundaries.
+
+        Absolute prepared sensitivities already own their period expansion and
+        cannot be reinterpreted by current model choices.
+        """
+        if self.bc_freq is not None or self.bc_anchor_time is not None:
+            if "H_bc_anomaly" not in prepared.inv_inputs:
+                raise ValueError("Boundary frequency/anchor_time require centered prepared operands; legacy absolute H_bc is already expanded.")
+            if uses_cached_ou(self.model_arguments()):
+                raise ValueError("Centered boundaries do not support cached fixed-OU likelihoods.")
+        return self.model_arguments()
 
 
 @dataclass(frozen=True)

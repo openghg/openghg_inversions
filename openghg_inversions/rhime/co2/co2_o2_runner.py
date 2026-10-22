@@ -373,6 +373,11 @@ def build_rhime_co2_o2(
     if boundaries or operands or offset_prior:
         variable_roles["baseline_concentration"] = "baseline_concentration"
     metadata = _co2_o2_metadata(prepared, observations=observations)
+    if operands:
+        metadata.update(
+            boundary_representation="centered-v1", bc_frequency=bc_freq,
+            bc_anchor_time=None if bc_anchor_time is None else str(bc_anchor_time),
+        )
     if tau_hours is not None:
         variable_roles.update({"independent_error": "error", "fixed_ou_site_amplitude": "ou_site_amplitude",
                       "observation_to_fixed_ou_site_index": "ou_site_index",
@@ -436,6 +441,8 @@ def run_rhime_co2_o2_from_prepared_inputs(
         bc_prior: Channel-keyed independent boundary-scale priors; the CO2
             default is used for each enabled channel when omitted.
         bc_state_activity: Channel-keyed labelled fixed/active boundary policies.
+        bc_freq: Optional model-owned frequency for centered boundary periods.
+        bc_anchor_time: Optional timestamp anchoring centered boundary periods.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
             with the same meanings as the CO2 offset component. Baseline terms
@@ -543,7 +550,7 @@ def annotate_co2_o2_trace(
             rhime_likelihood_scope="joint_observation_vector",
             rhime_normalized_log_likelihood=1,
         )
-    for name in ("prior_predictive", "posterior_predictive"):
+    for name in ("prior_predictive", "posterior_predictive", "predictions"):
         if name in trace.children and "y" in trace[name]:
             trace[name]["y"].attrs["rhime_predictive_scope"] = "joint_observation_vector"
     if "fixed_ou_timescale" in built.output_contract.variable_roles:

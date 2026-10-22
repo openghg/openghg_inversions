@@ -129,7 +129,8 @@ def _centered_prepared():
     return replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
 
 
-def test_prepared_single_save_reopen_and_tiny_runner(tmp_path):
+@pytest.mark.parametrize("predictions", [False, True])
+def test_prepared_single_save_reopen_and_tiny_runner(tmp_path, predictions):
     prepared = _centered_prepared()
     path = tmp_path / "co2.nc"
     prepared.save(path)
@@ -146,16 +147,57 @@ def test_prepared_single_save_reopen_and_tiny_runner(tmp_path):
         nuts_sampler="pymc",
         sample_prior_predictive=True,
         sample_posterior_predictive=True,
+        posterior_predictive_kwargs={"predictions": predictions},
         sample_kwargs={"compute_convergence_checks": False, "random_seed": 3},
     )
     trace = sample_rhime_model(built, sampler)
+    group = "predictions" if predictions else "posterior_predictive"
+    centered_y = trace[group].y.copy(deep=True)
+    if predictions:
+        standalone = xr.DataTree.from_dict({
+            name: trace[name].to_dataset()
+            for name in ("predictions", "predictions_constant_data")
+        })
+        restore_absolute_predictives(standalone)
+        xr.testing.assert_allclose(
+            standalone.predictions.y,
+            centered_y + standalone.predictions_constant_data.boundary_reference_shift,
+        )
     annotate_co2_trace(trace, built, concentration_units="ppm")
     xr.testing.assert_allclose(trace.observed_data.y, prepared.inv_inputs.mf)
-    assert trace.posterior_predictive.y.attrs["concentration_representation"] == "absolute-v1"
+    xr.testing.assert_allclose(trace[group].y, centered_y + trace.constant_data.boundary_reference_shift)
+    assert trace[group].y.attrs["concentration_representation"] == "absolute-v1"
     assert "boundary_reference_shift" in trace.constant_data
+    from openghg_inversions.serialization import save_trace, load_trace
+
+    trace_path = tmp_path / "trace.nc"
+    save_trace(trace, trace_path)
+    reopened = load_trace(trace_path)
+    annotate_co2_trace(reopened, built, concentration_units="ppm")
+    xr.testing.assert_identical(reopened[group].y, trace[group].y)
 
 
-def test_linked_independent_axes_codec_and_prior_prediction(tmp_path):
+def test_centered_prepared_with_absolute_diagnostic_save_reopen_build(tmp_path):
+    prepared = _centered_prepared()
+    inputs = prepared.inv_inputs
+    diagnostic = (inputs.H_bc_anomaly + inputs.bc_reference * inputs.H_bc_mass).assign_attrs(
+        boundary_sensitivity_preparation="unexpanded", units="ppm"
+    )
+    prepared = replace(
+        prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs.assign(H_bc=diagnostic))
+    )
+    path = tmp_path / "diagnostic.nc"
+    prepared.save(path)
+    restored = Co2PreparedInputs.load(path)
+    options = dict(use_bc=True, no_model_error=True)
+    materialized, priors = materialize_co2_inputs(prepared_inputs=restored, **options)
+    assert "H_bc" in materialized
+    built = build_co2_from_materialized(materialized, prepared_inputs=restored, priors=priors, **options)
+    assert "H_bc_anomaly" in built.model.named_vars
+
+
+@pytest.mark.parametrize("predictions", [False, True])
+def test_linked_independent_axes_codec_and_prior_prediction(tmp_path, predictions):
     prepared = _linked()
     from openghg_inversions.array_ops import select_gathered_data_array
 
@@ -180,18 +222,62 @@ def test_linked_independent_axes_codec_and_prior_prediction(tmp_path):
         independent_error_sd=xr.full_like(prepared.observations, 0.3),
         bc_state_activity={channel: StateActivity(active=False, fixed_value=1.3) for channel in operands},
     )
-    with built.model:
-        trace = pm.sample_prior_predictive(draws=2, random_seed=3)
-    trace = restore_inferencedata_coords(trace, get_coord_registry(built.model))
+    if predictions:
+        trace = sample_rhime_model(
+            built,
+            RhimeSampler(
+                draws=2, tune=2, chains=1, burn=0, nuts_sampler="pymc",
+                sample_prior_predictive=True, sample_posterior_predictive=True,
+                posterior_predictive_kwargs={"predictions": True},
+                sample_kwargs={"compute_convergence_checks": False, "random_seed": 3},
+            ),
+        )
+        centered_y = trace.predictions.y.copy(deep=True)
+    else:
+        with built.model:
+            trace = pm.sample_prior_predictive(draws=2, random_seed=3)
+        trace = restore_inferencedata_coords(trace, get_coord_registry(built.model))
     annotate_co2_o2_trace(trace, built=built)
     xr.testing.assert_allclose(trace.observed_data.y, prepared.observations)
     assert trace.prior.co2_bc.shape[-1] == 2
+    if predictions:
+        xr.testing.assert_allclose(trace.predictions.y, centered_y + trace.constant_data.boundary_reference_shift)
+        assert trace.predictions.y.attrs["concentration_representation"] == "absolute-v1"
+        from openghg_inversions.serialization import save_trace, load_trace
+
+        trace_path = tmp_path / "linked_trace.nc"
+        save_trace(trace, trace_path)
+        reopened = load_trace(trace_path)
+        annotate_co2_o2_trace(reopened, built=built)
+        xr.testing.assert_identical(reopened.predictions.y, trace.predictions.y)
     np.testing.assert_allclose(
         trace.prior.modelled_concentration,
         trace.prior.co2_o2_flux_contribution
         + trace.constant_data.fixed_prior_contribution
         + trace.prior.boundary_concentration,
     )
+
+
+@pytest.mark.parametrize("standalone", [False, True])
+def test_prediction_shift_selection_uses_labels_and_prediction_constants(tmp_path, standalone):
+    from openghg_inversions.serialization import save_trace, load_trace
+
+    shift = xr.DataArray([10.0, 20.0, 30.0], dims="observation", coords={"observation": ["a", "b", "c"]})
+    y = xr.DataArray([[1.0, 2.0]], dims=("draw", "observation"), coords={"observation": ["c", "a"]})
+    trace = xr.DataTree.from_dict({
+        "predictions": xr.Dataset({"y": y}),
+        "predictions_constant_data": xr.Dataset({"boundary_reference_shift": shift}),
+    })
+    if not standalone:
+        trace["constant_data"] = xr.Dataset({"boundary_reference_shift": shift * 100})
+    restore_absolute_predictives(trace)
+    np.testing.assert_array_equal(trace.predictions.y, [[31.0, 12.0]])
+    assert trace.predictions.y.attrs["concentration_representation"] == "absolute-v1"
+    path = tmp_path / "predictions.nc"
+    save_trace(trace, path)
+    reopened = load_trace(path)
+    restore_absolute_predictives(reopened)
+    xr.testing.assert_identical(reopened, trace)
 
 
 def test_unsupported_likelihood_fails_before_materialization():
@@ -352,3 +438,28 @@ def test_default_boundary_prior_support_and_error_arrays_are_unchanged():
             assert np.isneginf(prior_centered[0])
     for name in ("error", "aggregation_error_covariance"):
         np.testing.assert_array_equal(absolute[name].get_value(), centered[name].get_value())
+
+
+def test_linked_period_override_rejects_active_absolute_channel_at_direct_binding():
+    prepared = _linked()
+    co2 = prepared.co2_sensitivity.isel({str(prepared.co2_sensitivity.dims[-1]): 0}, drop=True)
+    absolute = prepared.o2_sensitivity.rename({str(prepared.o2_sensitivity.dims[-1]): "bc_region"})
+    prepared = replace(prepared, boundary_operands={"co2": _operands(co2)}, boundary_sensitivity={"o2": absolute})
+    with pytest.raises(ValueError, match="every active boundary channel"):
+        build_rhime_co2_o2(
+            prepared_inputs=prepared, independent_error_sd=xr.full_like(prepared.observations, 0.3), bc_freq="1D"
+        )
+
+
+@pytest.mark.parametrize("linked", [False, True])
+def test_direct_centered_binding_rejects_nat_anchor(linked):
+    if linked:
+        from test_centered_handoffs import _joint
+        with pytest.raises(ValueError, match="valid datetime"):
+            build_rhime_co2_o2(prepared_inputs=_joint(), bc_freq="1D", bc_anchor_time="NaT")
+    else:
+        prepared = _centered_prepared()
+        options = dict(use_bc=True, no_model_error=True, bc_freq="1D", bc_anchor_time="NaT")
+        inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, **options)
+        with pytest.raises(ValueError, match="valid datetime"):
+            build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, **options)

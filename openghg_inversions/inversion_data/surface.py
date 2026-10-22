@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import asdict
+from functools import partial
+from inspect import signature
 import json
 from math import gcd
 from typing import Any
@@ -34,7 +36,12 @@ def _surface_operations():
             "Surface preparation requires OpenGHG alignment and integrated/time-resolved "
             "convolution helpers. Install a compatible OpenGHG development revision."
         ) from exc
-    return resample_obs_and_other, fp_x_flux_integrated, fp_x_flux_time_resolved
+    # Released OpenGHG uses timestamp-only filling. Newer providers also offer
+    # climatological year reuse; the explicit surface validity contract forbids it.
+    integrated = fp_x_flux_integrated
+    if "allow_climatology" in signature(integrated).parameters:
+        integrated = partial(integrated, allow_climatology=False)
+    return resample_obs_and_other, integrated, fp_x_flux_time_resolved
 
 
 def _require_pilot_provider() -> None:
@@ -435,10 +442,11 @@ def prepare_surface_site(
             )
         baseline = []
         for direction in "nesw":
-            absolute = site[f"bc_anomaly_{direction}"] + site.bc_reference * site[f"bc_mass_{direction}"]
-            absolute.attrs["units"] = units
-            site[f"bc_{direction}"] = absolute
-            baseline.append(absolute.sum([dim for dim in absolute.dims if dim != "time"], skipna=False))
+            anomaly, mass = site[f"bc_anomaly_{direction}"], site[f"bc_mass_{direction}"]
+            spatial = [dim for dim in anomaly.dims if dim != "time"]
+            baseline.append(
+                anomaly.sum(spatial, skipna=False) + site.bc_reference * mass.sum(spatial, skipna=False)
+            )
         site["bc_mod"] = sum(baseline)
         site.bc_mod.attrs["units"] = units
     return site.transpose(..., "time")

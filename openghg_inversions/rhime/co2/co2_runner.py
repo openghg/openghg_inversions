@@ -344,6 +344,8 @@ def materialize_co2_inputs(
         use_bc: Include prepared boundary sensitivity.
         bc_prior: Optional boundary-scale prior, enabled only with ``use_bc``.
         bc_state_activity: Optional boundary active/fixed-state policy.
+        bc_freq: Optional model-owned frequency for centered boundary periods.
+        bc_anchor_time: Optional timestamp anchoring centered boundary periods.
         offset_prior: Optional prior enabling concentration offsets.
         offset_args: Offset frequency, ``per_site`` and ``drop_first`` settings.
 
@@ -444,6 +446,8 @@ def build_co2_from_materialized(
         model_inputs: Selected scientific arrays already materialized together.
         prepared_inputs: Preparation supplying aggregation mode and provenance.
         priors: Materialized prior parameters under their concrete graph names.
+        bc_freq: Optional model-owned frequency for centered boundary periods.
+        bc_anchor_time: Optional timestamp anchoring centered boundary periods.
 
     Returns:
         Constructed model with scientific variable roles and bounded metadata.
@@ -497,6 +501,7 @@ def build_co2_from_materialized(
         prior_covariance,
         covariance_dim=str(prior_covariance.dims[-1]),
     )
+    boundary_operands = model_inputs[list(OPERAND_NAMES)] if use_bc and "H_bc_anomaly" in model_inputs else None
     model = build_co2_model(
         model_inputs["H"],
         retained_prior=retained_prior,
@@ -510,8 +515,8 @@ def build_co2_from_materialized(
         sigma_prior=priors["sigma"] if sigma_prior is not None else None,
         fixed_model_mismatch=prepared_mismatch,
         state_activity=_state_activity_from_inputs(model_inputs),
-        boundary_sensitivity=model_inputs.get("H_bc") if use_bc else None,
-        boundary_operands=(model_inputs[list(OPERAND_NAMES)] if use_bc and "H_bc_anomaly" in model_inputs else None),
+        boundary_sensitivity=model_inputs.get("H_bc") if use_bc and boundary_operands is None else None,
+        boundary_operands=boundary_operands,
         bc_freq=bc_freq,
         bc_anchor_time=bc_anchor_time,
         bc_prior=priors["bc"] if use_bc and bc_prior is not None else None,
@@ -564,6 +569,11 @@ def build_co2_from_materialized(
                 "prior": "correlated arithmetic-moment lognormal",
                 "no_model_error": no_model_error,
                 "use_bc": use_bc,
+                **({
+                    "boundary_representation": "centered-v1",
+                    "bc_frequency": bc_freq,
+                    "bc_anchor_time": None if bc_anchor_time is None else str(bc_anchor_time),
+                } if boundary_operands is not None else {}),
                 "add_offset": offset_prior is not None,
                 "offset_args": resolved_offset_args,
                 "likelihood": (

@@ -32,6 +32,8 @@ zero mass, and mass outside the tolerance fail validation. Boundary coverage mus
 be declared by ``time_period`` interval starts. Concentrations and references are
 converted to common units before subtraction. Arithmetic and the centered PyMC
 binding use float64; this cannot recover precision already lost in stored input.
+For configured runs, add ``floatX=float64`` to ``PYTENSOR_FLAGS`` before starting
+Python, retaining any other settings. The offline example selects float64 explicitly.
 
 Explicit source responses
 -------------------------
@@ -154,6 +156,22 @@ operands. Old ``H_bc`` alone cannot be converted into accurate centered operands
 The ordinary CO₂ model and ordinary linked CO₂/O₂ model bind the raw operands to
 BC periods at model construction. Direct builders accept ``boundary_operands``
 (in linked models, a mapping keyed by tracer), ``bc_freq`` and ``bc_anchor_time``.
+Configured ordinary and saved routes select the same choices in their boundary
+configuration, for example:
+
+.. code-block:: toml
+
+   [model.boundary]
+   enabled = true
+   frequency = "1D"
+   anchor_time = "2020-01-01"
+
+Period choices apply to raw centered operands; already-expanded absolute
+sensitivities cannot be reinterpreted this way. Linked channels use one shared
+period/anchor choice and must agree when both specify it. Their tables are
+``channels.co2.boundary`` and ``channels.o2.boundary``. Anchors apply to fixed
+durations and must be omitted for calendar-month periods.
+
 Use the ordinary additive-Gaussian recipe. Cached, fixed-OU and custom likelihood
 routes reject centered inputs until separately validated. Standard and multisector
 model builders also reject centered inputs; their preparation operations can

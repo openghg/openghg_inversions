@@ -184,6 +184,8 @@ def build_co2_model(
             coordinate alignment fails, or if ``sigma_prior`` is supplied
             without ``sigma_alignment``.
     """
+    if boundary_operands is None and (bc_freq is not None or bc_anchor_time is not None):
+        raise ValueError("Boundary period choices require raw centered operands, not absolute sensitivity.")
     if boundary_operands is not None:
         if boundary_sensitivity is not None:
             raise ValueError("Supply boundary_operands or boundary_sensitivity, not both.")

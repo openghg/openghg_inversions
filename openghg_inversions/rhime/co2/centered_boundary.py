@@ -70,16 +70,22 @@ def add_centered_boundary(operands, *, prior, activity=None, prefix="", output_d
 
 def restore_absolute_predictives(trace: xr.DataTree) -> xr.DataTree:
     """Restore centered y once, using only retained trace constants and labels."""
-    if "constant_data" not in trace.children or "boundary_reference_shift" not in trace["constant_data"]:
-        return trace
-    shift = trace["constant_data"]["boundary_reference_shift"]
-    trace.attrs["boundary_representation"] = "centered-v1"
-    for name in ("observed_data", "prior_predictive", "posterior_predictive"):
+    for name in ("observed_data", "prior_predictive", "posterior_predictive", "predictions"):
         if name not in trace.children or "y" not in trace[name]:
             continue
+        constants = ("predictions_constant_data", "constant_data") if name == "predictions" else ("constant_data",)
+        shift = next(
+            (trace[group]["boundary_reference_shift"] for group in constants
+             if group in trace.children and "boundary_reference_shift" in trace[group]),
+            None,
+        )
+        if shift is None:
+            continue
+        trace.attrs["boundary_representation"] = "centered-v1"
         y = trace[name]["y"]
         if y.attrs.get("concentration_representation") == "absolute-v1":
             continue
+        shift = shift.sel({dim: y[dim] for dim in shift.dims})
         y, aligned_shift = xr.align(y, shift, join="exact", copy=False)
         restored = y + aligned_shift
         restored.attrs = dict(y.attrs, concentration_representation="absolute-v1")
