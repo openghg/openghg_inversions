@@ -94,6 +94,44 @@ def _solve_full_width_factor(
     return cast(FloatArray, solution), logdet
 
 
+def _evaluate_whitened_fallback(
+    factor: FloatArray,
+    residual: FloatArray,
+    logdet: float,
+) -> tuple[float, float, FloatArray, FloatArray]:
+    """Evaluate the whitened covariance in joint factor/residual coordinates.
+
+    A complete QR basis supplies the orthogonal complement needed for the
+    precision diagonal. Both its contribution and the scaled factor-space
+    contribution are sums of squares, avoiding subtraction from one. Keeping
+    the residual in the same basis as the factor also preserves their shared
+    rounding errors for strongly aligned inputs. This exceptional route needs
+    an observation-sized square basis; complement reductions use small blocks.
+    Orthogonal projections still have absolute roundoff at the input scale;
+    arbitrarily small solved components do not have guaranteed relative accuracy.
+    """
+    basis, _ = np.linalg.qr(np.column_stack((factor, residual)), mode="complete")
+    retained = min(factor.shape[0], factor.shape[1] + 1)
+    joint_basis = basis[:, :retained]
+    factor_coordinates = joint_basis.T @ factor
+    residual_coordinates = joint_basis.T @ residual
+    left_vectors, singular_values, _ = np.linalg.svd(factor_coordinates, full_matrices=True)
+    rotated_residual = left_vectors.T @ residual_coordinates
+    inverse_scales = np.ones(retained, dtype=np.float64)
+    scales = np.hypot(1.0, singular_values)
+    inverse_scales[: len(singular_values)] = np.reciprocal(scales)
+    scaled_residual = inverse_scales * rotated_residual
+    quadratic = float(scaled_residual @ scaled_residual)
+    logdet += float(2.0 * np.log(scales).sum())
+    solved_residual = joint_basis @ (left_vectors @ (inverse_scales * scaled_residual))
+    scaled_basis = (joint_basis @ left_vectors) * inverse_scales[None, :]
+    precision_diagonal = np.einsum("ij,ij->i", scaled_basis, scaled_basis)
+    for start in range(retained, factor.shape[0], 256):
+        complement = basis[:, start : start + 256]
+        precision_diagonal += np.einsum("ij,ij->i", complement, complement)
+    return quadratic, logdet, cast(FloatArray, solved_residual), precision_diagonal
+
+
 class _FixedOuLogpOp(Op):
     """Instance-local PyTensor bridge to one prepared NumPy/SciPy target."""
 
@@ -286,45 +324,73 @@ class FixedOuLowRank:
         )
         square_root_weights = np.sqrt(weights)
         whitened_residual = transformed_residual * square_root_weights
+        logdet = self.base_logdet + float(np.log(mode_variance).sum())
 
         if self.rank:
             whitened_factor = self.transformed_factor * square_root_weights[:, None]
-            core = np.eye(self.rank, dtype=np.float64) + (
-                whitened_factor.T @ whitened_factor
-            )
-            core = (core + core.T) * 0.5
-            cholesky = np.linalg.cholesky(core)
-            projected = whitened_factor.T @ whitened_residual
-            latent_mode = cho_solve((cholesky, True), projected, check_finite=False)
-            conditional_whitened = whitened_residual - whitened_factor @ latent_mode
-            quadratic = float(
-                conditional_whitened @ conditional_whitened
-                + latent_mode @ latent_mode
-            )
-            logdet_core = float(2.0 * np.log(np.diag(cholesky)).sum())
-            conditional_residual = (
-                transformed_residual - self.transformed_factor @ latent_mode
-            )
-            transformed = solve_triangular(
-                cholesky,
-                self.transformed_factor.T,
-                lower=True,
-                check_finite=False,
-            )
-            leverage = np.square(transformed).sum(axis=0)
+            tolerance = np.sqrt(np.finfo(np.float64).eps)
+            roundoff = (self.rank + 1) * np.finfo(np.float64).eps
+            roundoff /= 1.0 - roundoff
+            with np.errstate(over="ignore", invalid="ignore"):
+                core = np.eye(self.rank, dtype=np.float64) + (
+                    whitened_factor.T @ whitened_factor
+                )
+                core = (core + core.T) * 0.5
+            use_cholesky = bool(np.isfinite(core).all())
+            if use_cholesky:
+                try:
+                    cholesky = np.linalg.cholesky(core)
+                except np.linalg.LinAlgError:
+                    use_cholesky = False
+                else:
+                    reciprocal_condition, info = dpocon(cholesky, np.linalg.norm(core, 1), uplo="L")
+                    use_cholesky = bool(not info and reciprocal_condition > tolerance)
+            if use_cholesky:
+                projected = whitened_factor.T @ whitened_residual
+                latent_mode = cho_solve((cholesky, True), projected, check_finite=False)
+                solved_residual = whitened_residual - whitened_factor @ latent_mode
+                # A well-conditioned scalar core can still lose the residual
+                # in subtraction. Budget that rounding relative to the solve,
+                # whose accuracy is needed by both gradients, not just logp.
+                with np.errstate(over="ignore", invalid="ignore"):
+                    residual_roundoff = roundoff * (
+                        np.linalg.norm(whitened_residual)
+                        + np.linalg.norm(whitened_factor) * np.linalg.norm(latent_mode)
+                    )
+                use_cholesky = bool(
+                    np.isfinite(residual_roundoff)
+                    and residual_roundoff <= tolerance * np.linalg.norm(solved_residual)
+                )
+            if use_cholesky:
+                transformed = solve_triangular(
+                    cholesky, whitened_factor.T, lower=True, check_finite=False
+                )
+                leverage = np.square(transformed).sum(axis=0)
+                precision_diagonal = 1.0 - leverage
+                # Independently protect the precision diagonal even when the
+                # residual is zero. These screens address known cancellation;
+                # neither the condition estimate nor the normwise residual
+                # budget certifies every individual gradient component.
+                use_cholesky = bool(
+                    np.all(precision_diagonal > 0.0)
+                    and np.all(roundoff * (1.0 + leverage) <= tolerance * precision_diagonal)
+                )
+            if use_cholesky:
+                quadratic = float(solved_residual @ solved_residual + latent_mode @ latent_mode)
+                logdet += float(2.0 * np.log(np.diag(cholesky)).sum())
+            else:
+                quadratic, logdet, solved_residual, precision_diagonal = _evaluate_whitened_fallback(
+                    whitened_factor, whitened_residual, logdet
+                )
         else:
             quadratic = float(whitened_residual @ whitened_residual)
-            logdet_core = 0.0
-            conditional_residual = transformed_residual
-            leverage = np.zeros(self.n_observation, dtype=np.float64)
+            solved_residual = whitened_residual
+            precision_diagonal = np.ones(self.n_observation, dtype=np.float64)
 
-        logdet = self.base_logdet + float(np.log(mode_variance).sum()) + logdet_core
         log_likelihood = -0.5 * (
             self.n_observation * math.log(2.0 * math.pi) + logdet + quadratic
         )
-        mode_score = (
-            np.square(weights) * (np.square(conditional_residual) + leverage) - weights
-        )
+        mode_score = weights * (np.square(solved_residual) - precision_diagonal)
         gradient_amplitude = amplitude * np.bincount(
             self.mode_site_index,
             weights=mode_score,
@@ -332,7 +398,7 @@ class FixedOuLowRank:
         )
         gradient_residual = None
         if not amplitude_only:
-            solved_transformed = weights * conditional_residual
+            solved_transformed = square_root_weights * solved_residual
             gradient_residual = cast(FloatArray, np.asarray(-(self.mode_transform.T @ solved_transformed)))
         return float(log_likelihood), gradient_residual, cast(FloatArray, gradient_amplitude)
 
