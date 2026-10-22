@@ -617,9 +617,8 @@ and sampling-owned tuning controls.
 The CO2-only templates also underpin <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2</span></code> staged commands; see
 <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for the staged output table and complete command
 sequence, including <a class="reference internal" href="co2_model_family.html#linked-staged-commands"><span class="std std-ref">linked saved phases</span></a>.
-The packaged linked template uses that phase interface without a <code class="docutils literal notranslate"><span class="pre">variant</span></code>
-selector; the retained direct-runner resolver described below uses its own
-explicit <code class="docutils literal notranslate"><span class="pre">linked</span></code> or <code class="docutils literal notranslate"><span class="pre">cached_fixed_ou</span></code> variant.</p>
+The packaged linked template and concrete linked configuration use the same
+scientific choices without a <code class="docutils literal notranslate"><span class="pre">variant</span></code> selector.</p>
 <p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.load_co2_family_config" title="openghg_inversions.rhime.co2.load_co2_family_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.load_co2_family_config()</span></code></a> reads TOML.
 CO₂ uses <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_co2" title="openghg_inversions.rhime.co2.run_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_co2()</span></code></a> or the Python/CLI model
 selector. Preparation, model, sampler and output values are resolved at their
@@ -627,12 +626,23 @@ concrete owners; saved sampling accepts decoded model/likelihood choices and a
 separate <code class="docutils literal notranslate"><span class="pre">sampling</span></code> mapping. The model selects the backend and update.
 Native-resolution acquisition and coherent-reduction construction
 are separate from this configured prepared-input route.</p>
-<p>Linked recipes retain
-<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.resolve_co2_family_config" title="openghg_inversions.rhime.co2.resolve_co2_family_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.resolve_co2_family_config()</span></code></a>, which accepts a
-mapping and returns <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2RunSetup" title="openghg_inversions.rhime.co2.Co2O2RunSetup"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2O2RunSetup</span></code></a>.
-<code class="docutils literal notranslate"><span class="pre">setup.runner_arguments(prepared)</span></code> expands independent errors over the joint
-observation axis and checks species/unit labels. CO2 uses <code class="docutils literal notranslate"><span class="pre">run_co2</span></code> or the
-concrete scientific operations above.</p>
+<p>Ordinary preparation and science use
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparationConfig" title="openghg_inversions.rhime.co2.Co2PreparationConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparationConfig</span></code></a> and
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2ModelConfig" title="openghg_inversions.rhime.co2.Co2ModelConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2ModelConfig</span></code></a>; linked execution uses
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparationConfig" title="openghg_inversions.rhime.co2.Co2O2PreparationConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2O2PreparationConfig</span></code></a> and
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2ModelConfig" title="openghg_inversions.rhime.co2.Co2O2ModelConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2O2ModelConfig</span></code></a>.
+Construct these with <code class="docutils literal notranslate"><span class="pre">from_params</span></code> after file loading and overrides. Each
+owner reads only its active sections, owns ordinary containers, and borrows
+numerical objects without copying or computing them. Parsing opens no scientific
+artifacts and constructs neither a model nor a sampler.</p>
+<p><code class="docutils literal notranslate"><span class="pre">model.model_arguments()</span></code> supplies ordinary scientific keywords;
+<code class="docutils literal notranslate"><span class="pre">linked_model.bind(prepared)</span></code> checks channel units and expands configured
+independent errors over the joint observation axis at the scientific boundary.
+Saved sampling and prior prediction also accept the concrete model owners.
+Prior prediction reads only its science and optional random seed; unused MCMC
+controls are ignored. Replay reads output choices and saved scientific meaning
+without parsing current science or sampling controls. The former
+<code class="docutils literal notranslate"><span class="pre">Co2O2RunSetup</span></code> and <code class="docutils literal notranslate"><span class="pre">resolve_co2_family_config</span></code> interfaces have been removed.</p>
 <p>For example, the CO2 TOML settings:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">format_version</span> <span class="o">=</span> <span class="mi">1</span>
 <span class="n">recipe</span> <span class="o">=</span> <span class="s2">"co2"</span>
@@ -758,20 +768,19 @@ callable imports:</p>
 likelihood; boundary conditions and offsets are available.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">co2_o2</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">linked</span></code></p></td>
+<td><p>Not used</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2_from_prepared_inputs</span></code></p></td>
-<td><p>Fixed independent error, or <code class="docutils literal notranslate"><span class="pre">fixed_ou</span></code> with fixed or inferred
-species/site amplitudes; one shared channel-unit label.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">co2_o2</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">cached_fixed_ou</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2_cached_sigma_from_prepared_inputs</span></code></p></td>
-<td><p>Fixed OU timescales and independent positive species/site amplitudes, using the
-runner-owned PyMC sampler; one shared channel-unit label.</p></td>
+<td><p>Fixed independent error, or <code class="docutils literal notranslate"><span class="pre">fixed_ou</span></code> with fixed species/site
+amplitudes; one shared channel-unit label.</p></td>
 </tr>
 </tbody>
 </table>
 </div>
+<p>Configured linked inferred OU remains separate work. The direct
+<code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2_cached_sigma_from_prepared_inputs</span></code> scientific API remains
+available with explicit Python arguments. This artifact-only configuration
+refactor adds no linked covariance-rank selection or rank-256 preparation;
+existing represented aggregation covariance is preserved unchanged.</p>
 <p>For <code class="docutils literal notranslate"><span class="pre">recipe</span> <span class="pre">=</span> <span class="pre">&quot;co2&quot;</span></code>, the <code class="docutils literal notranslate"><span class="pre">[likelihood]</span></code> table accepts these closed
 forms. Scalar-or-site-map values use one number or an inline table such as
 <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">MHD</span> <span class="pre">=</span> <span class="pre">24.0,</span> <span class="pre">TAC</span> <span class="pre">=</span> <span class="pre">12.0</span> <span class="pre">}</span></code>; the component-specific sign constraints are below.
@@ -837,13 +846,9 @@ false). A global offset (<code class="docutils literal notranslate"><span class=
 <code class="docutils literal notranslate"><span class="pre">sigma_target_accept</span></code> and <code class="docutils literal notranslate"><span class="pre">state_target_accept</span></code> belong in <code class="docutils literal notranslate"><span class="pre">[sampling]</span></code>.
 Posterior-predictive name lists may contain only <code class="docutils literal notranslate"><span class="pre">y</span></code> or <code class="docutils literal notranslate"><span class="pre">concentration</span></code>.
 The implementation selects the matched cached sampler automatically.</p>
-<p>Linked <code class="docutils literal notranslate"><span class="pre">variant</span> <span class="pre">=</span> <span class="pre">&quot;cached_fixed_ou&quot;</span></code> retains its target-accept controls in
-<code class="docutils literal notranslate"><span class="pre">[likelihood]</span></code>, alongside positive <code class="docutils literal notranslate"><span class="pre">tau_hours</span></code> and <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code>,
-with species/site keys such as <code class="docutils literal notranslate"><span class="pre">&quot;co2:MHD&quot;</span></code>.
-Linked cached sampling requires <code class="docutils literal notranslate"><span class="pre">nuts_sampler</span> <span class="pre">=</span> <span class="pre">&quot;pymc&quot;</span></code>.</p>
 <p>The optional <code class="docutils literal notranslate"><span class="pre">[sampling]</span></code> table is shared by the supported setups.
 Defaults below apply when an option is omitted; linked fixed-error sampling
-uses NumPyro, while both linked OU routes default to and require PyMC.</p>
+uses NumPyro, while configured linked fixed OU defaults to and requires PyMC.</p>
 <div class="pst-scrollable-table-container"><table class="table" id="id3">
 <caption><span class="caption-text">Sampling configuration</span><a class="headerlink" href="#id3" title="Link to this table">#</a></caption>
 <colgroup>
@@ -910,12 +915,12 @@ the separate controls below instead.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sigma_target_accept</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">0.8</span></code></p></td>
-<td><p>See linked likelihood controls above</p></td>
+<td><p>Not available</p></td>
 <td><p>CO2 inferred fixed-OU only; number strictly between zero and one.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">state_target_accept</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">0.9</span></code></p></td>
-<td><p>See linked likelihood controls above</p></td>
+<td><p>Not available</p></td>
 <td><p>CO2 inferred fixed-OU only; used when flux, boundary or offset states exist.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">random_seed</span></code></p></td>
@@ -988,8 +993,7 @@ error still enter the single joint likelihood once.</p>
 <p>Standalone O2, arbitrary Python callables, and additional recipe or variant
 names are rejected. Linked likelihood selection supports the fixed-error
 default and <code class="docutils literal notranslate"><span class="pre">fixed_ou</span></code>; it rejects <code class="docutils literal notranslate"><span class="pre">additive_sigma</span></code>, <code class="docutils literal notranslate"><span class="pre">site_sigma</span></code>,
-<code class="docutils literal notranslate"><span class="pre">scalar_sigma</span></code>, and unequal CO2 and O2 unit labels. The linked
-<code class="docutils literal notranslate"><span class="pre">cached_fixed_ou</span></code> variant uses the matched cached sampler. The lower-level
+<code class="docutils literal notranslate"><span class="pre">scalar_sigma</span></code>, inferred OU amplitudes, and unequal CO2 and O2 unit labels. The lower-level
 linked fixed-error API continues to represent row-specific mixed units;
 configuring a heterogeneous ppm/per-meg
 run is deferred until the scaling contract tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-86">OPE-86</a> is available. Use the
@@ -1000,7 +1004,7 @@ Construct it through the documented preparation boundary or restore it before
 binding the configured runner arguments; see <a class="reference internal" href="#linked-prepared-replay"><span class="std std-ref">Save and replay linked prepared inputs</span></a>.
 The installed linked phases consume the same artifact; see
 <a class="reference internal" href="co2_model_family.html#linked-staged-commands"><span class="std std-ref">Staged linked CO₂/O₂ commands</span></a>.</p>
-<p>The retained direct-runner configuration follows a prepare, bind, and run
+<p>The concrete linked configuration follows a prepare, bind, and run
 sequence. The scientific array names below are the labelled inputs documented by
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_o2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_co2_o2_inputs()</span></code></a>; replace them with
 the products from one coherent reduction. Exactly one of
@@ -1008,13 +1012,14 @@ the products from one coherent reduction. Exactly one of
 non-null:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">prepare_co2_o2_inputs</span><span class="p">,</span>
-    <span class="n">resolve_co2_family_config</span><span class="p">,</span>
+    <span class="n">Co2O2ModelConfig</span><span class="p">,</span>
+    <span class="n">run_rhime_co2_o2_from_prepared_inputs</span><span class="p">,</span>
 <span class="p">)</span>
 
-<span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"format_version"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"recipe"</span><span class="p">:</span> <span class="s2">"co2_o2"</span><span class="p">,</span> <span class="s2">"variant"</span><span class="p">:</span> <span class="s2">"linked"</span><span class="p">,</span>
+<span class="n">config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"format_version"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"recipe"</span><span class="p">:</span> <span class="s2">"co2_o2"</span><span class="p">,</span>
           <span class="s2">"channels"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"co2"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"units"</span><span class="p">:</span> <span class="s2">"ppm"</span><span class="p">,</span> <span class="s2">"independent_error_sd"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
                        <span class="s2">"o2"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"units"</span><span class="p">:</span> <span class="s2">"ppm"</span><span class="p">,</span> <span class="s2">"independent_error_sd"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">}}}</span>
-<span class="n">setup</span> <span class="o">=</span> <span class="n">resolve_co2_family_config</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">Co2O2ModelConfig</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
 
 <span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_co2_o2_inputs</span><span class="p">(</span>
     <span class="n">co2_observations</span><span class="o">=</span><span class="n">co2_observations</span><span class="p">,</span>
@@ -1030,13 +1035,16 @@ non-null:</p>
     <span class="n">o2_aggregation_covariance</span><span class="o">=</span><span class="n">o2_aggregation_covariance</span><span class="p">,</span>
     <span class="n">retained_prior</span><span class="o">=</span><span class="n">retained_prior</span><span class="p">,</span>
     <span class="n">boundary_sensitivity</span><span class="o">=</span><span class="p">{</span><span class="s2">"co2"</span><span class="p">:</span> <span class="n">H_bc_co2</span><span class="p">},</span>
-    <span class="n">co2_units</span><span class="o">=</span><span class="n">setup</span><span class="o">.</span><span class="n">preparation_kwargs</span><span class="p">[</span><span class="s2">"co2_units"</span><span class="p">],</span>
-    <span class="n">o2_units</span><span class="o">=</span><span class="n">setup</span><span class="o">.</span><span class="n">preparation_kwargs</span><span class="p">[</span><span class="s2">"o2_units"</span><span class="p">],</span>
+    <span class="n">co2_units</span><span class="o">=</span><span class="n">model</span><span class="o">.</span><span class="n">co2_units</span><span class="p">,</span>
+    <span class="n">o2_units</span><span class="o">=</span><span class="n">model</span><span class="o">.</span><span class="n">o2_units</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="n">idata</span> <span class="o">=</span> <span class="n">setup</span><span class="o">.</span><span class="n">runner</span><span class="p">(</span><span class="o">**</span><span class="n">setup</span><span class="o">.</span><span class="n">runner_arguments</span><span class="p">(</span><span class="n">prepared</span><span class="p">))</span>
+<span class="n">idata</span> <span class="o">=</span> <span class="n">run_rhime_co2_o2_from_prepared_inputs</span><span class="p">(</span>
+    <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span> <span class="o">**</span><span class="n">model</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="n">prepared</span><span class="p">),</span>
+<span class="p">)</span>
 </pre></div>
 </div>
-<p>Unknown or unused keys are errors, reported by their dotted path. Resolution
+<p>Unknown or unused keys in active sections are errors, reported by their dotted
+path. Resolution
 also rejects incompatible component choices before an artifact is loaded or a
 model is built. This section defines the local CO2-family configuration
 surface, not the cross-family configuration and CLI catalogue. That reference
@@ -1623,15 +1631,14 @@ to every observed group. Mappings must cover labels such as <code class="docutil
 <code class="docutils literal notranslate"><span class="pre">o2:MHD</span></code>. Amplitudes and their prior scales use the common concentration unit.
 For example, the ordinary linked configuration can include:</p>
 <div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="n">recipe</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"co2_o2"</span>
-<span class="n">variant</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"linked"</span>
-
 <span class="k">[likelihood]</span>
 <span class="n">kind</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"fixed_ou"</span>
 <span class="n">tau_hours</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="s2">"co2:MHD"</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mf">6.0</span><span class="p">,</span><span class="w"> </span><span class="s2">"o2:MHD"</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mf">8.0</span><span class="w"> </span><span class="p">}</span>
 <span class="n">fixed_site_amplitudes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="s2">"co2:MHD"</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mf">0.4</span><span class="p">,</span><span class="w"> </span><span class="s2">"o2:MHD"</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mf">0.7</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
-<p>Replace <code class="docutils literal notranslate"><span class="pre">fixed_site_amplitudes</span></code> with a <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code> table to infer
+<p>In direct Python calls to the linked prepared-input runner, replace the
+<code class="docutils literal notranslate"><span class="pre">fixed_site_amplitudes</span></code> argument with <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code> to infer
 amplitudes with stock PyMC. The optimized runner
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs" title="openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs()</span></code></a>
 uses independent positive amplitude priors and the existing CO2
@@ -1639,13 +1646,12 @@ sigma-then-state <code class="docutils literal notranslate"><span class="pre">Co
 when returned amplitude values change, then updates all active flux, boundary,
 and offset coefficients against that cache. Its builder is
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.build_co2_o2_cached_sigma_model" title="openghg_inversions.rhime.co2.build_co2_o2_cached_sigma_model"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.build_co2_o2_cached_sigma_model()</span></code></a>.</p>
-<p>Select <code class="docutils literal notranslate"><span class="pre">variant</span> <span class="pre">=</span> <span class="pre">&quot;cached_fixed_ou&quot;</span></code> and supply <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code>
-in <code class="docutils literal notranslate"><span class="pre">[likelihood]</span></code> in place of fixed amplitudes. Optional
-<code class="docutils literal notranslate"><span class="pre">initial_site_amplitudes</span></code> accepts the same scalar or species/site mapping.
-Sampler options match the CO2 cached recipe, including separate
-<code class="docutils literal notranslate"><span class="pre">sigma_target_accept</span></code> and <code class="docutils literal notranslate"><span class="pre">state_target_accept</span></code> controls. Both linked OU
-routes require <code class="docutils literal notranslate"><span class="pre">nuts_sampler</span> <span class="pre">=</span> <span class="pre">&quot;pymc&quot;</span></code> and select it by default; the ordinary
-fixed-error linked default remains NumPyro.</p>
+<p>For inferred linked amplitudes, use the direct Python scientific APIs with
+explicit <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code>, <code class="docutils literal notranslate"><span class="pre">tau_hours</span></code> and optional
+<code class="docutils literal notranslate"><span class="pre">initial_site_amplitudes</span></code> arguments. The cached runner also accepts separate
+<code class="docutils literal notranslate"><span class="pre">sigma_target_accept</span></code> and <code class="docutils literal notranslate"><span class="pre">state_target_accept</span></code> controls. Both direct OU
+routes require <code class="docutils literal notranslate"><span class="pre">nuts_sampler=&quot;pymc&quot;</span></code>. Concrete linked configuration and
+installed saved phases currently accept fixed amplitudes only.</p>
 <p>Both routes retain species and native channel identity in the trace. The
 <code class="docutils literal notranslate"><span class="pre">ou_site</span></code> coordinate uses the species/site labels, with <code class="docutils literal notranslate"><span class="pre">ou_species</span></code> and
 <code class="docutils literal notranslate"><span class="pre">ou_station</span></code> coordinates describing each group. Amplitudes retain

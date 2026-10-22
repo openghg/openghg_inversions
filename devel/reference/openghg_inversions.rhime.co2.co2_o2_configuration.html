@@ -599,13 +599,28 @@ Paths belong to their consuming phase and use the invocation directory.</p>
 </dl>
 </dd></dl>
 
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_configuration.resolve_co2_o2_preparation">
-<span class="sig-name descname"><span class="pre">resolve_co2_o2_preparation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">require_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_configuration.resolve_co2_o2_preparation" title="Link to this definition">#</a></dt>
-<dd><p>Resolve a prepared artifact path and original requested dates/domain only.</p>
-<p><code class="docutils literal notranslate"><span class="pre">require_path</span></code> selects importing callers; in-memory callers may omit it.
-Other phases’ sections remain unused. Paths resolve from the invocation
-directory and no artifact is opened here.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2PreparationConfig">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Co2O2PreparationConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prepared_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start_date</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">end_date</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2PreparationConfig" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Linked artifact selection and original requested context, without I/O.</p>
+<dl class="field-list simple">
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2PreparationConfig.from_params">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">require_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2PreparationConfig.from_params" title="Link to this definition">#</a></dt>
+<dd><p>Parse only linked artifact options; reject affine reconstruction.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2PreparationConfig" title="openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2PreparationConfig"><em>Co2O2PreparationConfig</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2PreparationConfig.preparation_arguments">
+<span class="sig-name descname"><span class="pre">preparation_arguments</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2PreparationConfig.preparation_arguments" title="Link to this definition">#</a></dt>
+<dd><p>Return keywords for the linked artifact-import boundary.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>
@@ -613,33 +628,64 @@ directory and no artifact is opened here.</p>
 </dl>
 </dd></dl>
 
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_configuration.resolve_co2_o2_model">
-<span class="sig-name descname"><span class="pre">resolve_co2_o2_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_configuration.resolve_co2_o2_model" title="Link to this definition">#</a></dt>
-<dd><p>Bind configured linked science to one unchanged prepared artifact.</p>
-<p>Required <code class="docutils literal notranslate"><span class="pre">channels.co2/o2.units</span></code> must match the artifact’s common unit.
-Configure positive independent-error standard deviations for both channels
-or retain the saved vector. Existing replay validation owns agreement with
-saved errors. Channel boundary/offset options keep their ordinary meanings.
-Fixed independent error and fixed-amplitude fixed OU are supported here;
-inference and reporting settings are not consumed.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2ModelConfig">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Co2O2ModelConfig</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">co2_units</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">o2_units</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">independent_error_sd</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">offset_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">offset_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">tau_hours</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">fixed_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2ModelConfig" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Linked channel science independent of prepared arrays and sampling.</p>
+<p>Both channels require identical mole-fraction units. Error overrides must
+be supplied for both channels or omitted for both to use saved errors.
+Fixed independent error and fixed-amplitude OU are supported; inferred OU
+and per-meg transformations remain separate work.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Returns<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Keywords for <code class="docutils literal notranslate"><span class="pre">build_rhime_co2_o2</span></code>, excluding prepared inputs and sampler.</p>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2ModelConfig.from_params">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2ModelConfig.from_params" title="Link to this definition">#</a></dt>
+<dd><p>Parse active channel/likelihood choices without touching arrays.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2ModelConfig" title="openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2ModelConfig"><em>Co2O2ModelConfig</em></a></p>
 </dd>
-<dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If channel labels/units or scientific options are invalid,
-    errors are unavailable, or inferred OU amplitudes are selected.</p>
-</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2ModelConfig.bind">
+<span class="sig-name descname"><span class="pre">bind</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2ModelConfig.bind" title="Link to this definition">#</a></dt>
+<dd><p>Bind channel errors and check units at the scientific array boundary.</p>
+<p>The artifact and its saved error vector remain borrowed. Explicit errors
+expand over labelled observations; agreement with saved errors is checked
+by model construction at its materialization boundary.</p>
+<dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>
 </dd>
 </dl>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_configuration.resolve_co2_o2_sampler">
-<span class="sig-name descname"><span class="pre">resolve_co2_o2_sampler</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_configuration.resolve_co2_o2_sampler" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">resolve_co2_o2_sampler</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_configuration.resolve_co2_o2_sampler" title="Link to this definition">#</a></dt>
 <dd><p>Resolve live sampling controls and the backend required by the likelihood.</p>
 <p>Fixed OU requires PyMC; fixed independent error defaults to NumPyro.
 Channel, prepared-input and output choices remain unused.</p>
@@ -732,8 +778,16 @@ ppm/per-meg operation until its scientific transform is defined.</p>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_o2_configuration.load_co2_o2_params"><code class="docutils literal notranslate"><span class="pre">load_co2_o2_params()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_o2_configuration.resolve_co2_o2_preparation"><code class="docutils literal notranslate"><span class="pre">resolve_co2_o2_preparation()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_o2_configuration.resolve_co2_o2_model"><code class="docutils literal notranslate"><span class="pre">resolve_co2_o2_model()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2PreparationConfig"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparationConfig</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2PreparationConfig.from_params"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparationConfig.from_params()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2PreparationConfig.preparation_arguments"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparationConfig.preparation_arguments()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2ModelConfig"><code class="docutils literal notranslate"><span class="pre">Co2O2ModelConfig</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2ModelConfig.from_params"><code class="docutils literal notranslate"><span class="pre">Co2O2ModelConfig.from_params()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_o2_configuration.Co2O2ModelConfig.bind"><code class="docutils literal notranslate"><span class="pre">Co2O2ModelConfig.bind()</span></code></a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_o2_configuration.resolve_co2_o2_sampler"><code class="docutils literal notranslate"><span class="pre">resolve_co2_o2_sampler()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_o2_configuration.resolve_co2_o2_prior_seed"><code class="docutils literal notranslate"><span class="pre">resolve_co2_o2_prior_seed()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_o2_configuration.validate_co2_o2_units"><code class="docutils literal notranslate"><span class="pre">validate_co2_o2_units()</span></code></a></li>

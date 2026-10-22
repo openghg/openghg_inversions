@@ -739,6 +739,14 @@ Remove CO2 <code class="docutils literal notranslate"><span class="pre">variant<
 selects the matched cached sampler automatically. Use a supported positive-prior
 table rather than <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior_scale</span></code>. The packaged example is now
 <code class="docutils literal notranslate"><span class="pre">co2_fixed_ou.toml</span></code>.</p>
+<p>Replace linked <code class="docutils literal notranslate"><span class="pre">Co2O2RunSetup</span></code> and <code class="docutils literal notranslate"><span class="pre">resolve_co2_family_config</span></code> with
+<code class="docutils literal notranslate"><span class="pre">Co2O2ModelConfig.from_params(config)</span></code> and pass <code class="docutils literal notranslate"><span class="pre">model.bind(prepared)</span></code> as
+scientific keywords to <code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2_from_prepared_inputs</span></code>. Remove linked
+<code class="docutils literal notranslate"><span class="pre">variant</span></code> settings. Concrete linked configuration supports fixed independent
+error and fixed-amplitude OU; the direct cached scientific runner remains
+available with explicit Python arguments. Ordinary and linked preparation use
+<code class="docutils literal notranslate"><span class="pre">Co2PreparationConfig</span></code> and <code class="docutils literal notranslate"><span class="pre">Co2O2PreparationConfig</span></code>. Saved sampling/prior
+phases accept their concrete model owners without reparsing them.</p>
 <p>All CO2 stages use the shared preparation/sample manifests, original requested
 dates/domain, and shared product naming. Sampling consumes one preparation
 manifest; postprocessing consumes one sample manifest plus current output choices.

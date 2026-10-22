@@ -625,7 +625,9 @@ recipe-specific options, then construct canonical <code class="docutils literal 
 Pass the result to the corresponding
 runner’s <code class="docutils literal notranslate"><span class="pre">config</span></code> argument to reuse the resolved choices. The
 <a class="reference internal" href="../usage/rhime_configuration.html"><span class="doc">configuration guide</span></a> explains requested site selectors,
-retained execution metadata and compatibility helpers.</p>
+retained execution metadata and compatibility helpers. For artifact-only CO2
+and linked CO2/O2 requests, load the file and apply overrides, then construct the
+preparation and model owners below; see <a class="reference internal" href="../usage/co2_models.html"><span class="doc">CO2 configuration</span></a>.</p>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.read_rhime_ini" title="openghg_inversions.rhime.read_rhime_ini"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.read_rhime_ini</span></code></a></p></td>
@@ -645,6 +647,18 @@ retained execution metadata and compatibility helpers.</p>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.DataConfig.select" title="openghg_inversions.rhime.DataConfig.select"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.DataConfig.select</span></code></a></p></td>
 <td><p>Return named direct attributes in a new dictionary, borrowing values.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparationConfig" title="openghg_inversions.rhime.co2.Co2PreparationConfig"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.Co2PreparationConfig</span></code></a></p></td>
+<td><p>Artifact selection and original requested context, without scientific I/O.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2ModelConfig" title="openghg_inversions.rhime.co2.Co2ModelConfig"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.Co2ModelConfig</span></code></a></p></td>
+<td><p>Scientific choices for ordinary CO2, independent of arrays and inference.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparationConfig" title="openghg_inversions.rhime.co2.Co2O2PreparationConfig"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.Co2O2PreparationConfig</span></code></a></p></td>
+<td><p>Linked artifact selection and original requested context, without I/O.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2ModelConfig" title="openghg_inversions.rhime.co2.Co2O2ModelConfig"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.Co2O2ModelConfig</span></code></a></p></td>
+<td><p>Linked channel science independent of prepared arrays and sampling.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.SiteOptions" title="openghg_inversions.inversion_data.SiteOptions"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.SiteOptions</span></code></a></p></td>
 <td><p>Complete selectors sharing one site order.</p></td>
