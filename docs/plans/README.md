@@ -8,6 +8,13 @@ Repository plans retain delivery history, proposals, research, and validation ev
 - GitHub issues own outstanding implementation and acceptance tasks. A research candidate or historical checklist does not authorize new work or establish that a feature is supported.
 - [User documentation](../usage/usage.rst) describes the supported package. Plans may mention interfaces that have changed or proposals that have not merged.
 
+## Additional validation evidence
+
+- [OPE-152 cached fixed-OU performance](ope152_cached_ou_performance.md):
+  21 October 2026 rank-256 and full-rank refresh measurements, numerical
+  alternatives, and validation limits. Implementation follow-up belongs to
+  OPE-152; these timings are not posterior sampling acceptance evidence.
+
 ## Inventory and remaining cleanup
 
 This inventory accounts for all 28 Markdown records present at `devel` revision `42a32f62` on 12 October 2026. **The dispositions below are proposed follow-up work, except for the three records already in `archive/`.** This first slice extracts numerical ownership explanation and corrects the strongest status/authority conflicts. It does not move the other plans or claim their remaining tasks are delivered.
