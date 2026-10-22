@@ -18,6 +18,7 @@ See :doc:`specifications` for their ownership and delivery status.
    observation_uncertainty
    fixed_ou_likelihood
    fixed_ou_evidence
+   migration_960
    releasing
 
 Scientific notation in prose

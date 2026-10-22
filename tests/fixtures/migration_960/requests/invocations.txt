@@ -1,0 +1,33 @@
+Representative original invocation text; do not execute these as inversions.
+Source revision: 0a32d73a5c4a72be0505a4ed682472e1613e49e9 unless stated.
+Paths are relative to this fixture directory and relative output paths use cwd.
+
+Python historical public spelling (current development raises ImportError):
+    from openghg_inversions.rhime import run_rhime
+    result = run_rhime(config_file="modern.ini")
+
+Candidate current Python spelling (result is InversionOutput):
+    from openghg_inversions.rhime import run_standard
+    result = run_standard(config_file="modern.ini")
+
+Installed CLI route (run-rhime is a subcommand):
+    rhime run-rhime -c modern.ini
+    openghg-inversions run-rhime 2020-01-01 2022-02-01 -c modern.ini --output-path flag --kwargs '{"start_date":"2021-01-01","output_path":"json"}'
+
+Ordinary wrapper route (RHIME executor on current development):
+    python -m openghg_inversions.hbmcmc.run_hbmcmc -c fixedbasis.ini
+    python -m openghg_inversions.hbmcmc.run_hbmcmc -c fixedbasis.ini --kwargs '<contents of explicit-wrapper.json>'
+
+Unsupported true fixedbasis request on current development (argparse rejects):
+    python -m openghg_inversions.hbmcmc.run_hbmcmc -c fixedbasis.ini --legacy-fixedbasis
+    Refer to the released-version historical fixtures for the true executor.
+
+Batch launch payload (inspection only, never submitted):
+    #!/bin/bash
+    #SBATCH --job-name=migration-original
+    # Environment activation intentionally belongs to the original source environment.
+    python -m openghg_inversions.hbmcmc.run_hbmcmc "${START_DATE}" "${END_DATE}" -c "${CONFIG_FILE}" --kwargs '{"nit":7,"burn":2,"nchain":2}'
+
+The finite examples do not establish that arbitrary dynamically assembled Python
+kwargs, custom likelihood callables or locally edited batch scripts can be
+converted automatically. #948/#950 own that supported-source decision.

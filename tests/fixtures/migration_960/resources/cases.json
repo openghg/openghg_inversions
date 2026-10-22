@@ -1,0 +1,93 @@
+[
+  {
+    "id": "sorted-partition-and-bc-files",
+    "params": {"domain": "EUROPE", "fp_basis_case": "saved", "basis_directory": "basis", "bc_basis_case": "custom", "bc_basis_directory": "bc"},
+    "files": {"basis/EUROPE/saved_EUROPE_2021.nc": "partition", "basis/EUROPE/saved_EUROPE_2020.nc": "partition", "basis/EUROPE/other_EUROPE_2020.nc": "partition", "bc/EUROPE/custom_EUROPE_2021.nc": "partition", "bc/EUROPE/custom_EUROPE_2020.nc": "partition"},
+    "expected": {"domain": "EUROPE", "basis_partition_paths": ["basis/EUROPE/saved_EUROPE_2020.nc", "basis/EUROPE/saved_EUROPE_2021.nc"], "bc_basis_paths": ["bc/EUROPE/custom_EUROPE_2020.nc", "bc/EUROPE/custom_EUROPE_2021.nc"]},
+    "justification": "devel adapt_resource_params explicitly sorts matching case_domain*.nc paths; v0.7.4 basis/_functions.py basis and basis_boundary_conditions use the same sorted glob."
+  },
+  {
+    "id": "single-retained-artifact-wins-over-partitions",
+    "params": {"domain": "EUROPE", "fp_basis_case": "saved", "basis_directory": "basis"},
+    "files": {"basis/EUROPE/saved_EUROPE_2020.nc": "partition", "basis/EUROPE/saved_EUROPE_retained.nc": "retained"},
+    "expected": {"domain": "EUROPE", "basis_path": "basis/EUROPE/saved_EUROPE_retained.nc"},
+    "justification": "Released v0.7.4 basis/_wrapper.py load_basis_functions independently prefers one schema-tagged artifact over flat files; devel adapt_resource_params preserves that selection policy."
+  },
+  {
+    "id": "ambiguous-retained-artifacts",
+    "params": {"domain": "EUROPE", "fp_basis_case": "saved", "basis_directory": "basis"},
+    "files": {"basis/EUROPE/saved_EUROPE_a.nc": "retained", "basis/EUROPE/saved_EUROPE_b.nc": "retained"},
+    "error": {"type": "ValueError", "message": "Historical basis case matched multiple retained artifacts; use `basis_path`."},
+    "justification": "Released v0.7.4 basis/_wrapper.py load_basis_functions independently rejects multiple DataTree matches; devel preserves that failure with different wording."
+  },
+  {
+    "id": "nesw-does-not-discover",
+    "params": {"bc_basis_case": "nEsW", "bc_basis_directory": "absent"},
+    "no_discovery": true,
+    "expected": {},
+    "justification": "devel adapt_resource_params treats NESW case-insensitively and skips the BC glob; released v0.7.4 basis/_helpers.py bc_sensitivity independently has the same NESW no-file branch."
+  },
+  {
+    "id": "disabled-bc-does-not-discover",
+    "params": {"use_bc": false, "bc_basis_case": "missing", "bc_basis_directory": "absent"},
+    "no_discovery": true,
+    "expected": {"use_bc": false},
+    "justification": "devel adapt_resource_params gates BC discovery on use_bc; no domain or directory is needed when BCs are disabled."
+  },
+  {
+    "id": "superseded-missing-selections",
+    "params": {"domain": "EUROPE", "fp_basis_case": "missing", "basis_directory": "absent", "bc_basis_case": "missing", "bc_basis_directory": "absent"},
+    "overrides": {"fp_basis_case": null, "bc_basis_case": "NESW"},
+    "no_discovery": true,
+    "expected": {"domain": "EUROPE"},
+    "justification": "devel adapt_resource_params merges overrides before removing selectors or discovering files; explicit null disables the old emissions selection."
+  },
+  {
+    "id": "missing-emissions-resource",
+    "params": {"domain": "EUROPE", "fp_basis_case": "missing", "basis_directory": "absent"},
+    "error": {"type": "FileNotFoundError", "message": "No basis files match 'missing' for domain 'EUROPE'."},
+    "justification": "devel adapt_resource_params raises on an empty emissions glob; v0.7.4 basis also rejects an empty glob, with different wording."
+  },
+  {
+    "id": "missing-bc-resource",
+    "params": {"domain": "EUROPE", "bc_basis_case": "missing", "bc_basis_directory": "absent"},
+    "error": {"type": "FileNotFoundError", "message": "No BC basis files match 'missing' for domain 'EUROPE'."},
+    "justification": "devel adapt_resource_params raises on an empty BC glob; v0.7.4 basis_boundary_conditions also rejects an empty readable-file list, with different wording."
+  },
+  {
+    "id": "historical-and-exact-emissions-conflict",
+    "params": {"domain": "EUROPE", "fp_basis_case": "saved", "basis_partition_path": "exact.nc"},
+    "no_discovery": true,
+    "error": {"type": "ValueError", "message": "Use either historical `fp_basis_case` or an exact basis selection, not both."},
+    "justification": "devel adapt_resource_params rejects competing emissions selections before globbing."
+  },
+  {
+    "id": "historical-and-exact-bc-conflict",
+    "params": {"domain": "EUROPE", "bc_basis_case": "custom", "bc_basis_paths": ["exact.nc"]},
+    "no_discovery": true,
+    "error": {"type": "ValueError", "message": "Use either historical `bc_basis_case` or exact `bc_basis_paths`, not both."},
+    "justification": "devel adapt_resource_params rejects competing BC selections before globbing."
+  },
+  {
+    "id": "discovery-requires-domain",
+    "params": {"fp_basis_case": "saved", "basis_directory": "basis"},
+    "no_discovery": true,
+    "error": {"type": "ValueError", "message": "`domain` is required to discover historical basis files."},
+    "justification": "devel adapt_resource_params explicitly validates domain before building the emissions glob."
+  },
+  {
+    "id": "file-base-and-invocation-override-origins",
+    "base_dir": "config",
+    "params": {"country_file": "report.nc", "landsea_path": "classes.nc", "outputpath": "old-output", "outer_region_definition_file": "outer.nc"},
+    "overrides": {"output_path": "output", "landsea_path": "override-classes.nc"},
+    "expected": {"country_file": "config/report.nc", "landsea_path": "override-classes.nc", "output_path": "output", "outer_regions_path": "config/outer.nc"},
+    "justification": "devel adapt_resource_params records winning value origins through alias translation; explicit base_dir applies to file values while overrides use Path.cwd(). Ordinary current entry points use invocation-relative paths instead; see invocation.ini."
+  },
+  {
+    "id": "country-directory-is-not-one-modern-file",
+    "params": {"country_directory": "support"},
+    "no_discovery": true,
+    "error": {"type": "ValueError", "message": "`country_directory` was removed in 0.8; use `country_file` for reporting, `landsea_path` for land/sea classes, or `outer_regions_path` for outer regions."},
+    "justification": "devel normalise_param_aliases rejects country_directory before resource discovery. v0.7.4 basis/_functions.py uses it for land/sea and outer maps; reporting uses a separate country_file."
+  }
+]
