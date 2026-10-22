@@ -1,7 +1,7 @@
 """Run a small, offline surface CO2 preparation and absolute predictive replay.
 
 Run from the repository with ``python -m examples.surface_centered_pilot /tmp/surface-pilot``
-using the coordinated #957 OpenGHG development provider. No store or network is
+using the normal locked OpenGHG release. No store or network is
 used. Two signed flux sources share one dimensionless scaling field; two native
 cells reduce coherently to one retained bucket. Tiny prior draws demonstrate
 arithmetic and saved handoffs, not inference or convergence.
@@ -74,7 +74,7 @@ def surface_inputs():
 
 
 def acquire_supplied(obs, fp, fluxes, bc):
-    """Use actual OpenGHG convolution and reference-sensitivity arithmetic."""
+    """Use OpenGHG convolution and local reference-sensitivity arithmetic."""
     return prepare_surface_site(
         obs, fp, fluxes, species="co2", transport={source: "integrated" for source in fluxes},
         boundary_data=bc, boundary_reference=400., boundary_reference_units="ppm", boundary_mass_tolerance=1e-6,

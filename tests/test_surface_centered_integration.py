@@ -13,15 +13,7 @@ from openghg_inversions.inversion_data import MergedData, SiteOptions, acquisiti
 from openghg_inversions.rhime.co2.centered_boundary import restore_absolute_predictives
 
 
-@pytest.fixture
-def pilot_provider():
-    import openghg.analyse._modelled_baseline as provider
-
-    if not hasattr(provider, "baseline_reference_sensitivities"):
-        pytest.skip("Requires issue #957 OpenGHG development provider")
-
-
-def test_offline_scientific_chain_and_absolute_saved_replay(tmp_path, pilot_provider):
+def test_offline_scientific_chain_and_absolute_saved_replay(tmp_path):
     retained, canonical, reduction, prepared, trace = run_example(tmp_path)
     np.testing.assert_allclose(retained.mf_mod_sectoral.sel(source="biosphere"), [.3, .4, .3])
     np.testing.assert_allclose(retained.mf_mod_sectoral.sel(source="fossil"), [4.5, 6., 4.5])
@@ -70,7 +62,7 @@ def test_offline_scientific_chain_and_absolute_saved_replay(tmp_path, pilot_prov
     xr.testing.assert_identical(trace.prior_predictive.y, absolute)
 
 
-def test_mocked_fresh_getters_match_supplied_scientific_preparation(pilot_provider, monkeypatch):
+def test_mocked_fresh_getters_match_supplied_scientific_preparation(monkeypatch):
     obs, fp, fluxes, bc = surface_inputs()
     saved = [value.copy(deep=True) for value in (obs, fp, bc, *fluxes.values())]
     supplied = acquire_supplied(obs, fp, fluxes, bc)

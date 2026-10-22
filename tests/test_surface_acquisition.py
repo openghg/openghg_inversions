@@ -16,10 +16,10 @@ from openghg_inversions.inversion_data import acquisition, surface
 
 @pytest.fixture
 def compatible_provider():
-    import openghg.analyse._modelled_baseline as provider
-
-    if not hasattr(provider, "baseline_reference_sensitivities"):
-        pytest.skip("Requires issue #957 OpenGHG development provider with midmonth fix")
+    try:
+        surface._require_residual_month_support()
+    except RuntimeError:
+        pytest.skip("Requires OpenGHG midmonth residual-flux fix")
 
 
 @pytest.fixture
@@ -164,6 +164,7 @@ def test_actual_resolved_kernel_counts_residual_once(inputs, species, compatible
     )
     np.testing.assert_allclose(result.mf_mod_sectoral.sel(source="resolved"), 14.0)
     np.testing.assert_allclose(result.mf_mod, 16.0)
+    assert result.attrs["surface_provider_policy_revision"] == "1790-midmonth-residual-v1"
 
 
 def test_resolved_rejects_missing_history_and_incomplete_residual_month(inputs, compatible_provider):
@@ -305,11 +306,10 @@ def test_fresh_rejects_mixed_native_axes(inputs, monkeypatch):
 
 
 @pytest.mark.parametrize("species", ["co2", "o2"])
-def test_actual_provider_boundary_operands(inputs, species):
+def test_local_boundary_operands_with_released_provider(inputs, species, monkeypatch):
     import openghg.analyse._modelled_baseline as provider
 
-    if not hasattr(provider, "baseline_reference_sensitivities"):
-        pytest.skip("Requires issue #957 OpenGHG development provider")
+    monkeypatch.delattr(provider, "baseline_reference_sensitivities", raising=False)
     obs, fp, flux = inputs
     obs = obs.rename({"co2": "mf"})
     fp = fp.assign_coords(height=[10.0])
@@ -345,31 +345,13 @@ def test_actual_provider_boundary_operands(inputs, species):
     assert result.attrs["boundary_mass_tolerance"] == 0.001
     assert result.attrs["boundary_normalization_policy"] == "joint-curtain-unit-mass-v1"
     assert result.attrs["boundary_provider_policy_revision"] == "957-reference-sensitivities-v1"
+    assert result.attrs["boundary_operator_owner"] == "openghg_inversions"
     import openghg
 
     assert result.attrs["surface_provider_revision"] == str(openghg.__revisionid__ or "unknown")
     assert result.attrs["surface_policy_revision"] == "957-source-wise-v1"
     xr.testing.assert_identical(bc, saved_bc)
     xr.testing.assert_identical(fp, saved_fp)
-
-
-def test_missing_provider_capability_fails_without_legacy_fallback(inputs, monkeypatch):
-    import openghg.analyse._modelled_baseline as provider
-
-    monkeypatch.delattr(provider, "baseline_reference_sensitivities", raising=False)
-    obs, fp, flux = inputs
-    with pytest.raises(RuntimeError, match="Legacy rounded boundaries"):
-        prepare_surface_site(
-            obs,
-            fp,
-            {"a": flux},
-            species="co2",
-            transport={"a": "integrated"},
-            boundary_data=xr.Dataset(),
-            boundary_reference=400.0,
-            boundary_reference_units="ppm",
-            boundary_mass_tolerance=0.001,
-        )
 
 
 def test_resolved_acquisition_requests_history_and_complete_months(inputs, monkeypatch, compatible_provider):
@@ -515,13 +497,28 @@ def test_mapped_boundaries_use_explicit_site_transport(inputs, monkeypatch):
     assert provenance["sources"]["a"]["mode"] == "integrated"
 
 
-def test_resolved_requires_coordinated_provider_revision(inputs, monkeypatch):
-    import openghg.analyse._modelled_baseline as provider
+@pytest.mark.parametrize("broken", ["missing", "midmonth_nan"])
+def test_resolved_requires_monthly_flux_fix(inputs, monkeypatch, broken):
+    import openghg.analyse._modelled_obs as provider
 
-    monkeypatch.delattr(provider, "baseline_reference_sensitivities", raising=False)
+    if broken == "missing":
+        monkeypatch.delattr(provider, "_make_low_freq_flux")
+    else:
+        def missing_month(flux, fp):
+            return flux.copy(data=np.full(flux.shape, np.nan))
+        monkeypatch.setattr(provider, "_make_low_freq_flux", missing_month)
     obs, fp, flux = resolved_inputs(inputs)
     with pytest.raises(RuntimeError, match="midmonth residual-flux fix"):
         prepare_surface_site(obs, fp, {"a": flux}, species="co2", transport={"a": "time_resolved"})
+
+
+def test_residual_month_check_accepts_fixed_behavior_without_boundary_api(monkeypatch):
+    import openghg.analyse._modelled_baseline as boundary
+    import openghg.analyse._modelled_obs as provider
+
+    monkeypatch.delattr(boundary, "baseline_reference_sensitivities", raising=False)
+    monkeypatch.setattr(provider, "_make_low_freq_flux", lambda flux, fp: flux)
+    surface._require_residual_month_support()
 
 
 @pytest.mark.parametrize("representation", ["split", "legacy"])

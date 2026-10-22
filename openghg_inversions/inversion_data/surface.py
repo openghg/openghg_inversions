@@ -44,23 +44,32 @@ def _surface_operations():
     return resample_obs_and_other, integrated, fp_x_flux_time_resolved
 
 
-def _require_pilot_provider() -> None:
-    """The #957 capability marks the pilot revision with repaired monthly slicing.
-
-    Older providers expose the resolved kernel but lose residual month labels for
-    midmonth windows. Require the coordinated development revision, without
-    inspecting provider source or silently accepting the older scientific policy.
-    """
+def _require_residual_month_support() -> None:
+    """Check monthly slicing on owned toy data before resolved preparation."""
+    message = (
+        "Time-resolved surface transport requires the OpenGHG midmonth residual-flux fix. "
+        "Install the provider revision documented in the surface preparation guide."
+    )
     try:
-        from openghg.analyse._modelled_baseline import baseline_reference_sensitivities
+        from openghg.analyse._modelled_obs import _make_low_freq_flux
     except ImportError as exc:
-        raise RuntimeError(
-            "Time-resolved surface transport requires the issue #957 OpenGHG development "
-            "provider (baseline_reference_sensitivities capability), including the "
-            "midmonth residual-flux fix."
-        ) from exc
-    if not callable(baseline_reference_sensitivities):
-        raise RuntimeError("The issue #957 OpenGHG development provider capability is not callable.")
+        raise RuntimeError(message) from exc
+
+    # Probe the behavior itself so editable installs and compatible backports work.
+    flux = xr.DataArray(
+        [[[2.0, 6.0]]], dims=("lat", "lon", "time"),
+        coords={"lat": [0.0], "lon": [0.0], "time": pd.to_datetime(["2020-01-01", "2020-02-01"])},
+    )
+    footprint = xr.Dataset(coords={
+        "lat": [0.0], "lon": [0.0], "H_back": [0, 1],
+        "time": pd.to_datetime(["2020-01-16", "2020-02-02"]),
+    })
+    try:
+        monthly = _make_low_freq_flux(flux, footprint)
+    except (ValueError, KeyError, IndexError) as exc:
+        raise RuntimeError(message) from exc
+    if not np.array_equal(monthly.values, flux.values):
+        raise RuntimeError(message)
 
 
 def _align_footprint(obs, value, align):
@@ -108,15 +117,9 @@ def _transport_provenance(value):
 
 
 def _reference_sensitivities(bc, fp, **kwargs):
-    """Require provider-owned accurate boundary operands, never rounded products."""
-    try:
-        from openghg.analyse._modelled_baseline import baseline_reference_sensitivities
-    except ImportError as exc:
-        raise RuntimeError(
-            "Surface boundaries require OpenGHG baseline_reference_sensitivities; "
-            "install the issue #957 provider revision. Legacy rounded boundaries "
-            "cannot supply centered operands."
-        ) from exc
+    """Compute accurate local boundary operands before any rounded products."""
+    from ._boundary import baseline_reference_sensitivities
+
     return baseline_reference_sensitivities(bc, fp, **kwargs)
 
 
@@ -308,7 +311,7 @@ def prepare_surface_site(
     if mapped and site_footprint_data is None:
         raise ValueError("Mapped source footprints require explicit site_footprint_data.")
     if "time_resolved" in transport.values():
-        _require_pilot_provider()
+        _require_residual_month_support()
     site_footprint = footprint_data if site_footprint_data is None else site_footprint_data
     obs = _dataset(obs_data)
     _time_index(obs, "Observations")
@@ -418,7 +421,7 @@ def prepare_surface_site(
         sort_keys=True,
     )
     if "time_resolved" in transport.values():
-        site.attrs["surface_provider_policy_revision"] = "957-reference-sensitivities-v1"
+        site.attrs["surface_provider_policy_revision"] = "1790-midmonth-residual-v1"
 
     if boundary_data is not None:
         if boundary_reference is None or boundary_reference_units is None or boundary_mass_tolerance is None:
@@ -427,6 +430,7 @@ def prepare_surface_site(
         site.attrs["boundary_mass_tolerance"] = boundary_mass_tolerance
         site.attrs["boundary_normalization_policy"] = "joint-curtain-unit-mass-v1"
         site.attrs["boundary_provider_policy_revision"] = "957-reference-sensitivities-v1"
+        site.attrs["boundary_operator_owner"] = "openghg_inversions"
 
         operands = _reference_sensitivities(
             _dataset(boundary_data),

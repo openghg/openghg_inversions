@@ -10,22 +10,34 @@ continue to use their existing owners.
 Dependency and precision
 ------------------------
 
-Centered boundaries and time-resolved transport require the OpenGHG development
-revision ``70273dc87bf66a6ef033d8b6ee32aad63b7dd0a1``. In an existing OGI environment, install that
-revision explicitly after synchronizing the normal dependencies:
+Centered boundary arithmetic is implemented privately in OGI. Integrated-footprint
+preparation, including centered boundaries, works with the released OpenGHG
+dependency installed by ``uv sync --locked``.
+
+Time-resolved transport additionally requires OpenGHG's fix for monthly residual
+fluxes in windows beginning mid-month. The tested development revision is
+``28600028f23a694dbac299d93ff5f229d37aaef6``. Install it explicitly after
+synchronizing the normal dependencies:
 
 .. code-block:: bash
 
    uv sync --locked
-   uv pip install "openghg @ git+https://github.com/openghg/openghg.git@70273dc87bf66a6ef033d8b6ee32aad63b7dd0a1"
+   uv pip install "openghg @ git+https://github.com/openghg/openghg.git@28600028f23a694dbac299d93ff5f229d37aaef6"
 
 A later ``uv sync --locked`` restores the release in the lockfile. The optional
-``py312-surfacePilot`` tox environment tests this same pinned revision. Missing
-provider capability raises an error; the pilot never substitutes rounded legacy
-BC products. Private provider imports are temporary and can migrate to public
-operations in a subsequent OpenGHG release.
+``py312-surfacePilot`` tox environment tests this same pinned revision. Before
+resolved preparation, OGI checks the monthly behavior using small synthetic data;
+providers missing the fix fail explicitly. This check does not compute user data.
+OpenGHG
+still supplies observation alignment and flux convolution through private helpers;
+those imports can migrate to public operations in a subsequent OpenGHG release.
+The local boundary operation computes anomaly and mass operands directly from
+the curtains, without using rounded legacy BC products.
 
-The provider normalizes all four stable boundary curtains together, using an
+Boundary provenance records ``boundary_operator_owner="openghg_inversions"``;
+``boundary_provider_policy_revision`` retains the arithmetic policy identifier.
+
+OGI normalizes all four stable boundary curtains together, using an
 explicit tolerance for their total raw mass versus unity. Choose that tolerance
 from the footprint's justified numerical error. Nonfinite or negative weights,
 zero mass, and mass outside the tolerance fail validation. Boundary coverage must
