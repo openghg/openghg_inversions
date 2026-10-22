@@ -1596,7 +1596,9 @@ that construction; the physical distribution is unchanged.
 Sampled tau and hierarchical amplitude priors are not supported.
 The route is PyMC-only because it constructs and owns a PyMC <code class="docutils literal notranslate"><span class="pre">CompoundStep</span></code>.
 The ordinary stock-PyMC fixed-OU likelihood above remains an independent
-log-density/gradient reference.</p>
+log-density/gradient reference.
+For the covariance transform, cached quadratic, numerical routing and cache
+lifecycle, see <a class="reference internal" href="../development/fixed_ou_likelihood.html"><span class="doc">Fixed-OU likelihood and cached quadratics</span></a>.</p>
 <p>The exponential within-site covariance follows the stationary process of
 <a class="reference external" href="https://doi.org/10.1103/PhysRev.36.823">Uhlenbeck and Ornstein (1930)</a>. The named recipe and its matched
 runtime state-likelihood cache are implemented and versioned by OpenGHG

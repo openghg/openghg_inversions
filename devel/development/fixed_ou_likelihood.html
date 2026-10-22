@@ -1,0 +1,776 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Fixed-OU likelihood and cached quadratics &#8212; OpenGHG Inversions</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67" />
+
+    <script src="../_static/documentation_options.js?v=1dba82e2"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/thebelab-helper.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'development/fixed_ou_likelihood';</script>
+    <script>
+        DOCUMENTATION_OPTIONS.theme_version = '0.21.0';
+        DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://openghg.github.io/openghg_inversions/versions.json';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = 'devel';
+        DOCUMENTATION_OPTIONS.show_version_warning_banner =
+            false;
+        </script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Fixed-OU experiment evidence" href="fixed_ou_evidence.html" />
+    <link rel="prev" title="Missing observation uncertainty: behavior and decisions" href="observation_uncertainty.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="devel" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+<aside class="bd-header-announcement" aria-label="Announcement">
+  <div class="bd-header-announcement__content">Unreleased development documentation; use <a href="https://openghg.github.io/openghg_inversions/stable/">stable</a> for supported releases. <a href="https://openghg.github.io/openghg_inversions/versions/">All documentation versions</a>.</div>
+</aside>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">OpenGHG Inversions</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../usage/usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/index.html">
+    API reference
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item">
+<div class="version-switcher__container dropdown pst-js-only">
+  <button id="pst-version-switcher-button-2"
+    type="button"
+    class="version-switcher__button btn btn-sm dropdown-toggle"
+    data-bs-toggle="dropdown"
+    aria-haspopup="listbox"
+    aria-controls="pst-version-switcher-list-2"
+    aria-label="Version switcher list"
+  >
+    Choose version  <!-- this text may get changed later by javascript -->
+    <span class="caret"></span>
+  </button>
+  <div id="pst-version-switcher-list-2"
+    class="version-switcher__menu dropdown-menu list-group-flush py-0"
+    role="listbox" aria-labelledby="pst-version-switcher-button-2">
+    <!-- dropdown will be populated by javascript on page load -->
+  </div>
+</div></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../usage/usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/index.html">
+    API reference
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item">
+<div class="version-switcher__container dropdown pst-js-only">
+  <button id="pst-version-switcher-button-3"
+    type="button"
+    class="version-switcher__button btn btn-sm dropdown-toggle"
+    data-bs-toggle="dropdown"
+    aria-haspopup="listbox"
+    aria-controls="pst-version-switcher-list-3"
+    aria-label="Version switcher list"
+  >
+    Choose version  <!-- this text may get changed later by javascript -->
+    <span class="caret"></span>
+  </button>
+  <div id="pst-version-switcher-list-3"
+    class="version-switcher__menu dropdown-menu list-group-flush py-0"
+    role="listbox" aria-labelledby="pst-version-switcher-button-3">
+    <!-- dropdown will be populated by javascript on page load -->
+  </div>
+</div></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar">
+  <svg class="pst-icon" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="rhime_model_development.html">Developing RHIME models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="specifications.html">Development guidance and behavioral specifications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture_principles.html">Architecture principles and recipe boundaries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="numerical_array_ownership.html">Numerical array ownership and execution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="validation_and_xarray.html">Validation and labelled-array patterns</a></li>
+<li class="toctree-l1"><a class="reference internal" href="documentation.html">Maintain the documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="observation_uncertainty.html">Missing observation uncertainty: behavior and decisions</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Fixed-OU likelihood and cached quadratics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="fixed_ou_evidence.html">Fixed-OU experiment evidence</a></li>
+<li class="toctree-l1"><a class="reference internal" href="releasing.html">Releases and branch maintenance</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">Developing OpenGHG Inversions</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Fixed-OU likelihood and cached quadratics</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="fixed-ou-likelihood-and-cached-quadratics">
+<h1>Fixed-OU likelihood and cached quadratics<a class="headerlink" href="#fixed-ou-likelihood-and-cached-quadratics" title="Link to this heading">#</a></h1>
+<p>This page explains the numerical target and the two conditional updates used
+by the <a class="reference internal" href="../usage/co2_models.html#co2-cached-sigma-recipe"><span class="std std-ref">cached-sigma CO2 runner</span></a>. It is intended
+for maintainers changing the likelihood, its gradients or cache lifecycle.
+The equations describe the represented low-rank covariance, including its
+diagonal remainder; choosing a different rank changes that target.</p>
+<section id="implementation-scope">
+<h2>Implementation scope<a class="headerlink" href="#implementation-scope" title="Link to this heading">#</a></h2>
+<p>The implementation described here is in <code class="docutils literal notranslate"><span class="pre">models/fixed_ou.py</span></code>,
+<code class="docutils literal notranslate"><span class="pre">models/cached_sigma.py</span></code> and <code class="docutils literal notranslate"><span class="pre">inference/cached_sigma.py</span></code>. The cache routes
+were introduced in PRs #922 and #926, and amplitude residual reuse in #928.
+The additional evaluator screens and joint QR/SVD fallback described below
+are implemented in this branch by
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/942">PR #942</a>.
+They must not be assumed present in releases or branches that omit that fix.</p>
+<p>Earlier evaluators used an unguarded Cholesky factorization of the small
+Woodbury core. Dominant duplicate factor columns could erase its identity
+term, producing a finite but wrong likelihood. Even a well-conditioned
+scalar core could lose the inverse-weighted residual through subtraction,
+and hence corrupt gradients. A sum-of-squares likelihood alone did not fix
+those gradient failures. The cache’s guarded solve was a separate path and
+did not establish evaluator accuracy.</p>
+</section>
+<section id="covariance-and-prepared-coordinates">
+<h2>Covariance and prepared coordinates<a class="headerlink" href="#covariance-and-prepared-coordinates" title="Link to this heading">#</a></h2>
+<p>Let <span class="math notranslate nohighlight">\(r = y - \mu\)</span> be the observation residual, with <span class="math notranslate nohighlight">\(n\)</span>
+observations and <span class="math notranslate nohighlight">\(r_f\)</span> retained aggregation-factor columns. Write</p>
+<div class="math notranslate nohighlight">
+\[C(a) = \operatorname{diag}(d) + F F^T
+       + \operatorname{blockdiag}_s(a_s^2 R_s),
+\qquad (R_s)_{ij} = \exp(-|t_i-t_j|/\tau_s).\]</div>
+<p>Here <span class="math notranslate nohighlight">\(F\)</span> has shape <span class="math notranslate nohighlight">\(n\times r_f\)</span>, <span class="math notranslate nohighlight">\(d\)</span> contains the fixed
+measurement variance and any diagonal aggregation tail, and <span class="math notranslate nohighlight">\(a_s\)</span> is
+the mismatch amplitude for site <span class="math notranslate nohighlight">\(s\)</span>. Residuals, factor entries and
+amplitudes have concentration units; <span class="math notranslate nohighlight">\(d\)</span> has squared concentration
+units. Times and fixed positive <span class="math notranslate nohighlight">\(\tau_s\)</span> use hours internally.
+Site rows may be interleaved. Preparation requires unique times within a
+site and a positive-definite OU correlation template.</p>
+<p>For each site, the generalized eigensystem gives <span class="math notranslate nohighlight">\(V_s\)</span> satisfying</p>
+<div class="math notranslate nohighlight">
+\[V_s^T R_s V_s = I, \qquad
+V_s^T \operatorname{diag}(d_s) V_s = \operatorname{diag}(\lambda_s).\]</div>
+<p>The assembled transform <span class="math notranslate nohighlight">\(T\)</span> applies <span class="math notranslate nohighlight">\(V_s^T\)</span> to the appropriate
+observation rows. It is generally not Euclidean-orthogonal. Preparation
+stores <span class="math notranslate nohighlight">\(TF\)</span>, the mode eigenvalues, mode-to-site indices and
+<span class="math notranslate nohighlight">\(b=\sum_s\log|R_s|\)</span>. The transform is stored sparsely across sites,
+but its within-site blocks are dense.</p>
+<p>At supplied amplitudes define</p>
+<div class="math notranslate nohighlight">
+\[D_{ii}=\lambda_i+a_{s(i)}^2, \quad w_i=D_{ii}^{-1},\quad
+W=D^{-1/2}TF,\quad u=D^{-1/2}Tr,\quad A=I+WW^T.\]</div>
+<p>Then</p>
+<div class="math notranslate nohighlight">
+\[\log|C| = b+\sum_i\log D_{ii}+\log|A|,\qquad
+r^TC^{-1}r=u^TA^{-1}u.\]</div>
+<p>The implemented route requires every <span class="math notranslate nohighlight">\(D_{ii}\)</span> to be positive and
+finite. A zero amplitude is valid only when the corresponding mode
+variances remain positive. The log density includes the normalization
+<span class="math notranslate nohighlight">\(-\tfrac12(n\log(2\pi)+\log|C|+u^TA^{-1}u)\)</span>.
+Preparation and numerical evaluation are explicit eager boundaries; see
+<a class="reference internal" href="numerical_array_ownership.html"><span class="doc">Numerical array ownership and execution</span></a> for input ownership rules.</p>
+</section>
+<section id="cached-state-quadratic">
+<h2>Cached state quadratic<a class="headerlink" href="#cached-state-quadratic" title="Link to this heading">#</a></h2>
+<p>For fixed amplitudes, the model mean is affine in the sampled flux/boundary
+state <span class="math notranslate nohighlight">\(x\)</span>: <span class="math notranslate nohighlight">\(\mu=f+Hx\)</span>. Let <span class="math notranslate nohighlight">\(r_0=y-f\)</span> and form
+<span class="math notranslate nohighlight">\(B=D^{-1/2}T[r_0,H]\)</span>. The joint Gram matrix
+<span class="math notranslate nohighlight">\(G=B^TA^{-1}B\)</span> supplies the normalized state likelihood</p>
+<div class="math notranslate nohighlight">
+\[\ell(x\mid a)=c+h^Tx-\tfrac12x^TPx,\quad
+c=-\tfrac12(n\log(2\pi)+\log|C|+G_{00}),\quad
+h=G_{1:,0},\quad P=G_{1:,1:}.\]</div>
+<p>This is a likelihood cache: state priors and parameter-transform Jacobians
+remain in the scientific graph. State trajectories evaluate the quadratic
+without refactorizing the observation covariance. The fixed transformed
+right-hand sides <span class="math notranslate nohighlight">\(T[r_0,H]\)</span> are computed when the target is constructed.</p>
+<p>For <span class="math notranslate nohighlight">\(0&lt;r_f&lt;n\)</span>, cache refresh first tries the small core
+<span class="math notranslate nohighlight">\(K=I+W^TW\)</span>. If <span class="math notranslate nohighlight">\(Z=K^{-1}W^TB\)</span> and <span class="math notranslate nohighlight">\(E=B-WZ\)</span>, then</p>
+<div class="math notranslate nohighlight">
+\[G=E^TE+Z^TZ.\]</div>
+<p>This sum of squares avoids subtracting two large Gram matrices. The identity
+follows from <span class="math notranslate nohighlight">\(KZ=W^TB\)</span>; it does not make an inaccurate solve for
+<span class="math notranslate nohighlight">\(Z\)</span> accurate. The implementation screens core conditioning and an
+estimate of residual-rounding error relative to column energies. Rejected
+cases use the general covariance solve and then form the Gram matrix.</p>
+</section>
+<section id="cache-and-evaluator-routing">
+<h2>Cache and evaluator routing<a class="headerlink" href="#cache-and-evaluator-routing" title="Link to this heading">#</a></h2>
+<p>The cache and direct evaluator need different outputs and have distinct
+fallbacks. They share the prepared covariance and transform, not one universal
+factorization policy.</p>
+<ul class="simple">
+<li><p><strong>Cache/general solve:</strong> at full factor width <span class="math notranslate nohighlight">\(r_f\ge n\)</span>, try
+observation-space Cholesky on <span class="math notranslate nohighlight">\(I+WW^T\)</span>. Reject a failed or poorly
+conditioned factorization. If that attempt is rejected, or for a lower-width
+general solve (including a rejected low-rank cache screen), use a reduced
+joint QR basis for the factor and right-hand sides,
+followed by an SVD in those coordinates. Solve there and include the
+factor’s determinant contribution. Rank zero needs only diagonal weighting.</p></li>
+<li><p><strong>Direct/amplitude evaluator:</strong> for nonzero rank, try Cholesky of
+<span class="math notranslate nohighlight">\(K\)</span>. Check finiteness, successful factorization and a reciprocal
+condition estimate greater than <span class="math notranslate nohighlight">\(\sqrt{\epsilon}\)</span>. With
+<span class="math notranslate nohighlight">\(z=K^{-1}W^Tu\)</span>, form <span class="math notranslate nohighlight">\(v=u-Wz\)</span>. A separate normwise roundoff
+screen protects this subtraction. Another screen protects the precision
+diagonal <span class="math notranslate nohighlight">\(p_i=1-\|L^{-1}W^T_{:,i}\|^2\)</span>, where <span class="math notranslate nohighlight">\(K=LL^T\)</span>.
+Accepted evaluations use <span class="math notranslate nohighlight">\(\|v\|^2+\|z\|^2\)</span> for the quadratic.</p></li>
+</ul>
+<p>For the evaluator, rejecting any screen invokes a complete QR basis of
+<span class="math notranslate nohighlight">\([W,u]\)</span>. An SVD of the factor in the retained joint coordinates gives
+singular values <span class="math notranslate nohighlight">\(s_j\)</span>. The corresponding inverse square-root scales
+are <span class="math notranslate nohighlight">\(1/\sqrt{1+s_j^2}\)</span>; orthogonal directions have scale one.
+The same coordinates provide the quadratic, determinant update
+<span class="math notranslate nohighlight">\(\sum_j\log(1+s_j^2)\)</span>, solved residual <span class="math notranslate nohighlight">\(v=A^{-1}u\)</span> and
+precision diagonal <span class="math notranslate nohighlight">\(p=\operatorname{diag}(A^{-1})\)</span>.</p>
+<p>The precision diagonal includes the complete orthogonal complement. It is
+computed as sums of squared scaled-basis entries, including complement blocks,
+so it does not subtract leverage values from one. Merely stabilizing the
+quadratic or dropping that complement would leave the gradients wrong.</p>
+</section>
+<section id="amplitude-gradients-and-trajectory-local-reuse">
+<h2>Amplitude gradients and trajectory-local reuse<a class="headerlink" href="#amplitude-gradients-and-trajectory-local-reuse" title="Link to this heading">#</a></h2>
+<p>In either evaluator route, the physical amplitude gradient is</p>
+<div class="math notranslate nohighlight">
+\[\frac{\partial\ell}{\partial a_s}
+  = a_s\sum_{i:s(i)=s}w_i(v_i^2-p_i),\qquad
+\nabla_r\ell=-T^TD^{-1/2}v.\]</div>
+<p>The general evaluator returns both gradients. The amplitude-only Op calls
+the same numerical evaluator with a transformed residual and omits the
+unused residual-gradient back-transform. The amplitude prior and its
+coordinate-transform Jacobian are supplied by the PyMC graph, not these
+physical-gradient equations.</p>
+<p>The matched step compiles its private amplitude graph with PyTensor’s CVM
+linker. This choice applies to that graph; it does not change global compiler
+settings or the separate state graph.</p>
+<p>Each amplitude trajectory conditions on a fixed flux/boundary state. Before
+calling stock amplitude NUTS, the matched step recomputes the modelled mean
+from the incoming point and installs <span class="math notranslate nohighlight">\(Tr\)</span> once. Every density call
+within that trajectory reuses it. Changing amplitudes still changes
+<span class="math notranslate nohighlight">\(D\)</span>, <span class="math notranslate nohighlight">\(W\)</span> and <span class="math notranslate nohighlight">\(K\)</span>; those cannot be reused unchanged across
+amplitude proposals.</p>
+<p>The next trajectory installs a new residual even when the preceding amplitude
+draw did not change. The state quadratic is refreshed for changed accepted
+amplitudes; an incoming amplitude point that differs from the stored cache
+also forces refresh. The refreshed quadratic is installed before the
+subsequent state update. These are two different invalidation rules:
+state changes invalidate the trajectory residual, while amplitude changes
+invalidate the state quadratic.</p>
+<p>The prepared covariance, design and observations must remain fixed after
+target construction. Replacing those inputs requires rebuilding the target;
+the amplitude/state invalidation rules do not track arbitrary array changes.</p>
+<p>Residual storage and mutable sampler caches belong to the step/chain.
+Borrowed input arrays are not mutated, installed residuals are copied into
+shared storage, and independent steps do not share that mutable state.
+Nonfinite residuals retain rejection behavior rather than being transformed
+into misleading finite inputs. Invalid amplitude and variance handling is
+shared with the general evaluator.</p>
+</section>
+<section id="costs-limits-and-regression-coverage">
+<h2>Costs, limits and regression coverage<a class="headerlink" href="#costs-limits-and-regression-coverage" title="Link to this heading">#</a></h2>
+<p>Generalized eigendecomposition is a preparation cost of roughly
+<span class="math notranslate nohighlight">\(\sum_s O(n_s^3)\)</span>; storing/applying its blocks needs
+<span class="math notranslate nohighlight">\(\sum_s O(n_s^2)\)</span> entries/work. At low rank the amplitude core and
+broad triangular solve cost <span class="math notranslate nohighlight">\(O(nr_f^2+r_f^3)\)</span> per evaluation.
+For <span class="math notranslate nohighlight">\(q\)</span> cached right-hand sides, refresh additionally includes
+<span class="math notranslate nohighlight">\(O(nr_fq+r_f^2q+nq^2+r_fq^2)\)</span> matrix products and small solves.
+State likelihood evaluation then costs <span class="math notranslate nohighlight">\(O(p^2)\)</span> for <span class="math notranslate nohighlight">\(p\)</span> state
+coefficients. Full-width observation-space Cholesky costs <span class="math notranslate nohighlight">\(O(n^3)\)</span>
+and requires observation-sized square storage.</p>
+<p>The exceptional evaluator fallback also constructs an <span class="math notranslate nohighlight">\(n\times n\)</span>
+basis. Its complement reductions are blocked, but that does not remove the
+square allocation. Its QR/SVD work can be much more expensive than the fast
+route. A benchmark of ordinary inputs that never trigger fallback does not
+measure this exceptional cost.</p>
+<p>The screens protect known cancellation failures, not arbitrary componentwise
+relative accuracy. Cache Gram-error screening is relative to column energies,
+not each small cross coefficient, and does not certify latent-solve error.
+The evaluator residual screen is normwise: a large accurate component can
+mask a small inaccurate one. Orthogonal projection still has absolute
+roundoff at the input scale, so tiny solved components can have poor relative
+accuracy even in the fallback. These limits should remain visible when
+adding new extreme-scale inputs.</p>
+<p>Regression coverage is retained independently of historical benchmarks:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">tests/models/test_fixed_ou.py</span></code> checks dense and analytic likelihood/gradient
+oracles, dominant and duplicate factors, rank-zero/full-width cases,
+near-dependent mixed-scale factors using an 80-digit Decimal oracle,
+precision cancellation at zero residual, routing and input ownership.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">tests/models/test_cached_sigma.py</span></code> checks cached values/gradients against
+a dense oracle, factorization counts, screen rejection, zero right-hand
+sides and borrowed-input copying.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">tests/test_cached_sigma_sampling.py</span></code> checks trajectory integration,
+residual reuse, cache refresh, chain isolation, priors and posterior parity.
+CO2 runner and shape-hook tests protect the surrounding integration.</p></li>
+</ul>
+</section>
+<section id="historical-evidence-and-further-experiments">
+<h2>Historical evidence and further experiments<a class="headerlink" href="#historical-evidence-and-further-experiments" title="Link to this heading">#</a></h2>
+<p>The <a class="reference internal" href="fixed_ou_evidence.html"><span class="doc">Fixed-OU experiment evidence</span></a> index links immutable reports, scripts and timing
+CSVs. Those are dated experimental evidence, not maintained benchmark drivers.
+The native Numba prototype remains a closed reference PR and is not the
+production backend.</p>
+<p>Unimplemented ideas include replacing a broad triangular solve with a small
+triangular inverse plus multiplication, or computing only the required
+site-wise gradient traces. Both require accuracy and whole-density timing
+checks; neither is an established improvement. A separate proposed sampler
+would draw an exact aggregation-factor latent variable for the amplitude
+update alone, discard it, and retain the marginalized flux update. Earlier
+experiments conditioned the flux update on that latent variable and mixed
+poorly. The narrower proposal has not been tested. Its chronology and target
+preservation caveats remain in the archived follow-up note linked by the
+index; none of these ideas defines supported behavior.</p>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="observation_uncertainty.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Missing observation uncertainty: behavior and decisions</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="fixed_ou_evidence.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Fixed-OU experiment evidence</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#implementation-scope">Implementation scope</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#covariance-and-prepared-coordinates">Covariance and prepared coordinates</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#cached-state-quadratic">Cached state quadratic</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#cache-and-evaluator-routing">Cache and evaluator routing</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#amplitude-gradients-and-trajectory-local-reuse">Amplitude gradients and trajectory-local reuse</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#costs-limits-and-regression-coverage">Costs, limits and regression coverage</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#historical-evidence-and-further-experiments">Historical evidence and further experiments</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/development/fixed_ou_likelihood.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, Eric Saboya and Brendan Murphy.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.1.0.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.21.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
