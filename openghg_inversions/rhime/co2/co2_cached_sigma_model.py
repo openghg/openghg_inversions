@@ -283,6 +283,7 @@ def build_co2_cached_sigma_model(
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary_sensitivity: xr.DataArray | None = None,
+    boundary_operands: xr.Dataset | None = None,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
     offset_prior: PriorArgs | None = None,
@@ -359,6 +360,8 @@ def build_co2_cached_sigma_model(
             offset options are supplied without ``offset_prior``. Also raised
             for incompatible global-offset options.
     """
+    if boundary_operands is not None:
+        raise ValueError("Centered boundaries do not support cached likelihoods.")
     if boundary_sensitivity is None and (
         bc_prior is not None or bc_state_activity is not None
     ):

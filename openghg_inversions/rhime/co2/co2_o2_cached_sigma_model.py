@@ -56,6 +56,7 @@ def build_co2_o2_cached_sigma_model(
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary_sensitivity: Mapping[str, xr.DataArray] | None = None,
+    boundary_operands: Mapping[str, xr.Dataset] | None = None,
     bc_prior: Mapping[str, PriorArgs] | None = None,
     bc_state_activity: Mapping[str, StateActivity] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
@@ -78,6 +79,8 @@ def build_co2_o2_cached_sigma_model(
     values are returned separately for sampling; observations, designs,
     activity masks, and covariance stay fixed after construction.
     """
+    if boundary_operands is not None:
+        raise ValueError("Centered boundaries do not support cached likelihoods.")
     validate_observation_error_arrays(
         observations,
         independent_error_sd,

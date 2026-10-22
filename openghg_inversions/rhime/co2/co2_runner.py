@@ -49,6 +49,7 @@ from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.sigma import SigmaAlignment
 
 from .co2_model import _normalise_offset_args, build_co2_model
+from .centered_boundary import OPERAND_NAMES, require_centered_precision, restore_absolute_predictives
 from .co2_preparation import Co2PreparedInputs
 
 
@@ -84,6 +85,7 @@ def annotate_co2_trace(
     Returns:
         The annotated trace.
     """
+    restore_absolute_predictives(trace)
     trace.attrs["rhime_priors"] = json.dumps(prior_records(built.model))
     roles = dict(built.output_contract.variable_roles)
     metadata = dict(built.output_contract.metadata)
@@ -122,6 +124,7 @@ def annotate_co2_trace(
         roles_by_variable[name].extend(scientific_roles)
 
     concentration_variables = {
+        "H_bc_anomaly", "bc_reference", "bc_reference_shift", "boundary_reference_shift",
         "error",
         "fixed_model_mismatch",
         "fixed_prior_contribution",
@@ -142,6 +145,7 @@ def annotate_co2_trace(
                 variable.attrs["rhime_scientific_roles"] = json.dumps(scientific_roles)
             if name in {
                 "bc",
+                "H_bc_mass",
                 "flux_scaling",
                 "flux_scaling_active",
             }:
@@ -188,7 +192,7 @@ def co2_model_input_names(
     inputs = prepared_inputs.inv_inputs
     names = list(_CO2_SCIENTIFIC_INPUT_NAMES)
     if use_bc:
-        names.append("H_bc")
+        names.extend(OPERAND_NAMES if "H_bc_anomaly" in inputs else ("H_bc",))
     names.extend(aggregation_error_input_names(inputs, prepared_inputs.aggregation_error_mode))
     if "state_is_active" in inputs:
         names.append("state_is_active")
@@ -308,6 +312,8 @@ def materialize_co2_inputs(
     use_bc: bool = False,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
+    bc_freq: str | None = None,
+    bc_anchor_time: Any = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> tuple[xr.Dataset, dict[str, PriorArgs]]:
@@ -368,6 +374,10 @@ def materialize_co2_inputs(
             "pass its options in likelihood_kwargs."
         )
     prepared = prepared_inputs
+    if "H_bc_anomaly" in prepared.inv_inputs:
+        if likelihood_builder is not None:
+            raise ValueError("Centered boundaries do not support custom or fixed-OU likelihoods.")
+        require_centered_precision()
     names = co2_model_input_names(
         prepared,
         preserve_prepared_fixed_mismatch=(likelihood_builder is None and fixed_model_mismatch is None),
@@ -413,6 +423,8 @@ def build_co2_from_materialized(
     use_bc: bool = False,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
+    bc_freq: str | None = None,
+    bc_anchor_time: Any = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> RhimeModelBuildResult:
@@ -441,6 +453,10 @@ def build_co2_from_materialized(
             scientific components reject the supplied choices.
     """
     prepared = prepared_inputs
+    if "H_bc_anomaly" in prepared.inv_inputs:
+        if likelihood_builder is not None:
+            raise ValueError("Centered boundaries do not support custom or fixed-OU likelihoods.")
+        require_centered_precision()
     names = co2_model_input_names(
         prepared, use_bc=use_bc,
         preserve_prepared_fixed_mismatch=likelihood_builder is None and fixed_model_mismatch is None,
@@ -495,6 +511,9 @@ def build_co2_from_materialized(
         fixed_model_mismatch=prepared_mismatch,
         state_activity=_state_activity_from_inputs(model_inputs),
         boundary_sensitivity=model_inputs.get("H_bc") if use_bc else None,
+        boundary_operands=(model_inputs[list(OPERAND_NAMES)] if use_bc and "H_bc_anomaly" in model_inputs else None),
+        bc_freq=bc_freq,
+        bc_anchor_time=bc_anchor_time,
         bc_prior=priors["bc"] if use_bc and bc_prior is not None else None,
         bc_state_activity=bc_state_activity,
         offset_prior=priors["offset_latent"] if offset_prior is not None else None,
@@ -520,6 +539,9 @@ def build_co2_from_materialized(
                 "boundary_sensitivity": "hbc",
             }
         )
+    if use_bc and "H_bc_anomaly" in model_inputs:
+        variable_roles.pop("boundary_sensitivity", None)
+        variable_roles.update(boundary_anomaly="H_bc_anomaly", boundary_mass="H_bc_mass", boundary_reference="bc_reference")
     if offset_prior is not None:
         variable_roles["offset_concentration"] = "offset"
     for role, name in {

@@ -171,6 +171,14 @@ def _local_solar_time(dataset: xr.Dataset) -> list[int]:
     return list(hours)
 
 
+def _has_centered_boundary(dataset: xr.Dataset) -> bool:
+    """Recognize centered data before or after spatial projection."""
+    return dataset.attrs.get("boundary_representation") == "centered-v1" or any(
+        str(name).startswith(("bc_anomaly_", "bc_mass_", "H_bc_anomaly", "H_bc_mass"))
+        for name in dataset
+    )
+
+
 @register_filter
 def daily_median(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
     """Resample data to daily frequency and use daily median values.
@@ -182,6 +190,8 @@ def daily_median(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
     Returns:
         filtered dataset
     """
+    if _has_centered_boundary(dataset):
+        raise ValueError("daily_median is unsupported for centered boundary operands.")
     if keep_missing:
         return dataset.load().resample(indexer={"time": "1D"}).median()
     else:
@@ -200,6 +210,28 @@ def six_hr_mean(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
         filtered dataset
 
     """
+    if _has_centered_boundary(dataset):
+        # Required observation/response fields choose one common set of rows.
+        # Optional diagnostics cannot silently change the scientific average.
+        # Errors are already derived; scalar reference is never resampled.
+        time_names = [name for name in dataset.data_vars if "time" in dataset[name].dims]
+        science_names = [
+            name for name in time_names
+            if str(name) in {"mf", "mf_error", "H", "H_bc", "bc_mod", "bc_n", "bc_e", "bc_s", "bc_w"}
+            or str(name).startswith(("H_bc_", "bc_anomaly_", "bc_mass_", "fp_x_flux", "mf_mod"))
+        ]
+        valid = xr.ones_like(dataset.time, dtype=bool)
+        for name in science_names:
+            if not np.issubdtype(dataset[name].dtype, np.number):
+                continue
+            finite = np.isfinite(dataset[name])
+            other_dims = [dim for dim in finite.dims if dim != "time"]
+            valid = valid & (finite.all(other_dims) if other_dims else finite)
+        with xr.set_options(keep_attrs=True):
+            averaged = dataset[time_names].where(valid).resample(time="6h").mean()
+        result = dataset.drop_vars(time_names).drop_dims("time", errors="ignore").assign(averaged)
+        result.attrs = dict(dataset.attrs)
+        return result if keep_missing else result.dropna(dim="time", subset=science_names)
     if keep_missing:
         return dataset.resample(indexer={"time": "6h"}).mean()
     else:
@@ -424,7 +456,10 @@ def pblh_inlet_diff(
     filt = pblh_da > inlet_height + diff_threshold
     drop = not keep_missing
 
-    return dataset.where(filt.compute(), drop=drop)
+    result = dataset.where(filt.compute(), drop=drop)
+    if "bc_reference" in dataset:
+        result["bc_reference"] = dataset.bc_reference
+    return result
 
 
 @register_filter

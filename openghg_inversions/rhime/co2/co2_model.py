@@ -38,6 +38,8 @@ from openghg_inversions.rhime._model_building import _call_custom_likelihood
 from openghg_inversions.rhime.builders import RhimeLikelihoodBuilder
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
+from openghg_inversions.models.coords import add_model_data
+from .centered_boundary import bind_boundary_operands, add_centered_boundary
 
 
 def _fixed_mismatch_array(
@@ -98,6 +100,9 @@ def build_co2_model(
     fixed_model_mismatch: float | xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
     boundary_sensitivity: xr.DataArray | None = None,
+    boundary_operands: xr.Dataset | None = None,
+    bc_freq: str | None = None,
+    bc_anchor_time: Any = None,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
     offset_prior: PriorArgs | None = None,
@@ -156,6 +161,11 @@ def build_co2_model(
         boundary_sensitivity: Optional atmospheric boundary-condition
             sensitivity already resolved for the model, for example
             :attr:`~openghg_inversions.boundary_sensitivity.BoundaryAlignment.data`.
+        boundary_operands: Raw centered-v1 H_bc_anomaly/H_bc_mass and scalar
+            bc_reference, retained until model binding. Mutually exclusive with
+            absolute boundary_sensitivity for the same channel.
+        bc_freq: Optional model-owned boundary period frequency.
+        bc_anchor_time: Optional anchor for boundary period alignment.
         bc_prior: Optional prior arguments for boundary-condition scaling.
         bc_state_activity: Optional labelled activity policy for boundary
             states.
@@ -174,6 +184,14 @@ def build_co2_model(
             coordinate alignment fails, or if ``sigma_prior`` is supplied
             without ``sigma_alignment``.
     """
+    if boundary_operands is not None:
+        if boundary_sensitivity is not None:
+            raise ValueError("Supply boundary_operands or boundary_sensitivity, not both.")
+        if likelihood_builder is not None:
+            raise ValueError("Centered boundaries do not support custom or fixed-OU likelihoods.")
+        boundary_operands = bind_boundary_operands(
+            boundary_operands, observations, frequency=bc_freq, anchor_time=bc_anchor_time,
+        )
     if likelihood_builder is None:
         if likelihood_kwargs:
             raise ValueError("likelihood_kwargs require likelihood_builder.")
@@ -214,6 +232,14 @@ def build_co2_model(
             output_name="co2_flux_contribution",
         )
         boundary_contribution = None
+        centered_boundary = None
+        reference_shift = None
+        if boundary_operands is not None:
+            result, centered_boundary, reference_shift = add_centered_boundary(
+                boundary_operands, prior=bc_prior, activity=bc_state_activity,
+            )
+            boundary_contribution = result.output
+            add_model_data(reference_shift.rename("boundary_reference_shift"), "boundary_reference_shift")
         if boundary_sensitivity is not None:
             boundary_contribution = add_linear_component(
                 prepare_linear_sensitivity(boundary_sensitivity),
@@ -249,13 +275,20 @@ def build_co2_model(
             mean_expression,
             dims="nmeasure",
         )
+        likelihood_mean = modelled_mean
+        likelihood_observations = observations
+        if centered_boundary is not None:
+            likelihood_mean = co2_flux_contribution + centered_boundary
+            if offset is not None:
+                likelihood_mean = likelihood_mean + offset
+            likelihood_observations = observations - reference_shift
         if likelihood_builder is None:
             add_additive_sigma_likelihood(
-                observations=observations,
+                observations=likelihood_observations,
                 observation_error=observation_error,
                 aggregation_error=aggregation_error,
                 fixed_model_mismatch=fixed_mismatch,
-                mean=modelled_mean,
+                mean=likelihood_mean,
                 additive_sigma_alignment=sigma_alignment,
                 additive_sigma_prior=sigma_prior,
                 output_dim="nmeasure",
@@ -263,10 +296,10 @@ def build_co2_model(
         else:
             _call_custom_likelihood(
                 likelihood_builder,
-                observations=observations,
+                observations=likelihood_observations,
                 observation_error=observation_error,
                 aggregation_error=aggregation_error,
-                mean=modelled_mean,
+                mean=likelihood_mean,
                 output_dim="nmeasure",
                 likelihood_kwargs=likelihood_kwargs,
             )
