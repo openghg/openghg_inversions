@@ -7551,13 +7551,13 @@ def test_modern_flux_outputs_backfill_unsanitized_nonfinite_flux(
 
 def test_modern_paris_flux_outputs_use_retained_basis_operator(
     monkeypatch: pytest.MonkeyPatch,
-    europe_country_file: Path,
+    tiny_paris_country_file: Path,
 ) -> None:
     """PARIS flux outputs use retained basis operators for modern flux and country products."""
     from openghg_inversions.postprocessing.make_paris_outputs import paris_flux_output
 
-    basis_functions, operator = _recording_basis_functions_matching_country_grid(europe_country_file)
-    inv_out = _modern_postprocessing_inv_out(europe_country_file, basis_functions=basis_functions)
+    basis_functions, operator = _recording_basis_functions_matching_country_grid(tiny_paris_country_file)
+    inv_out = _modern_postprocessing_inv_out(tiny_paris_country_file, basis_functions=basis_functions)
 
     def fail_flat_basis(self: BasisFunctions) -> xr.DataArray:
         raise AssertionError("modern PARIS flux outputs should not materialise the flat basis view")
@@ -7566,7 +7566,7 @@ def test_modern_paris_flux_outputs_use_retained_basis_operator(
 
     flux_outputs = paris_flux_output(
         inv_out,
-        country_file=europe_country_file,
+        country_file=tiny_paris_country_file,
     )
 
     assert "flux_total_posterior" in flux_outputs
@@ -7583,15 +7583,15 @@ def test_modern_paris_flux_outputs_use_retained_basis_operator(
     assert operator.basis_matrix_accesses
 
 
-def test_modern_paris_flux_outputs_backfill_unsanitized_nonfinite_flux(europe_country_file: Path) -> None:
+def test_modern_paris_flux_outputs_backfill_unsanitized_nonfinite_flux(tiny_paris_country_file: Path) -> None:
     """PARIS flux output completes when old retained flux artifacts contain non-finite values."""
     from openghg_inversions.postprocessing.make_paris_outputs import paris_flux_output
 
-    basis_functions = _unsanitized_nonfinite_basis_functions_matching_country_grid(europe_country_file)
-    inv_out = _modern_postprocessing_inv_out(europe_country_file, basis_functions=basis_functions)
+    basis_functions = _unsanitized_nonfinite_basis_functions_matching_country_grid(tiny_paris_country_file)
+    inv_out = _modern_postprocessing_inv_out(tiny_paris_country_file, basis_functions=basis_functions)
 
     with pytest.warns(NonFiniteFluxWarning, match="applying a lazy zero-fill guard"):
-        flux_outputs = paris_flux_output(inv_out, country_file=europe_country_file)
+        flux_outputs = paris_flux_output(inv_out, country_file=tiny_paris_country_file)
 
     assert "flux_total_posterior" in flux_outputs
     assert np.isfinite(flux_outputs["flux_total_posterior"].values).all()
