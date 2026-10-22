@@ -341,7 +341,7 @@ def make_combined_scenario(fp_all: dict) -> xr.Dataset:
         fluxes.append(source_flux.expand_dims({"source": [source]}))
 
     # concat fluxes over source before merging into combined scenario
-    combined_fluxes = xr.concat(fluxes, dim="source")
+    combined_fluxes = xr.concat(fluxes, dim="source", join="outer")
     if "flux_time_present" in combined_fluxes:
         combined_fluxes["flux_time_present"] = combined_fluxes["flux_time_present"].fillna(0).astype(np.int8)
         combined_fluxes["flux_time_present"].attrs["long_name"] = "flux source includes this timestamp"

@@ -2,6 +2,7 @@ from typing import Any, cast
 
 import numpy as np
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytest
 import xarray as xr
 from scipy.stats import multivariate_normal
@@ -75,7 +76,7 @@ def _low_rank_data() -> tuple[xr.Dataset, np.ndarray]:
 def _fixed_likelihood_model(data: xr.Dataset) -> pm.Model:
     aggregation_error = resolve_aggregation_error(data)
     with registered_model(coords={"nmeasure": data.coords["nmeasure"]}) as model:
-        mean = pm.Data("mean", pm.floatX(np.array([0.8, 1.7, 2.9])), dims="nmeasure")
+        mean = pm.Data("mean", floatX(np.array([0.8, 1.7, 2.9])), dims="nmeasure")
         add_fixed_error_likelihood(
             observations=data["mf"],
             observation_error=data["mf_error"],
