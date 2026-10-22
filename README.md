@@ -354,28 +354,41 @@ This is the required check before pushing a draft pull request. GitHub Actions
 tests the committed `uv.lock` against the latest OpenGHG release and tests the
 OpenGHG devel branch separately. It fails if the lockfile lags a new release.
 
-Routine pull requests run the full suite with PyTensor's Python linker to avoid
-repeated JIT compilation. Changes to production code, backend-sensitive tests,
-dependencies or CI configuration retain the default compiled backend (currently
-Numba). Pushes also use the compiled backend. The
-[backend selector](.github/scripts/select-test-linker.cjs) owns the path rules;
-incomplete or failed change detection falls back to compiled coverage. The same
-scientific tests and numerical tolerances run in either mode.
+The normal CI suite always uses PyTensor's Python linker to avoid repeated JIT
+compilation. Tests marked `compiled_backend` also form a small Numba compatibility
+suite covering likelihood values and gradients, predictive draws, cached sampling
+and spawned chains. They remain part of the normal Python run, with the same
+assertions. A separate serial pytest process reruns only that marked subset with
+Numba for changes to production code, backend-sensitive tests, dependencies or CI
+configuration, and for pushes. The
+[backend selector](.github/scripts/select-test-linker.cjs) owns those path rules;
+incomplete or failed change detection enables the additional compiled checks.
 
-For an explicit compiled run from Actions, use:
+For explicit marked Numba checks from Actions, use:
 
 ```bash
 gh workflow run workflow.yaml --ref <branch> -f compiled_backend=true
+```
+
+To select the same checks locally, start a fresh process:
+
+```bash
+PYTENSOR_FLAGS=linker=numba DASK_NUM_WORKERS=2 uv run pytest \
+  -m 'compiled_backend and not slow and not create_frozen'
 ```
 
 Local pytest, tox and production defaults are unchanged. To opt into Python
 linking for a focused local check with no existing PyTensor flags, start a new process with
 `PYTENSOR_FLAGS=linker=py DASK_NUM_WORKERS=2 uv run pytest <test-path>`.
 If `PYTENSOR_FLAGS` is already set, preserve its other entries and add or replace
-only `linker`. Python checks do not replace coverage of PyTensor's Numba lowering
-or backend-specific RNG and sampler behaviour; retain a compiled run when
-changing those rules. The suite can still invoke other compiled backends such
-as NumPyro/JAX explicitly.
+only `linker`. The marked suite checks our integration with PyTensor's Numba
+lowering, including intentional Python fallbacks for custom Ops and the cached
+amplitude sampler's private CVM graph. For a broader check, explicitly run the
+whole suite with `PYTENSOR_FLAGS=linker=numba` and omit `-m compiled_backend`.
+The marked subset does not establish full float32 predictive accuracy; the known
+upstream float32 multivariate-normal issue remains tracked separately in
+[#770](https://github.com/openghg/openghg_inversions/issues/770).
+The suite can still invoke other compiled backends such as NumPyro/JAX explicitly.
 
 On a Slurm cluster, submit tox from the repository root instead of creating its
 environments on a shared worktree filesystem:

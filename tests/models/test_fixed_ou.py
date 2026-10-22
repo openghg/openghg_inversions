@@ -242,6 +242,7 @@ def test_logp_is_differentiable_for_inferred_site_amplitudes() -> None:
     np.testing.assert_allclose(gradient(amplitude), expected, rtol=1e-5)
 
 
+@pytest.mark.compiled_backend
 def test_analytic_value_mean_and_amplitude_gradients_match_dense_finite_difference() -> None:
     prepared, factor, diagonal, times, sites = _prepared()
     observed = np.array([0.5, -0.1, 0.2, 0.7, -0.4])
@@ -445,6 +446,7 @@ def test_overflowing_log_amplitude_rejects_without_nan_gradient() -> None:
     assert not np.isnan(gradient).any()
 
 
+@pytest.mark.compiled_backend
 def test_custom_dist_supports_fixed_and_inferred_amplitudes() -> None:
     prepared, *_ = _prepared()
     observed = np.array([0.5, -0.1, 0.2, 0.7, -0.4])

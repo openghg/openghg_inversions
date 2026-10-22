@@ -86,6 +86,7 @@ def _fixed_likelihood_model(data: xr.Dataset) -> pm.Model:
     return model
 
 
+@pytest.mark.compiled_backend
 def test_low_rank_logp_matches_dense_gaussian() -> None:
     low_rank_data, covariance = _low_rank_data()
     dense_data = _base_data()
@@ -143,6 +144,7 @@ def test_fixed_error_likelihood_uses_reported_and_aggregation_error_only() -> No
     np.testing.assert_allclose(model["epsilon"].eval(), expected)
 
 
+@pytest.mark.compiled_backend
 @pytest.mark.parametrize(
     ("mode", "payload_names"),
     [
