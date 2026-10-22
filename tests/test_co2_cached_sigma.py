@@ -1105,7 +1105,10 @@ def test_cached_predictive_options_fail_before_constructing_step(monkeypatch, op
     )
     with pytest.raises(ValueError, match="predict|random_seed"):
         co2_cached_sigma_runner._sampler_for_cached_graph(
-            RhimeSampler(**options), cached_model=_build(), sigma_target_accept=0.8, state_target_accept=0.9,
+            RhimeSampler(**options),
+            cached_model=cast(Any, object()),
+            sigma_target_accept=0.8,
+            state_target_accept=0.9,
         )
 
 
