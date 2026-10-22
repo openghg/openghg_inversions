@@ -800,9 +800,11 @@ graph.</p></li>
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">FixedOuCachedSigmaTarget</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">observations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_contribution</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">design</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.FixedOuCachedSigmaTarget" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Build state quadratics from the OGI fixed-OU covariance preparation.</p>
-<p><code class="docutils literal notranslate"><span class="pre">refresh</span></code> performs one rank-space factorization for the supplied site
-amplitudes and solves the zero-state residual and all state-design columns
-together. State evaluations on the returned cache are then pure dense
+<p>Construction transforms the fixed residual and design into prepared mode
+coordinates once.
+<code class="docutils literal notranslate"><span class="pre">refresh</span></code> solves the zero-state residual and all state-design columns
+together using the fixed-OU covariance solver for the supplied site
+amplitudes. State evaluations on the returned cache are then pure dense
 quadratic algebra.</p>
 <dl class="field-list simple">
 </dl>

@@ -693,7 +693,9 @@ variances are rejected before applying the low-rank update.</p>
 state-likelihood cache conditioned on supplied site amplitudes. It
 reuses the generalized eigenbasis prepared by
 <a class="reference internal" href="#openghg_inversions.models.fixed_ou.prepare_fixed_ou_low_rank" title="openghg_inversions.models.fixed_ou.prepare_fixed_ou_low_rank"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_fixed_ou_low_rank()</span></code></a> and never constructs a second
-eigensolver.</p>
+eigensolver. Factors at least as wide as the observation vector use
+observation-space Cholesky when well conditioned; otherwise the
+square-root QR/SVD solve preserves small covariance directions.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.models.fixed_ou.FixedOuCovarianceSolve" title="openghg_inversions.models.fixed_ou.FixedOuCovarianceSolve"><em>FixedOuCovarianceSolve</em></a></p>
