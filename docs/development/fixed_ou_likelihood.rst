@@ -1,5 +1,5 @@
 Fixed-OU likelihood and cached quadratics
-========================================
+=========================================
 
 This page explains the numerical target and the two conditional updates used
 by the :ref:`cached-sigma CO2 runner <co2-cached-sigma-recipe>`. It is intended
@@ -195,7 +195,7 @@ into misleading finite inputs. Invalid amplitude and variance handling is
 shared with the general evaluator.
 
 Costs, limits and regression coverage
-------------------------------------
+-------------------------------------
 
 Generalized eigendecomposition is a preparation cost of roughly
 :math:`\sum_s O(n_s^3)`; storing/applying its blocks needs
@@ -236,7 +236,7 @@ Regression coverage is retained independently of historical benchmarks:
   CO2 runner and shape-hook tests protect the surrounding integration.
 
 Historical evidence and further experiments
-------------------------------------------
+-------------------------------------------
 
 The :doc:`fixed_ou_evidence` index links immutable reports, scripts and timing
 CSVs. Those are dated experimental evidence, not maintained benchmark drivers.
