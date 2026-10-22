@@ -42,9 +42,14 @@ def test_unimplemented_model_binding_rejects_centered_operands(family):
 
 
 @pytest.mark.parametrize("split", [False, True])
-def test_surface_native_reporting_converts_units_without_source_time_policy(split):
+def test_surface_native_reporting_converts_units_without_source_time_policy(monkeypatch, split):
     import numpy as np
+    from openghg_inversions import flux_sanitization
     from openghg_inversions.native_flux import resolve_runtime_flux
+
+    clock = Mock()
+    clock.now.return_value = pd.Timestamp("2020-01-01", tz="UTC")
+    monkeypatch.setattr(flux_sanitization, "datetime", clock)
 
     times = pd.date_range("2020-01-01", periods=3, freq="h")
     first = xr.Dataset({"flux": ("time", [1., 2., 3.], {"units": "mol / m2 / s"})}, coords={"time": times})
