@@ -29,11 +29,23 @@ written.
 one absolute path to ``sample-manifest.json``. A Python ``likelihood_builder``
 (with ``likelihood_kwargs``) may replace the built-in likelihood, as in
 ``run_standard``. Compatible graph-time priors and
-likelihoods reuse the preparation. Required BC and minimum-error arrays must be
+likelihoods reuse the preparation. Required raw BC and estimator inputs must be
 available. Omitted model ``use_bc`` inherits the preparation choice; explicit
-``False`` may ignore available BC inputs. A repeated ``bc_freq`` must agree with
-the baked policy, even when the selected model ignores BCs. Changing acquired
-data, filters, basis, native flux or baked numerical policy needs new preparation.
+``False`` may ignore available BC inputs. Model ``bc_freq`` can change without
+new preparation; omission uses one period. Fixed-duration periods use the saved
+requested start date unless ``bc_freq_anchor`` is supplied; explicit ``None``
+anchors them at the first retained observation. Minimum-error choices belong to
+the selected likelihood and named estimates use observations retained after
+invalid rows are dropped. Changing acquired data, filters, basis or native flux
+needs new preparation.
+
+Standard and multisector preparation and sample manifests use version 2, and
+prepared numerical artifacts use schema version 2. Incompatible older artifacts
+are rejected with guidance to use the matching software or prepare again; baked
+policies are not silently reinterpreted. Independent ``InversionOutput`` exports
+and modern legacy-format products retain their own support. Saved replay reads
+the exact fitted BC, minimum-error and sigma-alignment operands from trace
+constants without recalculating them.
 
 ``load_samples`` decodes the sample manifest to ``InversionOutput``.
 ``postprocess`` uses that reader with current output choices, calls
@@ -276,7 +288,7 @@ Sampling can change ``sector_priors`` or a compatible Python
 ``likelihood_builder`` without preparing again. The custom likelihood requires
 ``mismatch_model=None`` and receives the combined sector observation mean through
 the existing likelihood interface. Missing required arrays, incompatible source
-layouts, or a conflicting baked ``bc_freq`` require corrected inputs or a new
+layouts, or absent operands for a named estimator require corrected inputs or a new
 preparation. Current model choices cannot change acquisition, filtering, basis
 construction or the saved native flux.
 

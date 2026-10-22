@@ -318,11 +318,13 @@ concentration-scale variance, while ``models.pollution_event`` owns the
 pollution-enhancement-scaled equation. Select the absolute additive equation
 directly with ``mismatch_model="additive_sigma"`` in ``run_standard`` or
 ``run_rhime_multisector``; ``sigma_prior``, ``sigma_freq``, and
-``sigma_per_site`` then configure its scale. Additive sigma does not load the
-historical ``min_error`` floor unless
+``sigma_per_site`` then configure its scale. Additive sigma does not calculate a
+``min_error`` floor unless
 ``use_minimum_error_floor=True`` is selected explicitly. A custom likelihood
 loads only ``mf`` and ``mf_error`` from the universal observation inputs and
-does not require ``min_error``.
+does not require ``min_error``. Built-in floor choices are model settings;
+named residual and percentile estimates use observations retained after invalid
+rows are dropped. Preparation retains the raw operands for compatible model reuse.
 
 Legacy ``run_hbmcmc`` additive configuration is translated at that script's
 entry point into the same explicit likelihood settings. Parameter resolution

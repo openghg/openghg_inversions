@@ -17,7 +17,7 @@ retrieving observations, building a model or sampling.
 The returned ``RhimeConfig`` is the complete requested configuration:
 
 * ``data`` is one ``DataConfig`` containing
-  ``species``, ``domain``, dates, stores, basis, filtering and error settings.
+  ``species``, ``domain``, dates, stores, basis, filtering and observation-error settings.
   ``data.site_options`` is one public ``SiteOptions`` record containing complete
   aligned tuples of requested sites and their selectors.
 * ``model`` is the existing ``RhimeModelSpec`` containing sectors, priors,
@@ -95,6 +95,22 @@ Grouped mappings use ``data``, ``model``, ``sampler`` and ``output``; the unship
 ``config.data`` and pass the acquired handoff with separately selected named
 arguments to scientific preparation. Preparation never retrieves data or exports
 a basis itself.
+
+``bc_freq`` and ``bc_freq_anchor`` belong to ``model``. Omitted frequency means
+one BC period; an omitted anchor uses the requested start date, whereas explicit
+``None`` uses the first retained observation. ``min_error`` and
+``min_error_options`` belong to the selected likelihood in ``model``. The
+pollution-event likelihood always uses its floor; additive sigma uses it only
+with ``use_minimum_error_floor=True``. Fixed-error and custom likelihoods do not
+accept these built-in floor options. Flat INI options are routed to these owners;
+placing them in a grouped ``data`` mapping is an error.
+
+Prepared inputs retain raw spatial BC sensitivities and ordinary observation
+data. Different compatible frequencies or floor choices reuse that preparation.
+Named floors are estimated after unusable observation rows are dropped, so they
+can differ from historical estimates made before row removal. Scalar and
+per-site floors retain their concentration units. The model boundary computes
+only the operands selected by its active components, together with enabled priors.
 
 INI files and overrides
 -----------------------

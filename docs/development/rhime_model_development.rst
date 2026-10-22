@@ -208,7 +208,10 @@ for another family.
 
 Moving a preparation equation, including observation-error derivation,
 minimum-error calculation, or boundary-period expansion, is a scientific
-change requiring its own parity evidence. The configuration contract records
+change requiring evidence for unchanged behavior and explicit tests for agreed
+semantic changes. Model-owned minimum-error estimates use retained observations
+after invalid-row removal; historical pre-drop estimates are not a parity target.
+The configuration contract records
 the current observation-error-before-filtering policy. Supported prepared-input
 contents and examples are in :doc:`/usage/rhime` and
 :doc:`/usage/customising_rhime`; checkpoint limitations are in

@@ -28,10 +28,9 @@ class MinimumError:
     sites: tuple[str, ...]
 
     @classmethod
-    def prepare(
+    def from_observations(
         cls,
         observations: xr.Dataset,
-        fp_data: Mapping[str, xr.Dataset],
         value: str | Mapping[str, float] | int | float | None = 0.0,
         *,
         by_site: bool = True,
@@ -40,8 +39,9 @@ class MinimumError:
 
         Args:
             observations: Gathered observations containing ``mf`` and a labelled
-                ``site`` coordinate for per-site values.
-            fp_data: Per-site scientific datasets used by calculated methods.
+                ``site`` coordinate for per-site values. Named methods consume
+                retained eager observations: residual also requires ``mf_mod``
+                and accepts ``bc_mod``; percentile requires a ``time`` coordinate.
             value: Scalar, per-site mapping, ``"residual"``, or ``"percentile"``.
                 ``None`` uses a zero scalar floor.
             by_site: Whether residual values are calculated separately by site.
@@ -88,17 +88,31 @@ class MinimumError:
             if site_coord is None:
                 raise ValueError("Calculated min_error values require a labelled site coordinate.")
             sites = tuple(dict.fromkeys(str(site) for site in site_coord.values))
-            selected = {site: fp_data[site] for site in sites if site in fp_data}
-            missing_data = [site for site in sites if site not in selected]
-            if missing_data:
-                raise ValueError(f"Minimum-error calculation is missing fp_data for site(s): {missing_data}")
             method = value
             varies_by_site = value == "percentile" or by_site
-            source = (
-                residual_error_method(selected, by_site=by_site)
-                if value == "residual"
-                else percentile_error_method(selected)
-            )
+            if value == "residual":
+                if "mf_mod" not in observations:
+                    raise ValueError("Residual minimum error requires 'mf_mod'.")
+                modelled = _in_observation_units(observations.mf_mod, observations.mf)
+                if "bc_mod" in observations:
+                    modelled = modelled + _in_observation_units(observations.bc_mod, observations.mf)
+                residual = observations.mf - modelled
+                if by_site:
+                    source = np.asarray([
+                        residual.where(site_coord == site, drop=True).std().item() for site in sites
+                    ])
+                else:
+                    source = residual.std().item()
+            else:
+                # Reconstruct only the retained site/time observations for the
+                # monthly percentile calculation; no original site data is used.
+                selected = {}
+                for site in sites:
+                    mf = observations.mf.where(site_coord == site, drop=True)
+                    selected[site] = xr.Dataset({"mf": xr.DataArray(
+                        mf.data, dims="time", coords={"time": mf.time.data}, attrs=mf.attrs,
+                    )})
+                source = percentile_error_method(selected)
         else:
             raise ValueError(f"Option '{value}' is not valid.")
 
@@ -118,7 +132,8 @@ class MinimumError:
                 coords={"site": np.asarray(sites)},
                 dims="site",
             )
-            data = per_site.sel(site=site_coord)
+            aligned = per_site.sel(site=site_coord)
+            data = xr.DataArray(aligned.data, dims=observations.mf.dims, coords=observations.mf.coords)
         else:
             if source.size != 1:
                 raise ValueError("A non-site minimum error must contain exactly one value.")
@@ -132,6 +147,21 @@ class MinimumError:
             "minimum_error_sites": ",".join(sites),
         }
         return cls(data, method, varies_by_site, sites)
+
+
+def _in_observation_units(value: xr.DataArray, observations: xr.DataArray) -> xr.DataArray:
+    """Express a modelled concentration in the observation's declared units."""
+    source = value.attrs.get("units", observations.attrs.get("units", ""))
+    target = observations.attrs.get("units", source)
+    if source == target:
+        return value
+    # OpenGHG registers the concentration aliases and numeric unit spellings.
+    from openghg.util import enable_pint_xarray
+    from cf_xarray.units import units
+
+    enable_pint_xarray()
+    factor = units.Quantity(1, source).to(target).magnitude
+    return value * factor
 
 
 def normalise_min_error(value: Any) -> float | str | dict[str, float]:

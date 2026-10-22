@@ -10,7 +10,6 @@ from dask import array as da
 from dask.callbacks import Callback
 
 from openghg_inversions.inversion_inputs import (
-    add_min_error,
     add_site_indicator,
     concat_gather_datasets,
     make_inv_inputs,
@@ -68,7 +67,6 @@ def test_make_inv_inputs_preserves_requested_order_and_column_factors() -> None:
     result = make_inv_inputs(
         fp_data,
         sites=["SATELLITE", "SURFACE"],
-        min_error=0.0,
     )
 
     assert result["site_names"].values.tolist() == ["SATELLITE", "SURFACE"]
@@ -96,7 +94,7 @@ def test_make_inv_inputs_rejects_partial_column_factor_pair() -> None:
     )
 
     with pytest.raises(ValueError, match="must define both"):
-        make_inv_inputs({"SATELLITE": dataset}, sites=["SATELLITE"], min_error=0.0)
+        make_inv_inputs({"SATELLITE": dataset}, sites=["SATELLITE"])
 
 
 # ----------------------------------------
@@ -156,10 +154,10 @@ def test_make_inv_inputs_drops_non_shared_data_vars():
     }
 
     with pytest.warns(UserWarning, match="Dropping data variables.*inlet_height"):
-        result = make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=0.0)
+        result = make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"])
 
     assert "inlet_height" not in result
-    assert {"H", "mf", "mf_error", "site_indicator", "site_names", "min_error"} <= set(result.data_vars)
+    assert {"H", "mf", "mf_error", "site_indicator", "site_names"} <= set(result.data_vars)
     assert "sigma_freq_index" not in result
 
 
@@ -168,7 +166,7 @@ def test_make_inv_inputs_rejects_explicit_empty_sites() -> None:
     fp_data = {"AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False)}
 
     with pytest.raises(ValueError, match="sites.*at least one site"):
-        make_inv_inputs(fp_data=fp_data, sites=[], min_error=0.0)
+        make_inv_inputs(fp_data=fp_data, sites=[])
 
 
 def test_make_inv_inputs_infers_sites_only_when_sites_is_none() -> None:
@@ -179,12 +177,12 @@ def test_make_inv_inputs_infers_sites_only_when_sites_is_none() -> None:
         "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
     }
 
-    result = make_inv_inputs(fp_data=fp_data, sites=None, min_error=0.0)
+    result = make_inv_inputs(fp_data=fp_data, sites=None)
 
     assert list(result["site_names"].values) == ["AAA", "BBB"]
 
 
-def test_make_inv_inputs_drops_unobserved_boundary_states() -> None:
+def test_make_inv_inputs_retains_raw_unobserved_boundary_states() -> None:
     fp_data = {
         "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
         "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
@@ -200,12 +198,16 @@ def test_make_inv_inputs_drops_unobserved_boundary_states() -> None:
         coords={"bc_region": ["north", "unused", "south"]},
     )
 
-    result = make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=0.0)
+    for dataset in fp_data.values():
+        dataset["bc_extra"] = dataset["H_bc"] + 10.
 
-    assert [region[0] for region in result["bc_region"].values.tolist()] == ["north", "south"]
+    result = make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"])
+
+    np.testing.assert_array_equal(result["bc_extra"], result["H_bc"] + 10.)
+    assert result["bc_region"].values.tolist() == ["north", "unused", "south"]
     np.testing.assert_array_equal(
         result["H_bc"].values,
-        [[0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 2.0, 0.0]],
+        [[0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 2.0, 0.0]],
     )
 
 
@@ -214,7 +216,7 @@ def test_make_inv_inputs_rejects_missing_requested_site() -> None:
     fp_data = {"AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False)}
 
     with pytest.raises(ValueError, match=r"missing requested site\(s\).*BBB"):
-        make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=0.0)
+        make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"])
 
 
 def test_make_inv_inputs_rejects_mismatched_gathered_state_indexes() -> None:
@@ -245,7 +247,7 @@ def test_make_inv_inputs_rejects_mismatched_gathered_state_indexes() -> None:
         )
 
     with pytest.raises(ValueError, match="identical indexes on every non-time dimension"):
-        make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=0.0)
+        make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"])
 
 
 def test_make_inv_inputs_rejects_mismatched_state_dimension_names() -> None:
@@ -263,7 +265,7 @@ def test_make_inv_inputs_rejects_mismatched_state_dimension_names() -> None:
         )
 
     with pytest.raises(ValueError, match="variable 'H'.*same non-time dimensions"):
-        make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=0.0)
+        make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"])
 
 
 def test_make_inv_inputs_retains_separate_aggregation_error_component() -> None:
@@ -276,11 +278,11 @@ def test_make_inv_inputs_retains_separate_aggregation_error_component() -> None:
         fp_data[site]["aggregation_error_sd"] = ("time", aggregation_error)
     raw_errors = np.concatenate([fp_data[site]["mf_error"].values for site in ("AAA", "BBB")])
 
-    result = make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=0.2)
+    result = make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"])
 
     np.testing.assert_allclose(result["mf_error"].values, raw_errors)
     np.testing.assert_allclose(result["aggregation_error_sd"].values, [0.3, 0.4, 0.5, 0.6])
-    np.testing.assert_allclose(result["min_error"].values, 0.2)
+    assert "min_error" not in result
 
 
 def test_make_inv_inputs_raises_if_required_var_would_be_dropped():
@@ -291,91 +293,7 @@ def test_make_inv_inputs_raises_if_required_var_would_be_dropped():
     }
 
     with pytest.raises(ValueError, match="Required inversion data variables.*mf_error"):
-        make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=0.0)
-
-
-@pytest.mark.parametrize("min_error, expected", [(40, 40.0), (None, 0.0)])
-def test_make_inv_inputs_accepts_integer_and_none_min_error(min_error, expected):
-    """Integer min_error values should be treated as numeric scalar errors."""
-    fp_data = {
-        "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
-        "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
-    }
-
-    result = make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=min_error)
-
-    assert np.all(result.min_error.values == expected)
-
-
-def test_make_inv_inputs_maps_dict_min_error_by_site():
-    """Site-specific min_error mappings should align onto selected stacked observations."""
-    fp_data = {
-        "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
-        "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
-        "CCC": _make_minimal_fp_site(mf_base=30.0, include_inlet_height=False),
-    }
-
-    result = make_inv_inputs(
-        fp_data=fp_data,
-        sites=["AAA", "BBB"],
-        min_error={"AAA": 1.5, "BBB": 2.5},
-    )
-
-    expected = np.where(result.site_indicator.values == 0, 1.5, 2.5)
-    np.testing.assert_allclose(result.min_error.values, expected)
-
-
-def test_add_min_error_can_use_site_coord_without_site_indicator():
-    """Standalone min_error setup can derive site info from a site coordinate."""
-    fp_data = {
-        "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
-        "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
-    }
-    ds = xr.Dataset(
-        {"mf": xr.DataArray(np.ones(4), dims="nmeasure")},
-        coords={"site": xr.DataArray(["AAA", "AAA", "BBB", "BBB"], dims="nmeasure")},
-    )
-
-    result = add_min_error(ds, fp_data=fp_data, min_error={"AAA": 1.5, "BBB": 2.5})
-
-    np.testing.assert_allclose(result.min_error.values, [1.5, 1.5, 2.5, 2.5])
-
-
-def test_make_inv_inputs_dict_min_error_missing_site_raises_clear_error():
-    """Site-specific min_error mappings should fail clearly when a selected site is missing."""
-    fp_data = {
-        "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
-        "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
-    }
-
-    with pytest.raises(ValueError, match="min_error mapping is missing values.*BBB"):
-        make_inv_inputs(
-            fp_data=fp_data,
-            sites=["AAA", "BBB"],
-            min_error={"AAA": 1.5},
-        )
-
-
-def test_make_inv_inputs_residual_min_error_can_be_site_specific():
-    """Residual min_error values can be calculated per selected site."""
-    fp_data = {
-        "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
-        "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
-        "CCC": _make_minimal_fp_site(mf_base=30.0, include_inlet_height=False),
-    }
-    fp_data["AAA"]["mf_mod"] = fp_data["AAA"]["mf"] - xr.DataArray([0.0, 2.0], dims="time")
-    fp_data["BBB"]["mf_mod"] = fp_data["BBB"]["mf"] - xr.DataArray([0.0, 4.0], dims="time")
-    fp_data["CCC"]["mf_mod"] = fp_data["CCC"]["mf"] - xr.DataArray([0.0, 8.0], dims="time")
-
-    result = make_inv_inputs(
-        fp_data=fp_data,
-        sites=["AAA", "BBB"],
-        min_error="residual",
-        min_error_per_site=True,
-    )
-
-    expected = np.where(result.site_indicator.values == 0, 1.0, 2.0)
-    np.testing.assert_allclose(result.min_error.values, expected)
+        make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"])
 
 
 def test_minimum_error_uses_declared_site_order_and_records_provenance(tmp_path: Path):
@@ -386,7 +304,7 @@ def test_minimum_error_uses_declared_site_order_and_records_provenance(tmp_path:
     )
     observations.mf.attrs["units"] = "ppb"
 
-    result = MinimumError.prepare(observations, {}, {"AAA": 1.0, "BBB": 2.0})
+    result = MinimumError.from_observations(observations, {"AAA": 1.0, "BBB": 2.0})
 
     np.testing.assert_allclose(result.values, [2.0, 1.0, 2.0])
     assert result.sites == ("BBB", "AAA")
@@ -411,7 +329,7 @@ def test_minimum_error_rejects_invalid_values(value: float, message: str):
     observations = xr.Dataset({"mf": ("nmeasure", [1.0])})
 
     with pytest.raises(ValueError, match=message):
-        MinimumError.prepare(observations, {}, value)
+        MinimumError.from_observations(observations, value)
 
 
 def test_percentile_error_accepts_nonmonotonic_site_times():
@@ -448,7 +366,7 @@ def test_scalar_minimum_error_preserves_lazy_borrowed_observations():
     executed_tasks = []
 
     with Callback(pretask=lambda *args: executed_tasks.append(args[0])):
-        result = MinimumError.prepare(observations, {}, 0.5)
+        result = MinimumError.from_observations(observations, 0.5)
 
     assert executed_tasks == []
     assert result.values.variable._data is not observations.mf.variable._data

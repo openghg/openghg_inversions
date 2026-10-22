@@ -16,6 +16,19 @@ from openghg_inversions.postprocessing.legacy_outputs import _compute_apriori_fl
 from tests.helpers import make_trace
 
 
+@pytest.mark.parametrize("model_data", [False, True])
+def test_raw_boundary_inputs_cannot_replace_fitted_legacy_operand(model_data):
+    output = _legacy_inv_out(model_data=model_data, include_bc=True)
+    output.inv_inputs["H_bc"].attrs["boundary_sensitivity_preparation"] = "raw-spatial"
+    arguments = dict(model_name="hbc", input_name="H_bc", description="boundary sensitivity")
+    if model_data:
+        fitted = legacy_outputs._model_or_input_var(output, **arguments)
+        xr.testing.assert_identical(fitted, output.model_data()["hbc"])
+    else:
+        with pytest.raises(ValueError, match="fitted boundary operand.*hbc"):
+            legacy_outputs._model_or_input_var(output, **arguments)
+
+
 def _minimal_legacy_inv_inputs(
     *,
     include_bc: bool = False,

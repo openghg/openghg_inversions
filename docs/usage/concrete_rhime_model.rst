@@ -44,10 +44,15 @@ multisector graph lives beside :func:`run_rhime_multisector` in
 
 The standard builder is ``build_standard_model(model_inputs, model_spec,
 priors=...)`` and returns the concrete model plus its output contract. It accepts
-already materialized numerical arrays and prior parameters. Call
-``materialize_standard_inputs(prepared, model_spec)`` explicitly when these may
-be lazy; the helper computes selected inputs and enabled priors together. Builder
-construction does not execute a borrowed lazy graph or consume output choices.
+already materialized model operands and prior parameters. Call
+``materialize_standard_inputs(prepared, model_spec)`` for raw prepared inputs,
+including when their arrays are already eager. The helper computes selected
+inputs and enabled priors together, then resolves BC periods and any selected
+minimum-error floor. Multisector uses ``materialize_multisector_inputs``.
+The generic ``materialize_pymc_inputs`` only materializes arrays and does not
+perform these recipe-specific calculations. Direct eager builders reject raw
+boundary operands; construction does not execute a borrowed lazy graph or
+consume output choices.
 
 .. _rhime-builder-stability:
 
@@ -107,8 +112,9 @@ before construction. Select
 ``mismatch_model="additive_sigma"`` for an absolute concentration-scale
 mismatch instead; this is a resolved model option and does not use the custom
 ``likelihood_builder`` extension point. Additive sigma does not select the
-prepared ``min_error`` input unless ``use_minimum_error_floor=True`` is also
-set. Aggregation error is disabled by default. Let
+model-owned ``min_error`` floor unless ``use_minimum_error_floor=True`` is also
+set. Named minimum-error estimates use observations retained after unusable rows
+are dropped. Aggregation error is disabled by default. Let
 :math:`P` be the pollution event and let ``sigma`` be the observation-aligned
 fractional model-error parameter. With the default
 ``pollution_events_from_obs=False``,
@@ -233,7 +239,9 @@ Equivalent construction from public helpers
 The default production builder constructs the graph in the same direct style
 shown below. A researcher does not need to construct a private plan to write an
 equivalent concrete single-flux model. The following uses public component
-helpers:
+helpers. Here ``inv_inputs`` contains the selected raw inputs already
+materialized at an explicit boundary; the floor and fitted BC periods are model
+choices:
 
 .. code-block:: python
 
@@ -243,6 +251,8 @@ helpers:
        registered_model,
    )
    from openghg_inversions.models.pollution_event import add_pollution_event_likelihood
+   from openghg_inversions.boundary_sensitivity import BoundaryAlignment
+   from openghg_inversions.model_error import MinimumError
    from openghg_inversions.observation_error import resolve_aggregation_error
    from openghg_inversions.sigma import SigmaAlignment
 
@@ -266,7 +276,11 @@ helpers:
        per_site=True,
    )
    flux_sensitivity = prepare_linear_sensitivity(inv_inputs["H"])
-   boundary_sensitivity = prepare_linear_sensitivity(inv_inputs["H_bc"])
+   boundary = BoundaryAlignment.prepare(
+       inv_inputs["H_bc"], frequency="monthly", anchor_time="2021-01-01",
+   )
+   boundary_sensitivity = prepare_linear_sensitivity(boundary.data)
+   minimum_error = MinimumError.from_observations(inv_inputs, 0.0)
 
    with registered_model() as model:
        flux = add_linear_component(
@@ -293,7 +307,7 @@ helpers:
        add_pollution_event_likelihood(
            observations=inv_inputs["mf"],
            observation_error=inv_inputs["mf_error"],
-           minimum_error=inv_inputs["min_error"],
+           minimum_error=minimum_error.values,
            aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
            mean=modelled_mean,
            pollution_mean=pollution_mean,

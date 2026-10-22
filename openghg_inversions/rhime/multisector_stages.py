@@ -64,6 +64,7 @@ def _preparation_record(manifest: str | Path) -> tuple[Path, dict[str, Any]]:
         manifest,
         "openghg_inversions.multisector.prepare",
         ("prepared_inputs", "data", "generation"),
+        schema_version=2,
     )
     if not isinstance(record["generation"], str) or not record["generation"]:
         raise ValueError(f"Preparation manifest {path} requires a nonempty generation.")
@@ -105,7 +106,7 @@ def save_preparation(
         "prepare",
         {
             "schema": "openghg_inversions.multisector.prepare",
-            "schema_version": 1,
+            "schema_version": 2,
             "producer": "openghg_inversions",
             "stage": "prepare",
             "generation": uuid4().hex,
@@ -196,9 +197,6 @@ def prepare(
             "nbasis",
             "fix_basis_outer_regions",
             "use_bc",
-            "bc_freq",
-            "min_error",
-            "min_error_options",
         ),
     )
 
@@ -256,7 +254,7 @@ def save_samples(
         "sample",
         {
             "schema": "openghg_inversions.multisector.sample",
-            "schema_version": 1,
+            "schema_version": 2,
             "producer": "openghg_inversions",
             "stage": "sample",
             "preparation": os.path.relpath(preparation_path, destination),
@@ -362,6 +360,7 @@ def load_samples(sample_manifest: str | Path) -> InversionOutput:
             "actual_inference",
             "provenance",
         ),
+        schema_version=2,
     )
     preparation_path = reference(path, record["preparation"])
     if not isinstance(record["preparation_generation"], str) or not record["preparation_generation"]:

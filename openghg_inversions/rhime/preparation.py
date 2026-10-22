@@ -41,7 +41,6 @@ from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInpu
 from openghg_inversions.inversion_data.observation_errors import prepare_observation_errors
 from openghg_inversions.inversion_data.prepared_inputs import _make_site_metadata
 from openghg_inversions.inversion_inputs import make_inv_inputs
-from openghg_inversions.model_error import MinErrorConfig
 
 __all__ = [
     "assemble_inputs",
@@ -198,21 +197,15 @@ def assemble_inputs(
     site_options: SiteOptions,
     domain: str,
     start_date: str,
-    bc_freq: str | None = None,
-    min_error: MinErrorConfig = 0.0,
-    min_error_options: Mapping[str, Any] | None = None,
     use_bc: bool = True,
 ) -> RhimePreparedInputs:
     """Construct and validate durable, backend-neutral RHIME model inputs.
 
     The stage attaches domain metadata to shallow per-site copies, assembles
     observation-aligned arrays, applies the satellite boundary-condition
-    scaling, and retains basis and site metadata. It also preserves the legacy
-    construction of the minimum-error floor and boundary-condition temporal
-    parameterization. Those are inverse-model settings, not properties of the
-    acquired data; moving them to their model components is a later semantic
-    change. Core payloads are jointly materialized before invalid observations
-    are dropped; backend selection and densification happen separately.
+    scaling, and retains basis and site metadata. Model-owned boundary periods
+    and minimum-error floors are resolved later. Core payloads are jointly
+    materialized before invalid observations are dropped; backend selection and densification happen separately.
 
     Args:
         site_data: Per-site datasets from sensitivity construction. Domain
@@ -222,15 +215,7 @@ def assemble_inputs(
         site_options: Selectors for the retained sites, as returned by
             :func:`filter_observations`.
         domain: Domain label attached to the assembled site data.
-        start_date: Requested start date used to anchor temporal parameters.
-        bc_freq: Frequency of boundary-condition scaling parameters; ``None``
-            keeps one period across the run.
-        min_error: Minimum observation-error floor as a numeric value or a
-            mapping covering every retained site, or the named ``"residual"``
-            or ``"percentile"`` calculation.
-        min_error_options: Resolved mapping with boolean ``by_site``, as
-            supplied by ``RhimeConfig``. ``None`` uses a shared calculation.
-            Explicit keyword calls must supply already-normalized options.
+        start_date: Requested start date of the preparation interval.
         use_bc: Whether missing boundary-condition inputs should be checked.
 
     Returns:
@@ -241,21 +226,14 @@ def assemble_inputs(
     Raises:
         ValueError: If assembled inputs fail their alignment or scientific
             input contracts.
-        KeyError: If the resolved ``by_site`` option is absent.
     """
     owned_site_data = {site: dataset.copy(deep=False) for site, dataset in site_data.items()}
     for site in site_options.sites:
         owned_site_data[site].attrs["Domain"] = domain
-    # These inverse-model settings are materialized into labelled arrays here
-    # to preserve the existing numerical contract while preparation is split.
     with timed("rhime.prepare_inputs.make_inv_inputs", sites=len(site_options.sites)):
         inv_inputs = make_inv_inputs(
             fp_data=owned_site_data,
             sites=list(site_options.sites),
-            start_date=start_date,
-            bc_freq=bc_freq,
-            min_error=min_error,
-            min_error_per_site=False if min_error_options is None else min_error_options["by_site"],
         )
     inv_inputs = scale_satellite_boundary_sensitivity_to_column_signal(
         inv_inputs,

@@ -148,7 +148,8 @@ def test_invalid_active_choices_fail_before_acquisition(
 )
 def test_valid_finite_choices_are_preserved(option, value):
     config = rhime_params.RhimeConfig.from_params(_request(**{option: value}), multisector=False)
-    owner = config.model if option == "aggregation_error_mode" else config.data
+    owner = (config.model.likelihood if option == "min_error"
+             else config.model if option == "aggregation_error_mode" else config.data)
     assert getattr(owner, option) == value
 
 
@@ -299,7 +300,7 @@ def test_minimum_error_none_resolves_to_numeric_default():
     explicit = rhime_params.RhimeConfig.from_params(_request(min_error=0.0), multisector=False)
 
     assert unspecified == explicit
-    assert unspecified.data.min_error == 0.0
+    assert unspecified.model.likelihood.min_error == 0.0
 
 
 def test_filtering_preserves_typed_filter_request():
@@ -476,7 +477,7 @@ def test_minimum_error_owns_any_mapping_without_requiring_dropped_sites():
     values = UserDict({"TAC": 0.5})
     config = rhime_params.RhimeConfig.from_params(_request(min_error=values), multisector=False)
     values["TAC"] = 99.0
-    assert config.data.min_error == {"TAC": 0.5}
+    assert config.model.likelihood.min_error == {"TAC": 0.5}
 
 
 @pytest.mark.parametrize(("old", "new", "value"), [
@@ -560,15 +561,17 @@ def test_grouped_full_and_phase_resolution_share_owners(use_bc):
     assert not hasattr(full, "select")
 
 
-def test_model_bc_policy_binds_preparation_without_reinterpreting_frequency():
+def test_model_bc_policy_can_change_frequency_with_reused_preparation():
     sections = rhime_params.group_params(_request(bc_freq="monthly"))
     sections["model"]["use_bc"] = False
     full = rhime_params.RhimeConfig.from_params(sections, multisector=False)
     assert full.data.use_bc is True
     assert full.model.use_bc is False
-    for claim in (None, "daily"):
-        with pytest.raises(ValueError, match="bc_freq"):
-            rhime_params.resolve_model_options({"use_bc": False, "bc_freq": claim}, data_config=full.data)
+    for frequency in (None, "24h"):
+        model = rhime_params.resolve_model_options(
+            {"use_bc": False, "bc_freq": frequency}, data_config=full.data
+        )
+        assert model.bc_freq == frequency
     assert not rhime_params.resolve_model_options(
         {"use_bc": False, "bc_freq": "monthly"}, data_config=full.data,
     ).use_bc
@@ -591,13 +594,12 @@ def test_model_defaults_and_repeated_facts_use_saved_preparation():
 
 
 @pytest.mark.parametrize(("frequency", "equivalent"), [("24h", "1D"), ("H", "1h"), ("3H", "180min")])
-def test_repeated_boundary_frequency_accepts_equivalent_fixed_duration(frequency, equivalent):
+def test_model_boundary_frequency_is_independent_of_preparation(frequency, equivalent):
     data = rhime_params.DataConfig.from_params(
         rhime_params.group_params(_request(bc_freq=frequency))["data"]
     )
     assert rhime_params.resolve_model_options({"bc_freq": equivalent}, data_config=data).use_bc
-    with pytest.raises(ValueError, match="bc_freq"):
-        rhime_params.resolve_model_options({"bc_freq": "monthly"}, data_config=data)
+    assert rhime_params.resolve_model_options({"bc_freq": "monthly"}, data_config=data).bc_freq == "monthly"
     with pytest.raises(ValueError, match="bc_freq"):
         rhime_params.resolve_model_options({"bc_freq": "invalid"}, data_config=data)
 

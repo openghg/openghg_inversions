@@ -58,6 +58,10 @@ The resource-I/O and HBMCMC entries were updated the same day for the accepted
        <../../openspec/specs/rhime-configuration/spec.md>`
      - Delivered grouped configuration and independent phase resolution,
        implemented in `PR 866 <https://github.com/openghg/openghg_inversions/pull/866>`_.
+       The approved :download:`model-owned alignment amendment
+       <../../openspec/changes/move-alignments-to-model-boundary/specs/rhime-configuration/spec.md>`
+       moves BC periods and minimum-error choices to the model and defines the
+       explicit artifact break tracked in issue 876; validation remains in its tasks.
        Current usage: :doc:`/usage/rhime_configuration`.
        Configuration serialization/INI writing remains with `issue 814
        <https://github.com/openghg/openghg_inversions/issues/814>`_.

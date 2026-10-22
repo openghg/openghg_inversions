@@ -45,7 +45,6 @@ from openghg_inversions.observation_error import (
     resolve_aggregation_error,
 )
 from openghg_inversions.sigma import SigmaAlignment
-from openghg_inversions.model_error import MinErrorConfig
 
 from ._model_building import (
     ForwardModelTerms,
@@ -58,7 +57,10 @@ from .builders import (
 )
 
 from .materialization import (
+    _validate_builder_boundary_inputs,
     _materialize_pymc_inputs_and_priors,
+    _minimum_error_input_names,
+    _derive_model_owned_inputs,
 )
 from .outputs import (
     make_model_output,
@@ -123,7 +125,9 @@ def standard_model_input_names(
     return _standard_input_names(prepared.inv_inputs, model_spec)
 
 
-def _standard_input_names(model_inputs: xr.Dataset, model_spec: RhimeModelSpec) -> tuple[str, ...]:
+def _standard_input_names(
+    model_inputs: xr.Dataset, model_spec: RhimeModelSpec, *, materialized: bool = False,
+) -> tuple[str, ...]:
     """Own selected standard component names and single-sector layout checks."""
     if len(model_spec.sectors) != 1:
         raise ValueError("Standard model specs must include exactly one sector.")
@@ -148,7 +152,7 @@ def _standard_input_names(model_inputs: xr.Dataset, model_spec: RhimeModelSpec) 
         *_OBSERVATION_INPUT_NAMES,
     ]
     likelihood_inputs = (
-        () if model_spec.likelihood is None else model_spec.likelihood.required_prepared_inputs
+        _minimum_error_input_names(model_inputs, model_spec, materialized=materialized)
     )
     if likelihood_inputs:
         _require_component_inputs(
@@ -219,10 +223,11 @@ def materialize_standard_inputs(
         ValueError: If the model has other than one sector or a selected input
             is missing.
     """
-    return _materialize_pymc_inputs_and_priors(
+    model_inputs, priors = _materialize_pymc_inputs_and_priors(
         prepared, variable_names=standard_model_input_names(prepared, model_spec),
         prior_parameters=_standard_prior_parameters(model_spec),
     )
+    return _derive_model_owned_inputs(model_inputs, model_spec), priors
 
 
 def build_standard_model(
@@ -260,7 +265,8 @@ def build_standard_model(
             than one sector, or likelihood choices are inconsistent.
         TypeError: If the custom likelihood returns an invalid value.
     """
-    names = _standard_input_names(model_inputs, model_spec)
+    names = _standard_input_names(model_inputs, model_spec, materialized=True)
+    _validate_builder_boundary_inputs(model_inputs, model_spec, materializer="materialize_standard_inputs")
     if likelihood_kwargs and likelihood_builder is None:
         raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
     missing_priors = _standard_prior_parameters(model_spec).keys() - priors.keys()
@@ -413,15 +419,14 @@ def prepare_standard(
     merged_data: RhimeMergedData, *,
     domain: str, start_date: str, flux_sources: tuple[str, ...],
     averaging_error: bool, filters: Any, basis_algorithm: str | None, nbasis: int,
-    fix_basis_outer_regions: bool, use_bc: bool, bc_freq: str | None,
-    min_error: MinErrorConfig, min_error_options: Mapping[str, bool],
+    fix_basis_outer_regions: bool, use_bc: bool,
     basis_inputs: Mapping[str, Any], bc_basis: xr.Dataset | None = None,
 ) -> RhimePreparedInputs:
     """Prepare observations and sensitivities from supplied scientific resources.
 
     Args:
         domain: Domain label for prepared inputs and basis metadata.
-        start_date: Requested start anchoring boundary-condition periods.
+        start_date: Requested start of the preparation interval.
         flux_sources: Ordered source identities; the first weights basis design.
         averaging_error: Include variability when deriving observation errors.
         filters: Observation-filter choices interpreted by the filtering owner.
@@ -429,9 +434,6 @@ def prepare_standard(
         nbasis: Requested generated basis size.
         fix_basis_outer_regions: Keep the supplied outer partition fixed.
         use_bc: Construct boundary-condition sensitivities.
-        bc_freq: Baked boundary-condition scaling period.
-        min_error: Minimum-error policy interpreted during assembly.
-        min_error_options: Options for the minimum-error calculation.
         merged_data: Borrowed acquired observations, transport and current flux.
         basis_inputs: Selected operator path or loaded partition and support maps.
         bc_basis: Loaded boundary-condition basis, when selected.
@@ -467,8 +469,8 @@ def prepare_standard(
         sensitivities,
         basis_functions,
         site_options=site_options,
-        domain=domain, start_date=start_date, bc_freq=bc_freq, min_error=min_error,
-        min_error_options=min_error_options, use_bc=use_bc,
+        domain=domain, start_date=start_date,
+        use_bc=use_bc,
     )
     log_timing(
         "rhime.prepare_inputs",
@@ -592,8 +594,7 @@ def run_standard(
             merged_data, basis_inputs=basis_inputs, bc_basis=bc_basis,
             **config.data.select(
                 "domain", "start_date", "flux_sources", "averaging_error", "filters",
-                "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
-                "min_error", "min_error_options",
+                "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc",
             ),
         )
     else:

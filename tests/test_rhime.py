@@ -1929,8 +1929,7 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
         site_data,
         _fake_basis_functions(),
         site_options=merged.site_options,
-        domain=setup.data.domain, start_date=setup.data.start_date, bc_freq=setup.data.bc_freq,
-        min_error=setup.data.min_error, min_error_options=setup.data.min_error_options, use_bc=setup.data.use_bc,
+        domain=setup.data.domain, start_date=setup.data.start_date, use_bc=setup.data.use_bc,
     )
 
     assert supplied.attrs == {"source": "caller", "footprint_transport_model": "FLEXPART"}
@@ -2992,23 +2991,24 @@ def test_public_rhime_runners_follow_named_stage_order(
         assert site_options is merged.site_options
         assert kwargs["domain"] == config.data.domain
         assert kwargs["start_date"] == config.data.start_date
-        assert kwargs["min_error_options"] is config.data.min_error_options
+        assert not {"bc_freq", "min_error", "min_error_options"} & kwargs.keys()
         calls.append("assemble")
         return prepared
 
     def materialize(
         actual: RhimePreparedInputs,
-        *,
-        variable_names: tuple[str, ...],
-    ) -> xr.Dataset:
-        """Record public model-input materialization."""
+        model_spec: RhimeModelSpec,
+    ) -> tuple[xr.Dataset, dict]:
+        """Record the explicit boundary that resolves model-owned inputs."""
+        assert model_spec is config.model
+        input_names = (recipe_module.multisector_model_input_names if multisector
+                       else recipe_module.standard_model_input_names)
+        variable_names = input_names(actual, model_spec)
         expected_names = {"H", "mf", "mf_error"}
-        if not custom_likelihood:
-            expected_names.add("min_error")
         assert set(variable_names) >= expected_names
-        assert ("min_error" in variable_names) is not custom_likelihood
+        assert "min_error" not in variable_names
         calls.append("materialize")
-        return model_inputs
+        return model_inputs, {}
 
     def build(*args: Any, **kwargs: Any) -> RhimeModelBuildResult:
         """Record the recipe-specific public model build."""
@@ -3050,9 +3050,8 @@ def test_public_rhime_runners_follow_named_stage_order(
     if multisector:
         monkeypatch.setattr(recipe_module, "_validate_multisector_basis_layout", lambda *args: None)
     monkeypatch.setattr(recipe_module, "postprocess_multisector_outputs" if multisector else "postprocess_standard_outputs", lambda *args: None)
-    monkeypatch.setattr(recipe_module, "_materialize_pymc_inputs_and_priors",
-                        lambda value, *, variable_names, prior_parameters:
-                        (materialize(value, variable_names=variable_names), prior_parameters))
+    monkeypatch.setattr(recipe_module, "materialize_multisector_inputs" if multisector
+                        else "materialize_standard_inputs", materialize)
     monkeypatch.setattr(recipe_module, build_stage, build)
     monkeypatch.setattr(recipe_module, "sample_rhime_model", sample)
     monkeypatch.setattr(recipe_module, result_stage, result)
@@ -3296,8 +3295,7 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
         site_data,
         basis_functions,
         site_options=site_options,
-        domain=setup.data.domain, start_date=setup.data.start_date, bc_freq=setup.data.bc_freq,
-        min_error=setup.data.min_error, min_error_options=setup.data.min_error_options, use_bc=setup.data.use_bc,
+        domain=setup.data.domain, start_date=setup.data.start_date, use_bc=setup.data.use_bc,
     )
     model_inputs, priors = rhime_public.materialize_standard_inputs(prepared, setup.model)
     build_result = rhime_public.build_standard_model(model_inputs, setup.model, priors=priors)
@@ -3979,7 +3977,7 @@ def test_rhime_configuration_builds_specs_before_preparation(tmp_path: Path) -> 
     assert setup.data.basis_algorithm == "weighted"
     assert setup.data.nbasis == 100
     assert setup.data.bc_basis_paths is None
-    assert setup.data.min_error_options == {"by_site": False}
+    assert setup.model.likelihood.min_error_options == {"by_site": False}
     for selector in ("inlet", "instrument", "platform", "fp_height"):
         assert getattr(setup.data.site_options, selector) == (None,)
     assert setup.data.fp_model is None
@@ -4057,11 +4055,9 @@ def test_likelihood_settings_reject_options_without_their_owner(
 
 def test_likelihood_settings_declare_only_owned_prepared_inputs() -> None:
     """A settings value selects exactly the prepared arrays its equation owns."""
-    assert PollutionEventSettings().required_prepared_inputs == ("min_error",)
+    assert PollutionEventSettings().required_prepared_inputs == ()
     assert AdditiveSigmaSettings().required_prepared_inputs == ()
-    assert AdditiveSigmaSettings(use_minimum_error_floor=True).required_prepared_inputs == (
-        "min_error",
-    )
+    assert AdditiveSigmaSettings(use_minimum_error_floor=True).required_prepared_inputs == ()
     assert FixedErrorSettings().required_prepared_inputs == ()
 
 
@@ -5634,9 +5630,6 @@ def test_canonical_preparation_matches_direct_sensitivity_inv_inputs(
     expected_inv_inputs = make_inv_inputs(
         {"TAC": expected_site_data},
         sites=["TAC"],
-        bc_freq=None,
-        min_error=0.0,
-        start_date="2019-01-01",
     )
 
     xr.testing.assert_identical(prepared.inv_inputs["H"], expected_inv_inputs["H"])
@@ -5935,11 +5928,11 @@ def test_run_rhime_resolves_scalar_averaging_period_before_acquisition(
     assert captured_averaging_period == ("1H", "1H")
 
 
-def test_canonical_preparation_treats_min_error_none_as_default(
+def test_canonical_preparation_keeps_min_error_at_model_boundary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A None minimum-error value is normalized to the numeric default."""
-    captured_min_error: object = None
+    """Preparation never forwards a model-owned floor to raw input assembly."""
+    captured_options: dict[str, object] = {}
     site_data = _site_dataset([2.0])
 
     def fake_data_processing_surface_notracer(
@@ -5960,9 +5953,8 @@ def test_canonical_preparation_treats_min_error_none_as_default(
         return _DynamicSpyBasisFunctions()
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
-        """Capture the normalized minimum-error value."""
-        nonlocal captured_min_error
-        captured_min_error = kwargs["min_error"]
+        """Capture only raw preparation options."""
+        captured_options.update(kwargs)
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
@@ -5983,17 +5975,19 @@ def test_canonical_preparation_treats_min_error_none_as_default(
         output_name="min_error_none",
         flux_sources=["total-ukghg-edgar7"],
         use_bc=False,
+        mismatch_model="pollution_event",
         min_error=None,
     )
 
-    assert captured_min_error == 0.0
+    assert not {"min_error", "min_error_options", "bc_freq"} & captured_options.keys()
+    assert PollutionEventSettings(min_error=None).min_error == 0.0
 
 
 
-def test_canonical_preparation_rejects_min_error_options_before_retrieval(
+def test_model_floor_options_are_validated_before_preparation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Direct preparation validates minimum-error options before data access."""
+    """Model choice resolution rejects invalid floor options before data access."""
 
     def fail_data_processing(**kwargs: object) -> RhimeMergedData:
         """Fail if invalid options reach the retrieval boundary."""
@@ -6015,6 +6009,7 @@ def test_canonical_preparation_rejects_min_error_options_before_retrieval(
             end_date="2019-02-01",
             output_name="invalid_min_error_options",
             flux_sources=["total-ukghg-edgar7"],
+            mismatch_model="pollution_event",
             min_error_options={"robust": False},
             use_bc=False,
         )
@@ -8551,7 +8546,7 @@ output_format = "inv_out"
 """,
         encoding="utf-8",
     )
-    cli_inv_inputs = _minimal_output_inv_inputs()
+    cli_inv_inputs = _minimal_output_inv_inputs().drop_vars("min_error")
     cli_inv_inputs["H_bc"] = (("bc_region", "nmeasure"), [[0.5]])
     prepared = RhimePreparedInputs(
         inv_inputs=cli_inv_inputs,
@@ -8667,7 +8662,15 @@ output_format = "inv_out"
     assert preparation["bc_store"] == "config-bc-store"
 
     execution = seen["execution"]
-    assert execution["model_inputs"].equals(prepared.inv_inputs)
+    model_inputs = execution["model_inputs"]
+    xr.testing.assert_identical(model_inputs["H"], prepared.inv_inputs["H"])
+    xr.testing.assert_identical(model_inputs["mf"], prepared.inv_inputs["mf"])
+    xr.testing.assert_identical(model_inputs["mf_error"], prepared.inv_inputs["mf_error"])
+    np.testing.assert_allclose(model_inputs["H_bc"], prepared.inv_inputs["H_bc"])
+    assert model_inputs.indexes["bc_region"].names == ["bc_curtain", "bc_period"]
+    np.testing.assert_allclose(model_inputs["min_error"], 0.0)
+    assert "min_error" not in prepared.inv_inputs
+    assert "bc_period" not in prepared.inv_inputs.coords
     view = seen["view"]
     assert execution["model_spec"] is view["model_spec"]
     assert view["start_date"] == "2019-01-01"

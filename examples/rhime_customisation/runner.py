@@ -121,8 +121,7 @@ def run_custom_rhime(
         basis_functions,
         site_options=site_options,
         **config.data.select(
-            "domain", "start_date", "bc_freq", "min_error",
-            "min_error_options", "use_bc",
+            "domain", "start_date", "use_bc",
         ),
     )
 

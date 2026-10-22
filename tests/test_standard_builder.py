@@ -138,3 +138,22 @@ def test_standard_runner_rejects_conflicting_supplied_handoffs_before_resolution
 
     with pytest.raises(ValueError, match="either prepared or merged_data"):
         run_standard(prepared=object(), merged_data=object())
+
+
+def test_one_raw_preparation_supports_different_boundary_periods():
+    """The model boundary expands raw spatial BCs without changing preparation."""
+    inputs = _inputs().assign_coords(
+        site=("nmeasure", ["TAC", "TAC"]),
+        time=("nmeasure", np.array(["2019-01-01", "2019-01-02"], dtype="datetime64[ns]")),
+        bc_region=["north"],
+    ).assign(H_bc=(("bc_region", "nmeasure"), [[2., 3.]]))
+    original = inputs.copy(deep=True)
+    prepared = cast(RhimePreparedInputs, SimpleNamespace(inv_inputs=inputs))
+    for frequency, expected in ((None, [[2., 3.]]), ("1D", [[2., 0.], [0., 3.]])):
+        model = replace(_model(), use_bc=True, bc_freq=frequency,
+                        bc_freq_anchor="2019-01-01", bc_prior={"pdf": "normal", "mu": 1., "sigma": .2})
+        eager, priors = materialize_standard_inputs(prepared, model)
+        np.testing.assert_allclose(eager.H_bc, expected)
+        built = build_standard_model(eager, model, priors=priors)
+        np.testing.assert_allclose(built.model["hbc"].get_value(), np.asarray(expected).T)
+    xr.testing.assert_identical(inputs, original)
