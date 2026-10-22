@@ -20,6 +20,12 @@
 - [x] 4.1 Update affected usage/API documentation, examples and Towncrier fragment; run documentation-impact/docstring review and applicable checks.
 - [x] 4.2 Complete higher-effort independent review, focused and relevant broader pytest, Ruff, diff/OpenSpec checks, and required final CI-equivalent validation; record concrete evidence and remaining limitations.
 
+## 5. PR review follow-up
+
+- [x] 5.1 Migrate Ramsden from unconditional prepared floors/site codes to likelihood-owned floor choices and observation labels; verify actual preparation-to-builder integration.
+- [x] 5.2 Define the backend-neutral resolved Dataset handoff, reject conflicting BC/floor settings without recalculation, and keep likelihood-floor policy outside numerical materialization; verify all three eager builders.
+- [ ] 5.3 Remove redundant raw site-code construction and unused likelihood declarations; update usage/docstrings and complete independent review plus proportionate Python 3.12/3.13 validation.
+
 ## Validation evidence
 
 - Configuration worker: 171 focused tests passed; anchor fixes: 86 tests passed.
@@ -33,3 +39,11 @@
 - The failing model-option test incorrectly called the now data-only test preparation helper. A test-only correction exercises both public runners with retrieval guarded; both corrected cases and 181 nearby/configuration tests pass locally, with Ruff and independent higher-effort review clear.
 - Slurm job 19636938 at test-only correction `a2318985` passed the full affected `tests/test_rhime.py` module through tox on both Python 3.12 and 3.13: 312 passed on each. The original full-suite failures remain part of the evidence; this scoped retry is not a fresh complete-matrix pass.
 - The approved configuration amendment is synchronized into the durable contract, including the explicit exception to general compatibility guarantees. CO2 family defaults and unrelated contracts remain unchanged. PR #964 contains the implementation and validation handoff; #957 still owns centered BC arithmetic and its later compatibility changes.
+
+## PR review follow-up evidence
+
+- Raw assembly and observation-error selection: 40 tests passed, including eager/lazy retained label ordering and input nonmutation.
+- Ramsden: 26 focused tests passed, including actual raw preparation, per-channel floors, retained-row estimators, lazy scalar/default floors and named-estimator guards. The existing sampling smoke passed before the subsequent narrow guard/doc corrections.
+- Resolved-input and broader public-runner coverage: 410 tests passed. Configuration and related alignment coverage after removing the obsolete declaration assertion: 126 passed. Counts overlap.
+- Independent higher-effort review found and verified corrections for an overly broad Ramsden eager guard and unit-conversion/doc wording. No remaining implementation findings; full Ruff, diff and strict change checks pass.
+- Fresh complete Python 3.12/3.13 tox, lint, borrowed-typing and full documentation validation are pending. The documentation environment also regenerates the new public resolver's API page.

@@ -51,11 +51,13 @@ from openghg_inversions.postprocessing.inversion_output import InversionOutput
 
 from ._model_building import ForwardModelTerms, add_rhime_likelihood
 from .builders import RhimeLikelihoodBuilder, RhimeModelBuildResult
-from .materialization import (
+from .model_inputs import (
     _validate_builder_boundary_inputs,
+    minimum_error_input_names,
+    resolve_model_inputs,
+)
+from .materialization import (
     _materialize_pymc_inputs_and_priors,
-    _minimum_error_input_names,
-    _derive_model_owned_inputs,
 )
 from .outputs import (
     make_model_output, validate_nested_output_resources, annotate_sample_trace, save_inversion_output,
@@ -1027,6 +1029,10 @@ def materialize_nested_inputs(
 ) -> tuple[xr.Dataset, dict[str, PriorArgs]]:
     """Compute selected nested arrays and enabled priors in one Dask operation.
 
+    Then resolve backend-neutral BC periods and the selected likelihood's floor
+    from retained observations. The returned Dataset contains final scientific
+    operands for analysis or model building.
+
     Args:
         prepared: Borrowed combined inputs containing H and H_inner.
         model_spec: Resolved choices selecting enabled inputs and priors.
@@ -1047,7 +1053,7 @@ def materialize_nested_inputs(
     model_inputs, priors = _materialize_pymc_inputs_and_priors(
         prepared, variable_names=nested_model_input_names(prepared, model_spec), prior_parameters=priors,
     )
-    return _derive_model_owned_inputs(model_inputs, model_spec), priors
+    return resolve_model_inputs(model_inputs, model_spec), priors
 
 
 def build_nested_rhime_model(
@@ -1081,7 +1087,7 @@ def build_nested_rhime_model(
             belong to materialization and the runner respectively.
     """
     names = ["H", "H_inner", "mf", "mf_error"]
-    names.extend(_minimum_error_input_names(model_inputs, model_spec, materialized=True))
+    names.extend(minimum_error_input_names(model_inputs, model_spec.likelihood, materialized=True))
     if model_spec.use_bc:
         names.append("H_bc")
     names.extend(aggregation_error_input_names(model_inputs, model_spec.aggregation_error_mode))

@@ -57,9 +57,11 @@ def test_error_preparation_preserves_selector_order_over_mapping_order(error_kin
     assert site_options.averaging_period == ("1h", "2h")
     gathered = make_inv_inputs(prepared, sites=list(site_options.sites))
     np.testing.assert_array_equal(gathered.site, ["TAC", "TAC", "MHD", "MHD"])
-    np.testing.assert_array_equal(gathered.site_names, ["TAC", "MHD"])
-    # The first selected site remains the reference for drop-first offsets.
-    np.testing.assert_array_equal(gathered.site_indicator, [0, 0, 1, 1])
+    expected_index = pd.MultiIndex.from_product(
+        [["TAC", "MHD"], site_data["TAC"].time.values], names=["site", "time"]
+    )
+    pd.testing.assert_index_equal(gathered.indexes["nmeasure"], expected_index)
+    assert {"site_indicator", "site_names"}.isdisjoint(gathered.variables)
     np.testing.assert_array_equal(gathered.mf, [10.0, 20.0, 20.0, 40.0])
     np.testing.assert_array_equal(gathered.H, [[1.0, 2.0, 2.0, 4.0]])
     expected_error = [5.0, 5.0, 10.0, 10.0] if error_kind == "derived" else [7.0, 8.0, 14.0, 16.0]

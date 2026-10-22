@@ -50,11 +50,13 @@ from .builders import (
     RhimeModelBuildResult,
 )
 
-from .materialization import (
+from .model_inputs import (
     _validate_builder_boundary_inputs,
+    minimum_error_input_names,
+    resolve_model_inputs,
+)
+from .materialization import (
     _materialize_pymc_inputs_and_priors,
-    _minimum_error_input_names,
-    _derive_model_owned_inputs,
 )
 from .outputs import (
     annotate_sample_trace,
@@ -202,7 +204,7 @@ def _multisector_input_names(
         *_OBSERVATION_INPUT_NAMES,
     ]
     likelihood_inputs = (
-        _minimum_error_input_names(model_inputs, model_spec, materialized=materialized)
+        minimum_error_input_names(model_inputs, model_spec.likelihood, materialized=materialized)
     )
     if likelihood_inputs:
         _require_component_inputs(
@@ -311,6 +313,10 @@ def materialize_multisector_inputs(
 ) -> tuple[xr.Dataset, dict[str, PriorArgs]]:
     """Materialize selected multisector arrays and enabled priors together.
 
+    Then resolve backend-neutral BC periods and the selected likelihood's floor
+    from retained observations. The returned Dataset contains final scientific
+    operands for analysis or model building.
+
     Args:
         prepared: Borrowed source-labelled inputs and retained native flux.
         model_spec: Choices selecting scientific components and priors.
@@ -332,7 +338,7 @@ def materialize_multisector_inputs(
         variable_names=multisector_model_input_names(prepared, model_spec),
         prior_parameters=_multisector_prior_parameters(model_spec),
     )
-    return _derive_model_owned_inputs(model_inputs, model_spec), priors
+    return resolve_model_inputs(model_inputs, model_spec), priors
 
 
 def build_multisector_model(

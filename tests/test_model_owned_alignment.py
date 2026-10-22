@@ -205,3 +205,41 @@ def test_selected_operands_auxiliary_coordinates_and_priors_share_one_compute():
     assert isinstance(raw.H.data, da.Array)
     assert priors["x"]["mu"] == 1.
     np.testing.assert_allclose(result.min_error, np.std([3., 6., 9., 12.]))
+
+
+@pytest.mark.parametrize("operand", ["mf", "mf_mod", "H_bc", "time", "site"])
+def test_backend_neutral_resolution_rejects_lazy_selected_operands_without_execution(operand):
+    from openghg_inversions.rhime import resolve_model_inputs
+
+    raw = _raw().reset_index("nmeasure")
+
+    @delayed
+    def forbidden():
+        pytest.fail("Resolution computed a borrowed lazy operand")
+
+    variable = raw[operand]
+    replacement = variable.copy(data=da.from_delayed(forbidden(), shape=variable.shape, dtype=variable.dtype))
+    if operand in raw.coords:
+        raw = raw.assign_coords({operand: replacement})
+    else:
+        raw[operand] = replacement
+    with pytest.raises(ValueError, match="selected operands and coordinates.*materialized"):
+        resolve_model_inputs(raw, _spec(PollutionEventSettings(min_error="residual"), bc_freq="monthly"))
+
+
+def test_backend_neutral_resolution_preserves_lazy_extensions_and_matches_family_materializer():
+    from openghg_inversions.rhime import resolve_model_inputs
+
+    raw = _raw()
+
+    @delayed
+    def forbidden():
+        pytest.fail("Resolution computed an unselected extension")
+
+    raw["extension"] = ("nmeasure", da.from_delayed(forbidden(), shape=(4,), dtype=float))
+    spec = _spec(PollutionEventSettings(min_error="residual"), bc_freq="monthly")
+    expected, _ = materialize_standard_inputs(SimpleNamespace(inv_inputs=raw), spec)
+    resolved = resolve_model_inputs(raw, spec)
+    xr.testing.assert_identical(resolved.H_bc, expected.H_bc)
+    xr.testing.assert_identical(resolved.min_error, expected.min_error)
+    assert resolved.extension.data is raw.extension.data

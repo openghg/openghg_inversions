@@ -754,6 +754,11 @@ Each ``SectorSpec`` carries its source, backend suffix, prior, and optional
 ``state_activity`` override; ``RhimeModelSpec.state_activity`` supplies the
 shared policy. Call ``materialize_multisector_inputs(prepared, model_spec)``
 first, then pass its Dataset and eager priors to ``build_multisector_model``.
+The two family materializers compute selected arrays and resolve model-specific
+BC periods and likelihood floors. Reuse their resolved Dataset with matching
+settings; after changing a BC or floor policy, call the helper on the raw
+preparation again. The backend-neutral handoff and direct-builder rules are
+described in :doc:`concrete_rhime_model`.
 ``StateActivity(active=False)`` freezes a complete sector.
 RHIME config-file syntax and persisted activity-reason tables remain follow-up
 work. Each ``SectorSpec.x_prior`` supports the same scalar, full-state array,

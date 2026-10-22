@@ -594,9 +594,11 @@ geometry, and creates the region labels. It then combines the labels with the
 current run's flux in a ``BasisFunctions`` object. That object flows unchanged
 through sensitivity construction and labelled assembly. The concrete recipe's
 adjacent ``standard_model_input_names`` declaration selects the arrays it
-needs. ``materialize_pymc_inputs`` converts only those arrays, together,
-immediately before model construction; project-owned lazy extensions in
-``RhimePreparedInputs`` remain untouched.
+needs. ``materialize_standard_inputs`` computes those arrays and enabled priors
+together, then resolves model-specific BC periods and the likelihood's floor
+before graph construction. Project-owned lazy extensions in
+``RhimePreparedInputs`` remain untouched. The generic ``materialize_pymc_inputs``
+only executes selected arrays; it does not resolve those scientific choices.
 
 The customisation is concentrated in ``_guarded_basis``. The runner's one
 deliberate substitution is marked by an inline comment where

@@ -54,6 +54,21 @@ perform these recipe-specific calculations. Direct eager builders reject raw
 boundary operands; construction does not execute a borrowed lazy graph or
 consume output choices.
 
+The resolved Dataset is backend-neutral but specific to the selected model:
+``H_bc`` contains fitted boundary periods, and ``min_error`` contains the floor
+selected by the likelihood. ``resolve_model_inputs(eager_inputs, model_spec)``
+performs these scientific calculations without building a PyMC graph, so an
+analytic inversion can use the same boundary alignment. Its selected operands
+must already be eager; the family materializers arrange their joint execution
+with enabled priors before calling it.
+
+Pass the resolved Dataset to a builder with the same BC and consumed floor
+settings. Changing their frequency, anchor or floor policy requires resolving
+the raw preparation again; builders reject conflicting producer-recorded
+settings. Sigma periods remain a graph-time choice. Independently supplied final
+arrays without resolution provenance remain authoritative for direct builders;
+they do not request new temporal expansion or floor estimation.
+
 .. _rhime-builder-stability:
 
 Stability contract

@@ -91,11 +91,6 @@ class PollutionEventSettings:
         object.__setattr__(self, "min_error", normalise_min_error(self.min_error))
         object.__setattr__(self, "min_error_options", normalise_min_error_options(self.min_error_options))
 
-    @property
-    def required_prepared_inputs(self) -> tuple[str, ...]:
-        """Return prepared arrays owned by this likelihood."""
-        return ()
-
 
 @dataclass(frozen=True)
 class AdditiveSigmaSettings:
@@ -124,20 +119,10 @@ class AdditiveSigmaSettings:
         object.__setattr__(self, "min_error", normalise_min_error(self.min_error))
         object.__setattr__(self, "min_error_options", normalise_min_error_options(self.min_error_options))
 
-    @property
-    def required_prepared_inputs(self) -> tuple[str, ...]:
-        """Return prepared arrays owned by this likelihood."""
-        return ()
-
 
 @dataclass(frozen=True)
 class FixedErrorSettings:
     """Serializable selection of reported observation error only."""
-
-    @property
-    def required_prepared_inputs(self) -> tuple[str, ...]:
-        """Return prepared arrays owned by this likelihood."""
-        return ()
 
 
 LikelihoodSettings = PollutionEventSettings | AdditiveSigmaSettings | FixedErrorSettings

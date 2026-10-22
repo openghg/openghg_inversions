@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping
-from typing import TYPE_CHECKING
 
 from dask import compute as dask_compute
 from dask.array import Array as DaskArray
@@ -11,12 +10,6 @@ import xarray as xr
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.array_ops import to_dense
-from openghg_inversions.boundary_sensitivity import BoundaryAlignment
-from openghg_inversions.model_error import MinimumError
-from .specs import AdditiveSigmaSettings, PollutionEventSettings
-
-if TYPE_CHECKING:
-    from .specs import RhimeModelSpec
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.models.priors import PriorArgs
 
@@ -113,79 +106,3 @@ def _materialize_pymc_inputs_and_priors(
         coordinates=coordinate_names,
     )
     return model_inputs, computed_priors
-
-
-def _minimum_error_input_names(
-    inputs: xr.Dataset,
-    model_spec: "RhimeModelSpec",
-    *,
-    materialized: bool = False,
-) -> tuple[str, ...]:
-    """Select retained operands only when the likelihood uses a floor."""
-    likelihood = model_spec.likelihood
-    enabled = isinstance(likelihood, PollutionEventSettings) or (
-        isinstance(likelihood, AdditiveSigmaSettings) and likelihood.use_minimum_error_floor
-    )
-    if not enabled:
-        return ()
-    if materialized:
-        return ("min_error",)
-    if likelihood.min_error == "residual":
-        return ("mf_mod", "bc_mod") if "bc_mod" in inputs else ("mf_mod",)
-    # Scalars, site mappings and percentile floors need only mf/site/time,
-    # already selected by every recipe's observation component.
-    return ()
-
-
-def _validate_builder_boundary_inputs(
-    inputs: xr.Dataset, model_spec: "RhimeModelSpec", *, materializer: str,
-) -> None:
-    """Require resolved BC operands at the owning eager builder boundary."""
-    if not model_spec.use_bc:
-        return
-    boundary = inputs["H_bc"]
-    preparation = boundary.attrs.get("boundary_sensitivity_preparation")
-    if preparation == "raw-spatial" or (
-        model_spec.bc_freq is not None
-        and "bc_period" not in boundary.coords
-        and preparation != "sampled-period-expansion"
-    ):
-        raise ValueError(
-            "H_bc requires model-owned boundary alignment before building. "
-            f"Call {materializer}(prepared, model_spec) even for eager raw inputs; "
-            "generic materialize_pymc_inputs only densifies inputs and does not resolve BC periods."
-        )
-
-
-def _derive_model_owned_inputs(inputs: xr.Dataset, model_spec: "RhimeModelSpec") -> xr.Dataset:
-    """Resolve eager boundary states and floors from retained observations."""
-    result = inputs
-    if _minimum_error_input_names(inputs, model_spec, materialized=True):
-        likelihood = model_spec.likelihood
-        floor = MinimumError.from_observations(
-            inputs, likelihood.min_error, by_site=likelihood.min_error_options["by_site"],
-        )
-        result = result.assign(min_error=floor.values.variable)
-    if model_spec.use_bc:
-        raw = inputs["H_bc"]
-        if (
-            raw.attrs.get("boundary_sensitivity_preparation") == "sampled-period-expansion"
-            or "bc_period" in raw.coords
-        ):
-            raise ValueError("Model boundary alignment requires raw spatial H_bc; prepare the inputs again.")
-        boundary = BoundaryAlignment.prepare(
-            raw, frequency=model_spec.bc_freq, anchor_time=model_spec.bc_freq_anchor,
-        ).data
-        # Linear model construction owns zero-state pruning. The model state
-        # axis differs from the raw spatial axis, which diagnostics may share.
-        # Keep those variables and labels under an explicit raw namespace.
-        result = result.drop_vars("H_bc")
-        if "bc_region" in result.dims:
-            result = result.rename_dims(bc_region="raw_bc_region")
-            if "bc_region" in result.coords:
-                result = result.rename_vars(bc_region="raw_bc_region")
-        result["H_bc"] = xr.DataArray(
-            boundary.data, dims=boundary.dims, attrs=boundary.attrs,
-            coords=xr.Coordinates.from_pandas_multiindex(boundary.indexes["bc_region"], "bc_region"),
-        )
-    return result

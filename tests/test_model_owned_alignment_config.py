@@ -126,7 +126,6 @@ def test_floor_settings_own_mappings_and_normalise_defaults(settings_type):
     assert settings.min_error_options == {"by_site": True}
     assert settings_type(min_error=None).min_error == 0.0
     assert settings_type().min_error_options == {"by_site": False}
-    assert settings.required_prepared_inputs == ()
 
 
 @pytest.mark.parametrize("settings_type", [PollutionEventSettings, AdditiveSigmaSettings])

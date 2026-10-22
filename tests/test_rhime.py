@@ -4053,14 +4053,6 @@ def test_likelihood_settings_reject_options_without_their_owner(
         )
 
 
-def test_likelihood_settings_declare_only_owned_prepared_inputs() -> None:
-    """A settings value selects exactly the prepared arrays its equation owns."""
-    assert PollutionEventSettings().required_prepared_inputs == ()
-    assert AdditiveSigmaSettings().required_prepared_inputs == ()
-    assert AdditiveSigmaSettings(use_minimum_error_floor=True).required_prepared_inputs == ()
-    assert FixedErrorSettings().required_prepared_inputs == ()
-
-
 def test_pollution_event_default_sigma_prior_is_fractional() -> None:
     """The modern pollution-event fallback has narrow fractional support."""
     assert rhime_specs.DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR == {

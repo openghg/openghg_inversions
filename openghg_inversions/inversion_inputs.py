@@ -1,8 +1,8 @@
 """Create backend-neutral, observation-aligned inversion inputs.
 
 ``make_inv_inputs`` gathers selected per-site datasets into one ragged
-``nmeasure`` dataset, validates shared state layouts, adds site
-metadata, retains raw spatial boundary sensitivities, drops unusable rows, and
+``nmeasure`` dataset, validates shared state layouts, preserves site/time
+labels, retains raw spatial boundary sensitivities, drops unusable rows, and
 materializes core arrays. ``sites=None`` infers non-metadata entries; an
 explicit empty selection is an error.
 """
@@ -68,30 +68,6 @@ def xr_unique_inv(da: xr.DataArray, sort: bool = True) -> xr.DataArray:
             return inv
 
     return xr.apply_ufunc(unique_inv, da)
-
-
-def xr_factorize(
-    da: xr.DataArray, indicator_name: str, label_name: str, label_dim: str, sort: bool = False
-) -> xr.Dataset:
-    """Create Dataset with integer indicators and labels for DataArray.
-
-    Args:
-        da: DataArray to find indicator for.
-        indicator_name: name for indicator data variable
-        label_name: name for label data variable
-        label_dim: dimension for labels
-        sort: if True, the labels will be sorted and the indicator shuffled
-        accordingly
-
-    Returns:
-        Dataset with indicator and label data variables.
-
-    """
-
-    indicator_arr, label_arr = pd.factorize(da.values, sort=sort)
-    indicator = xr.DataArray(indicator_arr, coords=da.coords, dims=da.dims)
-    labels = xr.DataArray(label_arr, dims=(label_dim,))
-    return xr.Dataset({indicator_name: indicator, label_name: labels})
 
 
 # MAKE FUNCTIONS
@@ -170,15 +146,6 @@ def make_sigma_freq(
     )
     result = xr.apply_ufunc(_compact_integer_index, result.astype(int))
     return result.rename("sigma_freq_index")
-
-
-# ADD FUNCTIONS
-def add_site_indicator(ds: xr.Dataset, sort: bool = False) -> xr.Dataset:
-    """Adds site_indicator and site_names data variables."""
-    to_add = xr_factorize(
-        ds.site, indicator_name="site_indicator", label_name="site_names", label_dim="nsite", sort=sort
-    )
-    return xr.merge([ds, to_add])
 
 
 # INVERSION INPUTS PIPELINE
@@ -301,7 +268,7 @@ def make_inv_inputs(
     """Create backend-neutral observation-aligned inversion inputs.
 
     The returned dataset contains shared observations, sensitivities, error
-    terms, and site alignment metadata. Model-component-specific arrays are
+    terms, and site/time labels. Model-component-specific arrays are
     constructed by their owning components. Core payloads are materialized
     together before invalid observations are discarded; the full pre-selection
     core arrays must fit in memory. Other extension arrays may remain lazy.
@@ -376,5 +343,4 @@ def make_inv_inputs(
         ds["H_bc"].attrs = dict(ds["H_bc"].attrs)
         ds["H_bc"].attrs["boundary_sensitivity_preparation"] = "raw-spatial"
 
-    ds = add_site_indicator(ds)
     return _drop_nan_and_compute(ds)

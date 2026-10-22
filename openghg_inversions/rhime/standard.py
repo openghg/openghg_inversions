@@ -56,11 +56,13 @@ from .builders import (
     RhimeModelBuildResult,
 )
 
-from .materialization import (
+from .model_inputs import (
     _validate_builder_boundary_inputs,
+    minimum_error_input_names,
+    resolve_model_inputs,
+)
+from .materialization import (
     _materialize_pymc_inputs_and_priors,
-    _minimum_error_input_names,
-    _derive_model_owned_inputs,
 )
 from .outputs import (
     make_model_output,
@@ -152,7 +154,7 @@ def _standard_input_names(
         *_OBSERVATION_INPUT_NAMES,
     ]
     likelihood_inputs = (
-        _minimum_error_input_names(model_inputs, model_spec, materialized=materialized)
+        minimum_error_input_names(model_inputs, model_spec.likelihood, materialized=materialized)
     )
     if likelihood_inputs:
         _require_component_inputs(
@@ -205,9 +207,11 @@ def materialize_standard_inputs(
 ) -> tuple[xr.Dataset, dict[str, PriorArgs]]:
     """Materialize selected standard inputs and enabled priors in one Dask operation.
 
-    The caller owns this explicit PyMC boundary. Preparation and requested model
-    settings stay borrowed; only selected arrays and prior parameters are computed.
-    Construction subsequently decides which state priors survive pruning.
+    After the shared computation, resolve backend-neutral BC periods and the
+    selected likelihood's minimum-error floor from retained observations. The
+    result is the final scientific Dataset, usable for analysis or model building.
+    Preparation and settings stay borrowed. Construction subsequently decides
+    which state priors survive pruning.
 
     Args:
         prepared: Borrowed canonical inputs and retained basis.
@@ -215,9 +219,10 @@ def materialize_standard_inputs(
 
     Returns:
         A shallow copy of the prepared Dataset with selected inputs and their
-        coordinates materialized, plus prior parameter mappings keyed by model
-        variable name. Unselected preparation variables remain borrowed and may
-        be lazy; construction decides which selected priors enter the graph.
+        coordinates materialized and enabled BC/floor operands resolved, plus
+        prior parameter mappings keyed by model variable name. Unselected
+        preparation variables remain borrowed and may be lazy; construction
+        decides which selected priors enter the graph.
 
     Raises:
         ValueError: If the model has other than one sector or a selected input
@@ -227,7 +232,7 @@ def materialize_standard_inputs(
         prepared, variable_names=standard_model_input_names(prepared, model_spec),
         prior_parameters=_standard_prior_parameters(model_spec),
     )
-    return _derive_model_owned_inputs(model_inputs, model_spec), priors
+    return resolve_model_inputs(model_inputs, model_spec), priors
 
 
 def build_standard_model(

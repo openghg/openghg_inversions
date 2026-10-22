@@ -9,11 +9,7 @@ import xarray as xr
 from dask import array as da
 from dask.callbacks import Callback
 
-from openghg_inversions.inversion_inputs import (
-    add_site_indicator,
-    concat_gather_datasets,
-    make_inv_inputs,
-)
+from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.model_error import MinimumError, percentile_error_method
 
 
@@ -69,7 +65,6 @@ def test_make_inv_inputs_preserves_requested_order_and_column_factors() -> None:
         sites=["SATELLITE", "SURFACE"],
     )
 
-    assert result["site_names"].values.tolist() == ["SATELLITE", "SURFACE"]
     assert result["site"].values.tolist() == ["SATELLITE", "SURFACE"]
     np.testing.assert_allclose(result["mf"].values, [2.0, 1.0])
     np.testing.assert_allclose(result["mf_prior_factor"].values, [0.2, 0.0])
@@ -95,33 +90,6 @@ def test_make_inv_inputs_rejects_partial_column_factor_pair() -> None:
 
     with pytest.raises(ValueError, match="must define both"):
         make_inv_inputs({"SATELLITE": dataset}, sites=["SATELLITE"])
-
-
-# ----------------------------------------
-# Tests for helper functions
-# ----------------------------------------
-@pytest.fixture
-def gathered_ds() -> xr.Dataset:
-    to_concat = {
-        "MHD": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
-        "TAC": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
-    }
-    return concat_gather_datasets(
-        to_concat,
-        key_dim="site",
-        ragged_dim="time",
-        stack_dim="nmeasure",
-        missing_data_vars="drop",
-    )
-
-
-def test_add_site_indicator(gathered_ds):
-    """Test adding site_indicator and site_names."""
-    ds = add_site_indicator(gathered_ds, sort=False)
-
-    assert list(ds.site_names.values) == ["MHD", "TAC"]
-
-    assert np.all(ds.site_names.values[ds.site_indicator.values] == ds.site.values)
 
 
 def _make_minimal_fp_site(*, mf_base: float, include_inlet_height: bool) -> xr.Dataset:
@@ -157,8 +125,39 @@ def test_make_inv_inputs_drops_non_shared_data_vars():
         result = make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"])
 
     assert "inlet_height" not in result
-    assert {"H", "mf", "mf_error", "site_indicator", "site_names"} <= set(result.data_vars)
-    assert "sigma_freq_index" not in result
+    assert {"H", "mf", "mf_error"} <= set(result.data_vars)
+    assert {"site_indicator", "site_names", "sigma_freq_index"}.isdisjoint(result.variables)
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+def test_make_inv_inputs_preserves_site_time_labels_after_filtering(lazy: bool) -> None:
+    """Raw assembly retains labels/order while discarding invalid observations."""
+    fp_data = {
+        "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
+        "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
+    }
+    times = pd.to_datetime(["2020-02-01", "2020-01-01"])
+    for site, dataset in fp_data.items():
+        fp_data[site] = dataset.assign_coords(time=times)
+    fp_data["BBB"]["H"] = xr.DataArray(
+        [[np.nan, 2.0], [3.0, 4.0]], dims=("region", "time")
+    )
+    originals = {site: dataset.copy(deep=True) for site, dataset in fp_data.items()}
+    inputs = {site: dataset.chunk(time=1) if lazy else dataset for site, dataset in fp_data.items()}
+
+    result = make_inv_inputs(inputs, sites=["BBB", "AAA"])
+
+    expected_index = pd.MultiIndex.from_tuples(
+        [("BBB", times[1]), ("AAA", times[0]), ("AAA", times[1])], names=["site", "time"]
+    )
+    pd.testing.assert_index_equal(result.indexes["nmeasure"], expected_index)
+    np.testing.assert_array_equal(result.site, ["BBB", "AAA", "AAA"])
+    np.testing.assert_array_equal(result.time, times[[1, 0, 1]])
+    np.testing.assert_allclose(result.mf, [21.0, 10.0, 11.0])
+    np.testing.assert_allclose(result.mf_error, [0.2, 0.1, 0.2])
+    assert {"site_indicator", "site_names", "sigma_freq_index"}.isdisjoint(result.variables)
+    for site, dataset in fp_data.items():
+        xr.testing.assert_identical(dataset, originals[site])
 
 
 def test_make_inv_inputs_rejects_explicit_empty_sites() -> None:
@@ -179,7 +178,7 @@ def test_make_inv_inputs_infers_sites_only_when_sites_is_none() -> None:
 
     result = make_inv_inputs(fp_data=fp_data, sites=None)
 
-    assert list(result["site_names"].values) == ["AAA", "BBB"]
+    assert list(result["site"].values) == ["AAA", "AAA", "BBB", "BBB"]
 
 
 def test_make_inv_inputs_retains_raw_unobserved_boundary_states() -> None:
