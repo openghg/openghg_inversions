@@ -1,4 +1,5 @@
 import math
+from decimal import Decimal, localcontext
 
 import numpy as np
 import pymc as pm
@@ -60,6 +61,77 @@ def _direct_covariance(
         + np.diag(diagonal)
         + amplitude[sites, None] * amplitude[sites[None, :]] * correlation
     )
+
+
+def _dense_gradient_oracle(residual, amplitude, covariance, correlations):
+    precision = np.linalg.inv(covariance)
+    solved = precision @ residual
+    logp = -0.5 * (
+        residual.size * math.log(2.0 * math.pi)
+        + np.linalg.slogdet(covariance)[1]
+        + residual @ solved
+    )
+    gradient = np.array([
+        value * (solved @ correlation @ solved - np.trace(precision @ correlation))
+        for value, correlation in zip(amplitude, correlations, strict=True)
+    ])
+    return logp, -solved, gradient
+
+
+def _decimal_gradient_oracle(factor, diagonal, times, sites, tau, amplitude, residual):
+    # Tiny physical-space reference: avoid losing the base variance in a float64 Gram matrix.
+    with localcontext() as context:
+        context.prec = 80
+
+        def dec(value):
+            return Decimal.from_float(float(value))
+
+        n = residual.size
+        correlations = [
+            [
+                (-abs(dec(times[i]) - dec(times[j])) / dec(tau[sites[i]])).exp()
+                if sites[i] == sites[j] else Decimal(0)
+                for j in range(n)
+            ]
+            for i in range(n)
+        ]
+        matrix = [
+            [
+                sum(dec(factor[i, k]) * dec(factor[j, k]) for k in range(factor.shape[1]))
+                + (dec(diagonal[i]) if i == j else Decimal(0))
+                + dec(amplitude[sites[i]]) ** 2 * correlations[i][j]
+                for j in range(n)
+            ] + [Decimal(i == j) for j in range(n)]
+            for i in range(n)
+        ]
+        determinant = Decimal(1)
+        for column in range(n):
+            pivot = max(range(column, n), key=lambda row: abs(matrix[row][column]))
+            if pivot != column:
+                matrix[pivot], matrix[column] = matrix[column], matrix[pivot]
+                determinant = -determinant
+            value = matrix[column][column]
+            determinant *= value
+            matrix[column] = [entry / value for entry in matrix[column]]
+            for row in range(n):
+                if row != column:
+                    multiplier = matrix[row][column]
+                    matrix[row] = [
+                        entry - multiplier * reference
+                        for entry, reference in zip(matrix[row], matrix[column], strict=True)
+                    ]
+        precision = [row[n:] for row in matrix]
+        solved = [sum(precision[i][j] * dec(residual[j]) for j in range(n)) for i in range(n)]
+        quadratic = sum(dec(residual[i]) * solved[i] for i in range(n))
+        logp = -0.5 * (n * math.log(2.0 * math.pi) + float(determinant.ln() + quadratic))
+        gradient = [
+            dec(value) * sum(
+                correlations[i][j] * (solved[i] * solved[j] - precision[i][j])
+                for i in range(n) for j in range(n) if sites[i] == sites[j] == site
+            )
+            for site, value in enumerate(amplitude)
+        ]
+        return logp, -np.array(solved, dtype=float), np.array(gradient, dtype=float)
 
 
 def test_preparation_preserves_interleaved_rows_and_labelled_tau() -> None:
@@ -505,6 +577,142 @@ def test_evaluate_avoids_cancellation_for_dominant_low_rank_factor() -> None:
     )
 
     assert actual == pytest.approx(expected, rel=1.0e-12)
+
+
+@pytest.mark.parametrize("width", [0, 1, 2, 5, "duplicate"])
+@pytest.mark.parametrize("amplitude", [np.array([0.4, 0.7]), np.zeros(2)])
+def test_evaluator_gradients_match_dense_oracle_across_factor_widths(width, amplitude) -> None:
+    rng = np.random.default_rng(20261021)
+    factor = rng.normal(scale=0.15, size=(5, 2 if width == "duplicate" else width))
+    if width == "duplicate":
+        factor[:, 1] = factor[:, 0]
+    diagonal = np.array([0.12, 0.18, 0.16, 0.20, 0.11])
+    times = np.array([0.0, 0.0, 1.0, 2.0, 4.0])
+    sites = np.array([0, 1, 0, 1, 0])
+    tau = np.array([5.0, 7.0])
+    prepared = prepare_fixed_ou_low_rank(factor, diagonal, times, sites, tau)
+    residual = np.array([0.3, -0.2, 0.7, 0.1, -0.4])
+    modes = prepared.mode_transform @ residual
+    correlations = [
+        ((sites[:, None] == site) & (sites[None, :] == site))
+        * np.exp(-np.abs(times[:, None] - times[None, :]) / tau[site])
+        for site in range(2)
+    ]
+    covariance = factor @ factor.T + np.diag(diagonal) + sum(
+        value**2 * correlation for value, correlation in zip(amplitude, correlations, strict=True)
+    )
+    expected = _dense_gradient_oracle(residual, amplitude, covariance, correlations)
+    borrowed = (factor, diagonal, amplitude, residual, modes, prepared.transformed_factor, prepared.mode_eigenvalues)
+    before = [value.copy() for value in borrowed]
+
+    evaluation = prepared.evaluate(residual, amplitude)
+    amplitude_only = prepared._evaluate(modes, amplitude, amplitude_only=True)
+
+    assert evaluation.log_likelihood == pytest.approx(expected[0], rel=2e-12, abs=2e-12)
+    np.testing.assert_allclose(evaluation.gradient_residual, expected[1], rtol=2e-12, atol=2e-12)
+    np.testing.assert_allclose(evaluation.gradient_site_amplitude, expected[2], rtol=2e-12, atol=2e-12)
+    assert amplitude_only[0] == evaluation.log_likelihood
+    assert amplitude_only[1] is None
+    np.testing.assert_array_equal(amplitude_only[2], evaluation.gradient_site_amplitude)
+    for value, original in zip(borrowed, before, strict=True):
+        np.testing.assert_array_equal(value, original)
+
+
+@pytest.mark.parametrize("width,scale", [(1, 1e10), (2, 1e3), (2, 1e8), (2, 1e10)])
+@pytest.mark.parametrize("aligned", [False, True])
+def test_evaluator_dominant_factor_gradients_match_analytic_eigendirections(width, scale, aligned) -> None:
+    prepared = prepare_fixed_ou_low_rank(
+        np.full((2, width), scale), np.ones(2), np.zeros(2), np.arange(2), 1.0,
+    )
+    residual = np.full(2, scale) if aligned else np.array([1.0, -1.0])
+    large_eigenvalue = 2.0 + 2.0 * width * scale**2
+    solved = residual / (large_eigenvalue if aligned else 2.0)
+    expected_logp = -0.5 * (
+        2.0 * math.log(2.0 * math.pi) + math.log(2.0) + math.log(large_eigenvalue)
+        + residual @ solved
+    )
+    expected_gradient = np.square(solved) - (0.25 + 0.5 / large_eigenvalue)
+
+    evaluation = prepared.evaluate(residual, np.ones(2))
+    amplitude_only = prepared._evaluate(prepared.mode_transform @ residual, np.ones(2), amplitude_only=True)
+
+    assert evaluation.log_likelihood == pytest.approx(expected_logp, rel=2e-12, abs=2e-12)
+    # An absolute tolerance would hide loss of the tiny aligned residual gradient.
+    np.testing.assert_allclose(evaluation.gradient_residual, -solved, rtol=2e-9, atol=0.0)
+    np.testing.assert_allclose(evaluation.gradient_site_amplitude, expected_gradient, rtol=2e-9, atol=2e-15)
+    assert amplitude_only[0] == evaluation.log_likelihood
+    np.testing.assert_array_equal(amplitude_only[2], evaluation.gradient_site_amplitude)
+    if width == 2 and scale == 1e8 and not aligned:
+        assert evaluation.log_likelihood == pytest.approx(-21.79827858120163, abs=1e-12)
+
+
+def test_evaluator_retains_tiny_precision_with_zero_residual() -> None:
+    prepared = prepare_fixed_ou_low_rank(
+        np.array([[1e10]]), np.ones(1), np.zeros(1), np.zeros(1, dtype=int), 1.0,
+    )
+    evaluation = prepared.evaluate(np.zeros(1), np.ones(1))
+
+    expected_variance = 1e20 + 2.0
+    assert evaluation.log_likelihood == pytest.approx(-0.5 * math.log(2.0 * math.pi * expected_variance))
+    np.testing.assert_array_equal(evaluation.gradient_residual, np.zeros(1))
+    np.testing.assert_allclose(evaluation.gradient_site_amplitude, [-1.0 / expected_variance], rtol=2e-12, atol=0.0)
+
+
+@pytest.mark.parametrize("factor", [
+    np.array([[1e5, 1e5], [1e5, 1e5 + 1.0], [0.0, 0.3], [-0.2, 0.5]]),
+    np.array([[1e5, 0.0], [0.0, 1e-5], [1e5, 0.3], [-1e5, -0.2]]),
+    np.array([[1e5, -2e4], [3e4, 5e4], [-1e4, 7e4], [6e4, 1e4]]),
+], ids=["nearly-dependent", "mixed-scales", "nonorthogonal-transform"])
+def test_evaluator_fallback_matches_decimal_physical_covariance(factor) -> None:
+    diagonal = np.array([0.16, 0.25, 0.09, 0.36])
+    times = np.array([0.0, 0.25, 1.5, 2.0])
+    sites = np.array([0, 1, 0, 1])
+    tau = np.array([3.0, 5.0])
+    amplitude = np.array([0.23, 1.2])
+    residual = np.array([0.3, -0.1, 0.7, -0.4])
+    prepared = prepare_fixed_ou_low_rank(factor, diagonal, times, sites, tau)
+    expected = _decimal_gradient_oracle(factor, diagonal, times, sites, tau, amplitude, residual)
+    borrowed = (factor, diagonal, amplitude, residual, prepared.transformed_factor, prepared.mode_eigenvalues)
+    before = [value.copy() for value in borrowed]
+
+    evaluation = prepared.evaluate(residual, amplitude)
+    amplitude_only = prepared._evaluate(prepared.mode_transform @ residual, amplitude, amplitude_only=True)
+
+    assert evaluation.log_likelihood == pytest.approx(expected[0], rel=2e-9, abs=2e-9)
+    np.testing.assert_allclose(evaluation.gradient_residual, expected[1], rtol=2e-9, atol=2e-9)
+    np.testing.assert_allclose(evaluation.gradient_site_amplitude, expected[2], rtol=2e-9, atol=2e-9)
+    assert amplitude_only[0] == evaluation.log_likelihood
+    np.testing.assert_array_equal(amplitude_only[2], evaluation.gradient_site_amplitude)
+    for value, original in zip(borrowed, before, strict=True):
+        np.testing.assert_array_equal(value, original)
+
+
+@pytest.mark.parametrize("dominant", [False, True])
+def test_evaluator_screen_keeps_ordinary_fast_path_and_rejects_residual_cancellation(
+    dominant: bool, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from openghg_inversions.models import fixed_ou
+
+    original = fixed_ou._evaluate_whitened_fallback
+    calls = 0
+
+    def counted_fallback(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(fixed_ou, "_evaluate_whitened_fallback", counted_fallback)
+    if dominant:
+        prepared = prepare_fixed_ou_low_rank(
+            np.full((2, 1), 1e10), np.ones(2), np.zeros(2), np.arange(2), 1.0,
+        )
+        residual, amplitude = np.full(2, 1e10), np.ones(2)
+    else:
+        prepared, *_ = _prepared()
+        residual, amplitude = np.array([0.4, -0.1, -0.1, 0.5, -0.2]), np.array([0.7, 1.2])
+    prepared.evaluate(residual, amplitude)
+
+    assert calls == int(dominant)
 
 
 @pytest.mark.parametrize("width", [0, 2, 5, 8])

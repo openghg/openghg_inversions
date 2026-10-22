@@ -18,6 +18,10 @@ Repository plans retain delivery history, proposals, research, and validation ev
   21 October 2026 guarded low-rank cache implementation, preceding research,
   rank-256/full-rank timings, Python 3.12/3.13 validation and numerical limits.
   Sampled-chain acceptance and operational adoption remain with OPE-152.
+- [OPE-152 amplitude evaluator follow-up ideas](ope152_amplitude_followups.md):
+  22 October 2026 research record prioritizing the stability defect, preserving
+  unmeasured numerical alternatives and an auxiliary-variable proposal, and
+  distinguishing historical mixing failures from the current target.
 
 ## Inventory and remaining cleanup
 
