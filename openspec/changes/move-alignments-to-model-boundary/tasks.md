@@ -24,7 +24,7 @@
 
 - [x] 5.1 Migrate Ramsden from unconditional prepared floors/site codes to likelihood-owned floor choices and observation labels; verify actual preparation-to-builder integration.
 - [x] 5.2 Define the backend-neutral resolved Dataset handoff, reject conflicting BC/floor settings without recalculation, and keep likelihood-floor policy outside numerical materialization; verify all three eager builders.
-- [ ] 5.3 Remove redundant raw site-code construction and unused likelihood declarations; update usage/docstrings and complete independent review plus proportionate Python 3.12/3.13 validation.
+- [x] 5.3 Remove redundant raw site-code construction and unused likelihood declarations; update usage/docstrings and complete independent review plus proportionate Python 3.12/3.13 validation.
 
 ## Validation evidence
 
@@ -46,4 +46,5 @@
 - Ramsden: 26 focused tests passed, including actual raw preparation, per-channel floors, retained-row estimators, lazy scalar/default floors and named-estimator guards. The existing sampling smoke passed before the subsequent narrow guard/doc corrections.
 - Resolved-input and broader public-runner coverage: 410 tests passed. Configuration and related alignment coverage after removing the obsolete declaration assertion: 126 passed. Counts overlap.
 - Independent higher-effort review found and verified corrections for an overly broad Ramsden eager guard and unit-conversion/doc wording. No remaining implementation findings; full Ruff, diff and strict change checks pass.
-- Fresh complete Python 3.12/3.13 tox, lint, borrowed-typing and full documentation validation are pending. The documentation environment also regenerates the new public resolver's API page.
+- Slurm job 19639181 at review-fix revision `5e1f2b23` passed the complete `py312-openghgCur` and `py313-openghgCur` tox suites: 3,985 passed, 8 skipped and 4 deselected on each interpreter. Lint and all 4 borrowed-typing tests passed.
+- The same job passed `docs-full` and regenerated the public resolver API page and parent navigation. The build reported 10 duplicate/ambiguous-reference warnings concerning SiteOptions, DataConfig and RhimePreparedInputs; none concerns the new resolver. The final follow-up commit contains generated documentation and this validation record only.
