@@ -386,8 +386,8 @@ requirements for those named standard interfaces.
 ### Requirement: Compatible public adapters and scientific choices
 
 Except for the explicit standard API/result migration above, the sampler-default
-migration, and the resource-I/O
-migrations removing `prepare_basis(output_path=...)` and `country_directory` in 0.8
+migration, the model-owned BC/minimum-error migration specified below, and the
+resource-I/O migrations removing `prepare_basis(output_path=...)` and `country_directory` in 0.8
 and replacing scientific BC case/directory inputs with resolved basis data,
 the legacy-only routing and namespace migration owned by the
 [HBMCMC isolation contract](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md),
@@ -404,8 +404,10 @@ and flux-source routing SHALL retain consistent existing meanings across data
 preparation and model construction. Current INI section interpretation, path
 conventions, file vocabulary, scientific calculations and sampling defaults
 SHALL remain unchanged except for the path and legacy-resource migrations specified by
-[rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md)
-and the 0.8 historical scientific-quirk and chain-policy removals specified by
+[rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md),
+the model-owned BC/minimum-error migration and retained-observation estimates
+specified below, and the 0.8 historical scientific-quirk and chain-policy removals
+specified by
 [hbmcmc-isolation-retirement](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md).
 
 Established selector and shared-handoff aliases in the current
@@ -468,7 +470,8 @@ call canonical `prepare_basis` directly with resolved arguments, and use the act
 sensitivity, filtering and assembly implementations. Forwarding wrappers SHALL
 NOT be retained solely for uniform stage names, timing or keyword translation.
 Shared indexing utilities SHALL remain independently reusable. Assembly SHALL
-preserve minimum-error `None`, integer and per-site mapping behavior.
+retain backend-neutral observations and spatial sensitivities;
+model-owned numerical policies SHALL be resolved at the model boundary.
 
 `prepare_rhime_inputs` and its exclusive acquisition dispatcher are removed.
 Modern acquisition SHALL NOT load or save merged-data caches. Historical
@@ -805,23 +808,31 @@ accepted only when their required prepared inputs and structure are available;
 they SHALL NOT reinterpret baked preparation choices or reacquire inputs.
 
 For standard and multisector, preparation SHALL own the established `use_bc`
-default (`True`) and `bc_freq` default (`None`). A legacy flat `use_bc` choice SHALL
-route to preparation and the full run's model choice consistently. When resolving
-a model group, omitted `use_bc` SHALL inherit the resolved requested preparation
-choice for a full run or its recorded fact for saved sampling. Explicit model
-`use_bc=False` MAY omit BC terms even when preparation contains BC inputs.
-Explicit model `use_bc=True` SHALL require preparation to provide those inputs;
-it SHALL NOT trigger acquisition or silent fallback. Full requests SHALL reject
-model BC use with preparation BC disabled before acquisition.
+default (`True`) and the presence of spatial BC inputs. A flat `use_bc` request
+SHALL route consistently to preparation and model selection. Omitted model
+`use_bc` SHALL inherit the requested or recorded preparation choice. Explicit
+model `use_bc=False` SHALL permit omitting available BC terms; explicit true
+SHALL require those inputs and SHALL NOT cause acquisition or silent fallback.
+Full requests SHALL reject model BC use with preparation BC disabled before
+acquisition.
 
-`bc_freq` SHALL remain a preparation-owned temporal policy. Sampling SHALL use
-the recorded policy when the key is omitted and SHALL accept a repeated equivalent
-claim; any conflicting claim SHALL fail before model construction, even when
-model BC terms are disabled. An explicit `None` claim SHALL be compared as the
-existing no-frequency policy, not treated as omission. Model binding SHALL NOT
-apply another default to replace saved temporal expansion. The same rules SHALL
-hold for full and independently resolved standard/multisector phases without
-changing CO2's family-specific defaults.
+For these families, BC temporal grouping and minimum-error choices SHALL belong
+to model resolution, not acquisition/preparation. Compatible raw prepared inputs
+SHALL permit changing these choices without new acquisition, filtering or spatial
+sensitivity work.
+Omitted BC frequency SHALL select one period. Configured fixed-duration grouping
+SHALL use the recorded requested start date unless an explicit model anchor is
+supplied. Named minimum-error methods SHALL use retained observations after
+unusable fitted rows are removed. Scalar and retained-site mapping choices SHALL
+retain their validated numerical meaning. Unused minimum-error calculations SHALL
+NOT execute for a likelihood that does not consume a floor.
+CO2 SHALL retain its independent family-specific defaults.
+
+Incompatible baked preparations and sample records SHALL be rejected explicitly
+with guidance to use their matching software or prepare again. Readers SHALL NOT
+silently reinterpret baked values as raw operands. Independent modern output
+codecs SHALL retain their support. Scientific replay SHALL consume recorded fitted
+operands without silently recomputing alignment or minimum error.
 
 #### Scenario: Resolve disabled BC consistently across phases
 - **WHEN** standard or multisector preparation resolves `use_bc=False` and the
@@ -845,11 +856,22 @@ changing CO2's family-specific defaults.
   inference or artifact writes
 
 #### Scenario: Bind the saved boundary temporal policy
-- **WHEN** preparation baked `bc_freq="3h"` into its numerical inputs
-- **THEN** a later model request omitting `bc_freq` uses that saved temporal policy
-  and a repeated `"3h"` claim is accepted
-- **AND** an explicit different frequency or `None` is rejected before model
-  construction, including when model `use_bc=False`
+- **WHEN** a preparation contains raw spatial BC inputs and two models select
+  different valid BC frequencies
+- **THEN** both reuse those inputs without changing the preparation
+- **AND** each model and its saved samples retain their own fitted alignment
+
+#### Scenario: Minimum error uses retained fitted observations
+- **WHEN** invalid sensitivities or observation errors remove otherwise finite
+  observation values before a named minimum-error calculation
+- **THEN** the calculation uses the retained observation population
+- **AND** its selected values are retained with the fitted model for replay
+
+#### Scenario: Reject an incompatible baked artifact
+- **WHEN** a caller loads an older preparation or sample format whose numerical
+  policies are incompatible with the raw-input contract
+- **THEN** loading fails with migration guidance before inference or product writes
+- **AND** no historical adapter silently substitutes model-time values
 
 #### Scenario: Sample with model and sampler choices only
 - **WHEN** a caller supplies a prepared handoff, applicable run context and valid

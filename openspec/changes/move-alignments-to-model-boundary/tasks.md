@@ -18,7 +18,7 @@
 ## 4. Review and validation
 
 - [x] 4.1 Update affected usage/API documentation, examples and Towncrier fragment; run documentation-impact/docstring review and applicable checks.
-- [ ] 4.2 Complete higher-effort independent review, focused and relevant broader pytest, Ruff, diff/OpenSpec checks, and required final CI-equivalent validation; record concrete evidence and remaining limitations.
+- [x] 4.2 Complete higher-effort independent review, focused and relevant broader pytest, Ruff, diff/OpenSpec checks, and required final CI-equivalent validation; record concrete evidence and remaining limitations.
 
 ## Validation evidence
 
@@ -31,4 +31,5 @@
 - Full changed-area Ruff, diff checks and strict change validation pass. Higher-effort configuration/core/persistence/documentation reviews completed; reported anchor, direct-builder and tutorial findings were fixed. Counts overlap and are not a combined total.
 - Slurm job 19635769 ran the complete Python 3.12/3.13 suites: each had 3,925 passed, 8 skipped, 4 deselected and the same single stale-test failure. Lint and all 4 borrowed-typing tests passed.
 - The failing model-option test incorrectly called the now data-only test preparation helper. A test-only correction exercises both public runners with retrieval guarded; both corrected cases and 181 nearby/configuration tests pass locally, with Ruff and independent higher-effort review clear.
-- Final tox retry of the full affected `tests/test_rhime.py` module on Python 3.12/3.13 remains pending. The original full-suite failures are retained as evidence; a successful module retry will not be described as a fresh complete-matrix pass.
+- Slurm job 19636938 at test-only correction `a2318985` passed the full affected `tests/test_rhime.py` module through tox on both Python 3.12 and 3.13: 312 passed on each. The original full-suite failures remain part of the evidence; this scoped retry is not a fresh complete-matrix pass.
+- The approved configuration amendment is synchronized into the durable contract, including the explicit exception to general compatibility guarantees. CO2 family defaults and unrelated contracts remain unchanged. PR #964 contains the implementation and validation handoff; #957 still owns centered BC arithmetic and its later compatibility changes.

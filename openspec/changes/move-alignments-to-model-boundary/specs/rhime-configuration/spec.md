@@ -2,13 +2,94 @@
 
 ## MODIFIED Requirements
 
+### Requirement: Compatible public adapters and scientific choices
+
+Except for the explicit standard API/result migration above, the sampler-default
+migration, the model-owned BC/minimum-error migration specified below, and the
+resource-I/O migrations removing `prepare_basis(output_path=...)` and `country_directory` in 0.8
+and replacing scientific BC case/directory inputs with resolved basis data,
+the legacy-only routing and namespace migration owned by the
+[HBMCMC isolation contract](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md),
+removed `prepare_rhime_inputs` convenience function, obsolete
+modern merged-cache options, former stage adapter, `resolve_rhime_config`,
+transitional old-location imports and revised INI reader contract specified below, supported
+scientific Python and CLI entry points SHALL retain their signatures, shorthand,
+override behavior and return contracts through adapters to the same semantic
+resolution or shared applicable site translation. Direct preparation/retrieval
+APIs SHALL resolve only applicable choices without requiring likelihood, final
+output or sampling settings. Independent builders and prepared-input runners
+SHALL remain independent of full configuration. Shared choices such as BC use
+and flux-source routing SHALL retain consistent existing meanings across data
+preparation and model construction. Current INI section interpretation, path
+conventions, file vocabulary, scientific calculations and sampling defaults
+SHALL remain unchanged except for the path and legacy-resource migrations specified by
+[rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md),
+the model-owned BC/minimum-error migration and retained-observation estimates
+specified below, and the 0.8 historical scientific-quirk and chain-policy removals
+specified by
+[hbmcmc-isolation-retirement](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md).
+
+Established selector and shared-handoff aliases in the current
+[model-selection capability](https://github.com/openghg/openghg_inversions/blob/7269f50f09dc4b618766cb9d69abe260a564eebc/openspec/specs/rhime-model-selection/spec.md)
+SHALL remain supported for their documented compatibility period. The removed
+transitional imports above do not include those public aliases.
+
+Internal orchestration/setup records and their constructor/helper return shapes
+SHALL NOT be required compatibility contracts. Their in-repository consumers
+SHALL migrate to the unified requested configuration.
+
+Default-selecting live APIs SHALL accept `"default"` or a supplied sampler, with
+omission equivalent to `"default"`. Existing explicit `None` calls SHALL fail with
+guidance to omit the optional argument or pass `"default"`; no compatibility
+adapter SHALL retain `None`-means-default selection. Default settings and scientific
+behavior SHALL otherwise remain unchanged. Result fields SHALL use `None` only
+for absence of a live sampler, as specified by the recipe-execution contract.
+
+Runner/frontend resolution SHALL consume omitted/false `use_tracer` without
+retaining a config field. Canonical configuration SHALL accept only canonical
+fields and use generic unsupported-option errors for obsolete options. Effective true SHALL retain early rejection at resolution and relevant
+direct public boundaries, including supplied merged data. Existing legacy-option
+and custom-likelihood conflict precedence SHALL remain unchanged.
+
+#### Scenario: Existing Python shorthand
+
+- **WHEN** standard, multisector or direct public preparation/retrieval callers
+  supply supported scalar options instead of expanded sequences
+- **THEN** the adapter establishes the same applicable canonical choices before
+  scientific work and preserves the established return contract
+- **AND** internal canonical calls do not repeat that translation
+
+#### Scenario: Boundary conditions are disabled consistently
+
+- **WHEN** effective configuration sets `use_bc=False`
+- **THEN** acquisition/preparation and built-in model construction use the same
+  disabled BC choice with existing scientific behavior
+- **AND** neither phase infers an independent conflicting default
+
+#### Scenario: Preserve unsupported tracer rejection
+
+- **WHEN** a configured run, direct public preparation call or mapping-based
+  retrieval supplies effective `use_tracer=True` after supported overrides,
+  including with supplied merged data
+- **THEN** it rejects the option before acquisition, reload or scientific execution
+- **AND** omitted and false options remain accepted with equivalent resolved
+  configuration containing no tracer field
+
+#### Scenario: Migrate an explicit null sampler
+
+- **WHEN** a caller passes `sampler=None` to an existing live entry point
+- **THEN** it fails before inference with guidance to omit the optional argument
+  or pass `"default"`
+- **AND** omitting that argument continues to select the established defaults
+
 ### Requirement: Scientific preparation owns its operations
 
 Recipes SHALL derive observation errors before temporal filtering/aggregation,
 call canonical `prepare_basis` directly with resolved arguments, and use the actual
 sensitivity, filtering and assembly implementations. Forwarding wrappers SHALL
 NOT be retained solely for uniform stage names, timing or keyword translation.
-Shared indexing utilities SHALL remain independently reusable. Assembly SHALL retain backend-neutral observations and spatial sensitivities;
+Shared indexing utilities SHALL remain independently reusable. Assembly SHALL
+retain backend-neutral observations and spatial sensitivities;
 model-owned numerical policies SHALL be resolved at the model boundary.
 
 `prepare_rhime_inputs` and its exclusive acquisition dispatcher are removed.
@@ -80,16 +161,20 @@ SHALL route consistently to preparation and model selection. Omitted model
 `use_bc` SHALL inherit the requested or recorded preparation choice. Explicit
 model `use_bc=False` SHALL permit omitting available BC terms; explicit true
 SHALL require those inputs and SHALL NOT cause acquisition or silent fallback.
+Full requests SHALL reject model BC use with preparation BC disabled before
+acquisition.
 
-BC temporal grouping and minimum-error choices SHALL belong to model resolution,
-not acquisition/preparation. Compatible raw prepared inputs SHALL permit changing
-these choices without new acquisition, filtering or spatial sensitivity work.
+For these families, BC temporal grouping and minimum-error choices SHALL belong
+to model resolution, not acquisition/preparation. Compatible raw prepared inputs
+SHALL permit changing these choices without new acquisition, filtering or spatial
+sensitivity work.
 Omitted BC frequency SHALL select one period. Configured fixed-duration grouping
 SHALL use the recorded requested start date unless an explicit model anchor is
 supplied. Named minimum-error methods SHALL use retained observations after
 unusable fitted rows are removed. Scalar and retained-site mapping choices SHALL
 retain their validated numerical meaning. Unused minimum-error calculations SHALL
 NOT execute for a likelihood that does not consume a floor.
+CO2 SHALL retain its independent family-specific defaults.
 
 Incompatible baked preparations and sample records SHALL be rejected explicitly
 with guidance to use their matching software or prepare again. Readers SHALL NOT
