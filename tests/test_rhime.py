@@ -2950,6 +2950,15 @@ def test_public_rhime_runners_follow_named_stage_order(
     basis = cast(Any, object())
     site_data = cast(Any, object())
 
+    def validate_scientific_inputs(actual: RhimeMergedData, **kwargs: Any) -> None:
+        """Record the acquired-data boundary before error/filter preparation."""
+        assert actual is merged
+        assert kwargs == {
+            "split_by_sectors": multisector, "use_bc": False,
+            "flux_sources": config.data.flux_sources, "require_footprints": True,
+        }
+        calls.append("validate")
+
     def retrieve(*, site_options: SiteOptions, merged_data=None, **kwargs: Any) -> Any:
         """Record ordinary acquisition or external-data validation."""
         assert site_options is config.data.site_options
@@ -3043,6 +3052,7 @@ def test_public_rhime_runners_follow_named_stage_order(
 
     monkeypatch.setattr(recipe_module.RhimeConfig, "from_params", staticmethod(resolve))
     monkeypatch.setattr(recipe_module.RhimeMergedData, "from_options", retrieve)
+    monkeypatch.setattr(recipe_module.RhimeMergedData, "validate_scientific_inputs", validate_scientific_inputs)
     monkeypatch.setattr(recipe_module, "filter_observations", filter_observations)
     monkeypatch.setattr(recipe_module, "prepare_basis", build_basis)
     monkeypatch.setattr(recipe_module, "build_sensitivities", build_sensitivities)
@@ -3074,6 +3084,7 @@ def test_public_rhime_runners_follow_named_stage_order(
     expected_calls = [
         "resolve",
         *([] if external_data else ["retrieve"]),
+        "validate",
         "filter",
         "basis",
         "sensitivities",
@@ -3712,6 +3723,7 @@ def test_run_rhime_rejects_noncanonical_custom_likelihood_before_sampling(
         site_options=config.data.site_options,
     )
     monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", lambda *args, **kwargs: merged)
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "validate_scientific_inputs", lambda *args, **kwargs: None)
     monkeypatch.setattr(rhime_standard, "filter_observations", lambda data, options, **kwargs: (data, options))
     monkeypatch.setattr(rhime_standard, "prepare_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(rhime_standard, "build_sensitivities", lambda *args, **kwargs: object())
@@ -8614,6 +8626,8 @@ output_format = "inv_out"
     monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options",
         fake_load,
     )
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "validate_scientific_inputs",
+                        lambda *args, **kwargs: seen.update(validation=kwargs))
     monkeypatch.setattr(rhime_standard, "filter_observations", lambda value, options, **kwargs: (filtered.site_data, options))
     monkeypatch.setattr(rhime_standard, "resolve_basis_inputs", lambda config: {"landsea_classes": xr.DataArray([[1]], dims=("lat", "lon"))})
     monkeypatch.setattr(rhime_standard, "prepare_basis", fake_basis)

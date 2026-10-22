@@ -227,7 +227,21 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
     if route != "staged":
         (tmp_path / "runs/prepared").mkdir(parents=True)
     borrowed = sources["a"].flux.data
+    validations = []
+
+    def validate(actual, **kwargs):
+        # This test isolates basis construction/export, with basis-only datasets.
+        assert actual is merged
+        assert kwargs == {
+            "split_by_sectors": route == "multisector",
+            "use_bc": False,
+            "flux_sources": tuple(options["flux_sources"]),
+            "require_footprints": selection == "generated",
+        }
+        validations.append(actual)
+
     monkeypatch.setattr(RhimeMergedData, "from_options", lambda **kwargs: merged)
+    monkeypatch.setattr(RhimeMergedData, "validate_scientific_inputs", validate)
     monkeypatch.setattr(module, "prepare_observation_errors", lambda data, **kwargs: data)
     monkeypatch.setattr(module, "filter_observations", lambda data, site_options, **kwargs: (data, site_options))
     captured = []
@@ -301,6 +315,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
             module.run_rhime_multisector(config=config)
         else:
             module.run_standard(config=config)
+    assert len(validations) == (1 if route in {"standard", "multisector", "staged"} else 0)
     assert sources["a"].flux.data is borrowed
     assert config.data.basis_output_path == (tmp_path / options["basis_output_path"] if suffix else None)
     if route in {"standard", "multisector", "staged", "example"}:

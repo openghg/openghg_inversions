@@ -47,9 +47,13 @@ def prepare_observation_errors(
             missing_components = [name for name in ("mf_repeatability", "mf_variability") if name not in borrowed]
             if missing_components:
                 ds = borrowed.copy(deep=False)
+                fallback_units = borrowed["mf"].attrs.get("units") if "mf" in borrowed else None
                 for name in missing_components:
                     ds[name] = xr.zeros_like(borrowed["mf_error"])
-                    ds[name].attrs = {"long_name": name, "units": borrowed.mf_error.attrs.get("units")}
+                    ds[name].attrs = {
+                        "long_name": name,
+                        "units": borrowed.mf_error.attrs.get("units", fallback_units),
+                    }
                 result[site] = ds
             else:
                 result[site] = borrowed

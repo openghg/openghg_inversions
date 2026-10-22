@@ -214,9 +214,97 @@ identity. Each ``InputProvenance`` exposes ``store``, ``uuid`` and
 The software fields are ``openghg_version`` and ``openghg_commit``.
 Both classes are available from ``openghg_inversions.inversion_data``.
 They describe selected inputs; scientific compatibility remains the
-responsibility of ``validate_for_preparation``. Empty or all-unknown provenance
+responsibility of the acquisition-fact and scientific-input boundaries below. Empty or all-unknown provenance
 is false in boolean tests; that does not establish data validity. Missing
 input identities default to unknown without replacing supplied identities.
+
+Validate customised merged arrays
+---------------------------------
+
+This branch prototypes an ``xarray-validate`` schema at the acquired-data
+boundary. ``MergedData`` is the concrete class; ``RhimeMergedData`` remains its
+compatibility alias. A site is an ordinary borrowed ``xr.Dataset``.
+Construction checks the dataset containers, selector labels and provenance
+labels. ``validate_for_preparation`` separately compares known acquisition
+facts with a request. Neither operation computes numerical arrays.
+
+``prepare_standard`` and ``prepare_multisector`` call
+``merged.validate_scientific_inputs`` before deriving errors or filtering.
+Their full runners and saved preparation commands use these same functions.
+The selected preparation determines which fields are required:
+
+.. list-table:: Acquired per-site contract
+   :header-rows: 1
+   :widths: 24 42 34
+
+   * - Field
+     - Dimensions
+     - Requirement
+   * - ``mf``
+     - ``time``
+     - Always, with explicit concentration units.
+   * - ``mf_error``, ``mf_repeatability``, ``mf_variability``
+     - ``time``
+     - Supply ``mf_error`` or at least one uncertainty component.
+   * - ``fp_x_flux``
+     - ``lat``, ``lon``, ``time``
+     - Standard preparation.
+   * - ``fp_x_flux_sectoral``
+     - ``source``, ``lat``, ``lon``, ``time``
+     - Multisector preparation, with the selected source labels.
+   * - ``fp``
+     - ``lat``, ``lon``, ``time``
+     - Generated basis weights; unnecessary with a saved operator or partition.
+   * - ``bc_n``, ``bc_s``
+     - ``height``, ``lon``, ``time``
+     - When boundary conditions are enabled.
+   * - ``bc_e``, ``bc_w``
+     - ``height``, ``lat``, ``time``
+     - When boundary conditions are enabled.
+
+The arrays accept real integer or floating dtypes and any permutation of the
+named dimensions. Indexed coordinates must be unique and contain no missing
+labels; time coordinates are explicit ``datetime64`` values. Time axes, observation counts
+and averaging periods can differ between sites. Empty sites and missing
+payload values remain valid here: filtering, gathering and numerical components
+own their existing missing-value policies. Extra variables, attributes and lazy
+auxiliary coordinates are allowed. Custom filters own any further requirements.
+
+All sites use the same concentration numerical scale. Absent units on error,
+response and directional-BC fields inherit that site's ``mf`` convention;
+explicit units must have the same scale. For example, ``umol/mol`` is accepted
+with ``ppm``, while ``ppb`` is rejected. Validation does not attach attributes
+or convert values. Native ``flux_data[source].flux`` separately requires
+``mol m-2 s-1`` or an equal-scale expression, on ``lat`` and ``lon`` with an
+optional inventory ``time`` dimension. Inventory and observation times are
+independent. Convert externally supplied quantities with Pint before entering
+preparation when their scales differ.
+
+Inspect or apply the concrete site schema explicitly during customisation::
+
+   schema = merged.site_schema(
+       split_by_sectors=False, require_footprints=False, use_bc=False,
+   )
+   schema.validate(merged.site_data["TAC"])
+   merged.validate_scientific_inputs(
+       split_by_sectors=False, require_footprints=False, use_bc=False,
+       flux_sources=("inventory",),
+   )
+
+The mapping-level method supplies site/source paths in errors and checks
+cross-site concentration scales and native flux. It also accepts an explicit
+``grid_dims`` pair for custom named grids. The schema is metadata-only: its
+``lazy`` validation mode collects errors and does not execute Dask payloads.
+Schema export omits the unit/conditional callbacks and these generic dtype
+unions; apply the Python schema to retain those checks. Independent-grid
+alignment remains with the basis and native-flux owners. See :download:`the executable validation example
+<../../examples/rhime_customisation/validate_merged.py>`.
+
+Preparation does not retry arbitrary filter ``ValueError`` exceptions after
+computing every site. Filter owners must make any required materialisation
+explicit; invalid filter requests propagate once with their original error.
+The CO2 recipes still consume prepared inputs and coherent reductions; this
+schema adds no native CO2 acquisition route.
 
 Selected ``MergedDataProvenance`` remains on the in-memory merged handoff. It
 is not included in saved ``RhimePreparedInputs`` or the staged preparation

@@ -64,7 +64,8 @@ def filter_observations(
     """Filter borrowed observations and drop empty sites with aligned selectors.
 
     The stage may compute site data if a filter cannot operate lazily. It never
-    constructs basis functions or model inputs.
+    constructs basis functions or model inputs. Filter implementations own any
+    required execution; errors propagate without computing all sites or retrying.
 
     Args:
         site_data: Borrowed per-site observation and footprint datasets keyed
@@ -318,12 +319,7 @@ def _apply_filters_and_drop_empty_sites(
 ) -> dict:
     """Apply observation filters and remove empty site datasets."""
     if filters is not None:
-        try:
-            fp_data = filtering(fp_data, filters)
-        except ValueError:
-            for site in sites:
-                fp_data[site] = fp_data[site].compute()
-            fp_data = filtering(fp_data, filters)
+        fp_data = filtering(fp_data, filters)
 
     dropped_sites = []
     for site in sites:

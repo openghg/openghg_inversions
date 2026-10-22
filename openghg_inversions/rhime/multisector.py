@@ -421,6 +421,10 @@ def prepare_multisector(
         Retained backend-neutral inputs and their current native-flux binding.
     """
     preparation_start = timer_start()
+    merged_data.validate_scientific_inputs(
+        split_by_sectors=True, use_bc=use_bc, flux_sources=flux_sources,
+        require_footprints=basis_inputs.get("basis_path") is None and basis_inputs.get("basis_partition") is None,
+    )
     # Preparation works on per-site datasets; ``merged_data`` stays acquired data.
     with_errors = prepare_observation_errors(
         merged_data.site_data,

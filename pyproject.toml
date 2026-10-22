@@ -44,6 +44,7 @@ dependencies = [
     "sparse",
     "flox",
     "opt_einsum",
+    "xarray-validate==0.0.5",
 ]
 
 [project.optional-dependencies]
