@@ -133,7 +133,7 @@ def _observed_context(*, observed=True):
         else:
             pm.Potential("cached_likelihood", shared.log_likelihood(coefficients))
     point = model.initial_point()
-    point["sigma_site_log__"] = np.log([0.4, 0.4])
+    point["sigma_site_log__"] = np.asarray(np.log([0.4, 0.4]), dtype=point["sigma_site_log__"].dtype)
     arguments = dict(
         model=model, sigma=sigma, states=[state], modelled_mean=mean, target=target,
         shared_cache=shared, initial_cache=initial_cache,
@@ -151,17 +151,19 @@ def test_observed_graph_requires_explicit_cached_expression():
 def test_supplied_state_function_matches_public_density_without_covariance_work(monkeypatch):
     target, shared, model, point, quadratic, arguments = _observed_context()
     compound = make_cached_sigma_compound_step(**arguments, cached_state_logp=quadratic)
-    state_step = compound.methods[1]
+    sigma_step, state_step = compound.methods
     exact = model.compile_logp()
     gradient = model.compile_dlogp(vars=arguments["states"])
+    # Cached float32 algebra and the public Gaussian gradient round in different orders.
+    gradient_rtol = max(1e-7, 2 * np.finfo(point["state"].dtype).eps)
     for state, amplitudes in ((-0.3, [0.2, 0.7]), (0.4, [0.6, 1.2])):
-        point["state"] = np.array([state])
-        point["sigma_site_log__"] = np.log(amplitudes)
-        shared.update(target.refresh(amplitudes))
+        point["state"] = np.asarray([state], dtype=point["state"].dtype)
+        point["sigma_site_log__"] = np.asarray(np.log(amplitudes), dtype=point["sigma_site_log__"].dtype)
+        shared.update(target.refresh(sigma_step.physical_sigma_fn(point["sigma_site_log__"])))
         state_step._logp_dlogp_func.set_extra_values(point)
         actual, actual_gradient = state_step._logp_dlogp_func(DictToArrayBijection.map({"state": point["state"]}))
         np.testing.assert_allclose(actual, exact(point), atol=1e-10)
-        np.testing.assert_allclose(actual_gradient, gradient(point), atol=1e-10)
+        np.testing.assert_allclose(actual_gradient, gradient(point), rtol=gradient_rtol, atol=1e-10)
 
     def forbidden(*args, **kwargs):
         pytest.fail("A cached state transition must not evaluate or factor observation covariance.")
@@ -177,7 +179,10 @@ def _sample_observed_spawn_chains(*, observed=True):
     target, shared, model, point, quadratic, arguments = _observed_context(observed=observed)
     step = make_cached_sigma_compound_step(**arguments, cached_state_logp=quadratic if observed else None)
     starts = [
-        {"state": np.array([state]), "sigma_site_log__": np.log(amplitudes)}
+        {
+            "state": np.asarray([state], dtype=point["state"].dtype),
+            "sigma_site_log__": np.asarray(np.log(amplitudes), dtype=point["sigma_site_log__"].dtype),
+        }
         for state, amplitudes in ((-0.2, [0.3, 0.5]), (0.3, [0.6, 0.7]))
     ]
     with model:
@@ -667,7 +672,7 @@ def test_conditional_rejects_hierarchical_amplitude_prior():
     with pm.Model() as model:
         state = pm.HalfNormal("scale")
         amplitude = pm.HalfNormal("sigma_site", sigma=state, shape=2)
-        model.set_initval(amplitude, [0.4, 0.4])
+        model.set_initval(amplitude, np.asarray([0.4, 0.4], dtype=amplitude.dtype))
         mean = target.fixed_contribution + target.design[:, 0] * state
     with pytest.raises(ValueError, match="independent priors"):
         PymcCachedSigmaNutsStep(
