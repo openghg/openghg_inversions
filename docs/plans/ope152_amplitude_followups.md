@@ -34,6 +34,50 @@ already calls a BLAS triangular solve; merely requesting TRSM is not a new
 optimization. The proposals below target the broad triangular solve and the
 work needed for the amplitude-gradient trace. Their savings are unmeasured.
 
+## Measured ordinary-input stability overhead
+
+The 22 October benchmark for [PR #942](https://github.com/openghg/openghg_inversions/pull/942)
+compared candidate `535dd712` with the exact evaluator from `e2bb6246` in one
+SLURM job (`19628132`). It used the unchanged rank-256 target, six fixed
+posterior anchors and 12 alternating AB/BA pairs per anchor and boundary:
+72 timed calls per variant per boundary, excluding initial warm calls.
+Both variants used the same stock CVM graph, float64 and one BLAS thread.
+This measures the net cost of the guarded evaluator, including its arithmetic
+rearrangement, rather than the cost of the screens in isolation.
+
+| Timed boundary | Baseline mean | Guarded mean | Mean change |
+| --- | ---: | ---: | ---: |
+| Amplitude likelihood and gradient kernel | 42.998 ms | 43.344 ms | +0.81% |
+| Compiled conditional density and gradient, including prior/Jacobian | 43.332 ms | 43.541 ms | +0.48% |
+
+The [per-anchor timing CSV](ope152_amplitude_stability_timings.csv) includes
+medians and paired differences. Across anchors, mean kernel changes ranged
+from +0.34% to +1.36%; compiled-density changes ranged from approximately zero
+to +0.99%. The standard deviation of individual paired differences was
+0.585 ms for the kernel and 0.584 ms for the compiled density, larger than
+the respective mean increases of 0.346 and 0.208 ms. These are descriptive
+within-job spreads, not confidence intervals from independent machine runs.
+The evidence supports a small ordinary-input overhead; it does not measure
+sampling throughput, effective samples per second or exceptional-fallback cost.
+
+All 18 untimed route checks across the six anchors stayed on the Cholesky
+path. Ordinary-point likelihood differences were zero; maximum absolute
+differences were `4.97e-14` for the physical amplitude gradient, `1.78e-15`
+for the general residual gradient and `8.88e-14` for the compiled transformed
+gradient. Input ownership and reinstalling the first residual passed. These
+comparisons do not use the old evaluator as an oracle for unstable inputs;
+the adversarial stability tests are separate.
+
+The audit verified all nine source snapshots, the clean working patch and
+unchanged input hashes: prepared input `22313f48`, anchors `08cddffb`, original
+dense source `7ab7cf73`. The frozen candidate numerical-source SHA256 is
+`6f4c98dca5346518fceea9ad104ef6bd99bd1ae7b0b11ba82f83332be8eed55e`;
+the harness SHA256 is
+`747129d03d9244fd02e6fc2c534c0501dd9398285fc9398f5c05f0536e9cf868`.
+Runtime versions were Python 3.13.7, NumPy 2.2.6, SciPy 1.15.3,
+PyMC 6.3.2 and PyTensor 3.3.2. A tiny harness check ran first using the same
+node-local compilation cache, so startup is not a cold-compilation measurement.
+
 ## Exact numerical candidates
 
 In the prepared OU mode basis, write the covariance as
