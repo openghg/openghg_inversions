@@ -328,7 +328,7 @@ with #952. Source-inspected equations, historical resources, arbitrary external
 scripts and the final supported patch-version subset retain their stated limits.
 
 Aggregation filter retirement comparison, 23 October 2026
---------------------------------------------------------
+---------------------------------------------------------
 
 This dated addendum records the removal of ``daily_median`` and ``six_hr_mean``
 under `#954 <https://github.com/openghg/openghg_inversions/issues/954>`_. It
@@ -437,7 +437,7 @@ retains their full commit identities and the inspected paths.
        first. An enabled likelihood estimates its floor from ``[0,10]``,
        giving 5; the raw preparation carries no baked floor.
      - Scientific population change, related to `I6
-       <#input-interpretation-and-dispositions>`_. Fixed error does not consume
+       <#migration-ledger-requests-and-execution>`_. Fixed error does not consume
        a floor; additive sigma consumes one only when explicitly enabled.
    * - Boundary periods
      - One raw curtain ``[2,3]`` at January/February timestamps becomes
@@ -463,7 +463,7 @@ The live request checks now compare archived ``bc_freq`` with
 The remaining archived ``default_data`` fields still compare with
 ``config.data``. The original JSON names, defaults and justifications remain a
 record of the pinned source; they are not rewritten as current configuration.
-See `I6 <#input-interpretation-and-dispositions>`_ and H1 in
+See `I6 <#migration-ledger-requests-and-execution>`_ and H1 in
 :doc:`migration_960_historical` for the recorded settings. The H3 pollution-event
 baseline and H4 fixed-error equations on that page remain separate scientific
 exceptions; this ownership refresh does not revise their archived equations or

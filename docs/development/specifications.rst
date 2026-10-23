@@ -33,9 +33,13 @@ The configuration entry was amended on 13 October 2026 during review of PR 867.
 The resource-I/O and HBMCMC entries were updated the same day for the accepted
 0.8 implementation and durable-spec promotion in PR 869.
 The 23 October 2026 #876 amendment separates configuration choices, numerical
-input behavior and saved handoff guarantees below. Its code is implemented on
-the working branch; CI acceptance remains pending. The broader handoff change
-remains active and is not complete merely because these owners are identified.
+input behavior and saved handoff guarantees below. Revision ``1487ccf9`` passed
+final validation in Slurm array ``19651924``: 4,086 tests on each of Python 3.12
+and 3.13, lint, four borrowed-typing tests and the full documentation environment.
+The :download:`alignment change tasks
+<../../openspec/changes/move-alignments-to-model-boundary/tasks.md>` record the
+evidence and diagnostic limits. The broader handoff change remains active with
+its separate programme acceptance still open.
 
 .. list-table:: Behavioral ownership and delivery status
    :header-rows: 1
@@ -73,8 +77,8 @@ remains active and is not complete merely because these owners are identified.
        <../../openspec/specs/rhime-scientific-inputs/spec.md>`
      - Owns observation selection/error preparation, retained alignment, raw
        spatial BC inputs, model-time BC periods and consumed minimum-error
-       operands. #876 code is implemented on the working branch; CI acceptance
-       is pending. Review and delivery evidence stays in the
+       operands. The #876 amendment passed the final validation recorded above.
+       Review and delivery evidence stays in the
        :download:`alignment change tasks
        <../../openspec/changes/move-alignments-to-model-boundary/tasks.md>`.
        Current explanations: :doc:`observation_uncertainty`,
@@ -119,14 +123,14 @@ remains active and is not complete merely because these owners are identified.
      - Owns prepared formats, authoritative saved facts, raw-input reuse and
        incompatible baked-preparation rejection. Standard/multisector routes
        are implemented; CO2 retains coherent prior-dependent reuse constraints.
-       The #876 amendment awaits CI acceptance; the capability remains active.
+       The #876 amendment passed final validation; the capability remains active.
    * - Saved inference and fitted-operand replay
      - :download:`Sampled recipe handoff
        <../../openspec/changes/replace-recipe-workflow-with-reusable-handoffs/specs/sampled-recipe-handoff/spec.md>`
      - Owns sample formats, exact fitted BC/floor persistence and graph-free
        replay without recalculation. Standard/multisector replay is implemented;
        CO2 handoffs were adopted in PRs 886 and 900 with later fixed-OU work.
-       The #876 amendment awaits CI acceptance; broader acceptance remains open.
+       The #876 amendment passed final validation; broader acceptance remains open.
        Current routes: :doc:`/usage/staged_workflow` and the family pages.
 
 The older :download:`workflow configuration proposal
