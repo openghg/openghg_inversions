@@ -156,6 +156,53 @@ def test_invalid_filter_requests_fail_before_any_data_execution(
         assert "uncertainty-propagating resampling before observation selection" in message
 
 
+@pytest.mark.parametrize("name", ["daily_median", "six_hr_mean"])
+@pytest.mark.parametrize("as_list", [False, True])
+@pytest.mark.parametrize("data", [{}, {".metadata": "unchanged"}])
+def test_retired_global_filters_reject_inputs_without_sites(name, as_list, data):
+    request = [name] if as_list else name
+    with pytest.raises(KeyError, match=f"{name}.*removed resampling filter"):
+        filtering(data, request)
+
+
+@pytest.mark.parametrize("name", ["daily_median", "six_hr_mean"])
+@pytest.mark.parametrize("as_list", [False, True])
+def test_retired_filters_reject_absent_site_entries(name, as_list):
+    request = {"MHD": [name] if as_list else name}
+    with pytest.raises(KeyError, match=f"{name}.*removed resampling filter"):
+        filtering({}, request)
+
+
+@pytest.mark.parametrize("filters", [
+    {"MHD": "unknown_filter"}, {"MHD": ["unknown_filter"]}, {"MHD": None}, {"MHD": [None]},
+])
+def test_inactive_invalid_filter_entries_remain_ignored(filters):
+    dataset = xr.Dataset({"mf": ("time", [1.0])}, coords={"time": pd.date_range("2020-01-01", periods=1)})
+    result = filtering({"TAC": dataset}, filters)
+    assert result["TAC"] is dataset
+
+
+@pytest.mark.parametrize("filters", ["unknown_filter", ["unknown_filter"], [None]])
+@pytest.mark.parametrize("data", [{}, {".metadata": "unchanged"}])
+def test_unrelated_global_filters_remain_unused_without_sites(filters, data):
+    assert filtering(data, filters) == data
+
+
+@pytest.mark.parametrize("site_mapping", [False, True])
+def test_active_none_filter_rejected_before_prior_filter(monkeypatch, site_mapping):
+    monkeypatch.setattr(filter_module, "filtering_functions", filtering_functions.copy())
+
+    @filter_module.register_filter
+    def unexpected_filter(dataset, keep_missing=False):
+        pytest.fail("A preceding filter executed before invalid active None was rejected")
+
+    dataset = xr.Dataset({"mf": ("time", [1.0])}, coords={"time": pd.date_range("2020-01-01", periods=1)})
+    filters = {"TAC": ["unexpected_filter"], "MHD": [None]} if site_mapping else ["unexpected_filter", None]
+    with pytest.raises(KeyError) as error:
+        filtering({"TAC": dataset, "MHD": dataset}, filters)
+    assert error.value.args == (None,)
+
+
 def test_registered_custom_filter_remains_available(monkeypatch, capsys):
     monkeypatch.setattr(filter_module, "filtering_functions", filtering_functions.copy())
 
