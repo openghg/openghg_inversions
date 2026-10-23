@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
+from numcodecs import Blosc
+from openghg.storage._encoding import get_zarr_encoding
 
 from openghg_inversions.native_covariance import SeparableExponentialCovariance
 from openghg_inversions._serialization_codecs import (
@@ -20,6 +22,24 @@ from openghg_inversions._serialization_codecs import (
 )
 from openghg_inversions.source_covariance import IndependentSourceCovariance
 from openghg_inversions.serialization import decode_cf_multiindexes, encode_cf_multiindexes, save_datatree
+
+
+def test_zarr_writer_preserves_format_two_compression_and_borrowed_encoding(tmp_path: Path) -> None:
+    """Stored OpenGHG compression remains usable without changing borrowed metadata."""
+    dataset = xr.Dataset({"value": ("cell", da.arange(4, chunks=2))})
+    compressor = Blosc(cname="zstd", clevel=5)
+    encoding = get_zarr_encoding(dataset.data_vars, compressor=compressor)["value"]
+    dataset["value"].encoding = encoding.copy()
+    tree = xr.DataTree(dataset)
+    path = tmp_path / "compressed.zarr"
+
+    save_datatree(tree, path)
+
+    assert json.loads((path / ".zgroup").read_text())["zarr_format"] == 2
+    with xr.open_datatree(path, engine="zarr") as stored:
+        xr.testing.assert_equal(stored.to_dataset().compute(), dataset.compute())
+    assert json.loads((path / "value" / ".zarray").read_text())["compressor"] == compressor.get_config()
+    assert tree["value"].encoding == encoding
 
 
 @pytest.mark.parametrize("storage_chunks", [None, 2, (2,)])

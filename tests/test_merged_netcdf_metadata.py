@@ -1,6 +1,7 @@
 """Stable-line regressions for merged-data NetCDF metadata."""
 
 import copy
+from zipfile import ZipFile
 
 import dask.array as da
 import numpy as np
@@ -138,8 +139,11 @@ def test_merged_saves_preserve_borrowed_flux_and_boundary_metadata(tmp_path):
     fp_all = {"TAC": scenario, ".flux": {"inventory": flux}, ".bc": boundary}
     snapshots = [(item.data.copy(deep=False), copy.deepcopy(item.metadata)) for item in (flux, boundary)]
 
-    for filename in ("merged.nc", "merged.zarr"):
+    for filename in ("merged.nc", "merged.zarr", "merged.zarr.zip"):
         _save_merged_data(fp_all, tmp_path, merged_data_name=filename)
+        if filename.endswith(".zip"):
+            with ZipFile(tmp_path / filename) as archive:
+                assert archive.testzip() is None
         restored = load_merged_data(tmp_path, merged_data_name=filename)
         for original, recovered, (dataset, metadata) in zip(
             (flux, boundary), (restored[".flux"]["inventory"], restored[".bc"]), snapshots, strict=True
