@@ -45,20 +45,6 @@ def _run_command(args: argparse.Namespace) -> None:
     run(model=args.model, config_file=args.config, **_command_kwargs(args))
 
 
-def _run_rhime_command(args: argparse.Namespace) -> None:
-    """Run the standard RHIME command with lazy imports for fast help output."""
-    from openghg_inversions.rhime import run_standard
-
-    run_standard(config_file=args.config, **_command_kwargs(args))
-
-
-def _run_rhime_multisector_command(args: argparse.Namespace) -> None:
-    """Run the multi-sector RHIME command with lazy imports for fast help output."""
-    from openghg_inversions.rhime import run_rhime_multisector
-
-    run_rhime_multisector(config_file=args.config, **_command_kwargs(args))
-
-
 def _run_co2_command(args: argparse.Namespace) -> None:
     """Run configured CO2 inference and requested products."""
     from openghg_inversions.rhime import run
@@ -316,14 +302,7 @@ def _postprocess_command(args: argparse.Namespace) -> None:
         postprocess(args.sample_manifest, output=RhimeOutputSpec.from_params(choices, multisector=args.model == "multisector"))
 
 
-def _run_rhime_nested_command(args: argparse.Namespace) -> None:
-    """Run the nested-domain RHIME command with lazy imports for fast help output."""
-    from openghg_inversions.rhime import run_rhime_nested
-
-    run_rhime_nested(config_file=args.config, **_command_kwargs(args))
-
-
-def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser:
+def build_parser(*, prog: str = "rhime") -> argparse.ArgumentParser:
     """Build the OpenGHG inversions CLI argument parser.
 
     Args:
@@ -342,20 +321,6 @@ def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser
         help="Configuration-driven model recipe (default: standard)",
     )
     selected_run.set_defaults(func=_run_command)
-
-    run_parser = subparsers.add_parser("run-rhime", help="Run a standard RHIME inversion")
-    _add_run_args(run_parser)
-    run_parser.set_defaults(func=_run_rhime_command)
-
-    run_multi_parser = subparsers.add_parser(
-        "run-rhime-multisector", help="Run a shared-basis multi-sector RHIME inversion"
-    )
-    _add_run_args(run_multi_parser)
-    run_multi_parser.set_defaults(func=_run_rhime_multisector_command)
-
-    co2_parser = subparsers.add_parser("run-co2", help="Alias for run --model co2")
-    _add_run_args(co2_parser)
-    co2_parser.set_defaults(func=_run_co2_command)
 
     merge_parser = subparsers.add_parser(
         "merge-paris-outputs",
@@ -417,16 +382,10 @@ def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser
     postprocess_parser.add_argument("--sample-manifest", required=True)
     postprocess_parser.set_defaults(func=_postprocess_command)
 
-    run_nested_parser = subparsers.add_parser(
-        "run-rhime-nested", help="Run a two-grid nested-domain RHIME inversion"
-    )
-    _add_run_args(run_nested_parser)
-    run_nested_parser.set_defaults(func=_run_rhime_nested_command)
-
     return parser
 
 
-def main(argv: list[str] | None = None, *, prog: str = "openghg-inversions") -> None:
+def main(argv: list[str] | None = None, *, prog: str = "rhime") -> None:
     """Run the OpenGHG inversions CLI.
 
     Args:
@@ -449,7 +408,7 @@ def main(argv: list[str] | None = None, *, prog: str = "openghg-inversions") -> 
 
 
 def rhime_main(argv: list[str] | None = None) -> None:
-    """Run the ``rhime`` CLI with the same commands as ``openghg-inversions``.
+    """Run the installed ``rhime`` CLI.
 
     Args:
         argv: Optional argument vector; reads ``sys.argv`` when omitted.

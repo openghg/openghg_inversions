@@ -94,7 +94,6 @@ uv_dev = [
 
 [project.scripts]
 rhime = "openghg_inversions.cli:rhime_main"
-openghg-inversions = "openghg_inversions.cli:main"
 
 [tool.pixi.workspace]
 channels = ["conda-forge"]
