@@ -644,7 +644,7 @@ unsupported historical-format compatibility. Fresh acceptance is recorded in
 revision-specific tasks/PR evidence, separately from these source comparisons.
 
 Aggregation filter retirement comparison, 23 October 2026
---------------------------------------------------------
+---------------------------------------------------------
 
 This dated addendum records the removal of ``daily_median`` and ``six_hr_mean``
 under `#954 <https://github.com/openghg/openghg_inversions/issues/954>`_. It
