@@ -7,13 +7,15 @@ used. Promote these imports when OpenGHG supplies equivalent public operations.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from functools import partial
 from inspect import signature
 import json
 from math import gcd
-from typing import Any
+from typing import Literal, Protocol, cast
+
+from openghg.dataobjects import BoundaryConditionsData, FluxData, FootprintData, ObsData
 
 import numpy as np
 import pandas as pd
@@ -24,7 +26,22 @@ from ._units import mole_fraction_unit_scale
 from ._boundary import baseline_reference_sensitivities as _reference_sensitivities
 
 
-def _surface_operations():
+TransportMode = Literal["integrated", "time_resolved"]
+FootprintInput = xr.Dataset | FootprintData
+SurfaceInput = xr.Dataset | ObsData | FootprintData | FluxData | BoundaryConditionsData
+
+
+class _AlignObservations(Protocol):
+    def __call__(
+        self, obs: xr.Dataset, other: xr.Dataset, *, resample_to: str
+    ) -> tuple[xr.Dataset, xr.Dataset]: ...
+
+
+def _surface_operations() -> tuple[
+    _AlignObservations,
+    Callable[[xr.Dataset, xr.Dataset], xr.DataArray],
+    Callable[[xr.DataArray | xr.Dataset, xr.Dataset], xr.DataArray],
+]:
     """Small dependency seam for provider-owned alignment and convolution."""
     try:
         from openghg.analyse._alignment import resample_obs_and_other
@@ -39,7 +56,7 @@ def _surface_operations():
         ) from exc
     # Released OpenGHG uses timestamp-only filling. Newer providers also offer
     # climatological year reuse; the explicit surface validity contract forbids it.
-    integrated = fp_x_flux_integrated
+    integrated: Callable[..., xr.DataArray] = fp_x_flux_integrated
     if "allow_climatology" in signature(integrated).parameters:
         integrated = partial(integrated, allow_climatology=False)
     return resample_obs_and_other, integrated, fp_x_flux_time_resolved
@@ -73,7 +90,9 @@ def _require_residual_month_support() -> None:
         raise RuntimeError(message)
 
 
-def _align_footprint(obs, value, align):
+def _align_footprint(
+    obs: xr.Dataset, value: FootprintInput, align: _AlignObservations
+) -> tuple[xr.Dataset, xr.Dataset]:
     fp = _dataset(value)
     times = _time_index(fp, "Footprint")
     if len(times) < 2 or (len(times) >= 3 and pd.infer_freq(times) is None):
@@ -95,7 +114,7 @@ def _align_footprint(obs, value, align):
     return aligned_obs, aligned_fp.reindex(time=obs_times, method="ffill")
 
 
-def _transport_provenance(value):
+def _transport_provenance(value: FootprintInput) -> dict[str, object]:
     """Keep selected input identity and transport metadata for supplied inputs too."""
     fp = _dataset(value)
     metadata = {**getattr(value, "metadata", {}), **fp.attrs}
@@ -117,7 +136,7 @@ def _transport_provenance(value):
     }
 
 
-def _dataset(value: Any) -> xr.Dataset:
+def _dataset(value: SurfaceInput) -> xr.Dataset:
     dataset = value if isinstance(value, xr.Dataset) else value.data
     if not isinstance(dataset, xr.Dataset):
         raise TypeError("Surface inputs must be xarray Datasets or OpenGHG data wrappers.")
@@ -129,7 +148,7 @@ def _dataset(value: Any) -> xr.Dataset:
     return result
 
 
-def _validate_platform(value: Any) -> None:
+def _validate_platform(value: xr.Dataset | ObsData) -> None:
     platform = (
         value.data.attrs.get("platform") if not isinstance(value, xr.Dataset) else value.attrs.get("platform")
     )
@@ -159,7 +178,7 @@ def _time_index(dataset: xr.Dataset, name: str) -> pd.DatetimeIndex:
     return times
 
 
-def _coverage(flux: xr.Dataset, fp: xr.Dataset, *, source: str, mode: str) -> None:
+def _coverage(flux: xr.Dataset, fp: xr.Dataset, *, source: str, mode: TransportMode) -> None:
     """Validate declared intervals and history before provider forward filling."""
     times = _time_index(flux, f"Flux source {source!r}")
     releases = _time_index(fp, "Aligned footprint")
@@ -258,37 +277,78 @@ def _convert(array: xr.DataArray, units: str) -> xr.DataArray:
 
 
 def prepare_surface_site(
-    obs_data: Any,
-    footprint_data: Any,
-    flux_data: Mapping[str, Any],
+    obs_data: xr.Dataset | ObsData,
+    footprint_data: FootprintInput | Mapping[str, FootprintInput],
+    flux_data: Mapping[str, xr.Dataset | FluxData],
     *,
     species: str,
-    transport: Mapping[str, str],
-    site_footprint_data: Any = None,
-    boundary_data: Any = None,
+    transport: Mapping[str, TransportMode],
+    site_footprint_data: FootprintInput | None = None,
+    boundary_data: xr.Dataset | BoundaryConditionsData | None = None,
     boundary_reference: float | None = None,
     boundary_reference_units: str | None = None,
     boundary_mass_tolerance: float | None = None,
     output_units: str | None = None,
 ) -> xr.Dataset:
-    """Prepare one continuous surface site with explicit source transport.
+    """Prepare continuous CO2/O2 observations and per-source surface responses.
 
-    Inputs are borrowed datasets or OpenGHG wrappers. Footprints may be shared
-    or mapped by source for distinct physical contributions. Each time-resolved
-    contribution includes its residual; never add its integrated footprint too.
-    Native source axes are consumed independently and remain unchanged. Results
-    retain source/cell responses on common observation coordinates, error
-    components, footprint filter fields and native directional boundary operands.
-    Mapped footprints require explicit site_footprint_data for observation
-    alignment, filter fields and boundary transport. Shared footprints are the
-    default site footprint. Each contribution must preserve that observation axis.
+    Args:
+        obs_data: Borrowed observations with indexed ``time``, ``mf`` or species-
+            named mole fractions and optional repeatability/variability/error
+            fields. Mole fractions require Pint-compatible units (e.g. ``ppm``);
+            errors without units inherit them. ``sampling_period`` gives cadence.
+        footprint_data: Shared footprint or source-to-footprint mapping with
+            indexed ``lat``, ``lon``, regular ``time`` and sensitivity units
+            compatible with ``s m2 / mol``. Integrated transport uses ``fp``;
+            resolved transport uses ``fp_time_resolved`` plus ``fp_residual``
+            or legacy ``fp_HiTRes``, with indexed backward hours ``H_back``.
+        flux_data: Source-to-flux mapping; each ``flux(lat, lon, time)`` has units
+            convertible to ``mol / m2 / s``. Native source time axes may differ.
+            Validity requires regular cadence or ``time_period`` metadata.
+        species: ``co2`` or ``o2`` mole fractions; per-meg/APO is unsupported.
+        transport: Exactly one ``integrated`` or ``time_resolved`` per source.
+            Resolved transport includes its monthly residual once; requires full
+            residual months/backward history, regular whole-hour coordinates,
+            exact grid alignment and flux no coarser than the transport grid.
+        site_footprint_data: Required for mapped footprints; otherwise defaults
+            to the shared footprint. Owns coarsest-cadence observation alignment,
+            filter fields and boundary transport. Source responses must preserve
+            the resulting observation axis and spatial grid.
+        boundary_data: Optional ``vmr_n/e/s/w`` curtains on ``height``, ``lon``
+            (north/south) or ``lat`` (east/west), interval-start ``time``, with
+            ``time_period`` metadata and mole-fraction units. Requires matching
+            ``particle_locations_n/e/s/w`` in site transport.
+        boundary_reference: Scalar reference, required with boundary data.
+        boundary_reference_units: Reference mole-fraction units, required with
+            boundary data; converted before subtraction.
+        boundary_mass_tolerance: Required with boundary data; allowed absolute
+            deviation of total nonnegative curtain mass from one before joint
+            normalization.
+        output_units: Concentration output units; defaults to observation units.
 
-    Flux coverage must be declared by a regular cadence or time_period. Resolved
-    inputs require regular whole-hour histories, exact provider-grid alignment,
-    flux cadence no coarser than the release/H_back GCD, and complete months
-    for residual means.
-    Unsupported platforms, missing support and incompatible response coordinates
-    raise ValueError. Missing provider capability raises RuntimeError.
+    Returns:
+        Dataset with aligned ``mf``, available errors/filter fields,
+        ``fp_x_flux_sectoral(source, lat, lon, time)`` and source sum
+        ``fp_x_flux``; spatial sums ``mf_mod_sectoral(source, time)`` and
+        ``mf_mod(time)``; transport/provenance attributes. With boundaries,
+        ``bc_anomaly_n/e/s/w`` and dimensionless ``bc_mass_n/e/s/w`` retain
+        native curtain axes, ``bc_reference`` is scalar and ``bc_mod(time)``
+        is the absolute unit-factor contribution. Concentrations use output
+        units. Payloads stay lazy where supported; inputs are never mutated.
+
+    Raises:
+        ValueError: Unsupported platform/species/transport, incompatible labelled
+            coordinates, missing coverage, unsupported resolved cadence, or
+            invalid boundary units/mass. Pint reports incompatible units.
+        RuntimeError: Required OpenGHG alignment/convolution or monthly-residual
+            capability is missing.
+
+    Derive observation errors before filtering, then project native boundary
+    operands through a chosen basis before gathering.
+    Standard/multisector builders and cached/custom likelihoods reject centered
+    inputs; ordinary CO2 and linked CO2/O2 recipes accept them. See
+    :ref:`surface-centered-boundary-contract` for projection, coherent reduction,
+    prepared save/reopen and absolute predictive replay.
     """
     if species.lower() not in {"co2", "o2"}:
         raise ValueError("Surface preparation currently supports only CO2 and O2.")
@@ -300,13 +360,23 @@ def prepare_surface_site(
     if any(mode not in {"integrated", "time_resolved"} for mode in transport.values()):
         raise ValueError("Surface transport modes must be 'integrated' or 'time_resolved'.")
     mapped = isinstance(footprint_data, Mapping) and not isinstance(footprint_data, xr.Dataset)
-    if mapped and set(footprint_data) != set(flux_data):
-        raise ValueError("Per-source footprints must match the flux source labels.")
-    if mapped and site_footprint_data is None:
+    if not mapped:
+        shared_footprint = cast(FootprintInput, footprint_data)
+        source_footprints: Mapping[str, FootprintInput] = {
+            source: shared_footprint for source in flux_data
+        }
+    else:
+        source_footprints = cast(Mapping[str, FootprintInput], footprint_data)
+        if set(source_footprints) != set(flux_data):
+            raise ValueError("Per-source footprints must match the flux source labels.")
+    if site_footprint_data is not None:
+        site_footprint = site_footprint_data
+    elif not mapped:
+        site_footprint = shared_footprint
+    else:
         raise ValueError("Mapped source footprints require explicit site_footprint_data.")
     if "time_resolved" in transport.values():
         _require_residual_month_support()
-    site_footprint = footprint_data if site_footprint_data is None else site_footprint_data
     obs = _dataset(obs_data)
     _time_index(obs, "Observations")
     species = species.lower()
@@ -351,9 +421,7 @@ def prepare_surface_site(
         if not mapped and site_footprint_data is None:
             aligned_fp = site_fp
         else:
-            contribution_obs, aligned_fp = _align_footprint(
-                aligned_obs, footprint_data[source] if mapped else footprint_data, align
-            )
+            contribution_obs, aligned_fp = _align_footprint(aligned_obs, source_footprints[source], align)
             if not contribution_obs.indexes["time"].equals(obs_times):
                 raise ValueError(
                     "Surface source responses require matching spatial and observed timestamps; "
@@ -406,7 +474,7 @@ def prepare_surface_site(
             "sources": {
                 source: {
                     "mode": transport[source],
-                    "footprint": _transport_provenance(footprint_data[source] if mapped else footprint_data),
+                    "footprint": _transport_provenance(source_footprints[source]),
                     "flux": asdict(selected_provenance(flux_data[source])),
                 }
                 for source in sorted(flux_data)

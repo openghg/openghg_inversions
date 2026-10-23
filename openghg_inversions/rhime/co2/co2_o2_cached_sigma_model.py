@@ -89,7 +89,7 @@ def build_co2_o2_cached_sigma_model(
         output_dim=output_dim,
     )
     alignment = linked_fixed_ou_alignment(observations)
-    site_coord = alignment.site_labels.rename({"nsigma_site": "ou_site"}).rename("ou_site")
+    site_coord = xr.DataArray(alignment.site_labels).rename({"nsigma_site": "ou_site"}).rename("ou_site")
     site_index = alignment.site_index.rename("ou_site_index")
     initial_amplitudes = _site_values(
         initial_site_amplitudes,
@@ -154,7 +154,8 @@ def build_co2_o2_cached_sigma_model(
             offset_prior=offset_prior,
             offset_args=offset_args,
         )
-        for _, result, design in baselines:
+        for baseline in baselines:
+            result, design = baseline.component, baseline.design
             # Centered components (whose unused design is None) are rejected above.
             assert design is not None
             matrix = np.asarray(design.values, dtype=np.float64)

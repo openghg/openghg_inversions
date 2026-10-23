@@ -21,6 +21,8 @@ from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_SOURCE_ATTR,
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from tests.helpers import make_trace
 
+pytest_plugins = ["tests.surface_provider"]
+
 _raw_data_path = Path(__file__).resolve().parent / "data"
 _TEST_STORE_DIR_NAME = "openghg_inversions_testing_store"
 _SATELLITE_TEST_STORE_DIR_NAME = "openghg_inversions_satellite_testing_store"

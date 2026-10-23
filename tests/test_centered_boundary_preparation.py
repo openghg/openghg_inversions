@@ -8,7 +8,9 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.basis._helpers import bc_sensitivity
-from openghg_inversions.boundary_sensitivity import BoundaryAlignment, align_boundary_operands
+from openghg_inversions.boundary_sensitivity import (
+    BoundaryAlignment, align_boundary_operands, validate_boundary_operands,
+)
 from openghg_inversions.filters import daily_median, six_hr_mean
 from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs_from_xarray
 from openghg_inversions.inversion_inputs import make_inv_inputs
@@ -66,6 +68,36 @@ def test_reusable_alignment_identity(frequency):
     assert result.bc_reference.ndim == 0
     assert result.H_bc_mass.attrs["units"] == "1"
     xr.testing.assert_identical(ds, original)
+
+
+def test_validated_no_time_operands_bind_one_period_without_computation():
+    raw = _site()[["H_bc_anomaly", "H_bc_mass", "bc_reference"]].rename(time="nmeasure")
+    raw = raw.assign_coords(nmeasure=["third", "first", "second"]).chunk({"nmeasure": 1})
+    original = raw.copy(deep=False)
+    labels = raw.nmeasure[[1, 0]]
+    with Callback(posttask=lambda *args: pytest.fail("borrowed payload was computed")):
+        assert validate_boundary_operands(raw)
+        result = align_boundary_operands(raw, observation_labels=labels)
+    assert "time" not in result.coords
+    assert result.indexes["bc_region"].names == ["bc_curtain", "bc_period"]
+    assert set(result.bc_period.values) == {0}
+    for name in ("H_bc_anomaly", "H_bc_mass"):
+        assert result[name].attrs["bc_frequency"] == "none"
+        assert result[name].attrs["bc_anchor_time"] == "not-applicable"
+        np.testing.assert_allclose(result[name], raw[name].sel(nmeasure=labels))
+    xr.testing.assert_identical(result.bc_reference, raw.bc_reference)
+    xr.testing.assert_identical(raw, original)
+
+
+@pytest.mark.parametrize("frequency", ["monthly", "6h"])
+@pytest.mark.parametrize("time_kind", ["absent", "numeric"])
+def test_period_expansion_requires_datetime_time(frequency, time_kind):
+    raw = _site()[["H_bc_anomaly", "H_bc_mass", "bc_reference"]].rename(time="nmeasure")
+    if time_kind == "numeric":
+        raw = raw.assign_coords(time=("nmeasure", [0, 1, 2]))
+    assert validate_boundary_operands(raw)
+    with pytest.raises(ValueError, match="requires a datetime time coordinate"):
+        align_boundary_operands(raw, frequency=frequency)
 
 
 def test_gather_keeps_raw_regions_and_scalar_reference():

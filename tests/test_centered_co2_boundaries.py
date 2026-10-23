@@ -529,3 +529,57 @@ def test_direct_centered_binding_rejects_nat_anchor(linked):
         inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, **options)
         with pytest.raises(ValueError, match="valid datetime"):
             build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, **options)
+
+
+def test_linked_composes_replaced_boundary_scientific_fields(monkeypatch):
+    """A component can expose distinct absolute and centered graph variables."""
+    from openghg_inversions.array_ops import select_gathered_data_array
+    from openghg_inversions.rhime.co2 import co2_o2_model
+
+    prepared = _linked()
+    operands = {}
+    for channel in ("co2", "o2"):
+        native = select_gathered_data_array(
+            prepared.observations,
+            key=channel,
+            key_dim="species",
+            ragged_dim="channel_observation",
+            stack_dim="observation",
+        )
+        operands[channel] = _operands(native)
+    prepared = replace(prepared, boundary_operands=operands)
+    options = dict(
+        prepared_inputs=prepared,
+        independent_error_sd=xr.full_like(prepared.observations, 0.3),
+        bc_prior={channel: {"pdf": "normal", "mu": 1.0, "sigma": 0.2} for channel in operands},
+    )
+    original = build_rhime_co2_o2(**options).model
+    original_component = co2_o2_model.add_centered_boundary
+    replacements = []
+
+    def replacement(*args, **kwargs):
+        result = original_component(*args, **kwargs)
+        # Graph names describe local implementation; the returned fields own meaning.
+        name = f"alternative_{len(replacements)}"
+        absolute = pm.Deterministic(f"{name}_absolute", result.component.output)
+        centered = pm.Deterministic(f"{name}_centered", result.likelihood_contribution)
+        replacements.append(absolute)
+        return replace(result, component=replace(result.component, output=absolute), likelihood_contribution=centered)
+
+    monkeypatch.setattr(co2_o2_model, "add_centered_boundary", replacement)
+    alternative = build_rhime_co2_o2(**options).model
+    assert len(replacements) == 2
+    point = original.initial_point()
+    point["co2_bc"][:] = [0.9, 1.1]
+    point["o2_bc"][:] = [1.3, 0.7]
+    np.testing.assert_allclose(original.compile_logp()(point), alternative.compile_logp()(point), rtol=1e-12)
+    np.testing.assert_allclose(original.compile_dlogp()(point), alternative.compile_dlogp()(point), rtol=1e-12)
+    with original:
+        original_trace = pm.sample_prior_predictive(draws=2, random_seed=17)
+    with alternative:
+        alternative_trace = pm.sample_prior_predictive(draws=2, random_seed=17)
+    for trace, model in ((original_trace, original), (alternative_trace, alternative)):
+        restore_inferencedata_coords(trace, get_coord_registry(model))
+        restore_absolute_predictives(trace)
+    for group, variable in (("prior", "modelled_concentration"), ("prior_predictive", "y")):
+        np.testing.assert_allclose(original_trace[group][variable], alternative_trace[group][variable], rtol=1e-12)

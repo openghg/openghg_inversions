@@ -1,5 +1,6 @@
 """Actual provider-to-CO2 centered preparation with independent scientific oracles."""
 
+import json
 from types import SimpleNamespace
 
 import numpy as np
@@ -13,8 +14,14 @@ from openghg_inversions.inversion_data import MergedData, SiteOptions, acquisiti
 from openghg_inversions.rhime.co2.centered_boundary import restore_absolute_predictives
 
 
-def test_offline_scientific_chain_and_absolute_saved_replay(tmp_path):
-    retained, canonical, reduction, prepared, trace = run_example(tmp_path)
+@pytest.mark.parametrize("mixed_transport", [False, True])
+def test_offline_scientific_chain_and_absolute_saved_replay(tmp_path, request, mixed_transport):
+    if mixed_transport:
+        request.getfixturevalue("compatible_provider")
+    retained, canonical, reduction, prepared, trace = run_example(tmp_path, mixed_transport=mixed_transport)
+    assert json.loads(retained.attrs["surface_transport"]) == {
+        "biosphere": "time_resolved" if mixed_transport else "integrated", "fossil": "integrated",
+    }
     np.testing.assert_allclose(retained.mf_mod_sectoral.sel(source="biosphere"), [.3, .4, .3])
     np.testing.assert_allclose(retained.mf_mod_sectoral.sel(source="fossil"), [4.5, 6., 4.5])
     np.testing.assert_allclose(retained.bc_mod, 400.05, rtol=0, atol=1e-12)
@@ -92,3 +99,37 @@ def test_mocked_fresh_getters_match_supplied_scientific_preparation(monkeypatch)
     xr.testing.assert_allclose(fresh_prepared.inv_inputs, supplied_prepared.inv_inputs)
     for borrowed, before in zip((obs, fp, bc, *fluxes.values()), saved, strict=True):
         xr.testing.assert_identical(borrowed, before)
+
+
+def test_required_provider_missing_capability_fails_end_to_end_gate(tmp_path):
+    """A missing capability must make the real mixed-source acceptance case red."""
+    import os
+    from pathlib import Path
+    import subprocess
+    import sys
+
+    (tmp_path / "conftest.py").write_text(
+        "import pytest\n"
+        "from openghg_inversions.inversion_data import surface\n"
+        "@pytest.fixture(autouse=True)\n"
+        "def broken_provider(monkeypatch):\n"
+        "    def missing():\n"
+        "        raise RuntimeError('injected missing residual capability')\n"
+        "    monkeypatch.setattr(surface, '_require_residual_month_support', missing)\n"
+    )
+    (tmp_path / "test_gate.py").write_text(
+        "from tests.test_surface_centered_integration import "
+        "test_offline_scientific_chain_and_absolute_saved_replay\n"
+    )
+    repo = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "tests.surface_provider",
+         "--confcutdir", str(tmp_path), "--surface-provider=required",
+         str(tmp_path / "test_gate.py") + "::test_offline_scientific_chain_and_absolute_saved_replay[True]"],
+        cwd=repo, env={**os.environ, "PYTHONPATH": str(repo)},
+        capture_output=True, text=True, timeout=120,
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "injected missing residual capability" in result.stdout
+    assert "1 failed" in result.stdout
+    assert "skipped" not in result.stdout

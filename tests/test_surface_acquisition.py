@@ -15,14 +15,6 @@ from openghg_inversions.inversion_data import acquisition, surface
 
 
 @pytest.fixture
-def compatible_provider():
-    try:
-        surface._require_residual_month_support()
-    except RuntimeError:
-        pytest.skip("Requires OpenGHG midmonth residual-flux fix")
-
-
-@pytest.fixture
 def inputs():
     times = pd.date_range("2020-01-01", periods=3, freq="h")
     obs = xr.Dataset(

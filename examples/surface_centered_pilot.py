@@ -1,7 +1,7 @@
 """Run a small, offline surface CO2 preparation and absolute predictive replay.
 
 Run from the repository with ``python -m examples.surface_centered_pilot /tmp/surface-pilot``
-using the normal locked OpenGHG release. No store or network is
+using the normal locked OpenGHG dependency. No store or network is
 used. Two signed flux sources share one dimensionless scaling field; two native
 cells reduce coherently to one retained bucket. Tiny prior draws demonstrate
 arithmetic and saved handoffs, not inference or convergence.
@@ -34,7 +34,7 @@ from openghg_inversions.rhime.preparation import filter_observations
 from openghg_inversions.serialization import load_trace, save_trace
 
 
-def surface_inputs():
+def surface_inputs(*, mixed_transport=False):
     """Return six three-hour releases, two cells, and monthly boundary curtains."""
     times = pd.date_range("2020-01-16", periods=6, freq="3h")
     grid = {"lat": [50.0], "lon": [-2.0, -1.0]}
@@ -59,6 +59,14 @@ def surface_inputs():
             {"flux": (("lat", "lon", "time"), np.tile(np.array(values)[None, :, None] * 1e-6, (1, 1, 6)),
                       {"units": "mol / m2 / s"})}, coords={**grid, "time": times},
         )
+    if mixed_transport:
+        # Constant monthly flux isolates the resolved/residual accounting while
+        # preserving the same independent concentration oracle as integrated mode.
+        history = pd.date_range("2020-01-01", "2020-02-01", freq="h", inclusive="left")
+        fluxes = {name: value.reindex(time=history, method="nearest") for name, value in fluxes.items()}
+        fp = fp.assign_coords(H_back=[0, 1])
+        fp["fp_time_resolved"] = xr.concat([fp.fp / 4, fp.fp / 4], dim=fp.H_back).assign_attrs(fp.fp.attrs)
+        fp["fp_residual"] = (fp.fp / 2).assign_attrs(fp.fp.attrs)
     bc = xr.Dataset(coords={**grid, "height": [10.], "time": [pd.Timestamp("2020-01-01")]},
                     attrs={"time_period": "1 month"})
     for direction, concentration in zip("nesw", [400.1, 399.8, 400.3, 400.0], strict=True):
@@ -73,10 +81,12 @@ def surface_inputs():
     return obs, fp, fluxes, bc
 
 
-def acquire_supplied(obs, fp, fluxes, bc):
+def acquire_supplied(obs, fp, fluxes, bc, *, mixed_transport=False):
     """Use OpenGHG convolution and local reference-sensitivity arithmetic."""
     return prepare_surface_site(
-        obs, fp, fluxes, species="co2", transport={source: "integrated" for source in fluxes},
+        obs, fp, fluxes, species="co2",
+        transport={source: "time_resolved" if mixed_transport and source == "biosphere" else "integrated"
+                   for source in fluxes},
         boundary_data=bc, boundary_reference=400., boundary_reference_units="ppm", boundary_mass_tolerance=1e-6,
     )
 
@@ -135,13 +145,13 @@ def prior_prediction(prepared):
     return trace
 
 
-def run_example(destination):
+def run_example(destination, *, mixed_transport=False):
     """Save/reopen prepared inputs and predictive data, checking absolute replay."""
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=True)
     with pytensor.config.change_flags(floatX="float64"):
-        obs, fp, fluxes, bc = surface_inputs()
-        site = acquire_supplied(obs, fp, fluxes, bc)
+        obs, fp, fluxes, bc = surface_inputs(mixed_transport=mixed_transport)
+        site = acquire_supplied(obs, fp, fluxes, bc, mixed_transport=mixed_transport)
         retained, canonical, reduction, prepared = prepare_pilot(site, fluxes)
         prepared.save(destination / "prepared.nc")
         reopened = Co2PreparedInputs.load(destination / "prepared.nc")

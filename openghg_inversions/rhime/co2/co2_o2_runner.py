@@ -11,6 +11,7 @@ from dask.array import Array as DaskArray
 import numpy as np
 import xarray as xr
 
+from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.postprocessing.contracts import OutputContract
 
 from openghg_inversions.array_ops import to_dense
@@ -281,7 +282,7 @@ def build_rhime_co2_o2(
     bc_prior: Mapping[str, PriorArgs] | None = None,
     bc_state_activity: Mapping[str, StateActivity] | None = None,
     bc_freq: str | None = None,
-    bc_anchor_time: Any = None,
+    bc_anchor_time: DatetimeLike | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     tau_hours: float | Mapping[str, float] | None = None,
@@ -401,7 +402,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
     bc_prior: Mapping[str, PriorArgs] | None = None,
     bc_state_activity: Mapping[str, StateActivity] | None = None,
     bc_freq: str | None = None,
-    bc_anchor_time: Any = None,
+    bc_anchor_time: DatetimeLike | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     sampler: RhimeSampler | Literal["default"] = "default",
@@ -561,5 +562,5 @@ def annotate_co2_o2_trace(
         if name in trace.children and "y" in trace[name]:
             trace[name]["y"].attrs["rhime_predictive_scope"] = "joint_observation_vector"
     if "fixed_ou_timescale" in built.output_contract.variable_roles:
-        trace = _annotate_linked_fixed_ou_trace(trace, observations=trace["observed_data"]["y"])
+        trace = _annotate_linked_fixed_ou_trace(trace, observations=trace["observed_data"].dataset["y"])
     return trace

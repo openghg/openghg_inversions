@@ -14,6 +14,7 @@ import numpy as np
 import pymc as pm
 import xarray as xr
 
+from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.additive_sigma import (
     DEFAULT_ADDITIVE_SIGMA_PRIOR,
@@ -102,7 +103,7 @@ def build_co2_model(
     boundary_sensitivity: xr.DataArray | None = None,
     boundary_operands: xr.Dataset | None = None,
     bc_freq: str | None = None,
-    bc_anchor_time: Any = None,
+    bc_anchor_time: DatetimeLike | None = None,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
     offset_prior: PriorArgs | None = None,
@@ -248,10 +249,12 @@ def build_co2_model(
         centered_boundary = None
         reference_shift = None
         if boundary_operands is not None:
-            result, centered_boundary, reference_shift = add_centered_boundary(
+            centered_result = add_centered_boundary(
                 boundary_operands, prior=bc_prior, activity=bc_state_activity,
             )
-            boundary_contribution = result.output
+            boundary_contribution = centered_result.component.output
+            centered_boundary = centered_result.likelihood_contribution
+            reference_shift = centered_result.reference_shift
             add_model_data(reference_shift.rename("boundary_reference_shift"), "boundary_reference_shift")
         if boundary_sensitivity is not None:
             boundary_contribution = add_linear_component(
@@ -290,7 +293,7 @@ def build_co2_model(
         )
         likelihood_mean = modelled_mean
         likelihood_observations = observations
-        if centered_boundary is not None:
+        if centered_boundary is not None and reference_shift is not None:
             likelihood_mean = co2_flux_contribution + centered_boundary
             if offset is not None:
                 likelihood_mean = likelihood_mean + offset

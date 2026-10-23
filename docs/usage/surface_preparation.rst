@@ -10,29 +10,28 @@ continue to use their existing owners.
 Dependency and precision
 ------------------------
 
-Centered boundary arithmetic is implemented privately in OGI. Integrated-footprint
-preparation, including centered boundaries, works with the released OpenGHG
-dependency installed by ``uv sync --locked``.
-
-Time-resolved transport additionally requires OpenGHG's fix for monthly residual
-fluxes in windows beginning mid-month. The tested development revision is
-``28600028f23a694dbac299d93ff5f229d37aaef6``. Install it explicitly after
-synchronizing the normal dependencies:
+Centered boundary arithmetic is implemented privately in OGI. Observation
+alignment and integrated/time-resolved flux convolution use OpenGHG helpers.
+The normal dependency currently pins the merged OpenGHG revision
+``8d3d7b128591824256c10421839f37caaa637705``, which includes the fix for monthly
+residual fluxes in windows beginning mid-month. Install it with:
 
 .. code-block:: bash
 
    uv sync --locked
-   uv pip install "openghg @ git+https://github.com/openghg/openghg.git@28600028f23a694dbac299d93ff5f229d37aaef6"
 
-A later ``uv sync --locked`` restores the release in the lockfile. The optional
-``py312-surfacePilot`` tox environment tests this same pinned revision. Before
-resolved preparation, OGI checks the monthly behavior using small synthetic data;
-providers missing the fix fail explicitly. This check does not compute user data.
-OpenGHG
-still supplies observation alignment and flux convolution through private helpers;
-those imports can migrate to public operations in a subsequent OpenGHG release.
-The local boundary operation computes anomaly and mass operands directly from
-the curtains, without using rounded legacy BC products.
+The pin is temporary while that fix awaits an OpenGHG release. Before publishing
+OGI to PyPI, replace the Git dependency with a released minimum version containing
+the fix and regenerate the lockfile. Both the normal test environments and the
+``py312-surfacePilot`` environment require the capability. A missing fix fails
+the tests; only an explicit ``--surface-provider=unsupported`` comparison run
+omits resolved tests. OGI also probes the monthly behavior using small synthetic
+data before resolved preparation; this does not compute user data.
+
+OpenGHG still supplies alignment and convolution through private helpers; those
+imports can migrate to public operations in a subsequent release. The local
+boundary operation computes anomaly and mass operands directly from the curtains,
+without using rounded legacy BC products.
 
 Boundary provenance records ``boundary_operator_owner="openghg_inversions"``;
 ``boundary_provider_policy_revision`` retains the arithmetic policy identifier.

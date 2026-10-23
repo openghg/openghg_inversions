@@ -108,10 +108,26 @@ class BoundaryAlignment:
 
 
 def validate_boundary_operands(operands: xr.Dataset) -> bool:
-    """Validate the labelled centered triplet without computing borrowed payloads.
+    """Validate raw spatial centered operands before model-period expansion.
 
-    Returns whether centered operands are present. Finite values are checked at
-    the shared core materialization boundary, rather than during lazy assembly.
+    Args:
+        operands: Borrowed dataset with ``boundary_representation='centered-v1'``,
+            ``H_bc_anomaly`` and ``H_bc_mass`` on unique indexed ``bc_region``
+            and ``time`` or ``nmeasure`` dimensions, and scalar ``bc_reference``.
+            Anomaly and reference share the exact concentration unit string;
+            mass has units ``'1'``. Optional ``mf`` has matching units. An
+            absolute ``H_bc`` diagnostic must be marked ``unexpanded``.
+
+    Returns:
+        Whether centered operands are present. Accepted operands remain raw:
+        :func:`align_boundary_operands` expands them once at model binding.
+        Timestamps are not required for a single period. Finite payload values
+        are checked at the shared materialization boundary; this validator does
+        not compute or mutate borrowed numerical arrays.
+
+    Raises:
+        ValueError: If centered operands are incomplete, already expanded, or
+            have incompatible representation, dimensions, labels or units.
     """
     names = {"H_bc_anomaly", "H_bc_mass", "bc_reference"}
     representation = operands.attrs.get("boundary_representation")
@@ -172,10 +188,31 @@ def align_boundary_operands(
     anchor_time: DatetimeLike | None = None,
     observation_labels: xr.DataArray | None = None,
 ) -> xr.Dataset:
-    """Expand raw A/M using one identical period mask at model binding.
+    """Expand raw anomaly and mass with a shared period mask at model binding.
 
-    The borrowed input stays lazy; scalar reference and variable units survive.
-    Returned operands carry the same names and resolved boundary-state labels.
+    Args:
+        operands: Raw dataset accepted by :func:`validate_boundary_operands`.
+        frequency: ``None`` creates one period without requiring timestamps.
+            A frequency (including ``'monthly'``) requires a one-dimensional
+            datetime ``time`` coordinate along the observation dimension.
+        anchor_time: Optional anchor for fixed-duration periods; not allowed
+            for a single period or calendar-month periods.
+        observation_labels: Optional authoritative labels used to select and
+            reorder the indexed observation dimension before expansion.
+
+    Returns:
+        New dataset with ``H_bc_anomaly`` and ``H_bc_mass`` on ``bc_region``
+        and the original observation dimension. The ``bc_region`` MultiIndex
+        contains ``bc_curtain`` and ``bc_period``. Units, representation and
+        scalar ``bc_reference`` are preserved. Outputs are marked expanded and
+        must not be passed through raw validation or expansion again. Borrowed
+        payloads stay lazy and unchanged; frequency-based expansion materializes
+        a lazy auxiliary time coordinate once to construct the period mask.
+
+    Raises:
+        ValueError: If raw operands or period settings are invalid, or required
+            datetime coordinates are missing or incompatible.
+        KeyError: If an authoritative observation label is absent.
     """
     validate_centered_boundary_periods(frequency, anchor_time)
     if not validate_boundary_operands(operands):
@@ -184,14 +221,17 @@ def align_boundary_operands(
     raw = operands[["H_bc_anomaly", "H_bc_mass"]]
     if observation_labels is not None:
         raw = raw.sel({observation_dim: observation_labels.transpose(observation_dim)})
-    time = raw["time"].transpose(observation_dim)
-    if frequency is not None and hasattr(time.data, "__dask_graph__"):
-        time = time.compute()
-        raw = raw.assign_coords(time=(observation_dim, time.data))
-    period = (
-        make_freq_indicator(time, frequency, anchor_time=anchor_time)
-        if frequency is not None else xr.zeros_like(time, dtype=int)
-    ).rename("bc_period")
+    if frequency is None:
+        period = xr.zeros_like(raw[observation_dim], dtype=int)
+    else:
+        if "time" not in raw.coords or raw.time.dims != (observation_dim,) or raw.time.dtype.kind != "M":
+            raise ValueError("Frequency-based boundary expansion requires a datetime time coordinate along observations.")
+        time = raw.time
+        if hasattr(time.data, "__dask_graph__"):
+            time = time.compute()
+            raw = raw.assign_coords(time=(observation_dim, time.data))
+        period = make_freq_indicator(time, frequency, anchor_time=anchor_time)
+    period = period.rename("bc_period")
     mask = get_xr_dummies(period, return_sparse=False, cat_dim="bc_period")
     result = (raw.rename(bc_region="bc_curtain") * mask).stack(
         bc_region=("bc_curtain", "bc_period")

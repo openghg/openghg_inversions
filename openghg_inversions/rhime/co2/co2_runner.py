@@ -17,6 +17,7 @@ import xarray as xr
 from dask.array import Array
 from dask.base import unpack_collections
 
+from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions._serialization_codecs import _json_value
 from openghg_inversions.postprocessing.contracts import OutputContract
 
@@ -320,7 +321,7 @@ def materialize_co2_inputs(
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
     bc_freq: str | None = None,
-    bc_anchor_time: Any = None,
+    bc_anchor_time: DatetimeLike | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> tuple[xr.Dataset, dict[str, PriorArgs]]:
@@ -433,7 +434,7 @@ def build_co2_from_materialized(
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
     bc_freq: str | None = None,
-    bc_anchor_time: Any = None,
+    bc_anchor_time: DatetimeLike | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> RhimeModelBuildResult:

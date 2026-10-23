@@ -24,6 +24,20 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: '3.12'
+
+      - name: Require a released OpenGHG dependency for publication
+        run: |
+          python - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          dependencies = tomllib.loads(Path("pyproject.toml").read_text())["project"]["dependencies"]
+          if any(value.startswith("openghg @ ") for value in dependencies):
+              raise SystemExit(
+                  "Replace the temporary OpenGHG Git dependency with a released minimum "
+                  "containing the monthly residual-flux fix before publishing OGI."
+              )
+          PY
       
       - name: Build package
         run: uv build

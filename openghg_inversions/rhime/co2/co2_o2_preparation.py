@@ -1045,7 +1045,14 @@ def prepare_co2_o2_inputs(
     )
 
 
-def _validate_centered_channels(operands, absolute, co2, o2, co2_units, o2_units):
+def _validate_centered_channels(
+    operands: Mapping[str, xr.Dataset],
+    absolute: Mapping[str, xr.DataArray],
+    co2: xr.DataArray,
+    o2: xr.DataArray,
+    co2_units: str,
+    o2_units: str,
+) -> None:
     """Validate raw channel operands without expanding their reusable spatial states."""
     from openghg_inversions.boundary_sensitivity import validate_boundary_operands
 
