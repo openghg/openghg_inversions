@@ -151,7 +151,7 @@ def merge_trace_groups(
         if add_suffix:
             dataset = dataset.rename_vars({name: f"{name}_{group}" for name in dataset.data_vars})
         datasets.append(dataset)
-    return xr.merge(datasets, join="outer")
+    return xr.merge(datasets, join="outer", compat="no_conflicts")
 
 
 def convert_idata_to_dataset(

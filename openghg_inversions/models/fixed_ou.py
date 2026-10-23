@@ -10,6 +10,7 @@ from typing import Any, cast
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytensor.tensor as pt
 import xarray as xr
 from pytensor.gradient import DisconnectedType, grad_not_implemented
@@ -500,8 +501,8 @@ class FixedOuLowRank:
         amplitude = pt.atleast_1d(site_amplitude)
         site_index = pt.as_tensor_variable(self.site_index)
         return (
-            pm.floatX(self.diagonal_variance)
-            + pm.floatX(np.square(self.factor).sum(axis=1))
+            floatX(self.diagonal_variance)
+            + floatX(np.square(self.factor).sum(axis=1))
             + pt.square(amplitude[site_index])
         )
 

@@ -10,6 +10,7 @@ from warnings import warn
 import numpy as np
 from numpy.typing import NDArray
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytensor.tensor as pt
 import xarray as xr
 from pytensor.graph.traversal import graph_inputs
@@ -202,7 +203,7 @@ def _add_cached_likelihood(
     dependencies = set(graph_inputs([physical_amplitude, amplitude_logp]))
     if any(value in dependencies for value in model.value_vars if value is not amplitude_value):
         raise ValueError("Cached amplitudes require independent priors without other free variables.")
-    overrides = {} if initial_amplitudes is None else {amplitude: pm.floatX(initial_amplitudes)}
+    overrides = {} if initial_amplitudes is None else {amplitude: floatX(initial_amplitudes)}
     point = pm.initial_point.make_initial_point_fn(
         model=model, overrides=overrides, return_transformed=True,
     )(seed=0)
@@ -252,7 +253,7 @@ def _add_cached_likelihood(
         for rv, value in model.rvs_to_initial_values.items()
         if value is not None
     }
-    initial_values[OU_SITE_AMPLITUDE] = pm.floatX(initial_amplitudes).copy()
+    initial_values[OU_SITE_AMPLITUDE] = floatX(initial_amplitudes).copy()
     # PyMC's generic log-likelihood transformation requires default graph
     # initvals. Preserve scientific starts separately for the matched runner.
     for rv in model.free_RVs:

@@ -8,6 +8,7 @@ import warnings
 
 import numpy as np
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytensor
 import pytensor.tensor as pt
 import pytest
@@ -74,7 +75,7 @@ def _step_context(
     with pm.Model() as model:
         state = pm.Normal("state", shape=1)
         sigma = pm.HalfNormal(
-            "sigma_site", sigma=0.75, shape=2, initval=pm.floatX([0.4, 0.4])
+            "sigma_site", sigma=0.75, shape=2, initval=floatX([0.4, 0.4])
         )
         initial_cache = target.refresh(np.array([0.4, 0.4]))
         shared = PytensorMarginalQuadraticCache(initial_cache)
@@ -487,7 +488,7 @@ def _sample_two_spawn_chains(seed: int):
     with pm.Model() as model:
         state = pm.Normal("state", shape=1)
         sigma = pm.HalfNormal(
-            "sigma_site", sigma=0.75, shape=2, initval=pm.floatX([0.4, 0.4])
+            "sigma_site", sigma=0.75, shape=2, initval=floatX([0.4, 0.4])
         )
         initial_cache = target.refresh(np.array([0.4, 0.4]))
         shared = PytensorMarginalQuadraticCache(initial_cache)
@@ -620,7 +621,7 @@ def test_compound_sampler_matches_independent_dense_posterior_moments(family) ->
             "gamma": {"pdf": "gamma", "alpha": 2.0, "beta": 2.5},
             "uniform": {"pdf": "uniform", "lower": 0.1, "upper": 1.5},
         }[family]
-        amplitude = parse_prior("site_amplitude", prior, shape=1, initval=pm.floatX([0.4]))
+        amplitude = parse_prior("site_amplitude", prior, shape=1, initval=floatX([0.4]))
         pm.Potential("cached_likelihood", shared.log_likelihood(state))
         modelled_mean = pm.Deterministic(
             "modelled_mean",
@@ -750,7 +751,7 @@ def test_prior_cache_uses_inverse_transform(monkeypatch, graph_precision, bounde
     with pm.Model() as model:
         state = pm.Normal("state", shape=1)
         amplitude = (pm.Uniform("sigma_site", lower=0.1, upper=1.5, shape=2) if bounded else
-                     pm.HalfNormal("sigma_site", sigma=0.75, shape=2, initval=pm.floatX([0.8, 0.8])))
+                     pm.HalfNormal("sigma_site", sigma=0.75, shape=2, initval=floatX([0.8, 0.8])))
         mean = target.fixed_contribution + target.design @ state
     point = model.initial_point()
     step = PymcCachedSigmaNutsStep(

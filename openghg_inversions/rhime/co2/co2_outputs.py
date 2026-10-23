@@ -342,7 +342,7 @@ def _basic_product(components: xr.Dataset) -> xr.Dataset:
                 }
             )
         summaries.append(calculate_stats(selected, stats=["mean", "stdev", "quantiles"]))
-    result = xr.merge(summaries)
+    result = xr.merge(summaries, join="outer", compat="no_conflicts")
     result.attrs = dict(components.attrs)
     return result
 

@@ -9,6 +9,7 @@ from typing import Any, cast
 import numpy as np
 import pandas as pd
 import pymc as pm
+from pymc.step_methods import CompoundStep
 import pytensor
 import pytensor.tensor as pt
 import pytest
@@ -941,7 +942,7 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     step_settings: dict[str, float] = {}
     original_make_step = co2_cached_sigma_runner.make_cached_sigma_compound_step
 
-    def capture_step_settings(**kwargs: Any) -> pm.CompoundStep:
+    def capture_step_settings(**kwargs: Any) -> CompoundStep:
         step_settings["sigma_target_accept"] = kwargs["sigma_target_accept"]
         step_settings["state_target_accept"] = kwargs["state_target_accept"]
         return original_make_step(**kwargs)
