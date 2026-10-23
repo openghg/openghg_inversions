@@ -328,7 +328,7 @@ with #952. Source-inspected equations, historical resources, arbitrary external
 scripts and the final supported patch-version subset retain their stated limits.
 
 Aggregation filter retirement comparison, 23 October 2026
---------------------------------------------------------
+---------------------------------------------------------
 
 This dated addendum records the removal of ``daily_median`` and ``six_hr_mean``
 under `#954 <https://github.com/openghg/openghg_inversions/issues/954>`_. It
