@@ -8,15 +8,54 @@ remain open. Spec promotion precedes the authorized merge by maintainer request.
 
 #944/#961 supersede the future compatibility schedule. Checked 0.8 tasks below
 preserve historical implementation/validation evidence, including their former
-0.9 guidance; they do not renew that schedule. Pending #719 removals must satisfy
-[Development removals require affected migration evidence](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence):
-identify affected #960 entries and bounded discoveries, check intervening source
-changes, record disposition/owner, preserve historical expectations and port
-relevant scientific regressions before deleting adapter-only test plumbing.
-Test deliberate scientific changes against their agreed semantics. Finished
-converter/launcher and maintenance publishing are M2 release gates. #945 owns
-unresolved public aliases/version; #951 owns independent basis decisions.
-No deletion task is completed by this amendment.
+0.9 guidance; they do not renew that schedule. The durable
+[evidence contract](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence)
+protects source observations and scientific expectations. The concrete #960
+baseline, PR checklist and current owners are delivery instructions below,
+not permanent API requirements. No deletion task is completed by this amendment.
+
+### Migration evidence checklist and delivery order
+
+The bounded removal scope is the `openghg_inversions.hbmcmc` namespace, including
+`run_hbmcmc`, its dictionary-returning `params_from_config` adapter and legacy
+data/basis utilities; plus temporary translation of `outputpath`, `outputname`,
+`xprior`, `bcprior`, `sigprior`, `offsetprior`, `emissions_name`,
+`outer_region_definition_file`, the `emissions_store`/`emissions_domain` and
+`inner_emissions_store`/`inner_emissions_domain` flux selectors, and the output
+names `hbmcmc`/`hbmcmc_postprocessing`. Wrapper-only `nit`, `nchain`, `verbose`
+and `sampler_kwargs` translation retires with that wrapper. Existing explicitly
+named API migrations retain their own contracts; there is no general exception
+for historical signatures or result wrappers. Current model selectors and shared
+handoff/assembly aliases remain protected pending explicit per-interface decisions.
+
+For each affected removal or deliberate behavior-change PR:
+
+- Identify affected #960 ledger entries and plain cases; add bounded discoveries
+  before removal with explicit source version and execution route.
+- Compare the PR base and affected source with pinned development revision
+  `0a32d73a5c4a72be0505a4ed682472e1613e49e9`, accounting for intervening changes
+  and relevant merged PRs.
+- Record disposition and follow-up owner: retained, mechanically migrated,
+  deliberate scientific change, unsupported or unresolved. Preserve historical
+  inputs/expectations; add dated modern comparisons rather than replacing them.
+- Preserve or port relevant scientific coverage before retiring adapter/test
+  plumbing. Test unchanged behavior on canonical inputs and deliberate scientific
+  changes against separately agreed semantics. Distinguish inspected evidence
+  from executed checks and identify the validated implementation revision.
+
+#960 remains a pinned archive; refresh only affected evidence and live checks,
+without requiring a whole-audit rerun. #719 owns runtime retirement and regression
+migration. Complete #719, including the separately identified special-tracer
+compatibility slice, before #964. #971 is a separate prerequisite for #964,
+not for #719. #876/#964 own the agreed scientific-input/retained-population changes;
+their historical witnesses remain distinct from new-semantics tests.
+
+Finished converters (#949), launchers (#950), maintenance publication (#947),
+integrated acceptance (#952) and complete migration guidance (#432) remain M2
+release gates, not M1 development-removal prerequisites. #948 owns final source
+coverage; #945 owns release numbering and unresolved public interfaces; #951
+owns independent basis decisions. Completion of evidence does not resolve those
+decisions or establish release readiness.
 
 ## 1. Isolate legacy behavior in 0.8
 

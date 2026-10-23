@@ -5,14 +5,13 @@
 The maintainer-approved #944 treatment and bounded #961 amendment supersede the
 future 0.8/0.9 compatibility schedule in this record. Delivered isolation remains
 historical evidence; complete #719 retirement remains pending. Each removal/change
-PR must satisfy
-[Development removals require affected migration evidence](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence):
-identify affected #960 entries and add bounded discoveries, check intervening
-source changes against the pinned revision, record disposition and owner,
-preserve historical expectations and port relevant scientific coverage.
-Unchanged behavior needs canonical-input regressions; agreed scientific changes
-need tests of their new semantics. Completed evidence does not approve unresolved
-interface choices.
+PR must preserve the durable
+[evidence guarantees](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
+The [delivery checklist](tasks.md#migration-evidence-checklist-and-delivery-order)
+records the finite namespace/translation scope, pinned #960 comparison,
+per-PR checks, scientific regression migration and current owners. Completed
+evidence does not approve unresolved interface choices or a general exception
+for public signatures/results.
 
 Finished converters/launchers, maintenance publishing and integrated acceptance
 remain M2 release gates, not M1 development-removal prerequisites. Final release

@@ -7,25 +7,24 @@
 The agreed development retirement SHALL remove the entire
 `openghg_inversions.hbmcmc` subpackage, including the executable wrapper,
 compatibility adapters and legacy data/basis utilities within that subpackage.
-Each removal/change PR SHALL first satisfy the durable
+Retirement SHALL preserve the durable
 [Development removals require affected migration evidence](../../../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence)
-requirement. Temporary runner parameter-spelling, output-format and `emissions_*`
-translation SHALL retire under the same gate; modern execution SHALL NOT invoke
+guarantees. Temporary runtime translation SHALL retire only for the spellings
+enumerated in
+[Compatible public adapters and scientific choices](../../../../specs/rhime-configuration/spec.md#requirement-compatible-public-adapters-and-scientific-choices);
+canonical names and modern returns SHALL retain their contracts. Modern execution SHALL NOT invoke
 migration tooling. No import aliases, forwarding shims or entry points SHALL
 preserve the HBMCMC namespace after its removal.
 
 Supported modern workflows, modern `output_format="legacy"`, saved
 `InversionOutput` exports and independently supported basis/scientific codecs
-SHALL remain available. Unresolved public aliases and basis capabilities SHALL
-retain their existing support pending their #945/#951 owner decisions.
+SHALL remain available. Established public aliases and independent basis
+capabilities SHALL retain their separately specified support.
 
 Migration guidance SHALL distinguish delivered isolation, permission for gated
 development retirement and removal actually implemented. It SHALL identify
 modern replacements for retained workflows and matching older software for
-historical execution or unsupported artifacts. Finished converter/launcher
-interfaces, maintenance publishing and integrated acceptance SHALL remain
-release gates rather than development-removal prerequisites. This requirement
-SHALL NOT choose the final release number or establish release readiness.
+historical execution or unsupported artifacts.
 
 #### Scenario: Install a distribution after retirement is implemented
 

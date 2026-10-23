@@ -175,9 +175,12 @@ The maintainer-approved `#944 treatment table
 `#961 contract amendment <https://github.com/openghg/openghg_inversions/issues/961>`_
 supersede the earlier 0.8/0.9 compatibility schedules. Migration M1 permits
 `#719 <https://github.com/openghg/openghg_inversions/issues/719>`_ to remove
-HBMCMC runtime adapters, temporary parameter/output-format/``emissions_*``
-translation and historical signature/result-wrapper constraints after evidence
-preservation and relevant regression migration. Removal PRs must reconcile
+the HBMCMC namespace, its wrappers/dictionary adapters and the enumerated
+temporary parameter/output-format/flux-selector translation after evidence
+preservation and relevant regression migration. This grants no general exception
+for public signatures or result wrappers. The explicitly named API migrations
+documented on this page retain their own contracts; other current model selectors
+and shared aliases remain supported. Removal PRs must reconcile
 obsolete diagnostics with the behavior actually removed and its migration route.
 Finished converters, launchers and a final release number are not prerequisites.
 This documentation amendment removes no production behavior.
@@ -196,7 +199,11 @@ and `retained modern behavior
 <https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md#requirement-retained-modern-behavior-has-modern-owners>`_.
 The `affected-evidence requirement
 <https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence>`_
-applies to each removal or deliberate behavior-change PR:
+protects preserved observations and scientific expectations. The concrete
+`retirement delivery checklist
+<https://github.com/openghg/openghg_inversions/blob/devel/openspec/changes/isolate-and-retire-hbmcmc/tasks.md#migration-evidence-checklist-and-delivery-order>`_
+enumerates the removal surfaces and records the baseline, current owners and
+delivery order. It requires each removal or deliberate behavior-change PR to:
 
 * Identify affected :doc:`#960 ledger entries <../development/migration_960>`
   and plain cases; add bounded evidence for newly discovered behavior before removal.

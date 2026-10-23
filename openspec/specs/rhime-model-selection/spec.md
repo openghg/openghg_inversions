@@ -1,10 +1,5 @@
 # RHIME model selection
 
-> Status: Current supported behavior at `42a32f62`; documentation baseline,
-> no runtime change. The #944/#961 amendment replaces the alias timetable;
-> it does not implement alias removal. Recipe changes remain in their owning
-> active amendments.
-
 ## Purpose
 
 Define how the current Python selector, installed run commands, and established
@@ -74,8 +69,8 @@ They are not supported override keys.
 
 ### Requirement: Retain established public aliases
 
-The established runner aliases SHALL refer to their current implementations
-pending explicit per-interface decisions in #945, except for the
+The established runner aliases SHALL refer to their current implementations,
+except for the
 explicit 0.8 removal of Python `run_rhime` with import guidance to `run_standard`.
 This supersedes the earlier alias-preservation promise for that name.
 `run_rhime_multisector` SHALL refer to `run_multisector`, and
@@ -85,16 +80,11 @@ This supersedes the earlier alias-preservation promise for that name.
 also removes `with_prepared_sites` and `with_prepared_rhime_sites`; this supersedes
 their alias-preservation promise. Retained sites belong to the prepared handoff.
 
-The accepted #944/#961 development boundary supersedes the former promise to
-retain public aliases through the 0.9 cycle. It SHALL NOT authorize blanket
-removal of the retained Python names or installed command aliases. #945 SHALL
-decide which remain ordinary supported names and which are removed, without
-requiring another timed deprecation cycle for every alias. Each agreed removal
-SHALL meet the
-[affected migration evidence gate](../hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
-Temporary parameter/output-format alias translation and HBMCMC execution are
-separate #719 surfaces; their retirement SHALL NOT itself change these names,
-scientific recipe selection or independent output/artifact capabilities.
+These named Python aliases and installed command aliases SHALL remain supported;
+retirement of the HBMCMC namespace or temporary parameter/output-format
+translation SHALL NOT remove them. Their support SHALL NOT be inferred to end
+at a version boundary. Scientific recipe selection and independent
+output/artifact capabilities SHALL retain their separate contracts.
 
 #### Scenario: Removed standard Python alias
 

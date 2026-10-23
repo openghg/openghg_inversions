@@ -147,20 +147,19 @@ runner/selector reset to `run_co2`,
 steps' change from `MergedData` to per-site datasets and `SiteOptions`;
 staged/setup APIs and owned CO2 configuration conventions SHALL
 follow the declared reset instead of requiring compatibility aliases.
-Historical execution, parameter-alias, signature and return-wrapper constraints
-within the maintainer-approved #944 treatment MAY be removed on devel only after
-each affected PR satisfies
-[Development removals require affected migration evidence](../../../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
-This permission SHALL NOT imply removal is implemented or authorize incidental
-scientific changes. Numerical behavior, borrowed-array/execution guarantees,
+Only the HBMCMC namespace, temporary parameter/output-format translation and
+special tracer-option handling
+explicitly enumerated in
+[Compatible public adapters and scientific choices](../../../../specs/rhime-configuration/spec.md#requirement-compatible-public-adapters-and-scientific-choices)
+MAY retire under the
+[migration evidence guarantees](../../../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
+This exception SHALL NOT authorize other signature/result-wrapper changes or
+incidental scientific changes. Numerical behavior, borrowed-array/execution guarantees,
 modern legacy-format output, saved `InversionOutput` exports and independently
-supported basis capabilities SHALL retain their separate contracts. Finished
-converter/launcher interfaces SHALL remain release gates, not prerequisites for
-development removal. Unresolved public aliases and basis decisions SHALL remain
-with #945/#951 rather than fall under blanket retirement.
+supported basis capabilities SHALL retain their separate contracts.
 The existing selector forwarding, full-run CLI model choices and established
-public aliases SHALL remain supported under the model-selection capability pending
-explicit owner decisions; temporary option aliases follow the development gate
+public aliases SHALL remain supported under the model-selection capability;
+temporary option aliases follow the evidence guarantees
 above. Saved-phase commands SHALL NOT implicitly extend prepared-only CO2 recipes with acquisition
 or configuration-file arguments. Existing registered-coordinate ownership,
 custom-likelihood arguments/results, conflict rules and descriptive callable
@@ -174,12 +173,11 @@ aggregation and preserve caller-supplied custom errors and borrowed inputs.
 Supported nested preparation SHALL establish the corresponding errors on both
 domains before filtering/time alignment. These rules SHALL reuse their scientific
 owners without implying additional nested or linked checkpoint support.
-Preservation of that population/order SHALL NOT block #876's separately agreed
-retained-population semantics. Its numerical guarantees belong to the focused
-scientific-input contract; configuration owns option rules and prepared/sample
-handoffs own saved reuse and replay. The affected migration evidence gate SHALL
-preserve historical witnesses and test the agreed new semantics rather than
-restore a superseded population. This permission does not implement that change.
+Preservation of that population/order SHALL NOT require restoring rejected
+observations when an explicit scientific amendment adopts retained-population
+imputation. Such an amendment SHALL preserve supplied errors and independently
+defined missing-data rules, and retain historical witnesses separately from
+tests of the changed semantics.
 
 #### Scenario: Observation errors precede filtering
 - **WHEN** supported preparation filters or aggregates observations

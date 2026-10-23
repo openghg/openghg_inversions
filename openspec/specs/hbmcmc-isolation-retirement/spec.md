@@ -4,8 +4,6 @@
 
 Keep modern inversion workflows independent of historical HBMCMC compatibility
 and define the evidence gate for removing runtime compatibility on devel.
-Permission to remove behavior is distinct from its implemented removal; the
-active retirement change records outstanding delivery.
 Requirements describing transitional HBMCMC calls apply while those entry
 points remain; they SHALL NOT require restoring an entry point after its
 evidenced removal.
@@ -124,9 +122,9 @@ Supported modern INI decoding, RHIME aliases, configuration construction, path
 conversion and vendored preparation defaults SHALL remain available outside
 HBMCMC. Moving their ownership SHALL preserve their separately specified
 semantics, subject to the bounded development removals below. Temporary
-runner/frontend spelling, output-format and `emissions_*` flux-selector
-translation MAY be removed on devel after that gate is satisfied, without
-waiting for finished converters or launchers. This supersedes their former
+runner/frontend translation of the spellings enumerated in
+`Compatible public adapters and scientific choices` MAY retire while preserving
+the evidence guarantees below. This supersedes their former
 devel/0.8 warning and 0.9 removal schedule. Until a removal lands, supported
 translation SHALL preserve its warnings, canonical-spelling precedence and
 separate flux old/new conflict errors. Canonical
@@ -139,10 +137,10 @@ re-exports SHALL be removed with documented replacements. Modern callers SHALL
 use independent INI decoding, apply overrides, and construct modern configuration.
 This requirement does not remove modern legacy-format output codecs or
 `save_inversion_output`; their support remains independent. Established public
-Python and CLI aliases SHALL retain the model-selection contract pending
-explicit decisions in #945. Independent basis readers, writers, discovery and
-deprecated reconstruction adapters SHALL retain their own contracts pending
-#951; a compatibility or legacy name alone SHALL NOT authorize deletion.
+Python and CLI aliases SHALL retain the model-selection contract. Independent
+basis readers, writers, discovery and deprecated reconstruction adapters SHALL
+retain their own contracts; a compatibility or legacy name alone SHALL NOT
+authorize deletion.
 
 #### Scenario: Packaged preparation survives legacy isolation
 
@@ -158,56 +156,46 @@ deprecated reconstruction adapters SHALL retain their own contracts pending
 
 ### Requirement: Development removals require affected migration evidence
 
-Under the accepted #944 treatment and #961 boundary, removal of the complete
-HBMCMC executor namespace, its wrapper and legacy data/basis utilities, and
-temporary runtime parameter/output-format/flux-selector translation MAY proceed
-on devel in bounded #719 PRs. This supersedes the promise to retain the HBMCMC
-route through 0.8 and remove it in 0.9. Historical execution SHALL belong to
-the maintained 0.7 line; normal modern execution SHALL NOT invoke migration
-tooling. The boundary SHALL NOT itself change equations, defaults, independent
-artifact support or unresolved public interfaces.
+The complete `openghg_inversions.hbmcmc` namespace, including its executable
+wrapper, dictionary-returning configuration adapters and legacy data/basis
+utilities, MAY be removed from modern development. Temporary parameter and
+output-format translation MAY be retired only for the spellings enumerated in
+[Compatible public adapters and scientific choices](../rhime-configuration/spec.md#requirement-compatible-public-adapters-and-scientific-choices).
+These exceptions replace the former HBMCMC and temporary-alias version timetable;
+they SHALL NOT extend to other modern signatures or result types. Historical
+execution SHALL require the matching older software. Normal modern execution
+SHALL NOT invoke migration tooling.
 
-Before each migration-related removal or deliberate behavior change merges,
-its PR SHALL:
+Retirement SHALL preserve historical inputs and expected interpretations in a
+form accessible without importing the retired package. The evidence SHALL
+identify source versions and execution routes, distinguish inspected behavior
+from executed observations, and keep historical expectations separate from
+dated modern comparisons. It SHALL account for the behavior actually retired,
+including newly discovered cases, rather than assume that earlier evidence
+captures every later implementation.
 
-- Identify affected #960 ledger entries and plain cases, adding bounded evidence
-  for newly discovered behavior with explicit source version and route.
-- Compare its base and affected source with pinned development revision
-  `0a32d73a5c4a72be0505a4ed682472e1613e49e9`, accounting for intervening changes
-  and relevant merged PRs.
-- Record a disposition and follow-up owner: retained, mechanically migrated,
-  deliberate scientific change, unsupported or unresolved. Historical inputs
-  and expectations SHALL remain available; modern comparisons SHALL be dated
-  additions rather than replacements for source observations.
-- Preserve or port affected scientific coverage before retiring adapter/test
-  plumbing. Unchanged cases SHALL have canonical regression coverage; deliberate
-  scientific changes SHALL test their separately agreed new semantics. Evidence
-  SHALL distinguish inspection from execution and identify the validated revision.
-
-Completion of #960 SHALL NOT constitute advance approval of future deletions.
-Only affected evidence and live checks need refreshing; a whole-audit rerun
-SHALL NOT be required. Finished conversion and launcher interfaces (#949/#950),
-maintenance publication (#947), complete guidance (#432), final API/version
-decisions (#945) and integrated acceptance (#952) remain M2 release gates,
-not prerequisites for these bounded development removals. Unresolved interface
-decisions SHALL remain with #945 and independent basis decisions with #951.
+Affected scientific expectations SHALL remain covered when compatibility test
+plumbing is retired: unchanged cases SHALL have canonical-input regressions,
+and explicit scientific changes SHALL have tests of their agreed new semantics.
+An intentional scientific change SHALL NOT overwrite its historical witness or
+require restoring a superseded historical expectation.
 
 Scientific requirements, borrowed-array and explicit execution boundaries,
 modern `output_format="legacy"`, saved `InversionOutput` codecs, exact artifact
 destinations and independently supported labelled basis partitions SHALL remain
-supported. A separately agreed scientific change SHALL meet the same evidence
-gate without restoring a superseded historical expectation.
+supported. Namespace and alias retirement SHALL NOT itself change equations,
+canonical defaults, independent artifact support or other public interfaces.
 
 #### Scenario: Remove an evidenced runtime adapter during development
 
-- **WHEN** a #719 PR meets the affected-entry, source-diff, disposition and scientific-test gate
-- **THEN** its agreed runtime compatibility can be removed before the converter or launcher is finished
-- **AND** plain historical evidence remains usable without the deleted package
-- **AND** this does not establish release readiness or remove independent codecs
+- **WHEN** a historical dictionary adapter is retired with the HBMCMC namespace
+- **THEN** its source inputs and expected interpretations remain accessible without that package
+- **AND** unchanged scientific cases remain covered through canonical modern inputs
+- **AND** independent modern codecs remain supported
 
 #### Scenario: Discover an uncaptured behavior or an intentional scientific change
 
-- **WHEN** a migration-related PR discovers behavior absent from #960 or changes an agreed scientific expectation
-- **THEN** it adds bounded source evidence and an owned disposition before merging
-- **AND** it retains historical expectations separately from dated tests of the agreed modern semantics
-- **AND** unresolved interfaces are not approved for deletion by this gate
+- **WHEN** retirement exposes an uncaptured historical behavior or an explicit scientific change
+- **THEN** the historical source behavior remains recorded separately from dated modern comparisons
+- **AND** scientific changes are covered against their agreed modern semantics
+- **AND** the evidence does not imply permission to remove other interfaces

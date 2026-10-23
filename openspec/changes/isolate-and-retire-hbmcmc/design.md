@@ -4,8 +4,12 @@
 
 The accepted #944/#961 treatment supersedes the future version schedule below.
 Delivered 0.8 isolation remains historical evidence. Pending #719 retirement may
-proceed on devel once each affected behavior satisfies
-[Development removals require affected migration evidence](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
+proceed on devel while preserving the durable
+[evidence guarantees](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence)
+and following the [delivery checklist](tasks.md#migration-evidence-checklist-and-delivery-order).
+That checklist owns the finite namespace/translation scope, pinned #960 baseline,
+per-PR checks and current delivery order. It grants no general public
+signature/result-wrapper exception; other existing aliases retain their contracts.
 Converters, launchers, maintenance publishing and integrated acceptance remain M2
 release work. Final release/public-alias choices stay with #945; independent
 basis readers, writers and discovery stay with #951. This amendment implements

@@ -278,8 +278,11 @@ Removal and validation handoff
 ------------------------------
 
 Under the `#961 development boundary
-<https://github.com/openghg/openghg_inversions/issues/961>`_, each PR removing
-or deliberately changing migration-relevant behavior must:
+<https://github.com/openghg/openghg_inversions/issues/961>`_, the
+`retirement delivery checklist
+<https://github.com/openghg/openghg_inversions/blob/devel/openspec/changes/isolate-and-retire-hbmcmc/tasks.md#migration-evidence-checklist-and-delivery-order>`_
+records concrete owners, order and baseline checks. Each PR removing or
+deliberately changing migration-relevant behavior must:
 
 * Identify affected ledger entries and plain cases. Add bounded evidence for
   newly discovered behavior before removal, keeping source version and route explicit.

@@ -2,14 +2,19 @@
 
 ## Context
 
-The 23 October 2026 #944/#961 amendment supersedes blanket preservation of
-historical execution, option aliases, signatures and return wrappers only within
-the accepted treatment. Each affected removal/change PR must satisfy
-[Development removals require affected migration evidence](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
-Preserve #960's historical expectations, check intervening source changes, record
-disposition/owner and port relevant scientific coverage before removal. Test
-agreed scientific changes against their new semantics. Finished converters and
-launchers remain release gates. Unresolved public aliases and independent basis
+The 23 October 2026 #944/#961 amendment permits bounded retirement of the HBMCMC
+namespace, its wrappers/dictionary adapters and temporary parameter/output/flux
+translation enumerated in the
+[retirement delivery checklist](../isolate-and-retire-hbmcmc/tasks.md#migration-evidence-checklist-and-delivery-order).
+Existing explicitly named migrations such as Python `run_rhime`, `RhimeRunSpec`
+and `RhimeResult` retain their scoped contracts; this creates no general public
+signature/result-wrapper exception. Current model selectors and shared aliases
+remain protected. Preserve the durable
+[evidence guarantees](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence);
+the linked checklist owns the pinned #960 revision, per-PR checks and current
+delivery order. Historical expectations remain available and scientific changes
+need tests of separately agreed semantics. Finished converters and launchers
+remain release gates. Unresolved public aliases and independent basis
 decisions stay with #945/#951. Numerical/scientific, borrowed-array/execution and
 independently supported codec contracts remain in force; this amendment changes
 no runtime behavior or delivery status.

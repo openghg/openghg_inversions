@@ -96,6 +96,10 @@ retained capabilities, evidence gate and remaining owners.
        converters/launchers are not prerequisites. Implementation remains with #719 and the
        :download:`active retirement change
        <../../openspec/changes/isolate-and-retire-hbmcmc/proposal.md>`.
+       Its `delivery checklist
+       <https://github.com/openghg/openghg_inversions/blob/devel/openspec/changes/isolate-and-retire-hbmcmc/tasks.md#migration-evidence-checklist-and-delivery-order>`_
+       records the pinned comparison, per-PR work, owners and delivery order;
+       these implementation instructions are separate from the durable evidence guarantees.
        Path conversion and resource loading stay with resource I/O.
    * - Saved CO2 affine reconstruction
      - :download:`CO2 affine output reconstruction

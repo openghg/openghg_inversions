@@ -30,10 +30,9 @@ saved bases SHALL default to modern retained artifacts; legacy output SHALL rema
 explicit opt-in through that adapter. Its independent deprecation SHALL NOT imply
 automatic removal. Canonical scientific operations SHALL receive exact paths or
 labelled arrays without depending on historical discovery or naming policy.
-The #944/#961 development boundary permits evidenced HBMCMC retirement under
-its isolation contract; it SHALL NOT authorize deletion of these independent
-basis capabilities. Their final discovery/read/write and timetable decisions remain #951,
-without an automatic removal date. Exact destinations and useful labelled
+HBMCMC retirement under its isolation contract SHALL NOT authorize deletion of
+these independent basis capabilities or imply their automatic removal date.
+Exact destinations and useful labelled
 partition inputs SHALL remain independently supported.
 
 #### Scenario: Arbitrary retained artifact destination

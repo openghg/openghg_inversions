@@ -396,14 +396,35 @@ modern merged-cache options, former stage adapter, `resolve_rhime_config`,
 transitional old-location imports and revised INI reader contract specified below, supported
 scientific Python and CLI entry points SHALL retain their signatures, shorthand,
 override behavior and return contracts through adapters to the same semantic
-resolution or shared applicable site translation, except for the accepted
-historical execution, parameter/output-format alias, signature and result-wrapper
-constraints covered by the #944/#961 development boundary. Those constraints
-MAY be removed in bounded PRs after the
-[affected migration evidence gate](../hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence)
-is satisfied. This is permission for scoped development changes, not a claim
-that adapters have already been removed or permission to change unrelated
-modern APIs. Direct preparation/retrieval
+resolution or shared applicable site translation, with only these additional
+runtime-compatibility exceptions:
+
+- The complete `openghg_inversions.hbmcmc` namespace MAY be removed, including
+  `run_hbmcmc.main`, `run_hbmcmc.hbmcmc_extract_param`, `compatibility.params_from_config`,
+  `compatibility.fixedbasis_params_to_rhime`, `compatibility.adapt_resource_params`
+  and the `legacy_data`/`legacy_basis` utilities. Their signatures and dictionary
+  or legacy-container returns need not be preserved through modern forwarding wrappers.
+- Modern runner/acquisition boundaries MAY cease accepting `outputpath`,
+  `outputname`, `xprior`, `bcprior`, `sigprior`, `offsetprior`, `emissions_name`,
+  `outer_region_definition_file`, `emissions_store`, `emissions_domain`,
+  `inner_emissions_store` and `inner_emissions_domain`. Their canonical
+  replacements remain `output_path`, `output_name`, `x_prior`, `bc_prior`,
+  `sigma_prior`, `offset_prior`, `flux_sources`, `outer_regions_path`,
+  `flux_store`, `flux_domain`, `inner_flux_store` and `inner_flux_domain`, respectively.
+  Only those deprecated keyword parameters may disappear from otherwise
+  preserved modern signatures, including `MergedData.from_options`.
+- The `output_format` values `hbmcmc` and `hbmcmc_postprocessing` MAY cease
+  translating to `legacy`; the canonical `legacy` format remains supported.
+- Special handling of `use_tracer` MAY retire only to the ordinary unsupported-option
+  behavior specified below, without enabling tracer execution.
+
+These exceptions SHALL preserve the
+[migration evidence guarantees](../hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
+They introduce no other signature or result-wrapper exemption. In particular,
+`RhimeResult` and `RhimeRunSpec` follow only their explicitly named migration
+above; removing HBMCMC's dictionary adapters SHALL NOT change modern
+`InversionOutput` returns or the deprecated acquisition wrapper's six-tuple
+contract. Direct preparation/retrieval
 APIs SHALL resolve only applicable choices without requiring likelihood, final
 output or sampling settings. Independent builders and prepared-input runners
 SHALL remain independent of full configuration. Shared choices such as BC use
@@ -417,10 +438,10 @@ and the 0.8 historical scientific-quirk and chain-policy removals specified by
 
 Established selector and shared-handoff aliases in the current
 [model-selection capability](https://github.com/openghg/openghg_inversions/blob/7269f50f09dc4b618766cb9d69abe260a564eebc/openspec/specs/rhime-model-selection/spec.md)
-SHALL remain supported pending explicit per-interface decisions in #945,
+SHALL remain supported,
 without the former through-0.9 timetable. The removed
 transitional imports above do not include those public aliases.
-Independent basis decisions SHALL remain with #951. Scientific calculations,
+Independent basis APIs retain their separately specified contracts. Scientific calculations,
 canonical site shorthand and override behavior, labelled alignment, borrowed
 inputs, named materialization boundaries, modern legacy-format output and saved
 `InversionOutput` codecs SHALL retain their independent contracts. Deliberate
@@ -444,8 +465,8 @@ retaining a config field. Canonical configuration SHALL accept only canonical
 fields and use generic unsupported-option errors for obsolete options. Effective true SHALL retain early rejection at resolution and relevant
 direct public boundaries, including supplied merged data. Existing legacy-option
 and custom-likelihood conflict precedence SHALL remain unchanged.
-The agreed #944/#719 retirement MAY remove this special treatment after the
-affected migration evidence gate. Once retired, both explicitly supplied
+Retirement MAY remove this special treatment while preserving the migration
+evidence guarantees. Once retired, both explicitly supplied
 `use_tracer=True` and `use_tracer=False` SHALL fail ordinary unsupported-option
 validation before scientific work; omission SHALL remain valid. Retirement
 SHALL NOT silently enable or ignore tracer requests.
@@ -483,7 +504,7 @@ SHALL NOT silently enable or ignore tracer requests.
 
 #### Scenario: Retire special tracer compatibility
 
-- **WHEN** a bounded #719 PR retires the special tracer handling after preserving its affected evidence
+- **WHEN** the special tracer handling is retired with its historical behavior preserved as evidence
 - **THEN** both explicit boolean values fail ordinary unsupported-option validation
 - **AND** an omitted option remains valid without implying tracer support
 
@@ -496,15 +517,12 @@ NOT be retained solely for uniform stage names, timing or keyword translation.
 Shared indexing utilities SHALL remain independently reusable. Assembly SHALL
 preserve minimum-error `None`, integer and per-site mapping behavior.
 
-Preservation of that historical imputation population/order SHALL NOT block the
-separately agreed #876 retained-population amendment. Its target scientific
-semantics SHALL use observations retained by selection filters for missing-error
-estimates, preserve supplied errors and the independently defined missing-data
-rules, and meet the affected migration evidence gate. Configuration SHALL own
-option/default/compatibility rules; numerical preparation and alignment SHALL
-belong to a focused scientific-input contract, with saved reuse/replay in the
-prepared/sample handoff contracts. This boundary permits that amendment; it
-does not claim its implementation or change current execution.
+Preservation of that historical imputation population/order SHALL NOT require
+restoring rejected observations when an explicit scientific amendment adopts
+retained-population imputation. Under that amendment, missing-error estimates
+SHALL use observations retained by selection filters, preserve supplied errors
+and the independently defined missing-data rules, and preserve historical
+expectations separately from tests of the changed semantics.
 
 `prepare_rhime_inputs` and its exclusive acquisition dispatcher are removed.
 Modern acquisition SHALL NOT load or save merged-data caches. Historical
@@ -587,9 +605,9 @@ Supported RHIME spelling and output-format aliases, including deprecated
 `emissions_*` flux selectors, SHALL be translated at runner/frontend boundaries
 outside HBMCMC after winning overrides. Supported runner option translation SHALL
 remain at runner/frontends while retained, with `DeprecationWarning` for deprecated
-options. The #944/#961 development boundary supersedes their former devel/0.8
-warning and 0.9 removal schedule: temporary translation MAY be removed after
-the affected migration evidence gate, before finished converters or launchers.
+options. The enumerated compatibility exceptions above supersede their former
+devel/0.8 warning and 0.9 removal schedule: that temporary translation MAY retire
+while preserving the migration evidence guarantees.
 Until its removal lands, canonical spelling precedence and the
 separate flux old/new conflict errors SHALL remain unchanged.
 `RhimeConfig.from_params` and canonical normalization SHALL know only canonical
@@ -662,8 +680,9 @@ modern runners. Its removal belongs to the HBMCMC retirement contract.
 Requested configuration SHALL represent resolved choices without reconstructing
 original scalar/list spellings or sparse defaults solely to preserve historical
 staged hashes. Public scientific behavior and independently supported codecs
-SHALL remain supported; historical signature and result-wrapper constraints
-are subject to the bounded #944/#961 development boundary above. Equality of
+SHALL remain supported. Only the explicitly enumerated interface exceptions in
+`Compatible public adapters and scientific choices` apply to signatures and
+result wrappers; historical hashes SHALL NOT justify further exceptions. Equality of
 historical encoding hashes SHALL NOT be an acceptance
 requirement. Changes affecting a currently supported persisted contract SHALL
 be identified explicitly rather than silently assigned its old contract.
@@ -725,9 +744,9 @@ loading, exact paths, packaged defaults, BC inputs and optional exports follow
 Modern configuration and acquisition SHALL use `flux_store`, `flux_domain`,
 `inner_flux_store` and `inner_flux_domain`. Their `emissions_*` predecessors
 SHALL remain accepted at supported runner/acquisition frontends with
-`DeprecationWarning` until their bounded removal lands. The #944/#961 affected
-migration evidence gate supersedes the former 0.9 removal schedule and permits
-removal on devel before finished migration tooling. Canonical configuration SHALL accept
+`DeprecationWarning` until their bounded removal lands. The enumerated
+compatibility exceptions above supersede the former 0.9 removal schedule;
+retirement SHALL preserve the migration evidence guarantees. Canonical configuration SHALL accept
 only the new names and SHALL NOT translate aliases or emit alias warnings. Supplying
 both spellings SHALL raise even if the values agree or are explicitly `None`.
 Canonical configuration exports SHALL contain only the new names. This modern

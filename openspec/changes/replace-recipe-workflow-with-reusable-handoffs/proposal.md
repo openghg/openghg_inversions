@@ -4,15 +4,20 @@
 
 ### Development-boundary amendment — 23 October 2026
 
-The maintainer-approved #944 treatment and #961 amendment supersede blanket
-preservation of historical execution, parameter aliases, signatures and return
-wrappers where they constrain the agreed migration. Each affected removal/change
-PR must satisfy the durable isolation contract's
-[Development removals require affected migration evidence](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence)
-requirement. Historical #960 expectations remain distinct from dated modern
-comparisons; unchanged behavior needs canonical regressions and agreed scientific
-changes need tests of their new semantics. Finished converters/launchers are M2
-release gates rather than development-removal prerequisites.
+The maintainer-approved #944/#961 amendment permits bounded retirement of the
+HBMCMC namespace, its wrappers/dictionary adapters and the temporary
+parameter/output/flux translation enumerated in the
+[retirement delivery checklist](../isolate-and-retire-hbmcmc/tasks.md#migration-evidence-checklist-and-delivery-order).
+It grants no general exception for public signatures or result wrappers.
+Existing named migrations, including Python `run_rhime`, `RhimeRunSpec` and
+`RhimeResult`, retain their explicit contracts; other current model selectors
+and shared handoff/assembly aliases remain protected.
+The durable [evidence guarantees](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence)
+remain distinct from that checklist's pinned #960 baseline, per-PR work and
+owners. Historical observations stay separate from dated modern comparisons;
+unchanged behavior needs canonical regressions and agreed scientific changes
+need tests of their new semantics. Finished converters/launchers are M2 release
+gates rather than development-removal prerequisites.
 
 Scientific calculations, borrowed arrays and explicit execution boundaries,
 current numerical codecs, modern legacy-format output and `InversionOutput`

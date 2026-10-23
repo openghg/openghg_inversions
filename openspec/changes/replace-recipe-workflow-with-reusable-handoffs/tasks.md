@@ -2,15 +2,17 @@
 
 ## Development-boundary amendment — 23 October 2026
 
-#944/#961 supersede blanket historical signature/return-wrapper and temporary
-option-alias preservation within the accepted treatment. Each affected
-removal/change PR must satisfy
-[Development removals require affected migration evidence](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence):
-identify #960 entries and bounded discoveries, check intervening source changes,
-record disposition/owner, retain historical expectations and port relevant
-scientific tests before deleting adapter-only plumbing. Canonical regressions
-cover unchanged behavior; agreed scientific changes need their new semantics
-tested. Finished converters/launchers remain M2 release gates. Public aliases
+#944/#961 permit bounded retirement only of the HBMCMC namespace, its
+wrappers/dictionary adapters and the temporary parameter/output/flux translation
+enumerated in the [retirement delivery checklist](../isolate-and-retire-hbmcmc/tasks.md#migration-evidence-checklist-and-delivery-order).
+There is no general public signature/result-wrapper exception. Existing named
+API migrations (including Python `run_rhime`, `RhimeRunSpec` and `RhimeResult`)
+retain their scoped contracts; other current model selectors and shared aliases
+remain protected. Each affected removal/change preserves the durable
+[evidence guarantees](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence)
+and follows the checklist's concrete pinned #960 comparison, per-PR evidence,
+scientific regression migration and owner recording. Finished converters/launchers
+remain M2 release gates. Public aliases
 and independent basis decisions stay with #945/#951; scientific, execution and
 codec contracts remain supported. Checked tasks below preserve dated evidence,
 not a renewed compatibility schedule. This amendment completes no task.
