@@ -1,9 +1,14 @@
+import dask.array as da
+from dask import delayed
 import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
 
+from openghg_inversions import filters as filter_module
 from openghg_inversions.filters import filtering, filtering_functions
+from openghg_inversions.inversion_data import SiteOptions
+from openghg_inversions.rhime import filter_observations
 from openghg_inversions.hbmcmc.legacy_data import load_merged_data
 
 
@@ -94,3 +99,124 @@ def test_filters_as_dict_with_missing_site(merged_data, capsys):
 
     logs = capsys.readouterr().err
     assert "Missing entry for sites ['MHD'] in filters." in logs
+
+
+@pytest.mark.parametrize("name", ["daily_median", "six_hr_mean"])
+def test_retired_resampling_filters_are_not_available(name, capsys):
+    assert not hasattr(filter_module, name)
+    assert name not in filtering_functions
+    filter_module.list_filters()
+    assert name not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("name", ["daily_median", "six_hr_mean", "unknown_filter"])
+@pytest.mark.parametrize("request_kind", ["scalar", "list", "site_scalar", "site_list"])
+@pytest.mark.parametrize("public_stage", [False, True])
+def test_invalid_filter_requests_fail_before_any_data_execution(
+    name, request_kind, public_stage, monkeypatch,
+):
+    """Validate all requested names before a preceding custom filter can compute."""
+    calls = []
+
+    @delayed
+    def unused_observations():
+        pytest.fail("Invalid filter request executed lazy observations")
+
+    dataset = xr.Dataset(
+        {"mf": ("time", da.from_delayed(unused_observations(), shape=(1,), dtype=float))},
+        coords={"time": pd.date_range("2020-01-01", periods=1)},
+    )
+    monkeypatch.setattr(filter_module, "filtering_functions", filtering_functions.copy())
+
+    @filter_module.register_filter
+    def computing_filter(data, keep_missing=False):
+        calls.append(1)
+        return data.compute()
+
+    request = {
+        "scalar": name,
+        "list": ["computing_filter", name],
+        "site_scalar": {"TAC": "computing_filter", "MHD": name},
+        "site_list": {"TAC": ["computing_filter"], "MHD": [name]},
+    }[request_kind]
+    data = {"TAC": dataset, "MHD": dataset}
+    with pytest.raises(KeyError) as error:
+        if public_stage:
+            filter_observations(data, SiteOptions.from_inputs(sites=list(data), averaging_period=None), filters=request)
+        else:
+            filtering(data, request)
+
+    assert calls == []
+    if name == "unknown_filter":
+        assert error.value.args == (name,)
+    else:
+        message = str(error.value)
+        assert name in message
+        assert "removed resampling filter" in message
+        assert "uncertainty-propagating resampling before observation selection" in message
+
+
+@pytest.mark.parametrize("name", ["daily_median", "six_hr_mean"])
+@pytest.mark.parametrize("as_list", [False, True])
+@pytest.mark.parametrize("data", [{}, {".metadata": "unchanged"}])
+def test_retired_global_filters_reject_inputs_without_sites(name, as_list, data):
+    request = [name] if as_list else name
+    with pytest.raises(KeyError, match=f"{name}.*removed resampling filter"):
+        filtering(data, request)
+
+
+@pytest.mark.parametrize("name", ["daily_median", "six_hr_mean"])
+@pytest.mark.parametrize("as_list", [False, True])
+def test_retired_filters_reject_absent_site_entries(name, as_list):
+    request = {"MHD": [name] if as_list else name}
+    with pytest.raises(KeyError, match=f"{name}.*removed resampling filter"):
+        filtering({}, request)
+
+
+@pytest.mark.parametrize("filters", [
+    {"MHD": "unknown_filter"}, {"MHD": ["unknown_filter"]}, {"MHD": None}, {"MHD": [None]},
+])
+def test_inactive_invalid_filter_entries_remain_ignored(filters):
+    dataset = xr.Dataset({"mf": ("time", [1.0])}, coords={"time": pd.date_range("2020-01-01", periods=1)})
+    result = filtering({"TAC": dataset}, filters)
+    assert result["TAC"] is dataset
+
+
+@pytest.mark.parametrize("filters", ["unknown_filter", ["unknown_filter"], [None]])
+@pytest.mark.parametrize("data", [{}, {".metadata": "unchanged"}])
+def test_unrelated_global_filters_remain_unused_without_sites(filters, data):
+    assert filtering(data, filters) == data
+
+
+@pytest.mark.parametrize("site_mapping", [False, True])
+def test_active_none_filter_rejected_before_prior_filter(monkeypatch, site_mapping):
+    monkeypatch.setattr(filter_module, "filtering_functions", filtering_functions.copy())
+
+    @filter_module.register_filter
+    def unexpected_filter(dataset, keep_missing=False):
+        pytest.fail("A preceding filter executed before invalid active None was rejected")
+
+    dataset = xr.Dataset({"mf": ("time", [1.0])}, coords={"time": pd.date_range("2020-01-01", periods=1)})
+    filters = {"TAC": ["unexpected_filter"], "MHD": [None]} if site_mapping else ["unexpected_filter", None]
+    with pytest.raises(KeyError) as error:
+        filtering({"TAC": dataset, "MHD": dataset}, filters)
+    assert error.value.args == (None,)
+
+
+def test_registered_custom_filter_remains_available(monkeypatch, capsys):
+    monkeypatch.setattr(filter_module, "filtering_functions", filtering_functions.copy())
+
+    @filter_module.register_filter
+    def select_last(dataset, keep_missing=False):
+        """Select the final observation."""
+        return dataset.isel(time=[-1])
+
+    dataset = xr.Dataset(
+        {"mf": ("time", [1.0, 2.0])},
+        coords={"time": pd.date_range("2020-01-01", periods=2)},
+    )
+    assert filter_module.filtering_functions["select_last"] is select_last
+    result = filtering({"TAC": dataset}, "select_last")
+    xr.testing.assert_identical(result["TAC"], dataset.isel(time=[-1]))
+    filter_module.list_filters()
+    assert "select_last" in capsys.readouterr().out

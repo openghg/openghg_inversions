@@ -1,0 +1,106 @@
+{
+  "date": "2026-10-23",
+  "evidence_kind": "inspected_source_and_independent_arithmetic",
+  "historical_execution_claimed": false,
+  "source": {
+    "revision": "0a32d73a5c4a72be0505a4ed682472e1613e49e9",
+    "path": "openghg_inversions/filters.py",
+    "route": "openghg_inversions.filters.filtering",
+    "comparison_base": "3b27c542",
+    "comparison_scope": "The affected filter functions were unchanged from the pinned source before their retirement.",
+    "source_change_review": "The filters.py diff from the pinned revision to origin/devel before retirement is empty."
+  },
+  "input": {
+    "site": "TAC",
+    "time": [
+      "2020-01-01T00:00:00",
+      "2020-01-01T01:00:00",
+      "2020-01-01T02:00:00"
+    ],
+    "mf": [
+      0,
+      1,
+      100
+    ],
+    "mf_error": [
+      1,
+      9,
+      3
+    ]
+  },
+  "cases": [
+    {
+      "id": "daily-median-generic-error-aggregation",
+      "filter": "daily_median",
+      "source_operation": "dataset.load().resample(indexer={\"time\": \"1D\"}).median().dropna(dim=\"time\")",
+      "expected_source_output": {
+        "time": [
+          "2020-01-01T00:00:00"
+        ],
+        "mf": [
+          1
+        ],
+        "mf_error": [
+          3
+        ]
+      },
+      "independent_arithmetic": {
+        "mf": "median(0, 1, 100) = 1",
+        "mf_error": "median(1, 9, 3) = 3"
+      }
+    },
+    {
+      "id": "six-hour-mean-generic-error-aggregation",
+      "filter": "six_hr_mean",
+      "source_operation": "dataset.resample(indexer={\"time\": \"6h\"}).mean().dropna(dim=\"time\")",
+      "expected_source_output": {
+        "time": [
+          "2020-01-01T00:00:00"
+        ],
+        "mf": [
+          33.666666666666664
+        ],
+        "mf_error": [
+          4.333333333333333
+        ]
+      },
+      "independent_arithmetic": {
+        "mf": {
+          "numerator": 101,
+          "denominator": 3
+        },
+        "mf_error": {
+          "numerator": 13,
+          "denominator": 3
+        }
+      }
+    }
+  ],
+  "scientific_limit": "The source generically aggregated mf_error as another dataset variable. These values are not endorsed uncertainty propagation.",
+  "modern_disposition": {
+    "functions_available": false,
+    "registered_filters_available": false,
+    "named_request_error": {
+      "type": "KeyError",
+      "message_contains": [
+        "removed resampling filter",
+        "uncertainty-propagating resampling before observation selection",
+        "no automatic replacement"
+      ]
+    },
+    "automatic_replacement": null,
+    "guidance": "Perform deliberate uncertainty-propagating resampling before observation selection; no mean or median replacement is supplied."
+  },
+  "regression_tests": [
+    "tests/test_filters.py::test_retired_resampling_filters_are_not_available",
+    "tests/test_filters.py::test_invalid_filter_requests_fail_before_any_data_execution"
+  ],
+  "owners": {
+    "implementation": 954,
+    "api_disposition": 945,
+    "migration_report": 949
+  },
+  "route_options": {
+    "keep_missing": false
+  }
+}
