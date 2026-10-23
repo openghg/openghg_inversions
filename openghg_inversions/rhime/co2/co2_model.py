@@ -137,6 +137,17 @@ def build_co2_model(
     coherent arrays from one preparation and for their positional semantics
     when labels are absent.
 
+    With centered ``boundary_operands``, raw PyMC observed and predictive
+    ``y`` values are centered; BC and total concentration deterministics remain
+    absolute.
+    After restoring sample coordinates, direct callers must restore absolute
+    ``y`` with
+    :func:`~openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives`
+    before serialization or postprocessing. Ordinary recipe runners do this
+    through
+    :func:`~openghg_inversions.rhime.co2.co2_runner.annotate_co2_trace`.
+    See :ref:`surface-centered-boundary-contract`.
+
     Args:
         flux_sensitivity: Reduced CO2 sensitivity with observation dimension
             ``nmeasure`` and one labelled retained-state dimension.

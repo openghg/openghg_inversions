@@ -71,7 +71,14 @@ def annotate_co2_trace(
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
 ) -> xr.DataTree:
-    """Persist CO2 scientific roles and units on prior or posterior output.
+    """Restore absolute CO2 observations/predictions and persist roles and units.
+
+    For centered models, updates numerical ``y`` values in ``observed_data``,
+    ``prior_predictive``, ``posterior_predictive`` and ``predictions`` in place
+    by adding the retained boundary reference shift. Values marked
+    ``concentration_representation="absolute-v1"`` are left unchanged, so
+    repeated annotation does not add the shift twice. See
+    :ref:`surface-centered-boundary-contract`.
 
     Args:
         trace: PyMC sample groups represented as a DataTree, annotated in place.

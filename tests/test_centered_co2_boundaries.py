@@ -13,7 +13,7 @@ from openghg_inversions.models import StateActivity, get_coord_registry, restore
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.rhime.co2 import build_co2_model, Co2PreparedInputs, Co2O2PreparedInputs
-from openghg_inversions.rhime.co2.centered_boundary import restore_absolute_predictives
+from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands, restore_absolute_predictives
 from openghg_inversions.rhime.co2.co2_o2_runner import build_rhime_co2_o2, annotate_co2_o2_trace
 from openghg_inversions.rhime.co2.co2_runner import (
     materialize_co2_inputs,
@@ -127,6 +127,39 @@ def test_centered_operand_dimensions_use_observation_dimension_labels(frequency)
             np.testing.assert_allclose(model[name].get_value(), expected)
     point = models[0].initial_point()
     np.testing.assert_allclose(models[0].compile_logp()(point), models[1].compile_logp()(point))
+
+
+@pytest.mark.parametrize("malformed,message", [
+    ("empty", "Expected centered boundary operands"),
+    ("missing_anomaly", "require H_bc_anomaly, H_bc_mass and bc_reference"),
+    ("representation", "Unsupported boundary_representation"),
+    ("reference", "bc_reference must be scalar"),
+])
+def test_binding_retains_alignment_owner_errors(malformed, message):
+    observations = _golden_inputs().mf
+    operands = _operands(observations)
+    if malformed == "empty":
+        operands = xr.Dataset()
+    elif malformed == "missing_anomaly":
+        operands = operands.drop_vars("H_bc_anomaly")
+    elif malformed == "representation":
+        operands.attrs["boundary_representation"] = "unknown"
+    else:
+        operands["bc_reference"] = operands.bc_reference.expand_dims(reference=[0])
+    with pytest.raises(ValueError, match=message):
+        bind_boundary_operands(operands, observations)
+
+
+@pytest.mark.parametrize("units_coordinate", [False, True])
+def test_binding_checks_channel_observation_units(units_coordinate):
+    observations = _golden_inputs().mf.assign_attrs(units="ppb")
+    operands = _operands(observations)
+    if units_coordinate:
+        observations = observations.assign_attrs(units="ppm").assign_coords(
+            observation_units=(observations.dims, np.full(observations.size, "ppb"))
+        )
+    with pytest.raises(ValueError, match="reference units must match observation units"):
+        bind_boundary_operands(operands, observations)
 
 
 def test_trace_restoration_idempotent_without_model(tmp_path):

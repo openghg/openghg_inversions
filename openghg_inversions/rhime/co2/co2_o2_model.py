@@ -346,6 +346,17 @@ def build_co2_o2_model(
     alignment, row-unit consistency, coherent covariance provenance, and the
     embedded-ratio contract before calling this lower-level builder.
 
+    With centered ``boundary_operands``, raw PyMC observed and predictive
+    ``y`` values are centered; BC and total concentration deterministics remain
+    absolute.
+    After restoring sample coordinates, direct callers must restore absolute
+    ``y`` with
+    :func:`~openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives`
+    before serialization or postprocessing. Ordinary recipe runners do this
+    through
+    :func:`~openghg_inversions.rhime.co2.co2_o2_runner.annotate_co2_o2_trace`.
+    See :ref:`surface-centered-boundary-contract`.
+
     Args:
         observations: Joint CO2-then-O2 observation vector on ``output_dim``,
             with row-wise species and unit coordinates.

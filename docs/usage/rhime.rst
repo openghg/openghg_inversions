@@ -316,10 +316,13 @@ paths ending in ``.zarr``. Each artifact contains the canonical inversion
 inputs and the retained operator-backed basis, including its reference flux;
 ``basis_artifact_path`` is recorded only as provenance and is not needed to
 reload or run the prepared inputs. Prepared-input artifacts use a versioned
-schema, CF compression-by-gathering for MultiIndexes, and a labeled
-``site_metadata(site)`` dataset. Integer ``site_indicator`` values are derived
-from the ``nmeasure`` site level as zero-based positions into that separate
-site coordinate:
+schema. Writers use version 1 for absolute boundaries and version 2 when
+centered operands are present; loaders accept both versions. See the
+:ref:`centered boundary contract <surface-centered-boundary-contract>` for
+operands and supported models. The artifacts use CF compression-by-gathering
+for MultiIndexes and a labeled ``site_metadata(site)`` dataset. Integer
+``site_indicator`` values are derived from the ``nmeasure`` site level as
+zero-based positions into that separate site coordinate:
 ``site_metadata.site[site_indicator]`` must equal the ``site`` level of
 ``nmeasure``. The indicator itself is not the CF gathering coordinate, and
 callers do not need to keep a second positional decoder synchronized. Site
@@ -508,8 +511,10 @@ Each site dataset must contain ``mf``, ``mf_error``, ``mf_repeatability``,
 before ragged sites are gathered and are not copied into canonical inputs.
 Other time-aligned extension variables are retained. Non-time-dependent data
 variables are removed at this boundary rather than copied into every
-observation. The retained operator and prior/reference flux are carried into
-postprocessing; artifact provenance may be added to the returned basis value.
+observation, except the scalar centered ``bc_reference`` retained with its
+projected boundary operands. The retained operator and prior/reference flux
+are carried into postprocessing; artifact provenance may be added to the
+returned basis value.
 
 The adapter treats every supplied row as an active observation. Each site
 therefore needs a nonempty, explicit, unique ``datetime64`` ``time`` coordinate
@@ -555,10 +560,16 @@ labels are intentionally deferred generalizations. They should be added only
 with a concrete consumer and explicit semantics rather than inferred by this
 adapter.
 
-Include ``H_bc`` for the existing sampled boundary-condition contribution. A
-deterministic observation-aligned ``fixed_baseline`` is deliberately rejected
-until a reusable semantic Baseline component defines common likelihood and
-output behavior; this follow-up is tracked in `issue #550
+Include ``H_bc`` for the absolute sampled boundary-condition contribution.
+Alternatively, supply ``H_bc_anomaly`` and ``H_bc_mass`` on ``(bc_region, time)``
+in either dimension order, scalar ``bc_reference``, and
+``boundary_representation="centered-v1"``. The anomaly and reference use the
+exact observation unit string; mass uses ``"1"``. These centered operands
+remain spatial until model construction selects boundary periods. See the
+:ref:`centered boundary contract <surface-centered-boundary-contract>` for
+preparation, filtering, supported models and trace annotation. A deterministic
+observation-aligned ``fixed_baseline`` is deliberately rejected until a reusable
+semantic Baseline component defines common likelihood and output behavior; this follow-up is tracked in `issue #550
 <https://github.com/openghg/openghg_inversions/issues/550>`_. New prepared-input
 features do not change the transitional old-INI wrapper's compatibility
 contract.

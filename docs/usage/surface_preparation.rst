@@ -128,6 +128,8 @@ representation before using such products. This pilot does not construct the
 ordinary CO₂ coherent reduction automatically; see :doc:`coherent_reduction` and
 :doc:`co2_model_family`.
 
+.. _surface-centered-boundary-contract:
+
 Centering through preparation and inference
 -------------------------------------------
 
@@ -197,8 +199,10 @@ covariance, including constant curtains and bases that do not partition unity.
 BC and total concentration deterministics stay absolute. The recipe's trace
 annotation restores observed and predictive ``y`` to absolute concentrations
 once, using retained reference shifts; replay does not need to rebuild the model.
-Callers composing PyMC operations directly must call the corresponding recipe's
-trace annotation before serialization or postprocessing.
+Ordinary recipe runners perform this annotation automatically. Callers composing
+PyMC operations directly must restore sample coordinates, then call
+:func:`~openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives`
+before serialization or postprocessing.
 
 A small offline example creates its own inputs, performs a coherent reduction,
 saves/reopens preparation and restores absolute prior predictions:

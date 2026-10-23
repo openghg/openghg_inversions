@@ -181,14 +181,21 @@ def _has_centered_boundary(dataset: xr.Dataset) -> bool:
 
 @register_filter
 def daily_median(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Resample data to daily frequency and use daily median values.
+    """Resample absolute-boundary data to daily median values.
+
+    Loads the dataset before resampling. Centered boundary operands do not
+    support median aggregation; see :ref:`surface-centered-boundary-contract`.
 
     Args:
-        dataset: dataset to filter
-        keep_missing: if True, drop time points removed by filter
+        dataset: Dataset to filter.
+        keep_missing: If True, retain daily bins containing missing values;
+            otherwise drop bins with missing values in any time-varying field.
 
     Returns:
-        filtered dataset
+        Dataset of daily medians.
+
+    Raises:
+        ValueError: If the dataset contains centered boundary operands.
     """
     if _has_centered_boundary(dataset):
         raise ValueError("daily_median is unsupported for centered boundary operands.")
@@ -200,15 +207,25 @@ def daily_median(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def six_hr_mean(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Resample data to 6h frequency and use 6h mean values.
+    """Resample data to six-hour means.
+
+    For centered boundaries, use one common valid-row mask for observations,
+    derived errors, flux responses and boundary operands. A nonfinite value
+    anywhere in a required science field excludes that observation row from
+    every mean. Optional diagnostics do not select science rows or decide
+    which output bins are dropped. Scalar ``bc_reference`` is preserved
+    unchanged, without resampling. Derive observation errors before filtering;
+    see :ref:`surface-centered-boundary-contract`.
 
     Args:
-        dataset: dataset to filter
-        keep_missing: if True, drop time points removed by filter
+        dataset: Dataset to filter.
+        keep_missing: If True, retain empty bins. Otherwise drop bins missing
+            required science values for centered inputs, or any time-varying
+            field for absolute inputs.
 
     Returns:
-        filtered dataset
-
+        Dataset of six-hour means, preserving centered operand units and
+        boundary representation.
     """
     if _has_centered_boundary(dataset):
         # Required observation/response fields choose one common set of rows.

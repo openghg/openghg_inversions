@@ -4,21 +4,35 @@ import xarray as xr
 
 
 def bc_sensitivity(fp_and_data: dict, bc_basis: xr.Dataset | None = None) -> dict:
-    """Return site datasets with boundary-condition sensitivity ``H_bc`` added.
+    """Project absolute or centered directional boundary contributions.
+
+    Absolute ``bc_n/e/s/w`` inputs produce ``H_bc``. Centered
+    ``bc_anomaly_n/e/s/w`` and ``bc_mass_n/e/s/w`` inputs produce
+    ``H_bc_anomaly`` and ``H_bc_mass`` through the same spatial basis; their
+    scalar ``bc_reference`` is preserved unchanged. Centered inputs require
+    ``boundary_representation="centered-v1"``. See
+    :ref:`surface-centered-boundary-contract`.
 
     Args:
-        fp_and_data: Site datasets containing acquired directional ``bc_n``,
-            ``bc_e``, ``bc_s`` and ``bc_w`` contributions. Dot-prefixed metadata
-            entries are retained unchanged.
+        fp_and_data: Site datasets with all four directional contributions
+            for the selected representation. Centered anomaly units must
+            match the reference concentration units; mass units must be
+            ``"1"``. Dot-prefixed metadata entries are retained unchanged.
         bc_basis: Resolved labelled basis with ``bc_basis_<direction>`` variables
             and a ``region`` dimension. A singleton time applies to every
             observation; multiple times align by their labels. None uses the
             acquired NESW contributions directly, without resource I/O.
 
     Returns:
-        New mapping and site datasets, sharing input storage where possible,
-        with ``H_bc`` indexed by ``bc_region``. Inputs remain unchanged and
-        lazy arrays remain lazy.
+        New mapping and site datasets, sharing input storage where possible.
+        Projected sensitivities have ``bc_region`` and ``time`` dimensions;
+        centered anomaly retains concentration units and mass retains ``"1"``.
+        Centered operands remain spatial, without fitted boundary-period
+        expansion. Inputs remain unchanged and lazy arrays remain lazy.
+
+    Raises:
+        ValueError: If centered directional operands, representation, reference
+            shape, units or basis alignment are invalid.
     """
     result = dict(fp_and_data)
     if bc_basis is not None:

@@ -183,10 +183,12 @@ class Co2O2PreparedInputs:
 
     @classmethod
     def from_datatree(cls, tree: xr.DataTree) -> Self:
-        """Restore and validate a version-1 artifact, preserving its saved intercept.
+        """Restore version-1 or version-2 inputs and their saved intercept.
 
         Args:
             tree: Tree using the dedicated CO2/O2 prepared-input schema.
+                Version 1 supports absolute boundaries; version 2 additionally
+                supports centered boundary operands.
 
         Returns:
             Validated scientific inputs. Observations, fixed intercept, dense

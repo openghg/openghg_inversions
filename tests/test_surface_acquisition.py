@@ -96,6 +96,92 @@ def test_integrated_stays_lazy(inputs):
     assert isinstance(result.fp_x_flux.data, da.Array)
 
 
+@pytest.mark.parametrize("lazy", [False, True])
+@pytest.mark.parametrize("entry_point", ["surface", "acquisition"])
+def test_exact_alignment_reuses_payloads(inputs, monkeypatch, lazy, entry_point):
+    obs, fp, flux = inputs
+    flux = flux.assign(extra=flux.flux * 2).assign_attrs(identity="native flux")
+    if lazy:
+        fp = fp.chunk({"time": 2})
+        flux = flux.chunk({"time": 2})
+    align = xr.align
+    aligned_payloads = []
+
+    def observe_alignment(*arrays, **kwargs):
+        result = align(*arrays, **kwargs)
+        if kwargs.get("join") == "exact" and (
+            (len(arrays) == 2 and isinstance(arrays[0], xr.Dataset) and "mf" in arrays[0])
+            or all(isinstance(array, xr.DataArray) and array.name == "flux" for array in arrays)
+        ):
+            for before, after in zip(arrays, result, strict=True):
+                names = before.data_vars if isinstance(before, xr.Dataset) else [None]
+                for name in names:
+                    original = before[name].data if name is not None else before.data
+                    aligned = after[name].data if name is not None else after.data
+                    if isinstance(original, da.Array):
+                        assert aligned.chunks == original.chunks
+                        assert aligned.__dask_keys__() == original.__dask_keys__()
+                    else:
+                        assert np.shares_memory(original, aligned)
+                    aligned_payloads.append(name)
+        return result
+
+    monkeypatch.setattr(xr, "align", observe_alignment)
+    with Callback(pretask=lambda *args: pytest.fail("alignment computed borrowed payload")):
+        if entry_point == "surface":
+            result = prepare_surface_site(
+                obs, fp, {"a": flux}, species="co2", transport={"a": "integrated"}
+            )
+        else:
+            wrappers = {
+                source: SimpleNamespace(
+                    data=flux.assign(diagnostic=xr.DataArray([1.], dims="diagnostic_axis", coords={"diagnostic_axis": [i]})),
+                    metadata={"uuid": source},
+                )
+                for i, source in enumerate(("a", "b"))
+            }
+            monkeypatch.setattr(acquisition, "get_flux_data", lambda **kw: wrappers)
+            monkeypatch.setattr(
+                acquisition, "get_obs_data", lambda **kw: SimpleNamespace(data=obs, metadata={})
+            )
+            monkeypatch.setattr(
+                acquisition, "get_footprint_data", lambda **kw: SimpleNamespace(data=fp, metadata={})
+            )
+            merged = MergedData.from_options(
+                species="co2",
+                site_options=SiteOptions.from_inputs(sites=["MHD"], averaging_period="1h"),
+                domain="EUROPE", start_date="2020-01-01", end_date="2020-01-02",
+                flux_sources=["a", "b"], use_bc=False,
+                surface_transport={"a": "integrated", "b": "integrated"},
+            )
+            result = merged.site_data["MHD"]
+    if entry_point == "acquisition":
+        for source in wrappers:
+            xr.testing.assert_identical(merged.flux_data[source], wrappers[source].data)
+            retained = merged.flux_data[source].flux.data
+            if lazy:
+                assert retained.chunks == flux.flux.data.chunks
+                assert retained.__dask_keys__() == flux.flux.data.__dask_keys__()
+            else:
+                assert np.shares_memory(retained, flux.flux.data)
+            assert wrappers[source].data.flux.data is flux.flux.data
+            assert wrappers[source].metadata == {"uuid": source}
+            assert merged.provenance.flux[source].uuid == source
+    assert aligned_payloads
+    np.testing.assert_allclose(result.mf_mod, np.array([1., 2., 3.]) * (2 if entry_point == "acquisition" else 1))
+
+
+def test_provider_response_spatial_mismatch_remains_an_error(inputs, monkeypatch):
+    obs, fp, flux = inputs
+    align, integrated, resolved = surface._surface_operations()
+    monkeypatch.setattr(
+        surface, "_surface_operations",
+        lambda: (align, lambda *args: integrated(*args).assign_coords(lat=[1.]), resolved),
+    )
+    with pytest.raises(ValueError, match="matching spatial and observed timestamps"):
+        prepare_surface_site(obs, fp, {"a": flux}, species="co2", transport={"a": "integrated"})
+
+
 def test_per_source_footprints_represent_distinct_physical_contributions(inputs):
     obs, fp, flux = inputs
     other = fp.copy()

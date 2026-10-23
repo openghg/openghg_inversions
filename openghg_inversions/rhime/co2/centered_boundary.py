@@ -8,7 +8,7 @@ import pytensor
 import pytensor.tensor as pt
 import xarray as xr
 
-from openghg_inversions.boundary_sensitivity import align_boundary_operands, validate_boundary_operands
+from openghg_inversions.boundary_sensitivity import align_boundary_operands
 from openghg_inversions.models.components import LinearComponentResult, add_state_vector
 from openghg_inversions.models.coords import add_model_data, component_coords
 from openghg_inversions.models.state_activity import prepare_linear_sensitivity, resolve_state_activity
@@ -25,16 +25,8 @@ def require_centered_precision() -> None:
 def bind_boundary_operands(operands, observations, *, frequency=None, anchor_time=None):
     """Align one channel's raw spatial operands before any joint padding."""
     require_centered_precision()
-    if not validate_boundary_operands(operands):
-        raise ValueError("Expected centered boundary operands.")
-    units = observations.attrs.get("units")
-    if "observation_units" in observations.coords:
-        unique_units = np.unique(observations.observation_units.data)
-        units = str(unique_units[0]) if unique_units.size == 1 else None
-    if units is not None and operands.bc_reference.attrs.get("units") != units:
-        raise ValueError("Centered boundary reference units must match observation units.")
     native_dim = str(observations.dims[0])
-    raw_dim = "time" if "time" in operands.H_bc_anomaly.dims else "nmeasure"
+    raw_dim = "time" if "H_bc_anomaly" in operands and "time" in operands.H_bc_anomaly.dims else "nmeasure"
     labels = xr.DataArray(observations[native_dim].data, dims=raw_dim)
     aligned = align_boundary_operands(
         operands,
@@ -42,6 +34,12 @@ def bind_boundary_operands(operands, observations, *, frequency=None, anchor_tim
         anchor_time=anchor_time,
         observation_labels=labels,
     )
+    units = observations.attrs.get("units")
+    if "observation_units" in observations.coords:
+        unique_units = np.unique(observations.observation_units.data)
+        units = str(unique_units[0]) if unique_units.size == 1 else None
+    if units is not None and aligned.bc_reference.attrs.get("units") != units:
+        raise ValueError("Centered boundary reference units must match observation units.")
     if raw_dim != native_dim:
         aligned = aligned.rename({raw_dim: native_dim})
     return aligned

@@ -323,15 +323,19 @@ class MergedData:
             **({"allow_older_flux": False} if surface_transport is not None else {}),
         )
         if surface_transport is not None and len(flux_dict) > 1:
-            first = next(iter(flux_dict.values())).data.flux
-            for value in list(flux_dict.values())[1:]:
-                try:
-                    xr.align(first, value.data.flux, join="exact")
-                except ValueError as exc:
-                    raise ValueError(
-                        "Surface native reporting cannot yet represent mixed native source axes; "
-                        "use prepare_surface_site for source-wise supplied-input responses."
-                    ) from exc
+            try:
+                aligned_flux = xr.align(
+                    *(value.data.flux for value in flux_dict.values()), join="exact", copy=False
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    "Surface native reporting cannot yet represent mixed native source axes; "
+                    "use prepare_surface_site for source-wise supplied-input responses."
+                ) from exc
+            flux_dict = {
+                source: FluxData(data=value.data.assign(flux=flux), metadata=dict(value.metadata), sort=False)
+                for (source, value), flux in zip(flux_dict.items(), aligned_flux, strict=True)
+            }
         retained_flux_dict = flux_dict
         flux_provenance = {source: selected_provenance(value, flux_store) for source, value in flux_dict.items()}
 

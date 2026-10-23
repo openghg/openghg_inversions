@@ -535,6 +535,13 @@ def annotate_co2_o2_trace(
 ) -> xr.DataTree:
     """Attach the built joint model's scientific meaning after coordinate restoration.
 
+    For centered models, updates numerical ``y`` values in ``observed_data``,
+    ``prior_predictive``, ``posterior_predictive`` and ``predictions`` in place
+    by adding the retained boundary reference shift. Values marked
+    ``concentration_representation="absolute-v1"`` are left unchanged, so
+    repeated annotation does not add the shift twice. See
+    :ref:`surface-centered-boundary-contract`.
+
     Both posterior and native prior-predictive traces retain roles, units,
     preparation provenance and used priors. Fixed-OU traces additionally retain
     species/site grouping and joint likelihood/predictive scope. The trace is

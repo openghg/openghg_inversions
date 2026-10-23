@@ -21,6 +21,7 @@ import xarray as xr
 
 from ._provenance import selected_provenance
 from ._units import mole_fraction_unit_scale
+from ._boundary import baseline_reference_sensitivities as _reference_sensitivities
 
 
 def _surface_operations():
@@ -114,13 +115,6 @@ def _transport_provenance(value):
             if key in metadata
         },
     }
-
-
-def _reference_sensitivities(bc, fp, **kwargs):
-    """Compute accurate local boundary operands before any rounded products."""
-    from ._boundary import baseline_reference_sensitivities
-
-    return baseline_reference_sensitivities(bc, fp, **kwargs)
 
 
 def _dataset(value: Any) -> xr.Dataset:
@@ -387,7 +381,7 @@ def prepare_surface_site(
                 f"Provider returned incompatible observation-space coordinates for source {source!r}."
             )
         try:
-            xr.align(site, response, join="exact")
+            site, response = xr.align(site, response, join="exact", copy=False)
         except ValueError as exc:
             raise ValueError(
                 "Surface source responses require matching spatial and observed timestamps."
