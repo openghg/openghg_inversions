@@ -80,7 +80,7 @@ def test_error_preparation_preserves_selector_order_over_mapping_order(error_kin
 
 
 @pytest.mark.parametrize("lazy", [False, True])
-def test_quadrature_precedes_daily_median_and_preserves_borrowed_metadata(lazy):
+def test_quadrature_preserves_borrowed_metadata(lazy):
     dataset = xr.Dataset(
         {
             "mf": ("time", [10.0, 20.0, 30.0], {"units": "1e-9", "long_name": "methane"}),
@@ -95,10 +95,7 @@ def test_quadrature_precedes_daily_median_and_preserves_borrowed_metadata(lazy):
     original = dataset.copy(deep=True)
     merged = _merged(dataset)
     prepared = prepare_observation_errors(merged.site_data)
-    filtered = filter_observations(prepared, merged.site_options, filters="daily_median")[0]
-    # median(sqrt(r**2 + v**2)) != sqrt(median(r)**2 + median(v)**2).
-    assert filtered["TAC"].mf_error.item() == pytest.approx(np.sqrt(82.0))
-    assert np.sqrt(np.median(dataset.mf_repeatability.values) ** 2 + np.median(dataset.mf_variability.values) ** 2) == 5.0
+    np.testing.assert_allclose(prepared["TAC"].mf_error, np.sqrt([82.0, 82.0, 25.0]))
     xr.testing.assert_identical(dataset, original)
     assert prepared["TAC"].mf.data is dataset.mf.data
     assert prepared["TAC"].attrs == dataset.attrs
@@ -144,16 +141,17 @@ def test_variability_only_and_missing_components_remain_supported(averaging_erro
         prepare_observation_errors(_merged(dataset.drop_vars("mf_variability")).site_data)
 
 
-def test_nested_domains_prepare_errors_before_outer_aggregation_and_inner_alignment(monkeypatch):
+def test_nested_domains_prepare_errors_before_outer_selection_and_inner_alignment(monkeypatch):
     from openghg_inversions.rhime import nested, RhimeConfig
 
     # The error-ordering fixture uses a one-cell synthetic domain.
     monkeypatch.setattr(nested, "get_domain_info", lambda: {})
-    time = pd.date_range("2020-01-01", periods=3, freq="h")
+    time = pd.date_range("2020-01-01T12:00", periods=3, freq="h")
     outer = _merged(xr.Dataset(
         {"mf": ("time", [10.0, 20.0, 30.0]),
          "mf_repeatability": ("time", [1.0, 9.0, 3.0]),
-         "mf_variability": ("time", [9.0, 1.0, 4.0])},
+         "mf_variability": ("time", [9.0, 1.0, 4.0]),
+         "release_lon": ("time", [0.0, 0.0, 0.0])},
         coords={"time": time, "lat": [50.0], "lon": [-1.0]},
     ))
     inner = _merged(xr.Dataset(
@@ -163,7 +161,7 @@ def test_nested_domains_prepare_errors_before_outer_aggregation_and_inner_alignm
     config = RhimeConfig.from_params(dict(
         species="ch4", domain="EUROPE", sites=["TAC"], averaging_period="1h",
         start_date="2020-01-01", end_date="2020-01-02", output_name="nested-errors", mismatch_model="fixed_error",
-        output_format="none", flux_sources=["inventory"], filters="daily_median", use_bc=False,
+        output_format="none", flux_sources=["inventory"], filters="noon", use_bc=False,
     ), multisector=False)
     monkeypatch.setattr(MergedData, "from_options", lambda **kw: inner if kw["domain"] == "EUROPE-6km" else outer)
     monkeypatch.setattr(nested, "_mask_outer_for_aligned_inner_domain", lambda outer, inner: outer)

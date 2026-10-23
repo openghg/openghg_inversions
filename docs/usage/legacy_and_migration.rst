@@ -15,6 +15,22 @@ This page is for users with fixedbasis-style Python calls, INI files, batch
 scripts, or HBMCMC outputs. For a new inversion, start with the
 :doc:`model recipe chooser <model_recipes>` and :doc:`RHIME guide <rhime>`.
 
+Observation selection and uncertainty
+-------------------------------------
+
+``daily_median`` and ``six_hr_mean`` have been removed from the modern filter
+registry and Python module. Configurations using either name fail with migration
+guidance. They aggregated Dataset variables without defining uncertainty
+propagation for the new observations. Retain the matching historical software
+when reproducing those calculations.
+
+Make any resampling an explicit scientific choice before observation selection,
+with uncertainty propagated for the resulting observations. Acquisition's
+``averaging_period`` may be appropriate for a supported provider mean, but it is
+not an automatic replacement: a median differs from a mean, and weighting,
+uncertainty propagation and footprint alignment can also differ. Neither removed
+filter is silently rewritten to that option.
+
 Development resource migration
 -------------------------------
 
