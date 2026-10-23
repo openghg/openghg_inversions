@@ -25,8 +25,9 @@ data/basis utilities; plus temporary translation of `outputpath`, `outputname`,
 names `hbmcmc`/`hbmcmc_postprocessing`. Wrapper-only `nit`, `nchain`, `verbose`
 and `sampler_kwargs` translation retires with that wrapper. Existing explicitly
 named API migrations retain their own contracts; there is no general exception
-for historical signatures or result wrappers. Current Python model selectors and shared
-handoff/assembly aliases remain protected pending explicit per-interface decisions.
+for historical signatures or result wrappers. The finite Python-alias amendment
+below permits only its five named removals; other Python names retain their
+existing contracts pending explicit per-interface decisions.
 
 For each affected removal or deliberate behavior-change PR:
 
@@ -99,6 +100,38 @@ assertions and verify retired commands and the second executable no longer ship.
 #663/#945 own the command map and coordination, and #950 consumes it for launcher
 guidance. This accepted CLI map can be delivered independently of unresolved
 Python maps; it completes no runtime task or release gate.
+
+### Named Python-alias amendment — 23 October 2026
+
+The maintainer approved removal of these five currently implemented alias
+assignments, with no continued aliases solely for naming compatibility:
+
+| Retire | Canonical replacement |
+| --- | --- |
+| `run_rhime_multisector` | `run_multisector` |
+| `run_rhime_nested` | `run_nested` |
+| `RhimeMergedData` | `MergedData` |
+| `RhimePreparedInputs` | `PreparedInputs` |
+| `assemble_rhime_inputs` | `assemble_inputs` |
+
+This amendment records permission and the target map, not runtime deletion.
+The aliases remain direct assignments in the inspected source. Preserve the
+canonical functions, class objects, constructors, argument/default meanings,
+result contents, borrowed/lazy execution boundaries and scientific behavior.
+Removing import names does not rename persisted schema identifiers, fields or
+artifact contents. Existing `run_rhime`, `RhimeRunSpec` and `RhimeResult`
+migrations retain their separate explicit contracts; there is no general
+signature/result-wrapper exemption.
+
+Apply the migration evidence checklist to affected imports/callers and add
+bounded source witnesses where the pinned #960 ledger does not cover an alias.
+Preserve original historical inputs/expectations, compare affected source with
+the pinned baseline and port relevant regression coverage before deletion.
+The implementation slice updates exports, callers, tests, API documentation and
+migration guidance together and checks the retired imports no longer resolve.
+Broader symbols, types and module moves remain under #663/#945 and a #776 revival,
+requiring exact replacement maps before their own removals. This finite decision
+does not finalize CLI positional-date/`--kwargs` syntax or complete a delivery task.
 
 ## 1. Isolate legacy behavior in 0.8
 

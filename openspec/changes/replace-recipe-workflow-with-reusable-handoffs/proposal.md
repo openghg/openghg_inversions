@@ -15,7 +15,10 @@ parameter/output/flux translation enumerated in the
 It grants no general exception for public signatures or result wrappers.
 Existing named migrations, including Python `run_rhime`, `RhimeRunSpec` and
 `RhimeResult`, retain their explicit contracts; other current model selectors
-and shared Python handoff/assembly aliases remain protected.
+and shared Python names retain their contracts except for the separately
+approved [five-name alias map](../isolate-and-retire-hbmcmc/tasks.md#named-python-alias-amendment--23-october-2026).
+That map permits removal without naming-only forwarders; canonical behavior,
+types/constructors, result contents and persisted schema/artifact meanings remain.
 The durable [evidence guarantees](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence)
 remain distinct from that checklist's pinned #960 baseline, per-PR work and
 owners. Historical observations stay separate from dated modern comparisons;
@@ -36,7 +39,7 @@ the target is solely `rhime`, with `run --model standard|multisector|nested|co2`
 Preserve positional dates, `--kwargs`, effective configuration/date/output
 overrides, scientific execution, outputs and artifacts. This does not redesign
 arguments, rename the package/distribution or implement removal. Broader Python
-names/imports need exact agreed maps under #663/#945 and a #776 revival.
+names/imports beyond the five-name map need exact agreements under #663/#945 and a #776 revival.
 
 The maintainer also agreed the bounded #876/#964/#971 contract placement:
 configuration owns option rules, focused scientific-input requirements own

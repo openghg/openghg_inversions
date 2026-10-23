@@ -11,8 +11,13 @@ translation enumerated in the
 [retirement delivery checklist](../isolate-and-retire-hbmcmc/tasks.md#migration-evidence-checklist-and-delivery-order).
 Existing explicitly named migrations such as Python `run_rhime`, `RhimeRunSpec`
 and `RhimeResult` retain their scoped contracts; this creates no general public
-signature/result-wrapper exception. Current Python model selectors and shared aliases
-remain protected. Preserve the durable
+signature/result-wrapper exception. The separately approved
+[five-name Python alias map](../isolate-and-retire-hbmcmc/tasks.md#named-python-alias-amendment--23-october-2026)
+permits retiring those assignments without naming-only forwarders; other Python
+names retain their contracts. Preserve canonical callable/class objects,
+constructors, result contents, scientific behavior, borrowed execution boundaries
+and persisted schema identifiers/artifacts. Current source still has the aliases.
+Preserve the durable
 [evidence guarantees](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence);
 the linked checklist owns the pinned #960 revision, per-PR checks and current
 delivery order. Historical expectations remain available and scientific changes
@@ -82,7 +87,8 @@ establish their implementation.
 Merged #854 supplies current [model-selection](../../specs/rhime-model-selection/spec.md)
 and [model-composition](../../specs/rhime-model-composition/spec.md) baselines.
 Preserve the Python selector and installed full-run model choices, argument
-forwarding and established public aliases pending their explicit #945 decisions;
+forwarding, with only the finite CLI/five-name Python exceptions above. Other
+public names retain their contracts pending explicit #945 decisions;
 temporary option translation follows the development retirement gate above.
 The ordinary CO2 selection amendment approved on 16 October 2026 routes both
 Python and CLI selection to `run_co2`, starting from coherent prepared inputs.

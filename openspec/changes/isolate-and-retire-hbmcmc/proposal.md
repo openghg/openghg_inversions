@@ -27,7 +27,11 @@ The later [finite CLI amendment](tasks.md#cli-command-name-amendment--23-october
 permits retiring the second executable and four redundant full-run commands in
 favor of `rhime run --model ...`, while preserving their argument handling,
 scientific execution and products. It is accepted permission, not delivered
-removal. Package/distribution names and broader Python names/imports are unchanged.
+removal. Package/distribution names are unchanged.
+The [five-name Python alias map](tasks.md#named-python-alias-amendment--23-october-2026)
+also permits retiring those exact aliases without naming-only forwarders,
+preserving canonical functions/types/constructors and persisted artifacts.
+Broader Python names/imports still require separate exact agreements.
 
 ## Why
 

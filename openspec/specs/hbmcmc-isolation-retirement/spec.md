@@ -137,7 +137,9 @@ re-exports SHALL be removed with documented replacements. Modern callers SHALL
 use independent INI decoding, apply overrides, and construct modern configuration.
 This requirement does not remove modern legacy-format output codecs or
 `save_inversion_output`; their support remains independent. Established public
-Python aliases SHALL retain the model-selection contract. CLI names SHALL follow
+Python names SHALL retain the model-selection contract, including only its finite
+[five-alias retirement](../rhime-model-selection/spec.md#requirement-retire-named-python-aliases).
+CLI names SHALL follow
 its exact
 [installed-command exceptions](../rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement);
 those exceptions SHALL NOT broaden Python naming or result-wrapper retirement. Independent
@@ -167,8 +169,11 @@ output-format translation MAY be retired only for the spellings enumerated in
 The separately enumerated
 [installed-command exceptions](../rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement)
 MAY also retire under these evidence guarantees, preserving canonical command
-operations and argument behavior. These exceptions replace the former
-HBMCMC, temporary-alias and enumerated command-name retention promises;
+operations and argument behavior. The five names in
+[Retire named Python aliases](../rhime-model-selection/spec.md#requirement-retire-named-python-aliases)
+SHALL retire under the same guarantees while preserving their canonical types,
+callables and persisted artifact identities. These exceptions replace the former
+HBMCMC, temporary-alias and enumerated public-name retention promises;
 they SHALL NOT extend to other modern signatures or result types. Historical
 execution SHALL require the matching older software. Normal modern execution
 SHALL NOT invoke migration tooling.

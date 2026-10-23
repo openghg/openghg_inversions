@@ -9,7 +9,8 @@ proceed on devel while preserving the durable
 and following the [delivery checklist](tasks.md#migration-evidence-checklist-and-delivery-order).
 That checklist owns the finite namespace/translation scope, pinned #960 baseline,
 per-PR checks and current delivery order. It grants no general public
-signature/result-wrapper exception; other existing aliases retain their contracts.
+signature/result-wrapper exception. The five-name Python amendment below is a
+finite exception; other names retain their contracts.
 Converters, launchers, maintenance publishing and integrated acceptance remain M2
 release work. Final release/public-alias choices stay with #945; independent
 basis readers, writers and discovery stay with #951. This amendment implements
@@ -21,6 +22,14 @@ and canonical `run --model` routes, preserving positional dates, `--kwargs`,
 configuration/override meanings, scientific execution and artifacts. Current
 aliases remain implemented until the removal slice lands; no argument redesign,
 package rename or blanket Python-name migration follows from this amendment.
+
+The [five-name Python alias map](tasks.md#named-python-alias-amendment--23-october-2026)
+permits removing only those alias assignments without continued naming-only
+forwarders. Recommend canonical `run_multisector`, `run_nested`, `MergedData`,
+`PreparedInputs` and `assemble_inputs`, preserving the same callable/class objects,
+constructors, result contents, scientific behavior, borrowed execution boundaries
+and persisted schema identifiers/artifacts. Current source still implements the
+aliases; broader types, symbols and module moves require separately agreed maps.
 Positional dates and `--kwargs` remain open design questions; preserving their
 current meanings for command renaming does not decide their final syntax.
 
@@ -53,8 +62,9 @@ redesign; no runtime deletion or release-readiness claim in this amendment.
    through #719 after its affected evidence and scientific regressions exist.
    Until each removal lands, existing frontend precedence and warnings apply
    outside HBMCMC. Canonical configuration knows only canonical names; normal
-   execution must not invoke migration tooling. Established public aliases
-   remain supported pending #945 decisions. Independent basis adapters remain
+   execution must not invoke migration tooling. Outside the accepted finite
+   CLI/five-name Python maps above, public names retain their contracts pending
+   exact #945 decisions. Independent basis adapters remain
    with #951, outside blanket retirement. HBMCMC discovery stays self-contained
    until removal.
 3. Leave path conversion, BC loading and packaged-map selection with the

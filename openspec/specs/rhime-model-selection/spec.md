@@ -119,26 +119,44 @@ Retirement SHALL preserve the
 - **THEN** its supported staged and product operations remain available under `rhime`
 - **AND** the Python package, distribution and installation commands keep their names
 
-### Requirement: Retain established public aliases
+### Requirement: Retire named Python aliases
 
-The established runner aliases SHALL refer to their current implementations,
-except for the
-explicit 0.8 removal of Python `run_rhime` with import guidance to `run_standard`.
-This supersedes the earlier alias-preservation promise for that name.
-`run_rhime_multisector` SHALL refer to `run_multisector`, and
-`run_rhime_nested` to `run_nested`. The corresponding shared aliases SHALL remain
-`RhimeMergedData` to `MergedData`, `RhimePreparedInputs` to `PreparedInputs`,
-`assemble_rhime_inputs` to `assemble_inputs`. The 0.8 retirement of `RhimeRunSpec`
-also removes `with_prepared_sites` and `with_prepared_rhime_sites`; this supersedes
-their alias-preservation promise. Retained sites belong to the prepared handoff.
+The following five aliases SHALL be retired in favor of their canonical public
+names. This supersedes their earlier identity-alias preservation promises:
 
-These named Python aliases SHALL remain supported. Installed command aliases
-SHALL remain supported except for the exact executable/subcommand exceptions in
-`Bounded installed-command retirement` above;
-retirement of the HBMCMC namespace or temporary parameter/output-format
-translation SHALL NOT remove them. Their support SHALL NOT be inferred to end
-at a version boundary. Scientific recipe selection and independent
-output/artifact capabilities SHALL retain their separate contracts.
+| Retire | Canonical replacement | Defining module within `openghg_inversions` |
+| --- | --- | --- |
+| `run_rhime_multisector` | `run_multisector` | `rhime.multisector` |
+| `run_rhime_nested` | `run_nested` | `rhime.nested` |
+| `RhimeMergedData` | `MergedData` | `inversion_data.acquisition` |
+| `RhimePreparedInputs` | `PreparedInputs` | `inversion_data.prepared_inputs` |
+| `assemble_rhime_inputs` | `assemble_inputs` | `rhime.preparation` |
+
+Retirement SHALL remove those alias names from their defining modules and
+public re-exports without retaining forwarding aliases solely for naming
+compatibility. While still present before retirement, they SHALL refer to their
+canonical implementations. The retirement requirement SHALL NOT imply that
+deletion is already implemented.
+
+The canonical callables and types SHALL remain supported with their scientific
+behavior, arguments, constructor behavior and result contents unchanged. Alias
+retirement SHALL NOT rename or relocate their canonical definitions, change
+persisted schema identifiers/versions, serialized fields, coordinates or
+scientific variables, or alter artifact codecs and borrowed-array/execution
+guarantees. In particular, the prepared-input schema identifier
+`openghg_inversions.rhime_prepared_inputs` SHALL NOT be renamed because its
+Python alias retires.
+
+This finite exception SHALL NOT authorize removal or renaming of other Python
+imports, types or constructors. Retirement SHALL preserve the
+[migration evidence guarantees](../hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
+Installed command names follow only the separate exact exceptions in
+`Bounded installed-command retirement` above.
+
+The previously specified removal of Python `run_rhime` with guidance to
+`run_standard` remains unchanged. The retirement of `RhimeRunSpec`,
+`with_prepared_sites` and `with_prepared_rhime_sites` also retains its separate
+contract. Retained sites belong to the prepared handoff.
 
 #### Scenario: Removed standard Python alias
 
@@ -146,10 +164,17 @@ output/artifact capabilities SHALL retain their separate contracts.
 - **THEN** it receives a helpful import error directing it to `run_standard`
 - **AND** canonical `rhime run --model standard` preserves the standard recipe's written files and logging
 
-#### Scenario: Import a retained established public name
+#### Scenario: Use a canonical replacement after alias retirement
 
-- **WHEN** a caller imports one of these established names and its current name
-- **THEN** both names refer to the same implementation or handoff type
+- **WHEN** a caller replaces one of the five listed aliases with its canonical name
+- **THEN** it uses the same scientific callable or data type with unchanged arguments and result contents
+- **AND** existing saved artifacts retain their schema identity and scientific meaning
+
+#### Scenario: A retired alias is no longer a public access path
+
+- **WHEN** the five-alias retirement is implemented
+- **THEN** their old names are unavailable from the defining modules and public re-exports
+- **AND** no forwarding alias restores those old names solely for naming compatibility
 
 ## Source and test evidence
 

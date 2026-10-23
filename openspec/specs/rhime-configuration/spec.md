@@ -424,6 +424,12 @@ runtime-compatibility exceptions:
   `rhime` routes specified by
   [Bounded installed-command retirement](../rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement).
   This command-name exception SHALL NOT change argument syntax or Python names.
+- The five Python aliases `run_rhime_multisector`, `run_rhime_nested`,
+  `RhimeMergedData`, `RhimePreparedInputs` and `assemble_rhime_inputs` SHALL
+  retire only to the exact canonical replacements in
+  [Retire named Python aliases](../rhime-model-selection/spec.md#requirement-retire-named-python-aliases).
+  This naming exception SHALL NOT change canonical signatures, type behavior,
+  result contents or persisted artifact identifiers.
 
 These exceptions SHALL preserve the
 [migration evidence guarantees](../hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
@@ -443,11 +449,11 @@ SHALL remain unchanged except for the path and legacy-resource migrations specif
 and the 0.8 historical scientific-quirk and chain-policy removals specified by
 [hbmcmc-isolation-retirement](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md).
 
-Established selector and shared-handoff aliases in the current
-[model-selection capability](https://github.com/openghg/openghg_inversions/blob/7269f50f09dc4b618766cb9d69abe260a564eebc/openspec/specs/rhime-model-selection/spec.md)
-SHALL remain supported,
-without the former through-0.9 timetable. The removed
-transitional imports above do not include those public aliases.
+Established selectors and shared handoffs SHALL retain their behavior, subject
+only to the five-name
+[alias retirement](../rhime-model-selection/spec.md#requirement-retire-named-python-aliases).
+Their canonical public names remain supported without the former through-0.9
+timetable. That finite exception SHALL NOT imply broader public-name retirement.
 Independent basis APIs retain their separately specified contracts. Scientific calculations,
 canonical site shorthand and override behavior, labelled alignment, borrowed
 inputs, named materialization boundaries, modern legacy-format output and saved
@@ -704,7 +710,7 @@ be identified explicitly rather than silently assigned its old contract.
 ### Requirement: In-memory supplied and freshly acquired data paths
 
 Configured recipes SHALL reuse compatible supplied merged data without
-object-store I/O or call `RhimeMergedData.from_options` with resolved selectors.
+object-store I/O or call `MergedData.from_options` with resolved selectors.
 They SHALL preserve authoritative retained selections and validate known
 acquisition facts. Modern merged-data cache options SHALL be rejected.
 Acquisition replay remains deferred to #829; durable reuse uses prepared inputs.

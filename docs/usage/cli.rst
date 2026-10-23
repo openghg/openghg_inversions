@@ -132,15 +132,43 @@ their existing ``prepared_inputs`` interfaces and trace returns. Linked recipes 
 See :doc:`co2_model_family` for the TOML configuration and handoff commands.
 
 The finite CLI names listed above may retire under the
-:doc:`agreed development boundary <legacy_and_migration>`. Broader Python naming
-decisions remain with #663/#945 and a #776 revival; no blanket public-name
-removal is authorized. The existing runner imports and
-shared handoff/assembly names listed here remain aliases to their implementations: ``run_standard`` is
-``run_standard``, ``run_rhime_multisector`` is ``run_multisector``, and
-``run_rhime_nested`` is ``run_nested``. No argument conversion or warning is
-added to these aliases. Shared ``MergedData`` and ``PreparedInputs`` retain the
-``RhimeMergedData`` and ``RhimePreparedInputs`` aliases and unchanged serialized
-schemas. ``assemble_inputs`` retains its former ``assemble_rhime_inputs`` import.
+:doc:`agreed development boundary <legacy_and_migration>`. The separately
+approved five-name Python map below permits only those alias removals;
+broader Python naming/types/module moves need separately agreed maps.
+
+.. _rhime-python-alias-retirement:
+
+Approved Python alias retirement
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Use the canonical names in new Python calls and imports. These five aliases
+are approved for removal without continued naming-only compatibility aliases.
+Current source still implements them as direct assignments; this contract
+amendment does not delete them.
+
+.. list-table:: Accepted Python alias replacements
+   :header-rows: 1
+
+   * - Retire
+     - Canonical name
+   * - ``run_rhime_multisector``
+     - ``run_multisector``
+   * - ``run_rhime_nested``
+     - ``run_nested``
+   * - ``RhimeMergedData``
+     - ``MergedData``
+   * - ``RhimePreparedInputs``
+     - ``PreparedInputs``
+   * - ``assemble_rhime_inputs``
+     - ``assemble_inputs``
+
+The canonical callable/class objects, constructors, argument/default meanings,
+result contents, scientific behavior and borrowed/lazy execution guarantees are
+preserved. Import-name retirement does not rename persisted schema identifiers,
+fields or artifact contents. Broader public names remain outside this finite
+map. The separate existing ``run_rhime``, ``RhimeRunSpec`` and ``RhimeResult``
+migrations retain their own contracts; there is no blanket result-wrapper exemption.
+
 The obsolete ``with_prepared_sites`` and ``with_prepared_rhime_sites`` run-spec
 helpers are removed; use the retained sites on the prepared handoff directly.
 

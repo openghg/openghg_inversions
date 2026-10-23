@@ -18,8 +18,10 @@ preserve the HBMCMC namespace after its removal.
 
 Supported modern workflows, modern `output_format="legacy"`, saved
 `InversionOutput` exports and independently supported basis/scientific codecs
-SHALL remain available. Established Python aliases and independent basis
-capabilities SHALL retain their separately specified support. CLI names SHALL
+SHALL remain available. Python names SHALL follow only the finite
+[five-alias retirement](../../../../specs/rhime-model-selection/spec.md#requirement-retire-named-python-aliases),
+preserving canonical callables/types and artifact identities. Other Python names
+and independent basis capabilities SHALL retain their separately specified support. CLI names SHALL
 follow only the finite
 [installed-command exceptions](../../../../specs/rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement),
 preserving canonical operations and argument behavior without a broader Python

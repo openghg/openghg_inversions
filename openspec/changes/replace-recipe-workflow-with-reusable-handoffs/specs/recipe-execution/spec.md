@@ -149,7 +149,7 @@ steps' change from `MergedData` to per-site datasets and `SiteOptions`;
 staged/setup APIs and owned CO2 configuration conventions SHALL
 follow the declared reset instead of requiring compatibility aliases.
 Only the HBMCMC namespace, temporary parameter/output-format translation,
-special tracer-option handling and installed command names
+special tracer-option handling, installed command names and five named Python aliases
 explicitly enumerated in
 [Compatible public adapters and scientific choices](../../../../specs/rhime-configuration/spec.md#requirement-compatible-public-adapters-and-scientific-choices)
 MAY retire under the
@@ -159,7 +159,9 @@ incidental scientific changes. Numerical behavior, borrowed-array/execution guar
 modern legacy-format output, saved `InversionOutput` exports and independently
 supported basis capabilities SHALL retain their separate contracts.
 The existing selector forwarding, full-run CLI model choices and established
-Python aliases SHALL remain supported under the model-selection capability;
+Python names SHALL follow only the model-selection capability's
+[five-alias retirement](../../../../specs/rhime-model-selection/spec.md#requirement-retire-named-python-aliases),
+without changing canonical callables/types or persisted scientific identifiers;
 CLI names SHALL follow only its
 [finite command exceptions](../../../../specs/rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement),
 preserving canonical operations and their effective arguments;

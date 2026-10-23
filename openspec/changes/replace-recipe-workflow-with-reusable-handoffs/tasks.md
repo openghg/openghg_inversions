@@ -10,8 +10,12 @@ wrappers/dictionary adapters and the temporary parameter/output/flux translation
 enumerated in the [retirement delivery checklist](../isolate-and-retire-hbmcmc/tasks.md#migration-evidence-checklist-and-delivery-order).
 There is no general public signature/result-wrapper exception. Existing named
 API migrations (including Python `run_rhime`, `RhimeRunSpec` and `RhimeResult`)
-retain their scoped contracts; other current Python model selectors and shared aliases
-remain protected. Each affected removal/change preserves the durable
+retain their scoped contracts. The separately approved
+[five-name Python alias map](../isolate-and-retire-hbmcmc/tasks.md#named-python-alias-amendment--23-october-2026)
+permits removing only those implemented assignments without naming-only forwarders;
+canonical callable/class behavior, constructors, result contents and persisted
+schema/artifact meanings remain. Other Python names retain their contracts.
+Each affected removal/change preserves the durable
 [evidence guarantees](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence)
 and follows the checklist's concrete pinned #960 comparison, per-PR evidence,
 scientific regression migration and owner recording. Finished converters/launchers

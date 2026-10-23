@@ -180,7 +180,10 @@ temporary parameter/output-format/flux-selector translation after evidence
 preservation and relevant regression migration. This grants no general exception
 for public signatures or result wrappers. The explicitly named API migrations
 documented on this page retain their own contracts; other current model selectors
-and shared Python aliases remain supported. The separately accepted
+and shared Python names retain their contracts except for the
+:ref:`five named aliases <rhime-python-alias-retirement>` approved for retirement.
+That finite map preserves canonical behavior and persisted schemas/artifacts.
+The separately accepted
 :ref:`CLI command map <rhime-cli-command-retirement>` permits retiring
 ``openghg-inversions`` and the four redundant full-run commands, targeting
 ``rhime`` as the sole installed executable. Current source still accepts those
@@ -203,8 +206,8 @@ The amended promises are `compatible public adapters
 <https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md#requirement-configuration-is-not-a-historical-identity-schema>`_,
 `modern flux selectors
 <https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md#requirement-modern-flux-selectors-have-their-own-deprecation-boundary>`_,
-`public aliases
-<https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-model-selection/spec.md#requirement-retain-established-public-aliases>`_,
+`named Python aliases
+<https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-model-selection/spec.md#requirement-retire-named-python-aliases>`_,
 and `retained modern behavior
 <https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md#requirement-retained-modern-behavior-has-modern-owners>`_.
 The `affected-evidence requirement
@@ -588,7 +591,7 @@ the retained RHIME abstractions:
      - Load data, then filter, build basis and sensitivities, and assemble inputs;
        the former ``prepare_rhime_inputs`` adapter has been removed
    * - ``FixedBasisPreparedData``
-     - ``RhimePreparedInputs``
+     - ``PreparedInputs``
      - Backend-neutral prepared observations and sensitivities
    * - ``basis_functions_wrapper``
      - ``prepare_basis``
@@ -641,17 +644,17 @@ save it as Zarr before upgrading.
 Merged-data acquisition and prepared-input reuse
 ------------------------------------------------
 
-Modern RHIME acquisition returns an in-memory ``RhimeMergedData`` handoff.
+Modern RHIME acquisition returns an in-memory ``MergedData`` handoff.
 The proposed acquisition-artifact ``save``, ``load`` and ``load_legacy`` methods
 are removed, along with ``close`` and the processing-stage marker. The
 ``prepare_rhime_inputs`` convenience adapter is also removed. Use
-``RhimeMergedData.from_options`` and the named scientific stages in
+``MergedData.from_options`` and the named scientific stages in
 ``rhime.preparation``, or use a complete RHIME runner.
 
 Remove ``reload_merged_data``, ``save_merged_data``, ``merged_data_dir`` and
 ``merged_data_name`` from modern RHIME configurations, including their
 ``inner_`` counterparts in nested runs. These options raise as unknown
-arguments. For repeat runs, save and load ``RhimePreparedInputs`` and use the
+arguments. For repeat runs, save and load ``PreparedInputs`` and use the
 prepared-input runner. The staged ``prepare`` command persists only those
 prepared inputs and their manifest; subsequent stages read that artifact.
 
@@ -713,7 +716,7 @@ including ``basis_weights_from_fp_all`` and ``make_basis_functions_from_fp_all``
 now live in ``openghg_inversions.hbmcmc.legacy_basis``. The previous canonical
 module paths and exports have been removed.
 
-Modern acquisition uses ``RhimeMergedData.from_options`` or direct dataset
+Modern acquisition uses ``MergedData.from_options`` or direct dataset
 construction. Modern runners resolve native prior flux once with
 ``native_flux.resolve_runtime_flux(merged.flux_data, split_by_sectors=...)``.
 Modern ``prepare_basis`` accepts explicit ``site_data``, resolved ``runtime_flux``
@@ -726,7 +729,7 @@ Flat-file adaptation and explicit legacy writing remain in
 ``basis.compatibility`` pending the independent #951 dispositions; removing HBMCMC
 does not authorize removing these adapters. See :doc:`rhime_configuration` for the
 modern basis artifact default, explicit legacy opt-in, and migration examples. For reusable
-RHIME runs, save ``RhimePreparedInputs``;
+RHIME runs, save ``PreparedInputs``;
 legacy merged-data files are a separate explicit utility workflow.
 
 Dataset and ``fp_all`` basis adapters resolve native flux once at their
