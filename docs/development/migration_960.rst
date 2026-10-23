@@ -455,7 +455,7 @@ and retains supported output fields, including ``source_to_sector``; it checks
 option names without evaluating numerical arrays or resolving resources.
 
 Supplementary codec witnesses after initial acceptance
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``tests/fixtures/migration_960/retirements/legacy_codec_witnesses_2026_10_23.json``
 preserves ten concrete adapter-only input/expectation cases, with exact pinned

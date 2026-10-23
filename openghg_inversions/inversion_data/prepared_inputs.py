@@ -42,7 +42,6 @@ __all__ = [
     "PreparedInputs",
     "RHIME_PREPARED_INPUTS_SCHEMA",
     "RHIME_PREPARED_INPUTS_SCHEMA_VERSION",
-    "PreparedInputs",
 ]
 
 

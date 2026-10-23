@@ -45,7 +45,6 @@ from openghg_inversions.model_error import MinErrorConfig
 
 __all__ = [
     "assemble_inputs",
-    "assemble_inputs",
     "prepare_observation_errors",
     "build_sensitivities",
     "filter_observations",

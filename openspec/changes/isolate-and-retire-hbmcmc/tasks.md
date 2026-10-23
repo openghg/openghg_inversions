@@ -161,7 +161,7 @@ does not finalize CLI positional-date/`--kwargs` syntax or complete a delivery t
 
 ## 2. Remove runtime compatibility at the development boundary
 
-- [ ] 2.1 Delete HBMCMC's wrapper, adapters and legacy utilities plus obsolete
+- [x] 2.1 Delete HBMCMC's wrapper, adapters and legacy utilities plus obsolete
   entry points and internal consumers, and remove temporary runner spelling/output-format/flux
   alias support after the affected evidence and regression gate. Retire special
   `use_tracer` handling in a separately identified #719 slice: every explicit
@@ -173,7 +173,7 @@ does not finalize CLI positional-date/`--kwargs` syntax or complete a delivery t
   Verify wheel/source distributions omit
   the package and no compatibility alias preserves its import path; run the
   import-boundary check and relevant modern workflow regressions.
-- [ ] 2.2 Update concise devel migration guidance and the removal fragment. Verify
+- [x] 2.2 Update concise devel migration guidance and the removal fragment. Verify
   modern replacements and older-release guidance for legacy-only artifacts,
   with no accidental removal of independently supported output formats.
 
@@ -251,3 +251,53 @@ codec inputs/expectations and exact source hashes without legacy imports;
 it is source-inspected supplementary capture after the initial retirement.
 All original #960 fixtures remain unchanged. Ruff, strict OpenSpec **10/10**
 and whitespace checks pass. Final complete retry results are not yet available.
+
+### Final runtime acceptance — 23 October 2026
+
+Immutable revision `a4fd9ae4c170d3620ea7425120671394712662de` passed the
+complete locked scientific suites in Slurm array `19668217`:
+
+- Element 0: Python **3.12.11**, **4,142 passed**, 8 skipped, 4 deselected;
+  lint, **4 borrowed-typing checks**, and **docs-full** passed.
+- Element 1: Python **3.13.7**, **4,142 passed**, 8 skipped, 4 deselected.
+- Element 2: moving OpenGHG devel, Python 3.12.11, **4,139 passed**, 3 failed,
+  8 skipped, 4 deselected. Only the independently baselined Zarr 3 failures
+  remain: linked handoff/source covariance string codecs and prepared-input
+  Blosc encoding. This environment is not reported as passing; its unrelated
+  provider/artifact compatibility remains outside #719 and with final integrated
+  acceptance under #952.
+- Callback `19668218` completed; the durable ticket reported all terminal states.
+  Jobs used two CPUs, two Dask workers, one numerical thread and 8 GiB each.
+- Full documentation built successfully with eleven Sphinx warnings. Ten concern
+  existing duplicate/ambiguous API references; the introduced supplementary-ledger
+  heading underline was corrected separately and checked by a bounded render.
+- Fresh wheel/sdist and installed-wheel smoke checks at `a4fd9ae4` passed:
+  no HBMCMC namespace or five retired aliases, canonical imports/model routes,
+  and sole `rhime` executable. The corrected Python and INI migration examples
+  resolve without acquisition/inference. Strict OpenSpec **10/10**, Ruff and
+  `git diff --check` pass.
+- GitHub Actions on the same head: test run `39987314862` and documentation
+  run `39987314865`; supported locked suites and docs pass, while the moving
+  dependency gate retains its known Zarr failures. PR #974 remains draft.
+
+Tasks 2.1/2.2 are delivered with this evidence. The final follow-up fixes the heading, records this evidence and removes three
+duplicate canonical `__all__` entries; scientific execution, serialization, tests,
+package metadata and the lockfile remain unchanged from validated `a4fd9ae4`. Task 3.2 remains unchecked for subsequent specification
+promotion/archive after merge; approved durable targets were not weakened or
+rewritten. No merge, publication, release number or release-readiness claim.
+
+Final documentation check: a bounded Sphinx warning-as-error render of six
+current migration/CLI/configuration/evidence guides passed with zero warnings
+in the existing documentation environment after the heading fix. References to
+nonincluded pages were outside this bounded render. Rendered examples and
+supplementary evidence wording were inspected. All eighteen original fixtures
+remain byte-identical and all six supplemental source blob/SHA256 records match
+their exact commits. GitHub's marked Numba checks also pass on both locked
+interpreters. Independent final source, documentation and CI reviews found no
+material retirement gaps; only three duplicate canonical export entries needed
+removal, with focused import/command validation recorded below.
+
+After the three export-list deduplications, **41 focused import/public-API/CLI
+checks passed** (8.51 s). A source AST scan finds no duplicate literal export
+lists. Ruff, strict OpenSpec **10/10** and whitespace checks pass. No full-suite
+rerun is claimed for the final export-list/markup/evidence-only follow-up.
