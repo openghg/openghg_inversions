@@ -20,6 +20,7 @@ openghg\_inversions.rhime
    openghg_inversions.rhime.builders
    openghg_inversions.rhime.cached_sigma
    openghg_inversions.rhime.ini
+   openghg_inversions.rhime.likelihood_inputs
    openghg_inversions.rhime.materialization
    openghg_inversions.rhime.model_inputs
    openghg_inversions.rhime.multisector

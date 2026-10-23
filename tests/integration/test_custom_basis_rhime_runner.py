@@ -249,7 +249,8 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
     )
 
     def reject_incompatible_basis(actual: Any, actual_basis: Any, **kwargs: Any) -> Any:
-        assert actual is filtered
+        assert tuple(actual) == tuple(filtered) == ("MHD",)
+        assert actual["MHD"] is filtered["MHD"]
         assert actual_basis is incompatible_basis
         assert kwargs["flux_sources"] == config.data.flux_sources
         assert kwargs["use_bc"] == config.data.use_bc
