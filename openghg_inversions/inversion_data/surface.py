@@ -183,7 +183,7 @@ def _coverage(flux: xr.Dataset, fp: xr.Dataset, *, source: str, mode: TransportM
     times = _time_index(flux, f"Flux source {source!r}")
     releases = _time_index(fp, "Aligned footprint")
     period = flux.flux.attrs.get("time_period", flux.attrs.get("time_period"))
-    offsets = {
+    offsets: dict[str, pd.offsets.BaseOffset | pd.Timedelta] = {
         "yearly": pd.DateOffset(years=1),
         "monthly": pd.DateOffset(months=1),
         "daily": pd.Timedelta(days=1),

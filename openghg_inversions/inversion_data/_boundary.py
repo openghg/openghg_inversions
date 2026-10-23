@@ -83,7 +83,7 @@ def baseline_reference_sensitivities(
     if bc_time[0] + period <= bc_time[0]:
         raise ValueError("BC time_period must be positive.")
     positions = bc_time.get_indexer(fp_time, method="ffill")
-    if (positions < 0).any() or any(t >= bc_time[i] + period for t, i in zip(fp_time, positions)):
+    if (positions < 0).any() or any(t >= bc_time[int(i)] + period for t, i in zip(fp_time, positions)):
         raise ValueError("BC time_period coverage does not cover every footprint observation.")
 
     def conversion(source: str, target: str) -> float:
