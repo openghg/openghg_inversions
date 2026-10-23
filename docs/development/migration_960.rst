@@ -349,3 +349,91 @@ No full scientific test suite, Python 3.12 modern matrix or CI-equivalent tox
 run is claimed. Final cross-version, packaging and scientific acceptance remains
 with #952. Source-inspected equations, historical resources, arbitrary external
 scripts and the final supported patch-version subset retain their stated limits.
+
+
+Dated retirement comparison: issue 719, 23 October 2026
+-------------------------------------------------------
+
+This addition records the affected retirement evidence without replacing any
+original source observation above or any ``requests/``, ``resources/`` or
+``historical/`` fixture. Plain discoveries and dispositions are captured in
+``tests/fixtures/migration_960/retirements/runtime_719_2026_10_23.json``.
+The PR base is ``17e28ed081954b4155c9d85b66eaeef2ad81853c``. It includes
+merged #966 (evidence, merge ``3b27c542``) and #972 (approved desired contracts,
+merge ``17e28ed0``). Contract/documentation checks from #972 do not validate
+runtime removal. The comparisons below are source inspection; fresh executed
+checks belong to the implementation revision's task and PR records.
+
+Pinned-source comparison
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Comparing the affected sources at pinned ``0a32d73a`` with the PR base finds:
+
+* No changes in ``hbmcmc/compatibility.py``, ``hbmcmc/run_hbmcmc.py``,
+  ``hbmcmc/legacy_basis.py``, the runner alias/request/acquisition/nested sources,
+  ``cli.py``, or the five Python alias assignments/re-exports.
+* ``hbmcmc/legacy_data.py::make_combined_scenario`` gained explicit
+  ``xr.concat(..., join="outer")`` through #956. Its intended source-union
+  behavior must survive in canonical labeled-input regressions; deletion does
+  not license changing source ordering, missing-time markers or signed fluxes.
+* #956 also made modern trace/statistic merges explicitly use
+  ``join="outer", compat="no_conflicts"`` and updated supported PyMC imports;
+  #959/#969 fixed fixed-OU projection/roundoff, #963 calibrated posterior
+  Monte Carlo checks, and #967 added compiled-backend checks. These intervening
+  changes stay in the base; they are not retirement changes or claims of exact
+  numerical equivalence with the pinned environment.
+* ``pyproject.toml`` changed xarray's lower bound and test markers. Its two
+  console-script declarations were unchanged. Removing the second executable
+  therefore needs fresh built-distribution checks.
+
+Affected entries, cases and dispositions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* **R1/R2, I2:** the accepted command map replaces the second executable and
+  four full-run aliases with ``rhime run --model standard|multisector|nested|co2``.
+  Original ``invocations.txt`` files retain the historical commands. Dated case
+  ``command-map`` records the new map and preserved dates/JSON/override/CO2/staged
+  meanings. Disposition: mechanically migrated. #719 delivers removal; #945
+  retains broader naming decisions and #950 owns launcher migration.
+* **I3/I4/O2:** original request/precedence/conflict observations remain archived.
+  ``runtime-options`` adds the exact eight parameter, four flux-selector and
+  two output-format spellings. Every spelling now receives unsupported-option
+  validation rather than translation, including old/new flux names supplied
+  together. Canonical values remain supported. Disposition: mechanically
+  migrated request vocabulary; #949 owns explicit conversion and conflict reports.
+* **I6:** ``tracer`` preserves false-consumed/true-special-error source behavior.
+  The approved modern outcome rejects every explicit value ordinarily before
+  scientific work, with omission valid. Disposition: unsupported; #719 owns
+  removal, #949 reporting. Draft #964/#973 overlap was inspected, not imported;
+  their validation does not validate this revision. #971 is separate from #719.
+* **R3/R4, I2/I5/I6, O1/O2:** ``namespace-wrapper`` retires the ordinary wrapper,
+  dictionary normalization, config-copy behavior and module execution together.
+  Original ``fixedbasis.ini``, ``explicit-wrapper.json``, defaults and sampling
+  witnesses remain available. Disposition: unsupported execution on modern
+  development; matching 0.7 execution belongs to #946/#947, finite conversion
+  and launcher support to #948/#949/#950.
+* **U1 and the resource ledger:** ``legacy-data`` and ``legacy-basis`` add the
+  previously uncatalogued six-tuple retrieval/cache, dictionary/scenario/DataTree
+  serialization, fp_all basis conversion and weight dispatch surfaces.
+  Disposition: unsupported historical adapters/artifacts, not deletion of
+  scientific representations. Original resource cases still describe sorted
+  partitions, retained-artifact preference/ambiguity, NESW/no-BC, missing resources,
+  conflicts and invocation-relative paths. #948/#949 own converter coverage;
+  #951 retains independent basis discovery/read/write and flat partitions.
+* **R2/U2:** ``python-aliases`` supplies a bounded source witness for the five
+  approved aliases, absent from the original ledger. Their canonical functions
+  and classes remain. Disposition: mechanically migrated; #950 consumes the map,
+  while #945 owns all unresolved names. Artifact acceptance remains codec-owned.
+* **O1/O3, H2-H6:** canonical sampling, offset/fixed-error semantics, all-chain
+  summaries, modern ``legacy`` products, ``InversionOutput`` exports and exact
+  paths remain independently supported. Disposition: retained. Ported scientific
+  regressions use canonical labeled inputs; historical quirks are not restored.
+  #948/#949 own historical scientific-choice reporting and #952 final acceptance.
+
+The modern migration tests use canonical request settings and exact resource
+paths. They no longer execute a removed adapter. The archived plain expectations
+remain later converter inputs; checking their preservation is not historical
+execution. No converter, launcher, new artifact format support, release number
+or release-readiness decision is supplied here. Retained-population imputation
+and nested alignment remain #876/#964; provider acquisition averaging precedes
+inversion-side error combination, and aggregation is not selection.
