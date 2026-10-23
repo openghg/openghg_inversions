@@ -386,7 +386,7 @@ requirements for those named standard interfaces.
 ### Requirement: Compatible public adapters and scientific choices
 
 Except for the explicit standard API/result migration above, the sampler-default
-migration, and the resource-I/O
+migration, the aggregation-filter retirements specified below, and the resource-I/O
 migrations removing `prepare_basis(output_path=...)` and `country_directory` in 0.8
 and replacing scientific BC case/directory inputs with resolved basis data,
 the legacy-only routing and namespace migration owned by the
@@ -404,8 +404,8 @@ and flux-source routing SHALL retain consistent existing meanings across data
 preparation and model construction. Current INI section interpretation, path
 conventions, file vocabulary, scientific calculations and sampling defaults
 SHALL remain unchanged except for the path and legacy-resource migrations specified by
-[rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md)
-and the 0.8 historical scientific-quirk and chain-policy removals specified by
+[rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md),
+the aggregation-filter retirements specified below, and the 0.8 historical scientific-quirk and chain-policy removals specified by
 [hbmcmc-isolation-retirement](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md).
 
 Established selector and shared-handoff aliases in the current
@@ -460,6 +460,24 @@ and custom-likelihood conflict precedence SHALL remain unchanged.
 - **THEN** it fails before inference with guidance to omit the optional argument
   or pass `"default"`
 - **AND** omitting that argument continues to select the established defaults
+
+### Requirement: Accepted observation-selection filter names
+
+The retired aggregation filter names `daily_median` and `six_hr_mean` SHALL NOT
+be accepted as observation-selection filters or exported as direct Python filter
+functions. Requests naming either filter SHALL raise `KeyError` with guidance to
+make an explicit resampling and uncertainty-propagation decision. Rejection SHALL
+occur before applying any preceding filter or executing lazy scientific data.
+No mean, median or other aggregation statistic SHALL be substituted automatically.
+
+#### Scenario: Reject a retired aggregation filter
+
+- **WHEN** an observation-filter request names `daily_median` or `six_hr_mean`,
+  alone, in a sequence or in a site-specific request
+- **THEN** it raises `KeyError` with resampling and uncertainty-propagation guidance
+  before any earlier requested filter or lazy scientific payload executes
+- **AND** neither a direct Python filter function nor a registry entry remains
+- **AND** no replacement aggregation statistic is selected automatically
 
 ### Requirement: Scientific preparation owns its operations
 
