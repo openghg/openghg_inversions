@@ -179,6 +179,7 @@ select = ["E4", "E7", "E9", "F", "B006", "B010", "B028", "B904", "EXE001", "EXE0
 minversion = "6.0"
 testpaths = ["tests"]
 markers = [
+  "compiled_backend: graph, predictive and sampler checks also run with the Numba linker on request",
   "create_frozen: tests that generate/update frozen regression outputs (not run by default)",
   "country_file_smoke: optional real country-file HDF5 backend smoke tests",
   "rhime_contract: current public RHIME workflow compatibility contracts",

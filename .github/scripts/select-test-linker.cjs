@@ -1,6 +1,7 @@
+// Select the additional marked pass; the ordinary full suite always uses Python.
 module.exports = async ({ github, context, core }) => {
   const select = (linker, reason) => {
-    core.info(`Test linker: ${linker} (${reason})`);
+    core.info(`Additional compiled checks: ${linker !== "py"} (${reason})`);
     return linker;
   };
   if (context.eventName === "workflow_dispatch") {

@@ -155,6 +155,7 @@ def test_observed_graph_requires_explicit_cached_expression():
         make_cached_sigma_compound_step(**arguments)
 
 
+@pytest.mark.compiled_backend
 def test_amplitude_backend_preserves_state_and_runtime_configuration():
     configuration = (pytensor.config.mode, pytensor.config.linker, pytensor.config.floatX)
     *_, quadratic, arguments = _observed_context()
@@ -169,6 +170,7 @@ def test_amplitude_backend_preserves_state_and_runtime_configuration():
     assert configuration == (pytensor.config.mode, pytensor.config.linker, pytensor.config.floatX)
 
 
+@pytest.mark.compiled_backend
 def test_supplied_state_function_matches_public_density_without_covariance_work(monkeypatch):
     target, shared, model, point, quadratic, arguments = _observed_context()
     compound = make_cached_sigma_compound_step(**arguments, cached_state_logp=quadratic)
@@ -215,6 +217,7 @@ def _sample_observed_spawn_chains(*, observed=True):
     return target, shared, model, point, trace
 
 
+@pytest.mark.compiled_backend
 def test_observed_spawn_chains_preserve_shared_cache_and_generic_joint_density():
     target, shared, model, point, first = _sample_observed_spawn_chains()
     *_, second = _sample_observed_spawn_chains()
@@ -390,6 +393,7 @@ def test_sigma_step_refreshes_once_only_when_the_returned_value_changes(
 
 
 @pytest.mark.parametrize("dtype", ["float32", "float64"])
+@pytest.mark.compiled_backend
 def test_shared_quadratic_uses_active_pytensor_dtype(dtype: str) -> None:
     target = _target()
     cache = target.refresh(np.array([0.4, 0.4]))
