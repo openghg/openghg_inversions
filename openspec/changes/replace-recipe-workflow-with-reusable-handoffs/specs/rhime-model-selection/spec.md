@@ -2,7 +2,7 @@
 
 ### Requirement: Preserve installed run-command selection
 
-The `rhime` and `openghg-inversions` executables SHALL expose `run --model` for
+The canonical `rhime` executable SHALL expose `run --model` for
 `standard`, `multisector`, `nested`, and `co2`, defaulting to `standard`.
 Standard, multisector and nested commands SHALL forward the selected model,
 configuration path, effective date bounds, and noncolliding decoded keyword
@@ -13,7 +13,18 @@ CO2 CLI execution SHALL call `run_co2` with its TOML
 configuration, positional date overrides, output-path override and decoded
 component-section overrides. It SHALL consume configured model, sampler and
 output choices and write requested products without requiring manifests or
-acquiring data. `run-co2` SHALL be an alias for this configured CLI route.
+acquiring data. The temporary `run-co2` spelling MAY retire in favor of
+`rhime run --model co2`. The `openghg-inversions` executable and `run-rhime`,
+`run-rhime-multisector` and `run-rhime-nested` subcommands MAY also retire only
+to their exact replacements in the durable
+[Bounded installed-command retirement](../../../../specs/rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement)
+requirement. After that retirement, `rhime` SHALL be the sole installed executable.
+While retained, those temporary spellings SHALL preserve their current behavior.
+These command-name exceptions SHALL NOT imply implemented removal, change
+positional-date/`--kwargs` syntax, or rename Python interfaces or the package/distribution.
+Positional dates and `--kwargs` MAY be revised by a separate argument-syntax
+amendment; retaining their current meanings for command renaming SHALL NOT
+settle that future design.
 The Python `rhime.run(model="co2", ...)` selector SHALL call the same configured
 product runner and return `Co2Output` with its complete annotated trace DataTree.
 Fixed OU with inferred independent site amplitudes SHALL select matched cached
@@ -24,9 +35,9 @@ Current reserved-key limitation for standard, multisector and nested: JSON
 `model` or `config_file` entries collide with separately supplied keywords and
 raise `TypeError` before selection runs. They are not supported override keys.
 
-#### Scenario: Select a recipe through either executable
+#### Scenario: Select a recipe through the canonical executable
 
-- **WHEN** either executable receives standard, multisector or nested, explicit
+- **WHEN** `rhime run` receives standard, multisector or nested, explicit
   dates, an INI path, and noncolliding keyword overrides such as `draws`
 - **THEN** it passes those values and the selected model to `rhime.run`
 - **AND** its parser rejects cached or linked CO2-family `--model` choices
@@ -38,11 +49,11 @@ raise `TypeError` before selection runs. They are not supported override keys.
 - **THEN** it forwards the JSON values for the overridden dates
 - **AND** positional values remain effective for dates without a JSON override
 
-#### Scenario: Run configured CO2 through either spelling
+#### Scenario: Run configured CO2 through its canonical command
 
-- **WHEN** either executable receives `run --model co2` or `run-co2`, a CO2 TOML
+- **WHEN** `rhime run --model co2` receives a CO2 TOML
   configuration, date/output overrides and current component-section choices
-- **THEN** both spellings call the same configured product runner
+- **THEN** it calls the configured product runner with unchanged argument handling
 - **AND** requested products and the complete annotated trace use the selected
   scientific preparation and effective model, sampler and output choices
 - **AND** trace-only callers compose the existing materialize, eager-build and
@@ -94,7 +105,8 @@ behalf of their prepared-input scientific runners.
 
 ### Requirement: Select linked CO2/O2 saved execution
 
-The installed `prepare`, `prior-predictive`, `sample` and `postprocess` commands
+The installed `rhime prepare`, `rhime prior-predictive`, `rhime sample` and
+`rhime postprocess` commands
 SHALL accept `--model co2_o2`. Preparation SHALL reference the existing joint
 NetCDF/Zarr codec, preserving its unequal channel observation axes, shared and
 tracer-specific states, cross-channel covariance, units and signed-ratio

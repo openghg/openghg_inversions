@@ -1,5 +1,8 @@
 # Design
 
+Positional dates and `--kwargs` remain open design questions. Retaining their
+current meanings for command-name migration does not settle their final syntax.
+
 ## Context
 
 The 23 October 2026 #944/#961 amendment permits bounded retirement of the HBMCMC
@@ -8,7 +11,7 @@ translation enumerated in the
 [retirement delivery checklist](../isolate-and-retire-hbmcmc/tasks.md#migration-evidence-checklist-and-delivery-order).
 Existing explicitly named migrations such as Python `run_rhime`, `RhimeRunSpec`
 and `RhimeResult` retain their scoped contracts; this creates no general public
-signature/result-wrapper exception. Current model selectors and shared aliases
+signature/result-wrapper exception. Current Python model selectors and shared aliases
 remain protected. Preserve the durable
 [evidence guarantees](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence);
 the linked checklist owns the pinned #960 revision, per-PR checks and current
@@ -18,6 +21,13 @@ remain release gates. Unresolved public aliases and independent basis
 decisions stay with #945/#951. Numerical/scientific, borrowed-array/execution and
 independently supported codec contracts remain in force; this amendment changes
 no runtime behavior or delivery status.
+
+The [finite CLI map](../isolate-and-retire-hbmcmc/tasks.md#cli-command-name-amendment--23-october-2026)
+separately permits retiring the second executable and redundant full-run names.
+Use `rhime run --model standard|multisector|nested|co2`, preserving the current
+positional-date/`--kwargs` syntax and effective configuration/override/scientific
+and artifact meanings. Source still implements the old names. No package rename
+or general Python-name exception is introduced; broader maps remain #663/#945/#776 work.
 
 The agreed #876 contract split keeps numerical preparation/alignment in a focused
 scientific-input capability, option/default/compatibility rules in configuration,
@@ -264,7 +274,8 @@ eager builder directly. Nested uses `NestedOutput`, and ordinary and cached CO2
 use `Co2Output`. This supersedes the earlier
 proposal to preserve the standard result envelope or a deprecated `run_rhime`
 wrapper. The Python `run_rhime` name is removed in 0.8 with import guidance;
-`run-rhime` remains the unchanged CLI spelling and calls `run_standard`.
+`run-rhime` currently calls `run_standard`; the finite CLI amendment above
+permits its retirement in favor of `rhime run`, preserving argument and execution semantics.
 
 The maintainer's 16 October multisector correction also retires the remaining
 `run_rhime_from_prepared_inputs` route and multisector build/result/output

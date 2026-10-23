@@ -14,7 +14,8 @@ External resource paths and optional basis exports follow
 [rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md).
 
 Existing public selection and aliases follow the current
-[model-selection capability](https://github.com/openghg/openghg_inversions/blob/7269f50f09dc4b618766cb9d69abe260a564eebc/openspec/specs/rhime-model-selection/spec.md).
+[model-selection capability](../../../../specs/rhime-model-selection/spec.md),
+including its finite installed-command exceptions.
 Registered coordinates and the standard/multisector custom-likelihood seam
 follow the current [model-composition capability](https://github.com/openghg/openghg_inversions/blob/7269f50f09dc4b618766cb9d69abe260a564eebc/openspec/specs/rhime-model-composition/spec.md).
 The explicit 0.8 standard entry-point/result and eager-builder migrations amend
@@ -147,8 +148,8 @@ runner/selector reset to `run_co2`,
 steps' change from `MergedData` to per-site datasets and `SiteOptions`;
 staged/setup APIs and owned CO2 configuration conventions SHALL
 follow the declared reset instead of requiring compatibility aliases.
-Only the HBMCMC namespace, temporary parameter/output-format translation and
-special tracer-option handling
+Only the HBMCMC namespace, temporary parameter/output-format translation,
+special tracer-option handling and installed command names
 explicitly enumerated in
 [Compatible public adapters and scientific choices](../../../../specs/rhime-configuration/spec.md#requirement-compatible-public-adapters-and-scientific-choices)
 MAY retire under the
@@ -158,7 +159,10 @@ incidental scientific changes. Numerical behavior, borrowed-array/execution guar
 modern legacy-format output, saved `InversionOutput` exports and independently
 supported basis capabilities SHALL retain their separate contracts.
 The existing selector forwarding, full-run CLI model choices and established
-public aliases SHALL remain supported under the model-selection capability;
+Python aliases SHALL remain supported under the model-selection capability;
+CLI names SHALL follow only its
+[finite command exceptions](../../../../specs/rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement),
+preserving canonical operations and their effective arguments;
 temporary option aliases follow the evidence guarantees
 above. Saved-phase commands SHALL NOT implicitly extend prepared-only CO2 recipes with acquisition
 or configuration-file arguments. Existing registered-coordinate ownership,

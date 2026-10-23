@@ -1,5 +1,8 @@
 # Tasks
 
+Positional dates and `--kwargs` remain open for a separate argument-design
+discussion and revision; this command-name amendment does not finalize them.
+
 ## Development-boundary amendment — 23 October 2026
 
 #944/#961 permit bounded retirement only of the HBMCMC namespace, its
@@ -7,7 +10,7 @@ wrappers/dictionary adapters and the temporary parameter/output/flux translation
 enumerated in the [retirement delivery checklist](../isolate-and-retire-hbmcmc/tasks.md#migration-evidence-checklist-and-delivery-order).
 There is no general public signature/result-wrapper exception. Existing named
 API migrations (including Python `run_rhime`, `RhimeRunSpec` and `RhimeResult`)
-retain their scoped contracts; other current model selectors and shared aliases
+retain their scoped contracts; other current Python model selectors and shared aliases
 remain protected. Each affected removal/change preserves the durable
 [evidence guarantees](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence)
 and follows the checklist's concrete pinned #960 comparison, per-PR evidence,
@@ -16,6 +19,16 @@ remain M2 release gates. Public aliases
 and independent basis decisions stay with #945/#951; scientific, execution and
 codec contracts remain supported. Checked tasks below preserve dated evidence,
 not a renewed compatibility schedule. This amendment completes no task.
+
+The separately accepted [CLI command-name map](../isolate-and-retire-hbmcmc/tasks.md#cli-command-name-amendment--23-october-2026)
+permits one installed `rhime` executable and retirement of `openghg-inversions`
+plus `run-rhime`, `run-rhime-multisector`, `run-rhime-nested` and `run-co2`.
+Use canonical `rhime run --model ...` and the same saved-phase subcommands.
+Its checklist covers R1/R2 source comparisons and preservation of positional
+dates, `--kwargs`, effective configuration/overrides, science, outputs and artifacts.
+No argument redesign or package/distribution/install rename follows. Removal is
+pending; checked historical command evidence below records its original revision.
+Broader Python replacements require explicit maps under #663/#945 and a #776 revival.
 
 #876's agreed contract placement and retained-population scientific amendment
 will be delivered by their owning PRs. Complete #719 before #964; #971 is a separate

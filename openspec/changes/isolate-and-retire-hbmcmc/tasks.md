@@ -25,7 +25,7 @@ data/basis utilities; plus temporary translation of `outputpath`, `outputname`,
 names `hbmcmc`/`hbmcmc_postprocessing`. Wrapper-only `nit`, `nchain`, `verbose`
 and `sampler_kwargs` translation retires with that wrapper. Existing explicitly
 named API migrations retain their own contracts; there is no general exception
-for historical signatures or result wrappers. Current model selectors and shared
+for historical signatures or result wrappers. Current Python model selectors and shared
 handoff/assembly aliases remain protected pending explicit per-interface decisions.
 
 For each affected removal or deliberate behavior-change PR:
@@ -56,6 +56,49 @@ release gates, not M1 development-removal prerequisites. #948 owns final source
 coverage; #945 owns release numbering and unresolved public interfaces; #951
 owns independent basis decisions. Completion of evidence does not resolve those
 decisions or establish release readiness.
+
+### CLI command-name amendment — 23 October 2026
+
+The maintainer accepted this finite command map in
+[#663](https://github.com/openghg/openghg_inversions/issues/663#issuecomment-6364272469)
+and [#945](https://github.com/openghg/openghg_inversions/issues/945#issuecomment-6364278950),
+then authorized the bounded contract amendment during #972 review. Implementation
+is pending; this record does not remove any executable or parser alias.
+
+| Retire | Canonical replacement |
+| --- | --- |
+| `openghg-inversions` executable | `rhime`, retaining its same subcommands |
+| `run-rhime` under either executable | `rhime run --model standard` or `rhime run` |
+| `run-rhime-multisector` under either executable | `rhime run --model multisector` |
+| `run-rhime-nested` under either executable | `rhime run --model nested` |
+| `run-co2` under either executable | `rhime run --model co2` |
+
+The target has one installed executable, `rhime`, without forwarding commands
+retained solely for naming compatibility. For this command-name migration,
+preserve positional dates, `--kwargs`,
+effective configuration, date/output override precedence, scientific execution,
+result contents, outputs and artifact contracts. No replacement argument syntax,
+Python package/distribution/install rename or persisted-identifier rename is agreed.
+Positional dates and `--kwargs` remain open for discussion and possible revision;
+preserving current argument meanings here does not finalize their design.
+Broader Python names/imports require their own exact maps under #663/#945 and a
+#776 revival; this finite CLI decision grants no general Python-name exception.
+
+Apply the evidence checklist above to R1/R2 and CLI invocation cases. Source
+inspection at this amendment found no `cli.py` changes since pinned
+`0a32d73a5c4a72be0505a4ed682472e1613e49e9`; intervening `pyproject.toml` edits
+affect dependencies/test markers, not console-script declarations. This is source
+comparison evidence, not executed command/scientific validation. Preserve the
+original #960 ledger, fixtures and expectations; add dated implementation
+comparisons and port live tests to canonical routes when removal is implemented.
+
+The implementation slice must update console scripts, parsers, tests, templates,
+README/usage references and migration errors together. Preserve the distinct CO2
+forwarding behavior used by canonical `run --model co2`; retain argument/override
+assertions and verify retired commands and the second executable no longer ship.
+#663/#945 own the command map and coordination, and #950 consumes it for launcher
+guidance. This accepted CLI map can be delivered independently of unresolved
+Python maps; it completes no runtime task or release gate.
 
 ## 1. Isolate legacy behavior in 0.8
 

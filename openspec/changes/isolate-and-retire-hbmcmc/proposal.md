@@ -1,5 +1,9 @@
 # Proposal
 
+Positional dates and `--kwargs` remain open for discussion and possible revision.
+The finite CLI naming amendment preserves their current meanings for that slice;
+it does not establish their final design.
+
 ## Development-boundary amendment — 23 October 2026
 
 The maintainer-approved #944 treatment and bounded #961 amendment supersede the
@@ -18,6 +22,12 @@ remain M2 release gates, not M1 development-removal prerequisites. Final release
 and public-alias decisions stay with #945; independent basis decisions stay with
 #951. This amendment removes no production code and establishes no release
 readiness.
+
+The later [finite CLI amendment](tasks.md#cli-command-name-amendment--23-october-2026)
+permits retiring the second executable and four redundant full-run commands in
+favor of `rhime run --model ...`, while preserving their argument handling,
+scientific execution and products. It is accepted permission, not delivered
+removal. Package/distribution names and broader Python names/imports are unchanged.
 
 ## Why
 

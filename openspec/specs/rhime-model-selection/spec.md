@@ -41,31 +41,83 @@ accept `config_file` on behalf of those prepared-input recipes.
 
 ### Requirement: Preserve installed run-command selection
 
-The `rhime` and `openghg-inversions` executables SHALL expose `run --model` for
-`standard`, `multisector`, and `nested`, defaulting to `standard`. Their run
-commands SHALL forward the selected model, configuration path, effective date
+The canonical `rhime` executable SHALL expose `run --model` for
+`standard`, `multisector`, `nested` and configured `co2`, defaulting to `standard`.
+For standard, multisector and nested, its run command SHALL forward the selected
+model, configuration path, effective date
 bounds, and noncolliding decoded keyword overrides to the Python selector.
-JSON `start_date` and `end_date` overrides SHALL take precedence over positional
-dates. CO2-family models SHALL remain outside this configuration-driven CLI
-selector.
+For those three recipes, JSON `start_date` and `end_date` overrides SHALL take precedence over positional
+dates. Configured CO2 execution SHALL preserve its own configuration,
+date/output override and component-section override behavior through
+`rhime run --model co2`; command-name retirement SHALL NOT change that recipe's
+prepared-input or product contract. Cached and linked CO2-family choices SHALL
+remain outside this configuration-driven CLI selector.
 
-Current reserved-key limitation: JSON `model` or `config_file` entries collide
+Current reserved-key limitation for standard, multisector and nested: JSON
+`model` or `config_file` entries collide
 with separately supplied keywords and raise `TypeError` before selection runs.
 They are not supported override keys.
 
-#### Scenario: Select a recipe through either executable
+#### Scenario: Select a recipe through the canonical executable
 
-- **WHEN** either executable receives an allowed model, explicit dates, an INI
+- **WHEN** `rhime run` receives standard, multisector or nested, explicit dates, an INI
   path, and noncolliding keyword overrides such as `draws`
 - **THEN** it passes those values and the selected model to `rhime.run`
-- **AND** its parser rejects a CO2-family `--model` choice
+- **AND** its parser rejects cached or linked CO2-family `--model` choices
 
 #### Scenario: Override positional date bounds
 
-- **WHEN** a run command supplies positional dates and JSON `start_date` or
+- **WHEN** a standard, multisector or nested run command supplies positional dates and JSON `start_date` or
   `end_date` overrides
 - **THEN** it forwards the JSON values for the overridden dates
 - **AND** positional values remain effective for dates without a JSON override
+
+### Requirement: Bounded installed-command retirement
+
+`rhime` SHALL be the canonical installed executable. The following temporary
+executable and subcommand names MAY be retired, with these supported replacements
+for their corresponding scientific routes:
+
+| Retire | Canonical replacement |
+| --- | --- |
+| `openghg-inversions` executable | `rhime` with the same supported subcommands, including staged and product operations |
+| `run-rhime` subcommand under either executable | `rhime run --model standard`, or `rhime run` |
+| `run-rhime-multisector` subcommand under either executable | `rhime run --model multisector` |
+| `run-rhime-nested` subcommand under either executable | `rhime run --model nested` |
+| `run-co2` subcommand under either executable | `rhime run --model co2` for configured CO2 execution |
+
+After this retirement, `rhime` SHALL be the sole installed executable and the
+retired command spellings SHALL NOT require forwarding aliases. While retained,
+the temporary spellings SHALL continue their established behavior. This
+permission SHALL NOT imply that removal is already implemented.
+
+For this command-name migration, canonical routes SHALL preserve effective
+configuration and the meanings of current positional dates, `--kwargs` and
+date/output overrides, including their recipe-specific precedence. Positional
+dates and `--kwargs` remain open to revision through a separately specified
+argument-syntax amendment; this command map SHALL NOT fix the final argument
+design. Command renaming alone SHALL NOT introduce replacement syntax or change scientific
+execution, result contents, written outputs, export defaults, logging or artifact
+contracts. Retained staged/product operations SHALL remain available under
+`rhime`. Retiring the executable SHALL NOT rename the Python package or
+distribution, or change package installation commands.
+
+This exception SHALL NOT authorize Python import/type/constructor renaming,
+signature or result-wrapper changes, or removal of other command operations.
+Retirement SHALL preserve the
+[migration evidence guarantees](../hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
+
+#### Scenario: Migrate a full-run command name
+
+- **WHEN** a caller replaces one of the four listed full-run subcommands with its canonical `rhime run --model` route
+- **THEN** the same effective configuration, date/output overrides and scientific recipe are used
+- **AND** the resulting outputs and artifact meanings are unchanged
+
+#### Scenario: Retire the second executable without losing staged operations
+
+- **WHEN** `openghg-inversions` is no longer installed
+- **THEN** its supported staged and product operations remain available under `rhime`
+- **AND** the Python package, distribution and installation commands keep their names
 
 ### Requirement: Retain established public aliases
 
@@ -80,7 +132,9 @@ This supersedes the earlier alias-preservation promise for that name.
 also removes `with_prepared_sites` and `with_prepared_rhime_sites`; this supersedes
 their alias-preservation promise. Retained sites belong to the prepared handoff.
 
-These named Python aliases and installed command aliases SHALL remain supported;
+These named Python aliases SHALL remain supported. Installed command aliases
+SHALL remain supported except for the exact executable/subcommand exceptions in
+`Bounded installed-command retirement` above;
 retirement of the HBMCMC namespace or temporary parameter/output-format
 translation SHALL NOT remove them. Their support SHALL NOT be inferred to end
 at a version boundary. Scientific recipe selection and independent
@@ -90,7 +144,7 @@ output/artifact capabilities SHALL retain their separate contracts.
 
 - **WHEN** a caller imports `run_rhime` in 0.8
 - **THEN** it receives a helpful import error directing it to `run_standard`
-- **AND** the `run-rhime` CLI command preserves its written files and logging
+- **AND** canonical `rhime run --model standard` preserves the standard recipe's written files and logging
 
 #### Scenario: Import a retained established public name
 

@@ -351,9 +351,11 @@ handoff SHALL retain its authoritative options and no-acquisition behavior.
 
 The Python `run_rhime` API SHALL be removed in 0.8 with a helpful import error
 pointing to `run_standard`. This explicitly supersedes earlier promises to
-preserve that Python entry point and its `RhimeResult` return. The `run-rhime`
-CLI command SHALL call `run_standard` directly and preserve its command name,
-written files, export defaults and logging.
+preserve that Python entry point and its `RhimeResult` return. Standard CLI
+execution SHALL use `run_standard` and preserve its written files, export defaults
+and logging. The old `run-rhime` command-name promise is superseded by the finite
+[installed-command retirement](../rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement):
+canonical execution SHALL be `rhime run --model standard` or `rhime run`.
 
 Standard prepared execution SHALL use `run_standard(prepared=..., config=...)`,
 skipping acquisition/preparation and then using the ordinary scientific pipeline.
@@ -377,11 +379,11 @@ New configuration helpers SHALL use `load_params`, `group_params` and
 selection. These migrations supersede prior signature/return preservation
 requirements for those named standard interfaces.
 
-#### Scenario: Migrate the Python entry point without changing the CLI
+#### Scenario: Migrate the standard Python and CLI entry points
 
 - **WHEN** a caller imports the removed Python `run_rhime` API in 0.8
 - **THEN** the import error directs the caller to `run_standard`, which returns `InversionOutput`
-- **AND** the retained `run-rhime` CLI command calls `run_standard` directly with unchanged command naming, written files, export defaults and logging
+- **AND** canonical `rhime run --model standard` calls the standard recipe with unchanged effective configuration, written files, export defaults and logging
 
 ### Requirement: Compatible public adapters and scientific choices
 
@@ -417,6 +419,11 @@ runtime-compatibility exceptions:
   translating to `legacy`; the canonical `legacy` format remains supported.
 - Special handling of `use_tracer` MAY retire only to the ordinary unsupported-option
   behavior specified below, without enabling tracer execution.
+- The `openghg-inversions` executable and `run-rhime`, `run-rhime-multisector`,
+  `run-rhime-nested` and `run-co2` subcommands MAY retire only to the canonical
+  `rhime` routes specified by
+  [Bounded installed-command retirement](../rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement).
+  This command-name exception SHALL NOT change argument syntax or Python names.
 
 These exceptions SHALL preserve the
 [migration evidence guarantees](../hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).

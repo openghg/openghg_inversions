@@ -180,7 +180,17 @@ temporary parameter/output-format/flux-selector translation after evidence
 preservation and relevant regression migration. This grants no general exception
 for public signatures or result wrappers. The explicitly named API migrations
 documented on this page retain their own contracts; other current model selectors
-and shared aliases remain supported. Removal PRs must reconcile
+and shared Python aliases remain supported. The separately accepted
+:ref:`CLI command map <rhime-cli-command-retirement>` permits retiring
+``openghg-inversions`` and the four redundant full-run commands, targeting
+``rhime`` as the sole installed executable. Current source still accepts those
+names; this amendment implements no removal. Positional dates, ``--kwargs``,
+effective configuration/date/output overrides, scientific execution, outputs
+and artifacts are preserved during this command-name migration. Positional dates
+and ``--kwargs`` remain open for discussion and revision; their replacement
+syntax has not been chosen. No package/distribution/install rename is agreed.
+Broader Python names/imports need their own exact replacement
+maps. Removal PRs must reconcile
 obsolete diagnostics with the behavior actually removed and its migration route.
 Finished converters, launchers and a final release number are not prerequisites.
 This documentation amendment removes no production behavior.
@@ -261,7 +271,7 @@ for provenance, and calls ``run_standard``. It does not run the removed HBMCMC
 implementation. ``--legacy-fixedbasis`` and ``--generate`` are no longer
 accepted. Keep existing configuration files while migrating, but create new
 ones from ``openghg_inversions/config/templates/rhime_template.ini`` and run
-them with ``openghg-inversions run-rhime``.
+them with ``rhime run``.
 
 Batch scripts need only replace a direct source-tree path with the module form
 above. Start and end dates, ``-c``, ``--output-path`` and ``--kwargs`` remain
@@ -296,8 +306,9 @@ the table below::
 
 The Python ``run_rhime`` API is removed in 0.8; importing it raises an
 ``ImportError`` directing callers to ``run_standard``. This supersedes the earlier
-proposal to retain a deprecated wrapper. The ``run-rhime`` CLI command retains its
-name, written files and logging and calls ``run_standard`` directly.
+proposal to retain a deprecated wrapper. The currently implemented ``run-rhime``
+CLI alias calls ``run_standard`` directly; use ``rhime run``. Its approved
+command-name retirement preserves effective inputs, written files and logging.
 
 ``run_standard``, ``run_multisector``, their ``prepared=...`` execution and their
 saved ``postprocess`` operations return an

@@ -60,8 +60,8 @@ scientific inputs:
 
 The configured model, sampler and output choices govern execution and requested
 products. Original requested dates and domain must be supplied explicitly or
-retained in preparation provenance. ``rhime run-co2`` remains an alias for this
-configured route. See :doc:`co2_model_family` for its scientific prerequisites.
+retained in preparation provenance. ``rhime run-co2`` is a transitional alias
+approved for retirement below. See :doc:`co2_model_family` for its scientific prerequisites.
 
 Saved standard and multisector phases
 --------------------------------------
@@ -73,6 +73,41 @@ choices. Sampling and postprocessing do not require a full configuration file.
 Select ``--model multisector`` for the same one-manifest command forms with
 sector-labelled inputs. See :doc:`staged_workflow` for the complete
 preparation/two-model/two-output sequence and the separate CO2 interface.
+
+.. _rhime-cli-command-retirement:
+
+Approved CLI command retirement
+--------------------------------
+
+The agreed development boundary permits the following finite command-name
+migration. Removal is pending: current source still installs both executables
+and accepts the old full-run commands. Use the canonical routes in new scripts.
+
+.. list-table:: Accepted command replacements
+   :header-rows: 1
+
+   * - Retire
+     - Canonical replacement
+   * - ``openghg-inversions`` executable
+     - The same subcommands under ``rhime``
+   * - ``run-rhime`` under either executable
+     - ``rhime run --model standard`` or ``rhime run``
+   * - ``run-rhime-multisector`` under either executable
+     - ``rhime run --model multisector``
+   * - ``run-rhime-nested`` under either executable
+     - ``rhime run --model nested``
+   * - ``run-co2`` under either executable
+     - ``rhime run --model co2``
+
+The target has one installed executable, ``rhime``. Positional dates,
+``--kwargs``, effective configuration, date/output overrides, scientific
+execution, outputs and artifact contracts retain their meanings. No replacement
+argument syntax is agreed: positional dates and ``--kwargs`` remain open for
+discussion and possible revision in a separate argument-design change. Their
+current preservation applies to this command-name migration, not a final syntax
+decision. The Python package, distribution and installation
+names do not change. See :doc:`legacy_and_migration` for the evidence gate;
+broader Python symbols/imports require their own explicit replacement maps.
 
 Python model selection and compatibility
 ----------------------------------------
@@ -96,11 +131,10 @@ OpenGHG acquisition or native-reduction preparation route. The
 their existing ``prepared_inputs`` interfaces and trace returns. Linked recipes are not choices for the configuration-driven ``rhime run`` command.
 See :doc:`co2_model_family` for the TOML configuration and handoff commands.
 
-``openghg-inversions`` and its ``run-rhime``, ``run-rhime-multisector`` and
-``run-rhime-nested`` subcommands remain supported pending the per-interface
-decisions owned by #945. The earlier through-0.9 timetable is superseded by the
-:doc:`agreed development boundary <legacy_and_migration>`; it does not authorize
-blanket alias removal. Both executables expose the same command set. The existing runner imports and
+The finite CLI names listed above may retire under the
+:doc:`agreed development boundary <legacy_and_migration>`. Broader Python naming
+decisions remain with #663/#945 and a #776 revival; no blanket public-name
+removal is authorized. The existing runner imports and
 shared handoff/assembly names listed here remain aliases to their implementations: ``run_standard`` is
 ``run_standard``, ``run_rhime_multisector`` is ``run_multisector``, and
 ``run_rhime_nested`` is ``run_nested``. No argument conversion or warning is

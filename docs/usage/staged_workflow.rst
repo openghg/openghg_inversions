@@ -345,7 +345,9 @@ CO₂ uses its own coherent preparation and conditional affine output
 meaning. ``run_co2`` and its saved phases call the same preparation,
 materialization, construction, sampling and product operations; full execution
 requires no manifests. ``rhime run --model co2`` consumes the configured model,
-sampler and output request; ``rhime run-co2`` remains an alias. Python
+sampler and output request. ``rhime run-co2`` remains a transitional alias
+until its approved :ref:`command-name retirement <rhime-cli-command-retirement>`
+lands. Python
 ``rhime.run(model="co2", config_file="co2.toml")`` selects the same ``run_co2``
 entry point and returns the scientific ``Co2Output`` view. This route requires
 prepared inputs or caller-supplied canonical inputs with a coherent reduction;

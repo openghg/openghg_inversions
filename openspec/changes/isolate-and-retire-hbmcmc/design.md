@@ -15,6 +15,15 @@ release work. Final release/public-alias choices stay with #945; independent
 basis readers, writers and discovery stay with #951. This amendment implements
 no runtime removal.
 
+The [finite CLI command map](tasks.md#cli-command-name-amendment--23-october-2026)
+adds separately accepted command-name retirement. Target one `rhime` executable
+and canonical `run --model` routes, preserving positional dates, `--kwargs`,
+configuration/override meanings, scientific execution and artifacts. Current
+aliases remain implemented until the removal slice lands; no argument redesign,
+package rename or blanket Python-name migration follows from this amendment.
+Positional dates and `--kwargs` remain open design questions; preserving their
+current meanings for command renaming does not decide their final syntax.
+
 ## Context
 
 See [proposal.md](proposal.md). At PR #869 revision `e41e2838`, RHIME runners,

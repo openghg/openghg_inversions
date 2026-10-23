@@ -53,7 +53,9 @@ retained capabilities, evidence gate and remaining owners.
        <../../openspec/specs/rhime-model-selection/spec.md>`
      - Baseline of delivered behavior; :doc:`/usage/rhime` and
        :doc:`/usage/cli`. #961 removes the blanket retention timetable;
-       unresolved public aliases remain with #945. The :download:`CO2 selector/runner amendment
+       the finite :ref:`CLI command retirement <rhime-cli-command-retirement>`
+       is accepted but unimplemented. Broader Python naming remains with
+       #663/#945 and a #776 revival. The :download:`CO2 selector/runner amendment
        <../../openspec/changes/replace-recipe-workflow-with-reusable-handoffs/specs/rhime-model-selection/spec.md>`
        includes the merged `PR 886 <https://github.com/openghg/openghg_inversions/pull/886>`_
        runner and the OPE-214 stack for model-driven fixed-OU inference and shared handoffs.
