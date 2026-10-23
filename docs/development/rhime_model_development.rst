@@ -30,10 +30,11 @@ aliases belong to runner frontends, which translate and warn before constructing
 canonical configuration. ``RhimeConfig.from_params`` has no alias vocabulary,
 translation or deprecation warnings. Give retained modern behavior modern owners;
 small duplication inside HBMCMC is acceptable to preserve this direction.
-The separate contract owns the exact compatibility rules and 0.9 removal timing.
-The 0.8 isolation requirements are promoted in PR 869; complete 0.9 removal
-remains in the active retirement change. See :doc:`specifications` for delivery
-status.
+The separate contract owns the exact compatibility rules and evidence gate for
+development retirement. PR 869 delivered isolation; complete removal remains
+in the active retirement change. The :doc:`agreed development boundary
+</usage/legacy_and_migration>` supersedes the old version timetable without
+claiming removal is implemented. See :doc:`specifications` for delivery status.
 
 Start with the scientific recipe
 --------------------------------
