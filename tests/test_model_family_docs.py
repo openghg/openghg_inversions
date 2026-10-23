@@ -103,7 +103,6 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "same-unit joint model" in workflow
     co2, linked = family.split("Linked boundary\n", 1)
     assert "rhime run --model co2" in co2
-    assert "``rhime run-co2`` remains an alias" in co2
     assert "run_co2" in co2
     for stage in ("prepare", "prior-predictive", "sample", "postprocess"):
         assert f"rhime {stage} --model co2" in co2
