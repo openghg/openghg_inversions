@@ -643,9 +643,12 @@ provenance. Its arrays remain borrowed and may be Dask-backed. It has no
 window bounds alongside other retrieval choices. For example,
 <code class="docutils literal notranslate"><span class="pre">AcquisitionFacts(species=&quot;ch4&quot;,</span> <span class="pre">domain=&quot;EUROPE&quot;)</span></code> makes no claim about dates.
 Explicit <code class="docutils literal notranslate"><span class="pre">from_legacy_fp_all</span></code> and <code class="docutils literal notranslate"><span class="pre">to_legacy_fp_all</span></code> utility functions
-in <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.legacy_data</span></code> support legacy callers in 0.8.
-The entire HBMCMC subpackage, including these utilities, is removed in 0.9;
-see <a class="reference internal" href="legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a> for replacements and older-release guidance.
+in <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.legacy_data</span></code> support legacy callers while retained
+on devel. The <a class="reference internal" href="legacy_and_migration.html"><span class="doc">agreed development boundary</span></a> permits
+bounded retirement of the subpackage, including these utilities, after affected
+migration evidence and scientific regressions are preserved. That permission
+does not mean removal has landed; the migration guide identifies replacements
+and older-release guidance.
 They are separate from the modern data model.</p>
 <p>Acquisition stays in memory. For a reusable file, prepare the data with the
 named stages below and call <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.save</span></code>; the staged

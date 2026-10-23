@@ -277,11 +277,34 @@ Output and unsupported boundaries
 Removal and validation handoff
 ------------------------------
 
-Before deleting a runtime behavior, #719 must cite its ledger entry, account
-for source changes since the pinned commit, and port any scientific regression
-which currently enters through that adapter. Passing translation tests alone
-does not establish scientific parity. #961 owns compatibility-promise changes;
-this page does not supersede the current specifications or announce a release.
+Under the `#961 development boundary
+<https://github.com/openghg/openghg_inversions/issues/961>`_, the
+`retirement delivery checklist
+<https://github.com/openghg/openghg_inversions/blob/devel/openspec/changes/isolate-and-retire-hbmcmc/tasks.md#migration-evidence-checklist-and-delivery-order>`_
+records concrete owners, order and baseline checks. Each PR removing or
+deliberately changing migration-relevant behavior must:
+
+* Identify affected ledger entries and plain cases. Add bounded evidence for
+  newly discovered behavior before removal, keeping source version and route explicit.
+* Compare its base and affected source with pinned revision
+  ``0a32d73a5c4a72be0505a4ed682472e1613e49e9``, accounting for intervening changes
+  and relevant merged PRs.
+* Record disposition and follow-up owner: retained, mechanically migrated,
+  deliberate scientific change, unsupported or unresolved. Preserve historical
+  inputs and expectations; add dated comparisons rather than replacing them
+  with modern output.
+* Preserve or port relevant scientific expectations before retiring adapter/test
+  plumbing. Test unchanged behavior on canonical inputs and agreed scientific
+  changes against their new semantics. Distinguish inspected evidence from
+  executed checks and link validation to the implementation revision.
+
+This remains a pinned source archive. Only affected evidence and live checks
+need refreshing; neither a whole-audit rerun nor finished converter/launcher
+tooling is required for every removal. Passing translation tests alone does not
+establish scientific parity. The gate does not resolve pending interface or
+scientific choices. #719 owns runtime removal and relevant regression migration;
+#961 amends the compatibility promises without itself implementing removal.
+See :doc:`/usage/legacy_and_migration` for the amended requirements and retained capabilities.
 #948 owns the final supported source versions and target choices; #949/#950
 own conversion and launch tooling; #952 owns integrated scientific and packaging
 acceptance. Independent basis readers/writers remain with #951.

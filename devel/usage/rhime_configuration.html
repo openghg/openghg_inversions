@@ -577,15 +577,17 @@ passed to a runner without resolving again.</p>
 <p><code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> is the single construction entry point; the former
 <code class="docutils literal notranslate"><span class="pre">resolve_rhime_config</span></code> wrapper has been removed. Runner frontends, including
 <code class="docutils literal notranslate"><span class="pre">run_standard</span></code> and staged commands, translate supported deprecated names before
-calling this constructor. They emit <code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code> on devel and in 0.8;
-these aliases are removed in 0.9. For names such as <code class="docutils literal notranslate"><span class="pre">xprior</span></code> and <code class="docutils literal notranslate"><span class="pre">outputname</span></code>,
+calling this constructor. While this transitional translation remains on devel,
+it emits <code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code>. The <a class="reference internal" href="legacy_and_migration.html"><span class="doc">agreed development boundary</span></a> permits bounded removal after affected evidence and
+regression migration. For names such as <code class="docutils literal notranslate"><span class="pre">xprior</span></code> and <code class="docutils literal notranslate"><span class="pre">outputname</span></code>,
 canonical names take precedence. Flux keyword deprecations follow the stricter
 rules below. Canonical inputs emit no warning. Configuration construction has no
 alias vocabulary; deprecated names passed directly to <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>
 are ordinary unknown options. Modern configuration and runners do not import or
 call HBMCMC.</p>
 <p>The deprecated dictionary-returning <code class="docutils literal notranslate"><span class="pre">params_from_config</span></code> adapter is available
-only from <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.compatibility</span></code> during 0.8; its RHIME
+only from <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.compatibility</span></code> while that transitional
+adapter remains; its RHIME
 re-export is removed. <code class="docutils literal notranslate"><span class="pre">normalise=False</span></code> returns decoded values plus winning
 overrides. <code class="docutils literal notranslate"><span class="pre">normalise=True</span></code> translates aliases and historical resource
 selections after overrides and returns canonical keys and resolved <code class="docutils literal notranslate"><span class="pre">Path</span></code>
@@ -607,7 +609,8 @@ independent of the outer flux-domain selector).</p>
 <p>At runner frontends, the deprecated spellings <code class="docutils literal notranslate"><span class="pre">emissions_store</span></code>,
 <code class="docutils literal notranslate"><span class="pre">emissions_domain</span></code>,
 <code class="docutils literal notranslate"><span class="pre">inner_emissions_store</span></code> and <code class="docutils literal notranslate"><span class="pre">inner_emissions_domain</span></code> remain accepted with
-<code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code> until removal in <strong>0.9</strong>. Supply only one spelling of
+<code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code> until their bounded removal under the
+<a class="reference internal" href="legacy_and_migration.html"><span class="doc">agreed development boundary</span></a>. Supply only one spelling of
 each selector: old and new names together raise <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>, including
 equal values and explicit <code class="docutils literal notranslate"><span class="pre">None</span></code>. These modern deprecations are resolved
 before configuration construction. <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> accepts only
@@ -650,7 +653,7 @@ save it through <code class="docutils literal notranslate"><span class="pre">Bas
 then retain the selected export path in metadata. The application helper
 <code class="docutils literal notranslate"><span class="pre">rhime.preparation.resolve_basis_inputs(config.data)</span></code> loads these scientific inputs.
 Historical case/directory selections are accepted only by the temporary HBMCMC
-entry points in 0.8, which translate winning selections before calling modern
+entry points while present on devel, which translate winning selections before calling modern
 APIs. Modern runners reject <code class="docutils literal notranslate"><span class="pre">fp_basis_case</span></code>, <code class="docutils literal notranslate"><span class="pre">basis_directory</span></code>,
 <code class="docutils literal notranslate"><span class="pre">bc_basis_case</span></code> and <code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code> before acquisition; resolved requests
 contain explicit selections. The numerical functions do no file discovery.
@@ -685,15 +688,16 @@ explicitly selected.</p>
 For historical callers, <code class="docutils literal notranslate"><span class="pre">basis.compatibility.make_basis_functions</span></code> accepts
 <code class="docutils literal notranslate"><span class="pre">basis_output_format=&quot;legacy&quot;</span></code> as explicit opt-in. This is an adapter option,
 not a canonical <code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code> field.
-Legacy basis output is deprecated in 0.9; that deprecation does not schedule
-automatic removal in 0.9. This changes basis artifacts, independently of the
-final inversion product’s <code class="docutils literal notranslate"><span class="pre">output_format</span></code>.</p>
+Its independent retention/deprecation decisions remain with #951; the
+<a class="reference internal" href="legacy_and_migration.html"><span class="doc">development boundary</span></a> does not remove this
+capability. Basis artifacts are independent of the final inversion product’s
+<code class="docutils literal notranslate"><span class="pre">output_format</span></code>.</p>
 <p>Historical <code class="docutils literal notranslate"><span class="pre">fp_basis_case</span></code> / <code class="docutils literal notranslate"><span class="pre">basis_directory</span></code> discovery, directory-style
 basis outputs, <code class="docutils literal notranslate"><span class="pre">emissions_name</span></code> and legacy artifact
 adaptation belong to the compatibility boundary. Deprecated public
 <code class="docutils literal notranslate"><span class="pre">make_basis_functions</span></code> and <code class="docutils literal notranslate"><span class="pre">load_basis_functions</span></code> adapters live in
 <code class="docutils literal notranslate"><span class="pre">basis.compatibility</span></code> and invoke canonical modern operations. Their independent
-deprecation schedule is unaffected by removing HBMCMC in 0.9. Migrate a
+dispositions remain with #951; HBMCMC retirement does not authorize their removal. Migrate a
 case/directory pair to an explicit artifact and output destination:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Before: fp_basis_case="monthly", basis_directory="/data/bases"</span>
 <span class="c1">#         basis_output_path="/data/generated" (historical directory)</span>

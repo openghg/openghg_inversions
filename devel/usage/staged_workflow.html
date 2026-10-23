@@ -563,8 +563,8 @@ Missing or unreadable selected files fail before acquisition. Omit
 <code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code> for NESW: it uses acquired directional contributions without
 reading a BC basis file. Disabled BCs load no BC basis resources. Staged commands
 reject historical <code class="docutils literal notranslate"><span class="pre">fp_basis_case</span></code>, <code class="docutils literal notranslate"><span class="pre">basis_directory</span></code>, <code class="docutils literal notranslate"><span class="pre">bc_basis_case</span></code> and
-<code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code> options. Use explicit modern paths. During 0.8, only the
-HBMCMC entry route translates those historical selectors after winning overrides;
+<code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code> options. Use explicit modern paths. While retained on devel,
+only the HBMCMC entry route translates those historical selectors after winning overrides;
 on that route, an NESW directory warns that it is unused without any lookup.</p>
 <p><code class="docutils literal notranslate"><span class="pre">country_directory</span></code> is removed in 0.8. Use <code class="docutils literal notranslate"><span class="pre">country_file</span></code> for reporting,
 <code class="docutils literal notranslate"><span class="pre">landsea_path</span></code> for preparation land/sea classes, or <code class="docutils literal notranslate"><span class="pre">outer_regions_path</span></code> for
@@ -622,13 +622,15 @@ directory. It is resolved at the frontend and forwarded unchanged to the runnerâ
 optional basis export.</p>
 <p>Legacy fixedbasis-style PARIS INIs contain options such as <code class="docutils literal notranslate"><span class="pre">nit</span></code>, <code class="docutils literal notranslate"><span class="pre">nchain</span></code>,
 <code class="docutils literal notranslate"><span class="pre">xprior</span></code> and <code class="docutils literal notranslate"><span class="pre">mcmc_type</span></code>. Fixedbasis policy such as <code class="docutils literal notranslate"><span class="pre">nit</span></code>, <code class="docutils literal notranslate"><span class="pre">nchain</span></code> and
-<code class="docutils literal notranslate"><span class="pre">mcmc_type</span></code> belongs to the temporary <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> route in 0.8. Modern name
-aliases such as <code class="docutils literal notranslate"><span class="pre">xprior</span></code> remain supported at the staged frontend until 0.9
-with deprecation warnings and their existing precedence; prefer <code class="docutils literal notranslate"><span class="pre">x_prior</span></code> in
-new files. Translation happens before <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>, which accepts
-canonical names only and emits no alias warnings. Migrate fixedbasis policy and
+<code class="docutils literal notranslate"><span class="pre">mcmc_type</span></code> belongs to the temporary <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> route while it remains on
+devel. Modern name aliases such as <code class="docutils literal notranslate"><span class="pre">xprior</span></code> retain deprecation warnings and
+their existing precedence at the staged frontend until their bounded removal
+under the <a class="reference internal" href="legacy_and_migration.html"><span class="doc">agreed development boundary</span></a>; prefer
+<code class="docutils literal notranslate"><span class="pre">x_prior</span></code> in new files. Translation happens before <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>,
+which accepts canonical names only and emits no alias warnings. Migrate fixedbasis policy and
 resource discovery to canonical RHIME options before using staged commands.
-The entire HBMCMC subpackage and its entry points are removed in 0.9.</p>
+HBMCMC retirement requires affected migration evidence and scientific regression
+migration; permission to remove the subpackage does not mean removal has landed.</p>
 </section>
 <section id="configuration-and-cli">
 <h2>Configuration and CLI<a class="headerlink" href="#configuration-and-cli" title="Link to this heading">#</a></h2>
@@ -771,7 +773,9 @@ variables to new graphs.</p>
 meaning. <code class="docutils literal notranslate"><span class="pre">run_co2</span></code> and its saved phases call the same preparation,
 materialization, construction, sampling and product operations; full execution
 requires no manifests. <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span> <span class="pre">--model</span> <span class="pre">co2</span></code> consumes the configured model,
-sampler and output request; <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run-co2</span></code> remains an alias. Python
+sampler and output request. <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run-co2</span></code> remains a transitional alias
+until its approved <a class="reference internal" href="cli.html#rhime-cli-command-retirement"><span class="std std-ref">command-name retirement</span></a>
+lands. Python
 <code class="docutils literal notranslate"><span class="pre">rhime.run(model=&quot;co2&quot;,</span> <span class="pre">config_file=&quot;co2.toml&quot;)</span></code> selects the same <code class="docutils literal notranslate"><span class="pre">run_co2</span></code>
 entry point and returns the scientific <code class="docutils literal notranslate"><span class="pre">Co2Output</span></code> view. This route requires
 prepared inputs or caller-supplied canonical inputs with a coherent reduction;

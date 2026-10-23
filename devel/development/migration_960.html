@@ -757,11 +757,32 @@ this archive contains finite representative invocations only.</p></td>
 </section>
 <section id="removal-and-validation-handoff">
 <h2>Removal and validation handoff<a class="headerlink" href="#removal-and-validation-handoff" title="Link to this heading">#</a></h2>
-<p>Before deleting a runtime behavior, #719 must cite its ledger entry, account
-for source changes since the pinned commit, and port any scientific regression
-which currently enters through that adapter. Passing translation tests alone
-does not establish scientific parity. #961 owns compatibility-promise changes;
-this page does not supersede the current specifications or announce a release.
+<p>Under the <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/961">#961 development boundary</a>, the
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/blob/devel/openspec/changes/isolate-and-retire-hbmcmc/tasks.md#migration-evidence-checklist-and-delivery-order">retirement delivery checklist</a>
+records concrete owners, order and baseline checks. Each PR removing or
+deliberately changing migration-relevant behavior must:</p>
+<ul class="simple">
+<li><p>Identify affected ledger entries and plain cases. Add bounded evidence for
+newly discovered behavior before removal, keeping source version and route explicit.</p></li>
+<li><p>Compare its base and affected source with pinned revision
+<code class="docutils literal notranslate"><span class="pre">0a32d73a5c4a72be0505a4ed682472e1613e49e9</span></code>, accounting for intervening changes
+and relevant merged PRs.</p></li>
+<li><p>Record disposition and follow-up owner: retained, mechanically migrated,
+deliberate scientific change, unsupported or unresolved. Preserve historical
+inputs and expectations; add dated comparisons rather than replacing them
+with modern output.</p></li>
+<li><p>Preserve or port relevant scientific expectations before retiring adapter/test
+plumbing. Test unchanged behavior on canonical inputs and agreed scientific
+changes against their new semantics. Distinguish inspected evidence from
+executed checks and link validation to the implementation revision.</p></li>
+</ul>
+<p>This remains a pinned source archive. Only affected evidence and live checks
+need refreshing; neither a whole-audit rerun nor finished converter/launcher
+tooling is required for every removal. Passing translation tests alone does not
+establish scientific parity. The gate does not resolve pending interface or
+scientific choices. #719 owns runtime removal and relevant regression migration;
+#961 amends the compatibility promises without itself implementing removal.
+See <a class="reference internal" href="../usage/legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a> for the amended requirements and retained capabilities.
 #948 owns the final supported source versions and target choices; #949/#950
 own conversion and launch tooling; #952 owns integrated scientific and packaging
 acceptance. Independent basis readers/writers remain with #951.</p>

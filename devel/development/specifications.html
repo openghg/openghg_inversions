@@ -457,10 +457,13 @@ precede implementation.</p></li>
 version you are changing. A proposed requirement or a checked planning task
 alone does not establish delivered behavior.</p></li>
 </ol>
-<p>Durable contracts under <code class="docutils literal notranslate"><span class="pre">openspec/specs/</span></code> describe delivered behavior. Proposed
-requirements and amendments remain under <code class="docutils literal notranslate"><span class="pre">openspec/changes/</span></code> until implemented
-and validated, even when their design is approved. Delivery status and review
-history belong in the change records and the map below, not in durable specs.</p>
+<p>Durable contracts under <code class="docutils literal notranslate"><span class="pre">openspec/specs/</span></code> describe accepted behavioral
+requirements. Specifications describe the accepted target behavior, including
+changes not yet implemented. As in #961, an agreed retirement requirement does
+not establish that removal has landed. Active change specs need not match the
+transitional implementation; <code class="docutils literal notranslate"><span class="pre">design.md</span></code> explains how to reach their target.
+Delivery status and review history belong in the change records and the map
+below, not in durable specs.</p>
 <section id="current-contracts-and-proposals">
 <h2>Current contracts and proposals<a class="headerlink" href="#current-contracts-and-proposals" title="Link to this heading">#</a></h2>
 <p>The following map was reviewed against <code class="docutils literal notranslate"><span class="pre">devel</span></code> revision <code class="docutils literal notranslate"><span class="pre">7269f50f</span></code> on
@@ -468,7 +471,12 @@ history belong in the change records and the map below, not in durable specs.</p
 reconstruction boundaries; it is not a complete package API specification.
 The configuration entry was amended on 13 October 2026 during review of PR 867.
 The resource-I/O and HBMCMC entries were updated the same day for the accepted
-0.8 implementation and durable-spec promotion in PR 869.</p>
+0.8 implementation and durable-spec promotion in PR 869.
+The compatibility entries were reconciled on 23 October 2026 for the
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/961">#961 breaking-development amendment</a>. It supersedes
+obsolete compatibility schedules without implementing removals or deciding a
+release number. See <a class="reference internal" href="../usage/legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a> for the affected promises,
+retained capabilities, evidence gate and remaining owners.</p>
 <div class="pst-scrollable-table-container"><table class="table" id="id1">
 <caption><span class="caption-text">Behavioral ownership and delivery status</span><a class="headerlink" href="#id1" title="Link to this table">#</a></caption>
 <colgroup>
@@ -486,7 +494,14 @@ The resource-I/O and HBMCMC entries were updated the same day for the accepted
 <tr class="row-even"><td><p>Public model selection and aliases</p></td>
 <td><p><a class="reference download internal" download="" href="../_downloads/ae3e6910aa484b2a03d80d16faefd14d/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">RHIME</span> <span class="pre">model</span> <span class="pre">selection</span></code></a></p></td>
 <td><p>Baseline of delivered behavior; <a class="reference internal" href="../usage/rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a> and
-<a class="reference internal" href="../usage/cli.html"><span class="doc">Running RHIME from the command line</span></a>. The <a class="reference download internal" download="" href="../_downloads/3ebc1c996b006f2c95b21913fc981c7a/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">CO2</span> <span class="pre">selector/runner</span> <span class="pre">amendment</span></code></a>
+<a class="reference internal" href="../usage/cli.html"><span class="doc">Running RHIME from the command line</span></a>. #961 removes the blanket retention timetable;
+the finite <a class="reference internal" href="../usage/cli.html#rhime-cli-command-retirement"><span class="std std-ref">CLI command retirement</span></a>
+and <a class="reference internal" href="../usage/cli.html#rhime-python-alias-retirement"><span class="std std-ref">five Python alias removals</span></a>
+are required target outcomes, with runtime removal still pending. Canonical
+behavior and scientific artifact contents remain protected; supported
+artifact formats/versions are specified independently. Broader Python
+naming remains with
+#663/#945 and a #776 revival. The <a class="reference download internal" download="" href="../_downloads/3ebc1c996b006f2c95b21913fc981c7a/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">CO2</span> <span class="pre">selector/runner</span> <span class="pre">amendment</span></code></a>
 includes the merged <a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/886">PR 886</a>
 runner and the OPE-214 stack for model-driven fixed-OU inference and shared handoffs.</p></td>
 </tr>
@@ -500,6 +515,9 @@ runner and the OPE-214 stack for model-driven fixed-OU inference and shared hand
 <td><p>Delivered grouped configuration and independent phase resolution,
 implemented in <a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/866">PR 866</a>.
 Current usage: <a class="reference internal" href="../usage/rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a>.
+#961 specifies canonical-only options and ordinary unsupported-option
+rejection of every explicit <code class="docutils literal notranslate"><span class="pre">use_tracer</span></code>. Runtime retirement remains
+pending under the affected-evidence gate; canonical scientific contracts remain.
 Configuration serialization/INI writing remains with <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/814">issue 814</a>.</p></td>
 </tr>
 <tr class="row-odd"><td><p>External resources and basis exports</p></td>
@@ -516,10 +534,15 @@ Manifest references and checkpoint completion stay with the handoff specs.</p></
 </tr>
 <tr class="row-odd"><td><p>HBMCMC dependency direction and retirement</p></td>
 <td><p><a class="reference download internal" download="" href="../_downloads/2b40e8f781ee62206dd844c68db3e2e7/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">HBMCMC</span> <span class="pre">isolation</span> <span class="pre">contract</span></code></a></p></td>
-<td><p>Delivered 0.8 dependency boundary and legacy-only resource translation.
-Runner frontends own deprecated spellings; canonical configuration has
-no alias translation or warnings. Complete 0.9 removal remains in the
+<td><p>PR 869 delivered isolation; current code retains transitional translation.
+The #961 target has no HBMCMC namespace, forwarding shims or temporary
+option translation. Affected evidence preservation and regression migration
+gate runtime removal; finished converters/launchers are not prerequisites.
+Implementation remains with #719 and the
 <a class="reference download internal" download="" href="../_downloads/bbbda2e55f9fe2571a0cf8e4094d3b58/proposal.md"><code class="xref download docutils literal notranslate"><span class="pre">active</span> <span class="pre">retirement</span> <span class="pre">change</span></code></a>.
+Its <a class="reference external" href="https://github.com/openghg/openghg_inversions/blob/devel/openspec/changes/isolate-and-retire-hbmcmc/tasks.md#migration-evidence-checklist-and-delivery-order">delivery checklist</a>
+records the pinned comparison, per-PR work, owners and delivery order;
+these implementation instructions are separate from the durable evidence guarantees.
 Path conversion and resource loading stay with resource I/O.</p></td>
 </tr>
 <tr class="row-even"><td><p>Saved CO2 affine reconstruction</p></td>
@@ -550,6 +573,37 @@ PR 867 separated the configuration and resource-I/O amendments into
 separate changes. Resource I/O is now promoted and archived; grouped
 configuration remains active. PR 802 consumes those owners without duplicate
 deltas. The durable resource contract preserves PR 840’s exact destinations.</p>
+</section>
+<section id="related-scientific-amendment-and-delivery-order">
+<h2>Related scientific amendment and delivery order<a class="headerlink" href="#related-scientific-amendment-and-delivery-order" title="Link to this heading">#</a></h2>
+<p>For <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/876">#876 / PR 964</a> and its
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/971">#954 / PR 971 prerequisite</a>, the maintainer agreed
+the bounded contract placement on 23 October 2026:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">rhime-configuration</span></code> owns accepted options, defaults, anchors and compatibility checks.</p></li>
+<li><p>A focused <code class="docutils literal notranslate"><span class="pre">rhime-scientific-inputs</span></code> capability owns numerical preparation,
+selection/imputation, nested retained populations, BC alignment and retained-row floors.</p></li>
+<li><p>The existing prepared/sample handoff contracts own saved-operand reuse and exact replay.
+Concrete helper calls and wrapper instructions belong in development guidance/design;
+the PyMC-composition contract keeps its scope.</p></li>
+</ul>
+<p>Those amendments will be delivered with their owning PRs; their placement is agreed,
+not awaiting another API decision. #876 supersedes preservation of pre-filter
+imputation and tests the retained population. #954 owns explicit rejection of
+retired aggregation filters without a replacement statistic; its scenario is
+<code class="docutils literal notranslate"><span class="pre">Reject</span> <span class="pre">a</span> <span class="pre">retired</span> <span class="pre">aggregation</span> <span class="pre">filter</span></code>. Nested population/alignment, common-site
+selection and <code class="docutils literal notranslate"><span class="pre">averaging_error</span></code> configuration are separate claims and scenarios.
+Historical witnesses remain evidence rather than required modern expectations.
+Provider acquisition averaging precedes inversion-side error combination; the
+retained-population amendment does not reverse that order. Supplied <code class="docutils literal notranslate"><span class="pre">mf_error</span></code>
+is preserved. Aggregation is a separate scientific operation with its own
+uncertainty propagation, not an observation-selection filter.</p>
+<p>Complete #719, including removal of the special <code class="docutils literal notranslate"><span class="pre">use_tracer</span></code>
+compatibility handling, before #964. #971 remains a separate prerequisite for
+#964’s selection-first imputation change. None of #964’s scientific delivery,
+#971’s implementation or M2 tooling is a prerequisite for #719. The current
+branch still has the transitional adapters and acquired-population error policy;
+this contract amendment implements neither removal nor the new science.</p>
 </section>
 <section id="planning-records">
 <h2>Planning records<a class="headerlink" href="#planning-records" title="Link to this heading">#</a></h2>
@@ -609,6 +663,7 @@ records their status, maintained documentation, and owning issues as of
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#current-contracts-and-proposals">Current contracts and proposals</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#related-scientific-amendment-and-delivery-order">Related scientific amendment and delivery order</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#planning-records">Planning records</a></li>
 </ul>
   </nav></div>

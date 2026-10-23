@@ -466,18 +466,19 @@
   <section id="migrate-from-hbmcmc-to-rhime">
 <h1>Migrate from HBMCMC to RHIME<a class="headerlink" href="#migrate-from-hbmcmc-to-rhime" title="Link to this heading">#</a></h1>
 <p>RHIME is the only inversion implementation in current OpenGHG Inversions.
-The direct <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> and <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code> implementation was removed in
-0.8 after its remaining known active user agreed to migrate. The 0.7.x release
+The direct <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> and <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code> implementation was removed on
+devel after its remaining known active user agreed to migrate. The 0.7.x release
 line is the last line containing that implementation and the
 <code class="docutils literal notranslate"><span class="pre">--legacy-fixedbasis</span></code> option. The <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc</span></code> namespace
-hosts the transitional <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> wrapper and explicit legacy data/basis
-utilities during 0.8. The complete subpackage is scheduled for removal in 0.9,
-including its imports, adapters and executable entry points.</p>
+still hosts the transitional <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> wrapper and explicit legacy data/basis
+utilities. Their approved development retirement is described below; permission
+to remove them does not mean their removal has landed. The next modern release
+number remains undecided.</p>
 <p>This page is for users with fixedbasis-style Python calls, INI files, batch
 scripts, or HBMCMC outputs. For a new inversion, start with the
 <a class="reference internal" href="model_recipes.html"><span class="doc">model recipe chooser</span></a> and <a class="reference internal" href="rhime.html"><span class="doc">RHIME guide</span></a>.</p>
-<section id="resource-migration">
-<h2>0.8 resource migration<a class="headerlink" href="#resource-migration" title="Link to this heading">#</a></h2>
+<section id="development-resource-migration">
+<h2>Development resource migration<a class="headerlink" href="#development-resource-migration" title="Link to this heading">#</a></h2>
 <p>Resource selection now ends at the runner boundary. Update existing calls and
 configuration as follows:</p>
 <ul class="simple">
@@ -500,15 +501,15 @@ no file. On the HBMCMC route, an old <code class="docutils literal notranslate">
 unused and warns, even if that directory does not exist. Disabled BCs load no BC resources.</p></li>
 <li><p>Modern runners reject <code class="docutils literal notranslate"><span class="pre">fp_basis_case</span></code>, <code class="docutils literal notranslate"><span class="pre">basis_directory</span></code>, <code class="docutils literal notranslate"><span class="pre">bc_basis_case</span></code>
 and <code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code>. Replace them with exact basis/BC selections, or use
-the temporary HBMCMC CLI or normalized dictionary adapter during 0.8. Only that
-legacy route translates historical selections after winning overrides.
+the temporary HBMCMC CLI or normalized dictionary adapter while present on
+devel. Only that legacy route translates historical selections after winning overrides.
 Scientific functions receive explicit selections and never discover files.</p></li>
 <li><p>Replace the removed RHIME <code class="docutils literal notranslate"><span class="pre">params_from_config</span></code> re-export with
 <code class="docutils literal notranslate"><span class="pre">read_rhime_ini</span></code>, apply overrides, then call <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>.
-The dictionary adapter remains only in <code class="docutils literal notranslate"><span class="pre">hbmcmc.compatibility</span></code> during 0.8.
+The transitional dictionary adapter remains only in <code class="docutils literal notranslate"><span class="pre">hbmcmc.compatibility</span></code>.
 Runner frontends, including direct <code class="docutils literal notranslate"><span class="pre">run_standard</span></code> calls, retain supported
-aliases through 0.8 with deprecation warnings. <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>
-accepts canonical names only and has no alias translation or warnings.
+aliases with deprecation warnings until their approved removals land.
+<code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> accepts canonical names only and has no alias translation or warnings.
 Modern output formats and explicit save paths remain.</p></li>
 <li><p>Replace <code class="docutils literal notranslate"><span class="pre">run_rhime_from_prepared_inputs(prepared_inputs=...,</span> <span class="pre">run_spec=...)</span></code>
 calls with <code class="docutils literal notranslate"><span class="pre">run_standard(prepared=prepared,</span> <span class="pre">config=config)</span></code> or
@@ -535,8 +536,8 @@ paths or loading scientific data during configuration construction.</p></li>
 <p>See <a class="reference internal" href="rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a> for complete resource selection examples and
 <a class="reference internal" href="staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> for the separate 0.7-to-0.8 staged artifact migration.</p>
 </section>
-<section id="additional-0-8-python-api-changes">
-<h2>Additional 0.8 Python API changes<a class="headerlink" href="#additional-0-8-python-api-changes" title="Link to this heading">#</a></h2>
+<section id="additional-development-python-api-changes">
+<h2>Additional development Python API changes<a class="headerlink" href="#additional-development-python-api-changes" title="Link to this heading">#</a></h2>
 <p>Replace <code class="docutils literal notranslate"><span class="pre">build_standard</span></code>, <code class="docutils literal notranslate"><span class="pre">build_standard_rhime_model</span></code> and
 <code class="docutils literal notranslate"><span class="pre">build_standard_rhime_model_result</span></code> with the single eager
 <code class="docutils literal notranslate"><span class="pre">build_standard_model</span></code> contract. Model inputs and enabled prior parameters must
@@ -617,30 +618,82 @@ inversion-output export supports reporting without those manifests, while a
 trace or basis export alone is not a complete inversion result. See
 <a class="reference internal" href="staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> for artifact choices.</p>
 </section>
-<section id="planned-0-9-deprecations-and-removals">
-<h2>Planned 0.9 deprecations and removals<a class="headerlink" href="#planned-0-9-deprecations-and-removals" title="Link to this heading">#</a></h2>
-<p><strong>Deprecations:</strong> historical directory/name basis output conventions and legacy
-basis output are scheduled for deprecation in 0.9. Explicit legacy output has no
-automatic removal date; a deprecation version is not a removal commitment.</p>
-<p><strong>Removals:</strong> <code class="docutils literal notranslate"><span class="pre">emissions_store</span></code>, <code class="docutils literal notranslate"><span class="pre">emissions_domain</span></code>,
-<code class="docutils literal notranslate"><span class="pre">inner_emissions_store</span></code> and <code class="docutils literal notranslate"><span class="pre">inner_emissions_domain</span></code> are already deprecated
-and scheduled for removal in 0.9. Replace them with their <code class="docutils literal notranslate"><span class="pre">flux_*</span></code> spellings.
-The entire <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc</span></code> subpackage is removed in 0.9: its
-wrapper, compatibility adapters and legacy data/basis utilities will have no
-forwarding imports or executable shims. Use RHIME runners, <code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code>
-for in-memory acquisition, <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> for saved preparation, and
-<code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> for retained basis artifacts where applicable. For legacy-only
-utilities or unsupported historical artifacts, keep a compatible older release;
-this migration does not add readers for those artifacts. Modern
-<code class="docutils literal notranslate"><span class="pre">output_format=&quot;legacy&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">save_inversion_output</span></code> remain independently
-supported and are not removed with the package.
-Established public RHIME imports and CLI aliases retained <em>through</em> the 0.9
-compatibility cycle are not promised to disappear at the start of 0.9.</p>
+<section id="agreed-breaking-development-boundary">
+<h2>Agreed breaking-development boundary<a class="headerlink" href="#agreed-breaking-development-boundary" title="Link to this heading">#</a></h2>
+<p>The maintainer-approved <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/944">#944 treatment table</a> and bounded
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/961">#961 contract amendment</a>
+supersede the earlier 0.8/0.9 compatibility schedules. The agreed target has
+no HBMCMC namespace, wrappers, forwarding shims or dictionary adapters. Modern
+runner/acquisition boundaries accept canonical names; the enumerated deprecated
+parameter/output-format/flux-selector spellings are unsupported. Modern
+configuration has no <code class="docutils literal notranslate"><span class="pre">use_tracer</span></code> field: every explicit occurrence, regardless
+of value, receives ordinary unsupported-option validation before scientific
+work; omission remains valid. Migration M1 work in
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/719">#719</a> implements
+that target after evidence preservation and relevant regression migration. This
+grants no general exception for public signatures or result wrappers. The explicitly named API migrations
+documented on this page retain their own contracts; other current model selectors
+and shared Python names retain their contracts except for the
+<a class="reference internal" href="cli.html#rhime-python-alias-retirement"><span class="std std-ref">five named aliases</span></a> approved for retirement.
+That finite map preserves canonical behavior and scientific artifact contents.
+Supported formats/versions and explicit conversion or rejection of unsupported
+artifacts are specified independently; it promises no automatic 0.7 compatibility.
+The separately accepted
+<a class="reference internal" href="cli.html#rhime-cli-command-retirement"><span class="std std-ref">CLI command map</span></a> requires
+<code class="docutils literal notranslate"><span class="pre">rhime</span></code> as the sole installed executable, without <code class="docutils literal notranslate"><span class="pre">openghg-inversions</span></code>
+or the four redundant full-run commands. Current source still accepts those
+names; this amendment implements no removal. Positional dates, <code class="docutils literal notranslate"><span class="pre">--kwargs</span></code>,
+effective configuration/date/output overrides, scientific execution, outputs
+and artifacts are preserved during this command-name migration. Positional dates
+and <code class="docutils literal notranslate"><span class="pre">--kwargs</span></code> remain open for discussion and revision; their replacement
+syntax has not been chosen. No package/distribution/install rename is agreed.
+Broader Python names/imports need their own exact replacement
+maps. Removal PRs must reconcile
+obsolete diagnostics with the behavior actually removed and its migration route.
+Finished converters, launchers and a final release number are not prerequisites.
+This documentation amendment removes no production behavior.</p>
+<p>The amended promises are <a class="reference external" href="https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md#requirement-compatible-public-adapters-and-scientific-choices">compatible public adapters</a>,
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md#requirement-ini-decoding-is-independent-of-semantic-construction">independent INI decoding</a>,
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md#requirement-configuration-is-not-a-historical-identity-schema">configuration identity</a>,
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md#requirement-canonical-modern-flux-selectors">modern flux selectors</a>,
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-model-selection/spec.md#requirement-retire-named-python-aliases">named Python aliases</a>,
+and <a class="reference external" href="https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md#requirement-retained-modern-behavior-has-modern-owners">retained modern behavior</a>.
+The <a class="reference external" href="https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence">affected-evidence requirement</a>
+protects preserved observations and scientific expectations. The concrete
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/blob/devel/openspec/changes/isolate-and-retire-hbmcmc/tasks.md#migration-evidence-checklist-and-delivery-order">retirement delivery checklist</a>
+enumerates the removal surfaces and records the baseline, current owners and
+delivery order. It requires each removal or deliberate behavior-change PR to:</p>
+<ul class="simple">
+<li><p>Identify affected <a class="reference internal" href="../development/migration_960.html"><span class="doc">#960 ledger entries</span></a>
+and plain cases; add bounded evidence for newly discovered behavior before removal.</p></li>
+<li><p>Compare the PR base and affected source with pinned revision
+<code class="docutils literal notranslate"><span class="pre">0a32d73a5c4a72be0505a4ed682472e1613e49e9</span></code>, accounting for intervening changes.</p></li>
+<li><p>Record disposition and follow-up owner. Preserve historical inputs and
+expectations; add dated comparisons instead of replacing them with modern outputs.</p></li>
+<li><p>Preserve or port relevant scientific coverage before retiring adapter/test
+plumbing. Check unchanged behavior on canonical inputs and agreed scientific
+changes against their new semantics; link executed validation to its revision.</p></li>
+</ul>
+<p>Migration M2 still owns final public API/alias decisions and release numbering
+(<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/945">#945</a>), source
+coverage (#948), converter (#949), launcher (#950), acceptance (#952) and
+migration documentation (#432). Unresolved public aliases and independent basis
+reader/writer, discovery and reconstruction decisions remain with #945 and
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/951">#951</a>; they are not
+blanket removal permission.</p>
+<p>Modern INI decoding, canonical configuration, site shorthand, override behavior,
+scientific contracts and
+<a class="reference internal" href="../development/numerical_array_ownership.html"><span class="doc">borrowed-array/execution guarantees</span></a>
+remain. Modern <code class="docutils literal notranslate"><span class="pre">output_format=&quot;legacy&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> codecs and
+<code class="docutils literal notranslate"><span class="pre">save_inversion_output</span></code> remain independently supported. Useful basis algorithms,
+labelled partitions and exact artifact capabilities retain their owning contracts.
+For unsupported historical execution or artifacts, preserve a compatible older
+environment; this boundary supplies no new artifact converter or release-readiness claim.</p>
 </section>
 <section id="chain-handling-in-run-hbmcmc-py">
 <h2>Chain handling in <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code><a class="headerlink" href="#chain-handling-in-run-hbmcmc-py" title="Link to this heading">#</a></h2>
-<p>In 0.8, the compatibility wrapper uses every retained chain for derived products,
-including modern <code class="docutils literal notranslate"><span class="pre">basic</span></code> and PARIS products and legacy-format summary fields.
+<p>While present on devel, the compatibility wrapper uses every retained chain for
+derived products, including modern <code class="docutils literal notranslate"><span class="pre">basic</span></code> and PARIS products and legacy-format summary fields.
 The chain-0-only compatibility policy and <code class="docutils literal notranslate"><span class="pre">--all-chains</span></code> flag have been removed;
 all retained chains are now always used. Use OpenGHG Inversions
 0.7 when reproducing that historical policy. The wrapper does not save the
@@ -652,8 +705,8 @@ establish that the chains converged.</p>
 <h2>Choose a migration route<a class="headerlink" href="#choose-a-migration-route" title="Link to this heading">#</a></h2>
 <section id="existing-ini-and-batch-workflows">
 <h3>Existing INI and batch workflows<a class="headerlink" href="#existing-ini-and-batch-workflows" title="Link to this heading">#</a></h3>
-<p>Existing supported fixedbasis-style INI files may continue to use the
-transitional wrapper:</p>
+<p>Until its removal lands, existing supported fixedbasis-style INI files can use
+the transitional wrapper present on devel:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="o">-</span><span class="n">m</span> <span class="n">openghg_inversions</span><span class="o">.</span><span class="n">hbmcmc</span><span class="o">.</span><span class="n">run_hbmcmc</span> \
     <span class="mi">2019</span><span class="o">-</span><span class="mi">01</span><span class="o">-</span><span class="mi">01</span> <span class="mi">2019</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="mi">01</span> <span class="o">-</span><span class="n">c</span> <span class="n">my_inversion</span><span class="o">.</span><span class="n">ini</span>
 </pre></div>
@@ -663,7 +716,7 @@ for provenance, and calls <code class="docutils literal notranslate"><span class
 implementation. <code class="docutils literal notranslate"><span class="pre">--legacy-fixedbasis</span></code> and <code class="docutils literal notranslate"><span class="pre">--generate</span></code> are no longer
 accepted. Keep existing configuration files while migrating, but create new
 ones from <code class="docutils literal notranslate"><span class="pre">openghg_inversions/config/templates/rhime_template.ini</span></code> and run
-them with <code class="docutils literal notranslate"><span class="pre">openghg-inversions</span> <span class="pre">run-rhime</span></code>.</p>
+them with <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span></code>.</p>
 <p>Batch scripts need only replace a direct source-tree path with the module form
 above. Start and end dates, <code class="docutils literal notranslate"><span class="pre">-c</span></code>, <code class="docutils literal notranslate"><span class="pre">--output-path</span></code> and <code class="docutils literal notranslate"><span class="pre">--kwargs</span></code> remain
 available. The JSON supplied to <code class="docutils literal notranslate"><span class="pre">--kwargs</span></code> must be
@@ -697,8 +750,9 @@ the table below:</p>
 </div>
 <p>The Python <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> API is removed in 0.8; importing it raises an
 <code class="docutils literal notranslate"><span class="pre">ImportError</span></code> directing callers to <code class="docutils literal notranslate"><span class="pre">run_standard</span></code>. This supersedes the earlier
-proposal to retain a deprecated wrapper. The <code class="docutils literal notranslate"><span class="pre">run-rhime</span></code> CLI command retains its
-name, written files and logging and calls <code class="docutils literal notranslate"><span class="pre">run_standard</span></code> directly.</p>
+proposal to retain a deprecated wrapper. The currently implemented <code class="docutils literal notranslate"><span class="pre">run-rhime</span></code>
+CLI alias calls <code class="docutils literal notranslate"><span class="pre">run_standard</span></code> directly; use <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span></code>. Its approved
+command-name retirement preserves effective inputs, written files and logging.</p>
 <p><code class="docutils literal notranslate"><span class="pre">run_standard</span></code>, <code class="docutils literal notranslate"><span class="pre">run_multisector</span></code>, their <code class="docutils literal notranslate"><span class="pre">prepared=...</span></code> execution and their
 saved <code class="docutils literal notranslate"><span class="pre">postprocess</span></code> operations return an
 <a class="reference internal" href="../reference/openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><code class="xref py py-class docutils literal notranslate"><span class="pre">InversionOutput</span></code></a>,
@@ -785,11 +839,11 @@ codecs and final product formats are preserved; this migration does not convert
 <h2>Parameter mapping<a class="headerlink" href="#parameter-mapping" title="Link to this heading">#</a></h2>
 <p>Use canonical RHIME names in new Python and configuration files. HBMCMC
 translates the fixedbasis vocabulary; RHIME runner frontends retain supported
-spelling aliases until 0.9, warning on devel and in 0.8. Direct
-<code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> calls require the canonical names below. They neither
+spelling aliases while the transitional translation remains, warning on devel.
+Direct <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> calls require the canonical names below. They neither
 translate aliases nor emit alias deprecation warnings.</p>
-<div class="pst-scrollable-table-container"><table class="table" id="id1">
-<caption><span class="caption-text">Fixedbasis-to-RHIME names</span><a class="headerlink" href="#id1" title="Link to this table">#</a></caption>
+<div class="pst-scrollable-table-container"><table class="table" id="id4">
+<caption><span class="caption-text">Fixedbasis-to-RHIME names</span><a class="headerlink" href="#id4" title="Link to this table">#</a></caption>
 <colgroup>
 <col style="width: 28.0%" />
 <col style="width: 24.0%" />
@@ -935,8 +989,8 @@ preparation map. Relative output and resource destinations, including <code clas
 and an explicit <code class="docutils literal notranslate"><span class="pre">save_trace</span></code> filename, resolve from the invocation working
 directory in both full and staged execution.</p>
 <p>Check scientific settings independently of renaming. In particular, moving from
-OpenGHG Inversions 0.7 to 0.8 can change likelihood behaviour and the chain-summary
-policy described here; renaming parameters alone does not reproduce historical
+OpenGHG Inversions 0.7 to modern development can change likelihood behaviour and
+the chain-summary policy described here; renaming parameters alone does not reproduce historical
 scientific behaviour.</p>
 <p>The temporary dictionary adapter is available from
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.compatibility</span></code>. With <code class="docutils literal notranslate"><span class="pre">normalise=False</span></code>,
@@ -947,8 +1001,8 @@ It does not construct configuration defaults or expand site shorthand. Direct
 callers of <code class="docutils literal notranslate"><span class="pre">fixedbasis_params_to_rhime</span></code> must additionally call
 <code class="docutils literal notranslate"><span class="pre">adapt_resource_params</span></code> before <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>; the first function
 alone does not finish resource translation. These adapters are removed with
-HBMCMC in 0.9. For canonical INIs, use <code class="docutils literal notranslate"><span class="pre">read_rhime_ini</span></code> and apply overrides
-before constructing <code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code>.</p>
+HBMCMC under the development boundary above. For canonical INIs, use
+<code class="docutils literal notranslate"><span class="pre">read_rhime_ini</span></code> and apply overrides before constructing <code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code>.</p>
 </section>
 </section>
 <section id="legacy-format-output">
@@ -957,9 +1011,9 @@ before constructing <code class="docutils literal notranslate"><span class="pre"
 RHIME. It creates the HBMCMC-compatible NetCDF product from the modern
 <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code>; it does not invoke <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> or <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code>.
 The deprecated output names <code class="docutils literal notranslate"><span class="pre">hbmcmc</span></code> and <code class="docutils literal notranslate"><span class="pre">hbmcmc_postprocessing</span></code> remain
-aliases for <code class="docutils literal notranslate"><span class="pre">legacy</span></code> at runner frontends until 0.9, with
-<code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code> on devel and in 0.8. Runners translate after combining
-file options and Python overrides. <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> and direct output
+aliases for <code class="docutils literal notranslate"><span class="pre">legacy</span></code> at transitional runner frontends, with
+<code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code> on devel until that translation is removed. Runners
+translate after combining file options and Python overrides. <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> and direct output
 configuration factories require <code class="docutils literal notranslate"><span class="pre">legacy</span></code>; they do not translate these aliases
 or issue their deprecation warnings.
 Prefer <code class="docutils literal notranslate"><span class="pre">legacy</span></code> in new configurations. The former <code class="docutils literal notranslate"><span class="pre">resolve_rhime_config</span></code>
@@ -976,8 +1030,8 @@ executor’s exact trace or all its historical attributes.</p>
 <h2>Removed Python helper APIs<a class="headerlink" href="#removed-python-helper-apis" title="Link to this heading">#</a></h2>
 <p>Code that imported fixed-basis preparation or model helpers should move to
 the retained RHIME abstractions:</p>
-<div class="pst-scrollable-table-container"><table class="table" id="id2">
-<caption><span class="caption-text">Removed helper mappings</span><a class="headerlink" href="#id2" title="Link to this table">#</a></caption>
+<div class="pst-scrollable-table-container"><table class="table" id="id5">
+<caption><span class="caption-text">Removed helper mappings</span><a class="headerlink" href="#id5" title="Link to this table">#</a></caption>
 <colgroup>
 <col style="width: 38.0%" />
 <col style="width: 30.0%" />
@@ -996,7 +1050,7 @@ the retained RHIME abstractions:</p>
 the former <code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> adapter has been removed</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">FixedBasisPreparedData</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">PreparedInputs</span></code></p></td>
 <td><p>Backend-neutral prepared observations and sensitivities</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">basis_functions_wrapper</span></code></p></td>
@@ -1028,15 +1082,17 @@ Import <code class="docutils literal notranslate"><span class="pre">SiteOptions<
 implementation types and the low-level <code class="docutils literal notranslate"><span class="pre">convert_to_list</span></code> helper live in
 <code class="docutils literal notranslate"><span class="pre">inversion_data._site_options</span></code>; their former <code class="docutils literal notranslate"><span class="pre">acquisition</span></code> and
 <code class="docutils literal notranslate"><span class="pre">get_data.convert_to_list</span></code> import aliases are removed.</p>
-<p>During 0.8, legacy callers import their option translators and dictionary adapter
-from <code class="docutils literal notranslate"><span class="pre">hbmcmc.compatibility</span></code>. Modern callers do not use this package. Import <code class="docutils literal notranslate"><span class="pre">read_rhime_ini</span></code> from
+<p>While those adapters remain, legacy callers import their option translators and
+dictionary adapter from <code class="docutils literal notranslate"><span class="pre">hbmcmc.compatibility</span></code>. Modern callers do not use this package. Import <code class="docutils literal notranslate"><span class="pre">read_rhime_ini</span></code> from
 <code class="docutils literal notranslate"><span class="pre">rhime.ini</span></code> or the public <code class="docutils literal notranslate"><span class="pre">rhime</span></code> package instead of <code class="docutils literal notranslate"><span class="pre">rhime.params</span></code>.</p>
 </section>
 <section id="legacy-merged-data-metadata">
 <h2>Legacy merged-data metadata<a class="headerlink" href="#legacy-merged-data-metadata" title="Link to this heading">#</a></h2>
-<p>Fresh acquisition is named <code class="docutils literal notranslate"><span class="pre">retrieve_inversion_data</span></code> for both surface and
-column observations. <code class="docutils literal notranslate"><span class="pre">data_processing_surface_notracer</span></code> remains a deprecated
-wrapper preserving its existing signature, shorthand and six-tuple return.</p>
+<p>The transitional <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.legacy_data</span></code> namespace contains
+<code class="docutils literal notranslate"><span class="pre">retrieve_inversion_data</span></code> for surface and column observations and the deprecated
+<code class="docutils literal notranslate"><span class="pre">data_processing_surface_notracer</span></code> six-tuple wrapper. Both are included in the
+agreed complete namespace retirement; no modern six-tuple replacement is promised.
+Modern acquisition uses <code class="docutils literal notranslate"><span class="pre">MergedData.from_options</span></code>.</p>
 <p>The merged-data mapping returned by <code class="docutils literal notranslate"><span class="pre">retrieve_inversion_data</span></code> and
 <code class="docutils literal notranslate"><span class="pre">load_merged_data</span></code> no longer includes the unused <code class="docutils literal notranslate"><span class="pre">.species</span></code>, <code class="docutils literal notranslate"><span class="pre">.units</span></code>,
 or <code class="docutils literal notranslate"><span class="pre">.scales</span></code> entries.  The species remains an explicit run option,
@@ -1049,21 +1105,22 @@ save it as Zarr before upgrading.</p>
 </section>
 <section id="merged-data-acquisition-and-prepared-input-reuse">
 <h2>Merged-data acquisition and prepared-input reuse<a class="headerlink" href="#merged-data-acquisition-and-prepared-input-reuse" title="Link to this heading">#</a></h2>
-<p>Modern RHIME acquisition returns an in-memory <code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code> handoff.
+<p>Modern RHIME acquisition returns an in-memory <code class="docutils literal notranslate"><span class="pre">MergedData</span></code> handoff.
 The proposed acquisition-artifact <code class="docutils literal notranslate"><span class="pre">save</span></code>, <code class="docutils literal notranslate"><span class="pre">load</span></code> and <code class="docutils literal notranslate"><span class="pre">load_legacy</span></code> methods
 are removed, along with <code class="docutils literal notranslate"><span class="pre">close</span></code> and the processing-stage marker. The
 <code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> convenience adapter is also removed. Use
-<code class="docutils literal notranslate"><span class="pre">RhimeMergedData.from_options</span></code> and the named scientific stages in
+<code class="docutils literal notranslate"><span class="pre">MergedData.from_options</span></code> and the named scientific stages in
 <code class="docutils literal notranslate"><span class="pre">rhime.preparation</span></code>, or use a complete RHIME runner.</p>
 <p>Remove <code class="docutils literal notranslate"><span class="pre">reload_merged_data</span></code>, <code class="docutils literal notranslate"><span class="pre">save_merged_data</span></code>, <code class="docutils literal notranslate"><span class="pre">merged_data_dir</span></code> and
 <code class="docutils literal notranslate"><span class="pre">merged_data_name</span></code> from modern RHIME configurations, including their
 <code class="docutils literal notranslate"><span class="pre">inner_</span></code> counterparts in nested runs. These options raise as unknown
-arguments. For repeat runs, save and load <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> and use the
+arguments. For repeat runs, save and load <code class="docutils literal notranslate"><span class="pre">PreparedInputs</span></code> and use the
 prepared-input runner. The staged <code class="docutils literal notranslate"><span class="pre">prepare</span></code> command persists only those
 prepared inputs and their manifest; subsequent stages read that artifact.</p>
-<p>Historical tuple retrieval and its NetCDF/Zarr cache helpers remain available
-for existing workflows. They do not provide a modern acquisition replay
-contract. Do not relabel an old filtered cache as freshly acquired data.</p>
+<p>Historical tuple retrieval and its NetCDF/Zarr cache helpers remain implemented
+in the transitional HBMCMC namespace pending its removal. They do not provide a
+modern acquisition replay contract or a retained capability after retirement.
+Do not relabel an old filtered cache as freshly acquired data.</p>
 </section>
 <section id="removed-interfaces">
 <h2>Removed interfaces<a class="headerlink" href="#removed-interfaces" title="Link to this heading">#</a></h2>
@@ -1083,7 +1140,7 @@ sampling path.</p>
 </section>
 <section id="scientific-compatibility">
 <h2>Scientific compatibility<a class="headerlink" href="#scientific-compatibility" title="Link to this heading">#</a></h2>
-<p>The 0.8 wrapper translates supported historical options into the ordinary RHIME
+<p>The transitional wrapper translates supported historical options into the ordinary RHIME
 model. It no longer preserves the historical boundary-only pollution-event
 baseline, disconnected sigma-prior variable, or additive fixed-error minimum
 error floor. Affected historical configurations fail at the HBMCMC boundary with
@@ -1107,14 +1164,15 @@ when migrating an analysis to 0.8.</p>
 </section>
 <section id="explicit-legacy-merged-data-utilities">
 <h2>Explicit legacy merged-data utilities<a class="headerlink" href="#explicit-legacy-merged-data-utilities" title="Link to this heading">#</a></h2>
-<p>Scripts that still create or reload <code class="docutils literal notranslate"><span class="pre">fp_all</span></code> mappings must import
+<p>Until namespace removal, scripts that still create or reload <code class="docutils literal notranslate"><span class="pre">fp_all</span></code> mappings import
 <code class="docutils literal notranslate"><span class="pre">retrieve_inversion_data</span></code>, <code class="docutils literal notranslate"><span class="pre">_save_merged_data</span></code> and <code class="docutils literal notranslate"><span class="pre">load_merged_data</span></code> from
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.legacy_data</span></code>. The historical netCDF and Zarr
-codecs retain their existing behaviour. Dictionary-based basis adapters,
+codecs currently retain their existing behaviour; this is transitional status,
+not a retention promise. Dictionary-based basis adapters,
 including <code class="docutils literal notranslate"><span class="pre">basis_weights_from_fp_all</span></code> and <code class="docutils literal notranslate"><span class="pre">make_basis_functions_from_fp_all</span></code>,
 now live in <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.legacy_basis</span></code>. The previous canonical
 module paths and exports have been removed.</p>
-<p>Modern acquisition uses <code class="docutils literal notranslate"><span class="pre">RhimeMergedData.from_options</span></code> or direct dataset
+<p>Modern acquisition uses <code class="docutils literal notranslate"><span class="pre">MergedData.from_options</span></code> or direct dataset
 construction. Modern runners resolve native prior flux once with
 <code class="docutils literal notranslate"><span class="pre">native_flux.resolve_runtime_flux(merged.flux_data,</span> <span class="pre">split_by_sectors=...)</span></code>.
 Modern <code class="docutils literal notranslate"><span class="pre">prepare_basis</span></code> accepts explicit <code class="docutils literal notranslate"><span class="pre">site_data</span></code>, resolved <code class="docutils literal notranslate"><span class="pre">runtime_flux</span></code>
@@ -1124,10 +1182,10 @@ removed: call <code class="docutils literal notranslate"><span class="pre">basis
 it. Configured runners own <code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> and preserve export metadata.
 Historical run selectors end at the HBMCMC input compatibility boundary.
 Flat-file adaptation and explicit legacy writing remain in
-<code class="docutils literal notranslate"><span class="pre">basis.compatibility</span></code> under their own deprecation schedule; removing HBMCMC
-does not remove these adapters. See <a class="reference internal" href="rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a> for the 0.8
+<code class="docutils literal notranslate"><span class="pre">basis.compatibility</span></code> pending the independent #951 dispositions; removing HBMCMC
+does not authorize removing these adapters. See <a class="reference internal" href="rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a> for the
 modern basis artifact default, explicit legacy opt-in, and migration examples. For reusable
-RHIME runs, save <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code>;
+RHIME runs, save <code class="docutils literal notranslate"><span class="pre">PreparedInputs</span></code>;
 legacy merged-data files are a separate explicit utility workflow.</p>
 <p>Dataset and <code class="docutils literal notranslate"><span class="pre">fp_all</span></code> basis adapters resolve native flux once at their
 compatibility boundary. <code class="docutils literal notranslate"><span class="pre">basis_functions_from_flat_basis</span></code> now accepts
@@ -1189,9 +1247,9 @@ deferred to #829.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#resource-migration">0.8 resource migration</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#additional-0-8-python-api-changes">Additional 0.8 Python API changes</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#planned-0-9-deprecations-and-removals">Planned 0.9 deprecations and removals</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#development-resource-migration">Development resource migration</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#additional-development-python-api-changes">Additional development Python API changes</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#agreed-breaking-development-boundary">Agreed breaking-development boundary</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#chain-handling-in-run-hbmcmc-py">Chain handling in <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#choose-a-migration-route">Choose a migration route</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#existing-ini-and-batch-workflows">Existing INI and batch workflows</a></li>

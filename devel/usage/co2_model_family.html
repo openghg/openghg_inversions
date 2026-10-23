@@ -658,7 +658,9 @@ explains which choices are technical requirements and which are defaults.
 Inferred-OU tuning belongs to <code class="docutils literal notranslate"><span class="pre">sampling.sigma_target_accept</span></code> and
 <code class="docutils literal notranslate"><span class="pre">sampling.state_target_accept</span></code>. Saved Python sampling takes the same
 <code class="docutils literal notranslate"><span class="pre">sampling</span></code> mapping as the full configuration.</p>
-<p><code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run-co2</span></code> remains an alias. This configured CLI route uses
+<p><code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run-co2</span></code> remains a transitional alias until its approved
+<a class="reference internal" href="cli.html#rhime-cli-command-retirement"><span class="std std-ref">command-name retirement</span></a> lands.
+This configured CLI route uses
 <code class="docutils literal notranslate"><span class="pre">run_co2</span></code> and writes requested products. Python
 <code class="docutils literal notranslate"><span class="pre">rhime.run(model=&quot;co2&quot;,</span> <span class="pre">config_file=&quot;co2.toml&quot;)</span></code> selects the same configured
 runner and returns <code class="docutils literal notranslate"><span class="pre">Co2Output</span></code>. Acquisition and construction of the defining
