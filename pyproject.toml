@@ -34,7 +34,7 @@ dependencies = [
     "pymc>=6,<7",
     "arviz>=1.1,<2",
     "numpyro[cpu]",
-    "xarray>=2025.06.0",
+    "xarray>=2025.08.0",
     "pandas<3.0",
     "matplotlib",
     "scipy",
@@ -112,7 +112,7 @@ numba = ">=0.59"
 pymc = ">=6,<7"
 pytensor = "*"
 arviz = ">=1.1,<2"
-xarray = ">=2025.06.0"
+xarray = ">=2025.08.0"
 pandas = "<3.0"
 matplotlib = "*"
 scipy = "*"

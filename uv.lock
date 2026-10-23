@@ -2153,7 +2153,7 @@ requires-dist = [
     { name = "scipy-stubs", marker = "extra == 'dev'", specifier = "==1.15.3.*" },
     { name = "sparse" },
     { name = "towncrier", marker = "extra == 'dev'", specifier = ">=24.8" },
-    { name = "xarray", specifier = ">=2025.6.0" },
+    { name = "xarray", specifier = ">=2025.8.0" },
 ]
 provides-extras = ["jupyter", "dev"]
 
