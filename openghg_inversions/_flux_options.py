@@ -1,7 +1,6 @@
-"""Compatibility for modern flux selectors, separate from HBMCMC aliases."""
+"""Deprecated keyword resolution for independently supported basis adapters."""
 
 import warnings
-from collections.abc import Mapping
 from enum import Enum
 from typing import Any
 
@@ -27,17 +26,3 @@ def resolve_deprecated_keyword(
         )
         return old_value
     return default if new_value is UNSET else new_value
-
-
-def normalise_flux_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
-    """Copy options using canonical flux names, warning on deprecated names."""
-    result = dict(params)
-    for old, new in (
-        ("emissions_store", "flux_store"),
-        ("emissions_domain", "flux_domain"),
-        ("inner_emissions_store", "inner_flux_store"),
-        ("inner_emissions_domain", "inner_flux_domain"),
-    ):
-        if old in result:
-            result[new] = resolve_deprecated_keyword(old, new, result.pop(old), result.get(new, UNSET))
-    return result

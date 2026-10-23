@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.models.priors import prior_records
 from openghg_inversions.rhime.specs import FixedErrorSettings, RhimeModelSpec, SectorSpec
 from openghg_inversions.rhime.standard import build_standard_model, materialize_standard_inputs
@@ -53,7 +53,7 @@ def test_materialize_once_then_build_without_replacing_requested_settings():
         _model({"pdf": "normal", "mu": mean, "sigma": .2}),
         offset_prior={"pdf": "normal", "mu": da.from_delayed(unused(), shape=(), dtype=float), "sigma": 1.},
     )
-    prepared = cast(RhimePreparedInputs, SimpleNamespace(inv_inputs=inputs))
+    prepared = cast(PreparedInputs, SimpleNamespace(inv_inputs=inputs))
     eager, priors = materialize_standard_inputs(prepared, model)
     assert calls == ["source"]
     assert is_dask_collection(inputs["H"])

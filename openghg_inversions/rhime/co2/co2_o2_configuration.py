@@ -17,6 +17,8 @@ from openghg_inversions.rhime.specs import normalise_optional_mapping
 
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .configuration import (
+    _validate_section_option_names, _PREPARATION_OPTION_NAMES, _SAMPLING_OPTION_NAMES,
+    _PRIOR_OPTION_NAMES, _MODEL_SECTION_OPTION_NAMES,
     _reject_unknown,
     _bool, _number, _take, _model, _co2_likelihood, _frozen,
     Co2PreparationConfig,
@@ -53,6 +55,8 @@ def load_co2_o2_params(
             raise ValueError("Linked CO2/O2 params file must contain one JSON object.")
     else:
         options = _table(params, "config")
+    _validate_co2_o2_option_names(options)
+    _validate_co2_o2_option_names(overrides or {})
     for name, value in (overrides or {}).items():
         if name in {"prepared_inputs", "channels", "likelihood", "sampling", "outputs"} and isinstance(value, Mapping):
             previous = _table(options.get(name, {}), name)
@@ -73,9 +77,36 @@ def load_co2_o2_params(
         raise ValueError("config.recipe must be 'co2_o2' for linked execution.")
     if "variant" in options:
         raise ValueError("Linked CO2/O2 configuration has no variant selector; select the scientific likelihood.")
-    allowed = {"format_version", "recipe", "prepared_inputs", "channels", "likelihood", "sampling", "outputs"}
-    _reject_unknown({name: value for name, value in options.items() if name not in allowed}, "config")
     return options
+
+
+def _validate_co2_o2_option_names(options: Mapping[str, object]) -> None:
+    """Check request names while deferring scientific and inactive values."""
+    allowed = {"format_version", "recipe", "variant", "prepared_inputs", "channels", "likelihood", "sampling", "outputs"}
+    _reject_unknown({name: value for name, value in options.items() if name not in allowed}, "config")
+    from .co2_o2_outputs import Co2O2OutputOptions
+
+    channel_sections = {
+        "": frozenset({"units", "independent_error_sd", "boundary", "offset"}),
+        **_MODEL_SECTION_OPTION_NAMES,
+        "boundary": _MODEL_SECTION_OPTION_NAMES["boundary"] | {"activity"},
+        "boundary.activity": frozenset({"active", "fixed_value"}),
+    }
+    _validate_section_option_names(options, {
+        "prepared_inputs": _PREPARATION_OPTION_NAMES,
+        "channels": frozenset({"co2", "o2"}),
+        **{f"channels.{channel}" + (f".{path}" if path else ""): names
+           for channel in ("co2", "o2") for path, names in channel_sections.items()},
+        "likelihood": frozenset({"kind", "tau_hours", "fixed_site_amplitudes", "site_amplitude_prior",
+                                 "site_amplitude_prior_scale"}),
+        "likelihood.site_amplitude_prior": _PRIOR_OPTION_NAMES,
+        "sampling": _SAMPLING_OPTION_NAMES,
+        "outputs": frozenset(Co2O2OutputOptions.__dataclass_fields__),
+        "outputs.paris_postprocessing_kwargs": frozenset({
+            "template_version", "obs_avg_period", "flux_frequency", "country_selections",
+        }),
+        "outputs.native_flux_bases": frozenset({"co2", "o2"}),
+    })
 
 
 @dataclass(frozen=True)
@@ -90,6 +121,7 @@ class Co2O2PreparationConfig:
     @classmethod
     def from_params(cls, config: Mapping[str, object], *, require_path: bool = False) -> Co2O2PreparationConfig:
         """Parse only linked artifact options; reject affine reconstruction."""
+        _validate_co2_o2_option_names(config)
         prepared = _table(_table(config, "config").get("prepared_inputs", {}), "prepared_inputs")
         if "reconstruction_path" in prepared:
             raise ValueError("Linked CO2/O2 preparation does not support prepared_inputs.reconstruction_path.")
@@ -178,6 +210,7 @@ class Co2O2ModelConfig:
     def from_params(cls, config: Mapping[str, object]) -> Co2O2ModelConfig:
         """Parse active channel/likelihood choices without touching arrays."""
         options = _table(config, "config")
+        _validate_co2_o2_option_names(options)
         channels = _table(options.get("channels", {}), "channels")
         units: dict[str, str] = {}
         errors: dict[str, float] = {}
@@ -246,6 +279,7 @@ def resolve_co2_o2_sampler(config: Mapping[str, object], *, model: Co2O2ModelCon
     Channel, prepared-input and output choices remain unused.
     """
     options = _table(config, "config")
+    _validate_co2_o2_option_names(options)
     fixed_ou = model.tau_hours is not None
     sampling = _table(options.get("sampling", {}), "sampling")
     sampling.setdefault("nuts_sampler", "pymc" if fixed_ou else "numpyro")
@@ -258,7 +292,8 @@ def resolve_co2_o2_sampler(config: Mapping[str, object], *, model: Co2O2ModelCon
 
 def resolve_co2_o2_prior_seed(config: Mapping[str, object]) -> int | None:
     """Resolve the prior-predictive seed without validating unused MCMC controls."""
-    return resolve_co2_prior_seed(config)
+    _validate_co2_o2_option_names(config)
+    return resolve_co2_prior_seed({"sampling": config.get("sampling", {})})
 
 
 __all__ = [

@@ -7,12 +7,12 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
+from openghg_inversions.inversion_data import MergedData, SiteOptions
 from openghg_inversions.rhime import filter_observations, prepare_observation_errors
 
 
 def _merged(dataset):
-    return RhimeMergedData(
+    return MergedData(
         site_data={"TAC": dataset}, flux_data={},
         site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"),
     )
@@ -39,7 +39,7 @@ def test_error_preparation_preserves_selector_order_over_mapping_order(error_kin
             dataset["mf_error"] = ("time", np.array([7.0, 8.0]) * scale, {"source": "custom"})
         site_data[site] = dataset.chunk(time=1) if lazy else dataset
     originals = {site: dataset.copy(deep=True) for site, dataset in site_data.items()}
-    merged = RhimeMergedData(
+    merged = MergedData(
         site_data=site_data, flux_data={},
         site_options=SiteOptions.from_inputs(sites=["TAC", "MHD"], averaging_period=["1h", "2h"]),
     )
@@ -165,7 +165,7 @@ def test_nested_domains_prepare_errors_before_outer_aggregation_and_inner_alignm
         start_date="2020-01-01", end_date="2020-01-02", output_name="nested-errors", mismatch_model="fixed_error",
         output_format="none", flux_sources=["inventory"], filters="daily_median", use_bc=False,
     ), multisector=False)
-    monkeypatch.setattr(RhimeMergedData, "from_options", lambda **kw: inner if kw["domain"] == "EUROPE-6km" else outer)
+    monkeypatch.setattr(MergedData, "from_options", lambda **kw: inner if kw["domain"] == "EUROPE-6km" else outer)
     monkeypatch.setattr(nested, "_mask_outer_for_aligned_inner_domain", lambda outer, inner: outer)
     captured = []
 
@@ -173,7 +173,7 @@ def test_nested_domains_prepare_errors_before_outer_aggregation_and_inner_alignm
         pass
 
     def reached_basis(merged, **kwargs):
-        assert not isinstance(merged, RhimeMergedData)
+        assert not isinstance(merged, MergedData)
         captured.append(merged)
         if len(captured) == 2:
             raise PreparedBothDomains

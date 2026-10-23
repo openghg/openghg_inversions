@@ -42,7 +42,7 @@ __all__ = [
     "PreparedInputs",
     "RHIME_PREPARED_INPUTS_SCHEMA",
     "RHIME_PREPARED_INPUTS_SCHEMA_VERSION",
-    "RhimePreparedInputs",
+    "PreparedInputs",
 ]
 
 
@@ -240,7 +240,7 @@ class PreparedInputs:
             if isinstance(dim, str) and isinstance(inv_inputs.indexes.get(dim), pd.MultiIndex)
         )
         if "nmeasure" not in multiindex_dims:
-            raise ValueError("RhimePreparedInputs inv_inputs requires the nmeasure MultiIndex.")
+            raise ValueError("PreparedInputs inv_inputs requires the nmeasure MultiIndex.")
         dt = xr.DataTree.from_dict(
             {
                 "inv_inputs": xr.DataTree(encode_cf_multiindexes(inv_inputs, multiindex_dims)),
@@ -275,13 +275,13 @@ class PreparedInputs:
         schema = dt.attrs.get("schema")
         if schema != RHIME_PREPARED_INPUTS_SCHEMA:
             raise ValueError(
-                f"Expected RhimePreparedInputs schema {RHIME_PREPARED_INPUTS_SCHEMA!r}, got {schema!r}."
+                f"Expected PreparedInputs schema {RHIME_PREPARED_INPUTS_SCHEMA!r}, got {schema!r}."
             )
 
         version = dt.attrs.get("schema_version")
         if isinstance(version, bool) or not isinstance(version, Integral) or version != 1:
             raise ValueError(
-                f"Expected RhimePreparedInputs schema_version "
+                f"Expected PreparedInputs schema_version "
                 f"{RHIME_PREPARED_INPUTS_SCHEMA_VERSION}, got {version!r}."
             )
 
@@ -289,7 +289,7 @@ class PreparedInputs:
             name for name in ("inv_inputs", "basis_functions", "site_metadata") if name not in dt.children
         ]
         if missing_nodes:
-            raise KeyError(f"Missing required RhimePreparedInputs node(s): {missing_nodes!r}.")
+            raise KeyError(f"Missing required PreparedInputs node(s): {missing_nodes!r}.")
 
         encoded_inv_inputs = cast(xr.DataTree, dt["inv_inputs"]).to_dataset()
         compressed_indexes = tuple(
@@ -299,7 +299,7 @@ class PreparedInputs:
         )
         if "nmeasure" not in compressed_indexes:
             raise ValueError(
-                "RhimePreparedInputs inv_inputs CF gathered coordinate 'nmeasure' "
+                "PreparedInputs inv_inputs CF gathered coordinate 'nmeasure' "
                 "is missing its 'compress' metadata."
             )
         inv_inputs = decode_cf_multiindexes(encoded_inv_inputs, compressed_indexes)
@@ -395,16 +395,16 @@ def _normalize_site_metadata(ds: xr.Dataset) -> xr.Dataset:
             variables are incomplete.
     """
     if "site" not in ds.coords or ds["site"].dims != ("site",):
-        raise ValueError("RhimePreparedInputs site_metadata requires a one-dimensional 'site' coordinate.")
+        raise ValueError("PreparedInputs site_metadata requires a one-dimensional 'site' coordinate.")
     sites = tuple(str(site) for site in ds["site"].values)
     if len(set(sites)) != len(sites):
-        raise ValueError("RhimePreparedInputs site_metadata 'site' labels must be unique.")
+        raise ValueError("PreparedInputs site_metadata 'site' labels must be unique.")
     if _SITE_AVERAGING_PERIOD not in ds:
-        raise ValueError("RhimePreparedInputs site_metadata is missing 'averaging_period'.")
+        raise ValueError("PreparedInputs site_metadata is missing 'averaging_period'.")
     invalid_variables = [name for name, variable in ds.data_vars.items() if variable.dims != ("site",)]
     if invalid_variables:
         raise ValueError(
-            "RhimePreparedInputs site_metadata variables must each have only dimension 'site'; "
+            "PreparedInputs site_metadata variables must each have only dimension 'site'; "
             f"invalid variables: {invalid_variables!r}."
         )
     invalid_coordinates = [
@@ -414,7 +414,7 @@ def _normalize_site_metadata(ds: xr.Dataset) -> xr.Dataset:
     ]
     if invalid_coordinates:
         raise ValueError(
-            "RhimePreparedInputs site_metadata auxiliary coordinates must be scalar or "
+            "PreparedInputs site_metadata auxiliary coordinates must be scalar or "
             "site-aligned; "
             f"invalid coordinates: {invalid_coordinates!r}."
         )
@@ -428,7 +428,7 @@ def _normalize_site_metadata(ds: xr.Dataset) -> xr.Dataset:
             periods.append(period or None)
         else:
             raise ValueError(
-                "RhimePreparedInputs site_metadata 'averaging_period' values must be strings or missing."
+                "PreparedInputs site_metadata 'averaging_period' values must be strings or missing."
             )
 
     result = ds.copy()
@@ -517,22 +517,22 @@ def _canonicalize_rhime_inv_inputs(
     nmeasure_index = ds.indexes.get("nmeasure")
     if not isinstance(nmeasure_index, pd.MultiIndex):
         raise ValueError(  # noqa: TRY004 - malformed artifact schema, not an argument type error
-            "RhimePreparedInputs inv_inputs must have a 'nmeasure' MultiIndex with levels ('site', 'time')."
+            "PreparedInputs inv_inputs must have a 'nmeasure' MultiIndex with levels ('site', 'time')."
         )
     if tuple(nmeasure_index.names) != ("site", "time"):
         raise ValueError(
-            "RhimePreparedInputs inv_inputs 'nmeasure' MultiIndex must have levels "
+            "PreparedInputs inv_inputs 'nmeasure' MultiIndex must have levels "
             f"('site', 'time'), got {tuple(nmeasure_index.names)!r}."
         )
     measurement_sites_raw = tuple(nmeasure_index.get_level_values("site"))
     if not all(isinstance(site, str) for site in measurement_sites_raw):
-        raise ValueError("RhimePreparedInputs nmeasure site labels must all be strings.")
+        raise ValueError("PreparedInputs nmeasure site labels must all be strings.")
     observed_sites = tuple(dict.fromkeys(measurement_sites_raw))
     metadata_sites = tuple(site_metadata["site"].values.tolist())
     missing_sites = [site for site in observed_sites if site not in metadata_sites]
     if missing_sites:
         raise ValueError(
-            f"RhimePreparedInputs site_metadata is missing observed site labels: {missing_sites!r}."
+            f"PreparedInputs site_metadata is missing observed site labels: {missing_sites!r}."
         )
     site_metadata = site_metadata.sel(site=list(observed_sites))
     site_lookup = {site: index for index, site in enumerate(observed_sites)}
@@ -558,15 +558,15 @@ def _canonicalize_rhime_inv_inputs(
     if expected_sources is None:
         return result, site_metadata
     if len(set(expected_sources)) != len(expected_sources):
-        raise ValueError("RhimePreparedInputs multi-source basis labels must be unique.")
+        raise ValueError("PreparedInputs multi-source basis labels must be unique.")
     if "H" not in result:
-        raise ValueError("RhimePreparedInputs inv_inputs must contain H for a multi-source basis.")
+        raise ValueError("PreparedInputs inv_inputs must contain H for a multi-source basis.")
     sensitivity = result["H"]
     state_dim: str | None = None
     if "source" in sensitivity.dims:
         actual_sources = tuple(str(source) for source in sensitivity["source"].values)
         if len(set(actual_sources)) != len(actual_sources):
-            raise ValueError("RhimePreparedInputs inv_inputs H source labels must be unique.")
+            raise ValueError("PreparedInputs inv_inputs H source labels must be unique.")
     else:
         gathered_dims = [
             str(dim)
@@ -576,14 +576,14 @@ def _canonicalize_rhime_inv_inputs(
         ]
         if len(gathered_dims) != 1:
             raise ValueError(
-                "RhimePreparedInputs inv_inputs H must have either a source dimension or "
+                "PreparedInputs inv_inputs H must have either a source dimension or "
                 "one gathered state MultiIndex containing a 'source' level for a multi-source basis."
             )
         state_dim = gathered_dims[0]
         state_index = sensitivity.indexes[state_dim]
         source_values = state_index.get_level_values("source").to_numpy()
         if not all(isinstance(source, str | np.str_) for source in source_values):
-            raise ValueError("RhimePreparedInputs gathered H source labels must all be strings.")
+            raise ValueError("PreparedInputs gathered H source labels must all be strings.")
         source_labels = tuple(str(source) for source in source_values)
         _, first_indices = np.unique(source_values, return_index=True)
         actual_sources = tuple(str(source_values[index]) for index in np.sort(first_indices))
@@ -591,7 +591,7 @@ def _canonicalize_rhime_inv_inputs(
         missing = sorted(set(expected_sources) - set(actual_sources))
         unexpected = sorted(set(actual_sources) - set(expected_sources))
         raise ValueError(
-            "RhimePreparedInputs inv_inputs H source labels do not match the basis operator: "
+            "PreparedInputs inv_inputs H source labels do not match the basis operator: "
             f"missing={missing!r}, unexpected={unexpected!r}."
         )
     if state_dim is not None:
@@ -606,13 +606,9 @@ def _canonicalize_rhime_inv_inputs(
         if covariance_dim in result.dims:
             if result.sizes[covariance_dim] != len(state_order):
                 raise ValueError(
-                    f"RhimePreparedInputs {covariance_dim} must match the gathered state length."
+                    f"PreparedInputs {covariance_dim} must match the gathered state length."
                 )
             state_indexers[covariance_dim] = state_order
         return result.isel(state_indexers), site_metadata
     result = result.assign_coords(source=("source", list(actual_sources)))
     return result.sel(source=list(expected_sources)), site_metadata
-
-
-# Established public import retained through the 0.9 compatibility cycle.
-RhimePreparedInputs = PreparedInputs

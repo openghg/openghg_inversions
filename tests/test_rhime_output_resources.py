@@ -58,7 +58,7 @@ def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monke
         params["flux_sources"] = ["inventory", "ocean"]
     config = RhimeConfig.from_params(params, multisector=is_multi)
     monkeypatch.setattr(
-        standard.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquired before preflight"),
+        standard.MergedData, "from_options", lambda **kwargs: pytest.fail("acquired before preflight"),
     )
     monkeypatch.setattr(
         multisector, "materialize_multisector_inputs", lambda *args, **kwargs: pytest.fail("materialized before preflight"),
@@ -93,7 +93,7 @@ def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monke
         if route == "standard":
             standard.run_standard(config=config)
         elif route == "multisector":
-            multisector.run_rhime_multisector(config=config)
+            multisector.run_multisector(config=config)
         elif route == "nested":
             nested.run_nested(**params, inner_domain="6km")
         elif route == "copied":
@@ -162,7 +162,7 @@ def test_standard_file_products_require_destination_before_work(tmp_path, monkey
                      save_inversion_output=False)
     config = RhimeConfig.from_params(params, multisector=False)
     monkeypatch.setattr(
-        standard.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquired before preflight"),
+        standard.MergedData, "from_options", lambda **kwargs: pytest.fail("acquired before preflight"),
     )
     monkeypatch.setattr(
         standard, "sample_rhime_model", lambda *args, **kwargs: pytest.fail("sampled before preflight"),

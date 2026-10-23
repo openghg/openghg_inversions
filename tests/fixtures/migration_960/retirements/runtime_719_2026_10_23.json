@@ -228,7 +228,15 @@
         "#719",
         "#949"
       ],
-      "evidence": "source inspection before generic name-validation change; no inactive scientific value resolution"
+      "evidence": "source inspection before generic name-validation change; no inactive scientific value resolution",
+      "source_comparison": {
+        "files": [
+          "openghg_inversions/rhime/co2/configuration.py",
+          "openghg_inversions/rhime/co2/co2_o2_configuration.py",
+          "openghg_inversions/rhime/co2/execution.py"
+        ],
+        "pinned_to_pr_base": "unchanged"
+      }
     }
   ]
 }

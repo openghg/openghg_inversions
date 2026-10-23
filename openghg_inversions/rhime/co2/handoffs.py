@@ -21,7 +21,7 @@ import xarray as xr
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load as load_affine, save as save_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.rhime._stage_artifacts import (
     _output_path, check_checkpoint_targets, finish_checkpoint, read_manifest,
@@ -123,7 +123,7 @@ def save_preparation(
 def prepare(
     *, output_dir: str | Path, prepared_path: str | Path | None = None,
     start_date: str | None = None, end_date: str | None = None, domain: str | None = None,
-    canonical_inputs: RhimePreparedInputs | None = None,
+    canonical_inputs: PreparedInputs | None = None,
     reduction: CoherentGaussianReduction | None = None,
     aggregation_error_rank: int | None = 512,
     affine_artifact: AffineFluxMapArtifact | None = None, affine_path: str | Path | None = None,

@@ -21,7 +21,7 @@ from openghg_inversions.basis.basis_functions import (
 )
 from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, SiteOptions
+from openghg_inversions.inversion_data import MergedData, PreparedInputs, SiteOptions
 from openghg_inversions.rhime.params import DataConfig, RhimeConfig
 from openghg_inversions.inversion_data import acquisition
 from openghg_inversions.inversion_data import prepared_inputs as prepared_contract
@@ -48,17 +48,16 @@ from openghg_inversions.serialization import (
 from tests.helpers import make_trace, prepare_inputs
 
 
-def test_data_contracts_preserve_legacy_imports_and_prepared_schema() -> None:
-    """Old entry points construct and reopen the same durable scientific value."""
-    assert RhimePreparedInputs is prepared_contract.RhimePreparedInputs
-    assert RhimePreparedInputs is prepared_contract.RhimePreparedInputs
-    assert RhimeMergedData is acquisition.RhimeMergedData
+def test_data_contracts_preserve_canonical_imports_and_prepared_schema() -> None:
+    """Canonical entry points construct and reopen the durable scientific value."""
+    assert PreparedInputs is prepared_contract.PreparedInputs
+    assert MergedData is acquisition.MergedData
     prepared = _prepared_inputs()
     artifact = prepared.to_datatree()
     assert artifact.attrs["schema"] == prepared_contract.RHIME_PREPARED_INPUTS_SCHEMA
     assert artifact.attrs["schema_version"] == prepared_contract.RHIME_PREPARED_INPUTS_SCHEMA_VERSION == 1
 
-    restored = prepared_contract.RhimePreparedInputs.from_datatree(artifact)
+    restored = prepared_contract.PreparedInputs.from_datatree(artifact)
     xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)
     xr.testing.assert_identical(restored.site_metadata, prepared.site_metadata)
 
@@ -99,7 +98,7 @@ def _site_metadata(
 def _prepared_inputs(
     *,
     basis_artifact_path: str | None = "/path/that/does/not/exist/basis.nc",
-) -> RhimePreparedInputs:
+) -> PreparedInputs:
     """Build canonical inputs with a site/time measurement MultiIndex."""
     nmeasure = pd.MultiIndex.from_arrays(
         [
@@ -126,7 +125,7 @@ def _prepared_inputs(
     basis_metadata = {BASIS_ARTIFACT_SOURCE_ATTR: "unit-test-generated"}
     if basis_artifact_path is not None:
         basis_metadata[BASIS_ARTIFACT_PATH_ATTR] = basis_artifact_path
-    return RhimePreparedInputs(
+    return PreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=_basis_functions().with_metadata(basis_metadata),
         site_metadata=_site_metadata(("TAC", "MHD"), ("1h", None)),
@@ -155,7 +154,7 @@ def test_structured_aggregation_error_survives_prepared_input_round_trip(
             "nmeasure",
             np.diag(covariance) - np.sum(factor**2, axis=1),
         )
-    structured = RhimePreparedInputs(
+    structured = PreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=prepared.basis_functions,
         site_metadata=prepared.site_metadata,
@@ -163,7 +162,7 @@ def test_structured_aggregation_error_survives_prepared_input_round_trip(
     path = tmp_path / f"structured-{representation}{suffix}"
 
     structured.save(path)
-    loaded = RhimePreparedInputs.load(path)
+    loaded = PreparedInputs.load(path)
 
     xr.testing.assert_identical(loaded.inv_inputs, structured.inv_inputs)
 
@@ -206,7 +205,7 @@ def test_derived_outputs_reject_aggregation_error_until_reconstruction_lands(tmp
         rhime_standard.run_standard(prepared=prepared, config=config)
 
 
-def _multisource_prepared_inputs() -> RhimePreparedInputs:
+def _multisource_prepared_inputs() -> PreparedInputs:
     """Build prepared inputs whose retained basis has source order B, A."""
     coords = {"lat": [51.0], "lon": [-2.0, -1.0]}
     basis_b = xr.DataArray([[1, 2]], dims=("lat", "lon"), coords=coords, name="basis")
@@ -237,7 +236,7 @@ def _multisource_prepared_inputs() -> RhimePreparedInputs:
             **xr.Coordinates.from_pandas_multiindex(nmeasure, "nmeasure"),
         },
     )
-    return RhimePreparedInputs(
+    return PreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=basis_functions.with_metadata({BASIS_ARTIFACT_SOURCE_ATTR: "unit-test-generated"}),
         site_metadata=_site_metadata(("TAC",), ("1h",)),
@@ -249,7 +248,7 @@ def test_prepared_inputs_normalizes_h_to_basis_source_order() -> None:
     original = _multisource_prepared_inputs()
     reordered_h = original.inv_inputs.sel(source=["A", "B"])
 
-    prepared = RhimePreparedInputs(
+    prepared = PreparedInputs(
         inv_inputs=reordered_h,
         basis_functions=original.basis_functions,
         site_metadata=original.site_metadata,
@@ -298,7 +297,7 @@ def test_prepared_inputs_normalizes_gathered_state_covariance_to_basis_source_or
     )
     inv_inputs = inv_inputs.assign_coords(region_cov_label=("region_cov", column_labels))
 
-    prepared = RhimePreparedInputs(
+    prepared = PreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=original.basis_functions,
         site_metadata=original.site_metadata,
@@ -336,7 +335,7 @@ def test_prepared_inputs_rejects_h_source_mismatch() -> None:
     mismatched = original.inv_inputs.assign_coords(source=["B", "C"])
 
     with pytest.raises(ValueError, match="source labels do not match"):
-        RhimePreparedInputs(
+        PreparedInputs(
             inv_inputs=mismatched,
             basis_functions=original.basis_functions,
             site_metadata=original.site_metadata,
@@ -351,7 +350,7 @@ def test_prepared_inputs_rejects_shared_basis_flux_h_source_mismatch() -> None:
     inv_inputs = original.inv_inputs.assign(H=original.inv_inputs["H"].expand_dims(source=["B", "C"]))
 
     with pytest.raises(ValueError, match="source labels do not match"):
-        RhimePreparedInputs(
+        PreparedInputs(
             inv_inputs=inv_inputs,
             basis_functions=basis_functions,
             site_metadata=original.site_metadata,
@@ -363,7 +362,7 @@ def test_prepared_inputs_drops_unused_site_metadata_label() -> None:
     original = _prepared_inputs()
     site_metadata = original.site_metadata.reindex(site=["TAC", "MHD", "UNUSED"])
 
-    prepared = RhimePreparedInputs(
+    prepared = PreparedInputs(
         inv_inputs=original.inv_inputs,
         basis_functions=original.basis_functions,
         site_metadata=site_metadata,
@@ -378,7 +377,7 @@ def test_prepared_inputs_normalizes_empty_averaging_period() -> None:
     site_metadata = original.site_metadata.copy()
     site_metadata["averaging_period"] = ("site", ["", None])
 
-    prepared = RhimePreparedInputs(
+    prepared = PreparedInputs(
         inv_inputs=original.inv_inputs,
         basis_functions=original.basis_functions,
         site_metadata=site_metadata,
@@ -391,7 +390,7 @@ def test_prepared_inputs_legacy_factory_normalizes_inputs() -> None:
     """The legacy factory adapts positional fields without parallel state."""
     original = _prepared_inputs()
 
-    prepared = RhimePreparedInputs.from_legacy_inputs(
+    prepared = PreparedInputs.from_legacy_inputs(
         original.inv_inputs,
         original.basis_functions,
         original.sites,
@@ -417,7 +416,7 @@ def test_prepared_inputs_legacy_factory_preserves_observation_release_metadata()
         release_lon=("nmeasure", [-2.1, -1.2]),
     )
 
-    prepared = RhimePreparedInputs.from_legacy_inputs(
+    prepared = PreparedInputs.from_legacy_inputs(
         inv_inputs,
         original.basis_functions,
         original.sites,
@@ -438,20 +437,20 @@ def test_prepared_inputs_preserves_site_metadata_attrs() -> None:
     site_metadata = original.site_metadata.copy(deep=True)
     site_metadata["site"].attrs["long_name"] = "observation site"
     site_metadata["averaging_period"].attrs["long_name"] = "observation averaging period"
-    prepared = RhimePreparedInputs(
+    prepared = PreparedInputs(
         inv_inputs=original.inv_inputs,
         basis_functions=original.basis_functions,
         site_metadata=site_metadata,
     )
 
-    restored = RhimePreparedInputs.from_datatree(prepared.to_datatree())
+    restored = PreparedInputs.from_datatree(prepared.to_datatree())
 
     xr.testing.assert_identical(restored.site_metadata, site_metadata)
 
 
 def _assert_prepared_identical(
-    actual: RhimePreparedInputs,
-    expected: RhimePreparedInputs,
+    actual: PreparedInputs,
+    expected: PreparedInputs,
 ) -> None:
     """Assert all durable prepared-input fields round-trip."""
     xr.testing.assert_identical(actual.inv_inputs, expected.inv_inputs)
@@ -473,11 +472,10 @@ def _assert_prepared_identical(
 @pytest.fixture(scope="module")
 def prepared_from_real_route(
     tac_ch4_data_args: dict[str, Any],
-) -> RhimePreparedInputs:
+) -> PreparedInputs:
     """Prepare durable inputs through the real RHIME route and test object store."""
     preparation_args = dict(tac_ch4_data_args)
-    preparation_args["flux_store"] = preparation_args.pop("emissions_store")
-    flux_sources = preparation_args.pop("emissions_name")
+    flux_sources = preparation_args.pop("flux_sources")
     preparation_args.update(
         {
             "output_name": "serialisation_regression",
@@ -494,7 +492,7 @@ def test_prepared_inputs_datatree_roundtrip_is_self_contained() -> None:
     """The DataTree embeds canonical inputs, basis geometry, flux, and metadata."""
     prepared = _prepared_inputs()
 
-    restored = RhimePreparedInputs.from_datatree(prepared.to_datatree())
+    restored = PreparedInputs.from_datatree(prepared.to_datatree())
 
     _assert_prepared_identical(restored, prepared)
     assert isinstance(restored.inv_inputs.indexes["nmeasure"], pd.MultiIndex)
@@ -505,7 +503,7 @@ def test_prepared_inputs_datatree_roundtrips_nullable_metadata() -> None:
     """Nullable periods and provenance round-trip."""
     prepared = _prepared_inputs(basis_artifact_path=None)
 
-    restored = RhimePreparedInputs.from_datatree(prepared.to_datatree())
+    restored = PreparedInputs.from_datatree(prepared.to_datatree())
 
     _assert_prepared_identical(restored, prepared)
     assert restored.averaging_period == ("1h", None)
@@ -530,12 +528,12 @@ def test_prepared_inputs_disk_roundtrip_preserves_nullable_site_strings(tmp_path
         contact=xr.Variable((), np.asarray(None, dtype=object)),
     )
     metadata.instrument.attrs["description"] = "instrument name"
-    prepared = RhimePreparedInputs(inv_inputs, original.basis_functions, metadata)
+    prepared = PreparedInputs(inv_inputs, original.basis_functions, metadata)
     before = prepared.site_metadata.copy(deep=True)
     path = tmp_path / f"nullable-metadata{suffix}"
 
     prepared.save(path)
-    restored = RhimePreparedInputs.load(path)
+    restored = PreparedInputs.load(path)
 
     xr.testing.assert_identical(restored.site_metadata, before)
     xr.testing.assert_identical(prepared.site_metadata, before)
@@ -558,13 +556,13 @@ def test_prepared_inputs_roundtrip_observation_aligned_release_metadata() -> Non
         release_lat=("nmeasure", [51.0, 52.0]),
         release_lon=("nmeasure", [-2.0, -1.0]),
     )
-    prepared = RhimePreparedInputs(
+    prepared = PreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=original.basis_functions,
         site_metadata=original.site_metadata,
     )
 
-    restored = RhimePreparedInputs.from_datatree(prepared.to_datatree())
+    restored = PreparedInputs.from_datatree(prepared.to_datatree())
 
     assert restored.inv_inputs.release_lat.dims == ("nmeasure",)
     assert restored.inv_inputs.release_lon.dims == ("nmeasure",)
@@ -580,13 +578,13 @@ def test_site_indicator_is_derived_from_measurement_sites() -> None:
     original = _prepared_inputs()
     inv_inputs = original.inv_inputs.assign(site_indicator=("nmeasure", [1, 0]))
     site_metadata = original.site_metadata.sel(site=["MHD", "TAC"])
-    prepared = RhimePreparedInputs(
+    prepared = PreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=original.basis_functions,
         site_metadata=site_metadata,
     )
 
-    restored = RhimePreparedInputs.from_datatree(prepared.to_datatree())
+    restored = PreparedInputs.from_datatree(prepared.to_datatree())
 
     assert restored.sites == ("TAC", "MHD")
     assert restored.inv_inputs.site_indicator.values.tolist() == [0, 1]
@@ -599,7 +597,7 @@ def test_site_indicator_is_derived_from_measurement_sites() -> None:
 def test_real_prepared_inputs_save_load_and_run_without_repreparation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    prepared_from_real_route: RhimePreparedInputs,
+    prepared_from_real_route: PreparedInputs,
     suffix: str,
 ) -> None:
     """Freeze the labeled prepared-input round-trip and replay contract.
@@ -618,7 +616,7 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
 
     artifact_path = tmp_path / f"real-prepared{suffix}"
     prepared.save(artifact_path)
-    loaded = RhimePreparedInputs.load(artifact_path)
+    loaded = PreparedInputs.load(artifact_path)
 
     _assert_prepared_identical(loaded, prepared)
     loaded_index = loaded.inv_inputs.indexes["nmeasure"]
@@ -690,7 +688,7 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         observed["output_prepared"] = inv_out
         return {}
 
-    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fail_preparation)
+    monkeypatch.setattr(rhime_standard.MergedData, "from_options", fail_preparation)
     monkeypatch.setattr(rhime_standard, "prepare_standard", fail_preparation)
     monkeypatch.setattr(rhime_standard, "build_standard_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
@@ -997,7 +995,7 @@ def test_prepared_inputs_zarr_save_overwrites_existing_artifact(tmp_path: Path) 
 
     expected = _prepared_inputs()
     expected.save(artifact_path)
-    restored = RhimePreparedInputs.load(artifact_path)
+    restored = PreparedInputs.load(artifact_path)
 
     _assert_prepared_identical(restored, expected)
     assert "obsolete" not in restored.inv_inputs
@@ -1025,7 +1023,7 @@ def test_prepared_inputs_rejects_missing_or_wrong_schema(
         dt.attrs[attr] = value
 
     with pytest.raises((TypeError, ValueError)):
-        RhimePreparedInputs.from_datatree(dt)
+        PreparedInputs.from_datatree(dt)
 
 
 @pytest.mark.parametrize("missing_node", ["inv_inputs", "basis_functions", "site_metadata"])
@@ -1037,7 +1035,7 @@ def test_prepared_inputs_rejects_missing_required_nodes(missing_node: str) -> No
     dt.attrs = dict(original.attrs)
 
     with pytest.raises((KeyError, ValueError)):
-        RhimePreparedInputs.from_datatree(dt)
+        PreparedInputs.from_datatree(dt)
 
 
 def test_prepared_inputs_rejects_invalid_cf_measurement_encoding() -> None:
@@ -1046,7 +1044,7 @@ def test_prepared_inputs_rejects_invalid_cf_measurement_encoding() -> None:
     del dt["inv_inputs"]["nmeasure"].attrs["compress"]
 
     with pytest.raises(ValueError, match="CF gathered coordinate"):
-        RhimePreparedInputs.from_datatree(dt)
+        PreparedInputs.from_datatree(dt)
 
 
 def test_prepared_inputs_delegates_nested_basis_schema_to_basis_functions() -> None:
@@ -1055,7 +1053,7 @@ def test_prepared_inputs_delegates_nested_basis_schema_to_basis_functions() -> N
     del dt["basis_functions"].attrs["schema"]
     del dt["basis_functions"].attrs["schema_version"]
 
-    restored = RhimePreparedInputs.from_datatree(dt)
+    restored = PreparedInputs.from_datatree(dt)
 
     assert restored.basis_artifact_source == "unit-test-generated"
     assert restored.basis_artifact_path == "/path/that/does/not/exist/basis.nc"
@@ -1067,7 +1065,7 @@ def test_prepared_inputs_rejects_site_coordinate_missing_measurement_labels() ->
     dt["site_metadata"].ds = dt["site_metadata"].to_dataset().assign_coords(site=["WRONG", "LABELS"])
 
     with pytest.raises(ValueError, match="missing observed site labels"):
-        RhimePreparedInputs.from_datatree(dt)
+        PreparedInputs.from_datatree(dt)
 
 
 def test_validated_rechecks_mutable_xarray_contents() -> None:
@@ -1096,7 +1094,7 @@ def test_prepared_inputs_rejects_non_site_metadata_variable() -> None:
     site_metadata = original.site_metadata.assign(extra=("other", [1]))
 
     with pytest.raises(ValueError, match="variables must each have only dimension 'site'"):
-        RhimePreparedInputs(
+        PreparedInputs(
             inv_inputs=original.inv_inputs,
             basis_functions=original.basis_functions,
             site_metadata=site_metadata,
@@ -1109,7 +1107,7 @@ def test_prepared_inputs_rejects_non_site_metadata_coordinate() -> None:
     site_metadata = original.site_metadata.assign_coords(other=("other", [1]))
 
     with pytest.raises(ValueError, match="auxiliary coordinates must be scalar or site-aligned"):
-        RhimePreparedInputs(
+        PreparedInputs(
             inv_inputs=original.inv_inputs,
             basis_functions=original.basis_functions,
             site_metadata=site_metadata,
@@ -1123,7 +1121,7 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
     """A loaded artifact reaches model building, sampling, and output unchanged."""
     artifact_path = tmp_path / "prepared.nc"
     _prepared_inputs().save(artifact_path)
-    loaded = RhimePreparedInputs.load(artifact_path)
+    loaded = PreparedInputs.load(artifact_path)
     model_spec = RhimeModelSpec(
         species="ch4",
         domain="EUROPE",
@@ -1189,7 +1187,7 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         observed["output_idata"] = inv_out.trace
         return {}
 
-    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fail_preparation)
+    monkeypatch.setattr(rhime_standard.MergedData, "from_options", fail_preparation)
     monkeypatch.setattr(rhime_standard, "prepare_standard", fail_preparation)
     monkeypatch.setattr(rhime_standard, "build_standard_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
@@ -1235,7 +1233,7 @@ def test_multisource_order_survives_load_run_and_reconstruction(
     artifact_path = tmp_path / f"multisource{suffix}"
     original.save(artifact_path)
 
-    loaded = RhimePreparedInputs.load(artifact_path)
+    loaded = PreparedInputs.load(artifact_path)
     loaded_operator = loaded.basis_functions.operator
     assert isinstance(loaded_operator, MultiSourceBucketBasisOperator)
     assert list(loaded_operator.basis_flat) == ["B", "A"]

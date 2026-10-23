@@ -172,7 +172,7 @@ def test_multiple_native_sources_are_retained_once_and_replayed_without_original
 
     monkeypatch.setattr(standard, "resolve_runtime_flux", resolve_once)
     monkeypatch.setattr(standard, "prepare_basis", check_first_weight)
-    monkeypatch.setattr(standard.RhimeMergedData, "from_options", forbidden)
+    monkeypatch.setattr(standard.MergedData, "from_options", forbidden)
     monkeypatch.setattr(BasisFunctions, "save", forbidden)
     monkeypatch.setattr(RhimeSampler, "sample", forbidden)
     manifest = stages.prepare(DataConfig.from_params(options), merged_data=merged, output_dir=tmp_path / "prepared")

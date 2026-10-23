@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
+from openghg_inversions.inversion_data import MergedData, SiteOptions
 from openghg_inversions.rhime.params import RhimeConfig
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
@@ -106,8 +106,8 @@ def test_generated_project_basis_uses_guarded_connected_inertial_composition(
         name="raw_labels",
     )
     expected_basis = _basis_functions()
-    from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
-    merged = RhimeMergedData(site_data={"TAC": xr.Dataset()}, flux_data={},
+    from openghg_inversions.inversion_data import MergedData, SiteOptions
+    merged = MergedData(site_data={"TAC": xr.Dataset()}, flux_data={},
         site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"))
     data_args = {
         "species": "ch4",
@@ -220,7 +220,7 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
                     draws=3),
         multisector=False,
     )
-    merged = RhimeMergedData(
+    merged = MergedData(
         site_data={site: xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])}) for site in config.data.site_options.sites},
         flux_data={"inventory": _basis_functions().flux.to_dataset(name="flux")},
         site_options=config.data.site_options,
@@ -234,7 +234,7 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
         "from_params",
         classmethod(lambda cls, params, *, multisector: config),
     )
-    monkeypatch.setattr(RhimeMergedData, "from_options",
+    monkeypatch.setattr(MergedData, "from_options",
         lambda **kwargs: merged,
     )
     monkeypatch.setattr(
@@ -286,7 +286,7 @@ def test_custom_basis_runner_resolves_before_loading_project_artifact(
         project_basis_path=str(artifact_path), basis_algorithm=algorithm,
         max_child_pca_eccentricity=7.0,
     )
-    merged = RhimeMergedData(
+    merged = MergedData(
         site_data={"TAC": xr.Dataset({
             "mf_error": ("time", [1.0]),
             "mf_repeatability": ("time", [0.0]),
@@ -295,7 +295,7 @@ def test_custom_basis_runner_resolves_before_loading_project_artifact(
         flux_data={"inventory": stored.flux.to_dataset(name="flux")},
         site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"),
     )
-    monkeypatch.setattr(RhimeMergedData, "from_options", lambda **kwargs: merged)
+    monkeypatch.setattr(MergedData, "from_options", lambda **kwargs: merged)
     monkeypatch.setattr(
         custom_basis_runner, "filter_observations", lambda value, site_options, **kwargs: (value, site_options),
     )
@@ -338,7 +338,7 @@ def test_custom_basis_missing_selected_map_fails_before_acquisition(
     """The project validates its selected support map before store access."""
     missing_map = tmp_path / "missing-classes.nc"
     monkeypatch.setattr(
-        RhimeMergedData,
+        MergedData,
         "from_options",
         lambda **kwargs: pytest.fail("a missing selected map must fail before acquisition"),
     )

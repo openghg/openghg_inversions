@@ -18,7 +18,6 @@ from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions.rhime.preparation import resolve_basis_inputs
 from openghg_inversions.rhime._resources import resolve_resource_paths
-from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -38,7 +37,7 @@ from openghg.util import align_lat_lon, get_domain_info
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.array_ops import force_align, to_dense
 from ._domain_support import rectangular_extent_mask, remove_domain_overlap
-from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, SiteOptions
+from openghg_inversions.inversion_data import MergedData, PreparedInputs, SiteOptions
 from openghg_inversions.models.components import add_linear_component, add_offset_component
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
@@ -59,9 +58,10 @@ from .outputs import (
 )
 from .ini import read_rhime_ini
 from .params import DataConfig, RhimeConfig
+from .requests import load_params
 from .preparation import (
     acquire_merged_data,
-    assemble_rhime_inputs,
+    assemble_inputs,
     build_sensitivities,
     export_basis,
     filter_observations,
@@ -88,7 +88,7 @@ __all__ = [
     "mask_outer_merged_for_inner_domain",
     "nested_model_input_names",
     "prepare_nested_rhime_inputs",
-    "run_rhime_nested",
+    "run_nested",
     "materialize_nested_inputs",
     "run_nested",
 ]
@@ -130,9 +130,9 @@ class NestedRhimePreparedInputs:
             leaves the actual mask bounds unknown, including for supplied inputs.
     """
 
-    outer: RhimePreparedInputs
-    inner: RhimePreparedInputs
-    combined: RhimePreparedInputs
+    outer: PreparedInputs
+    inner: PreparedInputs
+    combined: PreparedInputs
     time_tolerance: str | pd.Timedelta | None = None
     inner_state_dim: str = "inner_region"
     inner_domain_label: str | None = None
@@ -184,7 +184,7 @@ def _domain_variable_roles(all_roles: Mapping[str, str], *, tag: str) -> dict[st
     return roles
 
 
-def _grid_identity(prepared: RhimePreparedInputs) -> dict[str, Any]:
+def _grid_identity(prepared: PreparedInputs) -> dict[str, Any]:
     """Return descriptive spatial sizes and extents for one domain."""
     flux = prepared.basis_functions.flux
     missing = [name for name in ("lat", "lon") if name not in flux.coords]
@@ -304,7 +304,7 @@ def _state_dimension(sensitivity: xr.DataArray, *, label: str) -> str:
     return state_dims[0]
 
 
-def _measurement_index(prepared: RhimePreparedInputs, *, label: str) -> pd.MultiIndex:
+def _measurement_index(prepared: PreparedInputs, *, label: str) -> pd.MultiIndex:
     """Return the canonical site/time measurement index."""
     index = prepared.inv_inputs.indexes.get("nmeasure")
     if not isinstance(index, pd.MultiIndex) or tuple(index.names) != ("site", "time"):
@@ -394,8 +394,8 @@ def _inner_measurement_positions(
 
 
 def combine_nested_rhime_inputs(
-    outer: RhimePreparedInputs,
-    inner: RhimePreparedInputs,
+    outer: PreparedInputs,
+    inner: PreparedInputs,
     *,
     time_tolerance: str | pd.Timedelta | None = None,
     inner_state_dim: str = "inner_region",
@@ -458,7 +458,7 @@ def combine_nested_rhime_inputs(
     if "source" in outer_h.dims or "source" in inner_h.dims:
         raise ValueError(
             "Nested-domain preparation currently supports one emissions source; use ordinary "
-            "run_rhime_multisector for same-grid sector separation."
+            "run_multisector for same-grid sector separation."
         )
     if source_coord is not None and inner_source_coord is not None:
         if str(source_coord.item()) != str(inner_source_coord.item()):
@@ -497,7 +497,7 @@ def combine_nested_rhime_inputs(
     )
     if inner_state_coordinate is not None:
         combined_dataset = combined_dataset.assign_coords({inner_state_dim: inner_state_coordinate.variable})
-    combined = RhimePreparedInputs(
+    combined = PreparedInputs(
         inv_inputs=combined_dataset,
         basis_functions=outer.basis_functions,
         site_metadata=outer.site_metadata,
@@ -547,7 +547,7 @@ class _NestedDomainData:
         )
 
 
-_DomainData = TypeVar("_DomainData", RhimeMergedData, _NestedDomainData)
+_DomainData = TypeVar("_DomainData", MergedData, _NestedDomainData)
 
 
 def _select_merged_sites(merged: _DomainData, sites: Sequence[str]) -> _DomainData:
@@ -570,7 +570,7 @@ def _retain_common_sites(
 
 
 def align_inner_merged_to_outer_observations(
-    outer: RhimeMergedData | _NestedDomainData,
+    outer: MergedData | _NestedDomainData,
     inner: _DomainData,
     *,
     time_tolerance: str | pd.Timedelta | None = None,
@@ -603,7 +603,7 @@ def align_inner_merged_to_outer_observations(
 
 
 def _align_domain_sites(
-    data: RhimeMergedData | _NestedDomainData, *, domain: str | None, label: str,
+    data: MergedData | _NestedDomainData, *, domain: str | None, label: str,
 ) -> _NestedDomainData:
     """Normalize site and corresponding flux labels to one domain reference."""
     if not data.sites:
@@ -652,8 +652,8 @@ def _align_domain_sites(
 
 
 def mask_outer_merged_for_inner_domain(
-    outer: RhimeMergedData | _NestedDomainData,
-    inner: RhimeMergedData | _NestedDomainData,
+    outer: MergedData | _NestedDomainData,
+    inner: MergedData | _NestedDomainData,
     *,
     outer_domain: str | None = None,
     inner_domain: str | None = None,
@@ -779,7 +779,7 @@ def _prepare_one_domain(
     use_bc: bool, bc_freq: str | None, min_error: MinErrorConfig,
     min_error_options: Mapping[str, bool], basis_inputs: Mapping[str, Any],
     bc_basis: xr.Dataset | None = None, allow_empty_inner_region: bool = False,
-) -> RhimePreparedInputs:
+) -> PreparedInputs:
     """Build one native basis and its labelled sensitivities from resolved choices."""
     runtime_flux = resolve_runtime_flux(merged.flux_data, split_by_sectors=False)
     basis_inputs = dict(basis_inputs)
@@ -803,7 +803,7 @@ def _prepare_one_domain(
         merged.site_data, basis_functions, flux_sources=flux_sources, use_bc=use_bc,
         bc_basis=bc_basis, multisector=False,
     )
-    return assemble_rhime_inputs(
+    return assemble_inputs(
         site_data, basis_functions, site_options=merged.site_options,
         domain=domain, start_date=start_date, bc_freq=bc_freq, min_error=min_error,
         min_error_options=min_error_options, use_bc=use_bc,
@@ -811,7 +811,7 @@ def _prepare_one_domain(
 
 
 def _nested_sensitivity_reductions(
-    merged: RhimeMergedData | _NestedDomainData,
+    merged: MergedData | _NestedDomainData,
     *,
     label: str,
 ) -> list[xr.DataArray]:
@@ -838,8 +838,8 @@ def _nested_sensitivity_reductions(
 
 
 def _allocate_nested_nbasis(
-    outer: RhimeMergedData | _NestedDomainData,
-    inner: RhimeMergedData | _NestedDomainData,
+    outer: MergedData | _NestedDomainData,
+    inner: MergedData | _NestedDomainData,
     *,
     total_nbasis: int,
 ) -> tuple[int, int]:
@@ -884,7 +884,7 @@ def _allocate_nested_nbasis(
 
 
 def prepare_nested_rhime_inputs(
-    outer: RhimeMergedData, inner: RhimeMergedData, *,
+    outer: MergedData, inner: MergedData, *,
     domain: str, inner_domain: str, start_date: str, flux_sources: tuple[str, ...],
     averaging_error: bool, filters: Any, basis_algorithm: str | None,
     inner_basis_algorithm: str | None, nbasis: int, inner_nbasis: int | None,
@@ -1010,7 +1010,7 @@ def prepare_nested_rhime_inputs(
 
 
 def nested_model_input_names(
-    prepared: RhimePreparedInputs,
+    prepared: PreparedInputs,
     model_spec: RhimeModelSpec,
 ) -> tuple[str, ...]:
     """Declare arrays required by the selected nested-model components."""
@@ -1020,7 +1020,7 @@ def nested_model_input_names(
 
 
 def materialize_nested_inputs(
-    prepared: RhimePreparedInputs,
+    prepared: PreparedInputs,
     model_spec: RhimeModelSpec,
     *,
     inner_x_prior: PriorArgs | None = None,
@@ -1361,7 +1361,6 @@ def run_nested(
         raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
     params = read_rhime_ini(config_file) if config_file is not None else {}
     params.update(kwargs)
-    params = translate_rhime_aliases(params)
     if "inner_country_directory" in params:
         raise ValueError("`inner_country_directory` was removed in 0.8; use `inner_landsea_path` "
                          "or `inner_outer_regions_path` for preparation and `country_file` for reporting.")
@@ -1384,6 +1383,8 @@ def run_nested(
     if likelihood_builder is not None and params.get("mismatch_model") is not None:
         raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
     if config is not None:
+        if params:
+            load_params(overrides=params)
         if config_file is not None or params:
             raise ValueError("Pass either resolved `config` or `config_file`/run parameters, not both.")
     else:
@@ -1398,7 +1399,7 @@ def run_nested(
     validate_nested_output_resources(config.output)
     if prepared is None:
         if inner_domain is None:
-            raise ValueError("`run_rhime_nested` requires `inner_domain`.")
+            raise ValueError("`run_nested` requires `inner_domain`.")
         outer_data = config.data
         inner_data = inner_data_config(
             outer_data, inner_domain=inner_domain, inner_basis_output_path=inner_basis_output_path,
@@ -1467,7 +1468,3 @@ def run_nested(
             output, paths={**output.paths, **paths},
         )
     return output
-
-
-# Established public import retained through the 0.9 compatibility cycle.
-run_rhime_nested = run_nested

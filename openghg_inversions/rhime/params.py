@@ -137,7 +137,7 @@ class DataConfig:
             raise ValueError(f"Required RHIME parameter(s) missing: {missing!r}")
         flux_sources = resolve_flux_sources(flux_sources=remaining.pop("flux_sources", None))
         if multisector and len(flux_sources) < 2:
-            raise ValueError("`run_rhime_multisector` requires at least two flux sources.")
+            raise ValueError("`run_multisector` requires at least two flux sources.")
         if not multisector and len(flux_sources) != 1:
             raise ValueError("`run_standard` requires exactly one flux source.")
         check = remaining.get("flux_non_finite_check", cls.flux_non_finite_check)
@@ -354,7 +354,7 @@ def resolve_model_options(params: Mapping[str, Any], *, data_config: DataConfig)
     sector_sources = normalise_sector_sources(remaining.pop("sector_sources", None))
     if sector_sources is not None:
         if not data_config.split_by_sectors:
-            raise ValueError("`sector_sources` is only supported by `run_rhime_multisector`.")
+            raise ValueError("`sector_sources` is only supported by `run_multisector`.")
         _validate_sector_source_mapping(flux_sources, sector_sources)
     x_prior = remaining.pop("x_prior", None)
     if data_config.split_by_sectors:
@@ -518,7 +518,7 @@ def validate_multisector_x_prior(x_prior: Mapping[str, Any] | None) -> None:
         return
     raise ValueError(
         "Invalid RHIME config value for `x_prior`: multi-sector source-keyed priors are not "
-        "supported via `xprior`/`x_prior`; use `sector_priors` keyed by sector name, or provide "
+        "supported via `x_prior`; use `sector_priors` keyed by sector name, or provide "
         "a single shared prior dict with top-level `pdf`."
     )
 

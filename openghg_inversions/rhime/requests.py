@@ -1,8 +1,7 @@
 """The single RHIME request loader shared by full runs and saved phases.
 
-It reads one explicit source, applies invocation overrides and translates
-deprecated spellings at the runner frontend, so configuration owners in
-:mod:`openghg_inversions.rhime.params` stay canonical-only.
+It reads one explicit source, applies invocation overrides and validates
+canonical options before configuration or scientific work.
 """
 
 from __future__ import annotations
@@ -13,7 +12,7 @@ from pathlib import Path
 from typing import Any, get_type_hints
 
 from ._resources import resolve_resource_paths
-from ._runner_compat import REQUEST_ALIASES, migration_errors, translate_rhime_aliases
+from ._request_validation import migration_errors
 from .ini import read_rhime_ini
 from .params import REQUEST_CLAIM_NAMES, DataConfig, option_groups
 from .specs import RhimeOutputSpec
@@ -29,8 +28,8 @@ def load_params(
     """Read one explicit request, apply overrides and group it by owner.
 
     This is the single request loader for full runs and saved phases. Raw
-    overrides replace file values before alias translation, so a canonical
-    spelling wins over a deprecated one. ``CONFIG_FILE`` is never consulted.
+    overrides replace file values before canonical configuration construction.
+    ``CONFIG_FILE`` is never consulted.
 
     Args:
         config_file: Explicit INI file, or ``None``.
@@ -72,16 +71,13 @@ def load_params(
             if key in owners and not isinstance(value, Mapping):
                 raise ValueError(f"`{key}` must be a mapping.")
             for name, item in (value.items() if key in owners else [(key, value)]):
-                canonical = REQUEST_ALIASES.get(name, name)
                 if key in owners:
                     owner = key
-                elif name == "use_tracer":
-                    owner = "data"
-                elif canonical in REQUEST_CLAIM_NAMES:
+                elif name in REQUEST_CLAIM_NAMES:
                     owner = claims_owner
                 else:
-                    owner = next((group for group, names in owners.items() if canonical in names), None)
-                known = owner is not None and (canonical in owners[owner] or name == "use_tracer")
+                    owner = next((group for group, names in owners.items() if name in names), None)
+                known = owner is not None and name in owners[owner]
                 if not known or (is_override and owner not in active):
                     unsuitable.append(f"{key}.{name}" if key in owners else name)
                     continue
@@ -96,7 +92,7 @@ def load_params(
     result: dict[str, dict[str, Any]] = {group: {} for group in owners}
     for group in active:
         result[group] = resolve_resource_paths(
-            translate_rhime_aliases(groups[group]),
+            groups[group],
             annotations=annotations, base_dir=Path.cwd(),
         )
     return result

@@ -253,6 +253,6 @@ def prepare_inputs(**params):
     sites = preparation.build_sensitivities(filtered, basis, **config.data.select(
         "flux_sources", "use_bc",
     ), bc_basis=bc_basis, multisector=config.data.split_by_sectors)
-    return preparation.assemble_rhime_inputs(sites, basis, site_options=site_options, **config.data.select(
+    return preparation.assemble_inputs(sites, basis, site_options=site_options, **config.data.select(
         "domain", "start_date", "bc_freq", "min_error", "min_error_options", "use_bc",
     ))

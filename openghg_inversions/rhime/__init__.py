@@ -24,7 +24,7 @@ from .builders import (
     RhimeModelBuildResult,
 )
 from .co2 import build_co2_model, co2_model_input_names, run_co2
-from openghg_inversions.inversion_data import MergedData, PreparedInputs, RhimeMergedData, SiteOptions
+from openghg_inversions.inversion_data import MergedData, PreparedInputs, SiteOptions
 
 from .api import run
 from .materialization import materialize_pymc_inputs
@@ -37,7 +37,6 @@ from .params import (
 )
 from .preparation import (
     assemble_inputs,
-    assemble_rhime_inputs,
     build_sensitivities,
     filter_observations,
     prepare_observation_errors,
@@ -48,7 +47,6 @@ from .multisector import (
     materialize_multisector_inputs,
     multisector_model_input_names,
     run_multisector,
-    run_rhime_multisector,
 )
 from .nested import (
     NestedRhimePreparedInputs,
@@ -63,7 +61,6 @@ from .nested import (
     nested_model_input_names,
     prepare_nested_rhime_inputs,
     run_nested,
-    run_rhime_nested,
 )
 from .outputs import (
     make_model_output,
@@ -124,7 +121,6 @@ __all__ = [
     "RhimeSampler",
     "CONVERGENCE_CHECK_NAME",
     "PREPARATION_CHECK_NAME",
-    "assemble_rhime_inputs",
     "align_inner_merged_to_outer_observations",
     "build_multisector_model",
     "prepare_multisector",
@@ -152,12 +148,9 @@ __all__ = [
     "materialize_pymc_inputs",
     "co2_model_input_names",
     "multisector_model_input_names",
-    "RhimeMergedData",
     "SiteOptions",
     "resolve_flux_sources",
     "run_co2",
-    "run_rhime_multisector",
-    "run_rhime_nested",
     "sample_rhime_model",
     "standard_model_input_names",
 ]
@@ -168,7 +161,7 @@ def __getattr__(name: str):
     if name == "run_rhime":
         raise ImportError(
             "`run_rhime` was removed in 0.8; use `run_standard`, which returns an `InversionOutput`. "
-            "The `run-rhime` CLI command is unchanged."
+            "Use `rhime run --model standard` from the command line."
         )
     if name in {"build_standard_rhime_model", "build_standard_rhime_model_result"}:
         raise ImportError(

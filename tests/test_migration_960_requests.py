@@ -1,8 +1,8 @@
 """Issue #960: independently recorded requests survive compatibility removal.
 
 The plain original files and expected.json are the durable migration evidence.
-Tests importing hbmcmc characterize the retiring route; #719 may retire those
-drivers while preserving the plain cases for later #949 converter checks.
+The retired route is recorded in the pinned archive; modern checks use
+canonical settings while preserving plain cases for later #949 converter checks.
 These checks stop before acquisition, materialization or inference.
 """
 
@@ -10,11 +10,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import sys
-import warnings
 
 import pytest
 import xarray as xr
@@ -37,24 +35,12 @@ def _assert_fields(actual, expected):
     assert {name: getattr(actual, name) for name in expected} == expected
 
 
-@pytest.mark.parametrize("route", ["modern", "wrapper"])
-def test_recorded_route_defaults_before_any_scientific_work(route, tmp_path, monkeypatch):
+def test_recorded_modern_defaults_before_any_scientific_work(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    if route == "modern":
-        config = RhimeConfig.from_params(load_params(config_file=FIXTURES / "modern.ini"), multisector=False)
-    else:
-        from openghg_inversions.hbmcmc import run_hbmcmc
-
-        captured = []
-        monkeypatch.setattr(run_hbmcmc, "run_standard", lambda *, config: captured.append(config))
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            run_hbmcmc.main(["-c", str(FIXTURES / "fixedbasis.ini")])
-        config, = captured
-        assert (tmp_path / "results" / "CH4_EUROPE_migration_2019-01-01.ini").is_file()
+    config = RhimeConfig.from_params(load_params(config_file=FIXTURES / "modern.ini"), multisector=False)
     _assert_fields(config.sampler, EXPECTED["default_sampler"])
     _assert_fields(config.data, EXPECTED["default_data"])
-    _assert_fields(config.output, EXPECTED[f"{route}_output"])
+    _assert_fields(config.output, EXPECTED["modern_output"])
     science = EXPECTED["default_science"]
     assert config.model.sectors[0].x_prior == science["x_prior"]
     assert config.model.bc_prior == science["bc_prior"]
@@ -64,17 +50,16 @@ def test_recorded_route_defaults_before_any_scientific_work(route, tmp_path, mon
     )})
 
 
-def test_explicit_wrapper_settings_and_canonical_draws_win(tmp_path, monkeypatch):
-    from openghg_inversions.hbmcmc import run_hbmcmc
-
-    monkeypatch.chdir(tmp_path)
-    captured = []
-    monkeypatch.setattr(run_hbmcmc, "run_standard", lambda *, config: captured.append(config))
-    original = (FIXTURES / "explicit-wrapper.json").read_text()
-    with pytest.warns(DeprecationWarning):
-        run_hbmcmc.main(["-c", str(FIXTURES / "fixedbasis.ini"), "--kwargs", original])
-    config, = captured
+def test_explicit_archived_scientific_settings_on_canonical_inputs():
+    """Preserve settings coverage without executing a retired translator."""
     expected = EXPECTED["explicit_wrapper"]
+    params = read_rhime_ini(FIXTURES / "modern.ini")
+    params.update(expected["sampler"])
+    params.update({name: expected[name] for name in (
+        "x_prior", "bc_prior", "sigma_prior", "sigma_freq", "sigma_per_site",
+        "sigma_freq_anchor", "pollution_events_from_obs", "power", "min_error",
+    )})
+    config = RhimeConfig.from_params(params, multisector=False)
     _assert_fields(config.sampler, expected["sampler"])
     assert config.model.sectors[0].x_prior == expected["x_prior"]
     assert config.model.bc_prior == expected["bc_prior"]
@@ -112,28 +97,28 @@ def test_recorded_ini_decoding_is_case_sensitive_and_first_section_wins():
     assert read_rhime_ini(FIXTURES / "decoding.ini") == EXPECTED["decoded"]
 
 
-@pytest.mark.parametrize("file_values, overrides, winner", [
-    ({"outputname": "file-alias"}, {"output_name": "override-canonical"}, "override-canonical"),
-    ({"output_name": "file-canonical"}, {"outputname": "override-alias"}, "file-canonical"),
-    ({"outputname": "file-alias"}, {"outputname": "override-alias"}, "override-alias"),
-])
 @pytest.mark.parametrize("source_kind", ["ini", "json"])
-def test_canonical_alias_precedence_after_raw_override_merge(tmp_path, source_kind, file_values, overrides, winner):
+def test_canonical_overrides_preserve_winning_values(tmp_path, source_kind):
     path = tmp_path / f"request.{source_kind}"
-    content = json.dumps(file_values) if source_kind == "json" else (
-        "[RUN]\n" + "\n".join(f"{key} = {value!r}" for key, value in file_values.items())
-    )
-    path.write_text(content)
+    path.write_text('{"output_name": "file"}' if source_kind == "json" else "[RUN]\noutput_name = 'file'\n")
     source = {"params_file" if source_kind == "json" else "config_file": path}
-    with pytest.warns(DeprecationWarning):
-        result = load_params(**source, overrides=overrides)
-    assert result["output"] == {"output_name": winner}
+    assert load_params(**source, overrides={"output_name": "override"})["output"] == {"output_name": "override"}
 
 
-@pytest.mark.parametrize("old, new", [("emissions_store", "flux_store"), ("emissions_domain", "flux_domain")])
-def test_flux_alias_conflicts_are_errors_even_when_values_match(old, new):
-    with pytest.raises(ValueError, match=re.escape(f"`{old}` and `{new}` cannot be supplied together")):
-        load_params(overrides={old: "same", new: "same"})
+@pytest.mark.parametrize("old", [
+    "outputpath", "outputname", "xprior", "bcprior", "sigprior", "offsetprior",
+    "emissions_name", "outer_region_definition_file", "emissions_store", "emissions_domain",
+    "inner_emissions_store", "inner_emissions_domain",
+])
+def test_recorded_runtime_aliases_are_now_unsupported(old):
+    with pytest.raises(ValueError, match="Unsupported RHIME.*" + old):
+        load_params(overrides={old: "historical"})
+
+
+@pytest.mark.parametrize("value", [False, True, None, 0, "false"])
+def test_tracer_occurrence_is_unsupported_regardless_of_value(value):
+    with pytest.raises(ValueError, match="Unsupported RHIME.*use_tracer"):
+        load_params(overrides={"use_tracer": value})
 
 
 def test_request_source_exclusivity_unknown_case_and_no_environment_fallback(monkeypatch):
@@ -152,35 +137,14 @@ def test_cli_json_overrides_dates_and_output_flags_before_file_loading(tmp_path,
     def inspect_request(*, config_file, **kwargs):
         captured.append(RhimeConfig.from_params(load_params(config_file=config_file, overrides=kwargs), multisector=False))
 
-    import openghg_inversions.rhime as rhime
-    monkeypatch.setattr(rhime, "run_standard", inspect_request)
+    monkeypatch.setattr(standard, "run_standard", inspect_request)
     cli.main([
-        "run-rhime", "2020-01-01", "2022-02-01", "-c", str(FIXTURES / "modern.ini"),
+        "run", "2020-01-01", "2022-02-01", "-c", str(FIXTURES / "modern.ini"),
         "--output-path", "flag", "--kwargs", '{"start_date":"2021-01-01","output_path":"json"}',
     ])
     config, = captured
     assert (config.data.start_date, config.data.end_date) == ("2021-01-01", "2022-02-01")
     assert config.output.output_path == tmp_path / "json"
-
-
-def test_wrapper_raw_config_copy_can_differ_from_canonical_output(tmp_path, monkeypatch):
-    from openghg_inversions.hbmcmc import run_hbmcmc
-
-    monkeypatch.chdir(tmp_path)
-    captured = []
-    monkeypatch.setattr(run_hbmcmc, "run_standard", lambda *, config: captured.append(config))
-    with pytest.warns(DeprecationWarning):
-        run_hbmcmc.main([
-            "2020-01-01", "2022-02-01", "-c", str(FIXTURES / "fixedbasis.ini"),
-            "--output-path", "raw-copy", "--kwargs",
-            '{"start_date":"2021-01-01","output_path":"canonical-results","output_name":"canonical"}',
-        ])
-    config, = captured
-    assert (config.data.start_date, config.data.end_date) == ("2021-01-01", "2022-02-01")
-    assert config.output.output_path == tmp_path / "canonical-results"
-    assert config.output.output_name == "canonical"
-    assert (tmp_path / "raw-copy" / "CH4_EUROPE_migration_2021-01-01.ini").is_file()
-    assert not (tmp_path / "canonical-results").exists()
 
 
 @pytest.mark.parametrize("output_format, save", [("none", False), ("inv_out", True), ("legacy", False), ("basic", False), ("paris", False)])
@@ -217,7 +181,7 @@ def test_installed_run_rhime_rejects_nit_before_acquisition(tmp_path):
     assert executable is not None, "Run from the installed project environment (uv sync --locked)."
     path = tmp_path / "nit.ini"
     path.write_text((FIXTURES / "modern.ini").read_text() + "\nnit = 7\n")
-    result = subprocess.run([executable, "run-rhime", "-c", str(path)], capture_output=True, text=True)
+    result = subprocess.run([executable, "run", "-c", str(path)], capture_output=True, text=True)
     assert result.returncode != 0
     assert "Unsupported RHIME parameter(s): ['nit']" in result.stderr
 

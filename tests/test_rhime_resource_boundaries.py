@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from openghg_inversions.inversion_data import RhimeMergedData
+from openghg_inversions.inversion_data import MergedData
 from openghg_inversions.rhime.params import RhimeConfig
 from tests.test_bc_basis_resources import _basis
 from tests.test_staged_workflow import _params
@@ -51,7 +51,7 @@ def test_bc_resource_loading_precedes_acquisition(tmp_path, monkeypatch, route, 
         raise Acquired
 
     monkeypatch.setattr(module, "load_bc_basis", load)
-    monkeypatch.setattr(RhimeMergedData, "from_options", acquire)
+    monkeypatch.setattr(MergedData, "from_options", acquire)
 
     def run():
         if route in ("staged", "nested"):
@@ -61,7 +61,7 @@ def test_bc_resource_loading_precedes_acquisition(tmp_path, monkeypatch, route, 
             else:
                 module.run_nested(config=config, inner_domain="6km")
         elif route == "multisector":
-            module.run_rhime_multisector(**options)
+            module.run_multisector(**options)
         elif route in ("example", "custom_basis"):
             module.run_custom_rhime(**options)
         else:
@@ -123,7 +123,7 @@ def test_modern_routes_reject_historical_resource_selectors_before_acquisition(m
     def unexpected_acquisition(**kwargs):
         pytest.fail("Historical options reached acquisition")
 
-    monkeypatch.setattr("openghg_inversions.inversion_data.RhimeMergedData.from_options", unexpected_acquisition)
+    monkeypatch.setattr("openghg_inversions.inversion_data.MergedData.from_options", unexpected_acquisition)
     with pytest.raises(ValueError, match="Historical resource selectors.*HBMCMC"):
         if route == "staged":
             # The standard prepare phase loads its request through the single loader.
@@ -131,7 +131,7 @@ def test_modern_routes_reject_historical_resource_selectors_before_acquisition(m
         elif route == "nested":
             module.run_nested(**options, inner_domain="inner")
         elif route == "multisector":
-            module.run_rhime_multisector(**{**options, "flux_sources": ["a", "b"]})
+            module.run_multisector(**{**options, "flux_sources": ["a", "b"]})
         elif route in ("example", "custom_basis"):
             module.run_custom_rhime(**options)
         else:

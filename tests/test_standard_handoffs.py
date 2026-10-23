@@ -162,7 +162,7 @@ def test_conflicting_recorded_layout_fails_before_numerical_loading(tmp_path, mo
     record = json.loads(preparation.read_text())
     record["data"]["split_by_sectors"] = True
     preparation.write_text(json.dumps(record))
-    monkeypatch.setattr(stages.RhimePreparedInputs, "load", lambda *a, **k: pytest.fail("loaded numerical data"))
+    monkeypatch.setattr(stages.PreparedInputs, "load", lambda *a, **k: pytest.fail("loaded numerical data"))
     with pytest.raises(ValueError, match="split_by_sectors=True.*multisector=False"):
         stages.load_preparation(preparation)
 
@@ -173,7 +173,7 @@ def test_reused_destinations_and_manifest_last(tmp_path, monkeypatch):
     assert stages.save_preparation(_prepared(), data_config=config.data, output_dir=preparation.parent) == preparation
     def fail(*args, **kwargs):
         raise OSError("disk full")
-    monkeypatch.setattr(stages.RhimePreparedInputs, "save", fail)
+    monkeypatch.setattr(stages.PreparedInputs, "save", fail)
     with pytest.raises(OSError, match="disk full"):
         stages.save_preparation(_prepared(), data_config=config.data, output_dir=preparation.parent)
     assert not preparation.exists()
@@ -192,7 +192,7 @@ def forbidden(*args, **kwargs):
     raise AssertionError("replay performed acquisition, graph construction or inference")
 standard.build_standard_model = forbidden
 standard.materialize_standard_inputs = forbidden
-stages.RhimeMergedData.from_options = forbidden
+stages.MergedData.from_options = forbidden
 RhimeSampler.sample = forbidden
 stages.resolve_sampler = forbidden
 result = stages.postprocess(root / "samples/sample-manifest.json", output=RhimeOutputSpec(
@@ -304,7 +304,7 @@ def test_prepare_preserves_exact_basis_export(tmp_path, monkeypatch, export):
     destination = tmp_path / "prepared"
     target = tmp_path / export
     config = replace(config, basis_output_path=target)
-    monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda **kwargs: object())
+    monkeypatch.setattr(stages.MergedData, "from_options", lambda **kwargs: object())
     monkeypatch.setattr(stages, "prepare_standard", lambda *args, **kwargs: _prepared())
     manifest = stages.prepare(config, output_dir=destination)
     assert manifest.is_file()
@@ -524,11 +524,11 @@ def test_failed_acquisition_leaves_destination_free_for_retry(tmp_path, monkeypa
     config = RhimeConfig.from_params(_params(), multisector=False).data
     def unavailable(**kwargs):
         raise OSError("object store unavailable")
-    monkeypatch.setattr(standard.RhimeMergedData, "from_options", unavailable)
+    monkeypatch.setattr(standard.MergedData, "from_options", unavailable)
     with pytest.raises(OSError, match="unavailable"):
         stages.prepare(config, output_dir=tmp_path / "prepared")
     assert not (tmp_path / "prepared").exists()
-    monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda **kwargs: object())
+    monkeypatch.setattr(stages.MergedData, "from_options", lambda **kwargs: object())
     monkeypatch.setattr(stages, "prepare_standard", lambda *args, **kwargs: _prepared())
     assert stages.prepare(config, output_dir=tmp_path / "prepared").is_file()
 
