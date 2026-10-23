@@ -446,6 +446,24 @@ SHALL otherwise remain unchanged.
 - **THEN** it fails before inference with guidance to omit the argument or pass `"default"`
 - **AND** omission continues to select the established defaults
 
+### Requirement: Accepted observation-selection filter names
+
+The retired aggregation filter names `daily_median` and `six_hr_mean` SHALL NOT
+be accepted as observation-selection filters or exported as direct Python filter
+functions. Requests naming either filter SHALL raise `KeyError` with guidance to
+make an explicit resampling and uncertainty-propagation decision. Rejection SHALL
+occur before applying any preceding filter or executing lazy scientific data.
+No mean, median or other aggregation statistic SHALL be substituted automatically.
+
+#### Scenario: Reject a retired aggregation filter
+
+- **WHEN** an observation-filter request names `daily_median` or `six_hr_mean`,
+  alone, in a sequence or in a site-specific request
+- **THEN** it raises `KeyError` with resampling and uncertainty-propagation guidance
+  before any earlier requested filter or lazy scientific payload executes
+- **AND** neither a direct Python filter function nor a registry entry remains
+- **AND** no replacement aggregation statistic is selected automatically
+
 ### Requirement: Configuration supplies explicit scientific choices
 
 Configuration SHALL resolve requested choices without acquiring data, preparing
