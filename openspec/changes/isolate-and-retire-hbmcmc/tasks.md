@@ -176,7 +176,7 @@ does not finalize CLI positional-date/`--kwargs` syntax or complete a delivery t
 - [x] 2.2 Update concise devel migration guidance and the removal fragment. Verify
   modern replacements and older-release guidance for legacy-only artifacts,
   with no accidental removal of independently supported output formats.
-- [ ] 2.3 Apply the approved #974 review clarification: remove legacy-specific
+- [x] 2.3 Apply the approved #974 review clarification: remove legacy-specific
   request diagnostics and nested selector checks; validate supported names and
   applicable values generically while deferring known inactive values. Reconcile
   contracts and guidance, preserve affected evidence and run fresh checks on the
@@ -355,3 +355,44 @@ Rebased review follow-up checks (working tree atop `8b7fe6fb`, base
 Fresh complete tox and wheel/sdist checks are pending on the committed rebased
 revision. Earlier acceptance results above do not validate this follow-up.
 Task 2.3 remains unchecked until those results are inspected; 3.2 remains pending.
+
+### Rebased review acceptance — 23 October 2026
+
+Immutable revision `48057c5e630ce3f1fcb56dbad5ba7dbc675f84de`, based on
+`b288ac2530ad93ae8f67c5f1d47ee8ee7b666000`, passes the fresh complete matrix
+in Slurm array `19671842`:
+
+| Environment | Executed result |
+| --- | --- |
+| Locked Python 3.12.11 | 4,162 passed; 8 skipped; 4 deselected |
+| Locked Python 3.13.7 | 4,162 passed; 8 skipped; 4 deselected |
+| Moving OpenGHG devel, Python 3.12.11 | 4,162 passed; 8 skipped; 4 deselected |
+| Lint / borrowed types / docs-full | Pass / 4 passed / pass |
+
+All three primary jobs completed with exit `0:0`. Each used 2 CPUs, 8 GiB,
+two Dask workers and one numerical thread; maximum reported RSS was
+6,308,812 KiB. The durable reconciler delivered the terminal wakeup under ticket
+`sw-20261023T211050Z-738087746c24`; the independently registered `afterany`
+callback `19671843` was still queued when inspected, so its completion is not
+claimed. Local log files are `slurm-719-review-19671842_{0,1,2}.out`.
+
+GitHub Actions independently pass on the same commit:
+[tests 40024729738](https://github.com/openghg/openghg_inversions/actions/runs/40024729738)
+and [docs 40024729782](https://github.com/openghg/openghg_inversions/actions/runs/40024729782).
+The earlier three moving-dependency Zarr failures no longer occur after rebasing
+onto #975. Full docs build successfully with ten existing duplicate/ambiguous
+API-reference warnings; no warning-free full build is claimed. The seven-guide
+bounded warning-as-error check remains separately recorded above.
+
+Fresh wheel/sdist content and installed-wheel checks at this exact revision also
+pass: the HBMCMC namespace and five retired Python aliases are unavailable,
+canonical APIs/model routes import, and only `rhime` is installed as an executable.
+Together with the focused boundary/phase tests, strict OpenSpec 10/10 and original
+fixture/source-hash checks above, these results complete review task 2.3. The
+following record-only commit changes this task file; production code, tests,
+dependencies, scientific defaults and package metadata remain identical to the
+validated revision. Prior dated failures and observations remain intact.
+
+PR #974 remains draft and #719 remains open pending review/merge. Task 3.2 remains
+unchecked for subsequent specification promotion/archive. No merge, publication,
+release number or release-readiness claim is made.
