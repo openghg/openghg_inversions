@@ -80,7 +80,8 @@ def filter_observations(
 
     Raises:
         ValueError: If no sites remain after filtering.
-        KeyError: If a requested filter is unknown.
+        KeyError: If a requested filter is unknown or removed. Removed resampling
+            filters fail before any filter runs.
     """
     if isinstance(filters, dict):
         # The legacy filter implementation normalizes this working mapping.

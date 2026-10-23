@@ -393,7 +393,9 @@ the legacy-only routing and namespace migration owned by the
 [HBMCMC isolation contract](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md),
 removed `prepare_rhime_inputs` convenience function, obsolete
 modern merged-cache options, former stage adapter, `resolve_rhime_config`,
-transitional old-location imports and revised INI reader contract specified below, supported
+transitional old-location imports, revised INI reader contract specified below,
+retired `daily_median`/`six_hr_mean` filters, and explicit modern `use_tracer`
+options, supported
 scientific Python and CLI entry points SHALL retain their signatures, shorthand,
 override behavior and return contracts through adapters to the same semantic
 resolution or shared applicable site translation. Direct preparation/retrieval
@@ -424,11 +426,13 @@ adapter SHALL retain `None`-means-default selection. Default settings and scient
 behavior SHALL otherwise remain unchanged. Result fields SHALL use `None` only
 for absence of a live sampler, as specified by the recipe-execution contract.
 
-Runner/frontend resolution SHALL consume omitted/false `use_tracer` without
-retaining a config field. Canonical configuration SHALL accept only canonical
-fields and use generic unsupported-option errors for obsolete options. Effective true SHALL retain early rejection at resolution and relevant
-direct public boundaries, including supplied merged data. Existing legacy-option
-and custom-likelihood conflict precedence SHALL remain unchanged.
+Modern runner/frontend resolution SHALL reject explicit `use_tracer` values,
+including both `False` and `True`, through generic unsupported-option validation
+before acquisition or scientific execution, including supplied merged data.
+Omitting the option SHALL remain valid without retaining a config field. The
+temporary HBMCMC compatibility route retains its existing translation policy.
+Existing legacy-option and custom-likelihood conflict precedence SHALL remain
+unchanged.
 
 #### Scenario: Existing Python shorthand
 
@@ -448,11 +452,10 @@ and custom-likelihood conflict precedence SHALL remain unchanged.
 #### Scenario: Preserve unsupported tracer rejection
 
 - **WHEN** a configured run, direct public preparation call or mapping-based
-  retrieval supplies effective `use_tracer=True` after supported overrides,
+  retrieval supplies `use_tracer=False` or `use_tracer=True` after supported overrides,
   including with supplied merged data
 - **THEN** it rejects the option before acquisition, reload or scientific execution
-- **AND** omitted and false options remain accepted with equivalent resolved
-  configuration containing no tracer field
+- **AND** omission remains valid with resolved configuration containing no tracer field
 
 #### Scenario: Migrate an explicit null sampler
 
@@ -463,7 +466,7 @@ and custom-likelihood conflict precedence SHALL remain unchanged.
 
 ### Requirement: Scientific preparation owns its operations
 
-Recipes SHALL derive observation errors before temporal filtering/aggregation,
+Recipes SHALL derive observation errors before temporal filtering,
 call canonical `prepare_basis` directly with resolved arguments, and use the actual
 sensitivity, filtering and assembly implementations. Forwarding wrappers SHALL
 NOT be retained solely for uniform stage names, timing or keyword translation.
@@ -480,10 +483,10 @@ The internal `inversion_data._site_options.convert_to_list` helper SHALL retain
 its calling and list-return contract through shared selector expansion without a
 warning; its old `get_data` import alias SHALL remain removed.
 
-#### Scenario: Error derivation precedes temporal reduction
+#### Scenario: Error derivation precedes observation selection
 
-- **WHEN** component errors vary across observations to be aggregated
-- **THEN** preparation combines the components before temporal reduction
+- **WHEN** acquired observations are prepared for temporal filtering
+- **THEN** preparation combines error components on the acquired population before filtering
 - **AND** custom `mf_error`, zero-error fallback behavior, labels and metadata
   are preserved without mutating borrowed datasets
 

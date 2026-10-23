@@ -80,14 +80,15 @@ def test_error_preparation_preserves_selector_order_over_mapping_order(error_kin
 
 
 @pytest.mark.parametrize("lazy", [False, True])
-def test_quadrature_precedes_daily_median_and_preserves_borrowed_metadata(lazy):
+def test_quadrature_precedes_daytime_selection_and_preserves_borrowed_metadata(lazy):
     dataset = xr.Dataset(
         {
             "mf": ("time", [10.0, 20.0, 30.0], {"units": "1e-9", "long_name": "methane"}),
             "mf_repeatability": ("time", [1.0, 9.0, 3.0], {"method": "instrument"}),
             "mf_variability": ("time", [9.0, 1.0, 4.0], {"method": "window"}),
+            "release_lon": ("time", [0.0, 0.0, 0.0]),
         },
-        coords={"time": pd.date_range("2020-01-01", periods=3, freq="h")},
+        coords={"time": pd.to_datetime(["2020-01-01T00:00", "2020-01-01T12:00", "2020-01-01T13:00"])},
         attrs={"scale": "WMO", "footprint_transport_model": "NAME"},
     )
     if lazy:
@@ -95,10 +96,9 @@ def test_quadrature_precedes_daily_median_and_preserves_borrowed_metadata(lazy):
     original = dataset.copy(deep=True)
     merged = _merged(dataset)
     prepared = prepare_observation_errors(merged.site_data)
-    filtered = filter_observations(prepared, merged.site_options, filters="daily_median")[0]
-    # median(sqrt(r**2 + v**2)) != sqrt(median(r)**2 + median(v)**2).
-    assert filtered["TAC"].mf_error.item() == pytest.approx(np.sqrt(82.0))
-    assert np.sqrt(np.median(dataset.mf_repeatability.values) ** 2 + np.median(dataset.mf_variability.values) ** 2) == 5.0
+    filtered = filter_observations(prepared, merged.site_options, filters="daytime")[0]
+    np.testing.assert_allclose(filtered["TAC"].mf_error, [np.sqrt(82.0), 5.0])
+    np.testing.assert_array_equal(filtered["TAC"].time, dataset.time[1:])
     xr.testing.assert_identical(dataset, original)
     assert prepared["TAC"].mf.data is dataset.mf.data
     assert prepared["TAC"].attrs == dataset.attrs
@@ -144,26 +144,27 @@ def test_variability_only_and_missing_components_remain_supported(averaging_erro
         prepare_observation_errors(_merged(dataset.drop_vars("mf_variability")).site_data)
 
 
-def test_nested_domains_prepare_errors_before_outer_aggregation_and_inner_alignment(monkeypatch):
+def test_nested_domains_prepare_errors_before_outer_selection_and_inner_alignment(monkeypatch):
     from openghg_inversions.rhime import nested, RhimeConfig
 
     # The error-ordering fixture uses a one-cell synthetic domain.
     monkeypatch.setattr(nested, "get_domain_info", lambda: {})
-    time = pd.date_range("2020-01-01", periods=3, freq="h")
+    time = pd.to_datetime(["2020-01-01T00:00", "2020-01-01T12:00", "2020-01-01T13:00"])
     outer = _merged(xr.Dataset(
         {"mf": ("time", [10.0, 20.0, 30.0]),
          "mf_repeatability": ("time", [1.0, 9.0, 3.0]),
-         "mf_variability": ("time", [9.0, 1.0, 4.0])},
+         "mf_variability": ("time", [9.0, 1.0, 4.0]),
+         "release_lon": ("time", [0.0, 0.0, 0.0])},
         coords={"time": time, "lat": [50.0], "lon": [-1.0]},
     ))
     inner = _merged(xr.Dataset(
-        {"mf": ("time", [0.0, 10.0, 100.0]), "mf_repeatability": ("time", [0.0, 2.0, 2.0])},
+        {"mf": ("time", [0.0, 10.0, 100.0]), "mf_repeatability": ("time", [2.0, 0.0, 2.0])},
         coords={"time": time, "lat": [50.0], "lon": [-1.0]},
     ).chunk(time=1))
     config = RhimeConfig.from_params(dict(
         species="ch4", domain="EUROPE", sites=["TAC"], averaging_period="1h",
         start_date="2020-01-01", end_date="2020-01-02", output_name="nested-errors", mismatch_model="fixed_error",
-        output_format="none", flux_sources=["inventory"], filters="daily_median", use_bc=False,
+        output_format="none", flux_sources=["inventory"], filters="daytime", use_bc=False,
     ), multisector=False)
     monkeypatch.setattr(RhimeMergedData, "from_options", lambda **kw: inner if kw["domain"] == "EUROPE-6km" else outer)
     monkeypatch.setattr(nested, "_mask_outer_for_aligned_inner_domain", lambda outer, inner: outer)
@@ -181,9 +182,11 @@ def test_nested_domains_prepare_errors_before_outer_aggregation_and_inner_alignm
     monkeypatch.setattr(nested, "_prepare_one_domain", reached_basis)
     with pytest.raises(PreparedBothDomains):
         nested.run_nested(config=config, inner_domain="6km", inner_nbasis=2)
-    assert captured[0].site_data["TAC"].mf_error.item() == pytest.approx(np.sqrt(82.0))
-    assert captured[1].site_data["TAC"].mf_error.item() == pytest.approx(np.std([0.0, 10.0, 100.0]))
-    np.testing.assert_array_equal(captured[1].site_data["TAC"].time, time[:1])
+    np.testing.assert_allclose(captured[0].site_data["TAC"].mf_error, [np.sqrt(82.0), 5.0])
+    np.testing.assert_allclose(
+        captured[1].site_data["TAC"].mf_error, [np.std([0.0, 10.0, 100.0]), 2.0],
+    )
+    np.testing.assert_array_equal(captured[1].site_data["TAC"].time, time[1:])
     assert "mf_error" not in outer.site_data["TAC"]
     assert "mf_error" not in inner.site_data["TAC"]
 

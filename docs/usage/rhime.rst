@@ -46,11 +46,19 @@ Terminology
    linked forward models. The standard-family acquisition and preparation path
    does not support tracer inversions; the advanced linked CO₂/O₂ recipe starts
    from separately prepared channel arrays. The generic ``use_tracer`` flag
-   must be omitted or ``False``; ``True`` raises ``ValueError`` before
-   acquisition or execution, including when merged data is supplied.
+   must be omitted. Both ``use_tracer=False`` and ``use_tracer=True`` are
+   unsupported options and raise ``ValueError`` before acquisition or execution,
+   including when merged data is supplied.
 
 ``emissions_name``
    Legacy compatibility spelling accepted only when ``flux_sources`` is absent.
+
+Observation filters select existing observation times. The former
+``daily_median`` and ``six_hr_mean`` resampling filters have been removed.
+Requests for either name raise ``KeyError`` before any filter runs. If temporal
+aggregation is needed, prepare it explicitly before observation selection with
+an uncertainty propagation policy appropriate to the data; there is no
+automatic replacement.
 
 Configuring PyTensor precision
 ------------------------------

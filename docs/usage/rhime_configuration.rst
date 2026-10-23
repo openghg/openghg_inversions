@@ -320,7 +320,7 @@ merged data and retained metadata lists. The former
 ``data_processing_surface_notracer`` name is a deprecated wrapper with the same
 signature and return. ``RhimeMergedData.from_options`` performs fresh acquisition
 from resolved selectors. ``averaging_error`` is a preparation choice: missing ``mf_error`` is derived
-from acquired repeatability/variability before temporal filtering or aggregation.
+from acquired repeatability/variability before temporal filtering.
 Existing custom errors remain authoritative. ``averaging_period`` still selects
 OpenGHG acquisition/resampling. Acquisition stays in memory; persist the completed
 ``RhimePreparedInputs`` for reuse. Runners reuse a supplied ``merged_data``
