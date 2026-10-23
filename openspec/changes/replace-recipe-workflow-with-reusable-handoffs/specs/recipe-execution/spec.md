@@ -139,16 +139,29 @@ intermediate preparation states need not be serializable.
 Runners SHALL consume the resource-I/O contract's save and resource-resolution
 boundary supplied by #868.
 Direct scientific customization, signatures and numerical returns SHALL retain
-their contracts except for the explicit 0.8 standard API/result and eager-builder
+their scientific contracts except for the explicit standard API/result and
+eager-builder
 migrations, the sampler-default migration below, the maintainer-approved CO2
 runner/selector reset to `run_co2`,
 #868's removal of the basis-preparation export argument, and the preparation
 steps' change from `MergedData` to per-site datasets and `SiteOptions`;
 staged/setup APIs and owned CO2 configuration conventions SHALL
 follow the declared reset instead of requiring compatibility aliases.
+Historical execution, parameter-alias, signature and return-wrapper constraints
+within the maintainer-approved #944 treatment MAY be removed on devel only after
+each affected PR satisfies
+[Development removals require affected migration evidence](../../../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
+This permission SHALL NOT imply removal is implemented or authorize incidental
+scientific changes. Numerical behavior, borrowed-array/execution guarantees,
+modern legacy-format output, saved `InversionOutput` exports and independently
+supported basis capabilities SHALL retain their separate contracts. Finished
+converter/launcher interfaces SHALL remain release gates, not prerequisites for
+development removal. Unresolved public aliases and basis decisions SHALL remain
+with #945/#951 rather than fall under blanket retirement.
 The existing selector forwarding, full-run CLI model choices and established
-aliases SHALL remain supported under the model-selection capability. Saved-phase
-commands SHALL NOT implicitly extend prepared-only CO2 recipes with acquisition
+public aliases SHALL remain supported under the model-selection capability pending
+explicit owner decisions; temporary option aliases follow the development gate
+above. Saved-phase commands SHALL NOT implicitly extend prepared-only CO2 recipes with acquisition
 or configuration-file arguments. Existing registered-coordinate ownership,
 custom-likelihood arguments/results, conflict rules and descriptive callable
 metadata SHALL follow the model-composition capability. Shared output-role
@@ -156,11 +169,17 @@ handling SHALL NOT relax the canonical custom-likelihood seam.
 Families supporting partial workflows SHALL remain usable without implementing
 unrelated stages or adopting a common inference algorithm or result format.
 
-Preparation SHALL derive missing observation errors before filtering or
+While the existing acquired-population policy remains, preparation SHALL derive missing observation errors before filtering or
 aggregation and preserve caller-supplied custom errors and borrowed inputs.
 Supported nested preparation SHALL establish the corresponding errors on both
 domains before filtering/time alignment. These rules SHALL reuse their scientific
 owners without implying additional nested or linked checkpoint support.
+Preservation of that population/order SHALL NOT block #876's separately agreed
+retained-population semantics. Its numerical guarantees belong to the focused
+scientific-input contract; configuration owns option rules and prepared/sample
+handoffs own saved reuse and replay. The affected migration evidence gate SHALL
+preserve historical witnesses and test the agreed new semantics rather than
+restore a superseded population. This permission does not implement that change.
 
 #### Scenario: Observation errors precede filtering
 - **WHEN** supported preparation filters or aggregates observations

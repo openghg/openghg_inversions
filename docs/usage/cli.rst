@@ -97,8 +97,10 @@ their existing ``prepared_inputs`` interfaces and trace returns. Linked recipes 
 See :doc:`co2_model_family` for the TOML configuration and handoff commands.
 
 ``openghg-inversions`` and its ``run-rhime``, ``run-rhime-multisector`` and
-``run-rhime-nested`` subcommands remain supported through the 0.9 compatibility
-cycle. Both executables expose the same command set. The existing runner imports and
+``run-rhime-nested`` subcommands remain supported pending the per-interface
+decisions owned by #945. The earlier through-0.9 timetable is superseded by the
+:doc:`agreed development boundary <legacy_and_migration>`; it does not authorize
+blanket alias removal. Both executables expose the same command set. The existing runner imports and
 shared handoff/assembly names listed here remain aliases to their implementations: ``run_standard`` is
 ``run_standard``, ``run_rhime_multisector`` is ``run_multisector``, and
 ``run_rhime_nested`` is ``run_nested``. No argument conversion or warning is

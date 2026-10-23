@@ -2,30 +2,41 @@
 
 ## ADDED Requirements
 
-### Requirement: HBMCMC is completely removed in 0.9
+### Requirement: HBMCMC retirement follows the development evidence gate
 
-Version 0.9 SHALL remove the entire `openghg_inversions.hbmcmc` subpackage,
-including the executable wrapper, compatibility adapters and legacy data/basis
-utilities within that subpackage. Separately supported `basis.compatibility`
-adapters retain their own schedules and SHALL NOT depend on HBMCMC. No import aliases, forwarding shims or entry points SHALL preserve
-that namespace. Supported modern workflows SHALL continue independently.
+The agreed development retirement SHALL remove the entire
+`openghg_inversions.hbmcmc` subpackage, including the executable wrapper,
+compatibility adapters and legacy data/basis utilities within that subpackage.
+Each removal/change PR SHALL first satisfy the durable
+[Development removals require affected migration evidence](../../../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence)
+requirement. Temporary runner parameter-spelling, output-format and `emissions_*`
+translation SHALL retire under the same gate; modern execution SHALL NOT invoke
+migration tooling. No import aliases, forwarding shims or entry points SHALL
+preserve the HBMCMC namespace after its removal.
 
-Migration guidance SHALL distinguish 0.8 isolation from complete 0.9 removal,
-list modern replacements for retained workflows, and direct users needing
-legacy-only utilities or unsupported historical artifacts to a compatible older
-release. It SHALL distinguish removals from unrelated 0.9 deprecations without
-inventing a removal date for those other features.
+Supported modern workflows, modern `output_format="legacy"`, saved
+`InversionOutput` exports and independently supported basis/scientific codecs
+SHALL remain available. Unresolved public aliases and basis capabilities SHALL
+retain their existing support pending their #945/#951 owner decisions.
 
-#### Scenario: Install the 0.9 distribution
+Migration guidance SHALL distinguish delivered isolation, permission for gated
+development retirement and removal actually implemented. It SHALL identify
+modern replacements for retained workflows and matching older software for
+historical execution or unsupported artifacts. Finished converter/launcher
+interfaces, maintenance publishing and integrated acceptance SHALL remain
+release gates rather than development-removal prerequisites. This requirement
+SHALL NOT choose the final release number or establish release readiness.
 
-- **WHEN** a user installs the 0.9 wheel or source distribution
+#### Scenario: Install a distribution after retirement is implemented
+
+- **WHEN** a user installs a wheel or source distribution after gated retirement is implemented
 - **THEN** it contains no HBMCMC subpackage or executable entry point
 - **AND** the HBMCMC module path cannot be imported through a compatibility shim
 - **AND** modern workflows and separately supported output formats remain usable
 
-#### Scenario: Follow the 0.8 migration guidance
+#### Scenario: Follow development migration guidance
 
 - **WHEN** a user reviews the legacy migration documentation before upgrading
-- **THEN** complete HBMCMC removal is explicitly listed for 0.9
-- **AND** RHIME execution and prepared-input/basis artifacts are identified where applicable
+- **THEN** delivered removals and pending development retirement are identified separately
+- **AND** RHIME execution and retained prepared-input/basis artifacts are identified where applicable
 - **AND** unsupported legacy-only operations are identified without promising new codecs

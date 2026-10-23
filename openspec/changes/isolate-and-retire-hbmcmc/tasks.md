@@ -1,8 +1,22 @@
 # Tasks
 
 The 0.8 implementation was accepted for merge on PR #869 after green CI at
-`7260b43d`. Delivered contracts are promoted; 0.9 deletion and final archive
+`7260b43d`. Delivered contracts are promoted; development deletion and final archive
 remain open. Spec promotion precedes the authorized merge by maintainer request.
+
+## Development-boundary amendment — 23 October 2026
+
+#944/#961 supersede the future compatibility schedule. Checked 0.8 tasks below
+preserve historical implementation/validation evidence, including their former
+0.9 guidance; they do not renew that schedule. Pending #719 removals must satisfy
+[Development removals require affected migration evidence](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence):
+identify affected #960 entries and bounded discoveries, check intervening source
+changes, record disposition/owner, preserve historical expectations and port
+relevant scientific regressions before deleting adapter-only test plumbing.
+Test deliberate scientific changes against their agreed semantics. Finished
+converter/launcher and maintenance publishing are M2 release gates. #945 owns
+unresolved public aliases/version; #951 owns independent basis decisions.
+No deletion task is completed by this amendment.
 
 ## 1. Isolate legacy behavior in 0.8
 
@@ -28,14 +42,20 @@ remain open. Spec promotion precedes the authorized merge by maintainer request.
   other deprecations. Verify links, the full documentation build, and focused
   HBMCMC/configuration/resource tests, including corrected typed-path assertions.
 
-## 2. Remove the package for 0.9
+## 2. Remove runtime compatibility at the development boundary
 
 - [ ] 2.1 Delete HBMCMC's wrapper, adapters and legacy utilities plus obsolete
-  entry points and internal consumers, and remove temporary runner spelling/flux
-  alias support. Verify wheel/source distributions omit
+  entry points and internal consumers, and remove temporary runner spelling/output-format/flux
+  alias support after the affected evidence and regression gate. Retire special
+  `use_tracer` handling in a separately identified #719 slice: both supplied
+  booleans fail ordinary unsupported-option validation; omission remains valid.
+  Complete #719 before #964; #971's separate filter retirement is not a
+  prerequisite for #719. Leave unresolved
+  public aliases and independent basis capabilities with #945/#951.
+  Verify wheel/source distributions omit
   the package and no compatibility alias preserves its import path; run the
   import-boundary check and relevant modern workflow regressions.
-- [ ] 2.2 Finalize migration documentation and the 0.9 removal fragment. Verify
+- [ ] 2.2 Update concise devel migration guidance and the removal fragment. Verify
   modern replacements and older-release guidance for legacy-only artifacts,
   with no accidental removal of independently supported output formats.
 
@@ -47,6 +67,6 @@ remain open. Spec promotion precedes the authorized merge by maintainer request.
   configuration requirements. Rebase the remaining active delta to retain the
   pending 0.9 removal. Verify the durable alias contract and resource-I/O links
   express the accepted boundary without claiming deletion is delivered.
-- [ ] 3.2 After 0.9 deletion and acceptance, sync the remaining removal requirement
+- [ ] 3.2 After development deletion and acceptance, sync the remaining removal requirement
   and archive this change. Validate both capabilities, delivery status and links;
   verify no active consumer restores the superseded dependency rule.

@@ -25,11 +25,16 @@ For independently deprecated standalone basis adapters, historical case/glob
 discovery, filename construction, legacy schema adaptation and explicit legacy
 writing SHALL remain in `basis.compatibility`. Historical run-resource selection
 SHALL instead remain self-contained in HBMCMC under the
-[isolation contract](../hbmcmc-isolation-retirement/spec.md). For devel/0.8,
+[isolation contract](../hbmcmc-isolation-retirement/spec.md). On devel,
 saved bases SHALL default to modern retained artifacts; legacy output SHALL remain
-explicit opt-in through that adapter. Its 0.9 deprecation SHALL NOT imply automatic
-removal in 0.9. Canonical scientific operations SHALL receive exact paths or
+explicit opt-in through that adapter. Its independent deprecation SHALL NOT imply
+automatic removal. Canonical scientific operations SHALL receive exact paths or
 labelled arrays without depending on historical discovery or naming policy.
+The #944/#961 development boundary permits evidenced HBMCMC retirement under
+its isolation contract; it SHALL NOT authorize deletion of these independent
+basis capabilities. Their final discovery/read/write and timetable decisions remain #951,
+without an automatic removal date. Exact destinations and useful labelled
+partition inputs SHALL remain independently supported.
 
 #### Scenario: Arbitrary retained artifact destination
 

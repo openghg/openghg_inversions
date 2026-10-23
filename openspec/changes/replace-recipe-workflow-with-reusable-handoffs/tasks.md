@@ -1,5 +1,25 @@
 # Tasks
 
+## Development-boundary amendment — 23 October 2026
+
+#944/#961 supersede blanket historical signature/return-wrapper and temporary
+option-alias preservation within the accepted treatment. Each affected
+removal/change PR must satisfy
+[Development removals require affected migration evidence](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence):
+identify #960 entries and bounded discoveries, check intervening source changes,
+record disposition/owner, retain historical expectations and port relevant
+scientific tests before deleting adapter-only plumbing. Canonical regressions
+cover unchanged behavior; agreed scientific changes need their new semantics
+tested. Finished converters/launchers remain M2 release gates. Public aliases
+and independent basis decisions stay with #945/#951; scientific, execution and
+codec contracts remain supported. Checked tasks below preserve dated evidence,
+not a renewed compatibility schedule. This amendment completes no task.
+
+#876's agreed contract placement and retained-population scientific amendment
+will be delivered by their owning PRs. Complete #719 before #964; #971 is a separate
+prerequisite for #964, not a development-retirement gate for #719. Do not preserve
+the superseded pre-filter imputation population to satisfy historical tests.
+
 The maintainer approved this plan for implementation on 11 October 2026. These
 are implementation tasks, all unchecked until their acceptance evidence exists.
 Start with a bounded implementation PR stacked on #841. This planning change
@@ -772,6 +792,8 @@ outside this change, with runner follow-up assigned to existing #408.
 
 - [ ] 5.1 Reconcile all four family deliveries against the three new capability specs and the configuration/resource-I/O capabilities
   while preserving the current model-selection and model-composition baselines;
+  apply the development evidence gate above to affected compatibility changes,
+  leaving unresolved public aliases and basis choices with their owners;
   record merged PRs, commands/results and justified numerical tolerances. Run
   relevant broader scientific, configuration, CLI, staged/replay, builder and output
   coverage; run Ruff on changed Python paths and `git diff --check`. Submit required

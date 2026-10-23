@@ -2,6 +2,34 @@
 
 ## Approval and delivery status
 
+### Development-boundary amendment — 23 October 2026
+
+The maintainer-approved #944 treatment and #961 amendment supersede blanket
+preservation of historical execution, parameter aliases, signatures and return
+wrappers where they constrain the agreed migration. Each affected removal/change
+PR must satisfy the durable isolation contract's
+[Development removals require affected migration evidence](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence)
+requirement. Historical #960 expectations remain distinct from dated modern
+comparisons; unchanged behavior needs canonical regressions and agreed scientific
+changes need tests of their new semantics. Finished converters/launchers are M2
+release gates rather than development-removal prerequisites.
+
+Scientific calculations, borrowed arrays and explicit execution boundaries,
+current numerical codecs, modern legacy-format output and `InversionOutput`
+exports remain supported. Unresolved public aliases stay with #945 and independent
+basis decisions with #951. This amendment removes no production code, chooses
+no release number and completes no delivery task. Earlier dated delivery evidence
+remains valid only for its recorded revision.
+
+The maintainer also agreed the bounded #876/#964/#971 contract placement:
+configuration owns option rules, focused scientific-input requirements own
+numerical preparation/alignment, and existing prepared/sample contracts own
+saved reuse/replay. Concrete helper/wrapper instructions remain design guidance.
+#876's retained-population imputation supersedes preservation of the historical
+pre-filter population; the owning PRs implement and validate those amendments.
+Complete #719 (including special tracer compatibility retirement) before #964;
+#971 remains a separate prerequisite for #964, not for #719.
+
 Approved for implementation by the maintainer on 11 October 2026. Begin with a
 bounded implementation PR stacked on #841; subsequent deliveries follow the
 acceptance gates in [tasks.md](tasks.md). This records approval of the plan, not

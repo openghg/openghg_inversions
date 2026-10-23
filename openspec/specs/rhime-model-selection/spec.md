@@ -1,8 +1,9 @@
 # RHIME model selection
 
 > Status: Current supported behavior at `42a32f62`; documentation baseline,
-> no runtime change. Future recipe renaming and workflow proposals are outside
-> this specification.
+> no runtime change. The #944/#961 amendment replaces the alias timetable;
+> it does not implement alias removal. Recipe changes remain in their owning
+> active amendments.
 
 ## Purpose
 
@@ -73,8 +74,8 @@ They are not supported override keys.
 
 ### Requirement: Retain established public aliases
 
-During the documented compatibility period through the 0.9 cycle, the established
-runner aliases SHALL refer to their current implementations, except for the
+The established runner aliases SHALL refer to their current implementations
+pending explicit per-interface decisions in #945, except for the
 explicit 0.8 removal of Python `run_rhime` with import guidance to `run_standard`.
 This supersedes the earlier alias-preservation promise for that name.
 `run_rhime_multisector` SHALL refer to `run_multisector`, and
@@ -83,6 +84,17 @@ This supersedes the earlier alias-preservation promise for that name.
 `assemble_rhime_inputs` to `assemble_inputs`. The 0.8 retirement of `RhimeRunSpec`
 also removes `with_prepared_sites` and `with_prepared_rhime_sites`; this supersedes
 their alias-preservation promise. Retained sites belong to the prepared handoff.
+
+The accepted #944/#961 development boundary supersedes the former promise to
+retain public aliases through the 0.9 cycle. It SHALL NOT authorize blanket
+removal of the retained Python names or installed command aliases. #945 SHALL
+decide which remain ordinary supported names and which are removed, without
+requiring another timed deprecation cycle for every alias. Each agreed removal
+SHALL meet the
+[affected migration evidence gate](../hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
+Temporary parameter/output-format alias translation and HBMCMC execution are
+separate #719 surfaces; their retirement SHALL NOT itself change these names,
+scientific recipe selection or independent output/artifact capabilities.
 
 #### Scenario: Removed standard Python alias
 

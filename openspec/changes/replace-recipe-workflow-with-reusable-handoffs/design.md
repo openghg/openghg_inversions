@@ -2,6 +2,25 @@
 
 ## Context
 
+The 23 October 2026 #944/#961 amendment supersedes blanket preservation of
+historical execution, option aliases, signatures and return wrappers only within
+the accepted treatment. Each affected removal/change PR must satisfy
+[Development removals require affected migration evidence](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
+Preserve #960's historical expectations, check intervening source changes, record
+disposition/owner and port relevant scientific coverage before removal. Test
+agreed scientific changes against their new semantics. Finished converters and
+launchers remain release gates. Unresolved public aliases and independent basis
+decisions stay with #945/#951. Numerical/scientific, borrowed-array/execution and
+independently supported codec contracts remain in force; this amendment changes
+no runtime behavior or delivery status.
+
+The agreed #876 contract split keeps numerical preparation/alignment in a focused
+scientific-input capability, option/default/compatibility rules in configuration,
+and saved-operand reuse/replay in the prepared/sample handoffs. The
+acquired-population ordering below describes the current baseline; its
+preservation is superseded by #876's agreed retained-population amendment,
+to be implemented and validated with #964 after #719 and the separate #971 prerequisite.
+
 The maintainer's 20 October 2026 amendment is delivered as OPE-219 → OPE-220 →
 OPE-221. It supersedes earlier cached public-runner preservation: one configured
 `run_co2` returns `Co2Output`, and the scientific fixed-OU/inferred-amplitude choice
@@ -48,7 +67,9 @@ establish their implementation.
 Merged #854 supplies current [model-selection](../../specs/rhime-model-selection/spec.md)
 and [model-composition](../../specs/rhime-model-composition/spec.md) baselines.
 Preserve the Python selector and installed full-run model choices, argument
-forwarding and established aliases. The ordinary CO2 selection amendment approved on 16 October 2026 routes both
+forwarding and established public aliases pending their explicit #945 decisions;
+temporary option translation follows the development retirement gate above.
+The ordinary CO2 selection amendment approved on 16 October 2026 routes both
 Python and CLI selection to `run_co2`, starting from coherent prepared inputs.
 It removes the redundant ordinary raw runner and bundled builder; trace-only
 callers compose the existing numerical operations. Cached/linked prepared-input

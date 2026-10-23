@@ -2,20 +2,21 @@ Migrate from HBMCMC to RHIME
 ============================
 
 RHIME is the only inversion implementation in current OpenGHG Inversions.
-The direct ``fixedbasisMCMC`` and ``inferpymc`` implementation was removed in
-0.8 after its remaining known active user agreed to migrate. The 0.7.x release
+The direct ``fixedbasisMCMC`` and ``inferpymc`` implementation was removed on
+devel after its remaining known active user agreed to migrate. The 0.7.x release
 line is the last line containing that implementation and the
 ``--legacy-fixedbasis`` option. The ``openghg_inversions.hbmcmc`` namespace
-hosts the transitional ``run_hbmcmc`` wrapper and explicit legacy data/basis
-utilities during 0.8. The complete subpackage is scheduled for removal in 0.9,
-including its imports, adapters and executable entry points.
+still hosts the transitional ``run_hbmcmc`` wrapper and explicit legacy data/basis
+utilities. Their approved development retirement is described below; permission
+to remove them does not mean their removal has landed. The next modern release
+number remains undecided.
 
 This page is for users with fixedbasis-style Python calls, INI files, batch
 scripts, or HBMCMC outputs. For a new inversion, start with the
 :doc:`model recipe chooser <model_recipes>` and :doc:`RHIME guide <rhime>`.
 
-0.8 resource migration
------------------------
+Development resource migration
+-------------------------------
 
 Resource selection now ends at the runner boundary. Update existing calls and
 configuration as follows:
@@ -39,15 +40,15 @@ configuration as follows:
   unused and warns, even if that directory does not exist. Disabled BCs load no BC resources.
 * Modern runners reject ``fp_basis_case``, ``basis_directory``, ``bc_basis_case``
   and ``bc_basis_directory``. Replace them with exact basis/BC selections, or use
-  the temporary HBMCMC CLI or normalized dictionary adapter during 0.8. Only that
-  legacy route translates historical selections after winning overrides.
+  the temporary HBMCMC CLI or normalized dictionary adapter while present on
+  devel. Only that legacy route translates historical selections after winning overrides.
   Scientific functions receive explicit selections and never discover files.
 * Replace the removed RHIME ``params_from_config`` re-export with
   ``read_rhime_ini``, apply overrides, then call ``RhimeConfig.from_params``.
-  The dictionary adapter remains only in ``hbmcmc.compatibility`` during 0.8.
+  The transitional dictionary adapter remains only in ``hbmcmc.compatibility``.
   Runner frontends, including direct ``run_standard`` calls, retain supported
-  aliases through 0.8 with deprecation warnings. ``RhimeConfig.from_params``
-  accepts canonical names only and has no alias translation or warnings.
+  aliases with deprecation warnings until their approved removals land.
+  ``RhimeConfig.from_params`` accepts canonical names only and has no alias translation or warnings.
   Modern output formats and explicit save paths remain.
 * Replace ``run_rhime_from_prepared_inputs(prepared_inputs=..., run_spec=...)``
   calls with ``run_standard(prepared=prepared, config=config)`` or
@@ -74,8 +75,8 @@ configuration as follows:
 See :doc:`rhime_configuration` for complete resource selection examples and
 :doc:`staged_workflow` for the separate 0.7-to-0.8 staged artifact migration.
 
-Additional 0.8 Python API changes
----------------------------------
+Additional development Python API changes
+------------------------------------------
 
 Replace ``build_standard``, ``build_standard_rhime_model`` and
 ``build_standard_rhime_model_result`` with the single eager
@@ -166,33 +167,69 @@ inversion-output export supports reporting without those manifests, while a
 trace or basis export alone is not a complete inversion result. See
 :doc:`staged_workflow` for artifact choices.
 
-Planned 0.9 deprecations and removals
+Agreed breaking-development boundary
 -------------------------------------
 
-**Deprecations:** historical directory/name basis output conventions and legacy
-basis output are scheduled for deprecation in 0.9. Explicit legacy output has no
-automatic removal date; a deprecation version is not a removal commitment.
+The maintainer-approved `#944 treatment table
+<https://github.com/openghg/openghg_inversions/issues/944>`_ and bounded
+`#961 contract amendment <https://github.com/openghg/openghg_inversions/issues/961>`_
+supersede the earlier 0.8/0.9 compatibility schedules. Migration M1 permits
+`#719 <https://github.com/openghg/openghg_inversions/issues/719>`_ to remove
+HBMCMC runtime adapters, temporary parameter/output-format/``emissions_*``
+translation and historical signature/result-wrapper constraints after evidence
+preservation and relevant regression migration. Removal PRs must reconcile
+obsolete diagnostics with the behavior actually removed and its migration route.
+Finished converters, launchers and a final release number are not prerequisites.
+This documentation amendment removes no production behavior.
 
-**Removals:** ``emissions_store``, ``emissions_domain``,
-``inner_emissions_store`` and ``inner_emissions_domain`` are already deprecated
-and scheduled for removal in 0.9. Replace them with their ``flux_*`` spellings.
-The entire ``openghg_inversions.hbmcmc`` subpackage is removed in 0.9: its
-wrapper, compatibility adapters and legacy data/basis utilities will have no
-forwarding imports or executable shims. Use RHIME runners, ``RhimeMergedData``
-for in-memory acquisition, ``RhimePreparedInputs`` for saved preparation, and
-``BasisFunctions`` for retained basis artifacts where applicable. For legacy-only
-utilities or unsupported historical artifacts, keep a compatible older release;
-this migration does not add readers for those artifacts. Modern
-``output_format="legacy"`` and ``save_inversion_output`` remain independently
-supported and are not removed with the package.
-Established public RHIME imports and CLI aliases retained *through* the 0.9
-compatibility cycle are not promised to disappear at the start of 0.9.
+The amended promises are `compatible public adapters
+<https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md#requirement-compatible-public-adapters-and-scientific-choices>`_,
+`independent INI decoding
+<https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md#requirement-ini-decoding-is-independent-of-semantic-construction>`_,
+`configuration identity
+<https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md#requirement-configuration-is-not-a-historical-identity-schema>`_,
+`modern flux selectors
+<https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md#requirement-modern-flux-selectors-have-their-own-deprecation-boundary>`_,
+`public aliases
+<https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-model-selection/spec.md#requirement-retain-established-public-aliases>`_,
+and `retained modern behavior
+<https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md#requirement-retained-modern-behavior-has-modern-owners>`_.
+The `affected-evidence requirement
+<https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence>`_
+applies to each removal or deliberate behavior-change PR:
+
+* Identify affected :doc:`#960 ledger entries <../development/migration_960>`
+  and plain cases; add bounded evidence for newly discovered behavior before removal.
+* Compare the PR base and affected source with pinned revision
+  ``0a32d73a5c4a72be0505a4ed682472e1613e49e9``, accounting for intervening changes.
+* Record disposition and follow-up owner. Preserve historical inputs and
+  expectations; add dated comparisons instead of replacing them with modern outputs.
+* Preserve or port relevant scientific coverage before retiring adapter/test
+  plumbing. Check unchanged behavior on canonical inputs and agreed scientific
+  changes against their new semantics; link executed validation to its revision.
+
+Migration M2 still owns final public API/alias decisions and release numbering
+(`#945 <https://github.com/openghg/openghg_inversions/issues/945>`_), source
+coverage (#948), converter (#949), launcher (#950), acceptance (#952) and
+migration documentation (#432). Unresolved public aliases and independent basis
+reader/writer, discovery and reconstruction decisions remain with #945 and
+`#951 <https://github.com/openghg/openghg_inversions/issues/951>`_; they are not
+blanket removal permission.
+
+Modern INI decoding, canonical configuration, site shorthand, override behavior,
+scientific contracts and
+:doc:`borrowed-array/execution guarantees <../development/numerical_array_ownership>`
+remain. Modern ``output_format="legacy"``, ``InversionOutput`` codecs and
+``save_inversion_output`` remain independently supported. Useful basis algorithms,
+labelled partitions and exact artifact capabilities retain their owning contracts.
+For unsupported historical execution or artifacts, preserve a compatible older
+environment; this boundary supplies no new artifact converter or release-readiness claim.
 
 Chain handling in ``run_hbmcmc.py``
 -----------------------------------
 
-In 0.8, the compatibility wrapper uses every retained chain for derived products,
-including modern ``basic`` and PARIS products and legacy-format summary fields.
+While present on devel, the compatibility wrapper uses every retained chain for
+derived products, including modern ``basic`` and PARIS products and legacy-format summary fields.
 The chain-0-only compatibility policy and ``--all-chains`` flag have been removed;
 all retained chains are now always used. Use OpenGHG Inversions
 0.7 when reproducing that historical policy. The wrapper does not save the
@@ -206,8 +243,8 @@ Choose a migration route
 Existing INI and batch workflows
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Existing supported fixedbasis-style INI files may continue to use the
-transitional wrapper::
+Until its removal lands, existing supported fixedbasis-style INI files can use
+the transitional wrapper present on devel::
 
    python -m openghg_inversions.hbmcmc.run_hbmcmc \
        2019-01-01 2019-02-01 -c my_inversion.ini
@@ -350,8 +387,8 @@ Parameter mapping
 
 Use canonical RHIME names in new Python and configuration files. HBMCMC
 translates the fixedbasis vocabulary; RHIME runner frontends retain supported
-spelling aliases until 0.9, warning on devel and in 0.8. Direct
-``RhimeConfig.from_params`` calls require the canonical names below. They neither
+spelling aliases while the transitional translation remains, warning on devel.
+Direct ``RhimeConfig.from_params`` calls require the canonical names below. They neither
 translate aliases nor emit alias deprecation warnings.
 
 .. list-table:: Fixedbasis-to-RHIME names
@@ -476,8 +513,8 @@ and an explicit ``save_trace`` filename, resolve from the invocation working
 directory in both full and staged execution.
 
 Check scientific settings independently of renaming. In particular, moving from
-OpenGHG Inversions 0.7 to 0.8 can change likelihood behaviour and the chain-summary
-policy described here; renaming parameters alone does not reproduce historical
+OpenGHG Inversions 0.7 to modern development can change likelihood behaviour and
+the chain-summary policy described here; renaming parameters alone does not reproduce historical
 scientific behaviour.
 
 The temporary dictionary adapter is available from
@@ -489,8 +526,8 @@ It does not construct configuration defaults or expand site shorthand. Direct
 callers of ``fixedbasis_params_to_rhime`` must additionally call
 ``adapt_resource_params`` before ``RhimeConfig.from_params``; the first function
 alone does not finish resource translation. These adapters are removed with
-HBMCMC in 0.9. For canonical INIs, use ``read_rhime_ini`` and apply overrides
-before constructing ``RhimeConfig``.
+HBMCMC under the development boundary above. For canonical INIs, use
+``read_rhime_ini`` and apply overrides before constructing ``RhimeConfig``.
 
 Legacy-format output
 --------------------
@@ -499,9 +536,9 @@ Legacy-format output
 RHIME. It creates the HBMCMC-compatible NetCDF product from the modern
 ``InversionOutput``; it does not invoke ``fixedbasisMCMC`` or ``inferpymc``.
 The deprecated output names ``hbmcmc`` and ``hbmcmc_postprocessing`` remain
-aliases for ``legacy`` at runner frontends until 0.9, with
-``DeprecationWarning`` on devel and in 0.8. Runners translate after combining
-file options and Python overrides. ``RhimeConfig.from_params`` and direct output
+aliases for ``legacy`` at transitional runner frontends, with
+``DeprecationWarning`` on devel until that translation is removed. Runners
+translate after combining file options and Python overrides. ``RhimeConfig.from_params`` and direct output
 configuration factories require ``legacy``; they do not translate these aliases
 or issue their deprecation warnings.
 Prefer ``legacy`` in new configurations. The former ``resolve_rhime_config``
@@ -562,8 +599,8 @@ implementation types and the low-level ``convert_to_list`` helper live in
 ``inversion_data._site_options``; their former ``acquisition`` and
 ``get_data.convert_to_list`` import aliases are removed.
 
-During 0.8, legacy callers import their option translators and dictionary adapter
-from ``hbmcmc.compatibility``. Modern callers do not use this package. Import ``read_rhime_ini`` from
+While those adapters remain, legacy callers import their option translators and
+dictionary adapter from ``hbmcmc.compatibility``. Modern callers do not use this package. Import ``read_rhime_ini`` from
 ``rhime.ini`` or the public ``rhime`` package instead of ``rhime.params``.
 
 Legacy merged-data metadata
@@ -624,7 +661,7 @@ sampling path.
 Scientific compatibility
 ------------------------
 
-The 0.8 wrapper translates supported historical options into the ordinary RHIME
+The transitional wrapper translates supported historical options into the ordinary RHIME
 model. It no longer preserves the historical boundary-only pollution-event
 baseline, disconnected sigma-prior variable, or additive fixed-error minimum
 error floor. Affected historical configurations fail at the HBMCMC boundary with
@@ -668,8 +705,8 @@ removed: call ``basis.save(selected_path)`` on the returned object to export
 it. Configured runners own ``basis_output_path`` and preserve export metadata.
 Historical run selectors end at the HBMCMC input compatibility boundary.
 Flat-file adaptation and explicit legacy writing remain in
-``basis.compatibility`` under their own deprecation schedule; removing HBMCMC
-does not remove these adapters. See :doc:`rhime_configuration` for the 0.8
+``basis.compatibility`` pending the independent #951 dispositions; removing HBMCMC
+does not authorize removing these adapters. See :doc:`rhime_configuration` for the
 modern basis artifact default, explicit legacy opt-in, and migration examples. For reusable
 RHIME runs, save ``RhimePreparedInputs``;
 legacy merged-data files are a separate explicit utility workflow.

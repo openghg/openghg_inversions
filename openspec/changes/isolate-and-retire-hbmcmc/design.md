@@ -1,5 +1,16 @@
 # Design
 
+## Development-boundary amendment — 23 October 2026
+
+The accepted #944/#961 treatment supersedes the future version schedule below.
+Delivered 0.8 isolation remains historical evidence. Pending #719 retirement may
+proceed on devel once each affected behavior satisfies
+[Development removals require affected migration evidence](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
+Converters, launchers, maintenance publishing and integrated acceptance remain M2
+release work. Final release/public-alias choices stay with #945; independent
+basis readers, writers and discovery stay with #951. This amendment implements
+no runtime removal.
+
 ## Context
 
 See [proposal.md](proposal.md). At PR #869 revision `e41e2838`, RHIME runners,
@@ -13,11 +24,11 @@ this pending correction while retaining its phase-only resolution requirements.
 ## Goals / Non-Goals
 
 **Goals:** make modern execution independent of legacy package availability,
-retain a working 0.8 migration entry point, and make complete 0.9 deletion a
-bounded release operation.
+preserve delivered isolation, and make complete development retirement a
+bounded operation after affected evidence and scientific regressions exist.
 
 **Non-goals:** no model, sampler, output-codec, checkpoint or configuration-grouping
-redesign; no immediate deletion of HBMCMC from the 0.8 implementation.
+redesign; no runtime deletion or release-readiness claim in this amendment.
 
 ## Decisions
 
@@ -25,13 +36,14 @@ redesign; no immediate deletion of HBMCMC from the 0.8 implementation.
    CLI and normalized dictionary route after overrides, before construction.
    Keeping calls in modern runners or placing discovery in `from_params` would
    retain the reverse dependency or violate data-free construction.
-2. Preserve supported spelling and flux aliases at runner/frontends through 0.8,
-   warning on devel and 0.8 and removing them in 0.9. Canonical configuration
-   knows only canonical names, with ordinary unsupported-name errors and no
-   alias warnings. Keep the compatibility owner outside HBMCMC and remove
-   `rhime._aliases`; do not route translation through `RhimeConfig.from_params`.
-   HBMCMC discovery is self-contained; separately deprecated basis adapters
-   retain their own schedules. Small duplication avoids reverse dependencies.
+2. Retire temporary spelling, output-format and `emissions_*` option translation
+   through #719 after its affected evidence and scientific regressions exist.
+   Until each removal lands, existing frontend precedence and warnings apply
+   outside HBMCMC. Canonical configuration knows only canonical names; normal
+   execution must not invoke migration tooling. Established public aliases
+   remain supported pending #945 decisions. Independent basis adapters remain
+   with #951, outside blanket retirement. HBMCMC discovery stays self-contained
+   until removal.
 3. Leave path conversion, BC loading and packaged-map selection with the
    [resource-I/O change](../../specs/rhime-resource-io/spec.md).
    Its independent converter accepts owner declarations and a base; it does not
@@ -41,10 +53,12 @@ redesign; no immediate deletion of HBMCMC from the 0.8 implementation.
    absolute/relative imports and re-exports, plus a representative modern import
    and execution check that rejects attempts to load HBMCMC. Test modules may
    still import legacy APIs. Avoid a general dependency-analysis framework.
-5. Separate 0.8 isolation acceptance from 0.9 removal. Keep retirement tasks open
-   after 0.8 work; do not declare the whole change delivered or promote pending
-   removal as implemented. The resource-I/O change can complete independently
-   once its own behavior and the required 0.8 boundary are accepted.
+5. Separate delivered isolation from pending development retirement. Keep
+   deletion tasks open until implementation and revision-specific validation
+   exist. Check intervening changes against #960 for each removal, preserve
+   historical expectations and port affected scientific tests. Unresolved
+   dispositions do not authorize deletion. Resource I/O and independently
+   retained codecs keep their own contracts.
 
 ## Risks / Trade-offs
 
@@ -54,7 +68,7 @@ redesign; no immediate deletion of HBMCMC from the 0.8 implementation.
   through `run_hbmcmc.main` with acquisition mocked at its owning boundary.
 - A later configuration delta restores HBMCMC ownership → keep the already-aligned
   grouped delta consistent during implementation and verify it again before sync.
-- Legacy artifact users lose utilities in 0.9 → document supported modern
+- Legacy artifact users lose utilities at retirement → document supported modern
   replacements and older-release use; do not promise new artifact compatibility.
 
 ## Delivery and remaining migration
@@ -66,8 +80,11 @@ requirements are promoted to durable capabilities. The resource-I/O change is
 The grouped-configuration change retains its unimplemented phase-only selection
 requirements and consumes the delivered boundary.
 
-Only the 0.9 retirement delta remains here. Delete the HBMCMC package and its
-entry points, remove temporary runner spelling/flux aliases, update migration
+Development retirement remains pending here. After the affected evidence and
+scientific regression gate, delete the HBMCMC package and its entry points,
+remove temporary runner spelling/output-format/flux aliases, update migration
 notes, and verify distribution contents and modern execution. After that
 implementation is accepted, sync the remaining removal requirement and archive
-this change. Do not mark deletion complete because isolation has shipped.
+this change. Finished converter/launcher interfaces are not a development
+prerequisite. Do not mark deletion complete because isolation or this amendment
+has shipped.
