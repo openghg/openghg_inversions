@@ -1,0 +1,221 @@
+{
+  "date": "2026-10-23",
+  "pinned_revision": "0a32d73a5c4a72be0505a4ed682472e1613e49e9",
+  "pr_base": "17e28ed081954b4155c9d85b66eaeef2ad81853c",
+  "evidence": "source inspection and independent plain-data capture before namespace deletion; runtime validation recorded separately in tasks/PR",
+  "cases": [
+    {
+      "id": "runtime-options",
+      "ledger": [
+        "I2",
+        "I3",
+        "I4",
+        "O2"
+      ],
+      "route": "development full/saved runners and MergedData.from_options",
+      "historical": {
+        "parameter_aliases": {
+          "outputpath": "output_path",
+          "outputname": "output_name",
+          "xprior": "x_prior",
+          "bcprior": "bc_prior",
+          "sigprior": "sigma_prior",
+          "offsetprior": "offset_prior",
+          "emissions_name": "flux_sources",
+          "outer_region_definition_file": "outer_regions_path"
+        },
+        "output_format_aliases": {
+          "hbmcmc": "legacy",
+          "hbmcmc_postprocessing": "legacy"
+        },
+        "flux_aliases": {
+          "emissions_store": "flux_store",
+          "emissions_domain": "flux_domain",
+          "inner_emissions_store": "inner_flux_store",
+          "inner_emissions_domain": "inner_flux_domain"
+        },
+        "precedence": "ordinary canonical spelling wins; simultaneous old/new flux selectors conflict even when equal or None"
+      },
+      "modern": "ordinary unsupported-option validation before scientific work; canonical spellings retained",
+      "disposition": "mechanically migrated",
+      "owners": [
+        "#719",
+        "#949"
+      ]
+    },
+    {
+      "id": "tracer",
+      "ledger": [
+        "I6"
+      ],
+      "route": "development runner/request boundary",
+      "historical": {
+        "use_tracer=False": "consumed with DeprecationWarning",
+        "use_tracer=True": "special ValueError: tracer inversions are not implemented"
+      },
+      "modern": {
+        "omitted": "valid",
+        "explicit any value": "ordinary unsupported-option validation"
+      },
+      "disposition": "unsupported",
+      "owners": [
+        "#719",
+        "#949"
+      ],
+      "overlap": "#964/#973 draft implementations inspected, not imported; #971 separate prerequisite of #964"
+    },
+    {
+      "id": "command-map",
+      "ledger": [
+        "R1",
+        "R2",
+        "I2"
+      ],
+      "route": "installed development CLI",
+      "historical": {
+        "executables": [
+          "rhime",
+          "openghg-inversions"
+        ],
+        "aliases": [
+          "run-rhime",
+          "run-rhime-multisector",
+          "run-rhime-nested",
+          "run-co2"
+        ]
+      },
+      "modern": {
+        "executables": [
+          "rhime"
+        ],
+        "full_routes": [
+          "run --model standard",
+          "run --model multisector",
+          "run --model nested",
+          "run --model co2"
+        ],
+        "preserved": [
+          "positional dates",
+          "--kwargs",
+          "override precedence",
+          "CO2 forwarding",
+          "staged operations",
+          "merge-paris-outputs"
+        ]
+      },
+      "disposition": "mechanically migrated",
+      "owners": [
+        "#719",
+        "#945",
+        "#950"
+      ]
+    },
+    {
+      "id": "python-aliases",
+      "ledger": [
+        "R2",
+        "U2"
+      ],
+      "route": "development direct imports and re-exports",
+      "historical": {
+        "run_rhime_multisector": "run_multisector",
+        "run_rhime_nested": "run_nested",
+        "RhimeMergedData": "MergedData",
+        "RhimePreparedInputs": "PreparedInputs",
+        "assemble_rhime_inputs": "assemble_inputs"
+      },
+      "modern": "five old imports unavailable; canonical callable/class identities, arguments and scientific behavior retained",
+      "disposition": "mechanically migrated",
+      "owners": [
+        "#719",
+        "#945",
+        "#950"
+      ]
+    },
+    {
+      "id": "namespace-wrapper",
+      "ledger": [
+        "R3",
+        "R4",
+        "I2",
+        "I5",
+        "I6",
+        "O1",
+        "O2"
+      ],
+      "route": "development hbmcmc.run_hbmcmc and hbmcmc.compatibility",
+      "historical": "ordinary wrapper translates fixedbasis vocabulary, output/default policies, copies INI and calls modern standard; not released true fixedbasis executor",
+      "modern": "namespace, wrapper, dictionary adapters, import/module execution unavailable; original request and released fixtures retained",
+      "disposition": "unsupported",
+      "owners": [
+        "#719",
+        "#948",
+        "#949",
+        "#950",
+        "#946"
+      ]
+    },
+    {
+      "id": "legacy-data",
+      "ledger": [
+        "U1"
+      ],
+      "route": "development hbmcmc.legacy_data",
+      "historical": {
+        "retrieval": "six-tuple observation/flux/BC/site metadata adapter with optional historical merged-data cache",
+        "serialization": "fp_all dictionary/combined-scenario and DataTree cache utilities; metadata and flux source time markers",
+        "intervening_change": "#956 explicitly adds join=outer to source concatenation in make_combined_scenario"
+      },
+      "modern": "adapter/cache utilities unavailable; canonical MergedData and PreparedInputs retained; no historical cache converter promised",
+      "disposition": "unsupported",
+      "owners": [
+        "#719",
+        "#948",
+        "#949",
+        "#952"
+      ]
+    },
+    {
+      "id": "legacy-basis",
+      "ledger": [
+        "U1",
+        "B1",
+        "B2",
+        "B3",
+        "B4"
+      ],
+      "route": "development hbmcmc.legacy_basis",
+      "historical": "fp_all-based basis/weight dispatch and flat/one-hot preparation adapters",
+      "modern": "HBMCMC-owned utilities unavailable; independent basis.compatibility discovery/read/write, flat labeled partitions, source ordering and scientific algorithms retained",
+      "disposition": "unsupported",
+      "owners": [
+        "#719",
+        "#951",
+        "#948",
+        "#949"
+      ]
+    },
+    {
+      "id": "scientific-output-retention",
+      "ledger": [
+        "O1",
+        "O3",
+        "H2",
+        "H3",
+        "H4",
+        "H5",
+        "H6"
+      ],
+      "route": "canonical modern scientific inputs and outputs",
+      "historical": "historical witnesses preserved unchanged in historical/expected.json and request expected/errors data",
+      "modern": "unchanged equations/defaults, full-baseline offsets, fixed-error behavior, all-chain summaries, output_format=legacy, InversionOutput/save_inversion_output and exact destinations retained; no restoration of historical quirks",
+      "disposition": "retained",
+      "owners": [
+        "#719",
+        "#948",
+        "#949",
+        "#952"
+      ]
+    }
+  ]
+}
