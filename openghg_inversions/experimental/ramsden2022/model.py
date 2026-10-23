@@ -47,7 +47,7 @@ import xarray as xr
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.model_error import (
-    MinErrorConfig, MinimumError, normalise_min_error, normalise_min_error_options,
+    MinErrorConfig, MinimumError, minimum_error_input_names, normalise_min_error, normalise_min_error_options,
 )
 from openghg_inversions.models._flux import (
     _namespace_sector_state_coords,
@@ -744,11 +744,9 @@ def _add_absolute_error_likelihood(
         floor = data["min_error"].transpose("nmeasure")
     else:
         if isinstance(spec.min_error, str):
-            operands = ["mf", "site"]
-            if spec.min_error == "residual":
-                operands += ["mf_mod"] + (["bc_mod"] if "bc_mod" in data else [])
-            else:
-                operands += ["time"]
+            operands = (*minimum_error_input_names(data, spec.min_error), "site")
+            if spec.min_error == "percentile":
+                operands += ("time",)
             if any(is_dask_collection(data[name].data) for name in operands if name in data):
                 raise ValueError(
                     "Ramsden minimum-error estimation requires eager observations; "

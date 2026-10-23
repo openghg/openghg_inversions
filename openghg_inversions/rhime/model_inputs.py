@@ -1,10 +1,11 @@
-"""Backend-neutral resolution and policy checks for final RHIME operands."""
+"""Backend-neutral resolution and policy checks for final RHIME operands.
+
+Observation-error standard deviation ``mf_error`` is already prepared and is
+carried through unchanged. Likelihood preparation calculates ``min_error`` as
+the selected likelihood's minimum total-error floor.
+"""
 
 from __future__ import annotations
-
-from collections.abc import Mapping, Sequence
-import json
-from typing import cast
 
 from dask import is_dask_collection
 import pandas as pd
@@ -12,83 +13,24 @@ import xarray as xr
 
 from openghg_inversions.boundary_sensitivity import BoundaryAlignment
 from openghg_inversions.inversion_inputs import normalise_frequency
-from openghg_inversions.model_error import MinimumError
-from .specs import AdditiveSigmaSettings, LikelihoodSettings, PollutionEventSettings, RhimeModelSpec
+from .likelihood_inputs import prepare_likelihood_inputs, validate_likelihood_inputs
+from .specs import RhimeModelSpec
 
 __all__ = ["resolve_model_inputs"]
 
 
-def minimum_error_input_names(
-    inputs: xr.Dataset, likelihood: LikelihoodSettings | None, *, materialized: bool = False,
-) -> tuple[str, ...]:
-    """Select only operands consumed by the selected likelihood's floor."""
-    enabled = isinstance(likelihood, PollutionEventSettings) or (
-        isinstance(likelihood, AdditiveSigmaSettings) and likelihood.use_minimum_error_floor
-    )
-    if not enabled:
-        return ()
-    if materialized:
-        return ("min_error",)
-    likelihood = cast(PollutionEventSettings | AdditiveSigmaSettings, likelihood)
-    if likelihood.min_error == "residual":
-        return ("mf_mod", "bc_mod") if "bc_mod" in inputs else ("mf_mod",)
-    return ()
-
-
-def _minimum_error_policy(
-    likelihood: PollutionEventSettings | AdditiveSigmaSettings, sites: Sequence[str],
-) -> dict[str, object]:
-    """Describe just the choices that produced a consumed floor operand."""
-    value = likelihood.min_error
-    if isinstance(value, Mapping):
-        return {"sites": {site: value.get(site) for site in sites}}
-    if isinstance(value, str):
-        policy: dict[str, object] = {"method": value}
-        if value == "residual":
-            policy["by_site"] = likelihood.min_error_options["by_site"]
-        return policy
-    return {"scalar": value}
-
-
-def resolve_minimum_error(inputs: xr.Dataset, likelihood: LikelihoodSettings | None) -> xr.Dataset:
-    """Calculate an enabled floor from retained eager observations."""
-    if not minimum_error_input_names(inputs, likelihood, materialized=True):
-        return inputs
-    likelihood = cast(PollutionEventSettings | AdditiveSigmaSettings, likelihood)
-    floor = MinimumError.from_observations(
-        inputs, likelihood.min_error, by_site=likelihood.min_error_options["by_site"],
-    )
-    floor.values.attrs["minimum_error_source_policy"] = json.dumps(
-        _minimum_error_policy(likelihood, floor.sites), sort_keys=True,
-    )
-    return inputs.assign(min_error=floor.values.variable)
-
-
-def validate_minimum_error_policy(inputs: xr.Dataset, likelihood: LikelihoodSettings | None) -> None:
-    """Reject changed producer policies without recomputing a consumed floor.
-
-    Independently supplied final arrays without source-policy metadata remain
-    authoritative. Mapping comparison covers retained sites only.
-    """
-    if not minimum_error_input_names(inputs, likelihood, materialized=True):
-        return
-    source = inputs["min_error"].attrs.get("minimum_error_source_policy")
-    if source is None:
-        return
-    policy = json.loads(source)
-    likelihood = cast(PollutionEventSettings | AdditiveSigmaSettings, likelihood)
-    if policy != _minimum_error_policy(likelihood, tuple(policy.get("sites", {}))):
-        raise ValueError(
-            "min_error was resolved with a different minimum-error policy; "
-            "materialize the prepared inputs again with the requested likelihood settings."
-        )
-
-
-def _validate_builder_boundary_inputs(
+def validate_model_inputs(
     inputs: xr.Dataset, model_spec: RhimeModelSpec, *, materializer: str,
 ) -> None:
-    """Check policies only for consumed, producer-resolved operands."""
-    validate_minimum_error_policy(inputs, model_spec.likelihood)
+    """Validate consumed likelihood and boundary operands before model building."""
+    validate_likelihood_inputs(inputs, model_spec.likelihood)
+    _validate_boundary_inputs(inputs, model_spec, materializer=materializer)
+
+
+def _validate_boundary_inputs(
+    inputs: xr.Dataset, model_spec: RhimeModelSpec, *, materializer: str,
+) -> None:
+    """Check model-owned BC expansion and boundary-period policy."""
     if not model_spec.use_bc:
         return
     boundary = inputs["H_bc"]
@@ -133,6 +75,9 @@ def resolve_model_inputs(inputs: xr.Dataset, model_spec: RhimeModelSpec) -> xr.D
     diagnostics. The returned Dataset carries final ``H_bc`` and ``min_error``
     operands with their source policies, for analysis or a concrete model builder.
     Boundary expansion requires raw spatial ``H_bc`` when BCs are enabled.
+    Observation-error standard deviation ``mf_error`` is carried through unchanged;
+    likelihood preparation calculates the minimum total-error floor ``min_error``
+    when selected by the likelihood.
 
     Args:
         inputs: Borrowed Dataset with consumed operands and coordinates eager.
@@ -140,21 +85,23 @@ def resolve_model_inputs(inputs: xr.Dataset, model_spec: RhimeModelSpec) -> xr.D
 
     Returns:
         A Dataset with final enabled BC/floor operands and source-policy attrs.
-        Unselected variables retain their borrowed payloads.
+        When BCs are enabled, ``H_bc`` uses a ``bc_region`` MultiIndex with levels
+        ``bc_curtain`` and ``bc_period``; other variables and diagnostics on the
+        raw BC axis are preserved under ``raw_bc_region``. Unselected variables
+        retain their borrowed payloads.
 
     Raises:
         ValueError: If consumed operands or coordinates are lazy, BC sensitivity
             is already expanded, or floor inputs or values are invalid.
     """
-    selected = ["H_bc"] if model_spec.use_bc else []
-    if minimum_error_input_names(inputs, model_spec.likelihood, materialized=True):
-        selected.extend(("mf", *minimum_error_input_names(inputs, model_spec.likelihood)))
-    if any(is_dask_collection(inputs[name]) for name in selected):
-        raise ValueError("Model input resolution requires selected operands and coordinates to be materialized; "
-            "use the concrete family materialize_*_inputs helper first.")
-    result = resolve_minimum_error(inputs, model_spec.likelihood)
+    result = prepare_likelihood_inputs(inputs, model_spec.likelihood)
     if model_spec.use_bc:
         raw = inputs["H_bc"]
+        if is_dask_collection(raw):
+            raise ValueError(
+                "Model input resolution requires selected operands and coordinates to be materialized; "
+                "use the concrete family materialize_*_inputs helper first."
+            )
         if (
             raw.attrs.get("boundary_sensitivity_preparation") == "sampled-period-expansion"
             or "bc_period" in raw.coords

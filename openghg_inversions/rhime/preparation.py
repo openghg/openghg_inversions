@@ -3,7 +3,7 @@
 The functions in this module form the backend-neutral preparation spine used
 by :func:`openghg_inversions.rhime.run_standard` and copied project runners:
 
-``observation errors -> filter -> basis -> sensitivities -> labelled assembly``.
+``observation selection -> observation errors -> basis -> sensitivities -> labelled assembly``.
 
 Acquisition is owned by :mod:`openghg_inversions.inversion_data.acquisition`;
 stages accept explicit resolved choices.

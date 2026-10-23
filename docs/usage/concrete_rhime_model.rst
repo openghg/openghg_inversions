@@ -62,6 +62,12 @@ analytic inversion can use the same boundary alignment. Its selected operands
 must already be eager; the family materializers arrange their joint execution
 with enabled priors before calling it.
 
+``mf_error`` is the prepared observation-error standard deviation and is carried
+through unchanged. Selection and observation-error imputation happen in
+scientific preparation; the selected likelihood separately prepares its minimum
+total-error floor. The resolver composes that likelihood-input operation with
+BC resolution.
+
 Pass the resolved Dataset to a builder with the same BC and consumed floor
 settings. Changing their frequency, anchor or floor policy requires resolving
 the raw preparation again; builders reject conflicting producer-recorded

@@ -51,10 +51,10 @@ from .builders import (
 )
 
 from .model_inputs import (
-    _validate_builder_boundary_inputs,
-    minimum_error_input_names,
+    validate_model_inputs,
     resolve_model_inputs,
 )
+from .likelihood_inputs import likelihood_input_names
 from .materialization import (
     _materialize_pymc_inputs_and_priors,
 )
@@ -204,7 +204,7 @@ def _multisector_input_names(
         *_OBSERVATION_INPUT_NAMES,
     ]
     likelihood_inputs = (
-        minimum_error_input_names(model_inputs, model_spec.likelihood, materialized=materialized)
+        likelihood_input_names(model_inputs, model_spec.likelihood, materialized=materialized)
     )
     if likelihood_inputs:
         _require_component_inputs(
@@ -355,9 +355,13 @@ def build_multisector_model(
     Source-prior blocks populate one labelled full state. The shared standard
     recipe applies one gathered sensitivity, then adds boundary conditions,
     offsets and the observation likelihood.
+    Resolve enabled BC sensitivities and likelihood floors with
+    :func:`materialize_multisector_inputs` before building. Numerical
+    materialization alone is insufficient. Independently supplied final arrays
+    without producer provenance are also accepted.
 
     Args:
-        model_inputs: Canonical Dataset with selected scientific inputs eager.
+        model_inputs: Resolved Dataset with selected scientific inputs eager.
         model_spec: Resolved sector, baseline and likelihood choices.
         priors: Eager prior mappings keyed by scientific model variable name.
         likelihood_builder: Optional ordinary custom likelihood callable.
@@ -370,11 +374,12 @@ def build_multisector_model(
     Raises:
         ValueError: If selected inputs or prior parameters are missing or lazy,
             sector identities or source layouts conflict, or likelihood choices
-            are inconsistent.
+            are inconsistent, BC inputs are raw, or producer-recorded BC/floor
+            policies conflict with the settings.
         TypeError: If the custom likelihood returns an invalid value.
     """
     names = _multisector_input_names(model_inputs, model_spec, materialized=True)
-    _validate_builder_boundary_inputs(model_inputs, model_spec, materializer="materialize_multisector_inputs")
+    validate_model_inputs(model_inputs, model_spec, materializer="materialize_multisector_inputs")
     if likelihood_builder is not None and model_spec.likelihood is not None:
         raise ValueError("A custom likelihood cannot be combined with built-in likelihood settings.")
     if likelihood_kwargs and likelihood_builder is None:
@@ -429,15 +434,10 @@ def prepare_multisector(
     """
     preparation_start = timer_start()
     # Preparation works on per-site datasets; ``merged_data`` stays acquired data.
-    with_errors = prepare_observation_errors(
-        merged_data.site_data,
-        averaging_error=averaging_error,
-    )
     filtered, site_options = filter_observations(
-        with_errors,
-        merged_data.site_options,
-        filters=filters,
+        merged_data.site_data, merged_data.site_options, filters=filters,
     )
+    filtered = prepare_observation_errors(filtered, averaging_error=averaging_error)
 
     runtime_flux = resolve_runtime_flux(
         merged_data.flux_data,
@@ -498,9 +498,10 @@ def run_multisector(
 ) -> InversionOutput:
     """Run a source-resolved multisector inversion.
 
-    The visible process is resolve → acquire or accept supplied data → observation
-    errors → filter → basis → sensitivities → assemble → materialize → build → sample → scientific output →
-    requested outputs.
+    The visible process is resolve request → acquire or accept supplied data →
+    select observations → prepare observation errors → basis → sensitivities →
+    assemble → materialize and resolve model inputs → build → sample → scientific
+    output → requested outputs.
     This module keeps source layout validation and sector-aware outputs beside
     that process instead of hiding them behind standard/multisector branching.
 
@@ -520,7 +521,8 @@ def run_multisector(
             be combined with ``config_file`` or raw run parameters in ``kwargs``.
         merged_data: Optional externally supplied source-resolved merged
             scientific data. Passing this in-memory handoff bypasses OpenGHG
-            acquisition and resumes at observation-error preparation after validating
+            acquisition and resumes at observation selection and retained-population
+            error preparation after validating
             recorded species, domain, time window, and sector layout.
         prepared: Optional borrowed canonical inputs and retained basis. Cannot
             be combined with ``merged_data``.

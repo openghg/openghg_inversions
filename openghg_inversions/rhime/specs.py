@@ -235,7 +235,7 @@ class RhimeModelSpec:
         bc_freq: Boundary-condition scaling period; ``None`` uses one period.
         bc_freq_anchor: Anchor for fixed-duration boundary-condition periods,
             normalized to an ISO string (UTC for timezone-aware values).
-            ``None`` anchors periods to the first retained observation time.
+            ``None`` anchors periods to the earliest retained observation timestamp.
         likelihood: Resolved built-in likelihood settings, or ``None`` when a
             Python-only custom likelihood owns that step.
         add_offset: Whether model-data offsets are included.

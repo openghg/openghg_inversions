@@ -84,8 +84,8 @@ def run_custom_rhime(
     merged = acquire_merged_data(config.data)
 
     # Keep the scientific preparation order visible; ``merged`` stays acquired data.
-    with_errors = prepare_observation_errors(merged.site_data, averaging_error=config.data.averaging_error)
-    filtered, site_options = filter_observations(with_errors, merged.site_options, filters=config.data.filters)
+    filtered, site_options = filter_observations(merged.site_data, merged.site_options, filters=config.data.filters)
+    filtered = prepare_observation_errors(filtered, averaging_error=config.data.averaging_error)
 
     runtime_flux = resolve_runtime_flux(
         merged.flux_data, split_by_sectors=merged.split_by_sectors,

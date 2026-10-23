@@ -211,8 +211,8 @@ minimum-error calculation, or boundary-period expansion, is a scientific
 change requiring evidence for unchanged behavior and explicit tests for agreed
 semantic changes. Model-owned minimum-error estimates use retained observations
 after invalid-row removal; historical pre-drop estimates are not a parity target.
-The configuration contract records
-the current observation-error-before-filtering policy. Supported prepared-input
+Observation-error imputation follows selection filters and uses only retained
+observations, as specified by the configuration contract. Supported prepared-input
 contents and examples are in :doc:`/usage/rhime` and
 :doc:`/usage/customising_rhime`; checkpoint limitations are in
 :doc:`/usage/staged_workflow`.

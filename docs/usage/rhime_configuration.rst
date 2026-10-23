@@ -98,7 +98,7 @@ a basis itself.
 
 ``bc_freq`` and ``bc_freq_anchor`` belong to ``model``. Omitted frequency means
 one BC period; an omitted anchor uses the requested start date, whereas explicit
-``None`` uses the first retained observation. ``min_error`` and
+``None`` uses the earliest retained observation timestamp. ``min_error`` and
 ``min_error_options`` belong to the selected likelihood in ``model``. The
 pollution-event likelihood always uses its floor; additive sigma uses it only
 with ``use_minimum_error_floor=True``. Fixed-error and custom likelihoods do not
@@ -325,8 +325,8 @@ Direct retrieval APIs retain their scalar shorthand without requiring model,
 output or sampler settings. The acquisition-and-preparation convenience function
 ``prepare_rhime_inputs`` has been removed. For a complete inversion, use
 ``run_standard``; for custom preparation, call ``acquire_merged_data`` (or
-``RhimeMergedData.from_options``) followed by ``prepare_observation_errors``,
-``filter_observations``, ``openghg_inversions.basis.prepare_basis``,
+``RhimeMergedData.from_options``) followed by ``filter_observations``,
+``prepare_observation_errors``, ``openghg_inversions.basis.prepare_basis``,
 ``build_sensitivities`` and ``assemble_rhime_inputs``. These steps take the
 acquired per-site datasets and ``SiteOptions`` and return new mappings; the
 acquired ``MergedData`` never carries derived errors or filtered data. The explicit legacy function
@@ -336,7 +336,9 @@ merged data and retained metadata lists. The former
 ``data_processing_surface_notracer`` name is a deprecated wrapper with the same
 signature and return. ``RhimeMergedData.from_options`` performs fresh acquisition
 from resolved selectors. ``averaging_error`` is a preparation choice: missing ``mf_error`` is derived
-from acquired repeatability/variability before temporal filtering or aggregation.
+from repeatability/variability after observation-selection filtering. Fallback
+estimates use only the retained observations; rejected observations do not
+contribute indirectly through the concentration spread or error median.
 Existing custom errors remain authoritative. ``averaging_period`` still selects
 OpenGHG acquisition/resampling. Acquisition stays in memory; persist the completed
 ``RhimePreparedInputs`` for reuse. Runners reuse a supplied ``merged_data``
@@ -368,10 +370,10 @@ values for an ordinary keyword call:
    merged.validate_for_preparation(
        **config.data.select("species", "domain", "start_date", "end_date", "split_by_sectors")
    )
-   with_errors = prepare_observation_errors(merged.site_data, averaging_error=config.data.averaging_error)
    filtered, site_options = filter_observations(
-       with_errors, merged.site_options, **config.data.select("filters")
+       merged.site_data, merged.site_options, **config.data.select("filters")
    )
+   filtered = prepare_observation_errors(filtered, averaging_error=config.data.averaging_error)
 
 ``config.data.select(*names)`` returns a fresh dictionary of the named attributes.
 Use ``config.model`` and ``config.output`` for their separate owners;

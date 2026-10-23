@@ -1,7 +1,8 @@
-"""Normalize, calculate, and align minimum model-error values."""
+"""Normalize, calculate, and align minimum total-error floors."""
 
+import json
 import numbers
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -11,9 +12,55 @@ import xarray as xr
 MinErrorConfig = Literal["percentile", "residual"] | dict[str, float] | None | int | float
 
 
+def minimum_error_input_names(
+    observations: xr.Dataset, value: MinErrorConfig,
+) -> tuple[str, ...]:
+    """Select estimator operands, including optional modelled BC concentration.
+
+    Site and time coordinates travel with ``mf``. Consumers materialize these
+    arrays and their auxiliary coordinates together before estimating a floor.
+    """
+    if value == "residual":
+        return ("mf", "mf_mod", "bc_mod") if "bc_mod" in observations else ("mf", "mf_mod")
+    return ("mf",)
+
+
+def minimum_error_source_policy(
+    value: MinErrorConfig, sites: Sequence[str], *, by_site: bool,
+) -> dict[str, object]:
+    """Describe only estimator choices relevant to the retained observations."""
+    if isinstance(value, Mapping):
+        return {"sites": {site: value.get(site) for site in sites}}
+    if isinstance(value, str):
+        policy: dict[str, object] = {"method": value}
+        if value == "residual":
+            policy["by_site"] = by_site
+        return policy
+    return {"scalar": 0.0 if value is None else float(value)}
+
+
+def validate_minimum_error_policy(
+    floor: xr.DataArray, value: MinErrorConfig, *, by_site: bool,
+) -> None:
+    """Reject changed estimator choices without executing the floor's arrays.
+
+    Unmarked independently supplied final floors remain authoritative. Site-map
+    comparison covers only the retained sites recorded by the producer.
+    """
+    source = floor.attrs.get("minimum_error_source_policy")
+    if source is None:
+        return
+    policy = json.loads(source)
+    if policy != minimum_error_source_policy(value, tuple(policy.get("sites", {})), by_site=by_site):
+        raise ValueError(
+            "min_error was resolved with a different minimum-error policy; "
+            "materialize the prepared inputs again with the requested likelihood settings."
+        )
+
+
 @dataclass(frozen=True, eq=False, slots=True)
 class MinimumError:
-    """Observation-aligned minimum model error.
+    """Observation-aligned minimum total-error floor.
 
     Attributes:
         values: Minimum error labelled by observation.

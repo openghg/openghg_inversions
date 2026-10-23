@@ -260,8 +260,8 @@ selections from `config.data`; resource paths/maps have already been resolved:
 
 ```python
 merged = acquire(explicit_acquisition_options)
-with_errors = derive_observation_errors(merged, error_options)
-filtered = filter_observations(with_errors, filters)
+filtered = filter_observations(merged, filters)
+filtered = derive_observation_errors(filtered, error_options)
 runtime_flux = resolve_runtime_flux(filtered, source_options)
 basis = prepare_basis(
     selected_operator_path=basis_path,
@@ -286,9 +286,10 @@ basis from its returned prepared handoff and uses the existing save codec.
 Preparation aligns metadata to retained observations; inference aligns its own
 numeric per-site choices. Validate every supplied value, including dropped-site
 entries, before selecting retained labels. Empty retained sets fail. Preserve
-custom errors and derive missing errors before filtering/aggregation; nested
-preparation does this for both domains before alignment, without promising new
-nested checkpoint support.
+custom errors and derive or impute missing errors from observations retained by
+selection filters, following #876's accepted 23 October amendment. Nested
+preparation selects outer observations and aligns inner observations before
+preparing each domain's errors, without promising new nested checkpoint support.
 
 Resolution remains data-free. Numerical inputs are borrowed and potentially lazy;
 related arrays cross an explicit joint assembly, model-input, serialization or

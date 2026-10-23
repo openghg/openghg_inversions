@@ -52,10 +52,10 @@ from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from ._model_building import ForwardModelTerms, add_rhime_likelihood
 from .builders import RhimeLikelihoodBuilder, RhimeModelBuildResult
 from .model_inputs import (
-    _validate_builder_boundary_inputs,
-    minimum_error_input_names,
+    validate_model_inputs,
     resolve_model_inputs,
 )
+from .likelihood_inputs import likelihood_input_names
 from .materialization import (
     _materialize_pymc_inputs_and_priors,
 )
@@ -901,8 +901,9 @@ def prepare_nested_rhime_inputs(
 ) -> NestedRhimePreparedInputs:
     """Prepare two acquired native grids using explicit scientific choices.
 
-    Each domain is shared across retained sites. Observation errors are derived
-    before filtering; filtered outer observations determine the inner selection.
+    Each domain is shared across retained sites. Filtered outer observations
+    determine the inner selection; errors are then derived separately from each
+    domain's retained observation population.
     Outer response and flux are masked before basis construction. Selected
     resources are supplied by the runner, which also owns optional basis exports.
 
@@ -943,14 +944,6 @@ def prepare_nested_rhime_inputs(
     preparation_start = timer_start()
     outer_data = _NestedDomainData(outer.site_data, outer.flux_data, outer.site_options)
     inner_data = _NestedDomainData(inner.site_data, inner.flux_data, inner.site_options)
-    outer_data = outer_data.with_site_data(
-        prepare_observation_errors(outer_data.site_data, averaging_error=averaging_error),
-        context="Observation error preparation",
-    )
-    inner_data = inner_data.with_site_data(
-        prepare_observation_errors(inner_data.site_data, averaging_error=averaging_error),
-        context="Observation error preparation",
-    )
     outer_data, inner_data = _retain_common_sites(outer_data, inner_data)
     outer_site_data, _ = filter_observations(
         outer_data.site_data, outer_data.site_options, filters=filters,
@@ -959,6 +952,14 @@ def prepare_nested_rhime_inputs(
     outer_filtered, inner_data = _retain_common_sites(outer_filtered, inner_data)
     inner_filtered = align_inner_merged_to_outer_observations(
         outer_filtered, inner_data, time_tolerance=time_tolerance,
+    )
+    outer_filtered = outer_filtered.with_site_data(
+        prepare_observation_errors(outer_filtered.site_data, averaging_error=averaging_error),
+        context="Observation error preparation",
+    )
+    inner_filtered = inner_filtered.with_site_data(
+        prepare_observation_errors(inner_filtered.site_data, averaging_error=averaging_error),
+        context="Observation error preparation",
     )
     outer_filtered = _align_domain_sites(outer_filtered, domain=domain, label="Outer")
     inner_filtered = _align_domain_sites(inner_filtered, domain=inner_domain, label="Inner")
@@ -1067,8 +1068,12 @@ def build_nested_rhime_model(
 ) -> RhimeModelBuildResult:
     """Build the two native-grid flux terms, shared baseline and likelihood.
 
+    Enabled BC sensitivities and likelihood floors must already be resolved by
+    :func:`materialize_nested_inputs` or supplied as independent final arrays.
+    Numerical materialization alone does not establish those operands.
+
     Args:
-        model_inputs: Combined labelled inputs, with selected arrays eager.
+        model_inputs: Combined resolved inputs, with selected arrays eager.
             Unselected lazy extensions remain borrowed and unused.
         model_spec: Resolved scientific choices for one source on two grids.
         priors: Eager parameters keyed by x_outer, x_inner and enabled
@@ -1083,15 +1088,16 @@ def build_nested_rhime_model(
 
     Raises:
         ValueError: Selected inputs or priors are lazy, required priors are absent,
-            or state dimensions coincide. Input availability and model choices
-            belong to materialization and the runner respectively.
+            state dimensions coincide, BC inputs are raw, or producer-recorded
+            BC/floor policies conflict with the settings. Independent final
+            arrays without producer provenance remain authoritative.
     """
     names = ["H", "H_inner", "mf", "mf_error"]
-    names.extend(minimum_error_input_names(model_inputs, model_spec.likelihood, materialized=True))
+    names.extend(likelihood_input_names(model_inputs, model_spec.likelihood, materialized=True))
     if model_spec.use_bc:
         names.append("H_bc")
     names.extend(aggregation_error_input_names(model_inputs, model_spec.aggregation_error_mode))
-    _validate_builder_boundary_inputs(model_inputs, model_spec, materializer="materialize_nested_inputs")
+    validate_model_inputs(model_inputs, model_spec, materializer="materialize_nested_inputs")
     required = (_standard_prior_parameters(model_spec).keys() - {"x"}) | {"x_outer", "x_inner"}
     missing = required - priors.keys()
     if missing:

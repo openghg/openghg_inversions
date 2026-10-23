@@ -22,9 +22,9 @@ that ``DataConfig`` and its generation identifier. The recorded configuration
 is validated exactly as a full-run request is. Retained sites and their averaging
 periods come from the
 numerical artifact, including when acquisition or filtering drops a site.
-Observation errors are established before filtering, then basis construction,
-sensitivities and assembly run in scientific order. No filtered checkpoint is
-written.
+Observation-selection filters run before missing observation errors are derived
+or imputed from the retained population. Basis construction, sensitivities and
+assembly follow. No filtered checkpoint is written.
 
 ``sample`` takes that manifest and current model and sampler choices, returning
 one absolute path to ``sample-manifest.json``. A Python ``likelihood_builder``
@@ -35,7 +35,7 @@ available. Omitted model ``use_bc`` inherits the preparation choice; explicit
 ``False`` may ignore available BC inputs. Model ``bc_freq`` can change without
 new preparation; omission uses one period. Fixed-duration periods use the saved
 requested start date unless ``bc_freq_anchor`` is supplied; explicit ``None``
-anchors them at the first retained observation. Minimum-error choices belong to
+anchors them at the earliest retained observation timestamp. Minimum-error choices belong to
 the selected likelihood and named estimates use observations retained after
 invalid rows are dropped. Changing acquired data, filters, basis or native flux
 needs new preparation.

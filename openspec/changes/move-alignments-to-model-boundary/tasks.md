@@ -28,6 +28,10 @@
 
 ## Validation evidence
 
+The completed sections above and their evidence describe the 22 October scope.
+The accepted amendment below has its own implementation and validation tasks;
+the previous full-suite success does not establish delivery of the new policy.
+
 - Configuration worker: 171 focused tests passed; anchor fixes: 86 tests passed.
 - Core worker: 183 focused tests passed.
 - Caller/handoff integration: 469 passed with two stale failures from concurrent edits; fresh retries of both pass.
@@ -48,3 +52,20 @@
 - Independent higher-effort review found and verified corrections for an overly broad Ramsden eager guard and unit-conversion/doc wording. No remaining implementation findings; full Ruff, diff and strict change checks pass.
 - Slurm job 19639181 at review-fix revision `5e1f2b23` passed the complete `py312-openghgCur` and `py313-openghgCur` tox suites: 3,985 passed, 8 skipped and 4 deselected on each interpreter. Lint and all 4 borrowed-typing tests passed.
 - The same job passed `docs-full` and regenerated the public resolver API page and parent navigation. The build reported 10 duplicate/ambiguous-reference warnings concerning SiteOptions, DataConfig and RhimePreparedInputs; none concerns the new resolver. The final follow-up commit contains generated documentation and this validation record only.
+
+## 6. Accepted 23 October ownership and error-population amendment
+
+- [x] 6.1 Reconcile the proposal/design with the maintainer-approved #876/PR amendment; preserve dated earlier validation and record the confirmed #954/#945 aggregation-filter retirement decision.
+- [x] 6.2 Move likelihood-specific floor preparation/validation beside likelihood inputs and estimator requirements beside MinimumError; verify unchanged floor policy, Ramsden reuse and joint lazy execution tests.
+- [x] 6.3 Apply selection before observation-error derivation/imputation in standard, multisector, nested and copied preparation routes; verify rejected-outlier, custom-error, missing-data, retained-label and saved-preparation regressions.
+- [x] 6.4 Finalize and record the resampling-filter public-interface disposition with #954/#945; verify affected callers/configuration/import behavior and migration guidance without a silent replacement statistic.
+- [x] 6.5 Reconcile approved behavioral contracts and current uncertainty/usage guidance, update the Towncrier fragment, and correct earliest-anchor, resolved-builder and raw/fitted-axis API descriptions; verify source/reference consistency.
+- [ ] 6.6 Complete higher-effort independent review and relevant broader pytest, Ruff, OpenSpec and final Python 3.12/3.13/documentation validation; record revision-specific evidence and remaining limitations.
+
+## 23 October amendment evidence
+
+- Local floor-owner/configuration/builder coverage: 137 passed. Shared-estimator/assembly/Ramsden coverage: 72 passed, 1 deselected; the final narrower Ramsden lazy-coordinate regression run passed 27, 1 deselected. Counts overlap.
+- Retained-population preparation coverage: 124 broader tests passed, including nested contracts, real-data prepared serialization and observation errors; 12 orchestration tests and 5 actual preparation/full-run/save-reopen/selection cases passed.
+- Retirement/configuration/CLI coverage: 227 passed. The final combined runner/model/staged/documentation regression run passed 463 tests; these are overlapping focused counts, not a total.
+- Independent higher-effort reviews verified scientific ordering, floor ownership, retirement rejection before computation, and corrected public/docstring/active-plan descriptions. Reported lazy-coordinate and stale-ordering findings were fixed; no remaining scoped findings.
+- Full Ruff, diff checks and strict validation of both affected active OpenSpec changes pass. Fresh complete Python 3.12/3.13, lint, borrowed typing and documentation/API regeneration remain pending; the earlier 3,985-pass suites apply to the 22 October executable revision only.

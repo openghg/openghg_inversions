@@ -554,6 +554,21 @@ def test_channel_floor_options_are_validated(options: dict[str, object]) -> None
         build_ramsden_model(_prepared_inputs(), replace(spec, primary=replace(spec.primary, min_error_options=options)))
 
 
+def test_residual_floor_with_constant_sigma_accepts_lazy_auxiliary_time() -> None:
+    """Unused estimator timestamps may stay lazy until PyMC data registration."""
+    import dask.array as da
+
+    prepared = _prepared_inputs()
+    primary = prepared.primary.assign(mf_mod=("nmeasure", [0., 0., 0.])).assign_coords(
+        time=("nmeasure", da.from_array(prepared.primary.time.data, chunks=2)),
+    )
+    spec = _model_spec()
+    spec = replace(spec, primary=replace(spec.primary, min_error="residual", sigma_frequency=None))
+    model = build_ramsden_model(replace(prepared, primary=primary), spec)
+    np.testing.assert_array_equal(_initial_values(model, "min_error_ch4")["min_error_ch4"], np.zeros(3))
+    assert isinstance(primary.time.data, da.Array)
+
+
 @pytest.mark.parametrize("floor", [None, 0.0, 0.5])
 def test_lazy_observations_accept_default_and_scalar_floors(floor: float | None) -> None:
     """Direct floor choices keep lazy observations valid at the PyMC boundary."""

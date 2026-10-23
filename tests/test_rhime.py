@@ -2966,9 +2966,18 @@ def test_public_rhime_runners_follow_named_stage_order(
         calls.append("filter")
         return filtered, site_options
 
+    with_errors = None
+
+    def prepare_errors(actual, *, averaging_error):
+        nonlocal with_errors
+        assert actual is filtered
+        calls.append("errors")
+        with_errors = rhime_public.prepare_observation_errors(actual, averaging_error=averaging_error)
+        return with_errors
+
     def build_basis(**kwargs: Any) -> Any:
         """Record basis construction with resolved named values."""
-        assert kwargs["site_data"] is filtered
+        assert kwargs["site_data"] is with_errors
         assert kwargs["domain"] == config.data.domain
         assert kwargs["basis_algorithm"] == config.data.basis_algorithm
         calls.append("basis")
@@ -2976,7 +2985,7 @@ def test_public_rhime_runners_follow_named_stage_order(
 
     def build_sensitivities(actual: Any, actual_basis: Any, **kwargs: Any) -> Any:
         """Record public sensitivity construction."""
-        assert actual is filtered
+        assert actual is with_errors
         assert actual_basis is basis
         assert kwargs["bc_basis"] is None
         assert kwargs["use_bc"] is config.data.use_bc
@@ -3044,6 +3053,7 @@ def test_public_rhime_runners_follow_named_stage_order(
     monkeypatch.setattr(recipe_module.RhimeConfig, "from_params", staticmethod(resolve))
     monkeypatch.setattr(recipe_module.RhimeMergedData, "from_options", retrieve)
     monkeypatch.setattr(recipe_module, "filter_observations", filter_observations)
+    monkeypatch.setattr(recipe_module, "prepare_observation_errors", prepare_errors)
     monkeypatch.setattr(recipe_module, "prepare_basis", build_basis)
     monkeypatch.setattr(recipe_module, "build_sensitivities", build_sensitivities)
     monkeypatch.setattr(recipe_module, "assemble_rhime_inputs", assemble)
@@ -3074,6 +3084,7 @@ def test_public_rhime_runners_follow_named_stage_order(
         "resolve",
         *([] if external_data else ["retrieve"]),
         "filter",
+        "errors",
         "basis",
         "sensitivities",
         "assemble",
@@ -6155,10 +6166,11 @@ def test_surface_bc_sensitivity_is_not_scaled_by_column_factors() -> None:
     xr.testing.assert_identical(result["H_bc"], inv_inputs["H_bc"])
 
 
-def test_canonical_preparation_selects_daytime_before_sensitivity(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("supplied_errors", [False, True])
+def test_canonical_preparation_selects_daytime_before_errors_and_sensitivity(
+    monkeypatch: pytest.MonkeyPatch, supplied_errors: bool,
 ) -> None:
-    """Daytime selection preserves supplied errors and precedes basis projection."""
+    """Select before imputation/projection while preserving supplied errors."""
     site_dataset = _site_dataset([2.0, 3.0, 4.0]).drop_vars(["fp_x_flux", "lat", "lon"])
     site_dataset["fp_x_flux"] = xr.DataArray(
         [[[0.0, 100.0]], [[0.0, 0.0]], [[100.0, 0.0]]],
@@ -6168,6 +6180,11 @@ def test_canonical_preparation_selects_daytime_before_sensitivity(
     site_dataset = site_dataset.assign_coords(time=pd.to_datetime([
         "2019-01-01T00:00", "2019-01-01T12:00", "2019-01-01T13:00",
     ]))
+    if not supplied_errors:
+        site_dataset = site_dataset.drop_vars("mf_error")
+        site_dataset["mf"] = ("time", [100.0, 0.0, 10.0])
+        site_dataset["mf_repeatability"] = ("time", [1000.0, 0.0, 2.0])
+        site_dataset["mf_variability"] = ("time", [0.0, 0.0, 0.0])
     site_dataset["release_lon"] = ("time", [0.0, 0.0, 0.0])
     basis_input: xr.DataArray | None = None
     final_sensitivity: xr.DataArray | None = None
@@ -6190,7 +6207,10 @@ def test_canonical_preparation_selects_daytime_before_sensitivity(
         nonlocal basis_input
         site_data = kwargs["site_data"]
         assert isinstance(site_data, dict)
-        xr.testing.assert_identical(site_data["TAC"].mf_error, site_dataset.mf_error.isel(time=[1, 2]))
+        if supplied_errors:
+            xr.testing.assert_identical(site_data["TAC"].mf_error, site_dataset.mf_error.isel(time=[1, 2]))
+        else:
+            np.testing.assert_array_equal(site_data["TAC"].mf_error, [5.0, 2.0])
         basis_input = site_data["TAC"]["fp_x_flux"].copy()
         basis = xr.DataArray(
             [[1, 1]],
@@ -6232,6 +6252,8 @@ def test_canonical_preparation_selects_daytime_before_sensitivity(
     assert final_sensitivity is not None
     xr.testing.assert_identical(final_sensitivity.time, basis_input.time)
     np.testing.assert_array_equal(final_sensitivity, [[0.0, 100.0]])
+    if not supplied_errors:
+        assert "mf_error" not in site_dataset
 
 
 def test_canonical_preparation_filters_multisector_sites_before_basis_generation(
@@ -8809,3 +8831,77 @@ def test_standard_rejects_removed_compatibility_options_before_acquisition(monke
     )
     with pytest.raises(ValueError, match=f"Unsupported RHIME parameter.*{option}"):
         run_standard(**{option: True})
+
+
+@pytest.mark.parametrize("multisector", [False, True])
+@pytest.mark.parametrize("lazy", [False, True])
+def test_retained_error_population_reaches_preparation_full_run_and_saved_inputs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, multisector: bool, lazy: bool,
+) -> None:
+    """Real preparation and full recipes share the selected uncertainty population."""
+    from openghg_inversions.basis.basis_functions import basis_functions_from_flat_basis
+
+    recipe = rhime_multisector if multisector else rhime_standard
+    sources = ("inventory", "second") if multisector else ("inventory",)
+    dataset = _site_dataset([1.0, 2.0, 3.0]).drop_vars("mf_error")
+    dataset = dataset.assign_coords(time=pd.to_datetime([
+        "2019-01-01T00:00", "2019-01-01T12:00", "2019-01-01T13:00",
+    ]))
+    dataset["mf"] = ("time", [100.0, 0.0, 10.0], {"units": "1e-9"})
+    dataset["mf_repeatability"] = ("time", [1000.0, 0.0, 2.0])
+    dataset["mf_variability"] = ("time", [0.0, 0.0, 0.0])
+    dataset["release_lon"] = ("time", [0.0, 0.0, 0.0])
+    if multisector:
+        dataset["fp_x_flux_sectoral"] = dataset.fp_x_flux.expand_dims(source=list(sources))
+    if lazy:
+        dataset = dataset.chunk(time=1)
+    original = dataset.copy(deep=True)
+    spatial = _fake_basis_functions()
+    flux = spatial.flux.expand_dims(source=list(sources)) if multisector else spatial.flux
+    basis = basis_functions_from_flat_basis(
+        basis_flat={source: spatial.operator.basis_flat for source in sources} if multisector else spatial.operator.basis_flat,
+        flux=flux,
+    )
+    config = rhime_params.RhimeConfig.from_params(dict(
+        species="ch4", domain="EUROPE", sites=["TAC"], averaging_period="1h",
+        start_date="2019-01-01", end_date="2019-01-02", output_name="retained-errors",
+        flux_sources=list(sources), filters="daytime", use_bc=False, output_format="none",
+        mismatch_model="fixed_error",
+    ), multisector=multisector)
+    merged = RhimeMergedData(
+        site_data={"TAC": dataset}, flux_data={source: spatial.flux.to_dataset(name="flux") for source in sources},
+        site_options=config.data.site_options, split_by_sectors=multisector,
+    )
+    monkeypatch.setattr(recipe, "prepare_basis", lambda **kwargs: basis)
+    prepare = recipe.prepare_multisector if multisector else recipe.prepare_standard
+    prepared = prepare(
+        merged, basis_inputs={}, **config.data.select(
+            "domain", "start_date", "flux_sources", "averaging_error", "filters", "basis_algorithm",
+            "nbasis", "fix_basis_outer_regions", "use_bc",
+        ),
+    )
+    np.testing.assert_array_equal(prepared.inv_inputs.mf_error, [5.0, 2.0])
+    prepared.save(tmp_path / "retained.nc")
+    reopened = RhimePreparedInputs.load(tmp_path / "retained.nc")
+    xr.testing.assert_identical(reopened.inv_inputs.mf_error, prepared.inv_inputs.mf_error)
+
+    monkeypatch.setattr(recipe.RhimeMergedData, "from_options", lambda **kwargs: merged)
+    monkeypatch.setattr(recipe, "resolve_basis_inputs", lambda data: {})
+    captured = []
+
+    def build(inputs, model_spec, **kwargs):
+        captured.append(inputs)
+        return RhimeModelBuildResult(
+            model=pm.Model(), output_contract=OutputContract(variable_roles={"concentration": "y"}),
+        )
+
+    monkeypatch.setattr(recipe, "build_multisector_model" if multisector else "build_standard_model", build)
+    monkeypatch.setattr(recipe, "sample_rhime_model", lambda *args, **kwargs: _minimal_output_idata())
+    result = cast(InversionOutput, SimpleNamespace())
+    monkeypatch.setattr(recipe, "make_model_output", lambda **kwargs: result)
+    monkeypatch.setattr(recipe, "postprocess_multisector_outputs" if multisector else "postprocess_standard_outputs", lambda *args: None)
+    monkeypatch.setattr(recipe, "save_inversion_output", lambda *args: None)
+    runner = recipe.run_multisector if multisector else recipe.run_standard
+    assert runner(config=config) is result
+    np.testing.assert_array_equal(captured[0].mf_error, [5.0, 2.0])
+    xr.testing.assert_identical(dataset, original)

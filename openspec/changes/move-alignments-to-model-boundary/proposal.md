@@ -2,12 +2,14 @@
 
 ## Why
 
-Prepared standard and multisector data currently bake BC periods and minimum-error choices into numerical values, preventing reuse for compatible model requests. Issue #876 now has maintainer approval for an explicit modern-release break under #944, including minimum-error calculation after invalid observations are dropped.
+Prepared standard and multisector data previously baked BC periods and minimum-error choices into numerical values, preventing reuse for compatible model requests. Issue #876 has maintainer approval for an explicit modern-release break under #944, including minimum-error calculation after invalid observations are dropped. The accepted 23 October amendment also requires observation-error imputation to use only observations retained by selection filters and localizes floor policy with likelihood-input preparation.
 
 ## What Changes
 
 - Preserve raw spatial BC sensitivities in preparation and resolve temporal alignment at the model boundary.
 - Move minimum-error configuration and calculation to the owning likelihood; calculate named methods from retained observations.
+- Keep estimator requirements with the shared numerical estimator and likelihood-specific floor enablement/preparation/validation with likelihood-input preparation. The backend-neutral model-input stage composes those operations with BC resolution.
+- **SCIENTIFIC CHANGE**: apply observation-selection filters before deriving or imputing observation-error standard deviations. Preserve supplied errors and existing component/NaN rules; rejected observations must not contribute to fallback estimates.
 - Keep sigma alignment model-owned and derive site positions from observation labels.
 - **BREAKING**: remove baked policies from preparation APIs/configuration and reject incompatible older prepared/sample artifacts explicitly, without an adapter.
 - Preserve modern output codecs, joint selected-input/prior materialization and graph-free replay.
@@ -21,7 +23,7 @@ None.
 
 ### Modified Capabilities
 
-- `rhime-configuration`: model ownership of BC periods and minimum-error choices, retained-observation semantics, and explicit rejection of incompatible baked preparations.
+- `rhime-configuration`: model ownership of BC periods and likelihood floors, retained-population observation-error imputation, and explicit rejection of incompatible baked preparations.
 
 ## Impact
 

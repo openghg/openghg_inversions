@@ -156,15 +156,17 @@ handling SHALL NOT relax the canonical custom-likelihood seam.
 Families supporting partial workflows SHALL remain usable without implementing
 unrelated stages or adopting a common inference algorithm or result format.
 
-Preparation SHALL derive missing observation errors before filtering or
-aggregation and preserve caller-supplied custom errors and borrowed inputs.
-Supported nested preparation SHALL establish the corresponding errors on both
-domains before filtering/time alignment. These rules SHALL reuse their scientific
-owners without implying additional nested or linked checkpoint support.
+Preparation SHALL derive or impute missing observation-error standard deviations
+after observation-selection filters, using only retained observations, and
+preserve caller-supplied custom errors and borrowed inputs. Supported nested
+preparation SHALL select outer observations and align inner observations before
+preparing each retained domain's errors. These rules SHALL follow the
+configuration contract and reuse their scientific owners without implying
+additional nested or linked checkpoint support.
 
-#### Scenario: Observation errors precede filtering
-- **WHEN** supported preparation filters or aggregates observations
-- **THEN** required errors have been established before that transformation
+#### Scenario: Observation-error imputation follows selection
+- **WHEN** supported preparation rejects observations through selection filters
+- **THEN** missing errors are estimated from the retained population only
 - **AND** supplied custom errors and caller-owned datasets remain unchanged
 
 #### Scenario: Preparation consumes acquired data without retrieval

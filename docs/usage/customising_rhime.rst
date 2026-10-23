@@ -50,7 +50,8 @@ Resume from external scientific data
 ``run_standard`` and ``run_rhime_multisector`` accept ``merged_data`` as a
 Python-only handoff. It bypasses OpenGHG acquisition,
 checks the recorded scientific facts and single- or multi-sector layout, and
-then re-enters the visible recipe at observation-error preparation::
+then re-enters the visible recipe at observation selection and retained-population
+error preparation::
 
    result = run_standard(
        config_file="config.ini",
@@ -84,7 +85,7 @@ Follow the modern preparation spine
 ------------------------------------
 
 The ordinary runner resolves ``basis_path``, support maps and selected BC basis
-files before acquisition. It prepares errors, filters retained observations,
+files before acquisition. It selects observations, prepares their errors,
 then calls the canonical load-or-generate operation with exact paths and
 labelled arrays:
 
@@ -108,11 +109,11 @@ labelled arrays:
        if config.data.use_bc and config.data.bc_basis_paths is not None else None
    )
    merged = acquire_merged_data(config.data)
-   with_errors = prepare_observation_errors(
-       merged.site_data, averaging_error=config.data.averaging_error,
-   )
    filtered, site_options = filter_observations(
-       with_errors, merged.site_options, filters=config.data.filters,
+       merged.site_data, merged.site_options, filters=config.data.filters,
+   )
+   filtered = prepare_observation_errors(
+       filtered, averaging_error=config.data.averaging_error,
    )
    runtime_flux = resolve_runtime_flux(
        merged.flux_data, split_by_sectors=merged.split_by_sectors,

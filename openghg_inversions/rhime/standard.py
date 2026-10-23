@@ -57,10 +57,10 @@ from .builders import (
 )
 
 from .model_inputs import (
-    _validate_builder_boundary_inputs,
-    minimum_error_input_names,
+    validate_model_inputs,
     resolve_model_inputs,
 )
+from .likelihood_inputs import likelihood_input_names
 from .materialization import (
     _materialize_pymc_inputs_and_priors,
 )
@@ -154,7 +154,7 @@ def _standard_input_names(
         *_OBSERVATION_INPUT_NAMES,
     ]
     likelihood_inputs = (
-        minimum_error_input_names(model_inputs, model_spec.likelihood, materialized=materialized)
+        likelihood_input_names(model_inputs, model_spec.likelihood, materialized=materialized)
     )
     if likelihood_inputs:
         _require_component_inputs(
@@ -250,9 +250,13 @@ def build_standard_model(
     for example with :func:`materialize_standard_inputs`. The model settings
     select components; ``priors`` supplies their numerical parameters without
     replacing those settings. Unrelated lazy input extensions are not consumed.
+    Enabled BC sensitivities and likelihood floors must already be resolved;
+    numerical materialization alone does not establish those operands.
+    Independently supplied final arrays without producer provenance are accepted.
 
     Args:
-        model_inputs: Canonical arrays with selected scientific inputs eager.
+        model_inputs: Resolved scientific arrays with selected inputs eager,
+            normally returned by :func:`materialize_standard_inputs`.
         model_spec: Resolved scientific choices for exactly one sector.
         priors: Eager selected prior mappings keyed by ``x``, ``bc``,
             ``offset_latent``, ``sigma`` and ``power``. ``x`` is required;
@@ -267,11 +271,12 @@ def build_standard_model(
     Raises:
         ValueError: If selected inputs or prior parameters are lazy, a selected
             prior mapping or required input is missing, the model has other
-            than one sector, or likelihood choices are inconsistent.
+            than one sector, likelihood choices are inconsistent, BC inputs are
+            raw, or producer-recorded BC/floor policies conflict with the settings.
         TypeError: If the custom likelihood returns an invalid value.
     """
     names = _standard_input_names(model_inputs, model_spec, materialized=True)
-    _validate_builder_boundary_inputs(model_inputs, model_spec, materializer="materialize_standard_inputs")
+    validate_model_inputs(model_inputs, model_spec, materializer="materialize_standard_inputs")
     if likelihood_kwargs and likelihood_builder is None:
         raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
     missing_priors = _standard_prior_parameters(model_spec).keys() - priors.keys()
@@ -448,8 +453,10 @@ def prepare_standard(
     """
     preparation_start = timer_start()
     # Preparation works on per-site datasets; ``merged_data`` stays acquired data.
-    with_errors = prepare_observation_errors(merged_data.site_data, averaging_error=averaging_error)
-    filtered, site_options = filter_observations(with_errors, merged_data.site_options, filters=filters)
+    filtered, site_options = filter_observations(
+        merged_data.site_data, merged_data.site_options, filters=filters,
+    )
+    filtered = prepare_observation_errors(filtered, averaging_error=averaging_error)
 
     runtime_flux = resolve_runtime_flux(merged_data.flux_data, split_by_sectors=merged_data.split_by_sectors)
     with timed("rhime.prepare_inputs.basis_build", basis_algorithm=basis_algorithm):
@@ -502,9 +509,10 @@ def run_standard(
 ) -> InversionOutput:
     """Run a standard single-sector RHIME inversion.
 
-    The visible process is resolve → acquire or accept supplied data → observation
-    errors → filter → basis → sensitivities → assemble → materialize → build → sample → scientific output →
-    requested outputs.
+    The visible process is resolve request → acquire or accept supplied data →
+    select observations → prepare observation errors → basis → sensitivities →
+    assemble → materialize and resolve model inputs → build → sample → scientific
+    output → requested outputs.
 
     Selected basis/support files and reporting country files are checked before
     acquisition, including when merged data is supplied. Basis partitions and
@@ -523,8 +531,9 @@ def run_standard(
             be combined with ``config_file`` or raw run parameters in ``kwargs``.
         merged_data: Optional externally supplied merged scientific data.
             Passing this borrowed in-memory handoff bypasses OpenGHG acquisition
-            and resumes at observation-error preparation. This may derive error arrays
-            and compute zero-error fallback diagnostics.
+            and resumes at observation selection, followed by error preparation
+            on the retained population. This may derive error arrays and compute
+            zero-error fallback diagnostics.
             The acquisition owner checks recorded species, domain, time window,
             and sector layout without mutating it.
         prepared: Optional borrowed canonical scientific inputs, including

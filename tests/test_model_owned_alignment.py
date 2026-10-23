@@ -166,7 +166,8 @@ def test_percentile_uses_retained_nonmonotonic_monthly_samples():
     xr.testing.assert_equal(result.nmeasure, raw.nmeasure)
 
 
-def test_selected_operands_auxiliary_coordinates_and_priors_share_one_compute():
+@pytest.mark.parametrize("include_bc_mod", [False, True])
+def test_selected_operands_auxiliary_coordinates_and_priors_share_one_compute(include_bc_mod):
     executions = []
 
     @delayed
@@ -191,6 +192,8 @@ def test_selected_operands_auxiliary_coordinates_and_priors_share_one_compute():
             "time": ("nmeasure", da.from_array(time, chunks=2)),
         },
     )
+    if include_bc_mod:
+        raw["bc_mod"] = ("nmeasure", values * .5)
     spec = _spec(PollutionEventSettings(min_error="residual"), bc_freq="monthly")
     spec = replace(spec, sectors=(replace(spec.sectors[0], x_prior={
         "pdf": "normal", "mu": values[0], "sigma": .2,
@@ -204,7 +207,8 @@ def test_selected_operands_auxiliary_coordinates_and_priors_share_one_compute():
     assert isinstance(result.extension.data, da.Array)
     assert isinstance(raw.H.data, da.Array)
     assert priors["x"]["mu"] == 1.
-    np.testing.assert_allclose(result.min_error, np.std([3., 6., 9., 12.]))
+    residual = np.arange(1., 5.) * (2.5 if include_bc_mod else 3.)
+    np.testing.assert_allclose(result.min_error, np.std(residual))
 
 
 @pytest.mark.parametrize("operand", ["mf", "mf_mod", "H_bc", "time", "site"])

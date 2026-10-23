@@ -386,7 +386,8 @@ requirements for those named standard interfaces.
 ### Requirement: Compatible public adapters and scientific choices
 
 Except for the explicit standard API/result migration above, the sampler-default
-migration, the model-owned BC/minimum-error migration specified below, and the
+migration, the model-owned BC/minimum-error and retained-population uncertainty
+migrations and aggregation-filter retirements specified below, and the
 resource-I/O migrations removing `prepare_basis(output_path=...)` and `country_directory` in 0.8
 and replacing scientific BC case/directory inputs with resolved basis data,
 the legacy-only routing and namespace migration owned by the
@@ -405,8 +406,9 @@ preparation and model construction. Current INI section interpretation, path
 conventions, file vocabulary, scientific calculations and sampling defaults
 SHALL remain unchanged except for the path and legacy-resource migrations specified by
 [rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md),
-the model-owned BC/minimum-error migration and retained-observation estimates
-specified below, and the 0.8 historical scientific-quirk and chain-policy removals
+the model-owned BC/minimum-error migration and retained-population observation-error
+and minimum-error estimates and aggregation-filter retirements specified below,
+and the 0.8 historical scientific-quirk and chain-policy removals
 specified by
 [hbmcmc-isolation-retirement](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md).
 
@@ -465,9 +467,21 @@ and custom-likelihood conflict precedence SHALL remain unchanged.
 
 ### Requirement: Scientific preparation owns its operations
 
-Recipes SHALL derive observation errors before temporal filtering/aggregation,
-call canonical `prepare_basis` directly with resolved arguments, and use the actual
-sensitivity, filtering and assembly implementations. Forwarding wrappers SHALL
+Recipes SHALL apply observation-selection filters before deriving or imputing
+missing observation-error standard deviations. Rejected observations SHALL NOT
+contribute to the retained population's fallback estimates. Caller-supplied
+observation errors SHALL remain authoritative, and this ordering change SHALL NOT
+change the established missing-component or NaN replacement rules. Any supported
+resampling SHALL define observations and propagate their uncertainty separately
+from selection and imputation.
+
+The `daily_median` and `six_hr_mean` aggregation filters and their direct Python
+functions are removed. Requests using those filter names SHALL fail with guidance
+to make an explicit resampling/uncertainty decision; no statistic SHALL be silently
+substituted.
+
+Recipes SHALL call canonical `prepare_basis` directly with resolved arguments,
+and use the actual sensitivity, selection and assembly implementations. Forwarding wrappers SHALL
 NOT be retained solely for uniform stage names, timing or keyword translation.
 Shared indexing utilities SHALL remain independently reusable. Assembly SHALL
 retain backend-neutral observations and spatial sensitivities;
@@ -483,18 +497,27 @@ The internal `inversion_data._site_options.convert_to_list` helper SHALL retain
 its calling and list-return contract through shared selector expansion without a
 warning; its old `get_data` import alias SHALL remain removed.
 
-#### Scenario: Error derivation precedes temporal reduction
+#### Scenario: Error imputation uses retained observations
 
-- **WHEN** component errors vary across observations to be aggregated
-- **THEN** preparation combines the components before temporal reduction
-- **AND** custom `mf_error`, zero-error fallback behavior, labels and metadata
+- **WHEN** an observation-selection filter rejects observations that would change
+  a fallback concentration spread or nonzero-error median
+- **THEN** missing observation errors are estimated from the retained population
+- **AND** supplied custom errors, missing-component/NaN rules, labels and metadata
   are preserved without mutating borrowed datasets
+
+#### Scenario: Retired aggregation filters require a scientific migration
+
+- **WHEN** a caller requests `daily_median` or `six_hr_mean` as an observation filter
+- **THEN** the request fails with resampling/uncertainty migration guidance before
+  applying other filters or executing lazy scientific data
+- **AND** no median-to-mean or generic Dataset aggregation is substituted
 
 #### Scenario: Nested observation-error preparation
 
 - **WHEN** a nested recipe receives acquired or supplied inner and outer data
-- **THEN** both domains have observation errors prepared before filtering and
-  time alignment; only sites with both domains can enter nested preparation
+- **THEN** outer selection and inner observation alignment precede error
+  derivation in both retained domain populations; only sites with both domains
+  can enter nested preparation
 - **AND** `averaging_error` is preparation policy, not a binding acquisition fact
 
 #### Scenario: Shared nested spatial support
