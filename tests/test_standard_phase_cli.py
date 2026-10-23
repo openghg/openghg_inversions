@@ -39,7 +39,7 @@ def test_postprocess_cli_needs_only_sample_and_output_choices(tmp_path, monkeypa
 def test_phase_cli_rejects_explicit_wrong_phase_override(tmp_path):
     with pytest.raises(ValueError, match="for this phase"):
         main(["sample", "--preparation-manifest", "missing.json", "--output-dir", str(tmp_path / "sample"),
-              "--kwargs", '{"filters":"daily_median"}'])
+              "--kwargs", '{"filters":"daytime"}'])
 
 
 @pytest.mark.parametrize("model", ["standard", "multisector", "co2"])
@@ -98,7 +98,7 @@ def test_phase_alias_overrides_preserve_canonical_file_precedence(tmp_path, monk
 def test_phase_reports_all_unsuitable_override_keys(tmp_path):
     with pytest.raises(ValueError) as caught:
         main(["sample", "--preparation-manifest", "missing.json", "--output-dir", str(tmp_path),
-              "--kwargs", '{"filters":"daily_median","unknown":1,"outputname":"wrong"}'])
+              "--kwargs", '{"filters":"daytime","unknown":1,"outputname":"wrong"}'])
     for name in ("filters", "unknown", "outputname"):
         assert name in str(caught.value)
 

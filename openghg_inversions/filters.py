@@ -80,16 +80,9 @@ def filtering(
     with site codes as keys, then the filters applied to each site depend on the list supplied
     for that site.
 
-    In any case, filters supplied in a list are applied in order.
-    For example, if you wanted a daily, daytime average, you could do this:
-
-        datasets_dictionary = filtering(datasets_dictionary,
-                                    ["daytime", "daily_median"])
-
-    The order of the filters reflects the order they are applied, so for
-    instance when applying the "daily_median" filter if you only wanted
-    to look at daytime values the filters list should be
-    ["daytime","daily_median"]
+    Filters supplied in a list are applied in order. For example, select
+    daytime observations with sufficiently high boundary-layer heights using
+    ``filtering(datasets_dictionary, ["daytime", "pblh_min"])``.
 
     If a site is `datasets_in` is not in `filters`, then no filters are applied to that site.
 
@@ -103,9 +96,24 @@ def filtering(
     Returns:
         dict in same format as datasets_in, with filters applied
 
+    Raises:
+        KeyError: If a requested filter is unknown. Removed ``daily_median`` and
+            ``six_hr_mean`` filters fail before any filter runs.
+
     """
     if not filters:
         return datasets_in
+
+    # Reject retired names before expanding global filters, even without sites.
+    requested = filters.values() if isinstance(filters, dict) else [filters]
+    for site_filters in requested:
+        for filt in site_filters if isinstance(site_filters, list) else [site_filters]:
+            if filt in {"daily_median", "six_hr_mean"}:
+                raise KeyError(
+                    f"{filt!r} is a removed resampling filter. Perform deliberate "
+                    "uncertainty-propagating resampling before observation selection; "
+                    "there is no automatic replacement."
+                )
 
     # Get list of sites
     sites = [key for key in list(datasets_in.keys()) if key[0] != "."]
@@ -169,41 +177,6 @@ def _local_solar_time(dataset: xr.Dataset) -> list[int]:
     local_time = dataset.time + pd.Timedelta(minutes=float(24 * 60 * sitelon / 360.0))
     hours = local_time.dt.hour.values
     return list(hours)
-
-
-@register_filter
-def daily_median(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Resample data to daily frequency and use daily median values.
-
-    Args:
-        dataset: dataset to filter
-        keep_missing: if True, drop time points removed by filter
-
-    Returns:
-        filtered dataset
-    """
-    if keep_missing:
-        return dataset.load().resample(indexer={"time": "1D"}).median()
-    else:
-        return dataset.load().resample(indexer={"time": "1D"}).median().dropna(dim="time")
-
-
-@register_filter
-def six_hr_mean(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Resample data to 6h frequency and use 6h mean values.
-
-    Args:
-        dataset: dataset to filter
-        keep_missing: if True, drop time points removed by filter
-
-    Returns:
-        filtered dataset
-
-    """
-    if keep_missing:
-        return dataset.resample(indexer={"time": "6h"}).mean()
-    else:
-        return dataset.resample(indexer={"time": "6h"}).mean().dropna(dim="time")
 
 
 @register_filter

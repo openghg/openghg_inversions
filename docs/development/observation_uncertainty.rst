@@ -36,8 +36,7 @@ Existing uncertainty construction
 ---------------------------------
 
 :func:`openghg_inversions.inversion_data.observation_errors.prepare_observation_errors`
-constructs missing errors from each acquired site before temporal filtering or
-aggregation. Supplied custom ``mf_error`` remains unchanged. Preparation owns
+constructs missing errors from each acquired site before temporal filtering. Supplied custom ``mf_error`` remains unchanged. Preparation owns
 ``averaging_error``; acquisition retains the ``averaging_period`` resampling
 selector. With averaging errors enabled, the derivation is:
 
