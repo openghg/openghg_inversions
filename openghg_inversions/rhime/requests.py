@@ -75,13 +75,11 @@ def load_params(
                 canonical = REQUEST_ALIASES.get(name, name)
                 if key in owners:
                     owner = key
-                elif name == "use_tracer":
-                    owner = "data"
                 elif canonical in REQUEST_CLAIM_NAMES:
                     owner = claims_owner
                 else:
                     owner = next((group for group, names in owners.items() if canonical in names), None)
-                known = owner is not None and (canonical in owners[owner] or name == "use_tracer")
+                known = owner is not None and canonical in owners[owner]
                 if not known or (is_override and owner not in active):
                     unsuitable.append(f"{key}.{name}" if key in owners else name)
                     continue

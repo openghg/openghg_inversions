@@ -62,14 +62,12 @@ def test_alias_warnings_are_conditional_and_canonical_values_win():
         assert translate_rhime_aliases(canonical) == canonical
         fixedbasis_params_to_rhime(canonical)
     assert not caught
-    raw = {**canonical, "outputname": "old", "use_tracer": False}
+    raw = {**canonical, "outputname": "old"}
     with pytest.warns(DeprecationWarning) as caught:
         translated = translate_rhime_aliases(raw)
-    assert len(caught) == 2
+    assert len(caught) == 1
     assert translated == canonical
     assert raw["outputname"] == "old"
-    with pytest.raises(ValueError, match="use_tracer=True"):
-        translate_rhime_aliases({"use_tracer": True})
 
 
 def test_fixedbasis_translation_preserves_borrowed_prior():

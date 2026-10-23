@@ -85,15 +85,6 @@ def normalise_param_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
             normalized[new] = normalized[old]
         del normalized[old]
 
-    if "use_tracer" in normalized:
-        if normalized.pop("use_tracer"):
-            raise ValueError("`use_tracer=True` is not supported; tracer inversions are not implemented.")
-        warnings.warn(
-            "RHIME parameter 'use_tracer' is obsolete and has been removed.",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-
     for name, message in _REMOVED_OPTIONS.items():
         if name in normalized:
             raise ValueError(message)
