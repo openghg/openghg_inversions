@@ -119,9 +119,9 @@ def validate_co2_o2_units(prepared: Co2O2PreparedInputs) -> str:
     for name in ("species", "observation_units"):
         if name not in observations.coords or observations[name].dims != ("observation",):
             raise ValueError(f"Linked prepared observations require observation-aligned {name}.")
-    if set(observations.species.values.astype(str)) != {"co2", "o2"}:
+    if set(observations.species.values.tolist()) != {"co2", "o2"}:
         raise ValueError("Linked prepared observations must contain exactly CO2 and O2 channels.")
-    units = np.unique(observations.observation_units.values.astype(str))
+    units = np.unique([str(unit) for unit in observations.observation_units.values])
     if units.size != 1:
         raise ValueError("Linked staged inputs require identical CO2 and O2 units (OPE-86).")
     unit = _string(str(units[0]), "prepared observation_units")
@@ -224,7 +224,7 @@ class Co2O2ModelConfig:
             raise ValueError("Configured channels.co2/o2.units do not match prepared observation_units.")
         observations = prepared.observations
         if self.independent_error_sd:
-            species = np.asarray(observations.species.values).astype(str)
+            species = observations.species.values
             errors = np.empty(observations.size, dtype=np.float64)
             for name in ("co2", "o2"):
                 errors[species == name] = self.independent_error_sd[name]

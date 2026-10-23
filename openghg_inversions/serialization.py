@@ -309,7 +309,8 @@ def save_datatree(
 
     This writes the tree, replacing an existing destination artifact. NetCDF
     uses xarray's default engine so callers that already loaded NetCDF inputs
-    do not switch HDF5 bindings at the serialization boundary. Zarr writes
+    do not switch HDF5 bindings at the serialization boundary. Zarr artifacts
+    use format 2 with either Zarr 2 or Zarr 3 packages. Zarr writes
     lazily rechunk arrays to their encoded storage chunks, or regular chunks
     sized to the largest existing chunk on each axis. Inputs are not mutated.
 
@@ -357,7 +358,7 @@ def save_datatree(
                 }
             )
         )
-        dt.to_zarr(output_path, mode="w")
+        dt.to_zarr(output_path, mode="w", zarr_format=2)
     else:
         raise ValueError(f"Unsupported output_format: {output_format!r}")
 
