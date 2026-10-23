@@ -224,6 +224,15 @@ adding new extreme-scale inputs.
 
 Regression coverage is retained independently of historical benchmarks:
 
+For exactly aligned residuals with dominant duplicate factors beyond
+float64's condition range, residual-gradient tests use a small-case absolute
+rounding budget proportional to
+:math:`\epsilon\|r\|_2\|C^{-1}\|_2`. This does not promise relative accuracy
+for an arbitrarily tiny gradient or certify a general forward-error bound.
+Nearby residual tests also require resolvable transverse components to survive;
+clipping small components is not an acceptable way to satisfy the budget.
+Likelihood and amplitude-gradient checks retain their separate tolerances.
+
 * ``tests/models/test_fixed_ou.py`` checks dense and analytic likelihood/gradient
   oracles, dominant and duplicate factors, rank-zero/full-width cases,
   near-dependent mixed-scale factors using an 80-digit Decimal oracle,

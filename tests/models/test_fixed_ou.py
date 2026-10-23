@@ -637,13 +637,45 @@ def test_evaluator_dominant_factor_gradients_match_analytic_eigendirections(widt
     amplitude_only = prepared._evaluate(prepared.mode_transform @ residual, np.ones(2), amplitude_only=True)
 
     assert evaluation.log_likelihood == pytest.approx(expected_logp, rel=2e-12, abs=2e-12)
-    # An absolute tolerance would hide loss of the tiny aligned residual gradient.
-    np.testing.assert_allclose(evaluation.gradient_residual, -solved, rtol=2e-9, atol=0.0)
+    # With dominant duplicate columns, a rounded orthogonal projection can
+    # introduce O(eps * ||residual||) in the variance-2 transverse direction.
+    # Budget eight rounding units through C^-1 (||C^-1||_2 = 1/2) only when
+    # this aligned duplicate-factor case exceeds float64's condition range.
+    # This is a small-case test budget, not a general forward-error guarantee.
+    eps = np.finfo(np.float64).eps
+    absolute_budget = (
+        8.0 * eps * np.linalg.norm(residual) / 2.0
+        if aligned and width == 2 and large_eigenvalue / 2.0 > 1.0 / eps
+        else 0.0
+    )
+    np.testing.assert_allclose(evaluation.gradient_residual, -solved, rtol=2e-9, atol=absolute_budget)
     np.testing.assert_allclose(evaluation.gradient_site_amplitude, expected_gradient, rtol=2e-9, atol=2e-15)
     assert amplitude_only[0] == evaluation.log_likelihood
     np.testing.assert_array_equal(amplitude_only[2], evaluation.gradient_site_amplitude)
     if width == 2 and scale == 1e8 and not aligned:
         assert evaluation.log_likelihood == pytest.approx(-21.79827858120163, abs=1e-12)
+
+
+@pytest.mark.parametrize("scale", [1e8, 1e10])
+@pytest.mark.parametrize("sign", [-1.0, 1.0])
+def test_dominant_duplicate_factor_preserves_near_aligned_residual_gradient(scale, sign) -> None:
+    prepared = prepare_fixed_ou_low_rank(
+        np.full((2, 2), scale), np.ones(2), np.zeros(2), np.arange(2), 1.0,
+    )
+    # A genuine transverse component, small relative to the aligned residual
+    # but resolvable above its projection-rounding budget, must not be clipped.
+    offset = sign * 4096.0 * np.spacing(scale)
+    residual = np.array([scale + offset, scale - offset])
+    # Use the represented input values, not the intended pre-rounding offset.
+    parallel = 0.5 * residual[0] + 0.5 * residual[1]
+    transverse = 0.5 * (residual[0] - residual[1])
+    solved = parallel / (2.0 + 4.0 * scale**2) + np.array([transverse, -transverse]) / 2.0
+    absolute_budget = 8.0 * np.finfo(np.float64).eps * np.linalg.norm(residual) / 2.0
+    assert absolute_budget < abs(transverse / 2.0) / 100.0
+
+    evaluation = prepared.evaluate(residual, np.ones(2))
+
+    np.testing.assert_allclose(evaluation.gradient_residual, -solved, rtol=2e-9, atol=absolute_budget)
 
 
 def test_evaluator_retains_tiny_precision_with_zero_residual() -> None:
