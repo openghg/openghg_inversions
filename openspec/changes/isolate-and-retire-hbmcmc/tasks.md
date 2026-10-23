@@ -213,3 +213,41 @@ does not finalize CLI positional-date/`--kwargs` syntax or complete a delivery t
   #972 documentation/contract checks and draft #964/#973 test counts are not
   runtime evidence for this revision. Task 3.2 remains pending; no archive or
   release-readiness claim is made.
+
+### Initial complete acceptance and correction
+
+At immutable implementation `01e34d0c32bc342863b24f3ec6d6858ac105aa6b`,
+Slurm array `19667378` (callback `19667379`) executed the full suites:
+
+- Locked Python 3.12 and 3.13 each: **4,124 passed, 14 failed, 8 skipped,
+  4 deselected**. Thirteen failures asserted retired alias translation,
+  command names or diagnostics. The remaining installed CO2 workflow completed
+  preparation/prior/sampling before its test assumed a Git revision in the
+  archive snapshot; installed provenance explicitly permits an unknown revision.
+- Lint, all **4 borrowed-typing checks**, and **docs-full** passed. Documentation
+  reported **10** existing duplicate/ambiguous API-reference warnings.
+- Moving OpenGHG devel: **4,121 passed, 17 failed, 8 skipped, 4 deselected**;
+  the same fourteen plus three independently baselined Zarr 3 serialization
+  failures (prepared-input, source-covariance and linked-handoff artifacts).
+- GitHub CI run `39983254785` used a Git checkout and therefore had thirteen
+  stale-expectation failures (4,125 passes) on each locked interpreter; moving
+  dependencies had sixteen failures (4,122 passes). Docs run `39983254841` passed.
+  These failed initial runs are evidence, not final acceptance success.
+
+The correction ports the remaining tests to canonical overrides/commands and
+ordinary unsupported-option errors, retaining path precedence and scientific
+assertions. CO2 provenance permits `None` and still checks forty hexadecimal
+characters when known and equality between preparation/sample manifests. The
+unknown-revision path was executed against the original no-Git snapshot: **2
+checks passed**. No production code or scientific equations/defaults changed.
+A rendered migration-guide check also adds the required explicit likelihood
+choice to its Python/INI examples. Final revision-specific retry remains pending.
+
+Correction verification: all **117** tests in the three affected standard
+handoff/API/resource-boundary modules pass, preserving canonical flat/grouped
+file and override path precedence while rejecting historical aliases. The
+supplementary `legacy_codec_witnesses_2026_10_23.json` preserves ten explicit
+codec inputs/expectations and exact source hashes without legacy imports;
+it is source-inspected supplementary capture after the initial retirement.
+All original #960 fixtures remain unchanged. Ruff, strict OpenSpec **10/10**
+and whitespace checks pass. Final complete retry results are not yet available.

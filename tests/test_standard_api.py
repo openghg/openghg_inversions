@@ -6,18 +6,18 @@ import pytest
 
 
 def test_removed_python_runner_explains_migration():
-    with pytest.raises(ImportError, match="removed in 0.8.*run_standard.*InversionOutput.*CLI command is unchanged"):
+    with pytest.raises(ImportError, match="removed in 0.8.*run_standard.*InversionOutput.*rhime run --model standard"):
         from openghg_inversions.rhime import run_rhime  # noqa: F401
 
 
-def test_established_cli_calls_standard_without_python_compatibility_warning(monkeypatch):
-    import openghg_inversions.rhime as rhime
-    from openghg_inversions.cli import _run_rhime_command
+def test_canonical_cli_calls_standard_without_python_compatibility_warning(monkeypatch):
+    from openghg_inversions.rhime import standard
+    from openghg_inversions.cli import main
 
     calls = []
-    monkeypatch.setattr(rhime, "run_standard", lambda **kwargs: calls.append(kwargs))
+    monkeypatch.setattr(standard, "run_standard", lambda **kwargs: calls.append(kwargs))
     with warnings.catch_warnings(record=True) as observed:
-        _run_rhime_command(Namespace(config="selected.ini", start=None, end=None, output_path=None, kwargs=None))
+        main(["run", "--model", "standard", "-c", "selected.ini"])
     assert calls == [{"config_file": "selected.ini"}]
     assert not observed
 

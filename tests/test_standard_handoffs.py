@@ -430,35 +430,57 @@ def test_explicit_latent_only_trace_cannot_complete_handoff_or_replay(tmp_path):
 
 @pytest.mark.parametrize("grouped_override", [False, True])
 @pytest.mark.parametrize("canonical_file", [False, True])
-def test_grouped_loader_merges_raw_aliases_before_translation(tmp_path, monkeypatch, grouped_override, canonical_file):
-    config_dir = tmp_path / "config"
-    invocation = tmp_path / "invocation"
-    config_dir.mkdir()
-    invocation.mkdir()
-    source = config_dir / "choices.json"
+def test_grouped_loader_rejects_retired_alias_in_file_or_override(
+    tmp_path, monkeypatch, grouped_override, canonical_file,
+):
+    source = tmp_path / "choices.json"
     source.write_text(json.dumps({"output": {
         "output_path" if canonical_file else "outputpath": "file-products",
     }, "data": {"basis_path": "basis.nc"}}))
     overrides = {"outputpath": "override-products"}
     if grouped_override:
         overrides = {"output": overrides}
+    monkeypatch.setattr(
+        "openghg_inversions.rhime.requests.resolve_resource_paths",
+        lambda *a, **k: pytest.fail("resolved resources before rejecting retired alias"),
+    )
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*outputpath"):
+        load_params(params_file=source, overrides=overrides)
+
+
+@pytest.mark.parametrize("grouped_override", [False, True])
+@pytest.mark.parametrize("grouped_file", [False, True])
+def test_canonical_loader_overrides_file_values_before_resolving_invocation_paths(
+    tmp_path, monkeypatch, grouped_override, grouped_file,
+):
+    config_dir = tmp_path / "config"
+    invocation = tmp_path / "invocation"
+    config_dir.mkdir()
+    invocation.mkdir()
+    source = config_dir / "choices.json"
+    file_output = {"output_path": "file-products"}
+    source.write_text(json.dumps({
+        **({"output": file_output} if grouped_file else file_output),
+        "data": {"basis_path": "basis.nc"},
+    }))
+    overrides = {"output_path": "override-products"}
+    if grouped_override:
+        overrides = {"output": overrides}
     monkeypatch.chdir(invocation)
-    with pytest.warns(DeprecationWarning, match="Ignoring" if canonical_file else "deprecated"):
-        loaded = load_params(params_file=source, overrides=overrides)
-    expected = invocation / ("file-products" if canonical_file else "override-products")
-    assert loaded["output"]["output_path"] == expected
+    loaded = load_params(params_file=source, overrides=overrides)
+    assert loaded["output"]["output_path"] == invocation / "override-products"
     assert loaded["data"]["basis_path"] == invocation / "basis.nc"
 
 
-def test_grouped_loader_flat_canonical_override_wins_file_alias(tmp_path, monkeypatch):
-    invocation = tmp_path / "invocation"
-    invocation.mkdir()
+def test_grouped_loader_rejects_file_alias_even_with_canonical_override(tmp_path, monkeypatch):
     source = tmp_path / "choices.json"
     source.write_text(json.dumps({"output": {"outputpath": "file-products"}}))
-    monkeypatch.chdir(invocation)
-    with pytest.warns(DeprecationWarning, match="Ignoring"):
-        loaded = load_params(params_file=source, overrides={"output_path": "products"})
-    assert loaded["output"]["output_path"] == invocation / "products"
+    monkeypatch.setattr(
+        "openghg_inversions.rhime.requests.resolve_resource_paths",
+        lambda *a, **k: pytest.fail("resolved resources before rejecting retired alias"),
+    )
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*output.outputpath"):
+        load_params(params_file=source, overrides={"output_path": "products"})
 
 
 def test_saving_samples_ignores_unused_configured_lazy_priors(tmp_path):

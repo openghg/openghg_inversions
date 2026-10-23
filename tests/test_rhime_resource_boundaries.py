@@ -124,7 +124,7 @@ def test_modern_routes_reject_historical_resource_selectors_before_acquisition(m
         pytest.fail("Historical options reached acquisition")
 
     monkeypatch.setattr("openghg_inversions.inversion_data.MergedData.from_options", unexpected_acquisition)
-    with pytest.raises(ValueError, match="Historical resource selectors.*HBMCMC"):
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*bc_basis_case.*bc_basis_directory") as error:
         if route == "staged":
             # The standard prepare phase loads its request through the single loader.
             module.load_params(overrides=options, phase_groups={"data"})
@@ -136,3 +136,4 @@ def test_modern_routes_reject_historical_resource_selectors_before_acquisition(m
             module.run_custom_rhime(**options)
         else:
             module.run_standard(**options)
+    assert "HBMCMC" not in str(error.value)

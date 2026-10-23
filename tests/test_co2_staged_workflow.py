@@ -194,7 +194,9 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(
     assert set(provenance) == {"version", "revision", "dirty"}
     assert provenance["version"]
     revision = provenance["revision"]
-    assert len(revision) == 40 and all(character in "0123456789abcdef" for character in revision)
+    assert revision is None or (
+        len(revision) == 40 and all(character in "0123456789abcdef" for character in revision)
+    )
     assert sample_manifest["provenance"] == provenance
     assert sample_manifest["preparation_generation"] == prepare_manifest["generation"]
     assert prepare_manifest["start_date"] == "2020-01-01"

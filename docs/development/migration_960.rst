@@ -453,3 +453,17 @@ The affected ``rhime/co2/configuration.py``, ``co2_o2_configuration.py`` and
 ``17e28ed0``. Generic validation treats scientific mapping contents as opaque
 and retains supported output fields, including ``source_to_sector``; it checks
 option names without evaluating numerical arrays or resolving resources.
+
+Supplementary codec witnesses after initial acceptance
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``tests/fixtures/migration_960/retirements/legacy_codec_witnesses_2026_10_23.json``
+preserves ten concrete adapter-only input/expectation cases, with exact pinned
+and PR-base blob hashes, SHA256 values and source links. They cover typed
+metadata, dotted markers, source labels/order, borrowed serialization, native
+source times, period fallback and lazy/all-NaN layouts. This source-inspected
+supplement follows the initial retirement commit and expands the earlier
+``legacy-data`` inventory; it is not historical execution or newly promised
+artifact support. Disposition remains unsupported historical codecs under
+U1, with coverage/reporting owned by #948/#949 and independent basis support
+by #951. Original #960 inputs and observations remain unchanged.

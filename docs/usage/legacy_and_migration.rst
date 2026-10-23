@@ -281,11 +281,16 @@ the table below::
        start_date="2019-01-01",
        end_date="2019-02-01",
        flux_sources=["total-ukghg-edgar7"],
+       mismatch_model="pollution_event",
        draws=5_000,
        chains=4,
        output_path="outputs",
        output_name="ch4_TAC",
    )
+
+Choose a supported ``mismatch_model`` explicitly, or supply a custom likelihood.
+This example uses the former ordinary wrapper's ``pollution_event`` model choice
+with the modern scientific semantics described below.
 
 The Python ``run_rhime`` API is removed in 0.8; importing it raises an
 ``ImportError`` directing callers to ``run_standard``. This supersedes the earlier
@@ -493,8 +498,14 @@ species, site, dates, priors, ``burn`` and other scientific settings::
    output_path = "outputs"
    output_name = "ch4_TAC"
    output_format = "legacy"
+   mismatch_model = "pollution_event"
    basis_partition_paths = ["/data/bases/monthly/EUROPE/january.nc",
                             "/data/bases/monthly/EUROPE/february.nc"]
+
+The modern likelihood choice is explicit: the former ordinary wrapper selected
+``pollution_event`` when omitted, while true historical fixedbasis execution had
+different defaults and equations. Review this choice against the original route
+and the scientific compatibility guidance below.
 
 The selected partition filenames are examples: inspect your old case directory
 and select the files actually needed. Use ``basis_path`` instead for one retained
