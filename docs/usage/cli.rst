@@ -60,8 +60,7 @@ scientific inputs:
 
 The configured model, sampler and output choices govern execution and requested
 products. Original requested dates and domain must be supplied explicitly or
-retained in preparation provenance. ``rhime run-co2`` is a transitional alias
-approved for retirement below. See :doc:`co2_model_family` for its scientific prerequisites.
+retained in preparation provenance. See :doc:`co2_model_family` for its scientific prerequisites.
 
 Saved standard and multisector phases
 --------------------------------------
@@ -76,12 +75,12 @@ preparation/two-model/two-output sequence and the separate CO2 interface.
 
 .. _rhime-cli-command-retirement:
 
-Approved CLI command retirement
---------------------------------
+Removed CLI commands
+--------------------
 
-The agreed development target requires the following finite command-name
-migration. Removal is pending: current source still installs both executables
-and accepts the old full-run commands. Use the canonical routes in new scripts.
+Modern development uses the following finite command-name migration. The old
+executable and full-run aliases are unavailable. Update existing scripts to the
+canonical routes.
 
 .. list-table:: Accepted command replacements
    :header-rows: 1
@@ -99,7 +98,7 @@ and accepts the old full-run commands. Use the canonical routes in new scripts.
    * - ``run-co2`` under either executable
      - ``rhime run --model co2``
 
-The target has one installed executable, ``rhime``. Positional dates,
+The package has one installed executable, ``rhime``. Positional dates,
 ``--kwargs``, effective configuration, date/output overrides, scientific
 execution, outputs and artifact contracts retain their meanings. No replacement
 argument syntax is agreed: positional dates and ``--kwargs`` remain open for
@@ -131,20 +130,19 @@ OpenGHG acquisition or native-reduction preparation route. The
 their existing ``prepared_inputs`` interfaces and trace returns. Linked recipes are not choices for the configuration-driven ``rhime run`` command.
 See :doc:`co2_model_family` for the TOML configuration and handoff commands.
 
-The finite CLI names listed above are absent from the target interface under the
+The finite CLI names listed above are absent from the interface under the
 :doc:`agreed development boundary <legacy_and_migration>`. The separately
 approved five-name Python map below defines the required alias removals;
 broader Python naming/types/module moves need separately agreed maps.
 
 .. _rhime-python-alias-retirement:
 
-Approved Python alias retirement
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Removed Python aliases
+~~~~~~~~~~~~~~~~~~~~~~
 
 Use the canonical names in new Python calls and imports. These five aliases
-are absent from the target interface, including naming-only forwarding aliases.
-Current source still implements them as direct assignments; this contract
-amendment does not delete them.
+are unavailable, including naming-only forwarding aliases. Their canonical
+replacements remain supported.
 
 .. list-table:: Accepted Python alias replacements
    :header-rows: 1
@@ -279,11 +277,10 @@ For a multisector batch run, only the config and subcommand need to change:
        --config "$INI_FILE" \
        --output-path "$OUTPUT_DIR"
 
-The historical ``run_hbmcmc.py`` entry point remains a compatibility wrapper
-for supported older fixedbasis-style INI files. It does not turn such a file
-into a multisector configuration. For new batch jobs, start from the RHIME
-template, use ``flux_sources`` for standard runs, and configure the sector
-sources described in :doc:`rhime` before selecting
+The historical ``run_hbmcmc.py`` entry point is removed. Convert fixedbasis-style
+settings explicitly or retain matching older software. For modern batch jobs,
+start from the RHIME template, use ``flux_sources`` for standard runs, and
+configure the sector sources described in :doc:`rhime` before selecting
 ``rhime run --model multisector``.
 
 Merging PARIS outputs
@@ -295,7 +292,7 @@ templates from their schema:
 
 .. code-block:: console
 
-   $ openghg-inversions merge-paris-outputs \
+   $ rhime merge-paris-outputs \
        SF6_EUROPE_PARIS_flux_2019-01-01.nc \
        SF6_EUROPE_PARIS_flux_2020-01-01.nc \
        --output SF6_EUROPE_PARIS_flux_2019-2020.nc

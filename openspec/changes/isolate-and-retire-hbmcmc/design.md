@@ -4,9 +4,10 @@
 
 The maintainer-approved #944/#961 boundary and subsequent #972 review amendments
 require modern execution without HBMCMC or temporary runtime option translation.
-The desired contracts do not retain old interfaces merely because the current
-implementation still contains them. This contract/documentation amendment does
-not itself delete production code or establish release readiness.
+The desired contracts do not retain old interfaces merely because transitional
+code implemented them. The #719 implementation deletes those runtime surfaces;
+revision-specific acceptance is recorded in tasks and the PR, with no release
+readiness claim.
 
 The finite [CLI map](tasks.md#cli-command-name-amendment--23-october-2026) targets
 one `rhime` executable and canonical `run --model` commands. The
@@ -108,7 +109,8 @@ require matching old software; modern products retain all-chain semantics.
 
 The six-tuple `retrieve_inversion_data` and deprecated
 `data_processing_surface_notracer` forwarding wrapper live in HBMCMC's
-`legacy_data`. Their error preparation, cache behavior, signatures, warnings and
+`legacy_data` at the pinned pre-retirement revision. Their error preparation,
+cache behavior, signatures, warnings and
 legacy-container returns are historical evidence covered by namespace retirement,
 not an independent modern API promise. Port relevant scientific coverage to
 canonical `MergedData`/`PreparedInputs` without creating another wrapper.
@@ -120,5 +122,33 @@ Review actual consumers before deleting anything outside the finite maps; keep
 independent basis decisions with #951. Verify modern imports/execution without
 HBMCMC, wheel/sdist contents and rejection of retired access paths. Use focused
 canonical-input scientific regressions and distinguish inspected source from
-executed checks at the implementation revision. Do not treat this planning
-amendment or past isolation CI as completed runtime deletion.
+executed checks at the implementation revision. Past isolation CI and #972
+contract checks do not validate this runtime deletion.
+
+## Runtime retirement implementation — 23 October 2026
+
+The base is merged #972, `17e28ed081954b4155c9d85b66eaeef2ad81853c`, with
+#966 already landed. The dated #960 comparison in
+`docs/development/migration_960.rst` and plain
+`tests/fixtures/migration_960/retirements/runtime_719_2026_10_23.json` records
+new discoveries before namespace removal, exact maps, dispositions and owners.
+Original archived inputs and expectations are preserved.
+
+Runner requests now group only canonical names; unsupported options fail at the
+owning request boundary. Pure INI decoding continues to return original values.
+Every explicit `use_tracer` value follows ordinary unsupported-option validation.
+Acquisition accepts only canonical flux selectors. Independent basis keyword
+compatibility remains with #951 rather than being removed by runtime cleanup.
+The CLI retains generic `run --model` dispatch, including distinct CO2 forwarding,
+and staged/product operations; only the approved command map is retired. Only
+the five approved Python alias assignments/re-exports are removed.
+
+Scientific regressions formerly using dictionary/six-tuple adapters move to
+canonical `MergedData`, resolved `DataConfig` acquisition and explicit error
+preparation. Resource tests use exact canonical selections; historical discovery
+expectations remain plain converter evidence. Canonical explicit settings retain
+sampler meaning, priors, offset/fixed-error semantics and all-chain summaries.
+Historical wrapper defaults and config-copy origin behavior remain archived,
+without becoming default policies of modern execution. No aggregation retirement,
+retained-population imputation or nested-alignment science is imported from the
+isolated #971/#964/#973 drafts.

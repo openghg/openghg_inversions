@@ -67,7 +67,7 @@ Run the preparation stage:
 
 .. code-block:: bash
 
-   openghg-inversions prepare \
+   rhime prepare \
      --config "$CONFIG" \
      --model standard \
      --output-dir "$RUN/prepare"
@@ -128,7 +128,7 @@ tails:
 
 .. code-block:: bash
 
-   openghg-inversions prior-predictive \
+   rhime prior-predictive \
      --config "$CONFIG" \
      --model standard \
      --preparation-manifest "$RUN/prepare/prepare-manifest.json" \
@@ -174,10 +174,10 @@ Load the result and inspect its groups and variable names before plotting:
 .. jupyter-input::
 
    from openghg_inversions.serialization import load_trace
-   from openghg_inversions.inversion_data import RhimePreparedInputs
+   from openghg_inversions.inversion_data import PreparedInputs
 
    prior = load_trace(run / "prior-predictive/prior-predictive.nc")
-   prepared = RhimePreparedInputs.load(prepared_path)
+   prepared = PreparedInputs.load(prepared_path)
    observations = prepared.inv_inputs["mf"]
    concentration_units = observations.attrs.get("units", "mole fraction")
    {
@@ -384,7 +384,7 @@ sensitivities, or other baked preparation policies require new preparation.
 
 .. code-block:: bash
 
-   openghg-inversions sample \
+   rhime sample \
      --config "$CONFIG" \
      --model standard \
      --preparation-manifest "$RUN/prepare/prepare-manifest.json" \
@@ -415,7 +415,7 @@ Next run the staged convergence check:
 
 .. code-block:: bash
 
-   openghg-inversions diagnose \
+   rhime diagnose \
      --posterior "$RUN/sample/posterior.nc" \
      --sample-manifest "$RUN/sample/sample-manifest.json" \
      --output-dir "$RUN/diagnose"

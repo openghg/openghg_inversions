@@ -53,7 +53,7 @@ from openghg_inversions.rhime import (
     postprocess_standard_outputs,
     save_inversion_output,
     annotate_sample_trace,
-    assemble_rhime_inputs,
+    assemble_inputs,
     build_sensitivities,
     filter_observations,
     prepare_observation_errors,
@@ -326,7 +326,7 @@ def run_custom_rhime(
         multisector=False,
     )
 
-    prepared = assemble_rhime_inputs(
+    prepared = assemble_inputs(
         sensitivities,
         basis_functions,
         site_options=site_options,

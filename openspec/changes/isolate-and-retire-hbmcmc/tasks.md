@@ -188,3 +188,28 @@ does not finalize CLI positional-date/`--kwargs` syntax or complete a delivery t
 - [ ] 3.2 After development deletion and acceptance, sync the remaining removal requirement
   and archive this change. Validate both capabilities, delivery status and links;
   verify no active consumer restores the superseded dependency rule.
+
+## Issue 719 implementation evidence — 23 October 2026
+
+- Base: `17e28ed081954b4155c9d85b66eaeef2ad81853c`, including merged #966/#972.
+- Before-removal discoveries: dated `runtime_719_2026_10_23.json` in the #960
+  retirement fixtures; original request/resource/released inputs and expectations
+  remain unchanged. The appended migration ledger maps every removal slice to
+  affected entries/cases, pinned/base comparisons, dispositions and follow-up owners.
+- Source inspection: compatibility/runner/CLI/five-alias definitions are unchanged
+  from pinned `0a32d73a`, except #956's explicit outer source concatenation in
+  `legacy_data`; intervening modern merge/PyMC/fixed-OU/sampler checks remain in
+  the base. This is inspection evidence, not historical scientific execution.
+- Runtime delivery: namespace/adapters/executable surfaces, enumerated option and
+  output aliases, every explicit tracer option, exact CLI map and five Python
+  aliases are retired. Canonical callers and regression fixtures are ported;
+  historical adapter-only drivers retire while plain source cases remain.
+- Retained owners: canonical scientific/labeled/lazy behavior and modern codecs
+  remain; #945 owns unresolved names/version, #951 independent basis decisions,
+  #948 source coverage, #949/#950 tools, #946/#947 maintenance, #952 integrated
+  acceptance and #432 complete migration guidance. #876/#964 retain imputation
+  and nested alignment; #971 is a separate prerequisite for #964.
+- Fresh implementation validation is recorded below only when executed. Earlier
+  #972 documentation/contract checks and draft #964/#973 test counts are not
+  runtime evidence for this revision. Task 3.2 remains pending; no archive or
+  release-readiness claim is made.

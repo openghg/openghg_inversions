@@ -46,11 +46,12 @@ Terminology
    linked forward models. The standard-family acquisition and preparation path
    does not support tracer inversions; the advanced linked CO₂/O₂ recipe starts
    from separately prepared channel arrays. The generic ``use_tracer`` flag
-   must be omitted or ``False``; ``True`` raises ``ValueError`` before
-   acquisition or execution, including when merged data is supplied.
+   must be omitted. Every explicit value, including ``False``, receives
+   ordinary unsupported-option validation before scientific work, including
+   when merged data is supplied.
 
 ``emissions_name``
-   Legacy compatibility spelling accepted only when ``flux_sources`` is absent.
+   Unsupported historical spelling; use ``flux_sources``.
 
 Configuring PyTensor precision
 ------------------------------
@@ -155,7 +156,7 @@ metadata.
 Inspecting configuration
 ------------------------
 
-Pass options directly to ``run_standard`` or ``run_rhime_multisector`` for an
+Pass options directly to ``run_standard`` or ``run_multisector`` for an
 ordinary inversion. To inspect their resolved choices before retrieving data,
 use ``RhimeConfig.from_params(options, multisector=False)`` (or
 ``multisector=True`` for the multisector recipe), then pass the result as
@@ -193,18 +194,18 @@ Running Prepared Inputs
 -----------------------
 
 Advanced standard workflows can prepare canonical inputs separately from data
-acquisition. Pass the retained ``RhimePreparedInputs`` as ``prepared`` to
+acquisition. Pass the retained ``PreparedInputs`` as ``prepared`` to
 ``run_standard`` with the ordinary resolved configuration. This skips acquisition
 and preparation, then uses the same explicit materialization, model construction,
 sampling and output operations. The result is ``InversionOutput``:
 
 .. code-block:: python
 
-   from openghg_inversions.inversion_data import RhimePreparedInputs
+   from openghg_inversions.inversion_data import PreparedInputs
    from openghg_inversions.rhime import RhimeConfig, run_standard
 
    # Constructed by another preparation graph or restored from a numerical cache.
-   prepared = RhimePreparedInputs.load("prepared-inputs.nc")
+   prepared = PreparedInputs.load("prepared-inputs.nc")
    config = RhimeConfig.from_params(
        {
            "species": "ch4",
@@ -311,7 +312,7 @@ corresponding recipe module. See
 :ref:`the concrete model stability contract <rhime-builder-stability>` for the
 full contract.
 
-``RhimePreparedInputs.save`` accepts NetCDF paths ending in ``.nc`` and Zarr
+``PreparedInputs.save`` accepts NetCDF paths ending in ``.nc`` and Zarr
 paths ending in ``.zarr``. Each artifact contains the canonical inversion
 inputs and the retained operator-backed basis, including its reference flux;
 ``basis_artifact_path`` is recorded only as provenance and is not needed to
@@ -364,7 +365,7 @@ data acquisition. The supported container boundary is deliberately narrow:
      - Unsupported
      - Wrap one or more site-local datasets in an ordered mapping or a
        direct-child ``DataTree``. Load an already canonical artifact with
-       ``RhimePreparedInputs.load``.
+       ``PreparedInputs.load``.
    * - Dense ``Dataset(site, time)``
      - Unsupported
      - No trimming or interpretation of padded rows is attempted. Split it
@@ -376,7 +377,7 @@ data acquisition. The supported container boundary is deliberately narrow:
    * - Pre-stacked ``nmeasure`` data
      - Unsupported
      - Pass per-site data to the adapter. Load an already canonical prepared
-       artifact with ``RhimePreparedInputs.load`` instead.
+       artifact with ``PreparedInputs.load`` instead.
 
 This matches the cached verification-games workflow: sites may have unequal or
 disjoint time axes, and the existing ragged gather path creates ``nmeasure``
@@ -461,10 +462,10 @@ prepared artifact is reopened:
 
 .. code-block:: python
 
-   from openghg_inversions.inversion_data import RhimePreparedInputs
+   from openghg_inversions.inversion_data import PreparedInputs
 
    prepared.save("base-prepared-inputs.zarr")
-   prepared = RhimePreparedInputs.load("base-prepared-inputs.zarr")
+   prepared = PreparedInputs.load("base-prepared-inputs.zarr")
 
 Finally, construct and execute the OpenGHG Inversions run from the canonical
 prepared object:
@@ -560,8 +561,7 @@ deterministic observation-aligned ``fixed_baseline`` is deliberately rejected
 until a reusable semantic Baseline component defines common likelihood and
 output behavior; this follow-up is tracked in `issue #550
 <https://github.com/openghg/openghg_inversions/issues/550>`_. New prepared-input
-features do not change the transitional old-INI wrapper's compatibility
-contract.
+features do not establish historical artifact compatibility.
 
 Config Files
 ------------
@@ -624,7 +624,7 @@ case/directory options.
 The lower-level Python basis API also supports ``"region_constrained"`` when a
 caller supplies an already loaded ``region_classes`` ``DataArray``. That path
 keeps generated labels from crossing land/sea, country, inner/outer, or other
-class boundaries, but RHIME config and ``run_hbmcmc.py`` do not yet load
+class boundaries, but RHIME config does not yet load
 ``region_classes`` from files. For RHIME runs that need these masks today,
 build and save the basis through the Python basis API, then select its exact
 ``basis_path``.
@@ -774,10 +774,8 @@ fixed ``bc`` vector and no boundary-condition random variable. This is distinct
 from supplying a standalone baseline time series, which belongs to a separate
 baseline component.
 
-The transitional ``run_hbmcmc.py`` wrapper supports only the standard
-single-sector RHIME recipe; it does not add multisector behaviour to an old INI
-file. Migrate source-resolved workflows to ``run_rhime_multisector`` and its
-canonical configuration vocabulary.
+Use ``run_multisector`` and canonical configuration for source-resolved
+workflows; the historical HBMCMC wrapper is removed.
 
 Correlated Positive Reduced States
 ----------------------------------
@@ -950,9 +948,8 @@ Output Formats
 
 Standard single-sector RHIME supports ``inv_out``, ``basic``, ``paris``, and
 ``legacy`` output formats. ``legacy`` writes the old HBMCMC-compatible NetCDF
-product from the modern ``InversionOutput``. The deprecated names ``hbmcmc``
-and ``hbmcmc_postprocessing`` are accepted with ``DeprecationWarning`` during
-configuration construction. Prefer ``legacy`` in new configurations.
+product from the modern ``InversionOutput``. The historical names ``hbmcmc``
+and ``hbmcmc_postprocessing`` are unsupported; use ``legacy``.
 
 ``basic`` selects no written product and does not compute a discarded summary in
 the standard runner. To inspect reporting results in memory, call
@@ -1007,12 +1004,9 @@ Derived flux products keep their existing ``flux_time`` coordinate label;
 see :doc:`retained_state_reconstruction` for the linear reconstruction and
 source-axis contract.
 
-``run_hbmcmc.py`` is a transitional compatibility wrapper for supported old
-fixedbasis-style INI files. It translates legacy option names to the modern
-``run_standard`` API and uses the legacy filename convention. It always executes
-RHIME: the direct ``fixedbasisMCMC`` / ``inferpymc`` implementation and the
-``--legacy-fixedbasis`` option have been removed. New scripts and new configs
-should use ``openghg-inversions run-rhime`` or ``run_standard(...)`` directly.
+The complete HBMCMC namespace and runtime request translation are removed.
+Use canonical settings with ``rhime run`` or ``run_standard(...)`` directly;
+matching older software is required for historical execution.
 See :doc:`legacy_and_migration` for the parameter map, return-type changes,
 and interfaces without a current equivalent.
 

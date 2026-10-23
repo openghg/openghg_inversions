@@ -122,28 +122,14 @@ resolution expands the final values together. The resulting ``config`` can be
 passed to a runner without resolving again.
 
 ``RhimeConfig.from_params`` is the single construction entry point; the former
-``resolve_rhime_config`` wrapper has been removed. Runner frontends, including
-``run_standard`` and staged commands, translate supported deprecated names before
-calling this constructor. While this transitional translation remains on devel,
-it emits ``DeprecationWarning``. The :doc:`agreed development boundary
-<legacy_and_migration>` permits bounded removal after affected evidence and
-regression migration. For names such as ``xprior`` and ``outputname``,
-canonical names take precedence. Flux keyword deprecations follow the stricter
-rules below. Canonical inputs emit no warning. Configuration construction has no
-alias vocabulary; deprecated names passed directly to ``RhimeConfig.from_params``
-are ordinary unknown options. Modern configuration and runners do not import or
-call HBMCMC.
-
-The deprecated dictionary-returning ``params_from_config`` adapter is available
-only from ``openghg_inversions.hbmcmc.compatibility`` while that transitional
-adapter remains; its RHIME
-re-export is removed. ``normalise=False`` returns decoded values plus winning
-overrides. ``normalise=True`` translates aliases and historical resource
-selections after overrides and returns canonical keys and resolved ``Path``
-values. It does not construct configuration defaults or expand site shorthand.
-Modern callers use ``read_rhime_ini``, apply overrides, then call
-``RhimeConfig.from_params`` as above. Prefer ``x_prior``, ``output_name`` and
-``flux_sources`` when migrating code or files.
+``resolve_rhime_config`` wrapper and historical dictionary-returning
+``params_from_config`` adapter are removed. Runner frontends, staged commands
+and acquisition accept canonical names and reject historical spellings before
+scientific work. No alias translation or deprecation warnings remain at these
+boundaries. Use ``x_prior``, ``output_name`` and ``flux_sources``.
+Every explicit ``use_tracer`` occurrence is unsupported regardless of value;
+omission remains valid. Modern callers use ``read_rhime_ini``, apply overrides,
+then construct ``RhimeConfig``. See :doc:`legacy_and_migration` for mappings.
 
 Basis artifact defaults and the 0.8 transition are described below; a redesign
 of the INI sections remains a separate decision.
@@ -158,16 +144,10 @@ a nested inner domain. Nested preparation uses ``inner_flux_store`` (default:
 outer flux store) and ``inner_flux_domain`` (default: inner footprint domain,
 independent of the outer flux-domain selector).
 
-At runner frontends, the deprecated spellings ``emissions_store``,
-``emissions_domain``,
-``inner_emissions_store`` and ``inner_emissions_domain`` remain accepted with
-``DeprecationWarning`` until their bounded removal under the
-:doc:`agreed development boundary <legacy_and_migration>`. Supply only one spelling of
-each selector: old and new names together raise ``ValueError``, including
-equal values and explicit ``None``. These modern deprecations are resolved
-before configuration construction. ``RhimeConfig.from_params`` accepts only
-the ``flux_*`` names, with no translation or deprecation warnings. Resolved
-configuration fields and canonical option inventories contain only the new names.
+The historical spellings ``emissions_store``, ``emissions_domain``,
+``inner_emissions_store`` and ``inner_emissions_domain`` are unsupported at
+runner and acquisition boundaries, including when their canonical replacement
+is also supplied. Use only the corresponding ``flux_*`` names.
 
 Basis paths, support maps and compatibility
 -------------------------------------------
@@ -208,9 +188,7 @@ writing an export and no longer accepts ``output_path``. Runners explicitly
 save it through ``BasisFunctions.save`` when ``basis_output_path`` is requested,
 then retain the selected export path in metadata. The application helper
 ``rhime.preparation.resolve_basis_inputs(config.data)`` loads these scientific inputs.
-Historical case/directory selections are accepted only by the temporary HBMCMC
-entry points while present on devel, which translate winning selections before calling modern
-APIs. Modern runners reject ``fp_basis_case``, ``basis_directory``,
+Historical case/directory selectors are unsupported. Modern runners reject ``fp_basis_case``, ``basis_directory``,
 ``bc_basis_case`` and ``bc_basis_directory`` before acquisition; resolved requests
 contain explicit selections. The numerical functions do no file discovery.
 When the selected algorithm needs a packaged support map, the application
@@ -281,10 +259,7 @@ resolved data, not ``bc_basis_case`` or ``bc_basis_directory`` discovery options
 
 The default NESW calculation uses acquired directional boundary contributions
 and needs no basis file. Leave ``bc_basis_paths`` unset for NESW; scientific
-calls use ``bc_basis=None``. On the HBMCMC route only, a legacy
-``bc_basis_directory`` supplied with NESW warns that it is unused and deprecated;
-it triggers neither discovery nor a missing-directory error. ``use_bc=False``
-skips BC resource loading.
+calls use ``bc_basis=None``. ``use_bc=False`` skips BC resource loading.
 
 ``country_directory`` is removed from run configuration in 0.8 and is rejected
 before acquisition. Replace it with ``country_file`` for reporting,
@@ -314,21 +289,17 @@ Direct retrieval APIs retain their scalar shorthand without requiring model,
 output or sampler settings. The acquisition-and-preparation convenience function
 ``prepare_rhime_inputs`` has been removed. For a complete inversion, use
 ``run_standard``; for custom preparation, call ``acquire_merged_data`` (or
-``RhimeMergedData.from_options``) followed by ``prepare_observation_errors``,
+``MergedData.from_options``) followed by ``prepare_observation_errors``,
 ``filter_observations``, ``openghg_inversions.basis.prepare_basis``,
-``build_sensitivities`` and ``assemble_rhime_inputs``. These steps take the
+``build_sensitivities`` and ``assemble_inputs``. These steps take the
 acquired per-site datasets and ``SiteOptions`` and return new mappings; the
-acquired ``MergedData`` never carries derived errors or filtered data. The explicit legacy function
-``openghg_inversions.hbmcmc.legacy_data.retrieve_inversion_data`` performs
-fresh surface or column acquisition and returns its established six-tuple of
-merged data and retained metadata lists. The former
-``data_processing_surface_notracer`` name is a deprecated wrapper with the same
-signature and return. ``RhimeMergedData.from_options`` performs fresh acquisition
-from resolved selectors. ``averaging_error`` is a preparation choice: missing ``mf_error`` is derived
+acquired ``MergedData`` never carries derived errors or filtered data.
+The historical six-tuple retrieval wrapper is removed; use
+``MergedData.from_options`` for fresh acquisition from resolved selectors. ``averaging_error`` is a preparation choice: missing ``mf_error`` is derived
 from acquired repeatability/variability before temporal filtering or aggregation.
 Existing custom errors remain authoritative. ``averaging_period`` still selects
 OpenGHG acquisition/resampling. Acquisition stays in memory; persist the completed
-``RhimePreparedInputs`` for reuse. Runners reuse a supplied ``merged_data``
+``PreparedInputs`` for reuse. Runners reuse a supplied ``merged_data``
 handoff before acquisition, bypassing store access. Before preparation, the merged
 owner checks known species, domain, date bounds and source layout against the
 request. Conflicts, including changed acquisition windows, raise without

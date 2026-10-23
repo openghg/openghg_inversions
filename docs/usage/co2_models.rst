@@ -586,14 +586,14 @@ native covariance products.
 Pass ``aggregation_error_rank=None`` to keep the reduction's exact dense
 unresolved covariance::
 
-   from openghg_inversions.inversion_data import RhimePreparedInputs
+   from openghg_inversions.inversion_data import PreparedInputs
    from openghg_inversions.rhime.co2 import prepare_co2_inputs
    from openghg_inversions.rhime.co2.co2_runner import (
        annotate_co2_trace, materialize_co2_inputs, build_co2_from_materialized,
    )
    from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
-   canonical_inputs = RhimePreparedInputs.load("base-prepared-inputs.zarr")
+   canonical_inputs = PreparedInputs.load("base-prepared-inputs.zarr")
    prepared = prepare_co2_inputs(
        canonical_inputs,
        reduction,

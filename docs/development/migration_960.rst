@@ -447,3 +447,9 @@ name-only validation now owns unsupported options in all groups and phases;
 inactive scientific values and resource loading remain deferred. Disposition:
 unsupported, #719 implementation and #949 migration reporting. This discovery
 does not authorize resolving inactive values or changing CO2 science.
+
+The affected ``rhime/co2/configuration.py``, ``co2_o2_configuration.py`` and
+``execution.py`` have no changes between pinned ``0a32d73a`` and base
+``17e28ed0``. Generic validation treats scientific mapping contents as opaque
+and retains supported output fields, including ``source_to_sector``; it checks
+option names without evaluating numerical arrays or resolving resources.
