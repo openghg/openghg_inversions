@@ -437,3 +437,13 @@ execution. No converter, launcher, new artifact format support, release number
 or release-readiness decision is supplied here. Retained-population imputation
 and nested alignment remain #876/#964; provider acquisition averaging precedes
 inversion-side error combination, and aggregation is not selection.
+
+Additional bounded discovery before the CO2 validation slice: known inactive
+configuration sections in ``validate_co2_config`` / ``load_co2_o2_params`` did
+not validate option names. An ``outputs.use_tracer=False`` could survive
+preparation, and ``sampling.use_tracer`` could survive postprocessing. Dated
+case ``co2-inactive-section-names`` preserves that inspected behavior. Ordinary
+name-only validation now owns unsupported options in all groups and phases;
+inactive scientific values and resource loading remain deferred. Disposition:
+unsupported, #719 implementation and #949 migration reporting. This discovery
+does not authorize resolving inactive values or changing CO2 science.

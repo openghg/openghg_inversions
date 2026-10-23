@@ -179,10 +179,7 @@
       "id": "legacy-basis",
       "ledger": [
         "U1",
-        "B1",
-        "B2",
-        "B3",
-        "B4"
+        "resource ledger: sorted partitions, retained artifacts, NESW"
       ],
       "route": "development hbmcmc.legacy_basis",
       "historical": "fp_all-based basis/weight dispatch and flat/one-hot preparation adapters",
@@ -216,6 +213,22 @@
         "#949",
         "#952"
       ]
+    },
+    {
+      "id": "co2-inactive-section-names",
+      "ledger": [
+        "I6",
+        "U2"
+      ],
+      "route": "CO2 validate_co2_config / linked load_co2_o2_params",
+      "historical": "known inactive section mappings were not name-validated: outputs.use_tracer=False survives preparation and sampling.use_tracer survives postprocessing; unknown envelope names already rejected",
+      "modern": "ordinary name-only validation of known groups rejects unsupported names in all phases, while inactive values/resources remain deferred",
+      "disposition": "unsupported",
+      "owners": [
+        "#719",
+        "#949"
+      ],
+      "evidence": "source inspection before generic name-validation change; no inactive scientific value resolution"
     }
   ]
 }
