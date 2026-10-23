@@ -158,32 +158,28 @@ def test_prior_readiness_rejects_explicit_sampler_overrides(tmp_path):
 
 
 @pytest.mark.parametrize("grouped", [False, True])
-def test_phase_preserves_resource_migration_guidance_in_aggregate_error(grouped):
+def test_phase_reports_all_unknown_and_unsuitable_names(grouped):
     from argparse import Namespace
     from openghg_inversions.cli import _rhime_phase_options
-    from openghg_inversions.rhime._request_validation import migration_errors
 
     removed = {"country_directory": "old", "bc_basis_case": "old", "bc_basis_directory": "old"}
     kwargs = {"data": removed} if grouped else dict(removed)
     kwargs.update(unknown=1, draws=10)
     args = Namespace(config=None, params_file=None, kwargs=kwargs)
-    with pytest.raises(ValueError) as caught:
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter") as caught:
         _rhime_phase_options(args, phase="prepare")
     message = str(caught.value)
     for name in (*removed, "unknown", "draws"):
         assert name in message
-    assert all(guidance in message for guidance in migration_errors(removed))
-    for replacement in ("country_file", "landsea_path", "outer_regions_path", "bc_basis_paths"):
-        assert replacement in message
 
 
-def test_phase_errors_explain_every_removed_option():
+def test_phase_reports_every_unknown_option_name():
     from argparse import Namespace
     from openghg_inversions.cli import _rhime_phase_options
 
     args = Namespace(config=None, params_file=None,
                      kwargs={"mcmc_type": "nuts", "calculate_min_error": True, "reparameterise_log_normal": True})
-    with pytest.raises(ValueError) as caught:
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter") as caught:
         _rhime_phase_options(args, phase="sample")
-    for replacement in ("nuts_sampler", "`min_error`", "reparameterise"):
-        assert replacement in str(caught.value)
+    for name in ("mcmc_type", "calculate_min_error", "reparameterise_log_normal"):
+        assert name in str(caught.value)

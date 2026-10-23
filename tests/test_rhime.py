@@ -4132,9 +4132,9 @@ def test_legacy_sampling_names_are_not_rhime_config_aliases() -> None:
         rhime_params.validate_supported_params(params)
 
 
-@pytest.mark.parametrize("output_format", ["hbmcmc", "hbmcmc_postprocessing"])
+@pytest.mark.parametrize("output_format", ["not-a-format", ""])
 @pytest.mark.rhime_contract
-def test_rhime_rejects_retired_output_format_aliases(output_format: str) -> None:
+def test_rhime_rejects_unknown_output_format(output_format: str) -> None:
     with pytest.raises(ValueError, match="output_format"):
         rhime_specs.make_output_spec(output_format=output_format, multisector=False)
 

@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any, get_type_hints
 
 from ._resources import resolve_resource_paths
-from ._request_validation import migration_errors
 from .ini import read_rhime_ini
 from .params import REQUEST_CLAIM_NAMES, DataConfig, option_groups
 from .specs import RhimeOutputSpec
@@ -47,7 +46,7 @@ def load_params(
     Raises:
         ValueError: If both sources are given, the source is not a mapping, or any
             name is unknown or unsuitable for the phase. All such names are
-            reported together with migration guidance.
+            reported together.
     """
     if config_file is not None and params_file is not None:
         raise ValueError("Pass at most one of `config_file` or `params_file`.")
@@ -84,10 +83,7 @@ def load_params(
                 groups[owner][name] = item
     if unsuitable:
         where = "" if phase_groups is None else " for this phase"
-        raise ValueError(
-            " ".join([f"Unsupported RHIME parameter(s){where}: {sorted(unsuitable)!r}.",
-                      *migration_errors(name.rsplit(".", 1)[-1] for name in unsuitable)])
-        )
+        raise ValueError(f"Unsupported RHIME parameter(s){where}: {sorted(unsuitable)!r}.")
     annotations = get_type_hints(DataConfig) | get_type_hints(RhimeOutputSpec)
     result: dict[str, dict[str, Any]] = {group: {} for group in owners}
     for group in active:

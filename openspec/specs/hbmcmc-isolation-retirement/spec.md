@@ -54,11 +54,13 @@ independently supported.
 
 Supported modern INI decoding, canonical configuration construction, path
 conversion and vendored preparation defaults SHALL remain available independently
-of HBMCMC. Runner/acquisition boundaries SHALL accept canonical names and reject
-the historical spellings and output-format aliases enumerated in
-[Compatible public adapters and scientific choices](../rhime-configuration/spec.md#requirement-compatible-public-adapters-and-scientific-choices)
-through ordinary unsupported-option validation before scientific work. They
-SHALL NOT translate those names or emit deprecation warnings in place of rejection.
+of HBMCMC. Runner/acquisition boundaries SHALL validate supported option names and
+applicable values generically under
+[Compatible public adapters and scientific choices](../rhime-configuration/spec.md#requirement-compatible-public-adapters-and-scientific-choices).
+Unknown names SHALL be rejected before scientific work; known inactive values
+SHALL remain deferred until their consuming phase. Validation SHALL NOT recognize
+historical names or values specially, translate them or emit deprecation warnings
+in place of rejection.
 
 Modern `output_format="legacy"`, `save_inversion_output` and independently
 supported basis readers, writers, discovery and reconstruction operations SHALL

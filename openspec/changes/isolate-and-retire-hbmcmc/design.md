@@ -34,7 +34,10 @@ bounded development retirement.
    callers with the existing canonical interfaces; do not make modern execution
    invoke a converter or historical translator.
 2. Remove temporary spelling/output-format/flux translation from modern
-   frontends. Use their ordinary unsupported-option validation for old names.
+   frontends. Validate supported names and applicable values generically; defer
+   values in known inactive groups until their consuming phase. Keep replacement
+   advice in migration documentation/tooling, without legacy-name tables or
+   historical-token checks in runner validation.
    Remove every `use_tracer` field, translation branch and special error:
    every explicit occurrence, regardless of value, is unsupported; omission is
    valid without tracer execution. Cover file, override, saved-phase, direct and
@@ -152,3 +155,28 @@ Historical wrapper defaults and config-copy origin behavior remain archived,
 without becoming default policies of modern execution. No aggregation retirement,
 retained-population imputation or nested-alignment science is imported from the
 isolated #971/#964/#973 drafts.
+
+
+## Clarified validation and rebase follow-up — 23 October 2026
+
+Maintainer review [5634401507](https://github.com/openghg/openghg_inversions/pull/974#pullrequestreview-5634401507)
+authorizes generic supported-name/applicable-value validation and corrects the
+contradictory every-output-alias-occurrence promise. Unknown names fail even in
+inactive groups; known inactive values remain deferred. A shared preparation
+file can therefore contain an invalid output format without resolving it.
+The eventual full/output consumer applies ordinary supported-format validation.
+No special `hbmcmc` token check is added. Explicit `use_tracer` remains an unknown
+option, regardless of value.
+
+Delete `_request_validation.py` and its removed-name/resource diagnostic tables.
+Remove nested's dedicated historical inner-selector branches and those names
+from its extraction set, leaving generic owner validation to report unknowns.
+Migration advice stays in the guide and later #949 tooling. Independently
+supported basis adapters retain #951 ownership.
+
+Rebase onto `b288ac2530ad93ae8f67c5f1d47ee8ee7b666000` retains #975's modern
+Zarr compatibility fixes. Its historical cache writer changes do not restore the
+retired namespace. The dated `review_974_2026_10_23.json` records the new source
+hashes, ZIP expectations, pre-removal diagnostics and phase-value cases before
+this follow-up. Original evidence and earlier revision-specific results remain
+unchanged; fresh validation belongs to the resulting implementation revision.

@@ -1300,9 +1300,6 @@ _NESTED_PARAMETER_NAMES = frozenset(
         "inner_basis_partition_paths",
         "inner_landsea_path",
         "inner_outer_regions_path",
-        "inner_fp_basis_case",
-        "inner_basis_directory",
-        "inner_country_directory",
         "inner_basis_output_path",
         "inner_time_tolerance",
         "inner_x_prior",
@@ -1360,14 +1357,6 @@ def run_nested(
         raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
     params = read_rhime_ini(config_file) if config_file is not None else {}
     params.update(kwargs)
-    if "inner_country_directory" in params:
-        raise ValueError("`inner_country_directory` was removed in 0.8; use `inner_landsea_path` "
-                         "or `inner_outer_regions_path` for preparation and `country_file` for reporting.")
-    if {"inner_fp_basis_case", "inner_basis_directory"} & params.keys():
-        raise ValueError(
-            "Historical inner basis selectors are not supported by modern RHIME; "
-            "use `inner_basis_path`, `inner_basis_partition_path` or `inner_basis_partition_paths`."
-        )
     nested_options = {name: params.pop(name) for name in tuple(params) if name in _NESTED_PARAMETER_NAMES}
     inner_domain = nested_options.pop("inner_domain", None)
     inner_x_prior = nested_options.pop("inner_x_prior", None)

@@ -176,6 +176,11 @@ does not finalize CLI positional-date/`--kwargs` syntax or complete a delivery t
 - [x] 2.2 Update concise devel migration guidance and the removal fragment. Verify
   modern replacements and older-release guidance for legacy-only artifacts,
   with no accidental removal of independently supported output formats.
+- [ ] 2.3 Apply the approved #974 review clarification: remove legacy-specific
+  request diagnostics and nested selector checks; validate supported names and
+  applicable values generically while deferring known inactive values. Reconcile
+  contracts and guidance, preserve affected evidence and run fresh checks on the
+  rebased implementation before marking this follow-up complete.
 
 ## 3. Promote only delivered contracts
 
@@ -301,3 +306,52 @@ After the three export-list deduplications, **41 focused import/public-API/CLI
 checks passed** (8.51 s). A source AST scan finds no duplicate literal export
 lists. Ruff, strict OpenSpec **10/10** and whitespace checks pass. No full-suite
 rerun is claimed for the final export-list/markup/evidence-only follow-up.
+
+
+## Review 5634401507 follow-up — 23 October 2026
+
+The maintainer clarified that modern validation rejects unknown names and invalid
+applicable values generically, while known inactive groups defer value validation.
+The earlier every-retired-output-value-occurrence wording contradicted phase-only
+resolution; its approved correction preserves inactive values and introduces no
+historical-token checks. Explicit `use_tracer` is still an unknown name.
+
+- Remove the residual `_request_validation` diagnostic tables and dedicated
+  nested historical-inner-selector checks/extraction names; use ordinary unknown
+  option validation. Replacement guidance remains in documentation/#949 tooling.
+- Reconcile the durable configuration/retirement wording and active retirement
+  delta/design with generic name and phase-owned value validation. Preserve
+  canonical science, independent codecs and #951 basis support.
+- Compare the affected sources with pinned `0a32d73a` and rebased base `b288ac25`.
+  `requests.py`, `_runner_compat.py` and `nested.py` are unchanged between those
+  source revisions; the diagnostic helper was introduced by this retirement.
+  #975 modern serialization changes remain in the rebased base. New plain
+  `review_974_2026_10_23.json` cases capture source hashes, ZIP expectations,
+  old diagnostics and known-inactive output-value semantics.
+- Preserve all original archived cases and dated validation above. Those earlier
+  results do not validate the rebased follow-up; its executed checks will be
+  recorded separately. Task 3.2 remains pending. No new validation result,
+  archival or release-readiness claim is made by this planning reconciliation.
+
+Rebased review follow-up checks (working tree atop `8b7fe6fb`, base
+`b288ac2530ad93ae8f67c5f1d47ee8ee7b666000`):
+
+- **401** focused request/acquisition/resolved-run/migration boundary checks pass.
+- **211** CLI/configuration/nested/phase-output checks and **2** direct generic
+  invalid-output checks pass. Preparation defers known inactive output values
+  across standard, multisector, CO2 and linked CO2; output consumers reject
+  invalid effective values before saved scientific replay.
+- **112** codec/source-covariance/linked-configuration regressions pass, verifying
+  the retained #975 modern fixes. Counts overlap other suites and are not summed.
+- Full Ruff, strict OpenSpec **10/10** and `git diff --check` pass. A bounded
+  seven-guide warning-as-error Sphinx render passes with zero warnings; references
+  to nonincluded pages remain outside that bounded check.
+- Original eighteen historical fixtures remain byte-identical. New evidence
+  preserves #975's retired ZIP codec source/test expectations as inspected
+  observations, rather than claiming their historical execution or restoring
+  the removed namespace. Modern #975 codec/source-covariance files and their
+  three focused regression modules are unchanged from the rebased base.
+
+Fresh complete tox and wheel/sdist checks are pending on the committed rebased
+revision. Earlier acceptance results above do not validate this follow-up.
+Task 2.3 remains unchecked until those results are inspected; 3.2 remains pending.

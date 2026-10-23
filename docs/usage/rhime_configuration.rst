@@ -126,7 +126,10 @@ passed to a runner without resolving again.
 ``params_from_config`` adapter are removed. Runner frontends, staged commands
 and acquisition accept canonical names and reject historical spellings before
 scientific work. No alias translation or deprecation warnings remain at these
-boundaries. Use ``x_prior``, ``output_name`` and ``flux_sources``.
+boundaries. Unknown names are rejected in every group. Applicable values use
+ordinary validation against their owner's supported choices; known inactive
+values remain deferred until the consuming phase. Use ``x_prior``,
+``output_name`` and ``flux_sources``.
 Every explicit ``use_tracer`` occurrence is unsupported regardless of value;
 omission remains valid. Modern callers use ``read_rhime_ini``, apply overrides,
 then construct ``RhimeConfig``. See :doc:`legacy_and_migration` for mappings.

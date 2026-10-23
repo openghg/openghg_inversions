@@ -417,6 +417,19 @@ def test_cli_run_rhime_nested_passes_config(monkeypatch, tmp_path: Path) -> None
     assert seen == {"config_file": str(config_file), "kwargs": {}}
 
 
+@pytest.mark.parametrize("name", [
+    "inner_fp_basis_case", "inner_basis_directory", "inner_country_directory", "inner_unknown_option",
+])
+@pytest.mark.parametrize("value", [None, "unused"])
+def test_nested_rejects_unknown_inner_options_before_scientific_inputs(monkeypatch, name, value):
+    monkeypatch.setattr(
+        nested_module.MergedData, "from_options",
+        lambda **kwargs: pytest.fail("acquired inputs before rejecting unknown options"),
+    )
+    with pytest.raises(ValueError, match=f"Unsupported RHIME parameter.*{name}"):
+        nested_module.run_nested(inner_domain="inner", **{name: value})
+
+
 @pytest.mark.parametrize("output_format", ["none", "paris"])
 def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
     monkeypatch, capsys, output_format, tmp_path,

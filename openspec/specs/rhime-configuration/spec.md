@@ -397,12 +397,17 @@ historical runtime interfaces SHALL be unavailable:
 - The `output_format` values `hbmcmc` and `hbmcmc_postprocessing`. Canonical
   `output_format="legacy"` SHALL remain independently supported.
 
-Every explicit occurrence of an unsupported historical request spelling or output
-alias SHALL fail ordinary unsupported-option validation before acquisition,
-reload or scientific execution. Supplying a canonical spelling alongside an old
-name SHALL NOT enable alias translation, warning-and-ignore behavior or fallback.
-Canonical names and other supported modern signatures and result types SHALL
-retain their separate contracts.
+Unknown option names SHALL fail ordinary unsupported-option validation before
+acquisition, reload or scientific execution, including names in known inactive
+groups. Effective values applicable to the selected phase SHALL be validated by
+their owning configuration against supported values before that phase performs
+scientific work. Known inactive groups in shared requests SHALL defer value
+validation and resource resolution until consumed. Runner/acquisition validation
+SHALL describe supported names and applicable values without special recognition
+of historical spellings or tokens, alias translation, warning-and-ignore behavior
+or fallback. Supplying a canonical spelling alongside an unknown name SHALL NOT
+make that unknown name supported. Canonical names and other supported modern
+signatures and result types SHALL retain their separate contracts.
 
 Public command names SHALL follow
 [Bounded installed-command retirement](../rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement).
@@ -439,6 +444,19 @@ handling. Every explicit occurrence of `use_tracer`, regardless of value, SHALL
 fail ordinary unsupported-option validation before acquisition, reload or
 scientific work, including supplied-data and saved-phase routes. Omission SHALL
 remain valid and SHALL NOT imply tracer execution.
+
+#### Scenario: Unsupported applicable output value
+
+- **WHEN** a full or output-only request supplies an `output_format` value outside the output owner's supported values
+- **THEN** ordinary value validation rejects it before the selected phase performs scientific work
+- **AND** it receives the ordinary invalid-output diagnostic without alias translation
+
+#### Scenario: Known inactive output value
+
+- **WHEN** a preparation-only command reads a shared file with supported output option names and an invalid `output_format` value
+- **THEN** preparation defers validation of that inactive output value
+- **AND** a later output consumer validates its effective value against its supported formats
+- **AND** unknown names in that group still fail ordinary unsupported-option validation
 
 #### Scenario: Existing Python shorthand
 

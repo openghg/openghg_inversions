@@ -609,7 +609,7 @@ def test_resource_paths_follow_annotations_and_invocation_directory(tmp_path, mo
 
 @pytest.mark.parametrize("value", [None, "old-country-dir"])
 def test_removed_country_directory_rejects_before_config_or_discovery(value):
-    with pytest.raises(ValueError, match="country_file.*landsea_path.*outer_regions_path"):
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*country_directory.*fp_basis_case"):
         load_params(overrides=_request(country_directory=value, fp_basis_case="missing"))
 
 
@@ -724,8 +724,8 @@ def test_runner_rejects_retired_options_before_canonical_configuration(monkeypat
     assert params == before
 
 
-@pytest.mark.parametrize("output_format", ["hbmcmc", "hbmcmc_postprocessing"])
-def test_canonical_configuration_rejects_old_output_formats_without_warnings(output_format):
+@pytest.mark.parametrize("output_format", ["not-a-format", ""])
+def test_canonical_configuration_rejects_unknown_output_formats_without_warnings(output_format):
     import warnings
 
     with warnings.catch_warnings():

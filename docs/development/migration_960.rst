@@ -467,3 +467,40 @@ supplement follows the initial retirement commit and expands the earlier
 artifact support. Disposition remains unsupported historical codecs under
 U1, with coverage/reporting owned by #948/#949 and independent basis support
 by #951. Original #960 inputs and observations remain unchanged.
+
+
+Review follow-up and current-devel source refresh
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Maintainer review `5634401507
+<https://github.com/openghg/openghg_inversions/pull/974#pullrequestreview-5634401507>`_
+clarifies generic name validation and phase-owned effective-value validation.
+The dated ``retirements/review_974_2026_10_23.json`` supplement preserves the
+pre-change diagnostics and output-value cases alongside source hashes.
+The earlier ``runtime-options`` comparison grouped removed option names and
+output values together; the clarified contract rejects all unknown names but
+keeps validation of known inactive values deferred. A preparation-only shared
+request can contain an invalid output format, which is checked only by its
+later consuming phase. No special historical-token rejection is introduced.
+Every explicit ``use_tracer`` remains an unknown name regardless of its value.
+
+Before removal, the reviewed ``_request_validation`` helper added replacement
+advice after generic name rejection, and nested execution had dedicated errors
+for three historical inner resource selectors. The follow-up removes those
+diagnostic tables/branches and unsupported extraction names. Bounded before/after
+request checks observed generic rejection with advice becoming generic rejection
+alone, without acquisition or scientific work. Disposition: unsupported names
+remain unsupported; #719 owns implementation and #949 replacement reporting.
+Independent supported basis adapters remain with #951.
+
+The new PR base is ``b288ac2530ad93ae8f67c5f1d47ee8ee7b666000``.
+``requests.py``, ``_runner_compat.py`` and ``nested.py`` are unchanged from pinned
+``0a32d73a`` through that base; ``_request_validation.py`` was introduced by the
+retirement and is compared at reviewed ``ad293dac``. Intervening #975 changes
+historical Zarr writing to format 2, backend-compatible compression and staged
+ZIP creation; its borrowed-metadata tests add ZIP expectations. The supplement
+records exact new-base source hashes and those expectations before resolving the
+namespace deletion. Modern serializers retain #975's independently supported
+fixes; historical cache support is not restored. Original eighteen #960 fixtures,
+previous codec witnesses and dated validation results remain unchanged. Fresh
+follow-up validation belongs to its resulting revision's task and PR records.

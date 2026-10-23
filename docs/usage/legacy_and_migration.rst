@@ -199,6 +199,13 @@ Finished converters, launchers and a final release number are not prerequisites.
 See the dated :doc:`retirement evidence <../development/migration_960>` for
 affected source comparisons, historical cases and follow-up owners.
 
+Unknown option names are rejected through ordinary supported-name validation,
+including names in inactive groups. Values are validated only when applicable to
+the selected phase: a preparation-only request defers a known output format until
+an output consumer resolves it. The consumer rejects invalid formats against its
+supported values. Modern validation has no special historical-name or token
+checks; replacement advice belongs in this guide and migration tooling.
+
 The amended promises are `compatible public adapters
 <https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md#requirement-compatible-public-adapters-and-scientific-choices>`_,
 `independent INI decoding

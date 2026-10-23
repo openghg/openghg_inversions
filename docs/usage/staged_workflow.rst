@@ -186,6 +186,9 @@ Sampling and postprocessing optionally accept either source; a shared full
 configuration contributes only the active phase's choices. JSON can contain
 flat options or ``data``, ``model``, ``sampler`` and ``output`` mappings.
 Unknown names remain errors, while known inactive values are not resolved.
+For example, preparation does not validate a known output format from a shared
+file. A later output consumer validates its effective format against supported
+values; historical-looking values receive no special handling.
 Explicit ``--kwargs`` overrides for another phase and unsupported names are
 reported together in one error. Raw file options and overrides are combined
 before canonical validation. Historical spellings are unsupported. Relative input
