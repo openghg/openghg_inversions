@@ -1,0 +1,340 @@
+{
+  "date": "2026-10-23",
+  "evidence_kind": "inspected_source_and_independent_arithmetic",
+  "historical_execution_claimed": false,
+  "source": {
+    "revision": "0a32d73a5c4a72be0505a4ed682472e1613e49e9",
+    "comparison_base": "3b27c54222f7329ba8f729e126956d64e252f124",
+    "target_revision": "3a48529025ad146fb03755b9a0145228e602ce68",
+    "scope": "Selected preparation, floor, boundary, artifact and tracer ownership changes; not a claim of unchanged model or likelihood implementations.",
+    "inspected_paths": [
+      "openghg_inversions/rhime/standard.py",
+      "openghg_inversions/rhime/preparation.py",
+      "openghg_inversions/inversion_data/observation_errors.py",
+      "openghg_inversions/inversion_inputs.py",
+      "openghg_inversions/model_error.py",
+      "openghg_inversions/boundary_sensitivity.py",
+      "openghg_inversions/rhime/model_inputs.py",
+      "openghg_inversions/rhime/likelihood_inputs.py",
+      "openghg_inversions/inversion_data/prepared_inputs.py",
+      "openghg_inversions/rhime/_stage_artifacts.py",
+      "openghg_inversions/rhime/_runner_compat.py",
+      "openghg_inversions/rhime/requests.py",
+      "openghg_inversions/hbmcmc/compatibility.py"
+    ],
+    "intervening_change_review": {
+      "pinned_to_comparison_base": "No changes in the selected preparation, floor, boundary, configuration and tracer source files; upstream model/likelihood files changed, so no blanket scientific parity is asserted.",
+      "original_commits": [
+        "dafa68ea7ea6f1d4e5297670707938fc07d53c1d",
+        "5e1f2b23bc3000609ada5cef4ad477302fcf6958",
+        "db5e65b7b6112626ae6518b799a17d9ac878feba"
+      ],
+      "rebased_commits": [
+        "2d497d7076d1ec3e03796d7ead9008a26e87f733",
+        "2627adde007d3c52e24cf737fc9eebb6ed195cc1",
+        "6cac1c4072752e33c1b2fb9eb9d740aa8800f3c4"
+      ],
+      "tracer_retirement_commit": "3a48529025ad146fb03755b9a0145228e602ce68"
+    }
+  },
+  "cases": [
+    {
+      "id": "observation-error-retained-population",
+      "route": "rhime.standard.prepare_standard (also multisector and aligned nested preparation)",
+      "input": {
+        "site": "TAC",
+        "time": [
+          "2020-01-01T00:00:00",
+          "2020-01-01T12:00:00",
+          "2020-01-01T13:00:00"
+        ],
+        "release_lon": [
+          0,
+          0,
+          0
+        ],
+        "mf": [
+          100,
+          0,
+          10
+        ],
+        "mf_repeatability": [
+          1000,
+          0,
+          2
+        ],
+        "mf_variability": [
+          0,
+          0,
+          0
+        ],
+        "filter": "daytime"
+      },
+      "historical": {
+        "order": "derive and impute mf_error before selection",
+        "nonzero_error_median": 501,
+        "retained_positions": [
+          1,
+          2
+        ],
+        "retained_mf_error": [
+          501,
+          2
+        ]
+      },
+      "modern": {
+        "order": "select observations before deriving missing mf_error",
+        "nonzero_error_median": 2,
+        "retained_mf_standard_deviation": 5,
+        "retained_positions": [
+          1,
+          2
+        ],
+        "retained_mf_error": [
+          5,
+          2
+        ]
+      },
+      "unchanged_policy": "Replace only zero derived errors with max(nonzero-error median, concentration population standard deviation); supplied mf_error and existing NaN/missing-component rules remain authoritative.",
+      "runtime_tests": [
+        "tests/test_observation_error_preparation.py::test_zero_error_fallback_uses_retained_population_after_daytime_selection",
+        "tests/test_observation_error_preparation.py::test_nested_domains_prepare_errors_after_outer_selection_and_inner_alignment",
+        "tests/test_rhime.py::test_retained_error_population_reaches_preparation_full_run_and_saved_inputs"
+      ],
+      "owner": 876
+    },
+    {
+      "id": "named-residual-floor-after-invalid-row-removal",
+      "route": "make_inv_inputs followed by a floor-consuming model likelihood",
+      "input": {
+        "site": "TAC",
+        "mf": [
+          0,
+          10,
+          20
+        ],
+        "mf_mod": [
+          0,
+          0,
+          0
+        ],
+        "H": [
+          [
+            1,
+            1,
+            null
+          ]
+        ],
+        "H_missing_value": "JSON null represents NaN at the third observation",
+        "bc_mod_present": false,
+        "min_error": "residual",
+        "by_site": false,
+        "standard_deviation_ddof": 0
+      },
+      "historical": {
+        "order": "estimate residual floor from per-site observations before invalid-row removal",
+        "population": [
+          0,
+          10,
+          20
+        ],
+        "variance_fraction": {
+          "numerator": 200,
+          "denominator": 3
+        },
+        "floor_expression": "sqrt(200/3)",
+        "floor": 8.16496580927726
+      },
+      "modern": {
+        "order": "drop the third observation for invalid H before resolving an enabled likelihood floor",
+        "retained_positions": [
+          0,
+          1
+        ],
+        "population": [
+          0,
+          10
+        ],
+        "variance": 25,
+        "floor": 5
+      },
+      "scope": "This changes the estimation population, not the recorded historical H3/H4 likelihood equations. Fixed-error likelihoods do not consume this floor; additive sigma consumes it only when explicitly enabled.",
+      "runtime_tests": [
+        "tests/test_model_owned_alignment.py::test_floor_uses_only_retained_observations",
+        "tests/test_model_owned_alignment.py::test_unused_floor_and_disabled_bc_are_never_evaluated",
+        "tests/test_model_owned_alignment.py::test_additive_floor_is_opt_in_and_percentile_does_not_select_modelled_arrays"
+      ],
+      "owner": 876
+    },
+    {
+      "id": "raw-boundary-sensitivity-reuse",
+      "route": "spatial H_bc preparation followed by model-owned BoundaryAlignment.prepare",
+      "input": {
+        "time": [
+          "2020-01-01T00:00:00",
+          "2020-02-01T00:00:00"
+        ],
+        "bc_curtain": [
+          "north"
+        ],
+        "raw_H_bc": [
+          [
+            2,
+            3
+          ]
+        ]
+      },
+      "historical": {
+        "bc_freq": "monthly",
+        "prepared_H_bc": [
+          [
+            2,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "prepared_state_labels": [
+          [
+            "north",
+            0
+          ],
+          [
+            "north",
+            1
+          ]
+        ],
+        "ownership": "period expansion baked into preparation"
+      },
+      "modern": {
+        "prepared_raw_H_bc": [
+          [
+            2,
+            3
+          ]
+        ],
+        "constant_model_H_bc": [
+          [
+            2,
+            3
+          ]
+        ],
+        "constant_state_labels": [
+          [
+            "north",
+            0
+          ]
+        ],
+        "monthly_model_H_bc": [
+          [
+            2,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "monthly_state_labels": [
+          [
+            "north",
+            0
+          ],
+          [
+            "north",
+            1
+          ]
+        ],
+        "ownership": "config.model.bc_freq selects expansion per model without changing raw preparation",
+        "observation_column_sums": [
+          2,
+          3
+        ]
+      },
+      "runtime_tests": [
+        "tests/test_model_owned_alignment.py::test_one_raw_preparation_supports_two_frequencies_and_preserves_bc_auxiliaries",
+        "tests/test_model_operand_handoffs.py::test_one_preparation_two_periods_save_exact_operands_and_replay_without_recalculation"
+      ],
+      "owner": 876
+    },
+    {
+      "id": "incompatible-model-baked-artifacts",
+      "ledger_entry": "U1",
+      "historical": {
+        "prepared_inputs_schema_version": 1,
+        "standard_multisector_prepare_sample_manifest_schema_version": 1,
+        "contents": "prepared minimum-error operands and sampled boundary-period expansion"
+      },
+      "modern": {
+        "prepared_inputs_schema_version": 2,
+        "standard_multisector_prepare_sample_manifest_schema_version": 2,
+        "old_format_disposition": "Reject incompatible prepared/sample formats with ValueError; use matching historical software or prepare and sample again.",
+        "in_memory_baked_boundary_disposition": "Reject sampled-period-expanded H_bc rather than reinterpret it as raw spatial sensitivities.",
+        "saved_model_operands": "Save and replay fitted operands without recalculation.",
+        "independent_complete_InversionOutput": "Retained as a distinct supported artifact; this retirement is not blanket invalidation of complete InversionOutput files."
+      },
+      "runtime_tests": [
+        "tests/test_model_owned_alignment.py::test_in_memory_baked_boundary_input_is_rejected",
+        "tests/test_model_operand_handoffs.py::test_one_preparation_two_periods_save_exact_operands_and_replay_without_recalculation",
+        "tests/test_prepared_inputs_serialisation.py::test_prepared_inputs_rejects_missing_or_wrong_schema"
+      ],
+      "owner": 876
+    }
+  ],
+  "tracer_comparison": {
+    "source_routes": [
+      "rhime._runner_compat.normalise_param_aliases",
+      "hbmcmc.compatibility.normalise_param_aliases"
+    ],
+    "historical": {
+      "explicit_false": "Discard use_tracer=False with a DeprecationWarning.",
+      "explicit_true": {
+        "error_type": "ValueError",
+        "message": "`use_tracer=True` is not supported; tracer inversions are not implemented."
+      },
+      "omitted": "Valid; no tracer option forwarded."
+    },
+    "modern": {
+      "explicit_false": {
+        "error_type": "ValueError",
+        "message_contains": "Unsupported RHIME parameter(s)"
+      },
+      "explicit_true": {
+        "error_type": "ValueError",
+        "message_contains": "Unsupported RHIME parameter(s)"
+      },
+      "omitted": "Valid; no tracer option forwarded.",
+      "pure_alias_adapters": "Preserve unknown use_tracer values for ordinary configuration validation; no special flag handling."
+    },
+    "archived_error_record": "requests/errors.json remains the exact historical message record.",
+    "runtime_tests": [
+      "tests/test_unsupported_tracer.py::test_rhime_runner_rejects_tracer_before_acquisition",
+      "tests/test_unsupported_tracer.py::test_request_loader_rejects_flat_and_grouped_tracer_options",
+      "tests/test_unsupported_tracer.py::test_omitted_tracer_is_valid_and_not_forwarded_after_resolution"
+    ],
+    "owner": 719
+  },
+  "configuration_owner_refresh": {
+    "archived_default_data_unchanged": true,
+    "bc_freq": "config.model.bc_freq",
+    "min_error": "config.model.likelihood.min_error",
+    "other_archived_default_data_fields": "config.data",
+    "explicit_wrapper_min_error": "config.model.likelihood.min_error"
+  },
+  "ledger_links": [
+    "I6",
+    "U1",
+    "migration_960_historical H1",
+    "migration_960_historical H3",
+    "migration_960_historical H4"
+  ],
+  "owners": {
+    "scientific_inputs": 876,
+    "tracer_retirement": 719,
+    "api_contract": 945,
+    "migration_report": 949
+  },
+  "limits": "Historical expectations use inspected pinned source and manual arithmetic only. No old-code execution, emulator, arbitrary artifact conversion or integrated numerical parity is claimed."
+}
