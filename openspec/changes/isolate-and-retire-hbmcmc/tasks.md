@@ -118,8 +118,10 @@ This amendment records permission and the target map, not runtime deletion.
 The aliases remain direct assignments in the inspected source. Preserve the
 canonical functions, class objects, constructors, argument/default meanings,
 result contents, borrowed/lazy execution boundaries and scientific behavior.
-Removing import names does not rename persisted schema identifiers, fields or
-artifact contents. Existing `run_rhime`, `RhimeRunSpec` and `RhimeResult`
+Naming cleanup must not incidentally reinterpret scientific data. Supported
+format/version acceptance, conversion or rejection remains the artifact owner's
+decision, with no implied 0.7 format support or literal schema-identifier freeze.
+Existing `run_rhime`, `RhimeRunSpec` and `RhimeResult`
 migrations retain their separate explicit contracts; there is no general
 signature/result-wrapper exemption.
 
@@ -133,7 +135,7 @@ Broader symbols, types and module moves remain under #663/#945 and a #776 reviva
 requiring exact replacement maps before their own removals. This finite decision
 does not finalize CLI positional-date/`--kwargs` syntax or complete a delivery task.
 
-## 1. Isolate legacy behavior in 0.8
+## 1. Historical isolation delivery in 0.8
 
 - [x] 1.1 Give retained RHIME aliases/validation runner/frontend owners and remove all
   production imports/re-exports of HBMCMC outside that package, including the
@@ -162,8 +164,9 @@ does not finalize CLI positional-date/`--kwargs` syntax or complete a delivery t
 - [ ] 2.1 Delete HBMCMC's wrapper, adapters and legacy utilities plus obsolete
   entry points and internal consumers, and remove temporary runner spelling/output-format/flux
   alias support after the affected evidence and regression gate. Retire special
-  `use_tracer` handling in a separately identified #719 slice: both supplied
-  booleans fail ordinary unsupported-option validation; omission remains valid.
+  `use_tracer` handling in a separately identified #719 slice: every explicit
+  occurrence, regardless of value, fails ordinary unsupported-option validation;
+  omission remains valid.
   Complete #719 before #964; #971's separate filter retirement is not a
   prerequisite for #719. Leave unresolved
   public aliases and independent basis capabilities with #945/#951.

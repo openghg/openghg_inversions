@@ -4,6 +4,25 @@ Positional dates and `--kwargs` remain open for discussion and possible revision
 The finite CLI naming amendment preserves their current meanings for that slice;
 it does not establish their final design.
 
+## Accepted outcome reconciliation — 23 October 2026
+
+The target contracts now state the supported modern interfaces directly, rather
+than permitting optional retirement or retaining transitional runtime branches.
+They require canonical options, no HBMCMC namespace, sole `rhime` command entry,
+and unavailable retired command/Python names. Equivalent scientific execution,
+borrowed-array boundaries, selected artifact destinations and independent modern
+codecs remain supported. Implementation mechanisms are in [design.md](design.md);
+source state, audit checks and sequencing remain in [tasks.md](tasks.md). This
+planning amendment changes no runtime code or completed-task evidence.
+
+Ordinary configured CO2 and linked prepared-input CO2/O2 have distinct input and
+result contracts. Numerical selection/imputation/alignment policy belongs to the
+focused scientific-input amendment: provider averaging precedes inversion-side
+selection, followed by retained-population missing-error derivation. Historical
+aggregation-filter ordering is not a target requirement. Artifact version support
+and explicit unsupported-format handling belong to persistence contracts,
+independently of Python naming. Dates and `--kwargs` remain open design questions.
+
 ## Approval and delivery status
 
 ### Development-boundary amendment — 23 October 2026
@@ -18,7 +37,8 @@ Existing named migrations, including Python `run_rhime`, `RhimeRunSpec` and
 and shared Python names retain their contracts except for the separately
 approved [five-name alias map](../isolate-and-retire-hbmcmc/tasks.md#named-python-alias-amendment--23-october-2026).
 That map permits removal without naming-only forwarders; canonical behavior,
-types/constructors, result contents and persisted schema/artifact meanings remain.
+types/constructors, result contents and scientific artifact meanings remain;
+format-version support is specified independently.
 The durable [evidence guarantees](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence)
 remain distinct from that checklist's pinned #960 baseline, per-PR work and
 owners. Historical observations stay separate from dated modern comparisons;

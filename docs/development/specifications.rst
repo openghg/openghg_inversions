@@ -19,11 +19,12 @@ To find the requirements for a behavior you are changing:
    alone does not establish delivered behavior.
 
 Durable contracts under ``openspec/specs/`` describe accepted behavioral
-requirements. A retention promise can be amended before its permitted removal
-is implemented, as in #961; authorization does not establish delivery. Proposed
-implementation changes remain under ``openspec/changes/`` until delivered and
-validated, even when their design is approved. Delivery status and review
-history belong in the change records and the map below, not in durable specs.
+requirements. Specifications describe the accepted target behavior, including
+changes not yet implemented. As in #961, an agreed retirement requirement does
+not establish that removal has landed. Active change specs need not match the
+transitional implementation; ``design.md`` explains how to reach their target.
+Delivery status and review history belong in the change records and the map
+below, not in durable specs.
 
 Current contracts and proposals
 --------------------------------
@@ -55,8 +56,10 @@ retained capabilities, evidence gate and remaining owners.
        :doc:`/usage/cli`. #961 removes the blanket retention timetable;
        the finite :ref:`CLI command retirement <rhime-cli-command-retirement>`
        and :ref:`five Python alias removals <rhime-python-alias-retirement>`
-       are accepted but unimplemented. Canonical behavior and persisted schema
-       identifiers/artifacts remain. Broader Python naming remains with
+       are required target outcomes, with runtime removal still pending. Canonical
+       behavior and scientific artifact contents remain protected; supported
+       artifact formats/versions are specified independently. Broader Python
+       naming remains with
        #663/#945 and a #776 revival. The :download:`CO2 selector/runner amendment
        <../../openspec/changes/replace-recipe-workflow-with-reusable-handoffs/specs/rhime-model-selection/spec.md>`
        includes the merged `PR 886 <https://github.com/openghg/openghg_inversions/pull/886>`_
@@ -72,9 +75,9 @@ retained capabilities, evidence gate and remaining owners.
      - Delivered grouped configuration and independent phase resolution,
        implemented in `PR 866 <https://github.com/openghg/openghg_inversions/pull/866>`_.
        Current usage: :doc:`/usage/rhime_configuration`.
-       #961 permits bounded retirement of temporary runtime translation under
-       the affected-evidence gate, while preserving canonical configuration
-       and scientific contracts.
+       #961 specifies canonical-only options and ordinary unsupported-option
+       rejection of every explicit ``use_tracer``. Runtime retirement remains
+       pending under the affected-evidence gate; canonical scientific contracts remain.
        Configuration serialization/INI writing remains with `issue 814
        <https://github.com/openghg/openghg_inversions/issues/814>`_.
    * - External resources and basis exports
@@ -93,11 +96,11 @@ retained capabilities, evidence gate and remaining owners.
    * - HBMCMC dependency direction and retirement
      - :download:`HBMCMC isolation contract
        <../../openspec/specs/hbmcmc-isolation-retirement/spec.md>`
-     - Delivered dependency boundary and transitional legacy-only resource translation.
-       Runner frontends own deprecated spellings; canonical configuration has
-       no alias translation or warnings. #961 authorizes development removals
-       after affected evidence preservation and regression migration; finished
-       converters/launchers are not prerequisites. Implementation remains with #719 and the
+     - PR 869 delivered isolation; current code retains transitional translation.
+       The #961 target has no HBMCMC namespace, forwarding shims or temporary
+       option translation. Affected evidence preservation and regression migration
+       gate runtime removal; finished converters/launchers are not prerequisites.
+       Implementation remains with #719 and the
        :download:`active retirement change
        <../../openspec/changes/isolate-and-retire-hbmcmc/proposal.md>`.
        Its `delivery checklist
@@ -156,9 +159,13 @@ retired aggregation filters without a replacement statistic; its scenario is
 ``Reject a retired aggregation filter``. Nested population/alignment, common-site
 selection and ``averaging_error`` configuration are separate claims and scenarios.
 Historical witnesses remain evidence rather than required modern expectations.
+Provider acquisition averaging precedes inversion-side error combination; the
+retained-population amendment does not reverse that order. Supplied ``mf_error``
+is preserved. Aggregation is a separate scientific operation with its own
+uncertainty propagation, not an observation-selection filter.
 
-Complete #719, including the separately identified special ``use_tracer``
-compatibility retirement, before #964. #971 remains a separate prerequisite for
+Complete #719, including removal of the special ``use_tracer``
+compatibility handling, before #964. #971 remains a separate prerequisite for
 #964's selection-first imputation change. None of #964's scientific delivery,
 #971's implementation or M2 tooling is a prerequisite for #719. The current
 branch still has the transitional adapters and acquired-population error policy;

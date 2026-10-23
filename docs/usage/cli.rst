@@ -79,7 +79,7 @@ preparation/two-model/two-output sequence and the separate CO2 interface.
 Approved CLI command retirement
 --------------------------------
 
-The agreed development boundary permits the following finite command-name
+The agreed development target requires the following finite command-name
 migration. Removal is pending: current source still installs both executables
 and accepts the old full-run commands. Use the canonical routes in new scripts.
 
@@ -131,9 +131,9 @@ OpenGHG acquisition or native-reduction preparation route. The
 their existing ``prepared_inputs`` interfaces and trace returns. Linked recipes are not choices for the configuration-driven ``rhime run`` command.
 See :doc:`co2_model_family` for the TOML configuration and handoff commands.
 
-The finite CLI names listed above may retire under the
+The finite CLI names listed above are absent from the target interface under the
 :doc:`agreed development boundary <legacy_and_migration>`. The separately
-approved five-name Python map below permits only those alias removals;
+approved five-name Python map below defines the required alias removals;
 broader Python naming/types/module moves need separately agreed maps.
 
 .. _rhime-python-alias-retirement:
@@ -142,7 +142,7 @@ Approved Python alias retirement
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Use the canonical names in new Python calls and imports. These five aliases
-are approved for removal without continued naming-only compatibility aliases.
+are absent from the target interface, including naming-only forwarding aliases.
 Current source still implements them as direct assignments; this contract
 amendment does not delete them.
 
@@ -164,9 +164,12 @@ amendment does not delete them.
 
 The canonical callable/class objects, constructors, argument/default meanings,
 result contents, scientific behavior and borrowed/lazy execution guarantees are
-preserved. Import-name retirement does not rename persisted schema identifiers,
-fields or artifact contents. Broader public names remain outside this finite
-map. The separate existing ``run_rhime``, ``RhimeRunSpec`` and ``RhimeResult``
+preserved. Import-name retirement must not silently reinterpret persisted
+scientific contents or incidentally rename scientific variables and coordinates.
+Supported artifact formats/versions and explicit conversion or rejection of
+unsupported inputs are specified independently; this naming change promises no
+automatic compatibility with 0.7 artifacts. Broader public names remain outside
+this finite map. The separate existing ``run_rhime``, ``RhimeRunSpec`` and ``RhimeResult``
 migrations retain their own contracts; there is no blanket result-wrapper exemption.
 
 The obsolete ``with_prepared_sites`` and ``with_prepared_rhime_sites`` run-spec
@@ -281,7 +284,7 @@ for supported older fixedbasis-style INI files. It does not turn such a file
 into a multisector configuration. For new batch jobs, start from the RHIME
 template, use ``flux_sources`` for standard runs, and configure the sector
 sources described in :doc:`rhime` before selecting
-``run-rhime-multisector``.
+``rhime run --model multisector``.
 
 Merging PARIS outputs
 ---------------------

@@ -3,6 +3,50 @@
 Positional dates and `--kwargs` remain open design questions. Retaining their
 current meanings for command-name migration does not settle their final syntax.
 
+## Outcome-contract reconciliation — 23 October 2026
+
+The accepted targets describe the modern interface even before runtime retirement
+lands: no HBMCMC namespace, canonical option names, one `rhime` executable and
+unavailable old command/Python alias names. Current source and revision-specific
+delivery evidence remain in tasks and migration guidance; they are not alternative
+conforming branches of the target contracts. Positional dates and `--kwargs`
+remain open for a separately agreed syntax amendment.
+
+Equivalent full, supplied-prepared and saved routes should reuse the existing
+scientific operations through ordinary procedural orchestration. Prefer small
+repeated calls to duplicated numerical implementations. Keep acquisition and
+resolved scientific selections visible, pass per-site datasets and aligned
+`SiteOptions` between ordinary functions, and use the existing explicit joint
+materialization boundaries. These are implementation choices supporting scientific
+parity, borrowing and independently usable phases; the behavioral contract does
+not require identical private helper calls, object plumbing or checkpoint-only
+differences between routes.
+
+Use one operational artifact-saving helper where it makes the runner readable,
+reusing the existing naming/path policy and codecs. This is a design choice, not
+a requirement for helper count or identity. The contract protects requested
+export paths, supported defaults/formats/overwrite behavior, unchanged scientific
+values and source provenance. Likewise, a single resolved-model inference
+predicate avoids drift between full and saved CO2 routes without making the
+predicate's shape part of the public interface. Existing timing observations
+cover neither Numba mode nor nutpie and establish no fastest-backend claim.
+
+The focused scientific-input amendment owns population and numerical-alignment
+policy. When requested, provider resampling happens during acquisition, before inversion-side
+selection and missing-error derivation. Selection excludes unsuitable observations;
+nested retained-domain alignment occurs before errors are derived for the retained
+population. `daily_median` and `six_hr_mean` are historical aggregation operations,
+not target selection filters. Any future aggregation needs separately defined
+uncertainty propagation; it cannot silently replace selection or a statistic.
+
+Python alias removal changes import names, not scientific contents. Persistence
+owners decide supported format versions and explicit conversion/rejection; no
+literal identifier/version freeze or blanket historical-file support follows.
+The historical model-selection source/test inventory includes `rhime/api.py`,
+`cli.py`, public package exports and `tests/test_public_run_api.py`. Its previous
+identity-alias tests characterize the old source; target checks must instead
+cover canonical behavior and unavailable old access paths.
+
 ## Context
 
 The 23 October 2026 #944/#961 amendment permits bounded retirement of the HBMCMC
@@ -16,7 +60,7 @@ signature/result-wrapper exception. The separately approved
 permits retiring those assignments without naming-only forwarders; other Python
 names retain their contracts. Preserve canonical callable/class objects,
 constructors, result contents, scientific behavior, borrowed execution boundaries
-and persisted schema identifiers/artifacts. Current source still has the aliases.
+and scientific artifact contents, with version support defined independently. Current source still has the aliases.
 Preserve the durable
 [evidence guarantees](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence);
 the linked checklist owns the pinned #960 revision, per-PR checks and current
@@ -36,10 +80,11 @@ or general Python-name exception is introduced; broader maps remain #663/#945/#7
 
 The agreed #876 contract split keeps numerical preparation/alignment in a focused
 scientific-input capability, option/default/compatibility rules in configuration,
-and saved-operand reuse/replay in the prepared/sample handoffs. The
-acquired-population ordering below describes the current baseline; its
-preservation is superseded by #876's agreed retained-population amendment,
-to be implemented and validated with #964 after #719 and the separate #971 prerequisite.
+and saved-operand reuse/replay in the prepared/sample handoffs.
+The target ordering below follows #876's retained-population amendment;
+its implementation and revision-specific validation remain with #964 after #719
+and the separate #971 prerequisite. Earlier acquired-population statements in
+dated delivery evidence describe their recorded source, not the target policy.
 
 The maintainer's 20 October 2026 amendment is delivered as OPE-219 → OPE-220 →
 OPE-221. It supersedes earlier cached public-runner preservation: one configured
@@ -288,9 +333,9 @@ The maintainer's 16 October multisector correction also retires the remaining
 adapters. Prepared callers use `run_multisector(prepared=..., config=...)`;
 complete custom models compose ordinary materialization, construction, sampling
 and output operations directly. Multisector does not retain a `RhimeRunSpec`
-complete-builder context or a `RhimeResult` compatibility route. After nested and
-cached CO2 adoption, the unused shared envelope types and nested validation
-context are removed.
+complete-builder context or a `RhimeResult` compatibility route. The target has
+no shared envelope types or obsolete nested validation context; their absence
+is not conditional on a remaining cached consumer.
 
 ### 3. Keep scientific order visible; save only at explicit boundaries
 
@@ -303,8 +348,9 @@ selections from `config.data`; resource paths/maps have already been resolved:
 
 ```python
 merged = acquire(explicit_acquisition_options)
-with_errors = derive_observation_errors(merged, error_options)
-filtered = filter_observations(with_errors, filters)
+selected = filter_observations(merged, filters)
+# Nested preparation first aligns the retained inner/outer observations.
+filtered = derive_observation_errors(selected, error_options)
 runtime_flux = resolve_runtime_flux(filtered, source_options)
 basis = prepare_basis(
     selected_operator_path=basis_path,
@@ -329,9 +375,11 @@ basis from its returned prepared handoff and uses the existing save codec.
 Preparation aligns metadata to retained observations; inference aligns its own
 numeric per-site choices. Validate every supplied value, including dropped-site
 entries, before selecting retained labels. Empty retained sets fail. Preserve
-custom errors and derive missing errors before filtering/aggregation; nested
-preparation does this for both domains before alignment, without promising new
-nested checkpoint support.
+custom errors and derive missing errors from observations retained by selection;
+nested preparation first aligns the retained inner/outer population and then
+derives its errors. Any requested provider averaging has already occurred during acquisition.
+Detailed numerical rules belong to the focused scientific-input amendment; this
+design does not promise new nested checkpoint support.
 
 Resolution remains data-free. Numerical inputs are borrowed and potentially lazy;
 related arrays cross an explicit joint assembly, model-input, serialization or

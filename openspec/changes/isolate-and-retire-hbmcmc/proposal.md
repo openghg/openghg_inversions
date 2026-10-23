@@ -23,15 +23,16 @@ and public-alias decisions stay with #945; independent basis decisions stay with
 #951. This amendment removes no production code and establishes no release
 readiness.
 
-The later [finite CLI amendment](tasks.md#cli-command-name-amendment--23-october-2026)
-permits retiring the second executable and four redundant full-run commands in
-favor of `rhime run --model ...`, while preserving their argument handling,
-scientific execution and products. It is accepted permission, not delivered
-removal. Package/distribution names are unchanged.
-The [five-name Python alias map](tasks.md#named-python-alias-amendment--23-october-2026)
-also permits retiring those exact aliases without naming-only forwarders,
-preserving canonical functions/types/constructors and persisted artifacts.
-Broader Python names/imports still require separate exact agreements.
+The accepted [finite CLI target](tasks.md#cli-command-name-amendment--23-october-2026)
+has one `rhime` executable and canonical `run --model ...` routes, without the
+second executable or four redundant full-run aliases. Preserve effective
+arguments, scientific execution and products; package/distribution names stay
+unchanged. The [five-name Python target](tasks.md#named-python-alias-amendment--23-october-2026)
+uses only the specified canonical functions/types, without naming-only forwarders.
+Supported artifact formats/versions remain independent codec decisions; naming
+cleanup neither reinterprets scientific data nor implies historical-format support.
+Broader Python names/imports still require separate exact agreements. The target
+specifies the required outcome; implementation status belongs to these records.
 
 ## Why
 
@@ -42,43 +43,43 @@ runners perform it.
 
 ## What Changes
 
-- Establish a one-way dependency: HBMCMC may call modern APIs; production code
-  outside HBMCMC must not import, re-export or execute through HBMCMC.
-- Keep historical fixedbasis policy and resource selection inside the HBMCMC
-  input path, after winning overrides and before canonical construction.
-- Give retained modern behavior modern owners, including supported runner-owned RHIME aliases,
-  INI decoding, path conversion and domain-specific packaged preparation maps.
-  Small duplication inside HBMCMC is acceptable.
-- **BREAKING (0.8):** Remove modern re-exports of HBMCMC-only adapters and route
-  historical selectors through HBMCMC only. Preserve separately supported modern
-  aliases and scientific behavior without a reverse dependency.
-- **BREAKING (development):** After the affected evidence and regression gate,
-  remove the complete `openghg_inversions.hbmcmc` subpackage,
-  including its wrapper and legacy data/basis utilities. This is removal, not
-  merely deprecation of individual entry points.
-- Add a production import-boundary check and migration guidance distinguishing
-  this removal from unresolved public-alias and independent basis decisions.
+- Remove the complete `openghg_inversions.hbmcmc` namespace, executable wrapper,
+  configuration adapters and legacy data/basis utilities without forwarding shims.
+- Accept only canonical modern runtime options. Reject the enumerated historical
+  spellings, `hbmcmc`/`hbmcmc_postprocessing` output aliases and every explicit
+  `use_tracer` occurrence through ordinary unsupported-option validation.
+- Use the finite canonical CLI and five-name Python targets above, preserving
+  scientific operations, arguments, result contents and independently supported
+  codecs and basis capabilities.
+- Keep INI decoding, path resolution and packaged preparation defaults independent
+  of HBMCMC. Normal execution does not invoke migration helpers.
+- Preserve historical source evidence and port affected scientific coverage to
+  canonical inputs. Keep concrete comparisons, ownership and sequencing in the
+  [delivery checklist](tasks.md#migration-evidence-checklist-and-delivery-order).
+
+Historical 0.8 isolation established one-way dependencies and legacy-only request
+translation. That is delivery history, not a required transitional runtime branch
+in the target interface. The historical mechanism is recorded in [design.md](design.md).
 
 ## Capabilities
 
 ### New Capabilities
 
-- `hbmcmc-isolation-retirement`: Dependency direction, legacy-only input
-  translation, retained modern behavior, and gated HBMCMC development retirement.
+- `hbmcmc-isolation-retirement`: Modern execution without the historical
+  namespace, independent retained capabilities and usable migration evidence.
 
 ### Modified Capabilities
 
-- `rhime-configuration`: Separate modern alias handling and INI decoding from
-  HBMCMC translation; remove the requirement to call an HBMCMC-owned translator
-  from canonical construction.
+- `rhime-configuration`: Canonical-only requested options and concrete scientific
+  results, with INI decoding independent of execution and no historical translator.
 
 ## Impact
 
-Coordinate with [PR #869](https://github.com/openghg/openghg_inversions/pull/869)
-and the delivered resource-I/O capability. The latter owns path
+The historical [PR #869](https://github.com/openghg/openghg_inversions/pull/869)
+and the resource-I/O capability provide the isolation groundwork. The latter owns path
 conversion, explicit resource loading and packaged-map selection; this change
-owns dependency direction and retirement. The grouped-configuration amendment
-must preserve this boundary when its overlapping configuration delta is synced.
+owns retirement. Resource selection and independent basis/artifact support
+retain their separate scientific owners.
 
 Affected consumers include RHIME exports, configuration, full/staged/nested
 runners, copied examples, the HBMCMC CLI and dictionary adapter, and their tests.

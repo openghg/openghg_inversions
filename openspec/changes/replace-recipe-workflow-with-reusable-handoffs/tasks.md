@@ -3,6 +3,27 @@
 Positional dates and `--kwargs` remain open for a separate argument-design
 discussion and revision; this command-name amendment does not finalize them.
 
+## Outcome-contract follow-up — 23 October 2026
+
+The approved target removes transitional runtime behavior; the specification is
+not a claim that the inspected source already implements that target. Keep the
+existing pinned evidence and per-PR checklist. The implementation slice must:
+
+- [ ] Make the retired executable, subcommands, five aliases and obsolete adapters
+  unavailable, port callers to canonical routes, and check imports/parser/package contents.
+- [ ] Replace old identity/translation/warning tests with canonical-input behavior
+  and ordinary unsupported-input checks while preserving historical witnesses.
+- [ ] Validate scientific parity, selected export paths/provenance and borrowed-array
+  execution outcomes; private helper identity/count is not an acceptance condition.
+- [ ] Reconcile focused scientific-input delivery with provider averaging first,
+  selection and nested retained alignment before missing-error derivation, and
+  independent format-version acceptance or rejection. Do not restore historical
+  aggregation-filter ordering or infer old-file support from an unchanged identifier.
+
+Helper reuse, procedural call order and saving choices remain in design. Existing
+checked tasks retain their dated evidence, not a renewed compatibility promise;
+this reconciliation completes no runtime task or release gate.
+
 ## Development-boundary amendment — 23 October 2026
 
 #944/#961 permit bounded retirement only of the HBMCMC namespace, its
@@ -14,7 +35,7 @@ retain their scoped contracts. The separately approved
 [five-name Python alias map](../isolate-and-retire-hbmcmc/tasks.md#named-python-alias-amendment--23-october-2026)
 permits removing only those implemented assignments without naming-only forwarders;
 canonical callable/class behavior, constructors, result contents and persisted
-schema/artifact meanings remain. Other Python names retain their contracts.
+scientific artifact meanings remain; persistence owns supported versions. Other Python names retain their contracts.
 Each affected removal/change preserves the durable
 [evidence guarantees](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence)
 and follows the checklist's concrete pinned #960 comparison, per-PR evidence,

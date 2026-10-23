@@ -1,113 +1,124 @@
 # Design
 
-## Development-boundary amendment — 23 October 2026
+## Accepted target and delivery status — 23 October 2026
 
-The accepted #944/#961 treatment supersedes the future version schedule below.
-Delivered 0.8 isolation remains historical evidence. Pending #719 retirement may
-proceed on devel while preserving the durable
-[evidence guarantees](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence)
-and following the [delivery checklist](tasks.md#migration-evidence-checklist-and-delivery-order).
-That checklist owns the finite namespace/translation scope, pinned #960 baseline,
-per-PR checks and current delivery order. It grants no general public
-signature/result-wrapper exception. The five-name Python amendment below is a
-finite exception; other names retain their contracts.
-Converters, launchers, maintenance publishing and integrated acceptance remain M2
-release work. Final release/public-alias choices stay with #945; independent
-basis readers, writers and discovery stay with #951. This amendment implements
-no runtime removal.
+The maintainer-approved #944/#961 boundary and subsequent #972 review amendments
+require modern execution without HBMCMC or temporary runtime option translation.
+The desired contracts do not retain old interfaces merely because the current
+implementation still contains them. This contract/documentation amendment does
+not itself delete production code or establish release readiness.
 
-The [finite CLI command map](tasks.md#cli-command-name-amendment--23-october-2026)
-adds separately accepted command-name retirement. Target one `rhime` executable
-and canonical `run --model` routes, preserving positional dates, `--kwargs`,
-configuration/override meanings, scientific execution and artifacts. Current
-aliases remain implemented until the removal slice lands; no argument redesign,
-package rename or blanket Python-name migration follows from this amendment.
+The finite [CLI map](tasks.md#cli-command-name-amendment--23-october-2026) targets
+one `rhime` executable and canonical `run --model` commands. The
+[five-name Python map](tasks.md#named-python-alias-amendment--23-october-2026)
+targets `run_multisector`, `run_nested`, `MergedData`, `PreparedInputs` and
+`assemble_inputs`, without naming-only forwarders. Preserve canonical callable
+and type behavior, constructors, results and borrowed/lazy execution boundaries.
+Supported format/version acceptance, conversion or rejection belongs to artifact
+owners; this naming cleanup neither mechanically renames scientific contents nor
+promises historical-format support.
 
-The [five-name Python alias map](tasks.md#named-python-alias-amendment--23-october-2026)
-permits removing only those alias assignments without continued naming-only
-forwarders. Recommend canonical `run_multisector`, `run_nested`, `MergedData`,
-`PreparedInputs` and `assemble_inputs`, preserving the same callable/class objects,
-constructors, result contents, scientific behavior, borrowed execution boundaries
-and persisted schema identifiers/artifacts. Current source still implements the
-aliases; broader types, symbols and module moves require separately agreed maps.
-Positional dates and `--kwargs` remain open design questions; preserving their
-current meanings for command renaming does not decide their final syntax.
+The [migration checklist](tasks.md#migration-evidence-checklist-and-delivery-order)
+owns the pinned #960 comparison, affected-entry evidence, scientific test migration,
+current owners and delivery order. Final version/public names stay with #945,
+independent basis decisions with #951, and broader Python naming with #663/#945
+and the #776 revival. Finished converters/launchers, maintenance publishing and
+integrated acceptance remain M2 release gates rather than prerequisites for
+bounded development retirement.
 
-## Context
+## Implementation decisions
 
-See [proposal.md](proposal.md). At PR #869 revision `e41e2838`, RHIME runners,
-configuration and public exports import `hbmcmc.compatibility`. Conversely,
-`run_hbmcmc.main` calls `fixedbasis_params_to_rhime` and then the canonical
-constructor without resource translation; historical BC selectors can fail as
-unsupported parameters. The delivered configuration spec still assigns shared
-alias translation to HBMCMC; the active grouped amendment is now aligned with
-this pending correction while retaining its phase-only resolution requirements.
+1. Delete HBMCMC's wrapper, adapters and legacy utilities without recreating their
+   namespace through imports, forwarding shims or console scripts. Replace normal
+   callers with the existing canonical interfaces; do not make modern execution
+   invoke a converter or historical translator.
+2. Remove temporary spelling/output-format/flux translation from modern
+   frontends. Use their ordinary unsupported-option validation for old names.
+   Remove every `use_tracer` field, translation branch and special error:
+   every explicit occurrence, regardless of value, is unsupported; omission is
+   valid without tracer execution. Cover file, override, saved-phase, direct and
+   supplied-data routes before scientific work.
+3. Keep independent modern INI decoding, configuration groups, exact resource
+   selections, invocation-relative paths, BC loading and packaged defaults.
+   Existing path conversion uses owning declarations/type annotations and a
+   small standard-library converter; retaining that helper implementation is not
+   a public behavioral requirement. Check file-derived and explicit override
+   paths against the same invocation working directory; manifest dependency
+   references retain their own declaring-record base.
+4. Port scientific tests before removing adapter-only plumbing. Canonical full,
+   prepared, saved and output routes retain their equations, labelled inputs,
+   signed/current-run flux, sampling defaults, all retained chains and explicit
+   array materialization boundaries. Ordinary supported basis representations,
+   `output_format="legacy"`, `save_inversion_output` and exact export destinations
+   remain independent of executor retirement.
+5. Canonical standard/multisector execution returns `InversionOutput` and uses
+   `run_standard`/`run_multisector`, their eager builders and the custom-likelihood
+   seam. The older prepared runner, multisector build/result adapters and
+   `RhimeResult`/`RhimeRunSpec` envelopes have no target runtime compatibility
+   contract. Do not condition the desired interface on migration of a historical
+   cached consumer or preserve bespoke import errors as permanent requirements.
+6. Keep public `SiteOptions.from_inputs` shorthand/alignment behavior. Private
+   `convert_to_list` helper selection, constructor refactors, ordinary forwarding
+   and test/example updates are implementation choices, not public contracts.
 
-## Goals / Non-Goals
+## Scientific-input coordination
 
-**Goals:** make modern execution independent of legacy package availability,
-preserve delivered isolation, and make complete development retirement a
-bounded operation after affected evidence and scientific regressions exist.
+The focused scientific-input amendment is owned by #876 and
+[PR #964](https://github.com/openghg/openghg_inversions/pull/964). It owns the
+retained observation population, missing-error derivation/imputation and nested
+alignment. Configuration owns option resolution and passes explicit scientific
+choices; it must not establish a conflicting acquired-population order.
+Provider `get_obs_surface(..., average=...)` resamples before returning acquired
+observations, with repeatability and variability propagated separately. Inversion
+preparation combines the returned components, preserving supplied `mf_error`.
+The selection population used for missing errors is a distinct scientific choice.
 
-**Non-goals:** no model, sampler, output-codec, checkpoint or configuration-grouping
-redesign; no runtime deletion or release-readiness claim in this amendment.
+The #971 retirement covers exactly `daily_median` and `six_hr_mean` and their
+registered names. Their historical post-error aggregation order is source evidence,
+not a target requirement. Filters select observations; any aggregation is an
+explicit scientific operation with its own uncertainty propagation. These records
+do not prescribe error combination before provider resampling or implement the
+separate scientific change. #719, including tracer cleanup, precedes #964; #971
+is a separate prerequisite for #964, not for #719.
 
-## Decisions
+## Historical isolation and transition evidence
 
-1. Keep fixedbasis policy and historical resource discovery in HBMCMC. Wire the
-   CLI and normalized dictionary route after overrides, before construction.
-   Keeping calls in modern runners or placing discovery in `from_params` would
-   retain the reverse dependency or violate data-free construction.
-2. Retire temporary spelling, output-format and `emissions_*` option translation
-   through #719 after its affected evidence and scientific regressions exist.
-   Until each removal lands, existing frontend precedence and warnings apply
-   outside HBMCMC. Canonical configuration knows only canonical names; normal
-   execution must not invoke migration tooling. Outside the accepted finite
-   CLI/five-name Python maps above, public names retain their contracts pending
-   exact #945 decisions. Independent basis adapters remain
-   with #951, outside blanket retirement. HBMCMC discovery stays self-contained
-   until removal.
-3. Leave path conversion, BC loading and packaged-map selection with the
-   [resource-I/O change](../../specs/rhime-resource-io/spec.md).
-   Its independent converter accepts owner declarations and a base; it does not
-   import configuration owners. This change consumes that behavior rather than
-   defining a second converter or resource policy.
-4. Enforce the package boundary with a small production import check, covering
-   absolute/relative imports and re-exports, plus a representative modern import
-   and execution check that rejects attempts to load HBMCMC. Test modules may
-   still import legacy APIs. Avoid a general dependency-analysis framework.
-5. Separate delivered isolation from pending development retirement. Keep
-   deletion tasks open until implementation and revision-specific validation
-   exist. Check intervening changes against #960 for each removal, preserve
-   historical expectations and port affected scientific tests. Unresolved
-   dispositions do not authorize deletion. Resource I/O and independently
-   retained codecs keep their own contracts.
-
-## Risks / Trade-offs
-
-- Mistaking supported modern aliases for fixedbasis policy → retain alias and
-  conflict-precedence tests while adding early errors for legacy-only selectors.
-- Tests exercise helpers but miss the CLI → reproduce the reported NESW request
-  through `run_hbmcmc.main` with acquisition mocked at its owning boundary.
-- A later configuration delta restores HBMCMC ownership → keep the already-aligned
-  grouped delta consistent during implementation and verify it again before sync.
-- Legacy artifact users lose utilities at retirement → document supported modern
-  replacements and older-release use; do not promise new artifact compatibility.
-
-## Delivery and remaining migration
-
-The 0.8 decisions above are implemented and accepted for merge on PR #869 after
-CI passed at `7260b43d`. Isolation, canonical configuration and resource-I/O
-requirements are promoted to durable capabilities. The resource-I/O change is
+At PR #869 revision `e41e2838`, modern code imported `hbmcmc.compatibility`, while
+`run_hbmcmc.main` called fixedbasis translation without the required resource
+translation. The 0.8 isolation delivery corrected this with one-way dependencies
+and legacy-owned discovery. CI passed at `7260b43d`; resource I/O was promoted and
 [archived](../archive/2026-10-13-move-rhime-resource-io-to-runners/tasks.md).
-The grouped-configuration change retains its unimplemented phase-only selection
-requirements and consumes the delivered boundary.
+The checked tasks retain that historical validation and former 0.9 schedule.
 
-Development retirement remains pending here. After the affected evidence and
-scientific regression gate, delete the HBMCMC package and its entry points,
-remove temporary runner spelling/output-format/flux aliases, update migration
-notes, and verify distribution contents and modern execution. After that
-implementation is accepted, sync the remaining removal requirement and archive
-this change. Finished converter/launcher interfaces are not a development
-prerequisite. Do not mark deletion complete because isolation or this amendment
-has shipped.
+The removed transition operated after winning overrides. HBMCMC's
+`params_from_config(normalise=False)` returned decoded overridden historical
+values; normalization translated names/discovery and produced canonical absolute
+paths. Historical NESW directories warned without lookup, and only winning
+resource selections were discovered. Ordinary parameter aliases favored a
+canonical spelling; old/new flux selectors conflicted even for equal values.
+Those mechanics remain source evidence for explicit conversion, not modern
+request requirements.
+
+Historical HBMCMC wrapper scientific checks rejected `no_model_error=True` and
+the pollution-event combination with observation-derived error and offsets;
+private likelihood, unused-sigma, minimum-error and chain-selection controls have
+already been removed from modern construction. Preserve their source observations
+without restoring historical graphs. Historical equations and chain-0 summaries
+require matching old software; modern products retain all-chain semantics.
+
+The six-tuple `retrieve_inversion_data` and deprecated
+`data_processing_surface_notracer` forwarding wrapper live in HBMCMC's
+`legacy_data`. Their error preparation, cache behavior, signatures, warnings and
+legacy-container returns are historical evidence covered by namespace retirement,
+not an independent modern API promise. Port relevant scientific coverage to
+canonical `MergedData`/`PreparedInputs` without creating another wrapper.
+
+## Risks and validation
+
+A compatibility name can identify a retained scientific or artifact capability.
+Review actual consumers before deleting anything outside the finite maps; keep
+independent basis decisions with #951. Verify modern imports/execution without
+HBMCMC, wheel/sdist contents and rejection of retired access paths. Use focused
+canonical-input scientific regressions and distinguish inspected source from
+executed checks at the implementation revision. Do not treat this planning
+amendment or past isolation CI as completed runtime deletion.

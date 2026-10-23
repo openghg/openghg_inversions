@@ -1,47 +1,47 @@
-# Pending HBMCMC retirement
+# HBMCMC retirement
 
 ## ADDED Requirements
 
-### Requirement: HBMCMC retirement follows the development evidence gate
+### Requirement: HBMCMC is unavailable in the modern distribution
 
-The agreed development retirement SHALL remove the entire
-`openghg_inversions.hbmcmc` subpackage, including the executable wrapper,
-compatibility adapters and legacy data/basis utilities within that subpackage.
-Retirement SHALL preserve the durable
-[Development removals require affected migration evidence](../../../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence)
-guarantees. Temporary runtime translation SHALL retire only for the spellings
-enumerated in
-[Compatible public adapters and scientific choices](../../../../specs/rhime-configuration/spec.md#requirement-compatible-public-adapters-and-scientific-choices);
-canonical names and modern returns SHALL retain their contracts. Modern execution SHALL NOT invoke
-migration tooling. No import aliases, forwarding shims or entry points SHALL
-preserve the HBMCMC namespace after its removal.
+The modern wheel and source distribution SHALL contain no
+`openghg_inversions.hbmcmc` subpackage, executable wrapper, configuration adapter
+or legacy data/basis utility. No import alias, re-export, forwarding shim or
+executable entry point SHALL recreate that namespace. Modern execution SHALL NOT
+import or invoke migration tooling.
 
-Supported modern workflows, modern `output_format="legacy"`, saved
-`InversionOutput` exports and independently supported basis/scientific codecs
-SHALL remain available. Python names SHALL follow only the finite
-[five-alias retirement](../../../../specs/rhime-model-selection/spec.md#requirement-retire-named-python-aliases),
-preserving canonical callables/types and artifact identities. Other Python names
-and independent basis capabilities SHALL retain their separately specified support. CLI names SHALL
-follow only the finite
-[installed-command exceptions](../../../../specs/rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement),
-preserving canonical operations and argument behavior without a broader Python
-import/signature/result-wrapper exemption.
+Modern runner/acquisition boundaries SHALL accept canonical options and reject
+the historical spellings and output-format aliases enumerated in
+[Compatible public adapters and scientific choices](../../../../specs/rhime-configuration/spec.md#requirement-compatible-public-adapters-and-scientific-choices)
+through ordinary unsupported-option validation before scientific work.
+Every explicit `use_tracer` occurrence SHALL be unsupported, regardless of value;
+omission SHALL remain valid without enabling tracer execution.
 
-Migration guidance SHALL distinguish delivered isolation, permission for gated
-development retirement and removal actually implemented. It SHALL identify
-modern replacements for retained workflows and matching older software for
-historical execution or unsupported artifacts.
+Public Python names SHALL follow only the finite
+[five-alias retirement](../../../../specs/rhime-model-selection/spec.md#requirement-retire-named-python-aliases).
+Installed commands SHALL use the canonical `rhime` routes in
+[Bounded installed-command retirement](../../../../specs/rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement).
+Other Python names, canonical signatures, result contents and scientific meanings
+SHALL retain their separately specified contracts.
 
-#### Scenario: Install a distribution after retirement is implemented
+Historical observations and canonical scientific coverage SHALL retain the
+[migration evidence guarantees](../../../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
+Modern `output_format="legacy"`, saved `InversionOutput` exports, exact artifact
+destinations and independently supported basis capabilities SHALL remain
+available. Supported artifact formats and versions SHALL follow their owning
+codec contracts, without implied historical-format compatibility from Python
+naming changes.
 
-- **WHEN** a user installs a wheel or source distribution after gated retirement is implemented
+#### Scenario: Install the modern distribution
+
+- **WHEN** a user installs the modern wheel or source distribution
 - **THEN** it contains no HBMCMC subpackage or executable entry point
-- **AND** the HBMCMC module path cannot be imported through a compatibility shim
-- **AND** modern workflows and separately supported output formats remain usable
+- **AND** the HBMCMC module path cannot resolve through a compatibility shim
+- **AND** modern workflows and independently supported output formats remain usable
 
-#### Scenario: Follow development migration guidance
+#### Scenario: Execute with canonical choices
 
-- **WHEN** a user reviews the legacy migration documentation before upgrading
-- **THEN** delivered removals and pending development retirement are identified separately
-- **AND** RHIME execution and retained prepared-input/basis artifacts are identified where applicable
-- **AND** unsupported legacy-only operations are identified without promising new codecs
+- **WHEN** a caller supplies supported canonical modern choices
+- **THEN** normal execution performs no HBMCMC or migration-tool translation
+- **AND** old request spellings and every explicit `use_tracer` occurrence are rejected before scientific work
+- **AND** independent scientific and artifact capabilities remain available

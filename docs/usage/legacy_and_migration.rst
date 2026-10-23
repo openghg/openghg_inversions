@@ -173,20 +173,26 @@ Agreed breaking-development boundary
 The maintainer-approved `#944 treatment table
 <https://github.com/openghg/openghg_inversions/issues/944>`_ and bounded
 `#961 contract amendment <https://github.com/openghg/openghg_inversions/issues/961>`_
-supersede the earlier 0.8/0.9 compatibility schedules. Migration M1 permits
-`#719 <https://github.com/openghg/openghg_inversions/issues/719>`_ to remove
-the HBMCMC namespace, its wrappers/dictionary adapters and the enumerated
-temporary parameter/output-format/flux-selector translation after evidence
-preservation and relevant regression migration. This grants no general exception
-for public signatures or result wrappers. The explicitly named API migrations
+supersede the earlier 0.8/0.9 compatibility schedules. The agreed target has
+no HBMCMC namespace, wrappers, forwarding shims or dictionary adapters. Modern
+runner/acquisition boundaries accept canonical names; the enumerated deprecated
+parameter/output-format/flux-selector spellings are unsupported. Modern
+configuration has no ``use_tracer`` field: every explicit occurrence, regardless
+of value, receives ordinary unsupported-option validation before scientific
+work; omission remains valid. Migration M1 work in
+`#719 <https://github.com/openghg/openghg_inversions/issues/719>`_ implements
+that target after evidence preservation and relevant regression migration. This
+grants no general exception for public signatures or result wrappers. The explicitly named API migrations
 documented on this page retain their own contracts; other current model selectors
 and shared Python names retain their contracts except for the
 :ref:`five named aliases <rhime-python-alias-retirement>` approved for retirement.
-That finite map preserves canonical behavior and persisted schemas/artifacts.
+That finite map preserves canonical behavior and scientific artifact contents.
+Supported formats/versions and explicit conversion or rejection of unsupported
+artifacts are specified independently; it promises no automatic 0.7 compatibility.
 The separately accepted
-:ref:`CLI command map <rhime-cli-command-retirement>` permits retiring
-``openghg-inversions`` and the four redundant full-run commands, targeting
-``rhime`` as the sole installed executable. Current source still accepts those
+:ref:`CLI command map <rhime-cli-command-retirement>` requires
+``rhime`` as the sole installed executable, without ``openghg-inversions``
+or the four redundant full-run commands. Current source still accepts those
 names; this amendment implements no removal. Positional dates, ``--kwargs``,
 effective configuration/date/output overrides, scientific execution, outputs
 and artifacts are preserved during this command-name migration. Positional dates
@@ -205,7 +211,7 @@ The amended promises are `compatible public adapters
 `configuration identity
 <https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md#requirement-configuration-is-not-a-historical-identity-schema>`_,
 `modern flux selectors
-<https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md#requirement-modern-flux-selectors-have-their-own-deprecation-boundary>`_,
+<https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md#requirement-canonical-modern-flux-selectors>`_,
 `named Python aliases
 <https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-model-selection/spec.md#requirement-retire-named-python-aliases>`_,
 and `retained modern behavior
@@ -627,9 +633,11 @@ dictionary adapter from ``hbmcmc.compatibility``. Modern callers do not use this
 Legacy merged-data metadata
 ---------------------------
 
-Fresh acquisition is named ``retrieve_inversion_data`` for both surface and
-column observations. ``data_processing_surface_notracer`` remains a deprecated
-wrapper preserving its existing signature, shorthand and six-tuple return.
+The transitional ``openghg_inversions.hbmcmc.legacy_data`` namespace contains
+``retrieve_inversion_data`` for surface and column observations and the deprecated
+``data_processing_surface_notracer`` six-tuple wrapper. Both are included in the
+agreed complete namespace retirement; no modern six-tuple replacement is promised.
+Modern acquisition uses ``MergedData.from_options``.
 
 The merged-data mapping returned by ``retrieve_inversion_data`` and
 ``load_merged_data`` no longer includes the unused ``.species``, ``.units``,
@@ -658,9 +666,10 @@ arguments. For repeat runs, save and load ``PreparedInputs`` and use the
 prepared-input runner. The staged ``prepare`` command persists only those
 prepared inputs and their manifest; subsequent stages read that artifact.
 
-Historical tuple retrieval and its NetCDF/Zarr cache helpers remain available
-for existing workflows. They do not provide a modern acquisition replay
-contract. Do not relabel an old filtered cache as freshly acquired data.
+Historical tuple retrieval and its NetCDF/Zarr cache helpers remain implemented
+in the transitional HBMCMC namespace pending its removal. They do not provide a
+modern acquisition replay contract or a retained capability after retirement.
+Do not relabel an old filtered cache as freshly acquired data.
 
 Removed interfaces
 ------------------
@@ -708,10 +717,11 @@ when migrating an analysis to 0.8.
 Explicit legacy merged-data utilities
 -------------------------------------
 
-Scripts that still create or reload ``fp_all`` mappings must import
+Until namespace removal, scripts that still create or reload ``fp_all`` mappings import
 ``retrieve_inversion_data``, ``_save_merged_data`` and ``load_merged_data`` from
 ``openghg_inversions.hbmcmc.legacy_data``. The historical netCDF and Zarr
-codecs retain their existing behaviour. Dictionary-based basis adapters,
+codecs currently retain their existing behaviour; this is transitional status,
+not a retention promise. Dictionary-based basis adapters,
 including ``basis_weights_from_fp_all`` and ``make_basis_functions_from_fp_all``,
 now live in ``openghg_inversions.hbmcmc.legacy_basis``. The previous canonical
 module paths and exports have been removed.
