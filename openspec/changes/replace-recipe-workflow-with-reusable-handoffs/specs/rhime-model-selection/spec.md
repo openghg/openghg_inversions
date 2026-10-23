@@ -2,33 +2,40 @@
 
 ### Requirement: Preserve installed run-command selection
 
-The `rhime` and `openghg-inversions` executables SHALL expose `run --model` for
+The canonical `rhime` executable SHALL expose `run --model` for
 `standard`, `multisector`, `nested`, and `co2`, defaulting to `standard`.
 Standard, multisector and nested commands SHALL forward the selected model,
 configuration path, effective date bounds, and noncolliding decoded keyword
-overrides to the Python selector. For these recipes, JSON `start_date` and
+overrides to the selected scientific recipe. For these recipes, JSON `start_date` and
 `end_date` overrides SHALL take precedence over positional dates.
 
 CO2 CLI execution SHALL call `run_co2` with its TOML
 configuration, positional date overrides, output-path override and decoded
 component-section overrides. It SHALL consume configured model, sampler and
 output choices and write requested products without requiring manifests or
-acquiring data. `run-co2` SHALL be an alias for this configured CLI route.
+acquiring data. `rhime` SHALL be the sole installed executable, with the retired
+executable and full-run subcommands unavailable as specified in
+[Bounded installed-command retirement](../../../../specs/rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement).
+Canonical command names SHALL preserve effective inputs and scientific outputs.
+Positional dates and `--kwargs` remain open to a separately specified syntax
+amendment; command renaming SHALL NOT settle that design or rename the Python
+package/distribution.
 The Python `rhime.run(model="co2", ...)` selector SHALL call the same configured
 product runner and return `Co2Output` with its complete annotated trace DataTree.
 Fixed OU with inferred independent site amplitudes SHALL select matched cached
 inference through that same configured route. Linked CO2/O2 SHALL remain outside
 the configuration-driven CLI selector.
 
-Current reserved-key limitation for standard, multisector and nested: JSON
-`model` or `config_file` entries collide with separately supplied keywords and
-raise `TypeError` before selection runs. They are not supported override keys.
+For standard, multisector and nested, `model` and `config_file` SHALL NOT be
+supported JSON override keys. A request containing either SHALL fail with
+`TypeError` before scientific execution rather than override recipe selection
+or the separately supplied configuration path.
 
-#### Scenario: Select a recipe through either executable
+#### Scenario: Select a recipe through the canonical executable
 
-- **WHEN** either executable receives standard, multisector or nested, explicit
+- **WHEN** `rhime run` receives standard, multisector or nested, explicit
   dates, an INI path, and noncolliding keyword overrides such as `draws`
-- **THEN** it passes those values and the selected model to `rhime.run`
+- **THEN** it executes the selected scientific recipe with those effective inputs
 - **AND** its parser rejects cached or linked CO2-family `--model` choices
 
 #### Scenario: Override positional date bounds
@@ -38,15 +45,14 @@ raise `TypeError` before selection runs. They are not supported override keys.
 - **THEN** it forwards the JSON values for the overridden dates
 - **AND** positional values remain effective for dates without a JSON override
 
-#### Scenario: Run configured CO2 through either spelling
+#### Scenario: Run configured CO2 through its canonical command
 
-- **WHEN** either executable receives `run --model co2` or `run-co2`, a CO2 TOML
+- **WHEN** `rhime run --model co2` receives a CO2 TOML
   configuration, date/output overrides and current component-section choices
-- **THEN** both spellings call the same configured product runner
+- **THEN** it calls the configured product runner with unchanged argument handling
 - **AND** requested products and the complete annotated trace use the selected
   scientific preparation and effective model, sampler and output choices
-- **AND** trace-only callers compose the existing materialize, eager-build and
-  sample operations rather than a second product runner
+- **AND** trace-only scientific execution remains independently available without requested product writes
 
 #### Scenario: Select matched inference from the scientific model
 
@@ -61,28 +67,27 @@ raise `TypeError` before selection runs. They are not supported override keys.
 ### Requirement: Preserve the CO2 prepared-input boundary
 
 CO2 selection SHALL call `run_co2` with its configured product request
-and a saved coherent preparation or explicitly supplied canonical inputs and
-coherent reduction. It SHALL NOT acquire data or infer native covariance and
+with supplied `prepared` inputs, a configured prepared-input path, or explicit
+canonical inputs and a coherent reduction. It SHALL NOT acquire data or infer native covariance and
 projection choices. Both Python and CLI selection SHALL consume the same model,
 sampler and output choices and return/write the corresponding products.
-Trace-only scientific callers SHALL compose the existing materialization,
-eager construction, sampling and annotation operations. The redundant ordinary
+Trace-only scientific execution SHALL remain independently available. The redundant ordinary
 `run_rhime_co2`, bundled `build_rhime_co2` and unshipped `run_co2_from_config`
-entry points SHALL NOT retain aliases. The redundant `run_rhime_co2_cached_sigma` runner and `co2_cached_sigma` Python selector
-SHALL also be removed without compatibility aliases.
+entry points SHALL be unavailable. The `run_rhime_co2_cached_sigma` runner and
+`co2_cached_sigma` Python selector SHALL also be unavailable.
 
 Linked CO2-family selection SHALL retain the existing `prepared_inputs`
 interfaces and trace returns. Those recipes SHALL NOT accept `config_file` on
 behalf of their prepared-input scientific runners.
 
-#### Scenario: Select CO2 without compatible arguments
+#### Scenario: Select linked CO2 without compatible arguments
 
 - **WHEN** a linked CO2-family model is selected without its required `prepared_inputs`
 - **THEN** the selected recipe raises `TypeError`
 - **AND WHEN** `config_file` is supplied to that selected recipe
 - **THEN** it raises `TypeError` rather than interpreting an INI file
 
-#### Scenario: Select configured CO2 in Python
+#### Scenario: Select configured ordinary CO2
 
 - **WHEN** Python selection receives `model="co2"`, a CO2 request and
   its coherent prepared inputs
@@ -94,7 +99,8 @@ behalf of their prepared-input scientific runners.
 
 ### Requirement: Select linked CO2/O2 saved execution
 
-The installed `prepare`, `prior-predictive`, `sample` and `postprocess` commands
+The installed `rhime prepare`, `rhime prior-predictive`, `rhime sample` and
+`rhime postprocess` commands
 SHALL accept `--model co2_o2`. Preparation SHALL reference the existing joint
 NetCDF/Zarr codec, preserving its unequal channel observation axes, shared and
 tracer-specific states, cross-channel covariance, units and signed-ratio
@@ -111,7 +117,7 @@ Python scientific runners SHALL remain usable independently of checkpoints.
 
 - **WHEN** a common-unit unequal-axis linked artifact is prepared and passed
   through prior prediction, sampling, diagnosis and output replay
-- **THEN** each phase consumes the existing shared scientific operations
+- **THEN** each phase preserves the joint model's scientific meaning
 - **AND** cross-channel aggregation covariance enters the likelihood once
 - **AND** saved roles identify the full joint mean, channel predictions and
   residuals, retained-state scaling and source/tracer contributions

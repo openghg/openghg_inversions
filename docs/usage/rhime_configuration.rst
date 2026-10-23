@@ -124,8 +124,10 @@ passed to a runner without resolving again.
 ``RhimeConfig.from_params`` is the single construction entry point; the former
 ``resolve_rhime_config`` wrapper has been removed. Runner frontends, including
 ``run_standard`` and staged commands, translate supported deprecated names before
-calling this constructor. They emit ``DeprecationWarning`` on devel and in 0.8;
-these aliases are removed in 0.9. For names such as ``xprior`` and ``outputname``,
+calling this constructor. While this transitional translation remains on devel,
+it emits ``DeprecationWarning``. The :doc:`agreed development boundary
+<legacy_and_migration>` permits bounded removal after affected evidence and
+regression migration. For names such as ``xprior`` and ``outputname``,
 canonical names take precedence. Flux keyword deprecations follow the stricter
 rules below. Canonical inputs emit no warning. Configuration construction has no
 alias vocabulary; deprecated names passed directly to ``RhimeConfig.from_params``
@@ -133,7 +135,8 @@ are ordinary unknown options. Modern configuration and runners do not import or
 call HBMCMC.
 
 The deprecated dictionary-returning ``params_from_config`` adapter is available
-only from ``openghg_inversions.hbmcmc.compatibility`` during 0.8; its RHIME
+only from ``openghg_inversions.hbmcmc.compatibility`` while that transitional
+adapter remains; its RHIME
 re-export is removed. ``normalise=False`` returns decoded values plus winning
 overrides. ``normalise=True`` translates aliases and historical resource
 selections after overrides and returns canonical keys and resolved ``Path``
@@ -158,7 +161,8 @@ independent of the outer flux-domain selector).
 At runner frontends, the deprecated spellings ``emissions_store``,
 ``emissions_domain``,
 ``inner_emissions_store`` and ``inner_emissions_domain`` remain accepted with
-``DeprecationWarning`` until removal in **0.9**. Supply only one spelling of
+``DeprecationWarning`` until their bounded removal under the
+:doc:`agreed development boundary <legacy_and_migration>`. Supply only one spelling of
 each selector: old and new names together raise ``ValueError``, including
 equal values and explicit ``None``. These modern deprecations are resolved
 before configuration construction. ``RhimeConfig.from_params`` accepts only
@@ -205,7 +209,7 @@ save it through ``BasisFunctions.save`` when ``basis_output_path`` is requested,
 then retain the selected export path in metadata. The application helper
 ``rhime.preparation.resolve_basis_inputs(config.data)`` loads these scientific inputs.
 Historical case/directory selections are accepted only by the temporary HBMCMC
-entry points in 0.8, which translate winning selections before calling modern
+entry points while present on devel, which translate winning selections before calling modern
 APIs. Modern runners reject ``fp_basis_case``, ``basis_directory``,
 ``bc_basis_case`` and ``bc_basis_directory`` before acquisition; resolved requests
 contain explicit selections. The numerical functions do no file discovery.
@@ -244,16 +248,17 @@ For devel/0.8, saving a basis uses the retained modern artifact by default.
 For historical callers, ``basis.compatibility.make_basis_functions`` accepts
 ``basis_output_format="legacy"`` as explicit opt-in. This is an adapter option,
 not a canonical ``RhimeConfig`` field.
-Legacy basis output is deprecated in 0.9; that deprecation does not schedule
-automatic removal in 0.9. This changes basis artifacts, independently of the
-final inversion product's ``output_format``.
+Its independent retention/deprecation decisions remain with #951; the
+:doc:`development boundary <legacy_and_migration>` does not remove this
+capability. Basis artifacts are independent of the final inversion product's
+``output_format``.
 
 Historical ``fp_basis_case`` / ``basis_directory`` discovery, directory-style
 basis outputs, ``emissions_name`` and legacy artifact
 adaptation belong to the compatibility boundary. Deprecated public
 ``make_basis_functions`` and ``load_basis_functions`` adapters live in
 ``basis.compatibility`` and invoke canonical modern operations. Their independent
-deprecation schedule is unaffected by removing HBMCMC in 0.9. Migrate a
+dispositions remain with #951; HBMCMC retirement does not authorize their removal. Migrate a
 case/directory pair to an explicit artifact and output destination::
 
    # Before: fp_basis_case="monthly", basis_directory="/data/bases"

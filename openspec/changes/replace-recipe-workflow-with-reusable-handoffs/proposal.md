@@ -1,6 +1,74 @@
 # Proposal
 
+Positional dates and `--kwargs` remain open for discussion and possible revision.
+The finite CLI naming amendment preserves their current meanings for that slice;
+it does not establish their final design.
+
+## Accepted outcome reconciliation — 23 October 2026
+
+The target contracts now state the supported modern interfaces directly, rather
+than permitting optional retirement or retaining transitional runtime branches.
+They require canonical options, no HBMCMC namespace, sole `rhime` command entry,
+and unavailable retired command/Python names. Equivalent scientific execution,
+borrowed-array boundaries, selected artifact destinations and independent modern
+codecs remain supported. Implementation mechanisms are in [design.md](design.md);
+source state, audit checks and sequencing remain in [tasks.md](tasks.md). This
+planning amendment changes no runtime code or completed-task evidence.
+
+Ordinary configured CO2 and linked prepared-input CO2/O2 have distinct input and
+result contracts. Numerical selection/imputation/alignment policy belongs to the
+focused scientific-input amendment: provider averaging precedes inversion-side
+selection, followed by retained-population missing-error derivation. Historical
+aggregation-filter ordering is not a target requirement. Artifact version support
+and explicit unsupported-format handling belong to persistence contracts,
+independently of Python naming. Dates and `--kwargs` remain open design questions.
+
 ## Approval and delivery status
+
+### Development-boundary amendment — 23 October 2026
+
+The maintainer-approved #944/#961 amendment permits bounded retirement of the
+HBMCMC namespace, its wrappers/dictionary adapters and the temporary
+parameter/output/flux translation enumerated in the
+[retirement delivery checklist](../isolate-and-retire-hbmcmc/tasks.md#migration-evidence-checklist-and-delivery-order).
+It grants no general exception for public signatures or result wrappers.
+Existing named migrations, including Python `run_rhime`, `RhimeRunSpec` and
+`RhimeResult`, retain their explicit contracts; other current model selectors
+and shared Python names retain their contracts except for the separately
+approved [five-name alias map](../isolate-and-retire-hbmcmc/tasks.md#named-python-alias-amendment--23-october-2026).
+That map permits removal without naming-only forwarders; canonical behavior,
+types/constructors, result contents and scientific artifact meanings remain;
+format-version support is specified independently.
+The durable [evidence guarantees](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence)
+remain distinct from that checklist's pinned #960 baseline, per-PR work and
+owners. Historical observations stay separate from dated modern comparisons;
+unchanged behavior needs canonical regressions and agreed scientific changes
+need tests of their new semantics. Finished converters/launchers are M2 release
+gates rather than development-removal prerequisites.
+
+Scientific calculations, borrowed arrays and explicit execution boundaries,
+current numerical codecs, modern legacy-format output and `InversionOutput`
+exports remain supported. Unresolved public aliases stay with #945 and independent
+basis decisions with #951. This amendment removes no production code, chooses
+no release number and completes no delivery task. Earlier dated delivery evidence
+remains valid only for its recorded revision.
+
+The later accepted [finite CLI map](../isolate-and-retire-hbmcmc/tasks.md#cli-command-name-amendment--23-october-2026)
+permits retiring `openghg-inversions` and the four redundant full-run commands;
+the target is solely `rhime`, with `run --model standard|multisector|nested|co2`.
+Preserve positional dates, `--kwargs`, effective configuration/date/output
+overrides, scientific execution, outputs and artifacts. This does not redesign
+arguments, rename the package/distribution or implement removal. Broader Python
+names/imports beyond the five-name map need exact agreements under #663/#945 and a #776 revival.
+
+The maintainer also agreed the bounded #876/#964/#971 contract placement:
+configuration owns option rules, focused scientific-input requirements own
+numerical preparation/alignment, and existing prepared/sample contracts own
+saved reuse/replay. Concrete helper/wrapper instructions remain design guidance.
+#876's retained-population imputation supersedes preservation of the historical
+pre-filter population; the owning PRs implement and validate those amendments.
+Complete #719 (including special tracer compatibility retirement) before #964;
+#971 remains a separate prerequisite for #964, not for #719.
 
 Approved for implementation by the maintainer on 11 October 2026. Begin with a
 bounded implementation PR stacked on #841; subsequent deliveries follow the
