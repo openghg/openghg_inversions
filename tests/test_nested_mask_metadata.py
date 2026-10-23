@@ -60,8 +60,7 @@ def test_preparation_records_footprint_rectangle_even_when_basis_flux_labels_dif
         outer, inner,
         **config.data.select(
             "domain", "start_date", "flux_sources", "averaging_error", "filters",
-            "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
-            "min_error", "min_error_options",
+            "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc",
         ),
         inner_domain="EUROPE-6km", inner_basis_algorithm=None, inner_nbasis=2,
         outer_basis_inputs={}, inner_basis_inputs={},

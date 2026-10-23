@@ -32,6 +32,14 @@ reconstruction boundaries; it is not a complete package API specification.
 The configuration entry was amended on 13 October 2026 during review of PR 867.
 The resource-I/O and HBMCMC entries were updated the same day for the accepted
 0.8 implementation and durable-spec promotion in PR 869.
+The 23 October 2026 #876 amendment separates configuration choices, numerical
+input behavior and saved handoff guarantees below. Revision ``1487ccf9`` passed
+final validation in Slurm array ``19651924``: 4,086 tests on each of Python 3.12
+and 3.13, lint, four borrowed-typing tests and the full documentation environment.
+The :download:`alignment change tasks
+<../../openspec/changes/move-alignments-to-model-boundary/tasks.md>` record the
+evidence and diagnostic limits. The broader handoff change remains active with
+its separate programme acceptance still open.
 
 .. list-table:: Behavioral ownership and delivery status
    :header-rows: 1
@@ -53,14 +61,28 @@ The resource-I/O and HBMCMC entries were updated the same day for the accepted
        <../../openspec/specs/rhime-model-composition/spec.md>`
      - Baseline of the named delivered interfaces;
        :doc:`/usage/customising_rhime`. Covariance support remains recipe-specific.
-   * - Requested configuration and preparation ownership
+   * - Requested options and phase resolution
      - :download:`Resolve RHIME configuration
        <../../openspec/specs/rhime-configuration/spec.md>`
      - Delivered grouped configuration and independent phase resolution,
        implemented in `PR 866 <https://github.com/openghg/openghg_inversions/pull/866>`_.
+       The #876 amendment retains option ownership, defaults, accepted choices
+       and prepared-fact binding here; numerical behavior and artifact guarantees
+       have the owners below.
        Current usage: :doc:`/usage/rhime_configuration`.
        Configuration serialization/INI writing remains with `issue 814
        <https://github.com/openghg/openghg_inversions/issues/814>`_.
+   * - Scientific preparation and model-input operands
+     - :download:`RHIME scientific inputs
+       <../../openspec/specs/rhime-scientific-inputs/spec.md>`
+     - Owns observation selection/error preparation, retained alignment, raw
+       spatial BC inputs, model-time BC periods and consumed minimum-error
+       operands. The #876 amendment passed the final validation recorded above.
+       Review and delivery evidence stays in the
+       :download:`alignment change tasks
+       <../../openspec/changes/move-alignments-to-model-boundary/tasks.md>`.
+       Current explanations: :doc:`observation_uncertainty`,
+       :doc:`numerical_array_ownership` and :doc:`/usage/rhime_configuration`.
    * - External resources and basis exports
      - :download:`RHIME resource I/O
        <../../openspec/specs/rhime-resource-io/spec.md>`
@@ -89,15 +111,27 @@ The resource-I/O and HBMCMC entries were updated the same day for the accepted
      - Delivered scientific capability retaining its owner-consent requirement;
        :doc:`/usage/affine_flux_map` and :doc:`/usage/co2_model_family` describe
        current support and conditional uncertainty.
-   * - Reusable recipe execution and prepared/sample handoffs
-     - :download:`Reusable handoff proposal
-       <../../openspec/changes/replace-recipe-workflow-with-reusable-handoffs/proposal.md>`
-       in `PR 802 <https://github.com/openghg/openghg_inversions/pull/802>`_
-     - Standard prepared/sample interfaces are implemented, including graph-free
-       replay and the two-model/two-output parity example. CO2 preparation and outputs
-       were adopted in PRs 886 and 900; the OPE-214 stack completes inferred fixed-OU
-       handoffs. Remaining programme work stays in the active change. Current routes are documented in
-       :doc:`/usage/staged_workflow` and the family pages.
+   * - Scientific execution across routes
+     - :download:`Recipe execution
+       <../../openspec/changes/replace-recipe-workflow-with-reusable-handoffs/specs/recipe-execution/spec.md>`
+     - Owns supported-route parity and execution behavior, consuming the
+       configuration, scientific-input and handoff contracts. Family routes are
+       implemented; remaining programme acceptance stays in the active change.
+   * - Saved preparation and compatible reuse
+     - :download:`Prepared recipe handoff
+       <../../openspec/changes/replace-recipe-workflow-with-reusable-handoffs/specs/prepared-recipe-handoff/spec.md>`
+     - Owns prepared formats, authoritative saved facts, raw-input reuse and
+       incompatible baked-preparation rejection. Standard/multisector routes
+       are implemented; CO2 retains coherent prior-dependent reuse constraints.
+       The #876 amendment passed final validation; the capability remains active.
+   * - Saved inference and fitted-operand replay
+     - :download:`Sampled recipe handoff
+       <../../openspec/changes/replace-recipe-workflow-with-reusable-handoffs/specs/sampled-recipe-handoff/spec.md>`
+     - Owns sample formats, exact fitted BC/floor persistence and graph-free
+       replay without recalculation. Standard/multisector replay is implemented;
+       CO2 handoffs were adopted in PRs 886 and 900 with later fixed-OU work.
+       The #876 amendment passed final validation; broader acceptance remains open.
+       Current routes: :doc:`/usage/staged_workflow` and the family pages.
 
 The older :download:`workflow configuration proposal
 <../../openspec/changes/archive/2026-10-11-unify-recipe-workflow-configuration/proposal.md>`
@@ -107,8 +141,8 @@ into their current specs. The replacement in PR 802 remains active.
 Neither proposal makes a common checkpoint interface a prerequisite for all
 recipes. Do not silently merge their pending behavior into a delivered baseline.
 PR 867 separated the configuration and resource-I/O amendments into
-separate changes. Resource I/O is now promoted and archived; grouped
-configuration remains active. PR 802 consumes those owners without duplicate
+separate changes. Resource I/O and grouped configuration are promoted and
+archived. The active handoff programme consumes those owners without duplicate
 deltas. The durable resource contract preserves PR 840's exact destinations.
 
 Planning records

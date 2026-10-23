@@ -389,3 +389,112 @@ migration report to
 `#949 <https://github.com/openghg/openghg_inversions/issues/949>`_. This addendum
 does not define a replacement resampling algorithm or revise the historical
 migration expectations above.
+
+Model input ownership comparison, 23 October 2026
+-------------------------------------------------
+
+This addendum refreshes #960 for `#876
+<https://github.com/openghg/openghg_inversions/issues/876>`_ after the
+aggregation-filter retirement above. It preserves all preceding source records,
+original fixture expectations and source hashes. The new plain comparison is
+:download:`model_inputs_2026_10_23.json
+<../../tests/fixtures/migration_960/retirements/model_inputs_2026_10_23.json>`.
+Historical cases below use inspected source and independent arithmetic only;
+no historical execution or emulator is claimed.
+
+The source remains ``0a32d73a5c4a72be0505a4ed682472e1613e49e9``. Comparison with
+base ``3b27c542`` found no changes in the selected preparation, floor, boundary,
+configuration and tracer source files before this work. This does not mean all
+production code was unchanged: upstream model and likelihood implementations
+also changed, and this record does not establish their numerical parity.
+The original #876 changes ``dafa68ea``, ``5e1f2b23`` and ``db5e65b7`` were
+inspected alongside their rebased counterparts ``2d497d70``, ``2627adde`` and
+``6cac1c40``; tracer retirement is recorded at ``3a485290``. The plain file
+retains their full commit identities and the inspected paths.
+
+.. list-table:: Preparation and model ownership changes
+   :header-rows: 1
+   :widths: 18 28 30 24
+
+   * - Case
+     - Pinned source meaning
+     - Current disposition
+     - Evidence and migration consequence
+   * - Missing observation error
+     - For times 00:00/12:00/13:00, longitude zero, ``mf=[100,0,10]`` and
+       repeatability ``[1000,0,2]``, pre-selection imputation uses the nonzero
+       median 501. Daytime selection then retains errors ``[501,2]``.
+     - Selection precedes derivation. The retained concentration standard
+       deviation is 5, exceeding the retained nonzero-error median 2, so the
+       retained errors are ``[5,2]``.
+     - Scientific population change. Supplied ``mf_error``, zero-only
+       replacement, missing-component and NaN policies keep their meanings.
+       Nested domains derive errors after canonical selection and alignment.
+   * - Named residual floor
+     - For ``mf=[0,10,20]``, ``mf_mod=[0,0,0]`` and no ``bc_mod``, estimation
+       before row removal gives population standard deviation ``sqrt(200/3)``.
+     - If the third ``H`` column is NaN, assembly removes that observation
+       first. An enabled likelihood estimates its floor from ``[0,10]``,
+       giving 5; the raw preparation carries no baked floor.
+     - Scientific population change, related to `I6
+       <#migration-ledger-requests-and-execution>`_. Fixed error does not consume
+       a floor; additive sigma consumes one only when explicitly enabled.
+   * - Boundary periods
+     - One raw curtain ``[2,3]`` at January/February timestamps becomes
+       ``[[2,0],[0,3]]`` in a monthly preparation.
+     - One raw preparation retains ``[2,3]``. Separate constant and monthly
+       models resolve ``[[2,3]]`` and ``[[2,0],[0,3]]`` respectively, preserving
+       the observation association and column sums ``[2,3]``.
+     - Period choice belongs to ``config.model.bc_freq`` and is resolved at
+       the model boundary. The retained preparation is reusable.
+   * - Prepared and sample artifacts
+     - Version-1 standard/multisector checkpoints and prepared inputs encode
+       the preceding model choices.
+     - Version-2 prepared/sample formats reject incompatible old formats.
+       Already expanded in-memory ``H_bc`` is also rejected. Use matching
+       historical software or prepare and sample again.
+     - `U1 <#output-and-unsupported-boundaries>`_ still distinguishes artifact
+       roles. Independent complete ``InversionOutput`` artifacts remain
+       supported; this is not blanket invalidation of historical outputs.
+
+The live request checks now compare archived ``bc_freq`` with
+``config.model.bc_freq`` and archived ``min_error`` with
+``config.model.likelihood.min_error``, including the explicit wrapper case.
+The remaining archived ``default_data`` fields still compare with
+``config.data``. The original JSON names, defaults and justifications remain a
+record of the pinned source; they are not rewritten as current configuration.
+See `I6 <#migration-ledger-requests-and-execution>`_ and H1 in
+:doc:`migration_960_historical` for the recorded settings. The H3 pollution-event
+baseline and H4 fixed-error equations on that page remain separate scientific
+exceptions; this ownership refresh does not revise their archived equations or
+claim to resolve their conversion choices.
+
+Current runtime coverage is in ``tests/test_observation_error_preparation.py``
+for selection and imputation, ``tests/test_model_owned_alignment.py`` for
+retained floors and boundary reuse, and ``tests/test_model_operand_handoffs.py``
+for independent saved operands and replay without recalculation. The plain file
+names the relevant tests. Historical arithmetic is independently justified by
+the supplied values, not regenerated from those modern implementations.
+
+Tracer option retirement comparison, 23 October 2026
+----------------------------------------------------
+
+The pinned modern and HBMCMC alias adapters discarded explicit
+``use_tracer=False`` with a deprecation warning and rejected ``True`` with the
+special error recorded in ``requests/errors.json``. That original error record
+is preserved. Current full requests reject either explicit boolean with ordinary
+unsupported-option ``ValueError`` validation; omission remains valid. Pure
+alias adapters leave unknown values for validation rather than silently
+accepting or removing the option. No tracer inversion is enabled.
+
+The separate tracer comparison in ``model_inputs_2026_10_23.json`` records
+source and target outcomes. ``tests/test_unsupported_tracer.py`` covers current
+flat/grouped requests, INI overrides, both boolean values, omission and runner
+rejection before acquisition, including supplied merged data.
+
+Scientific input ownership belongs to #876, tracer retirement to
+`#719 <https://github.com/openghg/openghg_inversions/issues/719>`_, API contracts
+to `#945 <https://github.com/openghg/openghg_inversions/issues/945>`_, and the
+migration report to
+`#949 <https://github.com/openghg/openghg_inversions/issues/949>`_. This record
+adds no artifact converter and claims no integrated numerical reproduction.

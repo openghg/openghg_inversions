@@ -38,7 +38,6 @@ from openghg_inversions.observation_error import (
     aggregation_error_input_names,
 )
 from openghg_inversions.sigma import SigmaAlignment
-from openghg_inversions.model_error import MinErrorConfig
 from .specs import (
     AdditiveSigmaSettings,
     PollutionEventSettings,
@@ -51,7 +50,14 @@ from .builders import (
     RhimeModelBuildResult,
 )
 
-from .materialization import _materialize_pymc_inputs_and_priors
+from .model_inputs import (
+    validate_model_inputs,
+    resolve_model_inputs,
+)
+from .likelihood_inputs import likelihood_input_names
+from .materialization import (
+    _materialize_pymc_inputs_and_priors,
+)
 from .outputs import (
     annotate_sample_trace,
     make_model_output,
@@ -111,6 +117,7 @@ def _require_component_inputs(
 def _multisector_input_names(
     model_inputs: xr.Dataset,
     model_spec: RhimeModelSpec,
+    *, materialized: bool = False,
 ) -> tuple[str, ...]:
     """Declare arrays required by selected multisector-model components.
 
@@ -197,7 +204,7 @@ def _multisector_input_names(
         *_OBSERVATION_INPUT_NAMES,
     ]
     likelihood_inputs = (
-        () if model_spec.likelihood is None else model_spec.likelihood.required_prepared_inputs
+        likelihood_input_names(model_inputs, model_spec.likelihood, materialized=materialized)
     )
     if likelihood_inputs:
         _require_component_inputs(
@@ -306,6 +313,10 @@ def materialize_multisector_inputs(
 ) -> tuple[xr.Dataset, dict[str, PriorArgs]]:
     """Materialize selected multisector arrays and enabled priors together.
 
+    Then resolve backend-neutral BC periods and the selected likelihood's floor
+    from retained observations. The returned Dataset contains final scientific
+    operands for analysis or model building.
+
     Args:
         prepared: Borrowed source-labelled inputs and retained native flux.
         model_spec: Choices selecting scientific components and priors.
@@ -322,11 +333,12 @@ def materialize_multisector_inputs(
         model_spec,
         prepared.inv_inputs,
     )
-    return _materialize_pymc_inputs_and_priors(
+    model_inputs, priors = _materialize_pymc_inputs_and_priors(
         prepared,
         variable_names=multisector_model_input_names(prepared, model_spec),
         prior_parameters=_multisector_prior_parameters(model_spec),
     )
+    return resolve_model_inputs(model_inputs, model_spec), priors
 
 
 def build_multisector_model(
@@ -343,9 +355,13 @@ def build_multisector_model(
     Source-prior blocks populate one labelled full state. The shared standard
     recipe applies one gathered sensitivity, then adds boundary conditions,
     offsets and the observation likelihood.
+    Resolve enabled BC sensitivities and likelihood floors with
+    :func:`materialize_multisector_inputs` before building. Numerical
+    materialization alone is insufficient. Independently supplied final arrays
+    without producer provenance are also accepted.
 
     Args:
-        model_inputs: Canonical Dataset with selected scientific inputs eager.
+        model_inputs: Resolved Dataset with selected scientific inputs eager.
         model_spec: Resolved sector, baseline and likelihood choices.
         priors: Eager prior mappings keyed by scientific model variable name.
         likelihood_builder: Optional ordinary custom likelihood callable.
@@ -358,10 +374,12 @@ def build_multisector_model(
     Raises:
         ValueError: If selected inputs or prior parameters are missing or lazy,
             sector identities or source layouts conflict, or likelihood choices
-            are inconsistent.
+            are inconsistent, BC inputs are raw, or producer-recorded BC/floor
+            policies conflict with the settings.
         TypeError: If the custom likelihood returns an invalid value.
     """
-    names = _multisector_input_names(model_inputs, model_spec)
+    names = _multisector_input_names(model_inputs, model_spec, materialized=True)
+    validate_model_inputs(model_inputs, model_spec, materializer="materialize_multisector_inputs")
     if likelihood_builder is not None and model_spec.likelihood is not None:
         raise ValueError("A custom likelihood cannot be combined with built-in likelihood settings.")
     if likelihood_kwargs and likelihood_builder is None:
@@ -392,9 +410,6 @@ def prepare_multisector(
     nbasis: int,
     fix_basis_outer_regions: bool,
     use_bc: bool,
-    bc_freq: str | None,
-    min_error: MinErrorConfig,
-    min_error_options: Mapping[str, bool],
     basis_inputs: Mapping[str, Any],
     bc_basis: xr.Dataset | None = None,
 ) -> RhimePreparedInputs:
@@ -402,7 +417,7 @@ def prepare_multisector(
 
     Args:
         domain: Domain label for prepared inputs and basis metadata.
-        start_date: Requested start anchoring boundary-condition periods.
+        start_date: Requested start of the preparation interval.
         flux_sources: Ordered source identities; the first weights basis design.
         averaging_error: Include variability when deriving observation errors.
         filters: Observation-filter choices interpreted by the filtering owner.
@@ -410,9 +425,6 @@ def prepare_multisector(
         nbasis: Requested generated basis size.
         fix_basis_outer_regions: Keep the supplied outer partition fixed.
         use_bc: Construct boundary-condition sensitivities.
-        bc_freq: Baked boundary-condition scaling period.
-        min_error: Minimum-error policy interpreted during assembly.
-        min_error_options: Options for the minimum-error calculation.
         merged_data: Borrowed acquired observations, transport and current flux.
         basis_inputs: Selected operator path or loaded partition and support maps.
         bc_basis: Loaded boundary-condition basis, when selected.
@@ -422,15 +434,10 @@ def prepare_multisector(
     """
     preparation_start = timer_start()
     # Preparation works on per-site datasets; ``merged_data`` stays acquired data.
-    with_errors = prepare_observation_errors(
-        merged_data.site_data,
-        averaging_error=averaging_error,
-    )
     filtered, site_options = filter_observations(
-        with_errors,
-        merged_data.site_options,
-        filters=filters,
+        merged_data.site_data, merged_data.site_options, filters=filters,
     )
+    filtered = prepare_observation_errors(filtered, averaging_error=averaging_error)
 
     runtime_flux = resolve_runtime_flux(
         merged_data.flux_data,
@@ -464,9 +471,6 @@ def prepare_multisector(
         site_options=site_options,
         domain=domain,
         start_date=start_date,
-        bc_freq=bc_freq,
-        min_error=min_error,
-        min_error_options=min_error_options,
         use_bc=use_bc,
     )
     log_timing(
@@ -494,9 +498,10 @@ def run_multisector(
 ) -> InversionOutput:
     """Run a source-resolved multisector inversion.
 
-    The visible process is resolve → acquire or accept supplied data → observation
-    errors → filter → basis → sensitivities → assemble → materialize → build → sample → scientific output →
-    requested outputs.
+    The visible process is resolve request → acquire or accept supplied data →
+    select observations → prepare observation errors → basis → sensitivities →
+    assemble → materialize and resolve model inputs → build → sample → scientific
+    output → requested outputs.
     This module keeps source layout validation and sector-aware outputs beside
     that process instead of hiding them behind standard/multisector branching.
 
@@ -516,7 +521,8 @@ def run_multisector(
             be combined with ``config_file`` or raw run parameters in ``kwargs``.
         merged_data: Optional externally supplied source-resolved merged
             scientific data. Passing this in-memory handoff bypasses OpenGHG
-            acquisition and resumes at observation-error preparation after validating
+            acquisition and resumes at observation selection and retained-population
+            error preparation after validating
             recorded species, domain, time window, and sector layout.
         prepared: Optional borrowed canonical inputs and retained basis. Cannot
             be combined with ``merged_data``.
@@ -603,9 +609,6 @@ def run_multisector(
                 "nbasis",
                 "fix_basis_outer_regions",
                 "use_bc",
-                "bc_freq",
-                "min_error",
-                "min_error_options",
             ),
         )
     else:

@@ -386,8 +386,10 @@ requirements for those named standard interfaces.
 ### Requirement: Compatible public adapters and scientific choices
 
 Except for the explicit standard API/result migration above, the sampler-default
-migration, the aggregation-filter retirements specified below, and the resource-I/O
-migrations removing `prepare_basis(output_path=...)` and `country_directory` in 0.8
+migration, the model-owned BC/minimum-error and retained-population uncertainty
+migrations specified by `rhime-scientific-inputs`, aggregation-filter retirements
+specified below, tracer-option retirement, and the
+resource-I/O migrations removing `prepare_basis(output_path=...)` and `country_directory` in 0.8
 and replacing scientific BC case/directory inputs with resolved basis data,
 the legacy-only routing and namespace migration owned by the
 [HBMCMC isolation contract](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md),
@@ -405,7 +407,11 @@ preparation and model construction. Current INI section interpretation, path
 conventions, file vocabulary, scientific calculations and sampling defaults
 SHALL remain unchanged except for the path and legacy-resource migrations specified by
 [rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md),
-the aggregation-filter retirements specified below, and the 0.8 historical scientific-quirk and chain-policy removals specified by
+the model-owned BC/minimum-error migration and retained-population observation-error
+and minimum-error estimates specified by `rhime-scientific-inputs`, the
+aggregation-filter retirements specified below, tracer-option retirement,
+and the 0.8 historical scientific-quirk and chain-policy removals
+specified by
 [hbmcmc-isolation-retirement](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md).
 
 Established selector and shared-handoff aliases in the current
@@ -424,11 +430,12 @@ adapter SHALL retain `None`-means-default selection. Default settings and scient
 behavior SHALL otherwise remain unchanged. Result fields SHALL use `None` only
 for absence of a live sampler, as specified by the recipe-execution contract.
 
-Runner/frontend resolution SHALL consume omitted/false `use_tracer` without
-retaining a config field. Canonical configuration SHALL accept only canonical
-fields and use generic unsupported-option errors for obsolete options. Effective true SHALL retain early rejection at resolution and relevant
-direct public boundaries, including supplied merged data. Existing legacy-option
-and custom-likelihood conflict precedence SHALL remain unchanged.
+Explicit `use_tracer` options SHALL fail ordinary unsupported-option validation
+for either boolean value before acquisition or scientific execution, including
+requests using supplied merged data. Omission SHALL remain valid without a tracer
+configuration field. Alias translation SHALL NOT silently discard the option or
+provide a special true-only guard. Existing legacy-option and custom-likelihood
+conflict precedence SHALL remain unchanged.
 
 #### Scenario: Existing Python shorthand
 
@@ -445,14 +452,13 @@ and custom-likelihood conflict precedence SHALL remain unchanged.
   disabled BC choice with existing scientific behavior
 - **AND** neither phase infers an independent conflicting default
 
-#### Scenario: Preserve unsupported tracer rejection
+#### Scenario: Reject an explicit tracer option
 
-- **WHEN** a configured run, direct public preparation call or mapping-based
-  retrieval supplies effective `use_tracer=True` after supported overrides,
-  including with supplied merged data
-- **THEN** it rejects the option before acquisition, reload or scientific execution
-- **AND** omitted and false options remain accepted with equivalent resolved
-  configuration containing no tracer field
+- **WHEN** a configured request explicitly supplies `use_tracer=False` or
+  `use_tracer=True`, including with supplied merged data
+- **THEN** ordinary unsupported-option validation rejects the name before
+  acquisition or scientific execution
+- **AND** omitting the option remains valid without a tracer configuration field
 
 #### Scenario: Migrate an explicit null sampler
 
@@ -481,55 +487,38 @@ No mean, median or other aggregation statistic SHALL be substituted automaticall
 
 ### Requirement: Scientific preparation owns its operations
 
-Recipes SHALL derive observation errors before temporal filtering/aggregation,
-call canonical `prepare_basis` directly with resolved arguments, and use the actual
-sensitivity, filtering and assembly implementations. Forwarding wrappers SHALL
-NOT be retained solely for uniform stage names, timing or keyword translation.
-Shared indexing utilities SHALL remain independently reusable. Assembly SHALL
-preserve minimum-error `None`, integer and per-site mapping behavior.
-
 `prepare_rhime_inputs` and its exclusive acquisition dispatcher are removed.
 Modern acquisition SHALL NOT load or save merged-data caches. Historical
-six-tuple retrieval SHALL explicitly call the shared observation-error operation
-before returning or saving its established result.
+six-tuple retrieval SHALL retain its signature and return contract, including
+prepared observation errors before its result is returned or saved; this
+interface SHALL NOT acquire observation-selection options it does not accept.
 Prepared-input persistence SHALL remain available independently of acquisition
-persistence. Public selector construction SHALL use `SiteOptions.from_inputs`.
+persistence, as specified by `prepared-recipe-handoff`.
+Public selector construction through `SiteOptions.from_inputs` SHALL remain
+supported.
 The internal `inversion_data._site_options.convert_to_list` helper SHALL retain
-its calling and list-return contract through shared selector expansion without a
-warning; its old `get_data` import alias SHALL remain removed.
+its calling and list-return contract without a warning; its old `get_data` import alias SHALL remain removed.
 
-#### Scenario: Error derivation precedes temporal reduction
+`averaging_error` SHALL remain a preparation option rather than an acquisition
+compatibility fact. Its default (`True`) and established interpretation SHALL remain
+available when preparing freshly acquired or compatible supplied merged data.
+The numerical population and borrowing rules belong to `rhime-scientific-inputs`.
 
-- **WHEN** component errors vary across observations to be aggregated
-- **THEN** preparation combines the components before temporal reduction
-- **AND** custom `mf_error`, zero-error fallback behavior, labels and metadata
-  are preserved without mutating borrowed datasets
+#### Scenario: Change averaging error during preparation
 
-#### Scenario: Nested observation-error preparation
+- **GIVEN** compatible supplied merged data with uncertainty components and no
+  supplied final `mf_error`
+- **WHEN** a caller changes the valid `averaging_error` preparation choice
+- **THEN** preparation uses the new choice without rejecting the handoff or
+  requiring another acquisition
+- **AND** configuration resolution does not calculate observation errors
 
-- **WHEN** a nested recipe receives acquired or supplied inner and outer data
-- **THEN** both domains have observation errors prepared before filtering and
-  time alignment; only sites with both domains can enter nested preparation
-- **AND** `averaging_error` is preparation policy, not a binding acquisition fact
+#### Scenario: Preserve the selector helper contract
 
-#### Scenario: Shared nested spatial support
-
-- **WHEN** retained nested sites share one outer domain and one inner domain
-- **THEN** preparation normalizes coordinate labels against their domain
-  definitions, falling back to the first retained site with a warning for an
-  unregistered domain
-- **AND** incompatible grids are rejected before overlap masking or basis projection
-- **AND** compatible sites share one inner rectangular extent, applied on each
-  actual outer footprint and flux grid without mutating or eagerly computing
-  borrowed arrays
-- **AND** output metadata retains the applied footprint rectangle; externally
-  pre-masked inputs with no supplied extent retain an unknown mask extent
-
-#### Scenario: Direct scientific stages use named inputs
-
-- **WHEN** a caller supplies acquired data and named required scientific choices
-- **THEN** each stage can execute without a `RhimeConfig` or raw parameter mapping
-- **AND** omitting a required keyword is rejected at the function-call boundary
+- **WHEN** an existing caller uses
+  `inversion_data._site_options.convert_to_list` with supported selector shorthand
+- **THEN** its calling and list-return contract is retained without a warning
+- **AND** the removed old `get_data` import alias is not restored
 
 ### Requirement: Neutral acquisition naming with a compatible deprecated entry point
 
@@ -823,23 +812,37 @@ accepted only when their required prepared inputs and structure are available;
 they SHALL NOT reinterpret baked preparation choices or reacquire inputs.
 
 For standard and multisector, preparation SHALL own the established `use_bc`
-default (`True`) and `bc_freq` default (`None`). A legacy flat `use_bc` choice SHALL
-route to preparation and the full run's model choice consistently. When resolving
-a model group, omitted `use_bc` SHALL inherit the resolved requested preparation
-choice for a full run or its recorded fact for saved sampling. Explicit model
-`use_bc=False` MAY omit BC terms even when preparation contains BC inputs.
-Explicit model `use_bc=True` SHALL require preparation to provide those inputs;
-it SHALL NOT trigger acquisition or silent fallback. Full requests SHALL reject
-model BC use with preparation BC disabled before acquisition.
+default (`True`) and the presence of spatial BC inputs. A flat `use_bc` request
+SHALL route consistently to preparation and model selection. Omitted model
+`use_bc` SHALL inherit the requested or recorded preparation choice. Explicit
+model `use_bc=False` SHALL permit omitting available BC terms; explicit true
+SHALL require those inputs and SHALL NOT cause acquisition or silent fallback.
+Full requests SHALL reject model BC use with preparation BC disabled before
+acquisition.
 
-`bc_freq` SHALL remain a preparation-owned temporal policy. Sampling SHALL use
-the recorded policy when the key is omitted and SHALL accept a repeated equivalent
-claim; any conflicting claim SHALL fail before model construction, even when
-model BC terms are disabled. An explicit `None` claim SHALL be compared as the
-existing no-frequency policy, not treated as omission. Model binding SHALL NOT
-apply another default to replace saved temporal expansion. The same rules SHALL
-hold for full and independently resolved standard/multisector phases without
-changing CO2's family-specific defaults.
+For standard and multisector, `bc_freq` and `bc_freq_anchor` SHALL belong to the
+model group; `min_error` and `min_error_options` SHALL belong to the selected
+likelihood's model options, not acquisition/preparation. Model-only resolution
+SHALL accept valid choices using authoritative preparation facts without
+requiring acquisition choices to be resolved again. Omitted `bc_freq` SHALL
+select the established one-period policy. Configured requests SHALL resolve an
+omitted `bc_freq_anchor` from the requested start date, using the recorded date
+for saved-input sampling. Explicit `None` SHALL remain an explicit no-anchor
+choice. `bc_freq` SHALL accept `None`, calendar `"monthly"` and positive fixed
+durations; malformed, zero or negative fixed durations SHALL fail configuration
+resolution. `bc_freq_anchor` SHALL accept a valid timestamp or `None`.
+
+Likelihood floor options SHALL accept the established nonnegative finite scalar
+or site-mapping values, `None` as a zero scalar, and named `"residual"` or
+`"percentile"` methods. Omitted `min_error` SHALL resolve to `0.0`;
+`min_error_options` SHALL accept only boolean `by_site`, defaulting to `False`.
+Additive-sigma floor enablement SHALL remain an explicit boolean defaulting to
+`False`. Invalid option values SHALL fail configuration resolution without
+executing estimators. CO2 SHALL retain its independent family-specific defaults.
+
+Numerical resolution, retained estimator populations and supplied-operand
+compatibility follow `rhime-scientific-inputs`; durable preparations and fitted
+operand replay follow `prepared-recipe-handoff` and `sampled-recipe-handoff`.
 
 #### Scenario: Resolve disabled BC consistently across phases
 - **WHEN** standard or multisector preparation resolves `use_bc=False` and the
@@ -862,12 +865,15 @@ changing CO2's family-specific defaults.
 - **AND** explicit `use_bc=True` on a preparation with BC disabled fails before
   inference or artifact writes
 
-#### Scenario: Bind the saved boundary temporal policy
-- **WHEN** preparation baked `bc_freq="3h"` into its numerical inputs
-- **THEN** a later model request omitting `bc_freq` uses that saved temporal policy
-  and a repeated `"3h"` claim is accepted
-- **AND** an explicit different frequency or `None` is rejected before model
-  construction, including when model `use_bc=False`
+#### Scenario: Resolve model-owned options from saved facts
+
+- **WHEN** a sampling request supplies valid BC-period or likelihood-floor choices
+  with recorded preparation facts
+- **THEN** model resolution accepts those choices without asking the caller to
+  repeat acquisition configuration
+- **AND** omitted `bc_freq` resolves to the one-period policy and an omitted
+  `bc_freq_anchor` resolves from the recorded requested start date
+- **AND** explicit `bc_freq_anchor=None` remains `None`
 
 #### Scenario: Sample with model and sampler choices only
 - **WHEN** a caller supplies a prepared handoff, applicable run context and valid

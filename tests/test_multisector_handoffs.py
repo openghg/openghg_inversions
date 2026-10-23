@@ -376,7 +376,7 @@ def test_invalid_sample_cannot_fall_back_to_graph(preparation, tmp_path, monkeyp
     if corruption == "schema":
         record["schema"] = "openghg_inversions.standard.sample"
     elif corruption == "version":
-        record["schema_version"] = 2
+        record["schema_version"] = 1
     elif corruption == "generation":
         record["preparation_generation"] = ""
     elif corruption == "missing_posterior":
@@ -416,6 +416,6 @@ def test_saved_sampling_rejects_invalid_sampler_before_loading(tmp_path, sampler
 def test_cli_leaves_malformed_schema_to_manifest_loader(tmp_path, schema):
     manifest = tmp_path / "prepared.json"
     manifest.write_text(json.dumps({"schema": schema}))
-    with pytest.raises(ValueError, match="version-1 manifest"):
+    with pytest.raises(ValueError, match="version-2 manifest"):
         main(["sample", "--model", "multisector", "--preparation-manifest", str(manifest),
               "--output-dir", str(tmp_path / "sample")])

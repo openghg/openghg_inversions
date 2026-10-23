@@ -53,7 +53,11 @@ def test_recorded_route_defaults_before_any_scientific_work(route, tmp_path, mon
         config, = captured
         assert (tmp_path / "results" / "CH4_EUROPE_migration_2019-01-01.ini").is_file()
     _assert_fields(config.sampler, EXPECTED["default_sampler"])
-    _assert_fields(config.data, EXPECTED["default_data"])
+    archived_data = EXPECTED["default_data"]
+    _assert_fields(config.data, {name: value for name, value in archived_data.items()
+                                if name not in {"bc_freq", "min_error"}})
+    assert config.model.bc_freq == archived_data["bc_freq"]
+    assert config.model.likelihood.min_error == archived_data["min_error"]
     _assert_fields(config.output, EXPECTED[f"{route}_output"])
     science = EXPECTED["default_science"]
     assert config.model.sectors[0].x_prior == science["x_prior"]
@@ -81,7 +85,7 @@ def test_explicit_wrapper_settings_and_canonical_draws_win(tmp_path, monkeypatch
     _assert_fields(config.model.likelihood, {name: expected[name] for name in (
         "sigma_prior", "sigma_freq", "sigma_per_site", "sigma_freq_anchor", "pollution_events_from_obs", "power",
     )})
-    assert config.data.min_error == expected["min_error"]
+    assert config.model.likelihood.min_error == expected["min_error"]
 
 
 def test_draws_are_post_tuning_then_burn_is_removed_per_chain(monkeypatch):

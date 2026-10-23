@@ -45,7 +45,6 @@ from openghg_inversions.observation_error import (
     resolve_aggregation_error,
 )
 from openghg_inversions.sigma import SigmaAlignment
-from openghg_inversions.model_error import MinErrorConfig
 
 from ._model_building import (
     ForwardModelTerms,
@@ -57,6 +56,11 @@ from .builders import (
     RhimeModelBuildResult,
 )
 
+from .model_inputs import (
+    validate_model_inputs,
+    resolve_model_inputs,
+)
+from .likelihood_inputs import likelihood_input_names
 from .materialization import (
     _materialize_pymc_inputs_and_priors,
 )
@@ -123,7 +127,9 @@ def standard_model_input_names(
     return _standard_input_names(prepared.inv_inputs, model_spec)
 
 
-def _standard_input_names(model_inputs: xr.Dataset, model_spec: RhimeModelSpec) -> tuple[str, ...]:
+def _standard_input_names(
+    model_inputs: xr.Dataset, model_spec: RhimeModelSpec, *, materialized: bool = False,
+) -> tuple[str, ...]:
     """Own selected standard component names and single-sector layout checks."""
     if len(model_spec.sectors) != 1:
         raise ValueError("Standard model specs must include exactly one sector.")
@@ -148,7 +154,7 @@ def _standard_input_names(model_inputs: xr.Dataset, model_spec: RhimeModelSpec) 
         *_OBSERVATION_INPUT_NAMES,
     ]
     likelihood_inputs = (
-        () if model_spec.likelihood is None else model_spec.likelihood.required_prepared_inputs
+        likelihood_input_names(model_inputs, model_spec.likelihood, materialized=materialized)
     )
     if likelihood_inputs:
         _require_component_inputs(
@@ -201,9 +207,11 @@ def materialize_standard_inputs(
 ) -> tuple[xr.Dataset, dict[str, PriorArgs]]:
     """Materialize selected standard inputs and enabled priors in one Dask operation.
 
-    The caller owns this explicit PyMC boundary. Preparation and requested model
-    settings stay borrowed; only selected arrays and prior parameters are computed.
-    Construction subsequently decides which state priors survive pruning.
+    After the shared computation, resolve backend-neutral BC periods and the
+    selected likelihood's minimum-error floor from retained observations. The
+    result is the final scientific Dataset, usable for analysis or model building.
+    Preparation and settings stay borrowed. Construction subsequently decides
+    which state priors survive pruning.
 
     Args:
         prepared: Borrowed canonical inputs and retained basis.
@@ -211,18 +219,20 @@ def materialize_standard_inputs(
 
     Returns:
         A shallow copy of the prepared Dataset with selected inputs and their
-        coordinates materialized, plus prior parameter mappings keyed by model
-        variable name. Unselected preparation variables remain borrowed and may
-        be lazy; construction decides which selected priors enter the graph.
+        coordinates materialized and enabled BC/floor operands resolved, plus
+        prior parameter mappings keyed by model variable name. Unselected
+        preparation variables remain borrowed and may be lazy; construction
+        decides which selected priors enter the graph.
 
     Raises:
         ValueError: If the model has other than one sector or a selected input
             is missing.
     """
-    return _materialize_pymc_inputs_and_priors(
+    model_inputs, priors = _materialize_pymc_inputs_and_priors(
         prepared, variable_names=standard_model_input_names(prepared, model_spec),
         prior_parameters=_standard_prior_parameters(model_spec),
     )
+    return resolve_model_inputs(model_inputs, model_spec), priors
 
 
 def build_standard_model(
@@ -240,9 +250,13 @@ def build_standard_model(
     for example with :func:`materialize_standard_inputs`. The model settings
     select components; ``priors`` supplies their numerical parameters without
     replacing those settings. Unrelated lazy input extensions are not consumed.
+    Enabled BC sensitivities and likelihood floors must already be resolved;
+    numerical materialization alone does not establish those operands.
+    Independently supplied final arrays without producer provenance are accepted.
 
     Args:
-        model_inputs: Canonical arrays with selected scientific inputs eager.
+        model_inputs: Resolved scientific arrays with selected inputs eager,
+            normally returned by :func:`materialize_standard_inputs`.
         model_spec: Resolved scientific choices for exactly one sector.
         priors: Eager selected prior mappings keyed by ``x``, ``bc``,
             ``offset_latent``, ``sigma`` and ``power``. ``x`` is required;
@@ -257,10 +271,12 @@ def build_standard_model(
     Raises:
         ValueError: If selected inputs or prior parameters are lazy, a selected
             prior mapping or required input is missing, the model has other
-            than one sector, or likelihood choices are inconsistent.
+            than one sector, likelihood choices are inconsistent, BC inputs are
+            raw, or producer-recorded BC/floor policies conflict with the settings.
         TypeError: If the custom likelihood returns an invalid value.
     """
-    names = _standard_input_names(model_inputs, model_spec)
+    names = _standard_input_names(model_inputs, model_spec, materialized=True)
+    validate_model_inputs(model_inputs, model_spec, materializer="materialize_standard_inputs")
     if likelihood_kwargs and likelihood_builder is None:
         raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
     missing_priors = _standard_prior_parameters(model_spec).keys() - priors.keys()
@@ -413,15 +429,14 @@ def prepare_standard(
     merged_data: RhimeMergedData, *,
     domain: str, start_date: str, flux_sources: tuple[str, ...],
     averaging_error: bool, filters: Any, basis_algorithm: str | None, nbasis: int,
-    fix_basis_outer_regions: bool, use_bc: bool, bc_freq: str | None,
-    min_error: MinErrorConfig, min_error_options: Mapping[str, bool],
+    fix_basis_outer_regions: bool, use_bc: bool,
     basis_inputs: Mapping[str, Any], bc_basis: xr.Dataset | None = None,
 ) -> RhimePreparedInputs:
     """Prepare observations and sensitivities from supplied scientific resources.
 
     Args:
         domain: Domain label for prepared inputs and basis metadata.
-        start_date: Requested start anchoring boundary-condition periods.
+        start_date: Requested start of the preparation interval.
         flux_sources: Ordered source identities; the first weights basis design.
         averaging_error: Include variability when deriving observation errors.
         filters: Observation-filter choices interpreted by the filtering owner.
@@ -429,9 +444,6 @@ def prepare_standard(
         nbasis: Requested generated basis size.
         fix_basis_outer_regions: Keep the supplied outer partition fixed.
         use_bc: Construct boundary-condition sensitivities.
-        bc_freq: Baked boundary-condition scaling period.
-        min_error: Minimum-error policy interpreted during assembly.
-        min_error_options: Options for the minimum-error calculation.
         merged_data: Borrowed acquired observations, transport and current flux.
         basis_inputs: Selected operator path or loaded partition and support maps.
         bc_basis: Loaded boundary-condition basis, when selected.
@@ -441,8 +453,10 @@ def prepare_standard(
     """
     preparation_start = timer_start()
     # Preparation works on per-site datasets; ``merged_data`` stays acquired data.
-    with_errors = prepare_observation_errors(merged_data.site_data, averaging_error=averaging_error)
-    filtered, site_options = filter_observations(with_errors, merged_data.site_options, filters=filters)
+    filtered, site_options = filter_observations(
+        merged_data.site_data, merged_data.site_options, filters=filters,
+    )
+    filtered = prepare_observation_errors(filtered, averaging_error=averaging_error)
 
     runtime_flux = resolve_runtime_flux(merged_data.flux_data, split_by_sectors=merged_data.split_by_sectors)
     with timed("rhime.prepare_inputs.basis_build", basis_algorithm=basis_algorithm):
@@ -467,8 +481,8 @@ def prepare_standard(
         sensitivities,
         basis_functions,
         site_options=site_options,
-        domain=domain, start_date=start_date, bc_freq=bc_freq, min_error=min_error,
-        min_error_options=min_error_options, use_bc=use_bc,
+        domain=domain, start_date=start_date,
+        use_bc=use_bc,
     )
     log_timing(
         "rhime.prepare_inputs",
@@ -495,9 +509,10 @@ def run_standard(
 ) -> InversionOutput:
     """Run a standard single-sector RHIME inversion.
 
-    The visible process is resolve → acquire or accept supplied data → observation
-    errors → filter → basis → sensitivities → assemble → materialize → build → sample → scientific output →
-    requested outputs.
+    The visible process is resolve request → acquire or accept supplied data →
+    select observations → prepare observation errors → basis → sensitivities →
+    assemble → materialize and resolve model inputs → build → sample → scientific
+    output → requested outputs.
 
     Selected basis/support files and reporting country files are checked before
     acquisition, including when merged data is supplied. Basis partitions and
@@ -516,8 +531,9 @@ def run_standard(
             be combined with ``config_file`` or raw run parameters in ``kwargs``.
         merged_data: Optional externally supplied merged scientific data.
             Passing this borrowed in-memory handoff bypasses OpenGHG acquisition
-            and resumes at observation-error preparation. This may derive error arrays
-            and compute zero-error fallback diagnostics.
+            and resumes at observation selection, followed by error preparation
+            on the retained population. This may derive error arrays and compute
+            zero-error fallback diagnostics.
             The acquisition owner checks recorded species, domain, time window,
             and sector layout without mutating it.
         prepared: Optional borrowed canonical scientific inputs, including
@@ -592,8 +608,7 @@ def run_standard(
             merged_data, basis_inputs=basis_inputs, bc_basis=bc_basis,
             **config.data.select(
                 "domain", "start_date", "flux_sources", "averaging_error", "filters",
-                "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
-                "min_error", "min_error_options",
+                "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc",
             ),
         )
     else:

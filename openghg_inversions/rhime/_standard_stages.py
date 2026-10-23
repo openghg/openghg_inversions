@@ -45,6 +45,7 @@ def _preparation_record(manifest: str | Path) -> tuple[Path, dict[str, Any]]:
     """Read a completed preparation and its writer-assigned generation."""
     path, record = read_manifest(
         manifest, "openghg_inversions.standard.prepare", ("prepared_inputs", "data", "generation"),
+        schema_version=2,
     )
     if not isinstance(record["generation"], str) or not record["generation"]:
         raise ValueError(f"Preparation manifest {path} requires a nonempty generation.")
@@ -79,7 +80,7 @@ def save_preparation(
     destination = start_checkpoint(output_dir, "prepare", payloads=("prepared-inputs.nc",))
     prepared.save(destination / "prepared-inputs.nc")
     return finish_checkpoint(destination, "prepare", {
-        "schema": "openghg_inversions.standard.prepare", "schema_version": 1,
+        "schema": "openghg_inversions.standard.prepare", "schema_version": 2,
         "producer": "openghg_inversions", "stage": "prepare", "generation": uuid4().hex,
         "prepared_inputs": "prepared-inputs.nc", "data": data_config.to_params(),
     })
@@ -150,8 +151,7 @@ def prepare(
         merged_data, basis_inputs=basis_inputs, bc_basis=bc_basis,
         **data_config.select(
             "domain", "start_date", "flux_sources", "averaging_error", "filters",
-            "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
-            "min_error", "min_error_options",
+            "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc",
         ),
     )
 
@@ -198,7 +198,7 @@ def save_samples(
     )
     save_trace(posterior, destination / "posterior.nc")
     return finish_checkpoint(destination, "sample", {
-        "schema": "openghg_inversions.standard.sample", "schema_version": 1,
+        "schema": "openghg_inversions.standard.sample", "schema_version": 2,
         "producer": "openghg_inversions", "stage": "sample",
         "preparation": os.path.relpath(preparation_path, destination), "preparation_generation": preparation["generation"],
         "posterior": "posterior.nc", "output_contract": output_contract.to_dict(),
@@ -274,7 +274,7 @@ def load_samples(sample_manifest: str | Path) -> InversionOutput:
     path, record = read_manifest(sample_manifest, "openghg_inversions.standard.sample", (
         "preparation", "preparation_generation", "posterior", "output_contract", "model",
         "actual_inference", "provenance",
-    ))
+    ), schema_version=2)
     preparation_path = reference(path, record["preparation"])
     if not isinstance(record["preparation_generation"], str) or not record["preparation_generation"]:
         raise ValueError(f"Sample manifest {path} requires a preparation generation.")

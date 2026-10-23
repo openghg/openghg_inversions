@@ -42,7 +42,6 @@ from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInpu
 from openghg_inversions.models.components import add_linear_component, add_offset_component
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.model_error import MinErrorConfig
 from openghg_inversions.models.state_activity import StateActivity, prepare_linear_sensitivity
 from openghg_inversions.observation_error import (
     aggregation_error_input_names,
@@ -52,7 +51,14 @@ from openghg_inversions.postprocessing.inversion_output import InversionOutput
 
 from ._model_building import ForwardModelTerms, add_rhime_likelihood
 from .builders import RhimeLikelihoodBuilder, RhimeModelBuildResult
-from .materialization import _materialize_pymc_inputs_and_priors
+from .model_inputs import (
+    validate_model_inputs,
+    resolve_model_inputs,
+)
+from .likelihood_inputs import likelihood_input_names
+from .materialization import (
+    _materialize_pymc_inputs_and_priors,
+)
 from .outputs import (
     make_model_output, validate_nested_output_resources, annotate_sample_trace, save_inversion_output,
     _define_derived_output_filename,
@@ -776,8 +782,8 @@ def _prepare_one_domain(
     merged: _NestedDomainData, *,
     domain: str, start_date: str, flux_sources: tuple[str, ...],
     basis_algorithm: str | None, nbasis: int, fix_basis_outer_regions: bool,
-    use_bc: bool, bc_freq: str | None, min_error: MinErrorConfig,
-    min_error_options: Mapping[str, bool], basis_inputs: Mapping[str, Any],
+    use_bc: bool,
+    basis_inputs: Mapping[str, Any],
     bc_basis: xr.Dataset | None = None, allow_empty_inner_region: bool = False,
 ) -> RhimePreparedInputs:
     """Build one native basis and its labelled sensitivities from resolved choices."""
@@ -805,8 +811,8 @@ def _prepare_one_domain(
     )
     return assemble_rhime_inputs(
         site_data, basis_functions, site_options=merged.site_options,
-        domain=domain, start_date=start_date, bc_freq=bc_freq, min_error=min_error,
-        min_error_options=min_error_options, use_bc=use_bc,
+        domain=domain, start_date=start_date,
+        use_bc=use_bc,
     )
 
 
@@ -888,16 +894,16 @@ def prepare_nested_rhime_inputs(
     domain: str, inner_domain: str, start_date: str, flux_sources: tuple[str, ...],
     averaging_error: bool, filters: Any, basis_algorithm: str | None,
     inner_basis_algorithm: str | None, nbasis: int, inner_nbasis: int | None,
-    fix_basis_outer_regions: bool, use_bc: bool, bc_freq: str | None,
-    min_error: MinErrorConfig, min_error_options: Mapping[str, bool],
+    fix_basis_outer_regions: bool, use_bc: bool,
     outer_basis_inputs: Mapping[str, Any], inner_basis_inputs: Mapping[str, Any],
     bc_basis: xr.Dataset | None = None,
     time_tolerance: str | pd.Timedelta | None = None,
 ) -> NestedRhimePreparedInputs:
     """Prepare two acquired native grids using explicit scientific choices.
 
-    Each domain is shared across retained sites. Observation errors are derived
-    before filtering; filtered outer observations determine the inner selection.
+    Each domain is shared across retained sites. Filtered outer observations
+    determine the inner selection; errors are then derived separately from each
+    domain's retained observation population.
     Outer response and flux are masked before basis construction. Selected
     resources are supplied by the runner, which also owns optional basis exports.
 
@@ -918,9 +924,6 @@ def prepare_nested_rhime_inputs(
             allocation when neither grid uses a saved basis.
         fix_basis_outer_regions: Retain the supplied fixed outer partition.
         use_bc: Include boundary sensitivities from the outer domain only.
-        bc_freq: Outer boundary-condition scaling period.
-        min_error: Minimum-error policy interpreted during assembly.
-        min_error_options: Options for the minimum-error calculation.
         outer_basis_inputs: Selected outer operator or partition and support maps.
         inner_basis_inputs: Selected inner operator or partition and support maps.
         bc_basis: Loaded outer boundary-condition basis, when selected.
@@ -941,14 +944,6 @@ def prepare_nested_rhime_inputs(
     preparation_start = timer_start()
     outer_data = _NestedDomainData(outer.site_data, outer.flux_data, outer.site_options)
     inner_data = _NestedDomainData(inner.site_data, inner.flux_data, inner.site_options)
-    outer_data = outer_data.with_site_data(
-        prepare_observation_errors(outer_data.site_data, averaging_error=averaging_error),
-        context="Observation error preparation",
-    )
-    inner_data = inner_data.with_site_data(
-        prepare_observation_errors(inner_data.site_data, averaging_error=averaging_error),
-        context="Observation error preparation",
-    )
     outer_data, inner_data = _retain_common_sites(outer_data, inner_data)
     outer_site_data, _ = filter_observations(
         outer_data.site_data, outer_data.site_options, filters=filters,
@@ -957,6 +952,14 @@ def prepare_nested_rhime_inputs(
     outer_filtered, inner_data = _retain_common_sites(outer_filtered, inner_data)
     inner_filtered = align_inner_merged_to_outer_observations(
         outer_filtered, inner_data, time_tolerance=time_tolerance,
+    )
+    outer_filtered = outer_filtered.with_site_data(
+        prepare_observation_errors(outer_filtered.site_data, averaging_error=averaging_error),
+        context="Observation error preparation",
+    )
+    inner_filtered = inner_filtered.with_site_data(
+        prepare_observation_errors(inner_filtered.site_data, averaging_error=averaging_error),
+        context="Observation error preparation",
     )
     outer_filtered = _align_domain_sites(outer_filtered, domain=domain, label="Outer")
     inner_filtered = _align_domain_sites(inner_filtered, domain=inner_domain, label="Inner")
@@ -985,14 +988,14 @@ def prepare_nested_rhime_inputs(
         masked_outer, domain=domain, start_date=start_date, flux_sources=flux_sources,
         basis_algorithm=basis_algorithm, nbasis=outer_nbasis,
         fix_basis_outer_regions=fix_basis_outer_regions, use_bc=use_bc,
-        bc_freq=bc_freq, min_error=min_error, min_error_options=min_error_options,
+
         basis_inputs=outer_basis_inputs, bc_basis=bc_basis, allow_empty_inner_region=True,
     )
     inner_prepared = _prepare_one_domain(
         inner_filtered, domain=inner_domain, start_date=start_date, flux_sources=flux_sources,
         basis_algorithm=inner_basis_algorithm, nbasis=inner_target,
-        fix_basis_outer_regions=False, use_bc=False, bc_freq=bc_freq,
-        min_error=min_error, min_error_options=min_error_options, basis_inputs=inner_basis_inputs,
+        fix_basis_outer_regions=False, use_bc=False,
+        basis_inputs=inner_basis_inputs,
     )
     prepared = combine_nested_rhime_inputs(
         outer_prepared, inner_prepared, time_tolerance=time_tolerance,
@@ -1027,6 +1030,10 @@ def materialize_nested_inputs(
 ) -> tuple[xr.Dataset, dict[str, PriorArgs]]:
     """Compute selected nested arrays and enabled priors in one Dask operation.
 
+    Then resolve backend-neutral BC periods and the selected likelihood's floor
+    from retained observations. The returned Dataset contains final scientific
+    operands for analysis or model building.
+
     Args:
         prepared: Borrowed combined inputs containing H and H_inner.
         model_spec: Resolved choices selecting enabled inputs and priors.
@@ -1044,9 +1051,10 @@ def materialize_nested_inputs(
     priors = _standard_prior_parameters(model_spec)
     outer = priors.pop("x")
     priors.update(x_outer=outer, x_inner=outer if inner_x_prior is None else inner_x_prior)
-    return _materialize_pymc_inputs_and_priors(
+    model_inputs, priors = _materialize_pymc_inputs_and_priors(
         prepared, variable_names=nested_model_input_names(prepared, model_spec), prior_parameters=priors,
     )
+    return resolve_model_inputs(model_inputs, model_spec), priors
 
 
 def build_nested_rhime_model(
@@ -1060,8 +1068,12 @@ def build_nested_rhime_model(
 ) -> RhimeModelBuildResult:
     """Build the two native-grid flux terms, shared baseline and likelihood.
 
+    Enabled BC sensitivities and likelihood floors must already be resolved by
+    :func:`materialize_nested_inputs` or supplied as independent final arrays.
+    Numerical materialization alone does not establish those operands.
+
     Args:
-        model_inputs: Combined labelled inputs, with selected arrays eager.
+        model_inputs: Combined resolved inputs, with selected arrays eager.
             Unselected lazy extensions remain borrowed and unused.
         model_spec: Resolved scientific choices for one source on two grids.
         priors: Eager parameters keyed by x_outer, x_inner and enabled
@@ -1076,15 +1088,16 @@ def build_nested_rhime_model(
 
     Raises:
         ValueError: Selected inputs or priors are lazy, required priors are absent,
-            or state dimensions coincide. Input availability and model choices
-            belong to materialization and the runner respectively.
+            state dimensions coincide, BC inputs are raw, or producer-recorded
+            BC/floor policies conflict with the settings. Independent final
+            arrays without producer provenance remain authoritative.
     """
     names = ["H", "H_inner", "mf", "mf_error"]
-    if model_spec.likelihood is not None:
-        names.extend(model_spec.likelihood.required_prepared_inputs)
+    names.extend(likelihood_input_names(model_inputs, model_spec.likelihood, materialized=True))
     if model_spec.use_bc:
         names.append("H_bc")
     names.extend(aggregation_error_input_names(model_inputs, model_spec.aggregation_error_mode))
+    validate_model_inputs(model_inputs, model_spec, materializer="materialize_nested_inputs")
     required = (_standard_prior_parameters(model_spec).keys() - {"x"}) | {"x_outer", "x_inner"}
     missing = required - priors.keys()
     if missing:
@@ -1416,8 +1429,7 @@ def run_nested(
             outer_merged, inner_merged,
             **outer_data.select(
                 "domain", "start_date", "flux_sources", "averaging_error", "filters",
-                "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
-                "min_error", "min_error_options",
+                "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc",
             ),
             inner_domain=inner_data.domain, inner_basis_algorithm=inner_data.basis_algorithm,
             inner_nbasis=nested_options.get("inner_nbasis"), outer_basis_inputs=outer_basis_inputs,

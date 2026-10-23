@@ -313,7 +313,6 @@ def test_nonmonotonic_times_and_mapping_order_are_preserved() -> None:
     prepared = prepare_rhime_inputs_from_xarray(
         data,
         basis_functions=_basis_functions(),
-        min_error="percentile",
     )
 
     assert prepared.sites == ("TAC", "MHD")
@@ -325,7 +324,7 @@ def test_nonmonotonic_times_and_mapping_order_are_preserved() -> None:
             dtype="datetime64[ns]",
         ),
     )
-    np.testing.assert_allclose(prepared.inv_inputs["min_error"], 0.45)
+    assert "min_error" not in prepared.inv_inputs
 
 
 def test_stationary_release_coordinates_are_broadcast_to_observations() -> None:
@@ -548,44 +547,6 @@ def test_emptied_site_is_reported_after_gathering(monkeypatch: pytest.MonkeyPatc
     with pytest.raises(ValueError, match="TAC"):
         prepare_rhime_inputs_from_xarray(data, basis_functions=_basis_functions())
 
-
-def test_min_error_per_site_defaults_to_false_and_allows_true(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Omission matches existing RHIME preparation while True remains an override."""
-    captured: list[bool] = []
-    canonical = xr.Dataset(
-        coords={
-            "nmeasure": [0],
-            "site": ("nmeasure", ["TAC"]),
-            "time": ("nmeasure", np.asarray(["2021-01-01"], dtype="datetime64[ns]")),
-        }
-    ).set_index(nmeasure=["site", "time"])
-
-    def capture_make_inv_inputs(*args: object, **kwargs: object) -> xr.Dataset:
-        """Capture the forwarded per-site minimum-error flag."""
-        captured.append(bool(kwargs["min_error_per_site"]))
-        return canonical
-
-    monkeypatch.setattr(
-        "openghg_inversions.inversion_data.xarray_adapter.make_inv_inputs",
-        capture_make_inv_inputs,
-    )
-    data = {"TAC": _site_dataset("TAC", ["2021-01-01"])}
-
-    prepare_rhime_inputs_from_xarray(data, basis_functions=_basis_functions())
-    prepare_rhime_inputs_from_xarray(
-        data,
-        basis_functions=_basis_functions(),
-        min_error_per_site=False,
-    )
-    prepare_rhime_inputs_from_xarray(
-        data,
-        basis_functions=_basis_functions(),
-        min_error_per_site=True,
-    )
-
-    assert captured == [False, False, True]
 
 
 def test_cached_and_canonical_h_inputs_match_without_retaining_caches() -> None:
@@ -861,7 +822,6 @@ def test_unequal_source_regions_round_trip_and_execute(
         site_data,
         basis_functions=basis_functions,
         averaging_period={"TAC": "2h", "MHD": "1h"},
-        bc_freq="monthly",
     )
 
     artifact = tmp_path / f"verification-games-inputs{suffix}"
@@ -888,9 +848,9 @@ def test_unequal_source_regions_round_trip_and_execute(
     assert loaded.inv_inputs["H"].attrs["units"] == "ppm"
     assert loaded.inv_inputs["H_bc"].dims == ("bc_region", "nmeasure")
     bc_region_index = loaded.inv_inputs["H_bc"].indexes["bc_region"]
-    assert isinstance(bc_region_index, pd.MultiIndex)
-    assert bc_region_index.names == ["bc_curtain", "bc_period"]
-    assert bc_region_index.tolist() == [("north", 0), ("south", 0)]
+    assert not isinstance(bc_region_index, pd.MultiIndex)
+    assert bc_region_index.tolist() == ["north", "south"]
+    assert loaded.inv_inputs.H_bc.attrs["boundary_sensitivity_preparation"] == "raw-spatial"
     np.testing.assert_allclose(loaded.inv_inputs["H_bc"], 0.5)
     assert not {"fp_x_flux", "fp_x_flux_sectoral"} & set(loaded.inv_inputs)
     np.testing.assert_array_equal(loaded.inv_inputs["quality_flag"], [1, 2, 1])

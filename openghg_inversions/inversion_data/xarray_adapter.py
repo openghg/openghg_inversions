@@ -66,7 +66,7 @@ import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data.prepared_inputs import RhimePreparedInputs
-from openghg_inversions.inversion_inputs import DatetimeLike, make_inv_inputs
+from openghg_inversions.inversion_inputs import make_inv_inputs
 
 _CACHE_VARIABLES = ("fp_x_flux", "fp_x_flux_sectoral")
 _REQUIRED_OBSERVATION_VARIABLES = ("mf", "mf_error", "mf_repeatability", "mf_variability")
@@ -867,10 +867,6 @@ def prepare_rhime_inputs_from_xarray(
     basis_functions: BasisFunctions,
     sites: Sequence[str] | None = None,
     averaging_period: str | Sequence[str | None] | Mapping[str, str | None] | None = None,
-    bc_freq: str | None = None,
-    min_error: str | dict[str, float] | float = 0.0,
-    min_error_per_site: bool = False,
-    start_date: DatetimeLike | None = None,
 ) -> RhimePreparedInputs:
     """Create canonical RHIME inputs from source-neutral xarray site data.
 
@@ -916,12 +912,6 @@ def prepare_rhime_inputs_from_xarray(
         sites: Optional site selection and order.
         averaging_period: One common period, a site-aligned sequence or
             mapping, or ``None``.
-        bc_freq: Frequency used to expand sampled ``H_bc`` contributions.
-        min_error: Minimum model error accepted by ``make_inv_inputs``.
-        min_error_per_site: Whether calculated minimum errors vary by site.
-            Defaults to ``False``, matching the OpenGHG-backed RHIME
-            preparation route.
-        start_date: Optional frequency anchor passed to ``make_inv_inputs``.
 
     Returns:
         Canonical prepared inputs accepted by
@@ -949,10 +939,9 @@ def prepare_rhime_inputs_from_xarray(
     inv_inputs = make_inv_inputs(
         prepared_sites,
         sites=site_order,
-        bc_freq=bc_freq,
-        min_error=min_error,
-        min_error_per_site=min_error_per_site,
-        start_date=start_date,
+
+
+
         missing_data_vars="error",
     )
     _validate_retained_site_order(inv_inputs, site_order)

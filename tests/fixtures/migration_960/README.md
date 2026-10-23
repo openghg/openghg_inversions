@@ -13,6 +13,8 @@ revisions, environments, execution status, scientific exceptions and owners.
 - `historical/`: released 0.7 route/default/scientific evidence and rerun inputs.
 - [Aggregation filter retirement, 23 October 2026](retirements/aggregation_filters_2026_10_23.json):
   pinned-source arithmetic and the modern removal disposition.
+- [Model input and tracer ownership, 23 October 2026](retirements/model_inputs_2026_10_23.json):
+  pinned-source populations, boundary reuse, artifact dispositions and current owners.
 
 Keep source route and version with each expectation. A fixedbasis-looking INI
 can enter the ordinary RHIME wrapper or the explicit legacy executor.

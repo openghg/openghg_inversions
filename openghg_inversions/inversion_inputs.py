@@ -1,8 +1,8 @@
 """Create backend-neutral, observation-aligned inversion inputs.
 
 ``make_inv_inputs`` gathers selected per-site datasets into one ragged
-``nmeasure`` dataset, validates shared state layouts, adds site/minimum-error
-metadata, transforms boundary-condition periods, drops unusable rows, and
+``nmeasure`` dataset, validates shared state layouts, preserves site/time
+labels, retains raw spatial boundary sensitivities, drops unusable rows, and
 materializes core arrays. ``sites=None`` infers non-metadata entries; an
 explicit empty selection is an error.
 """
@@ -17,10 +17,7 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.array_ops import concat_gather_datasets
-from openghg_inversions.model_error import (
-    MinimumError,
-    normalise_min_error_options as normalise_min_error_options,  # noqa: PLC0414
-)
+
 
 DatetimeLike: TypeAlias = str | dt.datetime | np.datetime64 | pd.Timestamp
 
@@ -71,30 +68,6 @@ def xr_unique_inv(da: xr.DataArray, sort: bool = True) -> xr.DataArray:
             return inv
 
     return xr.apply_ufunc(unique_inv, da)
-
-
-def xr_factorize(
-    da: xr.DataArray, indicator_name: str, label_name: str, label_dim: str, sort: bool = False
-) -> xr.Dataset:
-    """Create Dataset with integer indicators and labels for DataArray.
-
-    Args:
-        da: DataArray to find indicator for.
-        indicator_name: name for indicator data variable
-        label_name: name for label data variable
-        label_dim: dimension for labels
-        sort: if True, the labels will be sorted and the indicator shuffled
-        accordingly
-
-    Returns:
-        Dataset with indicator and label data variables.
-
-    """
-
-    indicator_arr, label_arr = pd.factorize(da.values, sort=sort)
-    indicator = xr.DataArray(indicator_arr, coords=da.coords, dims=da.dims)
-    labels = xr.DataArray(label_arr, dims=(label_dim,))
-    return xr.Dataset({indicator_name: indicator, label_name: labels})
 
 
 # MAKE FUNCTIONS
@@ -175,32 +148,6 @@ def make_sigma_freq(
     return result.rename("sigma_freq_index")
 
 
-# ADD FUNCTIONS
-def add_min_error(
-    ds: xr.Dataset,
-    fp_data: dict[str, Any],
-    min_error: str | dict[str, float] | int | float | None = 0.0,
-    min_error_per_site: bool = True,
-) -> xr.Dataset:
-    """Add a prepared, observation-aligned minimum error to a dataset."""
-    prepared = MinimumError.prepare(ds, fp_data, min_error, by_site=min_error_per_site)
-    ds["min_error"] = xr.DataArray(
-        prepared.values.data,
-        dims=prepared.values.dims,
-        name="min_error",
-        attrs=prepared.values.attrs,
-    )
-    return ds
-
-
-def add_site_indicator(ds: xr.Dataset, sort: bool = False) -> xr.Dataset:
-    """Adds site_indicator and site_names data variables."""
-    to_add = xr_factorize(
-        ds.site, indicator_name="site_indicator", label_name="site_names", label_dim="nsite", sort=sort
-    )
-    return xr.merge([ds, to_add])
-
-
 # INVERSION INPUTS PIPELINE
 def _drop_nan_and_compute(
     ds: xr.Dataset, drop_nan_from: Iterable[str] = ("H", "H_bc", "mf", "mf_error")
@@ -245,13 +192,6 @@ def _drop_nan_and_compute(
         ds = ds.dropna(dim="nmeasure", how="any", subset=drop_subset)
 
     return ds
-
-
-def _drop_unobserved_bc_states(ds: xr.Dataset) -> xr.Dataset:
-    """Drop boundary-condition states with zero sensitivity to every observation."""
-    if "H_bc" not in ds:
-        return ds
-    return ds.sel(bc_region=(ds["H_bc"] != 0).any("nmeasure"))
 
 
 def _check_required_inv_input_vars(
@@ -323,16 +263,12 @@ def _fill_missing_optional_observation_factors(
 def make_inv_inputs(
     fp_data: dict[str, Any],
     sites: list[str] | None = None,
-    bc_freq: Literal["monthly"] | str | None = None,
-    min_error: str | dict[str, float] | int | float | None = 0.0,
-    min_error_per_site: bool = True,
-    start_date: DatetimeLike | None = None,
     missing_data_vars: Literal["error", "drop"] = "drop",
 ) -> xr.Dataset:
     """Create backend-neutral observation-aligned inversion inputs.
 
     The returned dataset contains shared observations, sensitivities, error
-    terms, and site alignment metadata. Model-component-specific arrays are
+    terms, and site/time labels. Model-component-specific arrays are
     constructed by their owning components. Core payloads are materialized
     together before invalid observations are discarded; the full pre-selection
     core arrays must fit in memory. Other extension arrays may remain lazy.
@@ -342,13 +278,6 @@ def make_inv_inputs(
         sites: Sites to retain. ``None`` infers all non-metadata ``fp_data``
             keys in insertion order. An explicit empty list is invalid, and
             every named site must exist in ``fp_data``.
-        bc_freq: Optional frequency used to transform boundary-condition
-            sensitivities.
-        min_error: Minimum-error scalar, site mapping, or calculation method.
-            ``None`` uses a zero scalar floor.
-        min_error_per_site: Whether a calculated minimum error varies by site.
-        start_date: Optional anchor for fixed-duration boundary-condition
-            frequencies.
         missing_data_vars: Policy for observation-aligned variables that are
             not present at every site. ``"drop"`` preserves the established
             OpenGHG/legacy behavior; ``"error"`` prevents extension fields
@@ -360,8 +289,7 @@ def make_inv_inputs(
     Raises:
         ValueError: If no sites can be inferred, the explicit selection is
             empty, a requested site is missing, required input variables are
-            missing, the selected missing-variable policy is violated, or
-            minimum-error configuration is invalid.
+            missing, or the selected missing-variable policy is violated.
     """
     if sites is None:
         sites = [key for key in fp_data if not key.startswith(".")]
@@ -407,26 +335,12 @@ def make_inv_inputs(
     )
 
     if "H_bc" in ds:
-        from openghg_inversions.boundary_sensitivity import BoundaryAlignment
+        if (
+            ds["H_bc"].attrs.get("boundary_sensitivity_preparation") == "sampled-period-expansion"
+            or "bc_period" in ds["H_bc"].coords
+        ):
+            raise ValueError("Preparation requires raw spatial H_bc, without fitted boundary periods.")
+        ds["H_bc"].attrs = dict(ds["H_bc"].attrs)
+        ds["H_bc"].attrs["boundary_sensitivity_preparation"] = "raw-spatial"
 
-        boundary_sensitivity = BoundaryAlignment.prepare(
-            ds["H_bc"],
-            frequency=bc_freq,
-            anchor_time=start_date,
-        ).data.transpose("bc_region", "nmeasure")
-        ds = ds.drop_dims("bc_region")
-        ds["H_bc"] = xr.DataArray(
-            boundary_sensitivity.data,
-            dims=("bc_region", "nmeasure"),
-            coords={"bc_region": boundary_sensitivity["bc_region"]},
-            name="H_bc",
-            attrs=boundary_sensitivity.attrs,
-        )
-
-    ds = add_site_indicator(ds)
-    ds = add_min_error(ds, fp_data=fp_data, min_error=min_error, min_error_per_site=min_error_per_site)
-
-    ds = _drop_nan_and_compute(ds)
-    ds = _drop_unobserved_bc_states(ds)
-
-    return ds
+    return _drop_nan_and_compute(ds)
