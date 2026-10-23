@@ -1,0 +1,931 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Migration evidence before compatibility removal &#8212; OpenGHG Inversions</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67" />
+
+    <script src="../_static/documentation_options.js?v=1dba82e2"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/thebelab-helper.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'development/migration_960';</script>
+    <script>
+        DOCUMENTATION_OPTIONS.theme_version = '0.21.0';
+        DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://openghg.github.io/openghg_inversions/versions.json';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = 'devel';
+        DOCUMENTATION_OPTIONS.show_version_warning_banner =
+            false;
+        </script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Released 0.7 migration evidence" href="migration_960_historical.html" />
+    <link rel="prev" title="Fixed-OU experiment evidence" href="fixed_ou_evidence.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="devel" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+<aside class="bd-header-announcement" aria-label="Announcement">
+  <div class="bd-header-announcement__content">Unreleased development documentation; use <a href="https://openghg.github.io/openghg_inversions/stable/">stable</a> for supported releases. <a href="https://openghg.github.io/openghg_inversions/versions/">All documentation versions</a>.</div>
+</aside>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">OpenGHG Inversions</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../usage/usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/index.html">
+    API reference
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item">
+<div class="version-switcher__container dropdown pst-js-only">
+  <button id="pst-version-switcher-button-2"
+    type="button"
+    class="version-switcher__button btn btn-sm dropdown-toggle"
+    data-bs-toggle="dropdown"
+    aria-haspopup="listbox"
+    aria-controls="pst-version-switcher-list-2"
+    aria-label="Version switcher list"
+  >
+    Choose version  <!-- this text may get changed later by javascript -->
+    <span class="caret"></span>
+  </button>
+  <div id="pst-version-switcher-list-2"
+    class="version-switcher__menu dropdown-menu list-group-flush py-0"
+    role="listbox" aria-labelledby="pst-version-switcher-button-2">
+    <!-- dropdown will be populated by javascript on page load -->
+  </div>
+</div></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../usage/usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/index.html">
+    API reference
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item">
+<div class="version-switcher__container dropdown pst-js-only">
+  <button id="pst-version-switcher-button-3"
+    type="button"
+    class="version-switcher__button btn btn-sm dropdown-toggle"
+    data-bs-toggle="dropdown"
+    aria-haspopup="listbox"
+    aria-controls="pst-version-switcher-list-3"
+    aria-label="Version switcher list"
+  >
+    Choose version  <!-- this text may get changed later by javascript -->
+    <span class="caret"></span>
+  </button>
+  <div id="pst-version-switcher-list-3"
+    class="version-switcher__menu dropdown-menu list-group-flush py-0"
+    role="listbox" aria-labelledby="pst-version-switcher-button-3">
+    <!-- dropdown will be populated by javascript on page load -->
+  </div>
+</div></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar">
+  <svg class="pst-icon" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="rhime_model_development.html">Developing RHIME models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="specifications.html">Development guidance and behavioral specifications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture_principles.html">Architecture principles and recipe boundaries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="numerical_array_ownership.html">Numerical array ownership and execution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="validation_and_xarray.html">Validation and labelled-array patterns</a></li>
+<li class="toctree-l1"><a class="reference internal" href="documentation.html">Maintain the documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="observation_uncertainty.html">Missing observation uncertainty: behavior and decisions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="fixed_ou_likelihood.html">Fixed-OU likelihood and cached quadratics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="fixed_ou_evidence.html">Fixed-OU experiment evidence</a></li>
+<li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">Migration evidence before compatibility removal</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="migration_960_historical.html">Released 0.7 migration evidence</a></li>
+<li class="toctree-l2"><a class="reference internal" href="migration_960_resources.html">Migration resource evidence for issue 960</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="releasing.html">Releases and branch maintenance</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">Developing OpenGHG Inversions</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Migration evidence before compatibility removal</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="migration-evidence-before-compatibility-removal">
+<h1>Migration evidence before compatibility removal<a class="headerlink" href="#migration-evidence-before-compatibility-removal" title="Link to this heading">#</a></h1>
+<p>This is the bounded M1 evidence archive for <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/960">issue #960</a>, part of
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/944">#944</a> /
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/948">#948</a>. It serves
+maintainers removing compatibility and authors of the later explicit converter.
+It records source behavior, not a new configuration contract or a promise of
+numerical reproduction. Production code and behavioral specifications are
+unchanged by this evidence PR.</p>
+<p>Read the ledger together with the plain inputs and expected observations in
+<code class="docutils literal notranslate"><span class="pre">tests/fixtures/migration_960/</span></code>. Those files do not import HBMCMC and remain
+available after its deletion. Runtime characterization tests deliberately call
+the existing boundary: deletion PRs must account for their affected cases and
+retain the plain expectations for later converter checks. Runtime-only drivers
+may retire with their adapters before the converter exists; scientific
+regressions must be ported in the removal PR. Do not regenerate expected values
+from the replacement translator.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="migration_960_historical.html">Released 0.7 migration evidence</a></li>
+<li class="toctree-l1"><a class="reference internal" href="migration_960_resources.html">Migration resource evidence for issue 960</a></li>
+</ul>
+</div>
+<section id="evidence-vocabulary-and-pinned-comparison">
+<h2>Evidence vocabulary and pinned comparison<a class="headerlink" href="#evidence-vocabulary-and-pinned-comparison" title="Link to this heading">#</a></h2>
+<ul class="simple">
+<li><p><strong>Observed</strong> means a bounded check was executed with acquisition and sampling
+absent or replaced by a capture stub. It establishes settings or errors, not
+a successful scientific inversion.</p></li>
+<li><p><strong>Inspected</strong> means the pinned source body/signature establishes the statement;
+no execution of that scientific case is claimed.</p></li>
+<li><p><strong>Candidate</strong> identifies a possible modern spelling or policy. It does not
+resolve the release’s API, support window, or scientific choices.</p></li>
+<li><p><strong>Mechanical</strong> preserves the represented setting; <strong>scientific change</strong> needs
+an explicit choice or acknowledgement; <strong>unsupported</strong> stays in its source
+environment; <strong>unresolved</strong> has an identified follow-up owner.</p></li>
+</ul>
+<p>The verified compatibility-bearing development and comparison revision is
+<code class="docutils literal notranslate"><span class="pre">0a32d73a5c4a72be0505a4ed682472e1613e49e9</span></code> (<code class="docutils literal notranslate"><span class="pre">devel</span></code> fetched on
+22 October 2026). It still contains <code class="docutils literal notranslate"><span class="pre">hbmcmc/compatibility.py</span></code> and
+<code class="docutils literal notranslate"><span class="pre">hbmcmc/run_hbmcmc.py</span></code>. This is also the production revision exercised by
+this PR; the evidence-only commits change no production modules. The earlier
+<code class="docutils literal notranslate"><span class="pre">6a0d6acf</span></code> audit is not the baseline. A fresh diff from that commit found no
+changes in the HBMCMC package, <code class="docutils literal notranslate"><span class="pre">rhime/_runner_compat.py</span></code>, <code class="docutils literal notranslate"><span class="pre">requests.py</span></code>,
+<code class="docutils literal notranslate"><span class="pre">ini.py</span></code> or <code class="docutils literal notranslate"><span class="pre">config/config.py</span></code>; current <code class="docutils literal notranslate"><span class="pre">cli.py</span></code> and model code were also
+read. See the historical page for exact released tag commits, publication
+status and the separately prepared <code class="docutils literal notranslate"><span class="pre">main</span></code> version.</p>
+<p>Future removal PRs must compare their base to this exact revision and refresh
+any affected ledger entries, inputs, expected observations and tests. For
+example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">git</span> <span class="n">diff</span> <span class="mi">0</span><span class="n">a32d73a5c4a72be0505a4ed682472e1613e49e9</span><span class="o">..</span><span class="n">HEAD</span> <span class="o">--</span> \
+  <span class="n">openghg_inversions</span><span class="o">/</span><span class="n">hbmcmc</span> <span class="n">openghg_inversions</span><span class="o">/</span><span class="n">rhime</span> \
+  <span class="n">openghg_inversions</span><span class="o">/</span><span class="n">config</span> <span class="n">openghg_inversions</span><span class="o">/</span><span class="n">_flux_options</span><span class="o">.</span><span class="n">py</span> \
+  <span class="n">openghg_inversions</span><span class="o">/</span><span class="n">cli</span><span class="o">.</span><span class="n">py</span> <span class="n">openghg_inversions</span><span class="o">/</span><span class="n">inference</span> \
+  <span class="n">openghg_inversions</span><span class="o">/</span><span class="n">models</span> <span class="n">openghg_inversions</span><span class="o">/</span><span class="n">postprocessing</span>
+</pre></div>
+</div>
+</section>
+<section id="current-development-environment">
+<h2>Current development environment<a class="headerlink" href="#current-development-environment" title="Link to this heading">#</a></h2>
+<p>The focused checks use a new worktree-local lean environment made with
+<code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">sync</span> <span class="pre">--locked</span></code>; no historical dependency was installed into it. Interpreter:
+CPython 3.13.7, Clang 20.1.4, Linux. <code class="docutils literal notranslate"><span class="pre">uv.lock</span></code> at the pinned development ref has
+SHA256 <code class="docutils literal notranslate"><span class="pre">a60675ff1116d759773ad94a3f71d265c4ac330a232dc4f021891d12031acf3c</span></code>.
+The installed project reports version <code class="docutils literal notranslate"><span class="pre">0.7.4</span></code> from development metadata;
+that string does not identify the released v0.7.4 code.</p>
+<p>Resolved versions used here: PyMC 6.3.2, PyTensor 3.3.2, ArviZ 1.3.0,
+NumPy 2.2.6, SciPy 1.15.3, xarray 2025.9.1, OpenGHG 0.19.0,
+Dask 2026.1.1, sparse 0.17.0, pytest 9.0.2 and Ruff 0.16.0. The pinned lockfile
+provides the remaining dependency provenance. Historical provenance and
+limitations are recorded separately; do not loosen modern requirements to run
+old source.</p>
+</section>
+<section id="rerun-the-bounded-checks">
+<h2>Rerun the bounded checks<a class="headerlink" href="#rerun-the-bounded-checks" title="Link to this heading">#</a></h2>
+<p>Check out this evidence PR to obtain the fixtures/tests, keeping its pinned
+production source, then create its lean environment:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">uv</span> <span class="n">sync</span> <span class="o">--</span><span class="n">locked</span>
+<span class="n">export</span> <span class="n">DASK_NUM_WORKERS</span><span class="o">=</span><span class="mi">2</span> <span class="n">OPENBLAS_NUM_THREADS</span><span class="o">=</span><span class="mi">1</span> <span class="n">OMP_NUM_THREADS</span><span class="o">=</span><span class="mi">1</span>
+<span class="n">export</span> <span class="n">MPLCONFIGDIR</span><span class="o">=/</span><span class="n">tmp</span><span class="o">/</span><span class="n">mpl</span><span class="o">-</span><span class="mi">960</span>
+<span class="n">IFS</span><span class="o">=</span><span class="s1">','</span> <span class="n">read</span> <span class="o">-</span><span class="n">r</span> <span class="o">-</span><span class="n">a</span> <span class="n">inherited_flags</span> <span class="o">&lt;&lt;&lt;</span> <span class="s2">"$</span><span class="si">{PYTENSOR_FLAGS:-}</span><span class="s2">"</span>
+<span class="n">export</span> <span class="n">PYTENSOR_FLAGS</span><span class="o">=</span><span class="n">base_compiledir</span><span class="o">=/</span><span class="n">tmp</span><span class="o">/</span><span class="n">pytensor</span><span class="o">-</span><span class="mi">960</span>
+<span class="k">for</span> <span class="n">flag</span> <span class="ow">in</span> <span class="s2">"$</span><span class="si">{inherited_flags[@]}</span><span class="s2">"</span><span class="p">;</span> <span class="n">do</span>
+    <span class="k">case</span> <span class="s2">"${flag//[[:space:]]/}"</span> <span class="ow">in</span> <span class="n">base_compiledir</span><span class="o">=*|</span><span class="s1">''</span><span class="p">)</span> <span class="k">continue</span> <span class="p">;;</span> <span class="n">esac</span>
+    <span class="n">PYTENSOR_FLAGS</span><span class="o">+=</span><span class="s2">",$flag"</span>
+<span class="n">done</span>
+<span class="o">.</span><span class="n">venv</span><span class="o">/</span><span class="nb">bin</span><span class="o">/</span><span class="n">pytest</span> <span class="n">tests</span><span class="o">/</span><span class="n">test_migration_960_requests</span><span class="o">.</span><span class="n">py</span> <span class="n">tests</span><span class="o">/</span><span class="n">test_migration_960_resources</span><span class="o">.</span><span class="n">py</span>
+<span class="o">.</span><span class="n">venv</span><span class="o">/</span><span class="nb">bin</span><span class="o">/</span><span class="n">ruff</span> <span class="n">check</span> <span class="n">tests</span><span class="o">/</span><span class="n">test_migration_960_requests</span><span class="o">.</span><span class="n">py</span> <span class="n">tests</span><span class="o">/</span><span class="n">test_migration_960_resources</span><span class="o">.</span><span class="n">py</span>
+<span class="n">git</span> <span class="n">diff</span> <span class="o">--</span><span class="n">check</span>
+</pre></div>
+</div>
+<p>The tests use only small local files and synthetic arrays. They do not acquire
+real data, sample a posterior, submit an inversion or validate arbitrary user
+scripts. Use the historical page’s isolated environment instructions for
+released-source observations. Environment-creating tox runs on this cluster
+must use <code class="docutils literal notranslate"><span class="pre">sbatch</span> <span class="pre">scripts/slurm_tox.sh</span></code>; no such environment is needed for
+these bounded direct checks.</p>
+</section>
+<section id="migration-ledger-requests-and-execution">
+<h2>Migration ledger: requests and execution<a class="headerlink" href="#migration-ledger-requests-and-execution" title="Link to this heading">#</a></h2>
+<p>The following entries use the development revision above unless marked
+<code class="docutils literal notranslate"><span class="pre">v0.7.4</span></code>. Detailed historical defaults and scientific entries live in
+<a class="reference internal" href="migration_960_historical.html"><span class="doc">Released 0.7 migration evidence</span></a>; resource entries live in
+<a class="reference internal" href="migration_960_resources.html"><span class="doc">Migration resource evidence for issue 960</span></a>. Each entry separates the source meaning from
+its candidate replacement and names the issue owning the next decision.
+These owners identify workstreams, not accepted personal assignments.</p>
+<div class="pst-scrollable-table-container"><table class="table" id="id3">
+<caption><span class="caption-text">Route identity and dispositions</span><a class="headerlink" href="#id3" title="Link to this table">#</a></caption>
+<colgroup>
+<col style="width: 14.0%" />
+<col style="width: 25.0%" />
+<col style="width: 25.0%" />
+<col style="width: 20.0%" />
+<col style="width: 16.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>ID / source route</p></th>
+<th class="head"><p>Old spelling/default and effective meaning</p></th>
+<th class="head"><p>Candidate / disposition</p></th>
+<th class="head"><p>Evidence</p></th>
+<th class="head"><p>Follow-up owner</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>R1 / released RHIME Python and CLI</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> is a Python result-wrapper API; <code class="docutils literal notranslate"><span class="pre">run-rhime</span></code> is an
+<code class="docutils literal notranslate"><span class="pre">openghg-inversions</span></code> subcommand, not a standalone executable.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">run_standard</span></code> and its <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> consumer API; mechanical
+name adaptation plus unresolved result-consumer migration.</p></td>
+<td><p>Historical page: exact signatures, installed CLI and result fields.</p></td>
+<td><p>#945 public API; #950 launchers; #949 conversion.</p></td>
+</tr>
+<tr class="row-odd"><td><p>R2 / development Python and CLI</p></td>
+<td><p>Python <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> raises <code class="docutils literal notranslate"><span class="pre">ImportError</span></code>; CLI <code class="docutils literal notranslate"><span class="pre">run-rhime</span></code> calls
+<code class="docutils literal notranslate"><span class="pre">run_standard</span></code>. A standard run requires an explicit built-in
+<code class="docutils literal notranslate"><span class="pre">mismatch_model</span></code> or custom likelihood; omission errors before
+acquisition. Vocabulary alone does not identify a route.</p></td>
+<td><p>Explicit source version and route; unresolved final CLI aliases.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">rhime/__init__.py::__getattr__</span></code>; <code class="docutils literal notranslate"><span class="pre">cli.py::_run_rhime_command</span></code>;
+request characterization.</p></td>
+<td><p>#945 / #950.</p></td>
+</tr>
+<tr class="row-even"><td><p>R3 / ordinary HBMCMC wrapper</p></td>
+<td><p>Omitted <code class="docutils literal notranslate"><span class="pre">likelihood</span></code> selects <code class="docutils literal notranslate"><span class="pre">pollution_event</span></code>; the script calls
+RHIME, even with fixedbasis-style names. It has no direct legacy
+executor on development.</p></td>
+<td><p>Explicit <code class="docutils literal notranslate"><span class="pre">mismatch_model='pollution_event'</span></code>; mechanical for this
+model selection, scientific exceptions remain separate.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py::main</span></code>; request fixtures and tests.</p></td>
+<td><p>#949 conversion; #719 removal.</p></td>
+</tr>
+<tr class="row-odd"><td><p>R4 / true v0.7.4 fixedbasis</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">--legacy-fixedbasis</span></code> selects a different executor with different
+defaults and historical equations; ordinary wrapper is not this route.</p></td>
+<td><p>Source environment or reviewed modern scientific choice; scientific
+change / unresolved supported subset.</p></td>
+<td><p>Historical page; original invocations and defaults fixture.</p></td>
+<td><p>#948 scientific coverage; #946 environment.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="pst-scrollable-table-container"><table class="table" id="id4">
+<caption><span class="caption-text">Input interpretation and dispositions</span><a class="headerlink" href="#id4" title="Link to this table">#</a></caption>
+<colgroup>
+<col style="width: 12.0%" />
+<col style="width: 27.0%" />
+<col style="width: 27.0%" />
+<col style="width: 20.0%" />
+<col style="width: 14.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>ID / source</p></th>
+<th class="head"><p>Old spelling/default and effective meaning</p></th>
+<th class="head"><p>Candidate / disposition</p></th>
+<th class="head"><p>Evidence</p></th>
+<th class="head"><p>Follow-up owner</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>I1 / INI, released and development</p></td>
+<td><p>Case-preserved option names, inline comments, flattened sections,
+first occurrence and Python-value decoding are observable parser
+behavior. <code class="docutils literal notranslate"><span class="pre">eval_check</span></code> evaluates expressions as well as literals.</p></td>
+<td><p>Preserve effective values, not section grouping; mechanical within
+captured syntax. Unknown/custom options need a decision.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">config/config.py</span></code> parser bodies; original INIs / expected values;
+historical and request checks.</p></td>
+<td><p>#949 parser; #948 supported syntax.</p></td>
+</tr>
+<tr class="row-odd"><td><p>I2 / Python and CLI overrides</p></td>
+<td><p>File values precede explicit overrides; date/output flags precede
+JSON kwargs. Alias normalization happens after these updates.</p></td>
+<td><p>Materialize winning values with source-route metadata; mechanical.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">cli.py::_command_kwargs</span></code>, wrapper <code class="docutils literal notranslate"><span class="pre">main</span></code> and <code class="docutils literal notranslate"><span class="pre">requests.load_params</span></code>;
+capture tests.</p></td>
+<td><p>#949 / #950.</p></td>
+</tr>
+<tr class="row-even"><td><p>I3 / ordinary aliases</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">outputpath/outputname/xprior/bcprior/sigprior/offsetprior/</span></code>
+<code class="docutils literal notranslate"><span class="pre">emissions_name/outer_region_definition_file</span></code> map to canonical names;
+simultaneous canonical spelling wins, even from an earlier source.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">output_path/output_name/x_prior/bc_prior/sigma_prior/offset_prior/</span></code>
+<code class="docutils literal notranslate"><span class="pre">flux_sources/outer_regions_path</span></code>; mechanical with precedence retained.</p></td>
+<td><p>Both alias tables and translation bodies; request fixtures.</p></td>
+<td><p>#949; #719 runtime removal.</p></td>
+</tr>
+<tr class="row-odd"><td><p>I4 / flux selector aliases</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">emissions_store/domain</span></code> and <code class="docutils literal notranslate"><span class="pre">inner_emissions_store/domain</span></code> map to
+corresponding <code class="docutils literal notranslate"><span class="pre">flux_*</span></code>. Simultaneous old/new spelling raises even
+for equal values. <code class="docutils literal notranslate"><span class="pre">emissions_name</span></code> follows the ordinary rule above.</p></td>
+<td><p>Canonical <code class="docutils literal notranslate"><span class="pre">flux_*</span></code> with explicit conflict reporting; mechanical.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">_flux_options.py::resolve_deprecated_keyword</span></code>; request checks.
+Inner selectors are inspected only; executed conflict cases cover the
+ordinary store/domain selectors.</p></td>
+<td><p>#949 / #719.</p></td>
+</tr>
+<tr class="row-even"><td><p>I5 / wrapper sampling aliases</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">nit/nchain/verbose/sampler_kwargs</span></code> mean
+<code class="docutils literal notranslate"><span class="pre">draws/chains/progressbar/sample_kwargs</span></code>. <code class="docutils literal notranslate"><span class="pre">burn</span></code> remains a separate
+post-sampling discard, not part of <code class="docutils literal notranslate"><span class="pre">tune</span></code> or subtracted from draws
+during translation.</p></td>
+<td><p>Explicit sampler settings; mechanical renaming. Preserve
+<code class="docutils literal notranslate"><span class="pre">draws</span> <span class="pre">-</span> <span class="pre">burn</span></code> per chain, as justified by both sampling bodies.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">compatibility._translate_legacy_aliases</span></code>; historical sampling bodies;
+synthetic trace check.</p></td>
+<td><p>#949; #952 numerical validation.</p></td>
+</tr>
+<tr class="row-odd"><td><p>I6 / scientific switches</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">calculate_min_error</span></code> accepts residual/percentile when enabled;
+enabled <code class="docutils literal notranslate"><span class="pre">reparameterise_log_normal</span></code> updates only supplied lognormal
+emissions/BC priors. Removed switches are route dependent.</p></td>
+<td><p>Explicit <code class="docutils literal notranslate"><span class="pre">min_error</span></code> and prior <code class="docutils literal notranslate"><span class="pre">reparameterise</span></code> fields; mechanical
+only when source-effective priors/policies are preserved.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">compatibility._translate_legacy_options</span></code>; request cases; historical
+scientific ledger for non-equivalent cases.</p></td>
+<td><p>#948 / #949.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="output-and-unsupported-boundaries">
+<h2>Output and unsupported boundaries<a class="headerlink" href="#output-and-unsupported-boundaries" title="Link to this heading">#</a></h2>
+<div class="pst-scrollable-table-container"><table class="table" id="id5">
+<caption><span class="caption-text">Output intent and exclusions</span><a class="headerlink" href="#id5" title="Link to this table">#</a></caption>
+<colgroup>
+<col style="width: 12.0%" />
+<col style="width: 27.0%" />
+<col style="width: 27.0%" />
+<col style="width: 20.0%" />
+<col style="width: 14.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>ID / source</p></th>
+<th class="head"><p>Old spelling/default and effective meaning</p></th>
+<th class="head"><p>Candidate / disposition</p></th>
+<th class="head"><p>Evidence</p></th>
+<th class="head"><p>Follow-up owner</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>O1 / ordinary wrapper</p></td>
+<td><p>Default <code class="docutils literal notranslate"><span class="pre">legacy</span></code> format, legacy filename convention, no
+inversion-output sidecar unless requested (<code class="docutils literal notranslate"><span class="pre">inv_out</span></code> is exceptional).
+<code class="docutils literal notranslate"><span class="pre">paris_postprocessing</span></code> takes precedence over output format.</p></td>
+<td><p>Explicit output format, save flag and naming convention; mechanical.
+Modern legacy codec is independently supported.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">fixedbasis_params_to_rhime</span></code> and output normalization body; request
+policy fixture and tests.</p></td>
+<td><p>#949; #820 default policy.</p></td>
+</tr>
+<tr class="row-odd"><td><p>O2 / aliases and copied INI</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">hbmcmc/hbmcmc_postprocessing</span></code> mean <code class="docutils literal notranslate"><span class="pre">legacy</span></code>. Wrapper INI copy
+uses raw <code class="docutils literal notranslate"><span class="pre">outputpath/outputname</span></code> while translated output settings
+use winning canonical names; destinations can differ.</p></td>
+<td><p>Preserve product intent, report conflicting copy/result destinations;
+unresolved converter handling of the copied INI.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">run_hbmcmc._copy_config_file</span></code>; capture tests and expected filenames.</p></td>
+<td><p>#948 / #949 / #950.</p></td>
+</tr>
+<tr class="row-even"><td><p>O3 / development standard</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">RhimeOutputSpec</span></code> defaults to <code class="docutils literal notranslate"><span class="pre">inv_out</span></code>, save enabled and RHIME
+naming. <code class="docutils literal notranslate"><span class="pre">basic</span></code> no longer computes a discarded summary;
+<code class="docutils literal notranslate"><span class="pre">run_standard</span></code> returns <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code>.</p></td>
+<td><p>Set explicit source output/save policy; adapt Python consumers to
+modern <code class="docutils literal notranslate"><span class="pre">trace</span></code>, labelled inputs, basis and metadata. Mechanical
+settings; unresolved consumer
+automation and default choices.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">rhime/specs.py</span></code>, <code class="docutils literal notranslate"><span class="pre">rhime/standard.py</span></code> and migration guide;
+request defaults check; historical comparison.</p></td>
+<td><p>#945 / #948 / #950; #820.</p></td>
+</tr>
+<tr class="row-odd"><td><p>U1 / historical staged and cache artifacts</p></td>
+<td><p>Saved envelopes, acquisition caches and trace/basis files are not
+interchangeable with a complete modern inversion output.</p></td>
+<td><p>Unsupported by this evidence/converter scope; retain original source
+environment or obtain a separately reviewed artifact migration.</p></td>
+<td><p><a class="reference internal" href="../usage/staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a>; pinned source APIs; no artifact
+conversion or scientific reproduction check in this PR.</p></td>
+<td><p>#948 / #952; #951 independent basis capabilities.</p></td>
+</tr>
+<tr class="row-even"><td><p>U2 / custom or dynamic Python</p></td>
+<td><p>Arbitrary functions, runtime-generated kwargs, custom likelihoods,
+local edits and unversioned scripts have no safely inferred static
+route or model intent.</p></td>
+<td><p>Unsupported automatic rewriting; preserve source/version/route and
+manually port the scientific recipe.</p></td>
+<td><p>Source signatures distinguish callables from serializable settings;
+this archive contains finite representative invocations only.</p></td>
+<td><p>#950 launch scope; #948 coverage.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="removal-and-validation-handoff">
+<h2>Removal and validation handoff<a class="headerlink" href="#removal-and-validation-handoff" title="Link to this heading">#</a></h2>
+<p>Before deleting a runtime behavior, #719 must cite its ledger entry, account
+for source changes since the pinned commit, and port any scientific regression
+which currently enters through that adapter. Passing translation tests alone
+does not establish scientific parity. #961 owns compatibility-promise changes;
+this page does not supersede the current specifications or announce a release.
+#948 owns the final supported source versions and target choices; #949/#950
+own conversion and launch tooling; #952 owns integrated scientific and packaging
+acceptance. Independent basis readers/writers remain with #951.</p>
+<p>The existing regression inventory includes <code class="docutils literal notranslate"><span class="pre">tests/test_rhime_compatibility.py</span></code>,
+<code class="docutils literal notranslate"><span class="pre">test_run_hbmcmc_shim.py</span></code>, <code class="docutils literal notranslate"><span class="pre">test_rhime_configuration.py</span></code>,
+<code class="docutils literal notranslate"><span class="pre">test_acquisition.py</span></code>, <code class="docutils literal notranslate"><span class="pre">test_filters.py</span></code>, <code class="docutils literal notranslate"><span class="pre">test_basis_paths.py</span></code> and
+<code class="docutils literal notranslate"><span class="pre">test_unsupported_tracer.py</span></code>. Shared ground/satellite request fixtures in
+<code class="docutils literal notranslate"><span class="pre">tests/conftest.py</span></code> still contain <code class="docutils literal notranslate"><span class="pre">emissions_store</span></code> and <code class="docutils literal notranslate"><span class="pre">emissions_name</span></code>.
+This is an inspection inventory, not a claim that all those scientific tests
+were executed here or an authorization to delete them. Preserve scientific
+expectations on canonical inputs in the affected removal PRs.</p>
+</section>
+<section id="observed-validation-on-22-october-2026">
+<h2>Observed validation on 22 October 2026<a class="headerlink" href="#observed-validation-on-22-october-2026" title="Link to this heading">#</a></h2>
+<p>The new request/resource checks and the existing unsupported-tracer checks
+passed: <strong>56 tests</strong>. The related compatibility, wrapper, configuration,
+output-resource, BC-resource and resource-boundary modules passed:
+<strong>295 tests</strong>. The broader invocation was:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">.</span><span class="n">venv</span><span class="o">/</span><span class="nb">bin</span><span class="o">/</span><span class="n">pytest</span> <span class="n">tests</span><span class="o">/</span><span class="n">test_rhime_compatibility</span><span class="o">.</span><span class="n">py</span> \
+  <span class="n">tests</span><span class="o">/</span><span class="n">test_run_hbmcmc_shim</span><span class="o">.</span><span class="n">py</span> <span class="n">tests</span><span class="o">/</span><span class="n">test_rhime_configuration</span><span class="o">.</span><span class="n">py</span> \
+  <span class="n">tests</span><span class="o">/</span><span class="n">test_rhime_output_resources</span><span class="o">.</span><span class="n">py</span> <span class="n">tests</span><span class="o">/</span><span class="n">test_bc_basis_resources</span><span class="o">.</span><span class="n">py</span> \
+  <span class="n">tests</span><span class="o">/</span><span class="n">test_rhime_resource_boundaries</span><span class="o">.</span><span class="n">py</span>
+</pre></div>
+</div>
+<p>Use the environment setup above for both commands. The new tests comprise
+26 request checks and 14 resource checks; the modern chain-summary witness
+uses only modern postprocessing and the archived plain values. Changed-path
+Ruff and <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">diff</span> <span class="pre">--check</span></code> passed. The historical page records its separate
+successful harness and installed-command observations.</p>
+<p>The three new pages were rendered with Sphinx 9.1.0, Docutils 0.22.4 and the
+repository’s PyData theme 0.21.0 in an existing documentation environment.
+This bounded build copied only these pages, used <code class="docutils literal notranslate"><span class="pre">migration_960</span></code> as its root,
+and treated warnings as errors; outgoing <code class="docutils literal notranslate"><span class="pre">:doc:</span></code> references to omitted pages
+were checked against the full source tree separately. The generated headings,
+ledger tables, navigation and code blocks were checked in the built HTML.
+This does not claim a full API/tutorial documentation build.</p>
+<p>No full scientific test suite, Python 3.12 modern matrix or CI-equivalent tox
+run is claimed. Final cross-version, packaging and scientific acceptance remains
+with #952. Source-inspected equations, historical resources, arbitrary external
+scripts and the final supported patch-version subset retain their stated limits.</p>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="fixed_ou_evidence.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Fixed-OU experiment evidence</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="migration_960_historical.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Released 0.7 migration evidence</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#evidence-vocabulary-and-pinned-comparison">Evidence vocabulary and pinned comparison</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#current-development-environment">Current development environment</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#rerun-the-bounded-checks">Rerun the bounded checks</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#migration-ledger-requests-and-execution">Migration ledger: requests and execution</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#output-and-unsupported-boundaries">Output and unsupported boundaries</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#removal-and-validation-handoff">Removal and validation handoff</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#observed-validation-on-22-october-2026">Observed validation on 22 October 2026</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/development/migration_960.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, Eric Saboya and Brendan Murphy.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.1.0.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.21.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
