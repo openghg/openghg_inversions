@@ -618,6 +618,14 @@ roundoff at the input scale, so tiny solved components can have poor relative
 accuracy even in the fallback. These limits should remain visible when
 adding new extreme-scale inputs.</p>
 <p>Regression coverage is retained independently of historical benchmarks:</p>
+<p>For exactly aligned residuals with dominant duplicate factors beyond
+float64’s condition range, residual-gradient tests use a small-case absolute
+rounding budget proportional to
+<span class="math notranslate nohighlight">\(\epsilon\|r\|_2\|C^{-1}\|_2\)</span>. This does not promise relative accuracy
+for an arbitrarily tiny gradient or certify a general forward-error bound.
+Nearby residual tests also require resolvable transverse components to survive;
+clipping small components is not an acceptable way to satisfy the budget.
+Likelihood and amplitude-gradient checks retain their separate tolerances.</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">tests/models/test_fixed_ou.py</span></code> checks dense and analytic likelihood/gradient
 oracles, dominant and duplicate factors, rank-zero/full-width cases,
