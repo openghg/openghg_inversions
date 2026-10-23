@@ -100,6 +100,17 @@ def filtering(
     if not filters:
         return datasets_in
 
+    # Check retired names before global requests can lose their names on an empty site set.
+    requested_filters = filters.values() if isinstance(filters, dict) else [filters]
+    for requested in requested_filters:
+        for filt in requested if isinstance(requested, list) else [requested]:
+            if filt in {"daily_median", "six_hr_mean"}:
+                raise KeyError(
+                    f"{filt!r} is a removed resampling filter. Perform deliberate "
+                    "uncertainty-propagating resampling before observation selection; "
+                    "there is no automatic replacement."
+                )
+
     # Get list of sites
     sites = [key for key in list(datasets_in.keys()) if key[0] != "."]
 
@@ -115,15 +126,9 @@ def filtering(
 
     filter_map = cast(dict[str, list[str | None] | None], filters)
 
-    # Validate the whole request before a preceding filter can execute data.
-    for site_filters in filter_map.values():
-        for filt in site_filters or []:
-            if filt in {"daily_median", "six_hr_mean"}:
-                raise KeyError(
-                    f"{filt!r} is a removed resampling filter. Perform deliberate "
-                    "uncertainty-propagating resampling before observation selection; "
-                    "there is no automatic replacement."
-                )
+    # Validate active requests before a preceding filter can execute data.
+    for site in sites:
+        for filt in filter_map.get(site) or []:
             if filt is None or filt not in filtering_functions:
                 raise KeyError(filt)
 
