@@ -10,6 +10,8 @@ and [sampled-recipe-handoff](../sampled-recipe-handoff/spec.md), respectively.
 
 Configuration ownership and phase resolution follow the
 [rhime-configuration capability](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md).
+Numerical preparation, model-input alignment and error operands follow
+[rhime-scientific-inputs](../../../../specs/rhime-scientific-inputs/spec.md).
 External resource paths and optional basis exports follow
 [rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md).
 
@@ -20,8 +22,9 @@ follow the current [model-composition capability](https://github.com/openghg/ope
 The explicit 0.8 standard entry-point/result and eager-builder migrations amend
 those contracts as recorded in the configuration and model-composition specs.
 
-These requirements describe pending implementation. Landed configuration and
-preparation foundations do not establish completion of the phase APIs or handoffs.
+These requirements belong to an active programme with implemented family routes
+and remaining acceptance work. Recorded implementation does not establish that
+every scenario or the broader handoff programme is complete; see the change's tasks.
 
 ## ADDED Requirements
 
@@ -115,17 +118,13 @@ active flux, boundary or offset state SHALL require the state update.
 
 Equivalent supported full, prepared-input and staged routes SHALL reuse their
 family's scientific preparation, construction, inference and product operations.
-They SHALL call the same step functions in the same order, passing the same kinds
-of objects between them; a saved entry point SHALL differ from the full runner only
-by loading its input checkpoint before those calls and saving its output checkpoint
-after them. Small repeated orchestration means repeated calls, not repeated
-function bodies. Full execution SHALL sequence those operations in memory without
+Saved execution SHALL preserve the same scientific meaning as the corresponding
+in-memory operations, with checkpoint loading and saving at the selected phase
+boundaries. Full execution SHALL sequence those operations in memory without
 mandatory intermediate persistence. Preparation SHALL consistently derive retained labels
 from retained observations and align applicable per-site choices, accepting valid
 nonempty subsets without bypassing their owning input validation.
-Runners SHALL keep acquisition or supplied-data selection visible before
-scientific preparation and explicitly select each operation's named arguments
-from `config.data`. Scientific preparation SHALL consume an explicit acquired
+Scientific preparation SHALL consume an explicit acquired
 handoff and SHALL NOT retrieve data internally. Acquired data SHALL remain before
 preparation-derived errors, filtering, basis/sensitivity construction and stacking;
 existing `ModelScenario` products such as `fp_x_flux` and BC sensitivities remain
@@ -133,9 +132,7 @@ acquisition products. A combined `DataConfig` SHALL NOT obscure this boundary.
 `MergedData` SHALL hold acquired data only: it SHALL NOT carry, and SHALL NOT be
 serialized with, preparation-derived values such as derived observation errors or
 filtered observations. Scientific preparation SHALL accept `MergedData` and return
-prepared inputs; its internal steps SHALL pass per-site datasets and the aligned
-`SiteOptions` between plain functions. A new type per step is not required, and
-intermediate preparation states need not be serializable.
+prepared inputs. Intermediate preparation states need not be serializable.
 Runners SHALL consume the resource-I/O contract's save and resource-resolution
 boundary supplied by #868.
 Direct scientific customization, signatures and numerical returns SHALL retain
@@ -156,18 +153,10 @@ handling SHALL NOT relax the canonical custom-likelihood seam.
 Families supporting partial workflows SHALL remain usable without implementing
 unrelated stages or adopting a common inference algorithm or result format.
 
-Preparation SHALL derive or impute missing observation-error standard deviations
-after observation-selection filters, using only retained observations, and
-preserve caller-supplied custom errors and borrowed inputs. Supported nested
-preparation SHALL select outer observations and align inner observations before
-preparing each retained domain's errors. These rules SHALL follow the
-configuration contract and reuse their scientific owners without implying
-additional nested or linked checkpoint support.
-
-#### Scenario: Observation-error imputation follows selection
-- **WHEN** supported preparation rejects observations through selection filters
-- **THEN** missing errors are estimated from the retained population only
-- **AND** supplied custom errors and caller-owned datasets remain unchanged
+Preparation and model construction SHALL follow the scientific-inputs contract.
+Compatible raw preparation reuse and completed-inference operand persistence
+SHALL follow the prepared and sampled handoff contracts respectively, without
+implying additional nested or linked checkpoint support.
 
 #### Scenario: Preparation consumes acquired data without retrieval
 
@@ -176,18 +165,16 @@ additional nested or linked checkpoint support.
 - **AND** full and saved entry points expose acquisition or supplied-data selection before that same preparation operation
 - **AND** optional basis export is a separate runner call after the scientific result is returned
 
-#### Scenario: Full and saved routes call the same step functions
+#### Scenario: Full and saved routes preserve scientific operations
 
 - **WHEN** a family supports both a full runner and saved phases
-- **THEN** both reuse the same preparation and scientific construction, sampling and product operations, with explicit caller materialization and runner-owned exports
-- **AND** a saved phase adds only loading its input checkpoint and saving its output checkpoint
-- **AND** results are constructed from arguments rather than modified after construction
+- **THEN** both preserve equivalent preparation, scientific construction, sampling and product meaning
+- **AND** the saved route resumes from its declared handoff without repeating completed scientific operations
 
 #### Scenario: Preparation steps do not extend acquired data
 
 - **WHEN** preparation derives observation errors and filters observations
-- **THEN** those steps return per-site datasets and aligned `SiteOptions`
-- **AND** the supplied `MergedData` remains acquired data and is never serialized with derived values
+- **THEN** the supplied `MergedData` remains acquired data and is never serialized with derived values
 
 #### Scenario: Full execution without intermediate saves
 - **WHEN** a full route runs with intermediate saves disabled
@@ -292,7 +279,7 @@ These scientific views SHALL NOT hold live models or sampler fields.
 Saved sampler provenance SHALL be plain metadata describing the actual inference
 invocation. Product replay and diagnosis SHALL NOT rebuild the producing model or
 execute inference. Replay SHALL normalize available `draws`, `burn`, `tune`,
-`chains` and `nuts_sampler` values through a pure metadata operation without
+`chains` and `nuts_sampler` values as descriptive metadata without
 constructing a sampler. Missing or invalid descriptions SHALL become `{}`; valid
 partial descriptions SHALL retain only their supplied fields.
 Missing provenance SHALL NOT be filled from current defaults, and descriptive
@@ -310,31 +297,15 @@ the sample manifest.
 - **AND** recorded sampler provenance remains inspectable as metadata without
   rebuilding a model or running inference
 
-### Requirement: Explicit numerical ownership and execution boundaries
+### Requirement: Scientific construction across supported routes
 
-Routes SHALL treat caller-supplied numerical inputs as borrowed and potentially
-lazy. Choice resolution and access SHALL NOT mutate, copy, compute, persist,
-densify or rechunk those inputs implicitly. Related arrays SHALL preserve shared
-execution graphs until an explicit assembly, model-input, serialization or
-eager-kernel boundary materializes the related arrays required there together.
-Preparation SHALL NOT be required to keep every array lazy across an explicit
-scientific execution boundary. Borrowed inputs SHALL remain unchanged.
-Standard callers SHALL explicitly materialize selected inputs and enabled priors
-together before calling the eager builder; the standard prepared-input route
-SHALL use the same construction operation as
-full and saved execution, receiving model choices without output configuration.
+Numerical borrowing and execution boundaries SHALL follow the scientific-inputs
+contract. Standard prepared-input construction SHALL accept model choices without
+requiring output configuration and preserve the full/saved route's scientific meaning.
 Its complete-model-builder hook SHALL be rejected; its custom-likelihood seam
 SHALL remain available. Multisector construction SHALL use the same separation.
 Caller-owned complete models MAY directly compose scientific functions with
 explicit inputs and SHALL own any further materialization they require.
-
-#### Scenario: Borrowed lazy preparation and construction
-- **WHEN** a route receives borrowed inputs with shared lazy arrays
-- **THEN** resolution and preparation preserve borrowed input values and shared
-  execution until an applicable explicit materialization boundary
-- **AND** related arrays required by assembly, construction or an eager kernel
-  materialize together at the declared boundary rather than through incidental
-  configuration access
 
 #### Scenario: Direct multisector complete-model composition
 - **WHEN** a caller needs a multisector complete graph beyond the built-in recipe
@@ -362,8 +333,8 @@ They SHALL NOT construct an intermediate `RhimeResult` or thread an output-beari
 `RhimeRunSpec` through scientific operations. Dates SHALL come from the data
 configuration or explicit prepared-input arguments; retained selectors SHALL come
 from the prepared inputs. Derived products MAY be generated/written through their
-existing owners. The runner SHALL invoke one operational artifact-saving helper
-for products and exports, preserving visible scientific steps. The `basic` runner
+existing owners. Requested products and exports SHALL follow the same output
+policy. The `basic` runner
 choice SHALL NOT compute an inaccessible summary; callers SHALL use `basic_output`
 on the returned scientific view when they want that product.
 The runner SHALL explicitly save the optional self-contained

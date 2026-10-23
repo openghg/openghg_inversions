@@ -21,6 +21,27 @@ Deliver model-owned choices with one explicit numerical boundary, retained-popul
 - Introduce new prepared and standard/multisector handoff versions, rejecting incompatible historical records with guidance. Retain independent modern InversionOutput/legacy product codecs.
 - Preserve raw BC-related variables for #957. Its future A/M/reference representation will extend the same temporal operation; this change makes no claim of centered support.
 
+## Behavioral contract ownership
+
+- `rhime-configuration` owns option names/defaults, phase groups, use_bc inheritance,
+  repeated prepared-fact checks, BC/floor group ownership and configured omitted
+  anchor resolution. Its averaging_error scenario concerns changing preparation
+  policy on supplied data without reacquisition, independently of nested alignment.
+- `rhime-scientific-inputs` owns retained numerical inputs, selection-before-error
+  imputation, separate nested site-intersection and aligned-population guarantees,
+  shared nested spatial support, temporal BC labels/units/borrowing, retained-row
+  floors, unused-operand laziness and conflicting supplied resolved policies.
+- `prepared-recipe-handoff` and `sampled-recipe-handoff` own raw durable inputs,
+  explicit incompatible-format rejection, independent modern output support and
+  exact fitted operand replay. `recipe-execution` references those handoffs.
+- The configuration requirement for retired filter names is identical to the #954
+  prerequisite. Tracer retirement is ordinary unsupported-option validation for
+  both explicit booleans, with omission valid; it does not establish tracer science.
+- Concrete helper placement, calls and wrapper choices in these design decisions
+  are development guidance, not public behavioral requirements. Existing public
+  preparation removals, acquisition signatures/returns and selector-helper promises
+  remain explicit interface contracts.
+
 ## Risks / Trade-offs
 
 - Named floors can change after row dropping: document and test that intended population directly.

@@ -19,11 +19,24 @@ Prepared standard and multisector data previously baked BC periods and minimum-e
 
 ### New Capabilities
 
-None.
+- `rhime-scientific-inputs`: backend-neutral retained inputs, selected-population observation-error derivation, model-owned BC temporal operands and likelihood-owned floors.
 
 ### Modified Capabilities
 
-- `rhime-configuration`: model ownership of BC periods and likelihood floors, retained-population observation-error imputation, and explicit rejection of incompatible baked preparations.
+- `rhime-configuration`: accepted filter/option names, phase/group resolution, model ownership of BC-period and likelihood-floor choices, and explicit tracer-option retirement.
+- `prepared-recipe-handoff` and `sampled-recipe-handoff`: reusable raw preparation, explicit older-format rejection and fitted-operand replay.
+- `recipe-execution`: full and saved recipes share the same numerical input and handoff contracts.
+
+## Contract placement
+
+Configuration owns accepted values/defaults, group ownership, inherited BC use,
+recorded-fact checks and configured anchor resolution. The scientific-input
+capability owns numerical populations, labels, units, borrowing, resolved-policy
+compatibility and unused-operand execution. Prepared/sample handoff capabilities
+own artifact compatibility and replay. Helper placement, direct canonical calls
+and wrapper guidance remain development principles rather than behavioral
+requirements. The separately approved #954 filter-name requirement is retained
+unchanged; no resampling replacement is introduced.
 
 ## Impact
 
