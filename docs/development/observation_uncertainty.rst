@@ -84,6 +84,13 @@ repeatability and variability diagnostic fields alone do not remove a row.
 A configured minimum total-error floor acts later; it cannot recover a site
 discarded during retrieval or bypass the missing-both-fields error.
 
+Resampling defines observations and must propagate their uncertainty before
+selection. It is a separate operation from accepting/rejecting observations or
+imputing missing errors. The retired ``daily_median`` and ``six_hr_mean`` filter
+names generically aggregated Dataset variables and did not establish that
+propagation contract. See :doc:`/usage/legacy_and_migration` for their removal;
+a median must not be silently replaced with an acquisition mean.
+
 Why preserving NaNs is not an incidental bug fix
 ------------------------------------------------
 

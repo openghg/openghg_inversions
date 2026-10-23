@@ -6161,16 +6161,20 @@ def test_surface_bc_sensitivity_is_not_scaled_by_column_factors() -> None:
     xr.testing.assert_identical(result["H_bc"], inv_inputs["H_bc"])
 
 
-def test_canonical_preparation_applies_daily_median_before_sensitivity(
+def test_canonical_preparation_selects_daytime_before_sensitivity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Daily-median filtering should aggregate times before basis projection."""
+    """Daytime selection preserves supplied errors and precedes basis projection."""
     site_dataset = _site_dataset([2.0, 3.0, 4.0]).drop_vars(["fp_x_flux", "lat", "lon"])
     site_dataset["fp_x_flux"] = xr.DataArray(
         [[[0.0, 100.0]], [[0.0, 0.0]], [[100.0, 0.0]]],
         dims=("time", "lat", "lon"),
         coords={"time": site_dataset.time, "lat": [0.0], "lon": [0.0, 1.0]},
     )
+    site_dataset = site_dataset.assign_coords(time=pd.to_datetime([
+        "2019-01-01T00:00", "2019-01-01T12:00", "2019-01-01T13:00",
+    ]))
+    site_dataset["release_lon"] = ("time", [0.0, 0.0, 0.0])
     basis_input: xr.DataArray | None = None
     final_sensitivity: xr.DataArray | None = None
 
@@ -6192,6 +6196,7 @@ def test_canonical_preparation_applies_daily_median_before_sensitivity(
         nonlocal basis_input
         site_data = kwargs["site_data"]
         assert isinstance(site_data, dict)
+        xr.testing.assert_identical(site_data["TAC"].mf_error, site_dataset.mf_error.isel(time=[1, 2]))
         basis_input = site_data["TAC"]["fp_x_flux"].copy()
         basis = xr.DataArray(
             [[1, 1]],
@@ -6201,7 +6206,7 @@ def test_canonical_preparation_applies_daily_median_before_sensitivity(
         return BasisFunctions.from_flat_basis(basis_flat=basis, flux=xr.ones_like(basis))
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
-        """Capture sensitivity after daily-median filtering."""
+        """Capture sensitivity after daytime selection."""
         nonlocal final_sensitivity
         final_sensitivity = fp_data["TAC"]["H"].copy()
         return _minimal_prepared_inv_inputs()
@@ -6221,18 +6226,18 @@ def test_canonical_preparation_applies_daily_median_before_sensitivity(
         averaging_period=["1H"],
         start_date="2019-01-01",
         end_date="2019-02-01",
-        output_name="daily_median_filter_order",
+        output_name="daytime_filter_order",
         flux_sources=["total-ukghg-edgar7"],
         use_bc=False,
-        filters=["daily_median"],
+        filters=["daytime"],
     )
 
     assert basis_input is not None
-    assert basis_input.sizes["time"] == 1
-    xr.testing.assert_allclose(basis_input, xr.zeros_like(basis_input))
+    assert basis_input.sizes["time"] == 2
+    xr.testing.assert_identical(basis_input, site_dataset.fp_x_flux.isel(time=[1, 2]))
     assert final_sensitivity is not None
     xr.testing.assert_identical(final_sensitivity.time, basis_input.time)
-    xr.testing.assert_allclose(final_sensitivity, xr.zeros_like(final_sensitivity))
+    np.testing.assert_array_equal(final_sensitivity, [[0.0, 100.0]])
 
 
 def test_canonical_preparation_filters_multisector_sites_before_basis_generation(
