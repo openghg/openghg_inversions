@@ -67,8 +67,12 @@ supported basis readers, writers, discovery and reconstruction operations SHALL
 retain their separate contracts. A legacy or compatibility name alone SHALL NOT
 remove a scientific representation or artifact codec.
 
-Public Python names SHALL follow only the finite
+Public Python naming removals SHALL follow the finite
 [five-alias retirement](../rhime-model-selection/spec.md#requirement-retire-named-python-aliases).
+The additional
+[prepared-input factory retirement](../rhime-configuration/spec.md#requirement-retire-the-prepared-input-compatibility-factory)
+SHALL remove only its named compatibility constructor, preserving canonical
+construction and existing schema/codec behavior.
 CLI names SHALL follow the canonical routes in
 [Bounded installed-command retirement](../rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement).
 Those named removals SHALL NOT alter other Python paths, canonical signatures,

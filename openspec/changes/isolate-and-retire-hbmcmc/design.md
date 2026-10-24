@@ -180,3 +180,50 @@ retired namespace. The dated `review_974_2026_10_23.json` records the new source
 hashes, ZIP expectations, pre-removal diagnostics and phase-value cases before
 this follow-up. Original evidence and earlier revision-specific results remain
 unchanged; fresh validation belongs to the resulting implementation revision.
+
+
+## Approved factory retirement and validation cleanup — 24 October 2026
+
+[Approval 6380451664](https://github.com/openghg/openghg_inversions/pull/974#issuecomment-6380451664)
+adds only `PreparedInputs.from_legacy_inputs` to this retirement, separately from
+the five aliases. Preserve canonical construction, schema/version acceptance,
+codec behavior and scientific contents. The dated #960 fixture
+`factory_and_cleanup_2026_10_24.json` captures the exact pre-removal signature,
+original two cases, source hashes and provenance/coordinate rules at `e1d020f0`
+before deletion. Its factory body is unchanged from pinned `0a32d73a` and base
+`b288ac25`. #945/#663 own the bounded constructor disposition; #951 does not.
+
+The sole production caller, xarray preparation, already owns paired stationary
+and moving release-coordinate normalization. Construct site metadata with the
+existing `_make_site_metadata`, preserve the basis's source/path metadata through
+`with_metadata` and call `PreparedInputs` directly. Preserve namespaced and plain
+fallback keys, string normalization, nullable periods and retained site order.
+An unannotated supplied basis must continue to report `"supplied"`, not fall
+through to the prepared property's `"generated"` default. Do not mutate the input
+basis or numerical payloads, compute Dask work or add the old scalar-coordinate
+arguments to the constructor. Replace factory-only coverage with canonical
+coordinate expectations and xarray provenance/nonmutation regressions.
+
+For [review 5637015484](https://github.com/openghg/openghg_inversions/pull/974#pullrequestreview-5637015484),
+delete migration-only `rhime.__getattr__` and let removed names be ordinarily
+absent. Reject resolved configuration combined with raw sources before parsing
+the raw request; retain the nested custom-likelihood conflict check at the
+resolved owner only. These are invalid requests already, so neither scientific
+inputs nor extra configuration values need resolving.
+
+CO2 outer request loaders own whole-request name validation once; they keep
+unknown names in inactive groups unsupported while leaving known inactive values
+deferred. Preparation/model/seed/sampler/output component parsers consume their
+applicable sections and validate their values, without rescanning unrelated
+sections. Raw handoff mappings enter the outer loader once; loaded CLI paths
+forward resolved component choices. A small traversal may remain local to this
+boundary; no marker envelope or repository-wide schema framework is introduced.
+
+Keep the private sentinel and retained `emissions_name`/`flux_sources` resolution
+inline in the independent basis adapter, removing the root generic helper.
+Retain omitted/explicit-null/conflicting-selector meanings. Remove
+the unapproved fixed 0.9 warning date; #945/#951 own any later alias decision.
+Remove dead HBMCMC Jinja branches and historical vocabulary from active templates;
+INI/preparation docstrings describe canonical decoding/resources. Retained legacy
+output and basis/artifact capabilities are unchanged. Fresh validation belongs
+to the resulting revision; earlier complete matrices do not validate this slice.

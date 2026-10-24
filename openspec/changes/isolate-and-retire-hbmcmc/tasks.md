@@ -182,6 +182,13 @@ does not finalize CLI positional-date/`--kwargs` syntax or complete a delivery t
   contracts and guidance, preserve affected evidence and run fresh checks on the
   rebased implementation before marking this follow-up complete.
 
+- [ ] 2.4 Deliver the 24 October approved prepared-input-factory retirement and
+  review cleanup: preserve dated pre-removal cases, remove only the named factory,
+  migrate its xarray caller without changing provenance/coordinates/laziness,
+  localize request validation and basis helper ownership, remove migration-only
+  import/duplicate-validation paths and stale template/doc text, reconcile the
+  narrowly approved contract and run fresh implementation checks.
+
 ## 3. Promote only delivered contracts
 
 - [x] 3.1 After 0.8 implementation and acceptance, verify the already-aligned
@@ -396,3 +403,62 @@ validated revision. Prior dated failures and observations remain intact.
 PR #974 remains draft and #719 remains open pending review/merge. Task 3.2 remains
 unchecked for subsequent specification promotion/archive. No merge, publication,
 release number or release-readiness claim is made.
+
+
+## Approved scope addendum — 24 October 2026
+
+[Decision 6380451664](https://github.com/openghg/openghg_inversions/pull/974#issuecomment-6380451664),
+following [analysis 6380430675](https://github.com/openghg/openghg_inversions/pull/974#issuecomment-6380430675),
+adds exactly `PreparedInputs.from_legacy_inputs` to the removal list. The
+replacement is canonical construction with labeled `site_metadata`. This is an
+additional compatibility-constructor disposition under #945/#663, not a sixth
+alias or a #951 basis-reader/writer decision. No other constructor, persisted
+schema, scientific variable, unit or artifact capability is removed.
+
+- Before production edits, the plain
+  `factory_and_cleanup_2026_10_24.json` and appended #960 ledger captured the
+  exact `e1d020f0` signature/source hashes, two original factory cases, sole caller,
+  provenance fallback/overrides, coordinate precedence/validation and owners.
+  Factory source matches pinned `0a32d73a` and base `b288ac25`; the original
+  eighteen #960 fixtures and earlier dated evidence/results remain unchanged.
+- Port factory cases to canonical construction and retain xarray scalar/mobile
+  coordinate, site/period-order and serialization coverage. Add provenance tests
+  for absent/existing namespaced/plain metadata, input nonmutation and lazy arrays.
+- Address [review 5637015484](https://github.com/openghg/openghg_inversions/pull/974#pullrequestreview-5637015484):
+  remove the migration import hook and raw parsing before source-conflict errors;
+  keep only resolved nested likelihood checking; give outer CO2 requests one
+  generic name-validation owner and let consuming parsers own applicable values.
+  Preserve inactive-name rejection and inactive-value deferral.
+- Remove the root flux-alias helper and keep its private sentinel/alias logic
+  inline in the sole basis consumer, retaining independently supported
+  alias/conflict behavior and removing an unapproved warning date. Remove dead HBMCMC template branches and stale translation prose.
+- Fresh runtime/package/documentation checks are pending for this scope addition.
+  Task 2.4 stays unchecked until implementation and relevant checks finish;
+  task 3.2 remains pending subsequent closeout. Prior complete matrices and the
+  review's separate probes do not establish validation of this new revision.
+
+Focused checks on the completed 24 October working tree, before committing the
+related slices atop `e1d020f0`:
+
+- **149 passed** across standard API, migration requests, resolved runners,
+  nested core/runner and independent basis input coverage. The remaining
+  prepared `model_builder` source-conflict assertion was then ported and its
+  separate **1 test passed**, preserving the callback sentinel.
+- **133 passed** across xarray preparation and prepared-input serialization,
+  including two real-data cache round-trip/run cases. Four new provenance,
+  coordinate/nonmutation and shared-lazy-array cases also passed against the
+  original factory before deletion and against canonical construction afterward.
+- CO2 configuration/CLI/phase-output coverage: **108 passed**; request/tracer
+  ownership coverage: **325 passed**; broader ordinary/linked handoff, parity,
+  model inference and installed full/prepared/saved/output coverage: **106 passed**.
+  The review's no-acquisition probe now observes one whole-request name traversal
+  rather than six. These suite counts overlap and are not summed.
+- Full Ruff, strict OpenSpec **10/10**, original-fixture/source-hash verification
+  and `git diff --check` pass. A bounded seven-guide Sphinx warning-as-error render
+  passes with zero warnings; nonincluded references are outside that check.
+  Fresh API-page generation with the simplified Jinja templates also passes,
+  without HBMCMC or root flux-helper pages.
+
+These focused checks do not replace committed-revision package checks or the
+complete Slurm matrix. Task 2.4 remains unchecked pending fresh acceptance;
+previous complete matrices retain their original revisions and dates.

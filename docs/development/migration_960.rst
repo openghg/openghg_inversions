@@ -504,3 +504,60 @@ namespace deletion. Modern serializers retain #975's independently supported
 fixes; historical cache support is not restored. Original eighteen #960 fixtures,
 previous codec witnesses and dated validation results remain unchanged. Fresh
 follow-up validation belongs to its resulting revision's task and PR records.
+
+
+24 October addendum: prepared-input factory and review cleanup
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The maintainer's `approved factory disposition
+<https://github.com/openghg/openghg_inversions/pull/974#issuecomment-6380451664>`_
+and `analysis
+<https://github.com/openghg/openghg_inversions/pull/974#issuecomment-6380430675>`_
+authorize removing only ``PreparedInputs.from_legacy_inputs`` in addition to the
+five aliases. The exact replacement is
+``PreparedInputs(inv_inputs=..., basis_functions=..., site_metadata=...)``.
+This is a compatibility-constructor disposition under #945/#663, not a sixth
+alias or a #951 basis capability decision.
+
+Before deletion, ``retirements/factory_and_cleanup_2026_10_24.json`` records
+source revision ``e1d020f04640a7689079a57642952e324ded4eb5``, the exact factory
+signature, original two test inputs/expectations, provenance overrides,
+coordinate validation/precedence and sole modern caller. The factory body has
+an identical source hash at pinned ``0a32d73a``, base ``b288ac25`` and this
+pre-removal revision. The caller already normalizes stationary/mobile release
+coordinates; it never supplies the factory's legacy per-site coordinate lists.
+Its existing ``supplied`` provenance fallback, namespaced/plain source/path
+metadata, site/period order and borrowed lazy arrays remain supported through
+canonical construction. Persisted schema, variables, units and codecs do not
+change. Historical scalar-coordinate adaptation remains captured rather than
+being added to the canonical constructor. Disposition: unsupported compatibility
+constructor; #719 delivers removal, #945/#663 own this bounded API decision.
+
+The same dated fixture captures `review 5637015484
+<https://github.com/openghg/openghg_inversions/pull/974#pullrequestreview-5637015484>`_'s
+remaining cleanup before editing: bespoke removed-import errors, resolved/raw
+request conflict checks preceded by unnecessary parsing, repeated CO2 whole-request
+name scans, and the independent basis alias helper's root-module location and
+unapproved 0.9 warning date. Pinned-to-base sources are unchanged except #975's
+linked-CO2 string-coordinate fixes, which remain. Compared with that base,
+earlier retirement introduced the repeated scans and source-conflict parsing;
+finite Python-name updates left the factory's body unchanged.
+
+Disposition: removed interfaces remain ordinarily unavailable; ambiguous sources
+fail without parsing; one outer CO2 request owner validates names while consuming
+components validate applicable values; supported basis alias behavior remains
+with #951 while its private sentinel/resolution logic becomes inline in the
+sole consumer, the root helper is removed and the unapproved schedule is dropped. Known inactive values stay deferred, and unknown inactive
+names still fail at the outer boundary. Replacement advice remains migration
+material. These are inspected source/disposition records; fresh executed checks
+belong to the new implementation revision. Earlier dated validation and all
+original eighteen #960 fixtures remain unchanged.
+
+One additional source-conflict witness was inspected after its test assertion
+was ported: ``test_standard_prepared_run_rejects_complete_model_builder`` at
+``e1d020f0`` combined resolved configuration/prepared inputs with a
+``model_builder`` callback that must not execute. Its original expected error
+named the unsupported builder option; the modern comparison expects the ordinary
+resolved/raw source conflict while preserving the callback guard. The dated
+fixture labels this retrospective source capture explicitly; fresh execution
+is recorded separately, not claimed as a pre-removal observation.

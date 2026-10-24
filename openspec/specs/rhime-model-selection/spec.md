@@ -157,8 +157,10 @@ own persistence contracts; this naming requirement SHALL NOT promise historical
 file compatibility or freeze a schema identifier or version. Borrowed-array and
 explicit execution guarantees SHALL remain in force.
 
-This finite exception SHALL NOT authorize removal or renaming of other Python
-imports, types or constructors. Retirement SHALL preserve the
+This finite alias exception SHALL NOT authorize removal or renaming of other
+Python imports, types or constructors. The separately approved
+[prepared-input factory retirement](../rhime-configuration/spec.md#requirement-retire-the-prepared-input-compatibility-factory)
+is a bounded constructor removal, not a sixth alias. Retirement SHALL preserve the
 [migration evidence guarantees](../hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
 Installed command names follow only the separate exact exceptions in
 `Bounded installed-command retirement` above.

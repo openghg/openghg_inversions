@@ -19,8 +19,12 @@ historical names or output tokens specially.
 Every explicit `use_tracer` occurrence SHALL be unsupported, regardless of value;
 omission SHALL remain valid without enabling tracer execution.
 
-Public Python names SHALL follow only the finite
+Public Python naming removals SHALL follow the finite
 [five-alias retirement](../../../../specs/rhime-model-selection/spec.md#requirement-retire-named-python-aliases).
+The separately approved
+[prepared-input factory retirement](../../../../specs/rhime-configuration/spec.md#requirement-retire-the-prepared-input-compatibility-factory)
+SHALL remove only its named compatibility constructor, preserving canonical
+construction and existing schema/codec behavior.
 Installed commands SHALL use the canonical `rhime` routes in
 [Bounded installed-command retirement](../../../../specs/rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement).
 Other Python names, canonical signatures, result contents and scientific meanings

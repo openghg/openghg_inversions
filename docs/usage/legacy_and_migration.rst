@@ -74,6 +74,22 @@ See :doc:`rhime_configuration` for complete resource selection examples and
 Additional development Python API changes
 ------------------------------------------
 
+.. _prepared-input-factory-retirement:
+
+Replace ``PreparedInputs.from_legacy_inputs(...)`` with
+``PreparedInputs(inv_inputs=..., basis_functions=..., site_metadata=...)``.
+Supply a dataset indexed by ``site`` with one aligned ``averaging_period`` value
+per site, retaining the intended site order. Keep release coordinates aligned
+to observations in ``inv_inputs``; for raw stationary or moving xarray inputs,
+use ``prepare_rhime_inputs_from_xarray`` so its existing boundary normalizes them.
+The xarray path preserves source/path metadata and its ``supplied`` provenance
+fallback without mutating the supplied basis. The old per-site coordinate
+arguments are not added to the constructor. Canonical serialization and the
+existing persisted schema remain unchanged. This exact factory removal was
+approved on 24 October 2026 under #945/#663; other constructors and independent
+basis capabilities retain their own contracts.
+
+
 Replace ``build_standard``, ``build_standard_rhime_model`` and
 ``build_standard_rhime_model_result`` with the single eager
 ``build_standard_model`` contract. Model inputs and enabled prior parameters must
@@ -180,8 +196,10 @@ this retirement with preserved evidence and canonical regression coverage. This
 grants no general exception for public signatures or result wrappers. The explicitly named API migrations
 documented on this page retain their own contracts; other current model selectors
 and shared Python names retain their contracts except for the
-:ref:`five named aliases <rhime-python-alias-retirement>` approved for retirement.
-That finite map preserves canonical behavior and scientific artifact contents.
+:ref:`five named aliases <rhime-python-alias-retirement>` and the separately
+approved :ref:`prepared-input factory <prepared-input-factory-retirement>`.
+The factory is a bounded constructor removal, not a sixth alias. These changes preserve canonical behavior
+and scientific artifact contents.
 Supported formats/versions and explicit conversion or rejection of unsupported
 artifacts are specified independently; it promises no automatic 0.7 compatibility.
 The separately accepted
@@ -299,9 +317,9 @@ Choose a supported ``mismatch_model`` explicitly, or supply a custom likelihood.
 This example uses the former ordinary wrapper's ``pollution_event`` model choice
 with the modern scientific semantics described below.
 
-The Python ``run_rhime`` API is removed in 0.8; importing it raises an
-``ImportError`` directing callers to ``run_standard``. This supersedes the earlier
-proposal to retain a deprecated wrapper. The ``run-rhime`` CLI alias is also
+The Python ``run_rhime`` API is unavailable; use ``run_standard``. Removed names
+have ordinary import/attribute absence, without a migration-specific import hook.
+Replacement advice belongs here rather than in attribute access. The ``run-rhime`` CLI alias is also
 removed; use ``rhime run``. Effective inputs, written files and logging retain
 their canonical meanings.
 
