@@ -52,6 +52,7 @@ def test_data_contracts_preserve_canonical_imports_and_prepared_schema() -> None
     """Canonical entry points construct and reopen the durable scientific value."""
     assert PreparedInputs is prepared_contract.PreparedInputs
     assert MergedData is acquisition.MergedData
+    assert not hasattr(PreparedInputs, "from_legacy_inputs")
     prepared = _prepared_inputs()
     artifact = prepared.to_datatree()
     assert artifact.attrs["schema"] == prepared_contract.RHIME_PREPARED_INPUTS_SCHEMA
@@ -386,19 +387,17 @@ def test_prepared_inputs_normalizes_empty_averaging_period() -> None:
     assert prepared.averaging_period == (None, None)
 
 
-def test_prepared_inputs_legacy_factory_normalizes_inputs() -> None:
-    """The legacy factory adapts positional fields without parallel state."""
+def test_prepared_inputs_constructs_with_labeled_metadata_and_observation_coordinates() -> None:
+    """Canonical construction retains explicit observation locations and site periods."""
     original = _prepared_inputs()
-
-    prepared = PreparedInputs.from_legacy_inputs(
-        original.inv_inputs,
-        original.basis_functions,
-        original.sites,
-        original.averaging_period,
-        original.basis_artifact_source,
-        original.basis_artifact_path,
-        (51.0, 52.0),
-        (-2.0, -1.0),
+    inv_inputs = original.inv_inputs.assign_coords(
+        release_lat=("nmeasure", [51.0, 52.0], {"units": "degrees_north"}),
+        release_lon=("nmeasure", [-2.0, -1.0], {"units": "degrees_east"}),
+    )
+    prepared = PreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=original.basis_functions,
+        site_metadata=_site_metadata(original.sites, original.averaging_period),
     )
 
     xr.testing.assert_identical(prepared.site_metadata, original.site_metadata)
@@ -406,29 +405,29 @@ def test_prepared_inputs_legacy_factory_normalizes_inputs() -> None:
     np.testing.assert_array_equal(prepared.inv_inputs.release_lon, [-2.0, -1.0])
     assert prepared.inv_inputs.release_lat.dims == ("nmeasure",)
     assert prepared.inv_inputs.release_lon.dims == ("nmeasure",)
+    assert prepared.inv_inputs.release_lat.attrs["units"] == "degrees_north"
+    assert prepared.inv_inputs.release_lon.attrs["units"] == "degrees_east"
+    assert prepared.basis_artifact_source == original.basis_artifact_source
+    assert prepared.basis_artifact_path == original.basis_artifact_path
 
 
-def test_prepared_inputs_legacy_factory_preserves_observation_release_metadata() -> None:
-    """Legacy site scalars do not replace higher-fidelity observation arrays."""
+def test_prepared_inputs_preserves_observation_release_metadata() -> None:
+    """Canonical observation coordinates remain unchanged in the prepared value."""
     original = _prepared_inputs()
     inv_inputs = original.inv_inputs.assign_coords(
         release_lat=("nmeasure", [51.1, 52.2]),
         release_lon=("nmeasure", [-2.1, -1.2]),
     )
-
-    prepared = PreparedInputs.from_legacy_inputs(
-        inv_inputs,
-        original.basis_functions,
-        original.sites,
-        original.averaging_period,
-        original.basis_artifact_source,
-        original.basis_artifact_path,
-        (0.0, 0.0),
-        (0.0, 0.0),
+    prepared = PreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=original.basis_functions,
+        site_metadata=original.site_metadata,
     )
 
     np.testing.assert_array_equal(prepared.inv_inputs.release_lat, [51.1, 52.2])
     np.testing.assert_array_equal(prepared.inv_inputs.release_lon, [-2.1, -1.2])
+    assert prepared.inv_inputs.release_lat.data is inv_inputs.release_lat.data
+    assert prepared.inv_inputs.release_lon.data is inv_inputs.release_lon.data
 
 
 def test_prepared_inputs_preserves_site_metadata_attrs() -> None:

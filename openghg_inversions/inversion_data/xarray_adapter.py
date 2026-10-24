@@ -64,8 +64,12 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from openghg_inversions.basis.basis_functions import BasisFunctions
-from openghg_inversions.inversion_data.prepared_inputs import PreparedInputs
+from openghg_inversions.basis.basis_functions import (
+    BASIS_ARTIFACT_PATH_ATTR,
+    BASIS_ARTIFACT_SOURCE_ATTR,
+    BasisFunctions,
+)
+from openghg_inversions.inversion_data.prepared_inputs import PreparedInputs, _make_site_metadata
 from openghg_inversions.inversion_inputs import DatetimeLike, make_inv_inputs
 
 _CACHE_VARIABLES = ("fp_x_flux", "fp_x_flux_sectoral")
@@ -957,13 +961,19 @@ def prepare_rhime_inputs_from_xarray(
     )
     _validate_retained_site_order(inv_inputs, site_order)
 
-    return PreparedInputs.from_legacy_inputs(
+    metadata = dict(basis_functions.metadata)
+    metadata[BASIS_ARTIFACT_SOURCE_ATTR] = basis_functions.basis_artifact_source or "supplied"
+    if basis_functions.basis_artifact_path is not None:
+        metadata[BASIS_ARTIFACT_PATH_ATTR] = basis_functions.basis_artifact_path
+    if metadata != basis_functions.metadata:
+        basis_functions = basis_functions.with_metadata(metadata)
+    return PreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=basis_functions,
-        sites=tuple(site_order),
-        averaging_period=_normalise_averaging_period(averaging_period, site_order),
-        basis_artifact_source=basis_functions.basis_artifact_source or "supplied",
-        basis_artifact_path=basis_functions.basis_artifact_path,
+        site_metadata=_make_site_metadata(
+            sites=site_order,
+            averaging_period=_normalise_averaging_period(averaging_period, site_order),
+        ),
     )
 
 

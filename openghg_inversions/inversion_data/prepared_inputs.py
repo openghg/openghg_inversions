@@ -21,11 +21,7 @@ import pandas as pd
 import xarray as xr
 from typing import Self
 
-from openghg_inversions.basis.basis_functions import (
-    BASIS_ARTIFACT_PATH_ATTR,
-    BASIS_ARTIFACT_SOURCE_ATTR,
-    BasisFunctions,
-)
+from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.serialization import (
     decode_cf_multiindexes,
     encode_cf_multiindexes,
@@ -108,74 +104,6 @@ class PreparedInputs:
         object.__setattr__(self, "inv_inputs", normalized_inv_inputs)
         object.__setattr__(self, "basis_functions", basis_functions)
         object.__setattr__(self, "site_metadata", normalized_site_metadata)
-
-    @classmethod
-    def from_legacy_inputs(
-        cls: type[Self],
-        inv_inputs: xr.Dataset,
-        basis_functions: BasisFunctions,
-        sites: Sequence[str],
-        averaging_period: Sequence[str | None],
-        basis_artifact_source: str | None = None,
-        basis_artifact_path: str | None = None,
-        site_lats: Sequence[float] | None = None,
-        site_lons: Sequence[float] | None = None,
-    ) -> Self:
-        """Adapt the former positional fields to the labeled-data contract.
-
-        Args:
-            inv_inputs: Canonical inversion inputs.
-            basis_functions: Retained basis object.
-            sites: Site labels in indicator-decoding order.
-            averaging_period: Observation periods aligned to ``sites``.
-            basis_artifact_source: Optional basis provenance value.
-            basis_artifact_path: Optional basis provenance path.
-            site_lats: Optional legacy release latitudes, one per site.
-            site_lons: Optional legacy release longitudes, one per site.
-
-        Returns:
-            Prepared inputs using labeled site metadata.
-        """
-        existing_metadata = basis_functions.metadata
-        metadata = dict(existing_metadata)
-        if basis_artifact_source is not None:
-            metadata[BASIS_ARTIFACT_SOURCE_ATTR] = basis_artifact_source
-        if basis_artifact_path is not None:
-            metadata[BASIS_ARTIFACT_PATH_ATTR] = basis_artifact_path
-        if metadata != existing_metadata:
-            basis_functions = basis_functions.with_metadata(metadata)
-        if (site_lats is None) != (site_lons is None):
-            raise ValueError("Legacy site_lats and site_lons must be supplied together.")
-        if site_lats is not None and site_lons is not None:
-            if len(site_lats) != len(sites) or len(site_lons) != len(sites):
-                raise ValueError("Legacy release coordinates must have one value per site.")
-            has_release_lat = "release_lat" in inv_inputs
-            has_release_lon = "release_lon" in inv_inputs
-            if has_release_lat != has_release_lon:
-                raise ValueError("Observation-aligned release_lat and release_lon must be supplied together.")
-            if not has_release_lat:
-                site_lookup = {str(site): index for index, site in enumerate(sites)}
-                measurement_sites = tuple(str(site) for site in inv_inputs["site"].values)
-                missing_sites = sorted(set(measurement_sites) - set(site_lookup))
-                if missing_sites:
-                    raise ValueError(f"Legacy release coordinates are missing site(s): {missing_sites!r}.")
-                inv_inputs = inv_inputs.assign_coords(
-                    release_lat=(
-                        "nmeasure",
-                        [site_lats[site_lookup[site]] for site in measurement_sites],
-                    ),
-                    release_lon=(
-                        "nmeasure",
-                        [site_lons[site_lookup[site]] for site in measurement_sites],
-                    ),
-                )
-                inv_inputs["release_lat"].attrs["units"] = "degrees_north"
-                inv_inputs["release_lon"].attrs["units"] = "degrees_east"
-        return cls(
-            inv_inputs=inv_inputs,
-            basis_functions=basis_functions,
-            site_metadata=_make_site_metadata(sites=sites, averaging_period=averaging_period),
-        )
 
     @property
     def sites(self) -> tuple[str, ...]:
@@ -356,7 +284,7 @@ def _make_site_metadata(
     sites: Sequence[str],
     averaging_period: Sequence[str | None],
 ) -> xr.Dataset:
-    """Construct labeled site metadata from compatibility inputs.
+    """Construct labeled site metadata in authoritative site order.
 
     Args:
         sites: Authoritative labels in site-indicator decoding order.

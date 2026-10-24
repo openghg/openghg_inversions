@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
+import dask.array as da
+from dask.callbacks import Callback
 import numpy as np
 import pandas as pd
 import pytest
@@ -12,7 +14,12 @@ import xarray as xr
 
 import openghg_inversions.rhime.multisector as rhime_multisector
 import openghg_inversions.rhime.standard as rhime_standard
-from openghg_inversions.basis.basis_functions import BasisFunctions
+import openghg_inversions.inversion_data.xarray_adapter as adapter
+from openghg_inversions.basis.basis_functions import (
+    BASIS_ARTIFACT_PATH_ATTR,
+    BASIS_ARTIFACT_SOURCE_ATTR,
+    BasisFunctions,
+)
 from openghg_inversions.inversion_data import SiteOptions, prepare_rhime_inputs_from_xarray
 from openghg_inversions.rhime.params import DataConfig
 from openghg_inversions.rhime import (
@@ -204,6 +211,75 @@ def test_mapping_and_datatree_inputs_are_equivalent() -> None:
 
     xr.testing.assert_identical(from_mapping.inv_inputs, from_tree.inv_inputs)
     assert from_mapping.sites == from_tree.sites == ("MHD", "TAC")
+
+
+@pytest.mark.parametrize("metadata, expected_source, expected_path", [
+    ({"description": "unannotated"}, "supplied", None),
+    ({BASIS_ARTIFACT_SOURCE_ATTR: "loaded", BASIS_ARTIFACT_PATH_ATTR: "basis.nc"}, "loaded", "basis.nc"),
+    ({"basis_artifact_source": "external", "basis_artifact_path": Path("fallback.nc")},
+     "external", "fallback.nc"),
+])
+def test_adapter_preserves_provenance_coordinates_and_input_ownership(
+    metadata, expected_source, expected_path,
+):
+    """Supplied provenance and ordered observation metadata survive canonical construction."""
+    basis_functions = _basis_functions().with_metadata(metadata)
+    tac = _site_dataset("TAC", ["2021-01-02", "2021-01-01"])
+    tac["release_lat"] = ("time", [51.1, 51.5])
+    tac["release_lon"] = ("time", [-2.1, -1.5])
+    site_data = {"TAC": tac, "MHD": _site_dataset("MHD", ["2021-01-03"])}
+    snapshots = {site: dataset.copy(deep=True) for site, dataset in site_data.items()}
+
+    prepared = prepare_rhime_inputs_from_xarray(
+        site_data, basis_functions=basis_functions, sites=["MHD", "TAC"],
+        averaging_period={"TAC": "2h", "MHD": None},
+    )
+
+    assert prepared.sites == ("MHD", "TAC")
+    assert prepared.averaging_period == (None, "2h")
+    assert list(prepared.inv_inputs.site.values) == ["MHD", "TAC", "TAC"]
+    np.testing.assert_allclose(prepared.inv_inputs.release_lat, [50.03, 51.1, 51.5])
+    np.testing.assert_allclose(prepared.inv_inputs.release_lon, [-2.0, -2.1, -1.5])
+    assert prepared.basis_artifact_source == expected_source
+    assert prepared.basis_artifact_path == expected_path
+    assert prepared.basis_functions.metadata[BASIS_ARTIFACT_SOURCE_ATTR] == expected_source
+    if expected_path is not None:
+        assert prepared.basis_functions.metadata[BASIS_ARTIFACT_PATH_ATTR] == expected_path
+    for key in ("basis_artifact_source", "basis_artifact_path", "description"):
+        if key in metadata:
+            assert prepared.basis_functions.metadata[key] == metadata[key]
+    assert basis_functions.metadata == metadata
+    assert prepared.basis_functions.operator is basis_functions.operator
+    assert prepared.basis_functions.flux.data is basis_functions.flux.data
+    for site, snapshot in snapshots.items():
+        xr.testing.assert_identical(site_data[site], snapshot)
+
+
+def test_adapter_final_construction_borrows_gathered_lazy_arrays(monkeypatch):
+    """The final constructor and provenance update add no materialization boundary."""
+    basis_functions = _basis_functions()
+    site_data = _canonical_site_data(
+        {"TAC": _site_dataset("TAC", ["2021-01-01", "2021-01-02"])}, basis_functions,
+    )
+    site_data["TAC"] = site_data["TAC"].drop_vars("fp_x_flux")
+    gathered = prepare_rhime_inputs_from_xarray(site_data, basis_functions=basis_functions).inv_inputs
+    gathered = gathered.chunk({"nmeasure": 1})
+    lazy_basis = BasisFunctions(
+        operator=basis_functions.operator,
+        flux=basis_functions.flux.chunk({"lat": 1}),
+        metadata={"basis_artifact_source": "borrowed", "basis_artifact_path": "lazy.nc"},
+    )
+    monkeypatch.setattr(adapter, "make_inv_inputs", lambda *a, **k: gathered)
+    tasks = []
+    with Callback(pretask=lambda *args: tasks.append(args)):
+        prepared = prepare_rhime_inputs_from_xarray(site_data, basis_functions=lazy_basis)
+
+    assert not tasks
+    for name in ("mf", "H"):
+        assert isinstance(prepared.inv_inputs[name].data, da.Array)
+        assert prepared.inv_inputs[name].data is gathered[name].data
+    assert prepared.basis_functions.flux.data is lazy_basis.flux.data
+    assert lazy_basis.metadata == {"basis_artifact_source": "borrowed", "basis_artifact_path": "lazy.nc"}
 
 
 @pytest.mark.parametrize("layout", ["site-local", "dense", "stacked"])
