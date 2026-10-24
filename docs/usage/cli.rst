@@ -169,6 +169,9 @@ unsupported inputs are specified independently; this naming change promises no
 automatic compatibility with 0.7 artifacts. Broader public names remain outside
 this finite map. The separate existing ``run_rhime``, ``RhimeRunSpec`` and ``RhimeResult``
 migrations retain their own contracts; there is no blanket result-wrapper exemption.
+The separately approved
+:ref:`prepared-input factory removal <prepared-input-factory-retirement>` has its
+own canonical-constructor replacement; it is not a sixth alias.
 
 The obsolete ``with_prepared_sites`` and ``with_prepared_rhime_sites`` run-spec
 helpers are removed; use the retained sites on the prepared handoff directly.
