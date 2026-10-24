@@ -182,7 +182,7 @@ does not finalize CLI positional-date/`--kwargs` syntax or complete a delivery t
   contracts and guidance, preserve affected evidence and run fresh checks on the
   rebased implementation before marking this follow-up complete.
 
-- [ ] 2.4 Deliver the 24 October approved prepared-input-factory retirement and
+- [x] 2.4 Deliver the 24 October approved prepared-input-factory retirement and
   review cleanup: preserve dated pre-removal cases, remove only the named factory,
   migrate its xarray caller without changing provenance/coordinates/laziness,
   localize request validation and basis helper ownership, remove migration-only
@@ -462,3 +462,52 @@ related slices atop `e1d020f0`:
 These focused checks do not replace committed-revision package checks or the
 complete Slurm matrix. Task 2.4 remains unchecked pending fresh acceptance;
 previous complete matrices retain their original revisions and dates.
+
+
+### Factory and cleanup acceptance — 24 October 2026
+
+Immutable revision `bbc9f64264b46248f1bd4d5226d4560d99485758`, based on
+`b288ac2530ad93ae8f67c5f1d47ee8ee7b666000`, passes fresh complete acceptance
+for the approved factory addition and review cleanup in Slurm array `19679134`:
+
+| Environment | Executed result |
+| --- | --- |
+| Locked Python 3.12.11 | 4,167 passed; 8 skipped; 4 deselected |
+| Locked Python 3.13.7 | 4,167 passed; 8 skipped; 4 deselected |
+| Moving OpenGHG devel, Python 3.12.11 | 4,167 passed; 8 skipped; 4 deselected |
+| Lint / borrowed types / docs-full | Pass / 4 passed / pass |
+
+All three primary jobs and registered `afterany` callback `19679135` completed
+with exit `0:0`; ticket `sw-20261024T055258Z-15b3adfbfe2f` delivered the terminal
+wakeup. Each primary job used 2 CPUs, 8 GiB, two Dask workers and one numerical
+thread, with maximum reported RSS 5,570,960 KiB. Local logs are
+`slurm-719-oct24-19679134_{0,1,2}.out`.
+
+GitHub Actions independently pass on the same revision:
+[tests 40067887464](https://github.com/openghg/openghg_inversions/actions/runs/40067887464)
+and [docs 40067887409](https://github.com/openghg/openghg_inversions/actions/runs/40067887409).
+Full documentation retains ten existing duplicate/ambiguous API-reference
+warnings; no warning-free full build is claimed. The separately recorded bounded
+seven-guide warning-as-error render passed without warnings.
+
+Fresh wheel/sdist content and installed-wheel smoke checks at `bbc9f642` pass:
+no HBMCMC namespace, root flux helper, five retired aliases, compatibility factory
+or migration-only import hook; canonical APIs/model routes, the existing prepared
+schema and sole `rhime` executable remain. Focused provenance/coordinate/laziness,
+source-conflict and CO2 ownership regressions are recorded above, including the
+pre-removal comparison cases. Full Ruff, strict OpenSpec 10/10, whitespace checks
+and original-fixture/source-hash verification pass. Original historical fixtures,
+prior dated expectations and failed/successful validation records remain intact.
+
+An independent subagent audit confirms the counts and passing canonical workflow
+modules. All tracked production, test, specification, usage, configuration and
+lock files in the executed snapshot match this revision; four generated API pages
+have only cosmetic heading/newline differences.
+
+These results complete task 2.4. The acceptance-record commit changes only this
+task file; production code, tests, templates, dependencies, scientific defaults
+and package metadata remain identical to validated `bbc9f642`. All seven inline
+review threads have replies and are resolved. PR #974 remains draft and #719 open
+pending review/merge. Task 3.2 remains unchecked for subsequent specification
+promotion/archive. No merge, publication, release number or release-readiness
+claim is made.
