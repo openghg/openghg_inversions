@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, fields
 from importlib.resources import files
 from importlib.resources.abc import Traversable
@@ -53,6 +53,9 @@ def _reject_unknown(options: Mapping[str, object], path: str) -> None:
 
 
 # Names are checked for every phase; their values remain owned by the consuming parser.
+_CO2_REQUEST_OPTION_NAMES = frozenset({
+    "format_version", "recipe", "prepared_inputs", "model", "likelihood", "sampling", "outputs",
+})
 _PREPARATION_OPTION_NAMES = frozenset({"path", "reconstruction_path", "start_date", "end_date", "domain"})
 _SAMPLING_OPTION_NAMES = frozenset({
     "draws", "burn", "tune", "chains", "nuts_sampler", "progressbar", "sample_prior_predictive",
@@ -74,16 +77,18 @@ _MODEL_SECTION_OPTION_NAMES = {
 
 
 def _validate_section_option_names(
-    config: Mapping[str, object], sections: Mapping[str, frozenset[str]],
+    requests: Iterable[Mapping[str, object]], sections: Mapping[str, frozenset[str]],
 ) -> None:
-    """Reject unknown names without resolving inactive section values or resources."""
+    """Check source/override names once without resolving any section values."""
     unknown: dict[str, object] = {}
-    for path, allowed in sections.items():
-        section: object = config
-        for part in path.split("."):
-            section = section.get(part) if isinstance(section, Mapping) else None
-        if isinstance(section, Mapping):
-            unknown.update({f"{path}.{name}": value for name, value in section.items() if name not in allowed})
+    for config in requests:
+        for path, allowed in sections.items():
+            section: object = config
+            for part in path.split(".") if path else ():
+                section = section.get(part) if isinstance(section, Mapping) else None
+            if isinstance(section, Mapping):
+                prefix = f"{path}." if path else ""
+                unknown.update({f"{prefix}{name}": value for name, value in section.items() if name not in allowed})
     _reject_unknown(unknown, "config")
 
 
@@ -183,8 +188,8 @@ def validate_co2_config(config: Mapping[str, object]) -> dict[str, Any]:
     """Validate the CO2 file envelope without resolving its sections.
 
     Missing headers select CO2 for phase-only requests. Component
-    parsers own scientific values and resource paths. Names in every known
-    section are checked, while inactive values are neither resolved nor materialized.
+    parsers own scientific values and resource paths. The request loader checks
+    section names; this envelope check leaves inactive sections unresolved.
     """
     options = _table(config, "config")
     version = options.get("format_version", 1)
@@ -192,18 +197,17 @@ def validate_co2_config(config: Mapping[str, object]) -> dict[str, Any]:
         raise ValueError("config.format_version must be the integer 1.")
     if options.get("recipe", "co2") != "co2":
         raise ValueError("config.recipe must be 'co2' for CO2 execution.")
-    _validate_co2_option_names(options)
+    _reject_unknown({name: value for name, value in options.items() if name not in _CO2_REQUEST_OPTION_NAMES}, "config")
     return options
 
 
-def _validate_co2_option_names(options: Mapping[str, object]) -> None:
+def _validate_co2_option_names(*requests: Mapping[str, object]) -> None:
     """Check request names independently of header values and winning overrides."""
-    allowed = {"format_version", "recipe", "prepared_inputs", "model", "likelihood", "sampling", "outputs"}
-    _reject_unknown({name: value for name, value in options.items() if name not in allowed}, "config")
     from .co2_outputs import Co2OutputOptions
     from openghg_inversions.postprocessing.paris_options import ParisOptions
 
-    _validate_section_option_names(options, {
+    _validate_section_option_names(requests, {
+        "": _CO2_REQUEST_OPTION_NAMES,
         "prepared_inputs": _PREPARATION_OPTION_NAMES,
         "model": frozenset({"boundary", "offset"}),
         **{f"model.{path}": names for path, names in _MODEL_SECTION_OPTION_NAMES.items()},
@@ -234,7 +238,6 @@ class Co2PreparationConfig:
     def from_params(cls, config: Mapping[str, object], *, require_path: bool = False) -> Co2PreparationConfig:
         """Parse only prepared-input options; optionally require an import path."""
         options = _table(config, "config")
-        _validate_co2_option_names(options)
         prepared = _table(options.get("prepared_inputs", {}), "prepared_inputs")
         result: dict[str, Any] = {
             "prepared_path": None, "affine_path": None,
@@ -272,7 +275,6 @@ def resolve_co2_prior_seed(config: Mapping[str, object]) -> int | None:
 
     MCMC options are unused by prior prediction and remain unvalidated here.
     """
-    _validate_co2_option_names(config)
     options = _table(_table(config, "config").get("sampling", {}), "sampling")
     return _random_seed(options["random_seed"]) if "random_seed" in options else None
 
@@ -525,7 +527,6 @@ class Co2ModelConfig:
     def from_params(cls, config: Mapping[str, object]) -> Co2ModelConfig:
         """Parse active science without opening artifacts or creating a sampler."""
         options = _table(config, "config")
-        _validate_co2_option_names(options)
         model = _model(options.get("model", {}))
         likelihood = _co2_likelihood(_take(options, "likelihood", "config"), matched_ou=True)
         kwargs = likelihood.get("likelihood_kwargs", {})

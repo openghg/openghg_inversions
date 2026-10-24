@@ -58,7 +58,6 @@ from .outputs import (
 )
 from .ini import read_rhime_ini
 from .params import DataConfig, RhimeConfig
-from .requests import load_params
 from .preparation import (
     acquire_merged_data,
     assemble_inputs,
@@ -1355,9 +1354,13 @@ def run_nested(
         )
     if likelihood_kwargs and likelihood_builder is None:
         raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
+    if config is not None and config_file is not None:
+        raise ValueError("Pass either resolved `config` or `config_file`/run parameters, not both.")
     params = read_rhime_ini(config_file) if config_file is not None else {}
     params.update(kwargs)
     nested_options = {name: params.pop(name) for name in tuple(params) if name in _NESTED_PARAMETER_NAMES}
+    if config is not None and params:
+        raise ValueError("Pass either resolved `config` or `config_file`/run parameters, not both.")
     inner_domain = nested_options.pop("inner_domain", None)
     inner_x_prior = nested_options.pop("inner_x_prior", None)
     if inner_x_prior is not None and not isinstance(inner_x_prior, Mapping):
@@ -1368,14 +1371,7 @@ def run_nested(
         annotations=get_type_hints(DataConfig), base_dir=Path.cwd(),
     )["basis_output_path"]
 
-    if likelihood_builder is not None and params.get("mismatch_model") is not None:
-        raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
-    if config is not None:
-        if params:
-            load_params(overrides=params)
-        if config_file is not None or params:
-            raise ValueError("Pass either resolved `config` or `config_file`/run parameters, not both.")
-    else:
+    if config is None:
         config = RhimeConfig.from_params(params, multisector=False)
     if config.data.split_by_sectors or len(config.model.sectors) != 1:
         raise ValueError("Nested RHIME requires a single-source configuration.")
@@ -1387,7 +1383,7 @@ def run_nested(
     validate_nested_output_resources(config.output)
     if prepared is None:
         if inner_domain is None:
-            raise ValueError("`run_nested` requires `inner_domain`.")
+            raise ValueError("Nested preparation requires `inner_domain`.")
         outer_data = config.data
         inner_data = inner_data_config(
             outer_data, inner_domain=inner_domain, inner_basis_output_path=inner_basis_output_path,

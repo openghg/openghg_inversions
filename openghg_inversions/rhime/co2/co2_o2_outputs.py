@@ -119,9 +119,6 @@ class Co2O2OutputOptions:
 
 def resolve_co2_o2_output(params: Mapping) -> dict[str, Co2O2OutputOptions]:
     """Resolve the outputs section independently of model or inference options."""
-    from .co2_o2_configuration import _validate_co2_o2_option_names
-
-    _validate_co2_o2_option_names(params)
     return {"output": Co2O2OutputOptions.from_params(params.get("outputs", {}))}
 
 

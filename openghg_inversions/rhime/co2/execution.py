@@ -46,8 +46,7 @@ def load_co2_params(
             raise ValueError("CO2 params file must contain one JSON object.")
     else:
         options = dict(params or {})
-    _validate_co2_option_names(options)
-    _validate_co2_option_names(overrides or {})
+    _validate_co2_option_names(options, overrides or {})
     for name, value in (overrides or {}).items():
         if name in {"prepared_inputs", "model", "likelihood", "sampling", "outputs"} and isinstance(value, Mapping):
             previous = options.get(name, {})
@@ -61,7 +60,6 @@ def load_co2_params(
 
 def resolve_co2_output(params: Mapping[str, Any]) -> dict[str, Any]:
     """Resolve supported CO2 products and their current reporting choices only."""
-    _validate_co2_option_names(params)
     choices = dict(params.get("outputs", {}))
     source_to_sector = choices.pop("source_to_sector", None)
     return {"output": Co2OutputOptions.from_params(choices), "source_to_sector": source_to_sector}

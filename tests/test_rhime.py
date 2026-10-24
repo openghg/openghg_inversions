@@ -3313,7 +3313,7 @@ def test_standard_prepared_run_rejects_complete_model_builder() -> None:
         basis_functions=_fake_basis_functions(),
         site_metadata=_prepared_site_metadata(),
     )
-    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*model_builder"):
+    with pytest.raises(ValueError, match="Pass either resolved"):
         _run_prepared(
             prepared_inputs=prepared,
             config=config,

@@ -556,12 +556,10 @@ def run_standard(
         raise ValueError("Pass either prepared or merged_data, not both.")
     setup_start = timer_start()
     if config is not None:
-        if kwargs:
-            load_params(overrides=kwargs)
         if config_file is not None or kwargs:
             raise ValueError("Pass either resolved `config` or `config_file`/run parameters, not both.")
         if config.data.split_by_sectors:
-            raise ValueError("`run_standard` received configuration for a different sector layout.")
+            raise ValueError("Standard model received configuration for a different sector layout.")
     else:
         params = load_params(config_file=config_file, overrides=kwargs)
         config = RhimeConfig.from_params(params, multisector=False)

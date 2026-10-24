@@ -154,18 +154,3 @@ __all__ = [
     "sample_rhime_model",
     "standard_model_input_names",
 ]
-
-
-def __getattr__(name: str):
-    """Explain removal of the historical standard runner import."""
-    if name == "run_rhime":
-        raise ImportError(
-            "`run_rhime` was removed in 0.8; use `run_standard`, which returns an `InversionOutput`. "
-            "Use `rhime run --model standard` from the command line."
-        )
-    if name in {"build_standard_rhime_model", "build_standard_rhime_model_result"}:
-        raise ImportError(
-            f"`{name}` was removed in 0.8; materialize inputs and priors explicitly, "
-            "then use `build_standard_model`."
-        )
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

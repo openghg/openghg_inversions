@@ -5,9 +5,13 @@ import warnings
 import pytest
 
 
-def test_removed_python_runner_explains_migration():
-    with pytest.raises(ImportError, match="removed in 0.8.*run_standard.*InversionOutput.*rhime run --model standard"):
-        from openghg_inversions.rhime import run_rhime  # noqa: F401
+@pytest.mark.parametrize("name", ["run_rhime", "build_standard_rhime_model", "build_standard_rhime_model_result"])
+def test_removed_python_api_is_absent(name):
+    import openghg_inversions.rhime as rhime
+
+    assert not hasattr(rhime, name)
+    with pytest.raises(AttributeError, match=name):
+        getattr(rhime, name)
 
 
 def test_canonical_cli_calls_standard_without_python_compatibility_warning(monkeypatch):

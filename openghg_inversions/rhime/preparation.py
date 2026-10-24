@@ -82,7 +82,7 @@ def filter_observations(
         KeyError: If a requested filter is unknown.
     """
     if isinstance(filters, dict):
-        # The legacy filter implementation normalizes this working mapping.
+        # The filter implementation normalizes this working mapping.
         filters = dict(filters)
 
     with timed(
@@ -206,7 +206,7 @@ def assemble_inputs(
 
     The stage attaches domain metadata to shallow per-site copies, assembles
     observation-aligned arrays, applies the satellite boundary-condition
-    scaling, and retains basis and site metadata. It also preserves the legacy
+    scaling, and retains basis and site metadata. It also preserves the existing
     construction of the minimum-error floor and boundary-condition temporal
     parameterization. Those are inverse-model settings, not properties of the
     acquired data; moving them to their model components is a later semantic
@@ -377,11 +377,10 @@ def resolve_basis_inputs(data_config: Any) -> dict[str, Any]:
     """Resolve exact scientific inputs before acquisition.
 
     Configuration resolution itself stays data-free. This application boundary
-    reads selected maps and partitions and checks retained paths. Entry
-    adapters have already translated deprecated case/directory selections.
-    Numerical preparation receives only
-    the resulting exact artifact path and borrowed labelled arrays. Reporting
-    resources are validated separately by the output owner.
+    reads selected maps and partitions and checks retained paths from canonical
+    configuration. Numerical preparation receives only the resulting exact
+    artifact path and borrowed labelled arrays. Reporting resources are
+    validated separately by the output owner.
 
     Args:
         data_config: Resolved :class:`~openghg_inversions.rhime.params.DataConfig`.

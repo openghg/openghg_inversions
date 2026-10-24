@@ -51,11 +51,14 @@ def test_resolved_request_reaches_acquisition_without_resolution(monkeypatch, mu
 
 
 @pytest.mark.parametrize("multisector_mode", [False, True])
-@pytest.mark.parametrize("overrides", [{"config_file": "missing.ini"}, {"species": "co2"}])
+@pytest.mark.parametrize("overrides", [
+    {"config_file": "missing.ini"}, {"species": "co2"}, {"use_tracer": False}, {"unknown": 1},
+])
 def test_resolved_request_rejects_ambiguous_overrides(monkeypatch, multisector_mode, overrides):
     recipe = multisector if multisector_mode else standard
     runner = recipe.run_multisector if multisector_mode else recipe.run_standard
     config = _config(multisector_mode)
+    monkeypatch.setattr(recipe, "load_params", lambda **kwargs: pytest.fail("Ambiguous request was parsed"))
     monkeypatch.setattr(recipe.MergedData, "from_options", lambda **kwargs: pytest.fail("Unexpected acquisition"))
     with pytest.raises(ValueError, match="either resolved"):
         runner(config=config, **overrides)
@@ -213,3 +216,17 @@ def test_acquired_data_binding_preserves_selectors_and_rejects_conflicts(
 def test_removed_cache_options_are_rejected(name, multisector_mode):
     with pytest.raises((TypeError, ValueError), match=name):
         _config(multisector_mode, **{name: False})
+
+
+@pytest.mark.parametrize("overrides", [
+    {"config_file": "missing.ini"}, {"species": "co2"}, {"use_tracer": False}, {"unknown": 1},
+])
+def test_nested_resolved_request_rejects_ambiguous_sources_before_parsing(monkeypatch, overrides):
+    from openghg_inversions.rhime import nested
+
+    config = _config(False)
+    monkeypatch.setattr(nested, "read_rhime_ini", lambda *a: pytest.fail("Ambiguous INI was opened"))
+    monkeypatch.setattr(RhimeConfig, "from_params", lambda *a, **kw: pytest.fail("Ambiguous request was parsed"))
+    monkeypatch.setattr(nested, "acquire_merged_data", lambda *a: pytest.fail("Unexpected acquisition"))
+    with pytest.raises(ValueError, match="either resolved"):
+        nested.run_nested(config=config, **overrides)

@@ -49,7 +49,8 @@ def test_file_tracer_is_unsupported_even_with_an_override(tmp_path, source_kind,
 @pytest.mark.parametrize("route", ["fresh", "prepared", "resolved"])
 def test_runner_rejects_tracer_before_acquisition_or_supplied_inputs(runner, value, route):
     supplied = {} if route == "fresh" else {"prepared" if route == "prepared" else "config": SimpleNamespace()}
-    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*use_tracer"):
+    expected = "either resolved" if route == "resolved" else "Unsupported RHIME parameter.*use_tracer"
+    with pytest.raises(ValueError, match=expected):
         runner(use_tracer=value, **supplied)
 
 
@@ -149,22 +150,23 @@ def test_co2_request_names_do_not_reinterpret_scientific_labels_or_inactive_valu
 
 
 @pytest.mark.parametrize("value", [False, True, None])
-@pytest.mark.parametrize("section", [None, "prepared_inputs", "likelihood", "sampling", "outputs"])
 @pytest.mark.parametrize("family", ["co2", "co2_o2"])
-def test_direct_co2_owners_reject_tracer_before_inputs_or_artifacts(family, section, value):
+def test_direct_co2_components_reject_unknown_names_in_their_own_sections(family, value):
     from openghg_inversions.rhime.co2.configuration import Co2PreparationConfig, Co2ModelConfig
     from openghg_inversions.rhime.co2.execution import resolve_co2_output
     from openghg_inversions.rhime.co2.co2_o2_configuration import Co2O2PreparationConfig, Co2O2ModelConfig
     from openghg_inversions.rhime.co2.co2_o2_outputs import resolve_co2_o2_output
 
-    owners = (Co2PreparationConfig.from_params, Co2ModelConfig.from_params, resolve_co2_output) if family == "co2" else (
-        Co2O2PreparationConfig.from_params, Co2O2ModelConfig.from_params, resolve_co2_o2_output,
-    )
-    options = {"use_tracer": value}
-    if section is not None:
-        options = {section: options}
-    for owner in owners:
-        with pytest.raises(ValueError, match="Unknown configuration option.*use_tracer"):
+    if family == "co2":
+        model_options = {"model": {"use_tracer": value}}
+        owners = (Co2PreparationConfig.from_params, Co2ModelConfig.from_params, resolve_co2_output)
+    else:
+        model_options = {"channels": {"co2": {"units": "ppm", "use_tracer": value}}}
+        owners = (Co2O2PreparationConfig.from_params, Co2O2ModelConfig.from_params, resolve_co2_o2_output)
+    for owner, options in zip(owners, (
+        {"prepared_inputs": {"use_tracer": value}}, model_options, {"outputs": {"use_tracer": value}},
+    ), strict=True):
+        with pytest.raises(ValueError, match="option.*use_tracer"):
             owner(options)
 
 

@@ -192,21 +192,20 @@ def _prior_predictive_command(args: argparse.Namespace) -> None:
     _check_saved_family(args)
     if args.model == "co2_o2":
         from openghg_inversions.rhime.co2.co2_o2_handoffs import prior_predictive as prior_linked
-        from openghg_inversions.rhime.co2.co2_o2_configuration import resolve_co2_o2_prior_seed
+        from openghg_inversions.rhime.co2.co2_o2_configuration import Co2O2ModelConfig, resolve_co2_o2_prior_seed
 
         params = _co2_o2_params(args)
         result = prior_linked(
-            args.preparation_manifest, model=params,
+            args.preparation_manifest, model=Co2O2ModelConfig.from_params(params),
             random_seed=resolve_co2_o2_prior_seed(params), **common,
         )
     elif args.model == "co2":
         from openghg_inversions.rhime.co2.handoffs import prior_predictive as prior_co2
 
-        from openghg_inversions.rhime.co2.configuration import resolve_co2_prior_seed
+        from openghg_inversions.rhime.co2.configuration import Co2ModelConfig, resolve_co2_prior_seed
 
         params = _co2_params(args)
-        choices: dict[str, Any] = {name: params[name] for name in ("model", "likelihood") if name in params}
-        result = prior_co2(args.preparation_manifest, model=choices,
+        result = prior_co2(args.preparation_manifest, model=Co2ModelConfig.from_params(params),
                            random_seed=resolve_co2_prior_seed(params), **common)
     elif args.model in {"standard", "multisector"}:
         if args.model == "multisector":
@@ -239,9 +238,10 @@ def _sample_command(args: argparse.Namespace) -> None:
         from openghg_inversions.rhime.co2.handoffs import sample as sample_co2
 
 
+        from openghg_inversions.rhime.co2.configuration import Co2ModelConfig
+
         params = _co2_params(args)
-        choices: dict[str, Any] = {name: params[name] for name in ("model", "likelihood") if name in params}
-        result = sample_co2(args.preparation_manifest, model=choices,
+        result = sample_co2(args.preparation_manifest, model=Co2ModelConfig.from_params(params),
                             sampling=params.get("sampling", {}), output_dir=_stage_output_dir(args))
         print(result)
     elif args.model in {"standard", "multisector"}:

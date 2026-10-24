@@ -137,9 +137,9 @@ class DataConfig:
             raise ValueError(f"Required RHIME parameter(s) missing: {missing!r}")
         flux_sources = resolve_flux_sources(flux_sources=remaining.pop("flux_sources", None))
         if multisector and len(flux_sources) < 2:
-            raise ValueError("`run_multisector` requires at least two flux sources.")
+            raise ValueError("Multisector configuration requires at least two flux sources.")
         if not multisector and len(flux_sources) != 1:
-            raise ValueError("`run_standard` requires exactly one flux source.")
+            raise ValueError("Standard configuration requires exactly one flux source.")
         check = remaining.get("flux_non_finite_check", cls.flux_non_finite_check)
         if check not in get_args(FluxNonFiniteCheck):
             raise ValueError(f"Invalid `flux_non_finite_check`: {check!r}.")

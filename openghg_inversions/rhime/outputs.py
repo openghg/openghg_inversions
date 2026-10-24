@@ -99,7 +99,7 @@ def validate_multisector_output_resources(output_spec: RhimeOutputSpec) -> None:
 def validate_nested_output_resources(output_spec: RhimeOutputSpec) -> None:
     """Check nested reporting resources and destinations before doing work."""
     if output_spec.output_format not in ("none", "paris"):
-        raise ValueError("`run_nested` currently requires output_format='none' or 'paris'.")
+        raise ValueError("Nested output supports output_format='none' or 'paris'.")
     validate_output_resources(output_spec)
     if output_spec.output_format == "paris" and output_spec.output_path is None:
         raise ValueError("`output_path` is required for nested PARIS products.")

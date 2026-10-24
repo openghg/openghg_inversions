@@ -167,8 +167,7 @@ def test_filename_policy_is_independently_recorded(tmp_path, convention):
 def test_current_python_name_removal_and_explicit_likelihood_requirement(monkeypatch):
     import openghg_inversions.rhime as rhime
 
-    with pytest.raises(ImportError, match="removed in 0.8.*run_standard.*InversionOutput"):
-        getattr(rhime, "run_rhime")
+    assert not hasattr(rhime, "run_rhime")
     monkeypatch.setattr(standard, "acquire_merged_data", lambda *args, **kwargs: pytest.fail("must not acquire"))
     params = read_rhime_ini(FIXTURES / "modern.ini")
     params.pop("mismatch_model")
