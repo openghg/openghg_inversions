@@ -377,6 +377,38 @@ owning configuration record SHALL replace `RHIME_PREPARATION_OPTION_NAMES`.
 - **THEN** those names do not provide a runnable interface or compatibility wrapper
 - **AND** the canonical runners retain their scientific result and output contracts
 
+### Requirement: Retire the prepared-input compatibility factory
+
+`PreparedInputs.from_legacy_inputs` SHALL be unavailable, without a forwarding
+factory or the addition of its legacy arguments to the canonical constructor.
+The supported replacement SHALL remain
+`PreparedInputs(inv_inputs=..., basis_functions=..., site_metadata=...)`.
+
+Canonical construction and xarray preparation SHALL preserve scientific input
+values, site/averaging-period ordering, observation-aligned release coordinates,
+borrowed/lazy numerical arrays and existing basis source/path provenance,
+including the xarray interface's `"supplied"` fallback for an unannotated basis.
+This factory retirement SHALL NOT change existing persisted schema or codec
+behavior, scientific variables, units or supported artifacts.
+
+This separately approved constructor removal SHALL NOT extend the
+[five-alias retirement](../rhime-model-selection/spec.md#requirement-retire-named-python-aliases)
+or authorize removal of other constructors or basis capabilities. It SHALL
+preserve the [migration evidence guarantees](../hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
+
+#### Scenario: Construct canonical prepared inputs
+
+- **WHEN** a caller constructs `PreparedInputs` from canonical inversion inputs, a basis and labeled site metadata
+- **THEN** the scientific inputs, metadata ordering and borrowed-array guarantees retain their meanings
+- **AND** supported serialization retains its existing schema and codec behavior
+
+#### Scenario: Prepare supplied xarray inputs after factory retirement
+
+- **WHEN** xarray preparation receives supported stationary or moving release coordinates and a supplied basis
+- **THEN** observation-aligned coordinates and existing basis source/path provenance are retained
+- **AND** an unannotated supplied basis retains the `"supplied"` provenance fallback without mutation of the caller's basis
+- **AND** the removed factory is not a public construction path
+
 ### Requirement: Compatible public adapters and scientific choices
 
 Modern runner/acquisition requests SHALL use canonical option names. The following
@@ -397,18 +429,26 @@ historical runtime interfaces SHALL be unavailable:
 - The `output_format` values `hbmcmc` and `hbmcmc_postprocessing`. Canonical
   `output_format="legacy"` SHALL remain independently supported.
 
-Every explicit occurrence of an unsupported historical request spelling or output
-alias SHALL fail ordinary unsupported-option validation before acquisition,
-reload or scientific execution. Supplying a canonical spelling alongside an old
-name SHALL NOT enable alias translation, warning-and-ignore behavior or fallback.
-Canonical names and other supported modern signatures and result types SHALL
-retain their separate contracts.
+Unknown option names SHALL fail ordinary unsupported-option validation before
+acquisition, reload or scientific execution, including names in known inactive
+groups. Effective values applicable to the selected phase SHALL be validated by
+their owning configuration against supported values before that phase performs
+scientific work. Known inactive groups in shared requests SHALL defer value
+validation and resource resolution until consumed. Runner/acquisition validation
+SHALL describe supported names and applicable values without special recognition
+of historical spellings or tokens, alias translation, warning-and-ignore behavior
+or fallback. Supplying a canonical spelling alongside an unknown name SHALL NOT
+make that unknown name supported. Canonical names and other supported modern
+signatures and result types SHALL retain their separate contracts.
 
 Public command names SHALL follow
 [Bounded installed-command retirement](../rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement).
 The five Python names SHALL follow only their exact canonical replacements in
 [Retire named Python aliases](../rhime-model-selection/spec.md#requirement-retire-named-python-aliases).
-These finite naming changes SHALL NOT authorize other Python path, signature,
+The separately approved
+[prepared-input factory retirement](#requirement-retire-the-prepared-input-compatibility-factory)
+adds only its explicitly named constructor removal, not a sixth alias.
+These finite exceptions SHALL NOT authorize other Python path, signature,
 constructor or result-wrapper changes. Supported artifact formats and versions
 SHALL remain separate codec contracts, without implied historical-format support.
 
@@ -439,6 +479,19 @@ handling. Every explicit occurrence of `use_tracer`, regardless of value, SHALL
 fail ordinary unsupported-option validation before acquisition, reload or
 scientific work, including supplied-data and saved-phase routes. Omission SHALL
 remain valid and SHALL NOT imply tracer execution.
+
+#### Scenario: Unsupported applicable output value
+
+- **WHEN** a full or output-only request supplies an `output_format` value outside the output owner's supported values
+- **THEN** ordinary value validation rejects it before the selected phase performs scientific work
+- **AND** it receives the ordinary invalid-output diagnostic without alias translation
+
+#### Scenario: Known inactive output value
+
+- **WHEN** a preparation-only command reads a shared file with supported output option names and an invalid `output_format` value
+- **THEN** preparation defers validation of that inactive output value
+- **AND** a later output consumer validates its effective value against its supported formats
+- **AND** unknown names in that group still fail ordinary unsupported-option validation
 
 #### Scenario: Existing Python shorthand
 

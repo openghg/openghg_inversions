@@ -28,8 +28,8 @@ runner.
    openghg_inversions.rhime.run_standard
    openghg_inversions.rhime.run_multisector
    openghg_inversions.rhime.run_nested
-   openghg_inversions.rhime.run_rhime_multisector
-   openghg_inversions.rhime.run_rhime_nested
+   openghg_inversions.rhime.run_multisector
+   openghg_inversions.rhime.run_nested
    openghg_inversions.rhime.co2.run_co2
    openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs
    openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs
@@ -348,10 +348,8 @@ Legacy compatibility APIs
 
 The direct fixed-basis and hierarchical Bayesian Markov chain Monte Carlo
 (HBMCMC) Python APIs were removed in 0.8. Existing fixedbasis-style INI files
-can use the transitional :doc:`HBMCMC compatibility wrapper
-<openghg_inversions.hbmcmc.run_hbmcmc>`, which translates supported options
-and calls RHIME. See :doc:`legacy interfaces and migration
-</usage/legacy_and_migration>` for replacements and unsupported interfaces.
+must migrate to canonical RHIME settings or retain matching older software.
+See :doc:`/usage/legacy_and_migration` for the retired namespace and aliases.
 
 Detailed module reference
 -------------------------

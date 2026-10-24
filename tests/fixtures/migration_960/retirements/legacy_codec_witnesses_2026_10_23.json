@@ -1,0 +1,667 @@
+{
+  "date": "2026-10-23",
+  "recorded_after_initial_retirement_commit": "01e34d0c32bc342863b24f3ec6d6858ac105aa6b",
+  "purpose": "bounded source/test witnesses for deleted adapter-only drivers; supplements the pre-removal legacy-data inventory without replacing original #960 observations",
+  "source_route": "compatibility-bearing development HBMCMC legacy_data codecs, not a released-0.7 artifact-support guarantee",
+  "source_revisions": {
+    "tests/test_merged_netcdf_metadata.py": {
+      "pinned": {
+        "revision": "0a32d73a5c4a72be0505a4ed682472e1613e49e9",
+        "git_blob": "debd1366e79f9d32fd734a9af26f22da57f539e4",
+        "sha256": "095631292b6b82061bbeba49e2efc2de85dc60b601e65b7498a814b3a895b0b0",
+        "url": "https://github.com/openghg/openghg_inversions/blob/0a32d73a5c4a72be0505a4ed682472e1613e49e9/tests/test_merged_netcdf_metadata.py"
+      },
+      "pr_base": {
+        "revision": "17e28ed081954b4155c9d85b66eaeef2ad81853c",
+        "git_blob": "debd1366e79f9d32fd734a9af26f22da57f539e4",
+        "sha256": "095631292b6b82061bbeba49e2efc2de85dc60b601e65b7498a814b3a895b0b0",
+        "url": "https://github.com/openghg/openghg_inversions/blob/17e28ed081954b4155c9d85b66eaeef2ad81853c/tests/test_merged_netcdf_metadata.py"
+      },
+      "pinned_equals_base": true
+    },
+    "tests/test_get_data.py": {
+      "pinned": {
+        "revision": "0a32d73a5c4a72be0505a4ed682472e1613e49e9",
+        "git_blob": "e932054c2f43b08608c5467065dc019f9b25917b",
+        "sha256": "06e578aac62b6177610b3653e99104d848a81813003b2fb8fbdd6d5441e40a9c",
+        "url": "https://github.com/openghg/openghg_inversions/blob/0a32d73a5c4a72be0505a4ed682472e1613e49e9/tests/test_get_data.py"
+      },
+      "pr_base": {
+        "revision": "17e28ed081954b4155c9d85b66eaeef2ad81853c",
+        "git_blob": "e932054c2f43b08608c5467065dc019f9b25917b",
+        "sha256": "06e578aac62b6177610b3653e99104d848a81813003b2fb8fbdd6d5441e40a9c",
+        "url": "https://github.com/openghg/openghg_inversions/blob/17e28ed081954b4155c9d85b66eaeef2ad81853c/tests/test_get_data.py"
+      },
+      "pinned_equals_base": true
+    },
+    "openghg_inversions/hbmcmc/legacy_data.py": {
+      "pinned": {
+        "revision": "0a32d73a5c4a72be0505a4ed682472e1613e49e9",
+        "git_blob": "0d5c395bedad93df657ac5b9179df28ab99cb572",
+        "sha256": "f3e0f299e057f24fe9cead62b66cd00a1b1e03f2577fa704150434efd43e950b",
+        "url": "https://github.com/openghg/openghg_inversions/blob/0a32d73a5c4a72be0505a4ed682472e1613e49e9/openghg_inversions/hbmcmc/legacy_data.py"
+      },
+      "pr_base": {
+        "revision": "17e28ed081954b4155c9d85b66eaeef2ad81853c",
+        "git_blob": "8a494bee8c4132f22a0bb055cc813aed853517a0",
+        "sha256": "b9a17908fb94417f7b1c4b68cf309f4e76fc4b0a7e5b7c1aac6512929382deca",
+        "url": "https://github.com/openghg/openghg_inversions/blob/17e28ed081954b4155c9d85b66eaeef2ad81853c/openghg_inversions/hbmcmc/legacy_data.py"
+      },
+      "pinned_equals_base": false
+    }
+  },
+  "intervening_source_changes": "test files unchanged pin to base; legacy_data.make_combined_scenario gained explicit join=outer in #956, preserving intended source union",
+  "retained_modern_coverage": [
+    "canonical MergedData borrowed payload/source-native-times/period/NaN tests",
+    "canonical provider unit/period fallback tests",
+    "independent PreparedInputs/InversionOutput codecs and exact destinations"
+  ],
+  "independent_basis_owner": "#951",
+  "cases": [
+    {
+      "id": "typed-sector-flag-and-absent-units",
+      "test": "test_merged_netcdf_metadata_roundtrip",
+      "inputs": {
+        "flags": [
+          {
+            "type": "bool",
+            "value": false
+          },
+          {
+            "type": "bool",
+            "value": true
+          },
+          {
+            "type": "numpy.bool_",
+            "value": false
+          },
+          {
+            "type": "numpy.bool_",
+            "value": true
+          }
+        ],
+        "engines": [
+          "h5netcdf",
+          "netcdf4"
+        ],
+        "filename": "prepared.nc",
+        "site": "TAC",
+        "scenario": {
+          "mf": {
+            "dims": [
+              "time"
+            ],
+            "values": [
+              1.0
+            ]
+          },
+          "height": {
+            "dims": [
+              "height"
+            ],
+            "values": [
+              500.0
+            ],
+            "attrs": {
+              "units": null,
+              "long_name": "height"
+            }
+          }
+        },
+        "dictionary_marker": ".split_by_sectors"
+      },
+      "expected": {
+        "restored_flag": "builtin bool with original truth value",
+        "restored_scenario": "identical to original except height.units omitted",
+        "borrowed_scenario_height_units": null,
+        "borrowed_flag": "same original object and type",
+        "intermediate_datatree_flag": "same original flag object"
+      },
+      "source_file": "tests/test_merged_netcdf_metadata.py",
+      "disposition": "unsupported historical dictionary/cache codec; canonical scientific invariants retained separately",
+      "owners": [
+        "#719",
+        "#948",
+        "#949",
+        "#952"
+      ],
+      "evidence": "inspected original test inputs and assertions; historical runtime not executed in this capture"
+    },
+    {
+      "id": "dotted-root-marker",
+      "test": "test_existing_dotted_marker_remains_supported",
+      "inputs": {
+        "datatree_groups": [
+          "scenarios/TAC"
+        ],
+        "root_attrs": {
+          ".split_by_sectors": {
+            "type": "bool",
+            "values": [
+              false,
+              true
+            ]
+          }
+        }
+      },
+      "expected": {
+        "fp_all_marker": ".split_by_sectors",
+        "value": "same original boolean"
+      },
+      "source_file": "tests/test_merged_netcdf_metadata.py",
+      "disposition": "unsupported historical dictionary/cache codec; canonical scientific invariants retained separately",
+      "owners": [
+        "#719",
+        "#948",
+        "#949",
+        "#952"
+      ],
+      "evidence": "inspected original test inputs and assertions; historical runtime not executed in this capture"
+    },
+    {
+      "id": "source-label-order-and-numpy-wrapper-metadata",
+      "test": "test_merged_flux_labels_and_numpy_wrapper_metadata_roundtrip",
+      "inputs": {
+        "suffixes": [
+          "nc",
+          "zarr",
+          "zarr.zip"
+        ],
+        "sources": [
+          "z",
+          "a/b",
+          "a",
+          "source_0",
+          "../nested"
+        ],
+        "flux_for_source_index": {
+          "dims": [
+            "time"
+          ],
+          "values": "[float(index)]"
+        },
+        "flux_wrapper_metadata": {
+          "data_type": "flux",
+          "source": "original source label",
+          "enabled": {
+            "type": "numpy.bool_",
+            "value": false
+          },
+          "count": {
+            "type": "numpy.int64",
+            "value": "source index"
+          },
+          "values": {
+            "type": "numpy.ndarray",
+            "values": [
+              1.0,
+              2.0
+            ]
+          }
+        },
+        "boundary_data": {
+          "variables": [
+            "vmr_n",
+            "vmr_e",
+            "vmr_s",
+            "vmr_w"
+          ],
+          "dims": [
+            "time"
+          ],
+          "values": [
+            1.0
+          ]
+        },
+        "boundary_metadata": {
+          "enabled": {
+            "type": "numpy.bool_",
+            "value": true
+          },
+          "count": {
+            "type": "numpy.int64",
+            "value": 2
+          }
+        }
+      },
+      "expected": {
+        "source_order": [
+          "z",
+          "a/b",
+          "a",
+          "source_0",
+          "../nested"
+        ],
+        "restored_flux": "each dataset identical to original",
+        "restored_flux_metadata": {
+          "data_type": "flux",
+          "source": "original source label",
+          "enabled": false,
+          "count": "builtin integer equal to source index",
+          "values": [
+            1.0,
+            2.0
+          ]
+        },
+        "restored_boundary_metadata": {
+          "enabled": true,
+          "count": 2
+        },
+        "borrowed_metadata": "numpy.bool_ and numpy.ndarray input types unchanged",
+        "borrowed_dataset_attrs": "openghg_metadata not inserted"
+      },
+      "source_file": "tests/test_merged_netcdf_metadata.py",
+      "disposition": "unsupported historical dictionary/cache codec; canonical scientific invariants retained separately",
+      "owners": [
+        "#719",
+        "#948",
+        "#949",
+        "#952"
+      ],
+      "evidence": "inspected original test inputs and assertions; historical runtime not executed in this capture"
+    },
+    {
+      "id": "historical-named-flux-group",
+      "test": "test_legacy_flux_group_names_remain_supported",
+      "inputs": {
+        "datatree_group": "inventory",
+        "flux": {
+          "dims": [
+            "time"
+          ],
+          "values": [
+            1.0
+          ]
+        },
+        "wrapper_metadata": {
+          "data_type": "flux"
+        }
+      },
+      "expected": {
+        "restored_source_order": [
+          "inventory"
+        ],
+        "restored_dataset": "identical to original"
+      },
+      "source_file": "tests/test_merged_netcdf_metadata.py",
+      "disposition": "unsupported historical dictionary/cache codec; canonical scientific invariants retained separately",
+      "owners": [
+        "#719",
+        "#948",
+        "#949",
+        "#952"
+      ],
+      "evidence": "inspected original test inputs and assertions; historical runtime not executed in this capture"
+    },
+    {
+      "id": "malformed-source-label-mapping",
+      "test": "test_legacy_flux_labels_reject_malformed_mapping",
+      "inputs": {
+        "empty_datatree": true,
+        "root_attribute": "flux_source_labels_json",
+        "values": [
+          "[\"a\", \"a\"]",
+          "[\"a\"]",
+          "invalid",
+          "[0]"
+        ]
+      },
+      "expected": {
+        "exception": "ValueError",
+        "message_contains": "flux source labels"
+      },
+      "source_file": "tests/test_merged_netcdf_metadata.py",
+      "disposition": "unsupported historical dictionary/cache codec; canonical scientific invariants retained separately",
+      "owners": [
+        "#719",
+        "#948",
+        "#949",
+        "#952"
+      ],
+      "evidence": "inspected original test inputs and assertions; historical runtime not executed in this capture"
+    },
+    {
+      "id": "serialization-borrows-payload-and-metadata",
+      "test": "test_merged_saves_preserve_borrowed_flux_and_boundary_metadata",
+      "inputs": {
+        "sequential_filenames": [
+          "merged.nc",
+          "merged.zarr"
+        ],
+        "time": [
+          "2019-01-01",
+          "2019-01-02"
+        ],
+        "flux": {
+          "dims": [
+            "time",
+            "lat",
+            "lon"
+          ],
+          "shape": [
+            2,
+            1,
+            1
+          ],
+          "values": "all ones",
+          "dask_chunks": [
+            1,
+            1,
+            1
+          ],
+          "lat": [
+            52.0
+          ],
+          "lon": [
+            1.0
+          ],
+          "units": "mol m-2 s-1",
+          "dataset_attrs": {
+            "title": "borrowed flux"
+          },
+          "metadata": {
+            "data_type": "flux",
+            "source": "inventory"
+          }
+        },
+        "boundary": {
+          "variables": [
+            "vmr_n",
+            "vmr_e",
+            "vmr_s",
+            "vmr_w"
+          ],
+          "dims": [
+            "time",
+            "height"
+          ],
+          "shape": [
+            2,
+            1
+          ],
+          "values": "all ones",
+          "dask_chunks": [
+            1,
+            1
+          ],
+          "height": [
+            500.0
+          ],
+          "units": "ppb",
+          "dataset_attrs": {
+            "title": "borrowed boundary conditions"
+          },
+          "metadata": {
+            "data_type": "boundary_conditions",
+            "species": "ch4"
+          }
+        },
+        "scenario": {
+          "site": "TAC",
+          "mf": [
+            1.0,
+            2.0
+          ]
+        }
+      },
+      "expected": {
+        "original_and_recovered_data": "identical to pre-save shallow snapshots for both files",
+        "original_and_recovered_metadata": "identical to pre-save deep metadata snapshots",
+        "adapted_dataset": "new container sharing each original data-variable payload",
+        "borrowed_payloads": "same objects before and after serialization",
+        "direct_flux_netcdf": "still directly serializable and identical when reopened"
+      },
+      "source_file": "tests/test_merged_netcdf_metadata.py",
+      "disposition": "unsupported historical dictionary/cache codec; canonical scientific invariants retained separately",
+      "owners": [
+        "#719",
+        "#948",
+        "#949",
+        "#952"
+      ],
+      "evidence": "inspected original test inputs and assertions; historical runtime not executed in this capture"
+    },
+    {
+      "id": "annual-native-period-and-source-time-union",
+      "test": "test_combined_scenario_roundtrip_preserves_source_specific_flux_times",
+      "source_file": "tests/test_get_data.py",
+      "inputs": {
+        "site": "TAC",
+        "species": "CO2",
+        "observation_times": [
+          "2019-06-01",
+          "2019-07-01"
+        ],
+        "mf": [
+          1.0,
+          2.0
+        ],
+        "lat": [
+          52.0
+        ],
+        "lon": [
+          1.0
+        ],
+        "source_order": [
+          "annual",
+          "monthly"
+        ],
+        "annual": {
+          "time": [
+            "2019-01-01"
+          ],
+          "flux": [
+            1.0
+          ],
+          "time_period": "1 year"
+        },
+        "monthly": {
+          "time": [
+            "2019-06-01",
+            "2019-07-01"
+          ],
+          "flux": [
+            2.0,
+            3.0
+          ],
+          "time_period": "monthly"
+        }
+      },
+      "expected": {
+        "each_source_time": "original native timestamps only, with outer-join padding removed",
+        "annual_time_period": "1 year",
+        "monthly_time_period": "monthly",
+        "flux": "all supplied finite values retained"
+      },
+      "disposition": "unsupported historical dictionary/cache codec; canonical scientific invariants retained separately",
+      "owners": [
+        "#719",
+        "#948",
+        "#949",
+        "#952"
+      ],
+      "evidence": "inspected original test inputs and assertions; historical runtime not executed in this capture"
+    },
+    {
+      "id": "missing-variable-period-falls-back-to-dataset",
+      "test": "test_combined_scenario_uses_dataset_period_when_variable_period_is_missing",
+      "source_file": "tests/test_get_data.py",
+      "inputs": {
+        "missing_variable_periods": [
+          {
+            "type": "str",
+            "value": ""
+          },
+          {
+            "type": "None",
+            "value": null
+          },
+          {
+            "type": "float",
+            "value": "NaN"
+          },
+          {
+            "type": "pandas.NaT",
+            "value": "NaT"
+          }
+        ],
+        "dataset_time_period": "monthly",
+        "flux_time": [
+          "2019-01-01"
+        ],
+        "observation_time": [
+          "2019-06-01"
+        ],
+        "flux_shape": [
+          1,
+          1,
+          1
+        ],
+        "flux_values": [
+          1.0
+        ]
+      },
+      "expected": {
+        "restored_flux_variable_time_period": "monthly"
+      },
+      "disposition": "unsupported historical dictionary/cache codec; canonical scientific invariants retained separately",
+      "owners": [
+        "#719",
+        "#948",
+        "#949",
+        "#952"
+      ],
+      "evidence": "inspected original test inputs and assertions; historical runtime not executed in this capture"
+    },
+    {
+      "id": "all-nan-source-slice-and-lazy-zarr",
+      "test": "test_combined_scenario_roundtrip_preserves_all_nan_flux_times / test_load_legacy_zarr_reads_lazy_source_period_metadata",
+      "source_file": "tests/test_get_data.py",
+      "inputs": {
+        "annual": {
+          "time": [
+            "2019-01-01"
+          ],
+          "flux_shape": [
+            1,
+            1,
+            1
+          ],
+          "flux_values": [
+            "NaN"
+          ],
+          "dask_chunks": [
+            1,
+            1,
+            1
+          ],
+          "time_period": "1 year"
+        },
+        "monthly": {
+          "time": [
+            "2019-06-01",
+            "2019-07-01"
+          ],
+          "flux_values": [
+            2.0,
+            3.0
+          ],
+          "time_period": "monthly"
+        },
+        "legacy_zarr_filename": "legacy.zarr",
+        "variants": {
+          "in_memory_roundtrip": {
+            "sources": [
+              "annual",
+              "monthly"
+            ],
+            "observation_times": [
+              "2019-06-01",
+              "2019-07-01"
+            ],
+            "annual_payload": "Dask all NaN with chunks [1,1,1]"
+          },
+          "legacy_zarr_read": {
+            "sources": [
+              "annual"
+            ],
+            "observation_times": [
+              "2019-06-01"
+            ],
+            "annual_payload": "NumPy all NaN, then xr.Dataset.to_zarr and lazy reopen"
+          }
+        }
+      },
+      "expected": {
+        "annual_time": [
+          "2019-01-01"
+        ],
+        "annual_flux": "all NaN, retained rather than dropped as padding",
+        "in_memory_roundtrip": "Dask chunks remain present",
+        "legacy_zarr_time_period": "1 year"
+      },
+      "disposition": "unsupported historical dictionary/cache codec; canonical scientific invariants retained separately",
+      "owners": [
+        "#719",
+        "#948",
+        "#949",
+        "#952"
+      ],
+      "evidence": "inspected original test inputs and assertions; historical runtime not executed in this capture"
+    },
+    {
+      "id": "pre-presence-mask-legacy-flux",
+      "test": "test_fp_all_from_dataset_reads_pre_presence_mask_flux_times",
+      "source_file": "tests/test_get_data.py",
+      "inputs": {
+        "cases": [
+          {
+            "flux_times": [
+              "2019-06-01"
+            ],
+            "flux_values": [
+              2.0
+            ]
+          },
+          {
+            "flux_times": [
+              "2019-06-01",
+              "2019-07-01"
+            ],
+            "flux_values": [
+              2.0,
+              3.0
+            ]
+          }
+        ],
+        "source": "monthly",
+        "time_period": "monthly",
+        "lat": [
+          52.0
+        ],
+        "lon": [
+          1.0
+        ],
+        "removed_combined_fields": [
+          "flux",
+          "flux_time_period",
+          "flux_time_present",
+          "flux_time dimension"
+        ],
+        "old_flux_layout": "singleton has no time dimension; multi-time uses observation time"
+      },
+      "expected": {
+        "restored_times": "exact original flux_times",
+        "restored_values": "exact original flux_values"
+      },
+      "disposition": "unsupported historical dictionary/cache codec; canonical scientific invariants retained separately",
+      "owners": [
+        "#719",
+        "#948",
+        "#949",
+        "#952"
+      ],
+      "evidence": "inspected original test inputs and assertions; historical runtime not executed in this capture"
+    }
+  ]
+}

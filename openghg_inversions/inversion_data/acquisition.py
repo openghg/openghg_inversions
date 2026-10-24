@@ -1,7 +1,7 @@
 """Retrieve RHIME observations, transport, flux and boundary data.
 
 Acquisition owns store access and consumes the complete site-aligned
-selection record. It returns a borrowed ``RhimeMergedData`` handoff for subsequent
+selection record. It returns a borrowed ``MergedData`` handoff for subsequent
 scientific filtering, basis construction and sensitivity preparation.
 """
 
@@ -11,7 +11,7 @@ import logging
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Any, cast
+from typing import Any
 
 import pandas as pd
 import xarray as xr
@@ -19,7 +19,6 @@ from openghg.dataobjects import FluxData
 from openghg.retrieve import get_bc
 from openghg.types import SearchError
 
-from openghg_inversions._flux_options import UNSET, _Unset, resolve_deprecated_keyword
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data import _site_options
 from openghg_inversions.inversion_data._provenance import (
@@ -100,7 +99,7 @@ class MergedData:
         if self.boundary_data is not None:
             datasets.append(self.boundary_data)
         if any(not isinstance(data, xr.Dataset) for data in datasets):
-            raise TypeError("RhimeMergedData accepts xarray datasets, not OpenGHG wrappers.")
+            raise TypeError("MergedData accepts xarray datasets, not OpenGHG wrappers.")
         if any(not isinstance(source, str) for source in self.flux_data):
             raise TypeError("Flux source labels must be strings.")
         if (
@@ -196,7 +195,7 @@ class MergedData:
         site_data: Mapping[str, xr.Dataset],
         *,
         context: str = "Merged-data selection",
-    ) -> RhimeMergedData:
+    ) -> MergedData:
         """Replace retained site datasets with their selectors and provenance.
 
         Mapping order determines retained-site order. All sites must already
@@ -208,7 +207,7 @@ class MergedData:
             ValueError: If retained sites are invalid.
         """
         site_options = self.site_options.retain_sites(tuple(site_data), context=context)
-        return RhimeMergedData(
+        return MergedData(
             site_data=dict(site_data),
             flux_data=dict(self.flux_data),
             boundary_data=self.boundary_data,
@@ -232,17 +231,15 @@ class MergedData:
         bc_store: str = "user",
         obs_store: str = "user",
         footprint_store: str = "user",
-        flux_store: str | None | _Unset = UNSET,
-        flux_domain: str | None | _Unset = UNSET,
-        emissions_store: str | None | _Unset = UNSET,
-        emissions_domain: str | None | _Unset = UNSET,
+        flux_store: str | None = "user",
+        flux_domain: str | None = None,
         fp_model: str | None = None,
         fp_species: str | None = None,
         calibration_scale: str | None = None,
         use_bc: bool = True,
         bc_input: str | None = None,
         flux_non_finite_check: FluxNonFiniteCheck = "lazy",
-    ) -> RhimeMergedData:
+    ) -> MergedData:
         """Acquire fresh merged data using complete aligned selectors.
 
         Reads OpenGHG stores and retains all selector fields together when sites
@@ -251,16 +248,7 @@ class MergedData:
         selector and merge errors propagate. ``flux_store`` defaults to ``"user"``;
         ``flux_domain`` selects the source flux dataset domain, defaulting to
         the footprint ``domain``. It does not imply a nested inner domain.
-        Deprecated ``emissions_store``/``emissions_domain`` are removed in 0.9.
-        Supplying an old and new spelling together raises ``ValueError``, even
-        when their values are equal or ``None``.
         """
-        flux_store = cast(str | None, resolve_deprecated_keyword(
-            "emissions_store", "flux_store", emissions_store, flux_store, default="user"
-        ))
-        flux_domain = cast(str | None, resolve_deprecated_keyword(
-            "emissions_domain", "flux_domain", emissions_domain, flux_domain
-        ))
         merged_sites: dict[str, xr.Dataset] = {}
         observation_provenance = {}
         footprint_provenance = {}
@@ -481,7 +469,3 @@ def interpolate_flux_to_footprint_grid(
             metadata=dict(flux_data.metadata),
         )
     return interpolated
-
-
-# Established public import retained through the 0.9 compatibility cycle.
-RhimeMergedData = MergedData

@@ -219,7 +219,7 @@ def test_shipped_basis_source_keyword_warns_and_preserves_science(sources):
                    species="ch4", domain="TEST", start_date="2020-01-01", nbasis=2,
                    basis_algorithm="region_constrained", region_classes=classes)
     canonical = make_basis_functions(**options, flux_sources=sources)
-    with pytest.warns(DeprecationWarning, match=r"removed in 0\.9"):
+    with pytest.warns(DeprecationWarning, match="`emissions_name` is deprecated; use `flux_sources` instead"):
         deprecated = make_basis_functions(**options, emissions_name=sources)
     xr.testing.assert_equal(canonical.flat_basis(), deprecated.flat_basis())
     # Independent preparations stamp their sanitation history separately.

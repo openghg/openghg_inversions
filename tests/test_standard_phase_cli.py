@@ -66,12 +66,11 @@ def test_prior_cli_strict_preserves_scientific_failure(tmp_path, monkeypatch):
     assert exc.value.code == 1
 
 
-def test_sample_cli_translates_alias_before_phase_claim(tmp_path, monkeypatch):
+def test_sample_cli_forwards_canonical_source_claim(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(stages, "sample", lambda manifest, **kwargs: calls.append(kwargs))
-    with pytest.warns(DeprecationWarning):
-        main(["sample", "--preparation-manifest", "prepared.json", "--output-dir", str(tmp_path / "sample"),
-              "--kwargs", '{"emissions_name":["inventory"]}'])
+    main(["sample", "--preparation-manifest", "prepared.json", "--output-dir", str(tmp_path / "sample"),
+          "--kwargs", '{"flux_sources":["inventory"]}'])
     assert calls[0]["model"]["flux_sources"] == ["inventory"]
 
 
@@ -83,16 +82,16 @@ def test_saved_family_mismatch_fails_before_config_resolution(tmp_path):
               "--output-dir", str(tmp_path / "sample")])
 
 
-def test_phase_alias_overrides_preserve_canonical_file_precedence(tmp_path, monkeypatch):
+def test_phase_rejects_alias_overrides_even_with_canonical_file_values(tmp_path, monkeypatch):
     choices = tmp_path / "choices.json"
     choices.write_text(json.dumps({"x_prior": {"pdf": "normal", "sigma": 0.1}}))
     calls = []
     monkeypatch.setattr(stages, "sample", lambda manifest, **kwargs: calls.append(kwargs))
-    with pytest.warns(DeprecationWarning, match="Ignoring"):
+    with pytest.raises(ValueError, match="Unsupported RHIME.*xprior"):
         main(["sample", "--params-file", str(choices), "--preparation-manifest", "prepared.json",
               "--output-dir", str(tmp_path / "samples"),
               "--kwargs", '{"xprior":{"pdf":"normal","sigma":0.5}}'])
-    assert calls[0]["model"]["x_prior"]["sigma"] == 0.1
+    assert not calls
 
 
 def test_phase_reports_all_unsuitable_override_keys(tmp_path):
@@ -122,7 +121,7 @@ def test_phase_paths_use_invocation_directory(tmp_path, monkeypatch):
     assert result["sampler"] == {}
 
 
-def test_phase_aliases_do_not_import_hbmcmc(tmp_path, monkeypatch):
+def test_phase_canonical_options_do_not_import_hbmcmc(tmp_path, monkeypatch):
     import builtins
     from argparse import Namespace
     from openghg_inversions.cli import _rhime_phase_options
@@ -132,9 +131,8 @@ def test_phase_aliases_do_not_import_hbmcmc(tmp_path, monkeypatch):
         assert "hbmcmc" not in name
         return original_import(name, *args, **kwargs)
     monkeypatch.setattr(builtins, "__import__", guarded_import)
-    args = Namespace(config=None, params_file=None, kwargs={"xprior": {"pdf": "normal", "sigma": 0.2}})
-    with pytest.warns(DeprecationWarning):
-        result = _rhime_phase_options(args, phase="sample")
+    args = Namespace(config=None, params_file=None, kwargs={"x_prior": {"pdf": "normal", "sigma": 0.2}})
+    result = _rhime_phase_options(args, phase="sample")
     assert result["model"]["x_prior"]["sigma"] == 0.2
 
 
@@ -160,34 +158,28 @@ def test_prior_readiness_rejects_explicit_sampler_overrides(tmp_path):
 
 
 @pytest.mark.parametrize("grouped", [False, True])
-def test_phase_preserves_resource_migration_guidance_in_aggregate_error(grouped):
+def test_phase_reports_all_unknown_and_unsuitable_names(grouped):
     from argparse import Namespace
     from openghg_inversions.cli import _rhime_phase_options
-    from openghg_inversions.rhime._runner_compat import normalise_param_aliases
 
     removed = {"country_directory": "old", "bc_basis_case": "old", "bc_basis_directory": "old"}
     kwargs = {"data": removed} if grouped else dict(removed)
     kwargs.update(unknown=1, draws=10)
     args = Namespace(config=None, params_file=None, kwargs=kwargs)
-    with pytest.raises(ValueError) as caught:
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter") as caught:
         _rhime_phase_options(args, phase="prepare")
     message = str(caught.value)
     for name in (*removed, "unknown", "draws"):
         assert name in message
-    with pytest.raises(ValueError) as full:
-        normalise_param_aliases(removed)
-    assert str(full.value) in message
-    for replacement in ("country_file", "landsea_path", "outer_regions_path", "bc_basis_paths", "HBMCMC"):
-        assert replacement in message
 
 
-def test_phase_errors_explain_every_removed_option():
+def test_phase_reports_every_unknown_option_name():
     from argparse import Namespace
     from openghg_inversions.cli import _rhime_phase_options
 
     args = Namespace(config=None, params_file=None,
                      kwargs={"mcmc_type": "nuts", "calculate_min_error": True, "reparameterise_log_normal": True})
-    with pytest.raises(ValueError) as caught:
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter") as caught:
         _rhime_phase_options(args, phase="sample")
-    for replacement in ("nuts_sampler", "`min_error`", "reparameterise"):
-        assert replacement in str(caught.value)
+    for name in ("mcmc_type", "calculate_min_error", "reparameterise_log_normal"):
+        assert name in str(caught.value)

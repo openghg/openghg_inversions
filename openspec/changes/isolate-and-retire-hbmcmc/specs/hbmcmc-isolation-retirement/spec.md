@@ -10,15 +10,21 @@ or legacy data/basis utility. No import alias, re-export, forwarding shim or
 executable entry point SHALL recreate that namespace. Modern execution SHALL NOT
 import or invoke migration tooling.
 
-Modern runner/acquisition boundaries SHALL accept canonical options and reject
-the historical spellings and output-format aliases enumerated in
-[Compatible public adapters and scientific choices](../../../../specs/rhime-configuration/spec.md#requirement-compatible-public-adapters-and-scientific-choices)
-through ordinary unsupported-option validation before scientific work.
+Modern runner/acquisition boundaries SHALL validate supported option names and
+applicable values generically under
+[Compatible public adapters and scientific choices](../../../../specs/rhime-configuration/spec.md#requirement-compatible-public-adapters-and-scientific-choices).
+Unknown names SHALL be rejected before scientific work. Known inactive values
+SHALL remain deferred until their consuming phase. Validation SHALL NOT recognize
+historical names or output tokens specially.
 Every explicit `use_tracer` occurrence SHALL be unsupported, regardless of value;
 omission SHALL remain valid without enabling tracer execution.
 
-Public Python names SHALL follow only the finite
+Public Python naming removals SHALL follow the finite
 [five-alias retirement](../../../../specs/rhime-model-selection/spec.md#requirement-retire-named-python-aliases).
+The separately approved
+[prepared-input factory retirement](../../../../specs/rhime-configuration/spec.md#requirement-retire-the-prepared-input-compatibility-factory)
+SHALL remove only its named compatibility constructor, preserving canonical
+construction and existing schema/codec behavior.
 Installed commands SHALL use the canonical `rhime` routes in
 [Bounded installed-command retirement](../../../../specs/rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement).
 Other Python names, canonical signatures, result contents and scientific meanings

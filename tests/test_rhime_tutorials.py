@@ -59,13 +59,13 @@ def _test_store_overrides(
         "bc_store": tac_ch4_data_args["bc_store"],
         "obs_store": tac_ch4_data_args["obs_store"],
         "footprint_store": tac_ch4_data_args["footprint_store"],
-        "flux_store": tac_ch4_data_args["emissions_store"],
+        "flux_store": tac_ch4_data_args["flux_store"],
         "domain": tac_ch4_data_args["domain"],
         "fp_model": tac_ch4_data_args["fp_model"],
         "fp_height": tac_ch4_data_args["fp_height"],
         "fp_species": None,
         "met_model": None,
-        "flux_sources": tac_ch4_data_args["emissions_name"],
+        "flux_sources": tac_ch4_data_args["flux_sources"],
         "bc_input": "cams",
         "basis_output_path": str(tmp_path / "basis.nc"),
         "output_path": str(tmp_path),
@@ -199,11 +199,11 @@ def test_multisector_tutorial_runs_to_sector_diagnostics(
 @pytest.mark.parametrize(
     ("subcommand", "config", "target"),
     [
-        ("run-rhime", _STANDARD_CONFIG, "openghg_inversions.rhime.run_standard"),
+        ("standard", _STANDARD_CONFIG, "openghg_inversions.rhime.standard.run_standard"),
         (
-            "run-rhime-multisector",
+            "multisector",
             _MULTISECTOR_CONFIG,
-            "openghg_inversions.rhime.run_rhime_multisector",
+            "openghg_inversions.rhime.multisector.run_multisector",
         ),
     ],
 )
@@ -220,6 +220,6 @@ def test_tutorial_cli_routes_use_packaged_configs(
         lambda *, config_file, **kwargs: calls.append((config_file, kwargs)),
     )
 
-    main([subcommand, "--config", str(config), "--output-path", "tutorial-output"])
+    main(["run", "--model", subcommand, "--config", str(config), "--output-path", "tutorial-output"])
 
     assert calls == [(str(config), {"output_path": "tutorial-output"})]

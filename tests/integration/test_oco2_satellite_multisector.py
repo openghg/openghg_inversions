@@ -18,7 +18,7 @@ import pytest
 
 from tests.helpers import prepare_inputs
 
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.rhime import (
     RhimeSampler,
     RhimeConfig,
@@ -51,7 +51,7 @@ def _skip_if_missing(*paths: Path) -> None:
 
 
 @pytest.fixture(scope="module")
-def real_oco2_prepared_inputs(tmp_path_factory: pytest.TempPathFactory) -> RhimePreparedInputs:
+def real_oco2_prepared_inputs(tmp_path_factory: pytest.TempPathFactory) -> PreparedInputs:
     """Prepare the six-sounding OCO2 sample with a fresh weighted basis."""
     _skip_if_missing(
         _DATA_STORE,
@@ -100,7 +100,7 @@ def real_oco2_prepared_inputs(tmp_path_factory: pytest.TempPathFactory) -> Rhime
 
 @pytest.mark.slow
 def test_real_oco2_store_prepares_time_resolved_multisector_columns(
-    real_oco2_prepared_inputs: RhimePreparedInputs,
+    real_oco2_prepared_inputs: PreparedInputs,
 ) -> None:
     """Check scientific invariants at the store-to-model input boundary."""
     prepared = real_oco2_prepared_inputs
@@ -150,7 +150,7 @@ def test_real_oco2_store_prepares_time_resolved_multisector_columns(
 
 @pytest.mark.slow
 def test_real_oco2_prepared_inputs_run_through_multisector_model(
-    real_oco2_prepared_inputs: RhimePreparedInputs,
+    real_oco2_prepared_inputs: PreparedInputs,
 ) -> None:
     """Sample the prepared satellite columns through the public RHIME model path."""
     config = RhimeConfig.from_params(

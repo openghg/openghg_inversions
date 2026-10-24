@@ -16,7 +16,7 @@ from openghg_inversions import serialization
 from openghg_inversions.basis import BasisFunctions
 from openghg_inversions.cli import main
 from openghg_inversions.inference.sampling import RhimeSampler
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime import multisector_stages as stages
 from openghg_inversions.rhime.params import DataConfig, resolve_model_options
@@ -46,7 +46,7 @@ def preparation(tmp_path, data_config):
         flux=xr.concat([single.basis_functions.flux, single.basis_functions.flux * 3], dim=sources),
         operator_kwargs={"state_dim": "state"},
     )
-    prepared = RhimePreparedInputs(
+    prepared = PreparedInputs(
         inv_inputs=inputs, basis_functions=basis, site_metadata=single.site_metadata,
     )
     manifest = stages.save_preparation(prepared, data_config=data_config, output_dir=tmp_path / "prepared")
@@ -130,7 +130,7 @@ def test_failed_preparation_save_invalidates_old_completion_marker(preparation, 
     manifest, (prepared, data, _) = preparation
     def fail(*args, **kwargs):
         raise OSError("disk full")
-    monkeypatch.setattr(stages.RhimePreparedInputs, "save", fail)
+    monkeypatch.setattr(stages.PreparedInputs, "save", fail)
     with pytest.raises(OSError, match="disk full"):
         stages.save_preparation(prepared, data_config=data, output_dir=manifest.parent)
     assert not manifest.exists()
@@ -141,7 +141,7 @@ def test_wrong_family_fails_before_numerical_load(preparation, monkeypatch):
     record = json.loads(manifest.read_text())
     record["data"]["split_by_sectors"] = False
     manifest.write_text(json.dumps(record))
-    monkeypatch.setattr(stages.RhimePreparedInputs, "load", lambda *a, **k: pytest.fail("loaded numerical data"))
+    monkeypatch.setattr(stages.PreparedInputs, "load", lambda *a, **k: pytest.fail("loaded numerical data"))
     with pytest.raises(ValueError, match="split_by_sectors"):
         stages.load_preparation(manifest)
 

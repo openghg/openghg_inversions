@@ -162,7 +162,7 @@ def test_conflicting_recorded_layout_fails_before_numerical_loading(tmp_path, mo
     record = json.loads(preparation.read_text())
     record["data"]["split_by_sectors"] = True
     preparation.write_text(json.dumps(record))
-    monkeypatch.setattr(stages.RhimePreparedInputs, "load", lambda *a, **k: pytest.fail("loaded numerical data"))
+    monkeypatch.setattr(stages.PreparedInputs, "load", lambda *a, **k: pytest.fail("loaded numerical data"))
     with pytest.raises(ValueError, match="split_by_sectors=True.*multisector=False"):
         stages.load_preparation(preparation)
 
@@ -173,7 +173,7 @@ def test_reused_destinations_and_manifest_last(tmp_path, monkeypatch):
     assert stages.save_preparation(_prepared(), data_config=config.data, output_dir=preparation.parent) == preparation
     def fail(*args, **kwargs):
         raise OSError("disk full")
-    monkeypatch.setattr(stages.RhimePreparedInputs, "save", fail)
+    monkeypatch.setattr(stages.PreparedInputs, "save", fail)
     with pytest.raises(OSError, match="disk full"):
         stages.save_preparation(_prepared(), data_config=config.data, output_dir=preparation.parent)
     assert not preparation.exists()
@@ -192,7 +192,7 @@ def forbidden(*args, **kwargs):
     raise AssertionError("replay performed acquisition, graph construction or inference")
 standard.build_standard_model = forbidden
 standard.materialize_standard_inputs = forbidden
-stages.RhimeMergedData.from_options = forbidden
+stages.MergedData.from_options = forbidden
 RhimeSampler.sample = forbidden
 stages.resolve_sampler = forbidden
 result = stages.postprocess(root / "samples/sample-manifest.json", output=RhimeOutputSpec(
@@ -304,7 +304,7 @@ def test_prepare_preserves_exact_basis_export(tmp_path, monkeypatch, export):
     destination = tmp_path / "prepared"
     target = tmp_path / export
     config = replace(config, basis_output_path=target)
-    monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda **kwargs: object())
+    monkeypatch.setattr(stages.MergedData, "from_options", lambda **kwargs: object())
     monkeypatch.setattr(stages, "prepare_standard", lambda *args, **kwargs: _prepared())
     manifest = stages.prepare(config, output_dir=destination)
     assert manifest.is_file()
@@ -430,35 +430,57 @@ def test_explicit_latent_only_trace_cannot_complete_handoff_or_replay(tmp_path):
 
 @pytest.mark.parametrize("grouped_override", [False, True])
 @pytest.mark.parametrize("canonical_file", [False, True])
-def test_grouped_loader_merges_raw_aliases_before_translation(tmp_path, monkeypatch, grouped_override, canonical_file):
-    config_dir = tmp_path / "config"
-    invocation = tmp_path / "invocation"
-    config_dir.mkdir()
-    invocation.mkdir()
-    source = config_dir / "choices.json"
+def test_grouped_loader_rejects_retired_alias_in_file_or_override(
+    tmp_path, monkeypatch, grouped_override, canonical_file,
+):
+    source = tmp_path / "choices.json"
     source.write_text(json.dumps({"output": {
         "output_path" if canonical_file else "outputpath": "file-products",
     }, "data": {"basis_path": "basis.nc"}}))
     overrides = {"outputpath": "override-products"}
     if grouped_override:
         overrides = {"output": overrides}
+    monkeypatch.setattr(
+        "openghg_inversions.rhime.requests.resolve_resource_paths",
+        lambda *a, **k: pytest.fail("resolved resources before rejecting retired alias"),
+    )
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*outputpath"):
+        load_params(params_file=source, overrides=overrides)
+
+
+@pytest.mark.parametrize("grouped_override", [False, True])
+@pytest.mark.parametrize("grouped_file", [False, True])
+def test_canonical_loader_overrides_file_values_before_resolving_invocation_paths(
+    tmp_path, monkeypatch, grouped_override, grouped_file,
+):
+    config_dir = tmp_path / "config"
+    invocation = tmp_path / "invocation"
+    config_dir.mkdir()
+    invocation.mkdir()
+    source = config_dir / "choices.json"
+    file_output = {"output_path": "file-products"}
+    source.write_text(json.dumps({
+        **({"output": file_output} if grouped_file else file_output),
+        "data": {"basis_path": "basis.nc"},
+    }))
+    overrides = {"output_path": "override-products"}
+    if grouped_override:
+        overrides = {"output": overrides}
     monkeypatch.chdir(invocation)
-    with pytest.warns(DeprecationWarning, match="Ignoring" if canonical_file else "deprecated"):
-        loaded = load_params(params_file=source, overrides=overrides)
-    expected = invocation / ("file-products" if canonical_file else "override-products")
-    assert loaded["output"]["output_path"] == expected
+    loaded = load_params(params_file=source, overrides=overrides)
+    assert loaded["output"]["output_path"] == invocation / "override-products"
     assert loaded["data"]["basis_path"] == invocation / "basis.nc"
 
 
-def test_grouped_loader_flat_canonical_override_wins_file_alias(tmp_path, monkeypatch):
-    invocation = tmp_path / "invocation"
-    invocation.mkdir()
+def test_grouped_loader_rejects_file_alias_even_with_canonical_override(tmp_path, monkeypatch):
     source = tmp_path / "choices.json"
     source.write_text(json.dumps({"output": {"outputpath": "file-products"}}))
-    monkeypatch.chdir(invocation)
-    with pytest.warns(DeprecationWarning, match="Ignoring"):
-        loaded = load_params(params_file=source, overrides={"output_path": "products"})
-    assert loaded["output"]["output_path"] == invocation / "products"
+    monkeypatch.setattr(
+        "openghg_inversions.rhime.requests.resolve_resource_paths",
+        lambda *a, **k: pytest.fail("resolved resources before rejecting retired alias"),
+    )
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*output.outputpath"):
+        load_params(params_file=source, overrides={"output_path": "products"})
 
 
 def test_saving_samples_ignores_unused_configured_lazy_priors(tmp_path):
@@ -524,11 +546,11 @@ def test_failed_acquisition_leaves_destination_free_for_retry(tmp_path, monkeypa
     config = RhimeConfig.from_params(_params(), multisector=False).data
     def unavailable(**kwargs):
         raise OSError("object store unavailable")
-    monkeypatch.setattr(standard.RhimeMergedData, "from_options", unavailable)
+    monkeypatch.setattr(standard.MergedData, "from_options", unavailable)
     with pytest.raises(OSError, match="unavailable"):
         stages.prepare(config, output_dir=tmp_path / "prepared")
     assert not (tmp_path / "prepared").exists()
-    monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda **kwargs: object())
+    monkeypatch.setattr(stages.MergedData, "from_options", lambda **kwargs: object())
     monkeypatch.setattr(stages, "prepare_standard", lambda *args, **kwargs: _prepared())
     assert stages.prepare(config, output_dir=tmp_path / "prepared").is_file()
 

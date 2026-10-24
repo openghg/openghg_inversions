@@ -13,7 +13,7 @@ import xarray as xr
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.inference.sampling import RhimeSampler, resolve_sampler
-from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
+from openghg_inversions.inversion_data import MergedData, PreparedInputs
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.serialization import load_trace, save_trace
@@ -58,7 +58,7 @@ def _check_generation(manifest: Path, record: Mapping[str, Any], expected: str) 
 
 
 def save_preparation(
-    prepared: RhimePreparedInputs, *, data_config: DataConfig, output_dir: str | Path,
+    prepared: PreparedInputs, *, data_config: DataConfig, output_dir: str | Path,
 ) -> Path:
     """Save prepared inputs and their configuration, publishing the manifest last.
 
@@ -87,18 +87,18 @@ def save_preparation(
 
 def _load_preparation(
     manifest: str | Path, *, expected_generation: str | None = None,
-) -> tuple[RhimePreparedInputs, DataConfig, str, Path]:
+) -> tuple[PreparedInputs, DataConfig, str, Path]:
     """Load numerical inputs and capture the generation from the same manifest."""
     path, record = _preparation_record(manifest)
     if expected_generation is not None:
         _check_generation(path, record, expected_generation)
     data_config = DataConfig.from_params(record["data"])
     payload = reference(path, record["prepared_inputs"])
-    prepared = RhimePreparedInputs.load(payload)
+    prepared = PreparedInputs.load(payload)
     return prepared, data_config, record["generation"], payload
 
 
-def load_preparation(manifest: str | Path) -> tuple[RhimePreparedInputs, DataConfig, str]:
+def load_preparation(manifest: str | Path) -> tuple[PreparedInputs, DataConfig, str]:
     """Load prepared inputs and their recorded acquisition/preparation choices.
 
     Args:
@@ -118,7 +118,7 @@ def load_preparation(manifest: str | Path) -> tuple[RhimePreparedInputs, DataCon
 
 
 def prepare(
-    data_config: DataConfig, *, output_dir: str | Path, merged_data: RhimeMergedData | None = None,
+    data_config: DataConfig, *, output_dir: str | Path, merged_data: MergedData | None = None,
 ) -> Path:
     """Run shared standard preparation and save its reusable checkpoint.
 

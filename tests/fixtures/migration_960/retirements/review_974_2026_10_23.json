@@ -1,0 +1,152 @@
+{
+  "date": "2026-10-23",
+  "purpose": "Affected source refresh before resolving rebase modify/delete conflicts; original pinned and first-retirement observations remain unchanged",
+  "pinned_revision": "0a32d73a5c4a72be0505a4ed682472e1613e49e9",
+  "original_pr_base": "17e28ed081954b4155c9d85b66eaeef2ad81853c",
+  "reviewed_head": "ad293daccf4cee5d5313ab793bbd766af20a1717",
+  "rebased_pr_base": "b288ac2530ad93ae8f67c5f1d47ee8ee7b666000",
+  "merged_intervening_pr": 975,
+  "source_records": {
+    "openghg_inversions/hbmcmc/legacy_data.py": {
+      "revision": "b288ac2530ad93ae8f67c5f1d47ee8ee7b666000",
+      "git_blob": "b0c2fd45a51e723356346ddfd05b38ba52ceb258",
+      "sha256": "5cafc7acdd7f195ca1be1d3f3ab851e4e1c1f67be0908cf4b5aa6a7c3f9c9636",
+      "url": "https://github.com/openghg/openghg_inversions/blob/b288ac2530ad93ae8f67c5f1d47ee8ee7b666000/openghg_inversions/hbmcmc/legacy_data.py"
+    },
+    "tests/test_merged_netcdf_metadata.py": {
+      "revision": "b288ac2530ad93ae8f67c5f1d47ee8ee7b666000",
+      "git_blob": "07eb1c4921263986e726f592cb8282eb56992103",
+      "sha256": "1dd6957e33b8817cda55438a07bd4d72907b1b5e94a48cfb1a7a61947704b2ff",
+      "url": "https://github.com/openghg/openghg_inversions/blob/b288ac2530ad93ae8f67c5f1d47ee8ee7b666000/tests/test_merged_netcdf_metadata.py"
+    },
+    "openghg_inversions/rhime/_request_validation.py": {
+      "revision": "ad293daccf4cee5d5313ab793bbd766af20a1717",
+      "git_blob": "1dae5abcb5dec4d398caaab702f1984478feddd5",
+      "sha256": "e2d92a458b857368f86e5d3ff60306e91cbe9735f0f66d21f5dc8a0804e62e8d",
+      "url": "https://github.com/openghg/openghg_inversions/blob/ad293daccf4cee5d5313ab793bbd766af20a1717/openghg_inversions/rhime/_request_validation.py"
+    },
+    "openghg_inversions/rhime/requests.py": {
+      "revision": "ad293daccf4cee5d5313ab793bbd766af20a1717",
+      "git_blob": "df4399613dec806531d39dbf44f29582994a602a",
+      "sha256": "92c1bfffe0b96093ae26bc44ec59527d678268231d5843fe76db63031ad8743e",
+      "url": "https://github.com/openghg/openghg_inversions/blob/ad293daccf4cee5d5313ab793bbd766af20a1717/openghg_inversions/rhime/requests.py"
+    },
+    "openghg_inversions/rhime/nested.py": {
+      "revision": "ad293daccf4cee5d5313ab793bbd766af20a1717",
+      "git_blob": "211dc8a16e2e3071db618d3ea48edc0ea97a3e03",
+      "sha256": "3ca0a3de7ec263e8d376b5c096abdec775e8ab82757d5f49a6bbcef5405d7940",
+      "url": "https://github.com/openghg/openghg_inversions/blob/ad293daccf4cee5d5313ab793bbd766af20a1717/openghg_inversions/rhime/nested.py"
+    }
+  },
+  "cases": [
+    {
+      "id": "retired-zarr-codec-refresh",
+      "route": "development hbmcmc.legacy_data",
+      "ledger": [
+        "U1",
+        "legacy-data"
+      ],
+      "source_observation": "#975 pins historical merged Zarr writing to format2, selects backend-compatible compression via OpenGHG, imports ZipStore from zarr.storage and stages ZIP contents in a neighboring TemporaryDirectory before archiving with ZipFile.",
+      "original_test_inputs": {
+        "filenames": [
+          "merged.nc",
+          "merged.zarr",
+          "merged.zarr.zip"
+        ],
+        "archive_check": "ZipFile(merged.zarr.zip).testzip() is None"
+      },
+      "original_expectation": "Saved/loaded borrowed flux and boundary datasets/metadata stay equal and original arrays/metadata are unchanged; ZIP is intact.",
+      "disposition": "unsupported historical namespace/cache codecs remain retired; independently supported modern serializers retain #975 fixes",
+      "owners": [
+        "#719",
+        "#948",
+        "#949",
+        "#951",
+        "#952"
+      ],
+      "evidence_kind": "source inspection before conflict resolution; not executed historical-codec characterization"
+    },
+    {
+      "id": "generic-diagnostics-followup",
+      "route": "modern full/saved request validation and nested direct runner",
+      "ledger": [
+        "I3",
+        "I4",
+        "I6",
+        "U1",
+        "runtime-options"
+      ],
+      "source_observation": "The reviewed retirement already rejects unsupported names generically, then appends historical-name replacement advice through _request_validation. run_nested separately recognizes three unsupported inner resource names before generic validation.",
+      "original_inputs": {
+        "removed_option_table": [
+          "calculate_min_error",
+          "reparameterise_log_normal",
+          "mcmc_type"
+        ],
+        "historical_resource_names": [
+          "country_directory",
+          "fp_basis_case",
+          "basis_directory",
+          "bc_basis_case",
+          "bc_basis_directory"
+        ],
+        "nested_special_names": [
+          "inner_country_directory",
+          "inner_fp_basis_case",
+          "inner_basis_directory"
+        ]
+      },
+      "original_expectations": {
+        "request": "Unsupported RHIME parameter(s) error plus dedicated min_error/prior/nuts_sampler or country/basis replacement advice",
+        "nested_country": "dedicated inner_country_directory removed-in-0.8 advice",
+        "nested_basis": "dedicated Historical inner basis selectors error with exact-path replacements"
+      },
+      "approved_modern_expectation": "Ordinary supported-name validation rejects the same unknown names before scientific work, with no historical-name table/branch or special replacement text; unsupported inner names are absent from the nested extraction set. Migration advice remains documentation/tooling.",
+      "source_comparison": "requests.py, _runner_compat.py and nested.py unchanged from pinned0a32d73a through rebased baseb288ac25; _request_validation.py was introduced by this retirement and is absent from both sources. Compared reviewedad293dac helper/nested bodies before deleting them.",
+      "disposition": "unsupported options retained as generic rejection; legacy-specific diagnostics retired",
+      "owners": [
+        "#719",
+        "#949",
+        "#951"
+      ],
+      "evidence_kind": "source inspection before helper and branch removal; no new scientific execution",
+      "bounded_boundary_observations": {
+        "pre_removal_revision": "8b7fe6fb",
+        "pre_removal": "Executed request/nested validation only: country_directory+bc_basis_case and mcmc_type+calculate_min_error receive generic name errors plus historical replacement advice; nested inner resource names receive the dedicated errors above.",
+        "post_removal": "Executed same request/nested validation in working tree atop 8b7fe6fb: only ordinary Unsupported RHIME parameter(s) errors list bc_basis_case/country_directory, calculate_min_error/mcmc_type, inner_country_directory, inner_basis_directory/inner_fp_basis_case respectively.",
+        "limits": "No acquisition, reload, scientific arrays or inference executed; this is not a full-suite or historical scientific claim."
+      }
+    },
+    {
+      "id": "phase-owned-value-validation",
+      "route": "shared standard/multisector/CO2 configuration, preparation versus full/output phases",
+      "ledger": [
+        "I2",
+        "O2",
+        "runtime-options",
+        "co2-inactive-section-names"
+      ],
+      "original_inputs": {
+        "shared_standard_request": {
+          "output": {
+            "output_format": "hbmcmc"
+          }
+        },
+        "shared_co2_request": {
+          "outputs": {
+            "output_format": "hbmcmc"
+          }
+        },
+        "generic_comparison_value": "not-a-supported-output-format"
+      },
+      "original_expectations": "Preparation-only resolution defers the known inactive output value. A full/output consumer uses ordinary allowed-value validation and rejects unsupported formats. Unknown option names are rejected even in inactive groups.",
+      "approved_modern_expectation": "Retain generic name validation and phase-owned effective-value validation without retired-token recognition or checks. All known inactive values remain deferred, including historically named values; every explicit use_tracer is still an unknown name regardless of value.",
+      "disposition": "retained phase semantics; contradictory every-output-alias-occurrence contract corrected after explicit maintainer review5634401507",
+      "owners": [
+        "#719",
+        "#949"
+      ],
+      "evidence_kind": "review and source inspection; new runtime validation to be recorded on its executed revision"
+    }
+  ]
+}

@@ -12,7 +12,7 @@ import pytest
 import xarray as xr
 
 from examples.multisector_handoffs import model_options, run_example, synthetic_inputs
-from openghg_inversions.inversion_data import RhimePreparedInputs, SiteOptions
+from openghg_inversions.inversion_data import PreparedInputs, SiteOptions
 from openghg_inversions.models.priors import prior_records
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
@@ -134,7 +134,7 @@ def test_full_and_prepared_execution_need_no_checkpoint_machinery_and_retain_sci
     def forbidden(*args, **kwargs):
         pytest.fail("in-memory execution entered checkpoint machinery")
 
-    monkeypatch.setattr(RhimePreparedInputs, "save", forbidden)
+    monkeypatch.setattr(PreparedInputs, "save", forbidden)
     monkeypatch.setattr(RhimeModelSpec, "to_record", forbidden)
     monkeypatch.setattr(stages, "start_checkpoint", forbidden)
     monkeypatch.setattr(stages, "prepare", forbidden)
@@ -349,7 +349,7 @@ multisector.build_multisector_model = forbidden
 multisector.materialize_multisector_inputs = forbidden
 stages.build_multisector_model = forbidden
 stages.materialize_multisector_inputs = forbidden
-stages.RhimeMergedData.from_options = forbidden
+stages.MergedData.from_options = forbidden
 stages.sample_rhime_model = forbidden
 stages.resolve_sampler = forbidden
 RhimeSampler.sample = forbidden

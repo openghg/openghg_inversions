@@ -8,9 +8,8 @@ Current regional inversion work uses RHIME: the standard, multisector, and
 nested-domain recipes provide complete runners, while the advanced CO₂ family
 provides prepared-input model-building and replay interfaces.
 [Choose a RHIME model recipe](docs/usage/model_recipes.rst) from the supported
-workflows. Existing fixedbasis-style configuration files can use a transitional
-wrapper that translates them to RHIME; the direct HBMCMC implementation has
-been removed.
+workflows. Historical HBMCMC execution and runtime request translation have
+been removed; see the [migration guide](docs/usage/legacy_and_migration.rst).
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10650595.svg)](https://doi.org/10.5281/zenodo.10650595)
 
@@ -222,9 +221,9 @@ overview, see the [getting-started guide](docs/usage/getting_started.rst).
 New RHIME runs can be launched without calling an internal source file path:
 
 ```python
-from openghg_inversions.rhime import run_rhime, run_rhime_multisector, run_rhime_nested
+from openghg_inversions.rhime import run_standard, run_multisector, run_nested
 
-result = run_rhime(
+result = run_standard(
     species="ch4",
     sites=["TAC"],
     averaging_period=["1h"],
@@ -234,10 +233,11 @@ result = run_rhime(
     output_path="outputs",
     output_name="example",
     flux_sources=["total-ukghg-edgar7"],
+    mismatch_model="pollution_event",
 )
 ```
 
-Nested outer/inner grids use the explicit `run_rhime_nested` entry point.
+Nested outer/inner grids use the explicit `run_nested` entry point.
 It masks the outer response over the inner extent, retains separate native
 bases, and samples separate `x_outer` and `x_inner` state blocks. See the
 [nested-domain model family](docs/usage/nested_domain_model_family.rst).
@@ -248,14 +248,14 @@ one shared concentration product; single-grid output formats are rejected.
 For SLURM batch scripts and installed environments, use the console entry point:
 
 ```bash
-openghg-inversions run-rhime 2019-01-01 2019-01-02 -c rhime.ini --output-path outputs
-openghg-inversions run-rhime-multisector 2019-01-01 2019-01-02 -c rhime_multisector.ini
-openghg-inversions run-rhime-nested 2019-01-01 2019-02-01 -c rhime_nested.ini
+rhime run 2019-01-01 2019-01-02 -c rhime.ini --output-path outputs
+rhime run --model multisector 2019-01-01 2019-01-02 -c rhime_multisector.ini
+rhime run --model nested 2019-01-01 2019-02-01 -c rhime_nested.ini
 ```
 
 The new RHIME config template is available at
 `openghg_inversions/config/templates/rhime_template.ini`. New configs should use
-`flux_sources`; legacy `emissions_name` is accepted when `flux_sources` is absent.
+`flux_sources`; the legacy `emissions_name` spelling is unsupported.
 See the [RHIME terminology and quickstart](docs/usage/rhime.rst) page for the
 canonical config vocabulary.
 
@@ -276,17 +276,11 @@ The direct `fixedbasisMCMC` and `inferpymc` implementation has been removed in
 0.8. The 0.7.x release line is the last line containing it and the
 `--legacy-fixedbasis` option.
 
-Existing supported fixedbasis-style INI files can temporarily use:
-
-```bash
-python -m openghg_inversions.hbmcmc.run_hbmcmc \
-  2019-01-01 2019-02-01 -c example.ini
-```
-
-This wrapper translates old parameter names, copies the effective config for
-provenance, and always calls `run_rhime`. The modern
-`output_format="legacy"` adapter remains available for HBMCMC-compatible
-NetCDF output; it does not execute the removed sampler.
+The complete `openghg_inversions.hbmcmc` namespace, old dictionary/cache
+adapters and runtime spelling translation are removed. Use canonical settings
+with `run_standard` or `rhime run`; preserve a matching 0.7 environment for
+historical execution. Modern `output_format="legacy"` and `InversionOutput`
+exports remain independently supported.
 
 See the [HBMCMC-to-RHIME migration guide](docs/usage/legacy_and_migration.rst)
 for parameter mappings, return-type changes, batch-script updates, and removed
@@ -479,7 +473,7 @@ Use `tox -l` to list all options.
 To pass arguments to pytest, Ruff, mypy, etc, you can use, e.g.
 
 ```bash
-tox -- "tests/test_run_hbmcmc_shim.py"
+tox -- "tests/test_hbmcmc_boundary.py"
 ```
 
 which will pass the test path as a positional argument to the commands invoked by tox.

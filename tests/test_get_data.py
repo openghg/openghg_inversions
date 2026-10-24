@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from typing import Any
 from unittest import mock
 
-import dask.array as da
 import numpy as np
 import pandas as pd
 import pytest
@@ -24,14 +23,8 @@ from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.inversion_data._site_options import convert_to_list
 from openghg_inversions.inversion_data.acquisition import interpolate_flux_to_footprint_grid
 from openghg_inversions.inversion_data.observation_errors import prepare_observation_errors
-from openghg_inversions.hbmcmc.legacy_data import (
-    data_processing_surface_notracer,
-    _save_merged_data,
-    datatree_to_fp_all,
-    fp_all_from_dataset,
-    load_merged_data,
-    make_combined_scenario,
-)
+from openghg_inversions.rhime.params import DataConfig
+from openghg_inversions.rhime.preparation import acquire_merged_data
 from openghg_inversions.inversion_data.getters import get_flux_data
 
 
@@ -68,24 +61,18 @@ def test_mole_fraction_unit_scale_uses_openghg_registry(raw_units: str, expected
     assert mole_fraction_unit_scale(raw_units, context="test observations") == pytest.approx(expected)
 
 
-def test_data_processing_surface_notracer(tac_ch4_data_args, merged_data_file_name, raw_data_path):
-    """Check that `data_processing_surface_notracer` produces the same output
+def test_acquire_merged_data(tac_ch4_data_args, merged_data_file_name, raw_data_path):
+    """Check that `acquire_merged_data` produces the same output
     as v0.1, with test data frozen on 9 Feb 2024, or the same as v0.2, with test data frozen on
     15 Apr 2024 (using the zarr backend).
     """
-    result = data_processing_surface_notracer(**tac_ch4_data_args)
+    result = acquire_merged_data(DataConfig.from_params(tac_ch4_data_args, multisector=False))
 
-    # check number of items returned
-    assert len(result) == 6
-    assert result[1:] == (["TAC"], ["185m"], ["185m"], ["picarro"], ["1h"])
-
-    # check keys of "fp_all"
-    assert list(result[0].keys()) == [
-        ".flux",
-        ".split_by_sectors",
-        ".bc",
-        "TAC",
-    ]
+    assert result.sites == ("TAC",)
+    assert result.site_options.inlet == ("185m",)
+    assert result.site_options.fp_height == ("185m",)
+    assert result.site_options.instrument == ("picarro",)
+    assert result.averaging_period == ("1h",)
 
     # variables to check (to avoid surprises from new variables added to data)
     check_vars = ["mf", "fp", "mf_mod", "bc_mod", "fp_x_flux", "bc_n"]
@@ -93,88 +80,11 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, merged_data_file_na
     # get combined scenario for TAC at time 2019-01-01 00:00:00; "frozen" data made
     # with OpenGHG 0.16 ModelScenario
     with xr.open_dataset(raw_data_path / (merged_data_file_name + ".nc")) as ds:
-        expected_tac_combined_scenario = fp_all_from_dataset(ds)
-        print(expected_tac_combined_scenario)
+        expected_tac_combined_scenario = ds.sel(site="TAC", drop=True)
         xr.testing.assert_allclose(
-            result[0]["TAC"][check_vars].isel(time=0).load(),
-            expected_tac_combined_scenario["TAC"][check_vars].isel(time=0),
+            result.site_data["TAC"][check_vars].isel(time=0).load(),
+            expected_tac_combined_scenario[check_vars].isel(time=0),
         )
-
-
-def test_load_merged_data(merged_data_dir, merged_data_file_name):
-    """This should pass by finding the merged data with .zarr suffix."""
-    fp_all = load_merged_data(merged_data_dir, merged_data_name=merged_data_file_name + "no_zip")
-
-    assert {".scales", ".species", ".units"}.isdisjoint(fp_all)
-
-
-def test_datatree_to_fp_all_drops_obsolete_metadata() -> None:
-    """Older structured artifacts can retain redundant root metadata."""
-    tree = xr.DataTree.from_dict(
-        {"scenarios": xr.DataTree.from_dict({"TAC": xr.Dataset({"mf": ("time", [1.0])})})}
-    )
-    tree.attrs = {
-        ".scales": {"TAC": "WMO-X2004A"},
-        ".species": "CH4",
-        ".units": 1e-9,
-        ".split_by_sectors": False,
-    }
-
-    fp_all = datatree_to_fp_all(tree)
-
-    assert set(fp_all) == {"TAC", ".split_by_sectors"}
-
-
-@pytest.mark.parametrize(
-    "kwargs",
-    [
-        {"merged_data_name": "legacy.pickle"},
-        {"merged_data_name": "legacy", "output_format": "pickle"},
-    ],
-)
-def test_merged_data_rejects_pickle_format(tmp_path, kwargs: dict[str, str]) -> None:
-    """Neither explicit pickle suffixes nor format options are accepted."""
-    with pytest.raises(ValueError, match="Pickle|Unsupported merged-data format"):
-        _save_merged_data({}, tmp_path, **kwargs)
-    with pytest.raises(ValueError, match="Pickle|Unsupported merged-data format"):
-        load_merged_data(tmp_path, **kwargs)
-
-
-def test_load_merged_data_does_not_autodetect_pickle(tmp_path) -> None:
-    """A legacy pickle artifact must not be opened during format discovery."""
-    (tmp_path / "legacy.pickle").write_bytes(b"not a pickle")
-
-    with pytest.raises(ValueError, match="Pickle merged-data files are no longer supported"):
-        load_merged_data(tmp_path, merged_data_name="legacy")
-
-
-def test_fp_all_from_dataset_rejects_non_mole_fraction_units() -> None:
-    """Combined legacy data must retain its mol/mol-compatible unit boundary."""
-    combined = xr.Dataset({"mf": ("time", [1.0], {"units": "kg"})})
-
-    with pytest.raises(ValueError, match="serialized merged observations.*to mol/mol"):
-        fp_all_from_dataset(combined)
-
-
-def test_load_merged_data_missing_data_error(tmp_path):
-    """A missing merged dataset raises without loading unrelated artifacts."""
-    with pytest.raises(ValueError):
-        load_merged_data(tmp_path, merged_data_name="missing", output_format="netcdf")
-
-
-def test_save_load_merged_data(tac_ch4_data_args, tmp_path):
-    merged_data_name = "test_save_load_merged_data"
-
-    fp_all, *_ = data_processing_surface_notracer(
-        save_merged_data=True,
-        merged_data_dir=tmp_path,
-        merged_data_name=merged_data_name,
-        **tac_ch4_data_args,
-    )
-
-    fp_all_reloaded = load_merged_data(merged_data_dir=tmp_path, merged_data_name=merged_data_name)
-
-    xr.testing.assert_allclose(fp_all["TAC"].load(), fp_all_reloaded["TAC"])
 
 
 def test_missing_data_at_one_site(tac_ch4_data_args):
@@ -188,10 +98,10 @@ def test_missing_data_at_one_site(tac_ch4_data_args):
     data_args["fp_height"].append("24m")
     data_args["averaging_period"].append("1H")
 
-    fp_all, *_ = data_processing_surface_notracer(**data_args)
+    merged = acquire_merged_data(DataConfig.from_params(data_args, multisector=False))
 
-    assert "TAC" in fp_all
-    assert "MHD" not in fp_all
+    assert "TAC" in merged.site_data
+    assert "MHD" not in merged.site_data
 
 
 def test_get_footprint_to_match_preserves_original_observation_positions(
@@ -302,7 +212,7 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
     monkeypatch.setattr(get_data_module, "get_footprint_data", fake_get_footprint_data)
     monkeypatch.setattr(get_data_module, "merged_scenario_data", fake_merged_scenario_data)
 
-    result = data_processing_surface_notracer(
+    result = acquire_merged_data(DataConfig.from_params(dict(
         species="ch4",
         sites=["TAC", "GOSAT-BRAZIL"],
         domain="EUROPE",
@@ -312,9 +222,9 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
         platform=["surface", "satellite"],
         max_level=[None, 17],
         time_resolved=[False, True],
-        emissions_name=["inventory"],
+        flux_sources=["inventory"],
         use_bc=False,
-    )
+    ), multisector=False))
 
     assert observed_platforms == [
         ("TAC", "surface", None),
@@ -322,10 +232,10 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
     ]
     assert scenario_platforms == ["surface", "satellite"]
     assert footprint_selectors == [False, True]
-    assert result[0]["TAC"].attrs["openghg_inversions_time_resolved"] == "false"
-    assert result[0]["GOSAT-BRAZIL"].attrs["openghg_inversions_time_resolved"] == "true"
-    assert result[0]["TAC"].attrs["scale"] == "surface-scale"
-    assert len(result) == 6
+    assert result.site_data["TAC"].attrs["openghg_inversions_time_resolved"] == "false"
+    assert result.site_data["GOSAT-BRAZIL"].attrs["openghg_inversions_time_resolved"] == "true"
+    assert result.site_data["TAC"].attrs["scale"] == "surface-scale"
+    assert result.sites == ("TAC", "GOSAT-BRAZIL")
 
 
 @pytest.mark.parametrize("time_resolved", [False, True, None])
@@ -496,7 +406,7 @@ def test_column_inlet_labels_scenario_as_site_column(
     monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kwargs: object())
     monkeypatch.setattr(get_data_module, "merged_scenario_data", fake_scenario)
 
-    data_processing_surface_notracer(
+    acquire_merged_data(DataConfig.from_params(dict(
         species="ch4",
         sites=["TAC"],
         domain="EUROPE",
@@ -506,9 +416,9 @@ def test_column_inlet_labels_scenario_as_site_column(
         inlet="column",
         platform=platform,
         max_level=17,
-        emissions_name=["inventory"],
+        flux_sources=["inventory"],
         use_bc=False,
-    )
+    ), multisector=False))
 
     assert captured_platforms == ["site-column"]
 
@@ -525,7 +435,7 @@ def test_convert_to_list_accepts_numpy_integer_scalar() -> None:
 def test_data_processing_rejects_boolean_max_level_before_retrieval() -> None:
     """Boolean maximum levels are not accepted as integers."""
     with pytest.raises(ValueError, match="must be integers or None"):
-        data_processing_surface_notracer(
+        acquire_merged_data(DataConfig.from_params(dict(
             species="ch4",
             sites=["TAC"],
             domain="EUROPE",
@@ -533,9 +443,9 @@ def test_data_processing_rejects_boolean_max_level_before_retrieval() -> None:
             start_date="2019-01-01",
             end_date="2019-01-02",
             max_level=[True],
-            emissions_name=["inventory"],
+            flux_sources=["inventory"],
             use_bc=False,
-        )
+        ), multisector=False))
 
 
 @pytest.mark.parametrize(
@@ -606,7 +516,7 @@ def test_data_processing_reuses_first_successful_observation_units(
     monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kwargs: object())
     monkeypatch.setattr(get_data_module, "merged_scenario_data", fake_scenario)
 
-    fp_all, retained_sites, *_ = data_processing_surface_notracer(
+    merged = acquire_merged_data(DataConfig.from_params(dict(
         species="ch4",
         sites=["BSD", "TAC", "GOSAT-BRAZIL"],
         domain="EUROPE",
@@ -614,20 +524,21 @@ def test_data_processing_reuses_first_successful_observation_units(
         start_date="2019-01-01",
         end_date="2019-01-02",
         platform=["surface", "surface", "satellite"],
-        emissions_name=["inventory"],
+        flux_sources=["inventory"],
         use_bc=False,
-    )
+    ), multisector=False))
 
     assert requested_output_units == [None, "ppb"]
-    assert retained_sites == ["TAC", "GOSAT-BRAZIL"]
-    np.testing.assert_allclose(fp_all["TAC"]["mf"], [1000.0])
-    np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf"], [1000.0])
-    np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_mod"], [900.0])
-    np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_repeatability"], [2.0])
-    np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_variability"], [3.0])
-    np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_error"], [np.sqrt(13.0)])
-    np.testing.assert_array_equal(fp_all["GOSAT-BRAZIL"]["mf_number_of_observations"], [20])
-    assert fp_all["TAC"]["mf"].attrs["units"] == fp_all["GOSAT-BRAZIL"]["mf"].attrs["units"]
+    assert merged.sites == ("TAC", "GOSAT-BRAZIL")
+    np.testing.assert_allclose(merged.site_data["TAC"]["mf"], [1000.0])
+    np.testing.assert_allclose(merged.site_data["GOSAT-BRAZIL"]["mf"], [1000.0])
+    np.testing.assert_allclose(merged.site_data["GOSAT-BRAZIL"]["mf_mod"], [900.0])
+    np.testing.assert_allclose(merged.site_data["GOSAT-BRAZIL"]["mf_repeatability"], [2.0])
+    np.testing.assert_allclose(merged.site_data["GOSAT-BRAZIL"]["mf_variability"], [3.0])
+    prepared_errors = prepare_observation_errors(merged.site_data, averaging_error=True)
+    np.testing.assert_allclose(prepared_errors["GOSAT-BRAZIL"]["mf_error"], [np.sqrt(13.0)])
+    np.testing.assert_array_equal(merged.site_data["GOSAT-BRAZIL"]["mf_number_of_observations"], [20])
+    assert merged.site_data["TAC"]["mf"].attrs["units"] == merged.site_data["GOSAT-BRAZIL"]["mf"].attrs["units"]
 
 
 def test_data_processing_rejects_non_mole_fraction_units(
@@ -644,16 +555,16 @@ def test_data_processing_rejects_non_mole_fraction_units(
     monkeypatch.setattr(get_data_module, "merged_scenario_data", lambda *args, **kwargs: scenario)
 
     with pytest.raises(ValueError, match="site 'TAC'.*to mol/mol"):
-        data_processing_surface_notracer(
+        acquire_merged_data(DataConfig.from_params(dict(
             species="ch4",
             sites=["TAC"],
             domain="EUROPE",
             averaging_period="1h",
             start_date="2019-01-01",
             end_date="2019-01-02",
-            emissions_name=["inventory"],
+            flux_sources=["inventory"],
             use_bc=False,
-        )
+        ), multisector=False))
 
 
 @pytest.mark.parametrize("error_type", [TypeError, ValueError])
@@ -683,7 +594,7 @@ def test_data_processing_reports_later_site_unit_conversion_failure(
     monkeypatch.setattr(get_data_module, "merged_scenario_data", fake_scenario)
 
     with pytest.raises(ValueError, match="site 'MHD'.*target observation units 'ppb'") as exc_info:
-        data_processing_surface_notracer(
+        acquire_merged_data(DataConfig.from_params(dict(
             species="ch4",
             sites=["TAC", "MHD"],
             domain="EUROPE",
@@ -691,9 +602,9 @@ def test_data_processing_reports_later_site_unit_conversion_failure(
             start_date="2019-01-01",
             end_date="2019-01-02",
             platform="surface",
-            emissions_name=["inventory"],
+            flux_sources=["inventory"],
             use_bc=False,
-        )
+        ), multisector=False))
 
     assert isinstance(exc_info.value.__cause__, error_type)
     assert str(exc_info.value.__cause__) == "Pint could not convert ppm to ppb"
@@ -789,309 +700,19 @@ def test_missing_data_at_all_sites(openghg_test_store):
         "bc_store": "inversions_tests",
         "obs_store": "inversions_tests",
         "footprint_store": "inversions_tests",
-        "emissions_store": "inversions_tests",
+        "flux_store": "inversions_tests",
         "inlet": ["185m", "185m"],
         "instrument": ["picarro", "picarro"],
         "domain": "EUROPE",
         "fp_height": ["185m", "185m"],
         "fp_model": "NAME",
-        "emissions_name": ["total-ukghg-edgar7"],
+        "flux_sources": ["total-ukghg-edgar7"],
         "met_model": "ukv",
         "averaging_period": ["1H", "1H"],
     }
 
     with pytest.raises(SearchError):
-        data_processing_surface_notracer(**data_args)
-
-
-def test_fp_all_to_dataset_and_back(tac_ch4_data_args):
-    fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
-    ds = make_combined_scenario(fp_all)
-    fp_all_recovered = fp_all_from_dataset(ds)
-
-    # check scenarios are the same
-    xr.testing.assert_equal(fp_all["TAC"], fp_all_recovered["TAC"])
-
-    print(fp_all[".bc"])
-    print(fp_all_recovered[".bc"])
-
-    for k, v in fp_all.items():
-        if not k.startswith("."):
-            continue
-
-        assert k in fp_all_recovered
-
-        v_recovered = fp_all_recovered[k]
-
-        if k == ".flux":
-            assert list(v.keys()) == list(v_recovered.keys())
-
-            for flux_data1, flux_data2 in zip(v.values(), v_recovered.values()):
-                xr.testing.assert_allclose(flux_data1.data, flux_data2.data, rtol=1e-3)
-
-        elif k == ".bc":
-            xr.testing.assert_allclose(v.data, v_recovered.data, rtol=1e-3)
-        else:
-            assert v == v_recovered
-
-
-def test_combined_scenario_roundtrip_preserves_annual_flux_period_start() -> None:
-    """Legacy merged data keeps a January annual flux period for June observations."""
-    scenario = xr.Dataset(
-        {"mf": ("time", [1.0])},
-        coords={"time": pd.to_datetime(["2019-06-01"])},
-        attrs={"species": "co2"},
-    )
-    annual_flux = xr.DataArray(
-        np.ones((1, 1, 1)),
-        dims=("lat", "lon", "time"),
-        coords={
-            "lat": [52.0],
-            "lon": [1.0],
-            "time": pd.to_datetime(["2019-01-01"]),
-        },
-        name="flux",
-        attrs={"time_period": "1 year"},
-    )
-    fp_all = {
-        "TAC": scenario,
-        ".flux": {"annual": SimpleNamespace(data=annual_flux.to_dataset())},
-        ".scales": {"TAC": "ppm"},
-        ".species": "CO2",
-    }
-
-    recovered = fp_all_from_dataset(make_combined_scenario(fp_all))
-    recovered_flux = recovered[".flux"]["annual"].data["flux"]
-
-    np.testing.assert_array_equal(
-        recovered_flux["time"].values,
-        np.array(["2019-01-01"], dtype="datetime64[ns]"),
-    )
-    assert recovered_flux.attrs["time_period"] == "1 year"
-
-
-@pytest.mark.parametrize("missing_period", ["", None, np.nan, pd.NaT])
-def test_combined_scenario_uses_dataset_period_when_variable_period_is_missing(
-    missing_period: object,
-) -> None:
-    """Legacy merged data falls back to valid dataset-level period metadata."""
-    scenario = xr.Dataset(
-        {"mf": ("time", [1.0])},
-        coords={"time": pd.to_datetime(["2019-06-01"])},
-        attrs={"species": "co2"},
-    )
-    flux = xr.DataArray(
-        np.ones((1, 1, 1)),
-        dims=("lat", "lon", "time"),
-        coords={
-            "lat": [52.0],
-            "lon": [1.0],
-            "time": pd.to_datetime(["2019-01-01"]),
-        },
-        name="flux",
-        attrs={"time_period": missing_period},
-    )
-    flux_dataset = flux.to_dataset()
-    flux_dataset.attrs["time_period"] = "monthly"
-    fp_all = {
-        "TAC": scenario,
-        ".flux": {"monthly": SimpleNamespace(data=flux_dataset)},
-        ".scales": {"TAC": "ppm"},
-        ".species": "CO2",
-    }
-
-    recovered = fp_all_from_dataset(make_combined_scenario(fp_all))
-
-    assert recovered[".flux"]["monthly"].data["flux"].attrs["time_period"] == "monthly"
-
-
-def test_combined_scenario_roundtrip_preserves_source_specific_flux_times() -> None:
-    """Legacy merged data removes outer-join padding from each flux source."""
-    scenario = xr.Dataset(
-        {"mf": ("time", [1.0, 2.0])},
-        coords={"time": pd.to_datetime(["2019-06-01", "2019-07-01"])},
-        attrs={"species": "co2"},
-    )
-    annual_flux = xr.DataArray(
-        np.ones((1, 1, 1)),
-        dims=("lat", "lon", "time"),
-        coords={
-            "lat": [52.0],
-            "lon": [1.0],
-            "time": pd.to_datetime(["2019-01-01"]),
-        },
-        name="flux",
-        attrs={"time_period": "1 year"},
-    )
-    monthly_flux = xr.DataArray(
-        np.array([[[2.0, 3.0]]]),
-        dims=("lat", "lon", "time"),
-        coords={
-            "lat": [52.0],
-            "lon": [1.0],
-            "time": pd.to_datetime(["2019-06-01", "2019-07-01"]),
-        },
-        name="flux",
-        attrs={"time_period": "monthly"},
-    )
-    fp_all = {
-        "TAC": scenario,
-        ".flux": {
-            "annual": SimpleNamespace(data=annual_flux.to_dataset()),
-            "monthly": SimpleNamespace(data=monthly_flux.to_dataset()),
-        },
-        ".scales": {"TAC": "ppm"},
-        ".species": "CO2",
-    }
-
-    recovered_fluxes = fp_all_from_dataset(make_combined_scenario(fp_all))[".flux"]
-
-    np.testing.assert_array_equal(
-        recovered_fluxes["annual"].data["time"].values,
-        np.array(["2019-01-01"], dtype="datetime64[ns]"),
-    )
-    np.testing.assert_array_equal(
-        recovered_fluxes["monthly"].data["time"].values,
-        np.array(["2019-06-01", "2019-07-01"], dtype="datetime64[ns]"),
-    )
-    assert recovered_fluxes["annual"].data["flux"].attrs["time_period"] == "1 year"
-    assert recovered_fluxes["monthly"].data["flux"].attrs["time_period"] == "monthly"
-    assert np.isfinite(recovered_fluxes["annual"].data["flux"]).all()
-    assert np.isfinite(recovered_fluxes["monthly"].data["flux"]).all()
-
-
-def test_combined_scenario_roundtrip_preserves_all_nan_flux_times() -> None:
-    """Legitimate all-NaN flux slices are not mistaken for concat padding."""
-    scenario = xr.Dataset(
-        {"mf": ("time", [1.0, 2.0])},
-        coords={"time": pd.to_datetime(["2019-06-01", "2019-07-01"])},
-        attrs={"species": "co2"},
-    )
-    annual_flux = xr.DataArray(
-        da.full((1, 1, 1), np.nan, chunks=(1, 1, 1)),
-        dims=("lat", "lon", "time"),
-        coords={
-            "lat": [52.0],
-            "lon": [1.0],
-            "time": pd.to_datetime(["2019-01-01"]),
-        },
-        name="flux",
-        attrs={"time_period": "1 year"},
-    )
-    monthly_flux = xr.DataArray(
-        np.array([[[2.0, 3.0]]]),
-        dims=("lat", "lon", "time"),
-        coords={
-            "lat": [52.0],
-            "lon": [1.0],
-            "time": pd.to_datetime(["2019-06-01", "2019-07-01"]),
-        },
-        name="flux",
-        attrs={"time_period": "monthly"},
-    )
-    fp_all = {
-        "TAC": scenario,
-        ".flux": {
-            "annual": SimpleNamespace(data=annual_flux.to_dataset()),
-            "monthly": SimpleNamespace(data=monthly_flux.to_dataset()),
-        },
-        ".scales": {"TAC": "ppm"},
-        ".species": "CO2",
-    }
-
-    recovered_fluxes = fp_all_from_dataset(make_combined_scenario(fp_all))[".flux"]
-    recovered_annual = recovered_fluxes["annual"].data["flux"]
-
-    assert recovered_annual.chunks is not None
-    np.testing.assert_array_equal(
-        recovered_annual["time"].values,
-        np.array(["2019-01-01"], dtype="datetime64[ns]"),
-    )
-    assert recovered_annual.isnull().all()
-
-
-def test_load_legacy_zarr_reads_lazy_source_period_metadata(tmp_path) -> None:
-    """A lazy legacy Zarr leaf restores timestamp presence and period metadata."""
-    scenario = xr.Dataset(
-        {"mf": ("time", [1.0])},
-        coords={"time": pd.to_datetime(["2019-06-01"])},
-        attrs={"species": "co2"},
-    )
-    annual_flux = xr.DataArray(
-        np.full((1, 1, 1), np.nan),
-        dims=("lat", "lon", "time"),
-        coords={
-            "lat": [52.0],
-            "lon": [1.0],
-            "time": pd.to_datetime(["2019-01-01"]),
-        },
-        name="flux",
-        attrs={"time_period": "1 year"},
-    )
-    fp_all = {
-        "TAC": scenario,
-        ".flux": {"annual": SimpleNamespace(data=annual_flux.to_dataset())},
-        ".scales": {"TAC": "ppm"},
-        ".species": "CO2",
-    }
-    make_combined_scenario(fp_all).to_zarr(tmp_path / "legacy.zarr")
-
-    recovered = load_merged_data(
-        merged_data_dir=tmp_path,
-        merged_data_name="legacy",
-        output_format="zarr",
-    )
-
-    recovered_flux = recovered[".flux"]["annual"].data["flux"]
-    np.testing.assert_array_equal(
-        recovered_flux["time"].values,
-        np.array(["2019-01-01"], dtype="datetime64[ns]"),
-    )
-    assert recovered_flux.isnull().all()
-    assert recovered_flux.attrs["time_period"] == "1 year"
-
-
-@pytest.mark.parametrize(
-    ("flux_times", "flux_values"),
-    [
-        (["2019-06-01"], [2.0]),
-        (["2019-06-01", "2019-07-01"], [2.0, 3.0]),
-    ],
-)
-def test_fp_all_from_dataset_reads_pre_presence_mask_flux_times(
-    flux_times: list[str],
-    flux_values: list[float],
-) -> None:
-    """Older merged datasets retain singleton and multi-time flux behavior."""
-    scenario = xr.Dataset(
-        {"mf": ("time", np.arange(1, len(flux_times) + 1, dtype=float))},
-        coords={"time": pd.to_datetime(flux_times)},
-        attrs={"species": "co2"},
-    )
-    flux = xr.DataArray(
-        np.asarray(flux_values).reshape(1, 1, -1),
-        dims=("lat", "lon", "time"),
-        coords={"lat": [52.0], "lon": [1.0], "time": pd.to_datetime(flux_times)},
-        name="flux",
-        attrs={"time_period": "monthly"},
-    )
-    fp_all = {
-        "TAC": scenario,
-        ".flux": {"monthly": SimpleNamespace(data=flux.to_dataset())},
-        ".scales": {"TAC": "ppm"},
-        ".species": "CO2",
-    }
-    combined = make_combined_scenario(fp_all)
-    legacy = combined.drop_vars(["flux", "flux_time_period", "flux_time_present"]).drop_dims("flux_time")
-    if len(flux_times) == 1:
-        legacy["flux"] = flux.isel(time=0, drop=True).expand_dims(source=["monthly"])
-    else:
-        legacy["flux"] = flux.expand_dims(source=["monthly"])
-
-    recovered_flux = fp_all_from_dataset(legacy)[".flux"]["monthly"].data["flux"]
-
-    np.testing.assert_array_equal(recovered_flux["time"].values, pd.to_datetime(flux_times).values)
-    np.testing.assert_array_equal(recovered_flux.values.ravel(), flux_values)
+        acquire_merged_data(DataConfig.from_params(data_args, multisector=False))
 
 
 def test_add_averaging_error(tac_ch4_data_args):
@@ -1108,12 +729,12 @@ def test_add_averaging_error(tac_ch4_data_args):
         mock_obs.return_value = patched_obs
 
         # set up two scenarios, one with averaging, one without
-        fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
-        ds1 = fp_all["TAC"]
+        merged = acquire_merged_data(DataConfig.from_params(tac_ch4_data_args, multisector=False))
+        ds1 = prepare_observation_errors(merged.site_data, averaging_error=True)["TAC"]
 
-        data_args = {**tac_ch4_data_args, "averagingerror": False}
-        fp_all, *_ = data_processing_surface_notracer(**data_args)
-        ds2 = fp_all["TAC"]
+        data_args = {**tac_ch4_data_args, "averaging_error": False}
+        merged = acquire_merged_data(DataConfig.from_params(data_args, multisector=False))
+        ds2 = prepare_observation_errors(merged.site_data, averaging_error=False)["TAC"]
 
         # check that "mf_error", "mf_repeatability", and "mf_variability" are present
         for var in ["mf_error", "mf_repeatability", "mf_variability"]:
@@ -1125,11 +746,11 @@ def test_add_averaging_error(tac_ch4_data_args):
         assert ds1.mf_repeatability.attrs["long_name"] == ds1.mf.attrs["long_name"] + "_repeatability"
         assert ds1.mf_variability.attrs["long_name"] == ds1.mf.attrs["long_name"] + "_variability"
 
-        # averagingerror=True is default, so for ds1, "mf_error" should have repeatability
+        # averaging_error=True is default, so for ds1, "mf_error" should have repeatability
         # and variability added
         xr.testing.assert_allclose(ds1.mf_error, np.sqrt(ds1.mf_repeatability**2 + ds1.mf_variability**2))
 
-        # ds2 should use repeatability for "mf_error", since we have set averagingerror=False
+        # ds2 should use repeatability for "mf_error", since we have set averaging_error=False
         xr.testing.assert_allclose(ds2.mf_error, ds2.mf_repeatability)
 
 
@@ -1187,7 +808,7 @@ def test_looking_older_flux_files(tac_ch4_data_args, capsys):
 
     # we should get an error when trying to get obs data, but not when trying to get flux data
     with pytest.raises(SearchError):
-        data_processing_surface_notracer(**data_args)
+        acquire_merged_data(DataConfig.from_params(data_args, multisector=False))
 
     stdout = capsys.readouterr().out
 
@@ -1199,7 +820,7 @@ def test_looking_older_flux_files(tac_ch4_data_args, capsys):
 def test_flux_time_period_preserves_source_period(end_date, tac_ch4_data_args):
     """Retrieved annual period is independent of the inversion duration."""
     kwargs = {
-        "sources": tac_ch4_data_args["emissions_name"],
+        "sources": tac_ch4_data_args["flux_sources"],
         "species": tac_ch4_data_args["species"],
         "domain": tac_ch4_data_args["domain"],
         "start_date": "2019-01-01",
@@ -1207,7 +828,7 @@ def test_flux_time_period_preserves_source_period(end_date, tac_ch4_data_args):
     }
     flux_data = get_flux_data(**kwargs)
 
-    source = tac_ch4_data_args["emissions_name"][0]
+    source = tac_ch4_data_args["flux_sources"][0]
     assert flux_data[source].data.flux.attrs["time_period"] == "1 year"
 
 
@@ -1264,14 +885,14 @@ def test_get_flux_data_preserves_annual_period_for_midyear_inversion(
     tac_ch4_data_args,
 ) -> None:
     """A June monthly inversion retains a January annual prior and its period."""
-    source = tac_ch4_data_args["emissions_name"][0]
+    source = tac_ch4_data_args["flux_sources"][0]
     result = get_flux_data(
         sources=[source],
         species=tac_ch4_data_args["species"],
         domain=tac_ch4_data_args["domain"],
         start_date="2019-06-01",
         end_date="2019-07-01",
-        store=tac_ch4_data_args["emissions_store"],
+        store=tac_ch4_data_args["flux_store"],
     )
 
     retained = result[source].data

@@ -2,7 +2,7 @@ Standard and multisector RHIME models
 =====================================
 
 This page makes the model graph behind :func:`run_standard` and
-:func:`run_rhime_multisector` explicit. The advanced CO₂-only and linked
+:func:`run_multisector` explicit. The advanced CO₂-only and linked
 CO₂/O₂ graphs have their canonical home in :doc:`co2_models`. This page has two
 purposes:
 
@@ -30,7 +30,7 @@ The current builders
 
 Each recipe directly composes one readable concrete graph. The standard graph
 lives beside :func:`run_standard` in ``openghg_inversions.rhime.standard``; the
-multisector graph lives beside :func:`run_rhime_multisector` in
+multisector graph lives beside :func:`run_multisector` in
 ``openghg_inversions.rhime.multisector``:
 
 .. code-block:: text
@@ -98,8 +98,7 @@ mean of the observed distribution is therefore
 where omitted components are left out of the sum.
 
 The configuration template explicitly selects
-``mismatch_model="pollution_event"``. This preserves the fractional-error
-equation used by ``run_hbmcmc.py`` for users who start from that template.
+``mismatch_model="pollution_event"`` for the documented fractional-error model.
 Direct runner calls must make a likelihood selection explicitly. The concrete
 model recipe has no mismatch default: parameter resolution converts the
 selector to ``PollutionEventSettings`` in the serializable model specification
@@ -128,16 +127,13 @@ including any boundary and offset contributions. Thus
 :math:`P=|Y-(\mu_{bc}+\mathrm{offset})|` when a baseline exists; without one,
 it uses :math:`P=|Y|+10^{-6}\operatorname{mean}(Y)`.
 
-The ``run_hbmcmc.py`` compatibility path retains its historical boundary-only
-variant: :math:`P=|Y-\mu_{bc}|`, even when an offset is also included in
-:math:`\mu_{\mathrm{obs}}`. That exception preserves existing configurations;
-it is not the scientific default for new RHIME recipes.
+Historical boundary-only variants require matching older software; modern
+construction uses the full baseline above.
 
 Select ``mismatch_model="fixed_error"`` to omit inferred mismatch error. Its
 likelihood scale uses the reported observation error and does not select
 ``min_error``.
-``run_hbmcmc.py`` privately preserves the different historical floor and
-unused-variable details of its two ``no_model_error`` routes.
+Historical fixed-error floors and disconnected sigma variables are not restored.
 
 Aggregation covariance is an explicit advanced opt-in. If a caller selects a
 prepared covariance :math:`C_{agg}` with marginal variance

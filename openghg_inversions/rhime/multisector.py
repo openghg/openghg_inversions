@@ -27,7 +27,7 @@ import xarray as xr
 
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.basis.basis_functions import BasisFunctions
-from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
+from openghg_inversions.inversion_data import MergedData, PreparedInputs
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.models._flux import (
@@ -64,7 +64,7 @@ from .params import RhimeConfig
 from .preparation import (
     acquire_merged_data,
     resolve_basis_inputs,
-    assemble_rhime_inputs,
+    assemble_inputs,
     build_sensitivities,
     filter_observations,
     prepare_observation_errors,
@@ -78,7 +78,7 @@ _BASELINE_INPUT_NAMES = ("H_bc",)
 
 
 def multisector_model_input_names(
-    prepared: RhimePreparedInputs,
+    prepared: PreparedInputs,
     model_spec: RhimeModelSpec,
 ) -> tuple[str, ...]:
     """Select scientific arrays required by the configured multisector components.
@@ -301,7 +301,7 @@ def _multisector_prior_parameters(model_spec: RhimeModelSpec) -> dict[str, Prior
 
 
 def materialize_multisector_inputs(
-    prepared: RhimePreparedInputs,
+    prepared: PreparedInputs,
     model_spec: RhimeModelSpec,
 ) -> tuple[xr.Dataset, dict[str, PriorArgs]]:
     """Materialize selected multisector arrays and enabled priors together.
@@ -381,7 +381,7 @@ def build_multisector_model(
 
 
 def prepare_multisector(
-    merged_data: RhimeMergedData,
+    merged_data: MergedData,
     *,
     domain: str,
     start_date: str,
@@ -397,7 +397,7 @@ def prepare_multisector(
     min_error_options: Mapping[str, bool],
     basis_inputs: Mapping[str, Any],
     bc_basis: xr.Dataset | None = None,
-) -> RhimePreparedInputs:
+) -> PreparedInputs:
     """Prepare observations and sensitivities from supplied scientific resources.
 
     Args:
@@ -458,7 +458,7 @@ def prepare_multisector(
         multisector=True,
     )
 
-    prepared = assemble_rhime_inputs(
+    prepared = assemble_inputs(
         sensitivities,
         basis_functions,
         site_options=site_options,
@@ -486,8 +486,8 @@ def run_multisector(
     *,
     config_file: str | Path | None = None,
     config: RhimeConfig | None = None,
-    merged_data: RhimeMergedData | None = None,
-    prepared: RhimePreparedInputs | None = None,
+    merged_data: MergedData | None = None,
+    prepared: PreparedInputs | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     **kwargs: Any,
@@ -533,9 +533,7 @@ def run_multisector(
             complete ``sector_priors`` mapping keyed by sector name. When model
             sector labels differ from OpenGHG source values, pass
             ``sector_sources`` as a one-to-one mapping from sector name to one
-            unique value in ``flux_sources``. Legacy ``emissions_name`` is
-            accepted only as a compatibility alias when ``flux_sources`` is
-            absent.
+            unique value in ``flux_sources``.
 
     Returns:
         Scientific inversion output borrowing preparation and trace, even when
@@ -558,7 +556,7 @@ def run_multisector(
         if config_file is not None or kwargs:
             raise ValueError("Pass either resolved `config` or `config_file`/run parameters, not both.")
         if not config.data.split_by_sectors:
-            raise ValueError("`run_multisector` received configuration for a different sector layout.")
+            raise ValueError("Multisector model received configuration for a different sector layout.")
     else:
         params = load_params(config_file=config_file, overrides=kwargs)
         config = RhimeConfig.from_params(params, multisector=True)
@@ -650,7 +648,3 @@ def run_multisector(
     postprocess_multisector_outputs(inv_out, config.output)
     save_inversion_output(inv_out, config.output)
     return inv_out
-
-
-# Established public import retained through the 0.9 compatibility cycle.
-run_rhime_multisector = run_multisector

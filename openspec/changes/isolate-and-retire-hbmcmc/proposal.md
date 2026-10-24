@@ -34,6 +34,28 @@ cleanup neither reinterprets scientific data nor implies historical-format suppo
 Broader Python names/imports still require separate exact agreements. The target
 specifies the required outcome; implementation status belongs to these records.
 
+## Prepared-input factory and cleanup addendum — 24 October 2026
+
+The maintainer explicitly approved the additional
+[`PreparedInputs.from_legacy_inputs` retirement](https://github.com/openghg/openghg_inversions/pull/974#issuecomment-6380451664),
+following the [bounded analysis](https://github.com/openghg/openghg_inversions/pull/974#issuecomment-6380430675).
+Its exact replacement is the existing canonical
+`PreparedInputs(inv_inputs=..., basis_functions=..., site_metadata=...)` constructor.
+This is a separately named compatibility-constructor removal under #945/#663,
+not a sixth alias, broad constructor permission or #951 basis disposition.
+Canonical xarray coordinates, site/period order, supplied-basis provenance,
+borrowed arrays and existing persisted schema/codec behavior remain supported.
+
+[Review 5637015484](https://github.com/openghg/openghg_inversions/pull/974#pullrequestreview-5637015484)
+also requests ordinary removed-import absence, rejection of ambiguous sources
+without parsing them, one outer CO2 request-name-validation owner and cleanup of
+dead documentation branches. Applicable component parsers retain their own value
+validation. Independent basis keyword compatibility remains supported with #951;
+its resolution logic can stay local to the consumer without a root helper or
+new removal schedule.
+Mechanisms, evidence and fresh check status belong in design/tasks and the dated
+#960 addendum. Prior revision-specific validation remains historical evidence.
+
 ## Why
 
 At the start of PR #869, modern RHIME imported HBMCMC compatibility code, preventing the legacy

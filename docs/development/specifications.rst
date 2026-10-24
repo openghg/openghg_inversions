@@ -56,7 +56,8 @@ retained capabilities, evidence gate and remaining owners.
        :doc:`/usage/cli`. #961 removes the blanket retention timetable;
        the finite :ref:`CLI command retirement <rhime-cli-command-retirement>`
        and :ref:`five Python alias removals <rhime-python-alias-retirement>`
-       are required target outcomes, with runtime removal still pending. Canonical
+       are implemented by #719. Revision-specific acceptance belongs to its
+       task/PR records. Canonical
        behavior and scientific artifact contents remain protected; supported
        artifact formats/versions are specified independently. Broader Python
        naming remains with
@@ -76,8 +77,8 @@ retained capabilities, evidence gate and remaining owners.
        implemented in `PR 866 <https://github.com/openghg/openghg_inversions/pull/866>`_.
        Current usage: :doc:`/usage/rhime_configuration`.
        #961 specifies canonical-only options and ordinary unsupported-option
-       rejection of every explicit ``use_tracer``. Runtime retirement remains
-       pending under the affected-evidence gate; canonical scientific contracts remain.
+       rejection of every explicit ``use_tracer``. #719 implements runtime retirement
+       with affected migration evidence; canonical scientific contracts remain.
        Configuration serialization/INI writing remains with `issue 814
        <https://github.com/openghg/openghg_inversions/issues/814>`_.
    * - External resources and basis exports
@@ -96,11 +97,11 @@ retained capabilities, evidence gate and remaining owners.
    * - HBMCMC dependency direction and retirement
      - :download:`HBMCMC isolation contract
        <../../openspec/specs/hbmcmc-isolation-retirement/spec.md>`
-     - PR 869 delivered isolation; current code retains transitional translation.
+     - PR 869 delivered isolation; #719 removes the transitional namespace and translation.
        The #961 target has no HBMCMC namespace, forwarding shims or temporary
        option translation. Affected evidence preservation and regression migration
        gate runtime removal; finished converters/launchers are not prerequisites.
-       Implementation remains with #719 and the
+       Implementation and fresh acceptance are tracked by #719 and the
        :download:`active retirement change
        <../../openspec/changes/isolate-and-retire-hbmcmc/proposal.md>`.
        Its `delivery checklist
@@ -168,8 +169,8 @@ Complete #719, including removal of the special ``use_tracer``
 compatibility handling, before #964. #971 remains a separate prerequisite for
 #964's selection-first imputation change. None of #964's scientific delivery,
 #971's implementation or M2 tooling is a prerequisite for #719. The current
-branch still has the transitional adapters and acquired-population error policy;
-this contract amendment implements neither removal nor the new science.
+branch implements #719 retirement and retains the acquired-population error
+policy. The separate #964 scientific change remains pending.
 
 Planning records
 -----------------
