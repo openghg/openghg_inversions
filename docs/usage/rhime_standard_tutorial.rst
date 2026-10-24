@@ -5,6 +5,10 @@ This tutorial runs the supported one-sector :func:`openghg_inversions.rhime.run_
 recipe, inspects its labelled result, and reloads its durable inversion-output
 product.
 
+Continue with :doc:`rhime_standard_plotting_tutorial` for a longer walkthrough
+of observation coverage, concentration comparisons, residuals, and flux maps
+using Fluxie.
+
 The code and recorded outputs form one stateful session. You can
 :jupyter-download-notebook:`download it as a Jupyter notebook <rhime_standard_tutorial>`
 to rerun or modify locally.
@@ -105,7 +109,7 @@ The equivalent supported Python entry point is:
            "OPENGHG_TUTORIAL_CODE_REF", "local checkout"
        ),
        "tutorial data": os.environ.get("OPENGHG_TUTORIAL_DATA_TAG", "v1.0.0"),
-       "sites": list(result.site_names),
+       "sites": result.site_names.values.tolist(),
        "observations": result.inv_inputs.sizes["nmeasure"],
        "posterior samples": {
            name: result.trace.posterior.sizes[name] for name in ("chain", "draw")
@@ -114,7 +118,7 @@ The equivalent supported Python entry point is:
 
 .. jupyter-output::
 
-   {'OpenGHG Inversions commit': '9202222950c3ef2eb7bc83d040df3bcf6c26f94c',
+   {'OpenGHG Inversions commit': '8a1dbf089b01b4f51797e880a82c5eefabe1637d',
     'tutorial data': 'v1.0.0',
     'sites': ['MHD', 'TAC'],
     'observations': 84,
@@ -161,18 +165,21 @@ product functions can derive in-memory summaries from this scientific result:
     'x dimensions': ('chain', 'draw', 'region'),
     'variable roles': {'observation': 'mf',
      'observation_error': 'mf_error',
-     'minimum_error': 'min_error',
-     'concentration': 'y',
-     'model_error': 'epsilon',
+     'observation_prior_factor': 'mf_prior_factor',
+     'observation_prior_upper_level_factor': 'mf_prior_upper_level_factor',
      'observation_repeatability': 'mf_repeatability',
      'observation_variability': 'mf_variability',
      'flux_scale': 'x',
-     'flux_contribution': 'mu',
-     'emissions_sensitivity': 'hx',
+     'model_error': 'epsilon',
+     'concentration': 'y',
+     'baseline': 'mu_bc',
      'boundary': 'mu_bc',
-     'baseline_scale': 'bc',
+     'offset': 'offset',
+     'emissions_sensitivity': 'hx',
      'baseline_sensitivity': 'hbc',
-     'baseline': 'mu_bc'}}
+     'minimum_error': 'min_error',
+     'flux_contribution': 'mu',
+     'baseline_scale': 'bc'}}
 
 ``mf(nmeasure)`` is the observed mole fraction and ``mf_error(nmeasure)`` is
 its supplied observation uncertainty. ``H(region, nmeasure)`` is the labelled
@@ -191,8 +198,9 @@ Inspect diagnostics before interpreting any posterior quantity:
 
    import arviz as az
 
+   diagnostic_posterior = result.trace.posterior.to_dataset().reset_index("bc_region", drop=True)
    summary = az.summary(
-       result.trace,
+       diagnostic_posterior,
        var_names=["x", "bc", "sigma"],
        kind="diagnostics",
    )
@@ -201,17 +209,20 @@ Inspect diagnostics before interpreting any posterior quantity:
 
 .. jupyter-output::
 
-                 mcse_mean  mcse_sd  ess_bulk  ess_tail  r_hat  divergences
-   x[0]               0.03     0.04      12.0      23.0   1.36            0
-   x[1]               0.22     0.02       3.0      23.0   2.36            0
-   x[2]               0.38     0.05       3.0      23.0   2.00            0
-   x[3]               0.07     0.03       5.0      18.0   1.45            0
-   bc[('n', 0)]       0.19     0.12       4.0      13.0   1.80            0
-   bc[('e', 0)]       0.01     0.00      18.0      49.0   1.36            0
-   bc[('s', 0)]       0.14     0.03       4.0      19.0   1.68            0
-   bc[('w', 0)]       0.00     0.00       3.0      17.0   1.81            0
-   sigma[0, 0]        0.21     0.03       3.0      18.0   2.44            0
-   sigma[1, 0]        0.11     0.09       4.0      13.0   1.52            0
+                 ess_bulk ess_tail r_hat mcse_mean  mcse_sd divergences
+   x[0]                 3       12  2.29     0.037    0.013           0
+   x[1]                 2        5  2.48      0.23    0.013           0
+   x[2]                 2        5  2.67      0.54    0.052           0
+   x[3]                 2        8  2.13      0.15    0.046           0
+   bc[0]                2        5  2.23      0.18    0.071           0
+   bc[1]               10       37  1.76     0.014     0.02           0
+   bc[2]                3        5  1.91      0.17    0.019           0
+   bc[3]                2        5  2.17    0.0017  0.00066           0
+   sigma[MHD, 0]        2        5  2.69      0.19    0.033           0
+   sigma[TAC, 0]        3        5  2.78      0.16    0.099           0
+
+The diagnostic view uses a plain boundary-region index for ArviZ's tabular
+summary, leaving the result's labelled coordinates intact.
 
 The 50-draw tutorial result is too short for scientific interpretation.
 Increase chains, tuning, and retained draws; require acceptable R-hat,
@@ -272,8 +283,11 @@ Refreshing the recorded outputs
 -------------------------------
 
 Maintainers intentionally refresh the committed ``jupyter-output`` blocks
-after changing either tutorial, its dependencies, or the companion data. From
-a clean source checkout, run:
+after changing a tutorial, its dependencies, or the companion data. To refresh
+all registered notebooks, first install the optional Fluxie plotting tools
+following :doc:`rhime_standard_plotting_tutorial`. Its first map also needs
+internet access to cache Natural Earth boundaries. From a clean source
+checkout, run:
 
 .. code-block:: console
 

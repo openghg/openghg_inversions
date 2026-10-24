@@ -26,6 +26,7 @@ _TUTORIALS = {
     "rhime_standard_tutorial": _ROOT / "docs" / "usage" / "rhime_standard_tutorial.rst",
     "rhime_multisector_tutorial": _ROOT / "docs" / "usage" / "rhime_multisector_tutorial.rst",
     "prior_predictive_checking": _ROOT / "docs" / "usage" / "prior_predictive_checking.rst",
+    "rhime_standard_plotting_tutorial": _ROOT / "docs" / "usage" / "rhime_standard_plotting_tutorial.rst",
 }
 
 

@@ -138,7 +138,12 @@ def test_recorded_outputs_ignores_stderr_when_a_cell_has_a_result() -> None:
 
 @pytest.mark.parametrize(
     ("name", "inputs"),
-    [("rhime_standard_tutorial", 4), ("rhime_multisector_tutorial", 3), ("prior_predictive_checking", 8)],
+    [
+        ("rhime_standard_tutorial", 4),
+        ("rhime_multisector_tutorial", 3),
+        ("prior_predictive_checking", 8),
+        ("rhime_standard_plotting_tutorial", 8),
+    ],
 )
 def test_tutorials_are_manual_downloadable_notebooks(name: str, inputs: int) -> None:
     document = (record_tutorial_outputs._ROOT / "docs" / "usage" / f"{name}.rst").read_text(encoding="utf-8")
