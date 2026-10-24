@@ -130,8 +130,13 @@ before a separate model run. The
 :doc:`RHIME terminology and prepared-input reference </usage/rhime>`
 documents the expected variables, dimensions, and coordinates. Acquisition
 mechanics live in ``inversion_data.acquisition``; the prepared
-value and its unchanged version-1 schema live in
-``inversion_data.prepared_inputs``. Import both values from ``openghg_inversions.inversion_data``.
+value and its versioned schema live in
+``inversion_data.prepared_inputs``. Writers use schema version 1 for absolute
+boundaries and version 2 when centered operands are present; loaders accept
+both versions. Import the acquisition and prepared values from
+``openghg_inversions.inversion_data``. See the
+:ref:`centered boundary contract <surface-centered-boundary-contract>` for
+operands and supported model routes.
 
 .. autosummary::
    :nosignatures:
@@ -143,6 +148,7 @@ value and its unchanged version-1 schema live in
    openghg_inversions.inversion_data.MergedDataProvenance
    openghg_inversions.inversion_data.PreparedInputs
    openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray
+   openghg_inversions.inversion_data.prepare_surface_site
    openghg_inversions.inversion_data.MergedData.from_options
    openghg_inversions.inversion_data.MergedData.validate_for_preparation
    openghg_inversions.inversion_data.MergedData.with_site_data
@@ -283,6 +289,8 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.parse_prior
    openghg_inversions.models.add_model_data
    openghg_inversions.models.add_linear_component
+   openghg_inversions.rhime.co2.centered_boundary.CenteredBoundaryResult
+   openghg_inversions.rhime.co2.centered_boundary.add_centered_boundary
    openghg_inversions.models.add_linked_linear_component
    openghg_inversions.models.add_correlated_lognormal_state
    openghg_inversions.models.add_offset_component

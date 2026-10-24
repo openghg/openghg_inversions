@@ -125,6 +125,8 @@ def standard_model_input_names(
 
 def _standard_input_names(model_inputs: xr.Dataset, model_spec: RhimeModelSpec) -> tuple[str, ...]:
     """Own selected standard component names and single-sector layout checks."""
+    if model_spec.use_bc and {"H_bc_anomaly", "H_bc_mass", "bc_reference"} & set(model_inputs):
+        raise ValueError("Centered boundary operands require the supported CO2-family pilot model binding.")
     if len(model_spec.sectors) != 1:
         raise ValueError("Standard model specs must include exactly one sector.")
     _require_component_inputs(
@@ -444,7 +446,10 @@ def prepare_standard(
     with_errors = prepare_observation_errors(merged_data.site_data, averaging_error=averaging_error)
     filtered, site_options = filter_observations(with_errors, merged_data.site_options, filters=filters)
 
-    runtime_flux = resolve_runtime_flux(merged_data.flux_data, split_by_sectors=merged_data.split_by_sectors)
+    runtime_flux = resolve_runtime_flux(
+        merged_data.flux_data, split_by_sectors=merged_data.split_by_sectors,
+        explicit_surface=any("surface_transport" in data.attrs for data in merged_data.site_data.values()),
+    )
     with timed("rhime.prepare_inputs.basis_build", basis_algorithm=basis_algorithm):
         basis_functions = prepare_basis(
             site_data=filtered,

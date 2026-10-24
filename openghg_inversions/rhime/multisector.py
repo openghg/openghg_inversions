@@ -125,6 +125,8 @@ def _multisector_input_names(
         ValueError: If selected inputs are absent, sector identities or source
             layouts conflict, or the aggregation-error representation is ambiguous.
     """
+    if model_spec.use_bc and {"H_bc_anomaly", "H_bc_mass", "bc_reference"} & set(model_inputs):
+        raise ValueError("Centered boundary operands require the supported CO2-family pilot model binding.")
     _require_component_inputs(
         model_inputs,
         _MULTISECTOR_FLUX_INPUT_NAMES,
@@ -435,6 +437,7 @@ def prepare_multisector(
     runtime_flux = resolve_runtime_flux(
         merged_data.flux_data,
         split_by_sectors=merged_data.split_by_sectors,
+        explicit_surface=any("surface_transport" in data.attrs for data in merged_data.site_data.values()),
     )
     with timed("rhime.prepare_inputs.basis_build", basis_algorithm=basis_algorithm):
         basis_functions = prepare_basis(

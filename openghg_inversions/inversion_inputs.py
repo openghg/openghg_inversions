@@ -8,6 +8,7 @@ explicit empty selection is an error.
 """
 
 import datetime as dt
+import json
 from collections.abc import Iterable
 from typing import Any, Literal, TypeAlias
 
@@ -219,15 +220,20 @@ def _drop_nan_and_compute(
             Missing names are ignored. Present names are also materialized.
 
     Returns:
-        A new dataset with core payloads materialized and rows containing NaNs
-        in the selected variables removed, preserving retained labels/order.
+        A new dataset with core payloads materialized and invalid rows removed,
+        preserving retained labels/order. Centered inputs reject all nonfinite
+        core rows and require a finite scalar reference shared across sites.
     """
-    drop_subset = [v for v in drop_nan_from if v in ds]
+    drop_subset = [v for v in (*drop_nan_from, "H_bc_anomaly", "H_bc_mass") if v in ds]
     # Materialize before dropna: its row mask otherwise executes shared sources
     # separately from the payloads needed by the inversion.
     to_compute: list[str] = [
         "H",
         "H_bc",
+        "H_bc_anomaly",
+        "H_bc_mass",
+        "bc_reference",
+        "_bc_references",
         "mf",
         "mf_error",
         "mf_repeatability",
@@ -241,7 +247,24 @@ def _drop_nan_and_compute(
     # Variables exclude auxiliary coordinates, which need not become eager.
     computed = dask.compute(*(ds[v].variable for v in to_compute))
     ds = ds.assign(dict(zip(to_compute, computed)))
-    if drop_subset:
+    if "_bc_references" in ds:
+        references = ds["_bc_references"].to_numpy()
+        if not np.isfinite(references).all():
+            raise ValueError("Centered bc_reference must be finite.")
+        if not np.all(references == references[0]):
+            raise ValueError("Centered bc_reference must be identical across all sites in a tracer.")
+        ds = ds.drop_dims("_bc_reference_site")
+    if "bc_reference" in ds and not bool(np.isfinite(ds.bc_reference).all()):
+        raise ValueError("Centered bc_reference must be finite.")
+    # Centered science rows share one finite-value selection at this boundary.
+    if "H_bc_anomaly" in ds:
+        valid = xr.ones_like(ds.mf, dtype=bool)
+        for name in drop_subset:
+            finite = np.isfinite(ds[name])
+            other_dims = [dim for dim in finite.dims if dim != "nmeasure"]
+            valid = valid & (finite.all(other_dims) if other_dims else finite)
+        ds = ds.isel(nmeasure=valid)
+    elif drop_subset:
         ds = ds.dropna(dim="nmeasure", how="any", subset=drop_subset)
 
     return ds
@@ -249,7 +272,7 @@ def _drop_nan_and_compute(
 
 def _drop_unobserved_bc_states(ds: xr.Dataset) -> xr.Dataset:
     """Drop boundary-condition states with zero sensitivity to every observation."""
-    if "H_bc" not in ds:
+    if "H_bc_anomaly" in ds or "H_bc" not in ds:
         return ds
     return ds.sel(bc_region=(ds["H_bc"] != 0).any("nmeasure"))
 
@@ -342,8 +365,8 @@ def make_inv_inputs(
         sites: Sites to retain. ``None`` infers all non-metadata ``fp_data``
             keys in insertion order. An explicit empty list is invalid, and
             every named site must exist in ``fp_data``.
-        bc_freq: Optional frequency used to transform boundary-condition
-            sensitivities.
+        bc_freq: Optional frequency used to transform legacy absolute boundary
+            sensitivities. Centered operands remain unexpanded for model binding.
         min_error: Minimum-error scalar, site mapping, or calculation method.
             ``None`` uses a zero scalar floor.
         min_error_per_site: Whether a calculated minimum error varies by site.
@@ -378,6 +401,18 @@ def make_inv_inputs(
         raise ValueError(f"`fp_data` is missing requested site(s): {missing_sites!r}.")
 
     site_data = {site: fp_data[site] for site in sites}
+    from openghg_inversions.boundary_sensitivity import validate_boundary_operands
+
+    centered_sites = [validate_boundary_operands(dataset) for dataset in site_data.values()]
+    if any(centered_sites) and not all(centered_sites):
+        raise ValueError("Cannot mix centered and absolute per-site boundary representations.")
+    reference = None
+    if all(centered_sites):
+        references = [dataset.bc_reference for dataset in site_data.values()]
+        reference = references[0]
+        if any(value.attrs["units"] != reference.attrs["units"] for value in references[1:]):
+            raise ValueError("Centered bc_reference units must match across sites.")
+        site_data = {site: dataset.drop_vars("bc_reference") for site, dataset in site_data.items()}
     site_data = _fill_missing_optional_observation_factors(site_data)
     _validate_per_site_dimension_names(site_data, ragged_dim="time")
 
@@ -396,6 +431,28 @@ def make_inv_inputs(
             "before gathering into nmeasure."
         ) from exc
 
+    if reference is not None:
+        ds["bc_reference"] = reference
+        ds["_bc_references"] = xr.concat(references, dim="_bc_reference_site")
+        ds.attrs = dict(fp_data[sites[0]].attrs)
+        ds.attrs["boundary_representation"] = "centered-v1"
+
+    # Source selection and normalization can differ between sites. Retain their
+    # individual facts instead of presenting the first site's attrs as universal.
+    surface_provenance = {
+        site: {
+            key: value for key, value in fp_data[site].attrs.items()
+            if key.startswith(("surface_", "boundary_")) and key != "boundary_representation"
+        }
+        for site in sites if "surface_transport" in fp_data[site].attrs
+    }
+    if surface_provenance:
+        ds.attrs = {
+            key: value for key, value in ds.attrs.items()
+            if not key.startswith(("surface_", "boundary_")) or key == "boundary_representation"
+        }
+        ds.attrs["surface_preparation_provenance"] = json.dumps(surface_provenance, sort_keys=True)
+
     # Check that we have variables for a standard RHIME inversion.
     # Note that mf_prior_factor and mf_prior_upper_level_factor are only needed
     # for post-processing (and only if column data is used).
@@ -406,7 +463,7 @@ def make_inv_inputs(
         required_vars=("H", "mf", "mf_error", "mf_repeatability", "mf_variability"),
     )
 
-    if "H_bc" in ds:
+    if "H_bc" in ds and reference is None:
         from openghg_inversions.boundary_sensitivity import BoundaryAlignment
 
         boundary_sensitivity = BoundaryAlignment.prepare(

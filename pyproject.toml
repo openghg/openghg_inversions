@@ -38,7 +38,9 @@ dependencies = [
     "pandas<3.0",
     "matplotlib",
     "scipy",
-    "openghg",
+    # Temporary until a release includes the monthly residual-flux correction.
+    # Replace with that released minimum before publishing OGI to PyPI.
+    "openghg @ git+https://github.com/openghg/openghg.git@8d3d7b128591824256c10421839f37caaa637705",
     "openghg-defs!=0.0.13",
     "cf_xarray>=0.10.6",
     "sparse",

@@ -35,6 +35,7 @@ from openghg_inversions.serialization import (
 
 RHIME_PREPARED_INPUTS_SCHEMA = "openghg_inversions.rhime_prepared_inputs"
 RHIME_PREPARED_INPUTS_SCHEMA_VERSION = 1
+RHIME_CENTERED_PREPARED_INPUTS_SCHEMA_VERSION = 2
 _SITE_AVERAGING_PERIOD = "averaging_period"
 _SITE_STRING_ENCODING = "_rhime_nullable_string_encoding"
 
@@ -42,6 +43,7 @@ __all__ = [
     "PreparedInputs",
     "RHIME_PREPARED_INPUTS_SCHEMA",
     "RHIME_PREPARED_INPUTS_SCHEMA_VERSION",
+    "RHIME_CENTERED_PREPARED_INPUTS_SCHEMA_VERSION",
     "RhimePreparedInputs",
 ]
 
@@ -250,13 +252,16 @@ class PreparedInputs:
         )
         dt.attrs = {
             "schema": RHIME_PREPARED_INPUTS_SCHEMA,
-            "schema_version": RHIME_PREPARED_INPUTS_SCHEMA_VERSION,
+            "schema_version": (
+                RHIME_CENTERED_PREPARED_INPUTS_SCHEMA_VERSION
+                if "H_bc_anomaly" in inv_inputs else RHIME_PREPARED_INPUTS_SCHEMA_VERSION
+            ),
         }
         return dt
 
     @classmethod
     def from_datatree(cls: type[Self], dt: xr.DataTree) -> Self:
-        """Construct prepared RHIME inputs from a version-1 DataTree.
+        """Construct prepared inputs from absolute (v1) or centered (v2) data.
 
         Args:
             dt: DataTree using the ``openghg_inversions.rhime_prepared_inputs``
@@ -279,10 +284,9 @@ class PreparedInputs:
             )
 
         version = dt.attrs.get("schema_version")
-        if isinstance(version, bool) or not isinstance(version, Integral) or version != 1:
+        if isinstance(version, bool) or not isinstance(version, Integral) or version not in (1, 2):
             raise ValueError(
-                f"Expected RhimePreparedInputs schema_version "
-                f"{RHIME_PREPARED_INPUTS_SCHEMA_VERSION}, got {version!r}."
+                f"Expected RhimePreparedInputs schema_version 1 or 2, got {version!r}."
             )
 
         missing_nodes = [
@@ -303,6 +307,11 @@ class PreparedInputs:
                 "is missing its 'compress' metadata."
             )
         inv_inputs = decode_cf_multiindexes(encoded_inv_inputs, compressed_indexes)
+        from openghg_inversions.boundary_sensitivity import validate_boundary_operands
+
+        centered = validate_boundary_operands(inv_inputs)
+        if centered != (version == 2):
+            raise ValueError("Prepared schema version must match absolute (1) or centered (2) boundaries.")
         basis_functions_dt = cast(xr.DataTree, dt["basis_functions"])
         basis_functions = BasisFunctions.from_datatree(basis_functions_dt)
         return cls(
@@ -514,6 +523,9 @@ def _canonicalize_rhime_inv_inputs(
         ValueError: If measurement indexes, site labels, or source labels do
             not satisfy the semantic prepared-input contract.
     """
+    from openghg_inversions.boundary_sensitivity import validate_boundary_operands
+
+    validate_boundary_operands(ds)
     nmeasure_index = ds.indexes.get("nmeasure")
     if not isinstance(nmeasure_index, pd.MultiIndex):
         raise ValueError(  # noqa: TRY004 - malformed artifact schema, not an argument type error

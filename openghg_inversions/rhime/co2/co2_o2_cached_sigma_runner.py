@@ -122,6 +122,8 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     if requested_sampler.nuts_sampler != "pymc":
         raise ValueError("Linked cached fixed-OU requires nuts_sampler='pymc'.")
     prepared = prepared_inputs
+    if getattr(prepared, "boundary_operands", {}):
+        raise ValueError("Centered boundaries do not support cached likelihoods.")
     boundaries = dict(getattr(prepared, "boundary_sensitivity", {}))
     if use_bc is not None:
         if (
@@ -135,7 +137,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
                 raise ValueError(f"{channel} use_bc requires prepared boundary_sensitivity.")
             if not enabled:
                 boundaries.pop(channel, None)
-    materialized, boundaries = _materialize_co2_o2_replay_inputs(
+    materialized, boundaries, _ = _materialize_co2_o2_replay_inputs(
         prepared, independent_error_sd, boundaries
     )
     observations, fixed, co2, o2, error = materialized

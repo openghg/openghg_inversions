@@ -14,7 +14,11 @@ observation variables required by
 also contain either canonical ``H`` or one of ``fp_x_flux`` and
 ``fp_x_flux_sectoral``. When both cache variables are present, the explicitly
 sector-resolved ``fp_x_flux_sectoral`` is used. Optional ``H_bc`` retains the
-existing sampled boundary-condition contribution.
+existing sampled boundary-condition contribution. Centered boundaries instead
+provide ``H_bc_anomaly`` and ``H_bc_mass`` on ``(bc_region, time)``, scalar
+``bc_reference``, and ``boundary_representation="centered-v1"``. Anomaly and
+reference use the observation concentration units; mass uses ``"1"``. These
+operands remain spatial until the model selects its fitted boundary periods.
 
 Site data must be supplied as an ordered site-to-Dataset mapping or a root
 DataTree with one direct child node per site, each holding a site-local Dataset
@@ -33,7 +37,7 @@ sectors because that would corrupt flux reconstruction.
 
 The adapter is pure: it never mutates the supplied xarray objects or retained
 basis functions. Known footprint-times-flux caches and non-time-dependent data
-variables are excluded from the returned canonical inputs; other
+variables except the centered scalar reference are excluded from the returned canonical inputs; other
 observation-aligned extension variables are retained. The reserved
 ``fixed_baseline`` extension is rejected until a reusable semantic Baseline
 component defines its likelihood and output behavior.
@@ -695,6 +699,9 @@ def _validate_and_prepare_sites(
     for site, dataset in site_data.items():
         if "time" not in dataset.dims:
             raise ValueError(f"Site {site!r} dataset must contain a 'time' dimension.")
+        from openghg_inversions.boundary_sensitivity import validate_boundary_operands
+
+        validate_boundary_operands(dataset)
         _validate_time_coordinate(dataset, site=site)
         dataset = _normalise_release_coordinates(dataset, site=site)
         missing_vars = [name for name in _REQUIRED_OBSERVATION_VARIABLES if name not in dataset]
@@ -778,7 +785,7 @@ def _validate_and_prepare_sites(
             )
 
         non_observation_variables = [
-            name for name, variable in dataset.data_vars.items() if "time" not in variable.dims
+            name for name, variable in dataset.data_vars.items() if "time" not in variable.dims and name != "bc_reference"
         ]
         canonical = dataset.drop_vars(
             (*_CACHE_VARIABLES, *non_observation_variables),

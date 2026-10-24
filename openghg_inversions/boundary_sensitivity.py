@@ -6,13 +6,16 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from openghg_inversions.array_ops import get_xr_dummies
-from openghg_inversions.inversion_inputs import DatetimeLike, make_freq_indicator
+from openghg_inversions.inversion_inputs import DatetimeLike, make_freq_indicator, normalise_frequency
 
 __all__ = [
     "BoundaryAlignment",
+    "align_boundary_operands",
+    "validate_boundary_operands",
     "scale_satellite_boundary_sensitivity_to_column_signal",
 ]
 
@@ -102,6 +105,150 @@ class BoundaryAlignment:
             }
         )
         return cls(data)
+
+
+def validate_boundary_operands(operands: xr.Dataset) -> bool:
+    """Validate raw spatial centered operands before model-period expansion.
+
+    Args:
+        operands: Borrowed dataset with ``boundary_representation='centered-v1'``,
+            ``H_bc_anomaly`` and ``H_bc_mass`` on unique indexed ``bc_region``
+            and ``time`` or ``nmeasure`` dimensions, and scalar ``bc_reference``.
+            Anomaly and reference share the exact concentration unit string;
+            mass has units ``'1'``. Optional ``mf`` has matching units. An
+            absolute ``H_bc`` diagnostic must be marked ``unexpanded``.
+
+    Returns:
+        Whether centered operands are present. Accepted operands remain raw:
+        :func:`align_boundary_operands` expands them once at model binding.
+        Timestamps are not required for a single period. Finite payload values
+        are checked at the shared materialization boundary; this validator does
+        not compute or mutate borrowed numerical arrays.
+
+    Raises:
+        ValueError: If centered operands are incomplete, already expanded, or
+            have incompatible representation, dimensions, labels or units.
+    """
+    names = {"H_bc_anomaly", "H_bc_mass", "bc_reference"}
+    representation = operands.attrs.get("boundary_representation")
+    if representation is not None and representation != "centered-v1":
+        raise ValueError(f"Unsupported boundary_representation {representation!r}.")
+    centered = bool(names.intersection(operands.variables)) or operands.attrs.get(
+        "boundary_representation"
+    ) == "centered-v1"
+    if not centered:
+        return False
+    if not names <= set(operands.variables):
+        raise ValueError("Centered boundaries require H_bc_anomaly, H_bc_mass and bc_reference.")
+    if operands.attrs.get("boundary_representation") != "centered-v1":
+        raise ValueError("Centered boundaries require boundary_representation='centered-v1'.")
+    if "H_bc" in operands and operands.H_bc.attrs.get("boundary_sensitivity_preparation") != "unexpanded":
+        raise ValueError("Centered boundaries cannot include expanded or unmarked absolute H_bc.")
+    anomaly, mass, reference = (operands[name] for name in ("H_bc_anomaly", "H_bc_mass", "bc_reference"))
+    if any(
+        value.attrs.get("boundary_sensitivity_preparation") not in (None, "unexpanded")
+        or isinstance(value.indexes.get("bc_region"), pd.MultiIndex)
+        for value in (anomaly, mass)
+    ):
+        raise ValueError("Centered preparation requires unexpanded spatial operands; align only at model binding.")
+    observation_dim = "time" if "time" in anomaly.dims else "nmeasure"
+    anomaly = anomaly.transpose("bc_region", observation_dim)
+    mass = mass.transpose("bc_region", observation_dim)
+    xr.align(anomaly, mass, join="exact", copy=False)
+    for dim in ("bc_region", observation_dim):
+        if dim not in anomaly.indexes or not anomaly.indexes[dim].is_unique:
+            raise ValueError(f"Centered boundaries require unique indexed {dim} labels.")
+    if reference.ndim != 0:
+        raise ValueError("Centered bc_reference must be scalar.")
+    units = anomaly.attrs.get("units")
+    if not units or reference.attrs.get("units") != units or mass.attrs.get("units") != "1":
+        raise ValueError("Centered anomaly/reference must share concentration units; mass units must be '1'.")
+    if "mf" in operands and operands.mf.attrs.get("units") != units:
+        raise ValueError("Centered boundary concentration units must match mf units.")
+    return True
+
+
+def validate_centered_boundary_periods(frequency: str | None, anchor_time: DatetimeLike | None) -> None:
+    """Reject invalid or ignored period settings at each external binding boundary."""
+    normalise_frequency(frequency)
+    if anchor_time is not None:
+        if frequency in (None, "monthly"):
+            raise ValueError("Boundary anchor_time requires a fixed-duration frequency.")
+        try:
+            if np.isnat(np.datetime64(anchor_time)):
+                raise ValueError("NaT is not an anchor")
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Boundary anchor_time must be a valid datetime.") from exc
+
+
+def align_boundary_operands(
+    operands: xr.Dataset,
+    *,
+    frequency: str | None = None,
+    anchor_time: DatetimeLike | None = None,
+    observation_labels: xr.DataArray | None = None,
+) -> xr.Dataset:
+    """Expand raw anomaly and mass with a shared period mask at model binding.
+
+    Args:
+        operands: Raw dataset accepted by :func:`validate_boundary_operands`.
+        frequency: ``None`` creates one period without requiring timestamps.
+            A frequency (including ``'monthly'``) requires a one-dimensional
+            datetime ``time`` coordinate along the observation dimension.
+        anchor_time: Optional anchor for fixed-duration periods; not allowed
+            for a single period or calendar-month periods.
+        observation_labels: Optional authoritative labels used to select and
+            reorder the indexed observation dimension before expansion.
+
+    Returns:
+        New dataset with ``H_bc_anomaly`` and ``H_bc_mass`` on ``bc_region``
+        and the original observation dimension. The ``bc_region`` MultiIndex
+        contains ``bc_curtain`` and ``bc_period``. Units, representation and
+        scalar ``bc_reference`` are preserved. Outputs are marked expanded and
+        must not be passed through raw validation or expansion again. Borrowed
+        payloads stay lazy and unchanged; frequency-based expansion materializes
+        a lazy auxiliary time coordinate once to construct the period mask.
+
+    Raises:
+        ValueError: If raw operands or period settings are invalid, or required
+            datetime coordinates are missing or incompatible.
+        KeyError: If an authoritative observation label is absent.
+    """
+    validate_centered_boundary_periods(frequency, anchor_time)
+    if not validate_boundary_operands(operands):
+        raise ValueError("Expected centered boundary operands.")
+    observation_dim = "time" if "time" in operands.H_bc_anomaly.dims else "nmeasure"
+    raw = operands[["H_bc_anomaly", "H_bc_mass"]]
+    if observation_labels is not None:
+        raw = raw.sel({observation_dim: observation_labels.transpose(observation_dim)})
+    if frequency is None:
+        period = xr.zeros_like(raw[observation_dim], dtype=int)
+    else:
+        if "time" not in raw.coords or raw.time.dims != (observation_dim,) or raw.time.dtype.kind != "M":
+            raise ValueError("Frequency-based boundary expansion requires a datetime time coordinate along observations.")
+        time = raw.time
+        if hasattr(time.data, "__dask_graph__"):
+            time = time.compute()
+            raw = raw.assign_coords(time=(observation_dim, time.data))
+        period = make_freq_indicator(time, frequency, anchor_time=anchor_time)
+    period = period.rename("bc_period")
+    mask = get_xr_dummies(period, return_sparse=False, cat_dim="bc_period")
+    result = (raw.rename(bc_region="bc_curtain") * mask).stack(
+        bc_region=("bc_curtain", "bc_period")
+    ).transpose("bc_region", observation_dim)
+    result.attrs = dict(operands.attrs)
+    for name in raw.data_vars:
+        result[name].attrs = dict(operands[name].attrs)
+        result[name].attrs.update(
+            boundary_sensitivity_preparation="sampled-period-expansion",
+            bc_frequency=frequency or "none",
+            bc_anchor_time=(
+                str(np.datetime64(anchor_time) if anchor_time is not None else time.values.min())
+                if frequency not in (None, "monthly") else "not-applicable"
+            ),
+        )
+    result["bc_reference"] = operands.bc_reference
+    return result
 
 
 def scale_satellite_boundary_sensitivity_to_column_signal(

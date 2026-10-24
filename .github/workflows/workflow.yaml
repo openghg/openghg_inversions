@@ -75,7 +75,8 @@ jobs:
       - name: Install package
         run: |
           uv pip install --system --upgrade setuptools wheel
-          uv pip install --system "git+https://github.com/openghg/openghg.git@devel" -e . pytest pytest-xdist
+          uv pip install --system -e . pytest pytest-xdist
+          uv pip install --system --no-deps "openghg @ git+https://github.com/openghg/openghg.git@devel"
       - name: Report scientific I/O versions and PyTensor backend
         run: >-
           python -c 'import h5py, h5netcdf, netCDF4, numpy, sys, xarray;
@@ -126,14 +127,28 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install locked dependencies
         run: uv sync --locked --group test --python ${{ matrix.python-version }}
-      - name: Verify lock tracks the latest OpenGHG release
+      - name: Verify the declared OpenGHG dependency is installed
         run: |
-          locked=$(uv run --no-sync python -c 'from importlib.metadata import version; print(version("openghg"))')
-          latest=$(bash .github/workflows/openghg_versions.sh)
-          if [ "$locked" != "$latest" ]; then
-            echo "uv.lock has OpenGHG $locked, but the latest release is $latest. Refresh uv.lock."
-            exit 1
-          fi
+          uv run --no-sync python - <<'PY'
+          import json
+          import subprocess
+          import tomllib
+          from importlib.metadata import distribution
+          from pathlib import Path
+
+          dependencies = tomllib.loads(Path("pyproject.toml").read_text())["project"]["dependencies"]
+          requirement = next((value for value in dependencies if value.startswith("openghg @ ")), None)
+          provider = distribution("openghg")
+          if requirement is not None:
+              url, revision = requirement.removeprefix("openghg @ git+").rsplit("@", 1)
+              installed = json.loads(provider.read_text("direct_url.json") or "{}")
+              assert installed.get("url") == url, installed
+              assert installed.get("vcs_info", {}).get("commit_id") == revision, installed
+              print(f"Installed declared OpenGHG revision {revision}")
+          else:
+              latest = subprocess.check_output(["bash", ".github/workflows/openghg_versions.sh"], text=True).strip()
+              assert provider.version == latest, f"Refresh uv.lock: installed {provider.version}, latest {latest}"
+          PY
       - name: Report scientific I/O versions and PyTensor backend
         run: >-
           uv run --no-sync python -c 'import h5py, h5netcdf, netCDF4, numpy, sys, xarray;
@@ -181,6 +196,26 @@ jobs:
             runtime-comparison/
           retention-days: 7
 
+  surface-pilot:
+    name: Check pinned surface preparation pilot
+    runs-on: ubuntu-latest
+    env:
+      PYTENSOR_FLAGS: floatX=float64
+      DASK_NUM_WORKERS: '2'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Test explicit provider revision
+        run: uvx --from 'tox>=4.24' --with tox-uv tox -e py312-surfacePilot
+
   lint:
     name: Run lint
     runs-on: ubuntu-latest
@@ -219,14 +254,14 @@ jobs:
       - name: Install tox
         run: uv tool install tox --with tox-uv
       - name: Verify Pyright and Mypy diagnostics
-        run: tox -e borrowed-types
+        run: tox -e borrowed-types,surface-types
 
   # Stable job name for branch-protection required-check rules.
   # Use "CI Gate" as the required check name.
   ci-gate:
     name: CI Gate
     runs-on: ubuntu-latest
-    needs: [test, locked-test, lint, borrowed-types]
+    needs: [test, locked-test, surface-pilot, lint, borrowed-types]
     if: ${{ always() }}
     permissions: {}
     steps:
@@ -238,6 +273,10 @@ jobs:
           fi
           if [ "${{ needs.locked-test.result }}" != "success" ]; then
             echo "Lockfile test job failed, was cancelled, or was skipped (result: ${{ needs.locked-test.result }})."
+            exit 1
+          fi
+          if [ "${{ needs.surface-pilot.result }}" != "success" ]; then
+            echo "Pinned surface pilot tests failed, were cancelled, or were skipped."
             exit 1
           fi
           if [ "${{ needs.lint.result }}" != "success" ]; then

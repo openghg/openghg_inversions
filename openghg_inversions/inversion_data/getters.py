@@ -89,6 +89,8 @@ def get_flux_data(
     end_date: str,
     store: str | None = None,
     flux_non_finite_check: FluxNonFiniteCheck = "lazy",
+    *,
+    allow_older_flux: bool = True,
 ) -> dict[str, FluxData]:
     """Retrieve, normalize, and sanitize flux data for an inversion.
 
@@ -102,6 +104,9 @@ def get_flux_data(
         flux_non_finite_check: ``"lazy"`` to apply zero-fill without counting,
             or ``"count"`` to compute exact non-finite counts and warn when
             replacements are made.
+        allow_older_flux: Allow the historical fallback which relabels the last
+            available inventory slice to the requested start. False rejects
+            missing requested data without substituting an older inventory.
 
     Returns:
         Retrieved flux objects keyed by source. Each ``flux`` variable is cast
@@ -131,7 +136,13 @@ def get_flux_data(
             if len(flux_data.data.time) == 0:
                 raise SearchError
 
-        except SearchError:
+        except SearchError as exc:
+            if not allow_older_flux:
+                logging.Logger.disabled = False
+                raise SearchError(
+                    f"No requested flux data for source {source!r} between {start_date} and {end_date}; "
+                    "older-inventory fallback is disabled for explicit surface preparation."
+                ) from exc
             print(f"No flux data found between {start_date} and {end_date}.")
             print(f"Searching for flux data from before {start_date}.")
 

@@ -254,6 +254,8 @@ def build_rhime_co2_cached_sigma(
         ValueError: If component options contradict one another, prepared
             arrays are invalid, or fixed OU mappings or parameters are invalid.
     """
+    if "H_bc_anomaly" in prepared_inputs.inv_inputs:
+        raise ValueError("Centered boundaries do not support cached likelihoods.")
     if not use_bc and (bc_prior is not None or bc_state_activity is not None):
         raise ValueError("bc_prior and bc_state_activity require use_bc=True.")
     if offset_prior is None and offset_args:

@@ -246,8 +246,8 @@ def assemble_inputs(
     owned_site_data = {site: dataset.copy(deep=False) for site, dataset in site_data.items()}
     for site in site_options.sites:
         owned_site_data[site].attrs["Domain"] = domain
-    # These inverse-model settings are materialized into labelled arrays here
-    # to preserve the existing numerical contract while preparation is split.
+    # Legacy absolute BCs retain preparation-owned period expansion. Centered
+    # operands stay spatial and reusable until the model chooses its periods.
     with timed("rhime.prepare_inputs.make_inv_inputs", sites=len(site_options.sites)):
         inv_inputs = make_inv_inputs(
             fp_data=owned_site_data,
