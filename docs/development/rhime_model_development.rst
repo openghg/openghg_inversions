@@ -213,8 +213,12 @@ for another family.
 
 Moving a preparation equation, including observation-error derivation,
 minimum-error calculation, or boundary-period expansion, is a scientific
-change requiring its own parity evidence. The configuration contract records
-the current observation-error-before-filtering policy. Supported prepared-input
+change requiring its own parity evidence. The
+:download:`scientific-input contract <../../openspec/specs/rhime-scientific-inputs/spec.md>`
+owns preparation operations. Current recipes prepare observation errors before
+filtering, as shown in :doc:`/usage/customising_rhime`; the selection-first change
+proposed in `PR 964 <https://github.com/openghg/openghg_inversions/pull/964>`_
+remains separate work. Supported prepared-input
 contents and examples are in :doc:`/usage/rhime` and
 :doc:`/usage/customising_rhime`; checkpoint limitations are in
 :doc:`/usage/staged_workflow`.

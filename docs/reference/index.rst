@@ -147,6 +147,7 @@ value and its unchanged version-1 schema live in
    openghg_inversions.inversion_data.MergedData.validate_for_preparation
    openghg_inversions.inversion_data.MergedData.with_site_data
    openghg_inversions.rhime.preparation.resolve_basis_inputs
+   openghg_inversions.rhime.preparation.resolve_bc_basis
    openghg_inversions.rhime.preparation.acquire_merged_data
    openghg_inversions.rhime.preparation.export_basis
    openghg_inversions.rhime.standard.build_standard_model
