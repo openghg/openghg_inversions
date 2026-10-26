@@ -129,8 +129,9 @@ def bind_boundary_sensitivity(
     Observation labels own the row order. Raw sensitivities can be reused with
     different frequencies; already expanded sensitivities may be consumed only
     without a period override. Direct callers may supply an independently named
-    state axis, which is retained when no temporal expansion is requested;
-    expansion produces the canonical ``bc_region`` curtain/period index.
+    state axis. Unmarked direct inputs retain their state labels when no temporal
+    expansion is requested; marked ``raw-spatial`` preparations and explicit
+    frequency choices produce the canonical ``bc_region`` curtain/period index.
     Payloads stay borrowed and lazy until the model's explicit materialization
     boundary.
     """
@@ -150,9 +151,11 @@ def bind_boundary_sensitivity(
         if frequency is not None or anchor_time is not None:
             raise ValueError("Boundary period overrides require raw spatial sensitivity; regenerate baked inputs.")
         aligned = sensitivity.sel({raw_dim: labels})
-    elif state_dim != "bc_region" and frequency is None and anchor_time is None:
-        # Direct scientific callers retain their independently named state axes
-        # when requesting no temporal expansion.
+    elif (frequency is None and anchor_time is None
+          and sensitivity.attrs.get("boundary_sensitivity_preparation") != "raw-spatial"):
+        # Direct scientific callers retain state labels shared with their priors
+        # when requesting no expansion. Prepared raw-spatial arrays explicitly
+        # opt into the reusable curtain/period contract, including one period.
         aligned = sensitivity.sel({raw_dim: labels})
     else:
         if state_dim != "bc_region":

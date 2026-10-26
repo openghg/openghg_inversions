@@ -469,24 +469,42 @@ per site:
    R = A + D_{obs}
        + \operatorname{diag}\left(\sigma_{site}[\operatorname{site}(i)]^2\right).
 
-Here ``A`` is the selected aggregation-error covariance and ``D_obs`` is the
-diagonal covariance from reported observation errors. Each is included once.
+Here ``A`` is a fixed coherent-reduction covariance when the component is
+composed with CO2 inputs, and ``D_obs`` is the diagonal covariance from reported
+observation errors. Each is included once. The ordinary standard/multisector
+adapter below supplies ``A = 0``.
 This likelihood does not apply ``min_error`` or ``fixed_model_mismatch`` and
 does not add temporal correlation. In particular, it is an IID component, not
 the fixed-OU model.
 
-Select it through the existing Python-only likelihood seam. For inferred site
-amplitudes, pass an explicit positive prior:
+For standard or multisector execution, bind the component through an ordinary
+callable that supplies zero fixed covariance. For inferred site amplitudes,
+pass an explicit positive prior:
 
 .. code-block:: python
 
+   import numpy as np
+
    from openghg_inversions.models import add_site_sigma_gaussian_likelihood
+   from openghg_inversions.observation_error import AggregationError
    from openghg_inversions.rhime import run_standard
+
+   def site_sigma_likelihood(
+       *, observations, observation_error, mean, output_dim, site_amplitude_prior,
+   ):
+       return add_site_sigma_gaussian_likelihood(
+           observations=observations,
+           observation_error=observation_error,
+           aggregation_error=AggregationError("none", np.zeros(observations.sizes[output_dim])),
+           mean=mean,
+           output_dim=output_dim,
+           site_amplitude_prior=site_amplitude_prior,
+       )
 
    result = run_standard(
        config_file="config.ini",
        mismatch_model=None,
-       likelihood_builder=add_site_sigma_gaussian_likelihood,
+       likelihood_builder=site_sigma_likelihood,
        likelihood_kwargs={
            "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.75},
        },
@@ -495,8 +513,9 @@ amplitudes, pass an explicit positive prior:
 The ``0.75`` value above is an explicit scale in ppm because all prior
 parameters and fixed amplitudes are interpreted in the observations'
 concentration units; OpenGHG Inversions does not choose a universal default
-scale. To use known values instead, replace ``site_amplitude_prior`` with
-``fixed_site_amplitudes``, a mapping covering every observed site label. Pass
+scale. To use known values instead, change the adapter to accept and forward
+``fixed_site_amplitudes`` instead of ``site_amplitude_prior`` and pass that
+option in ``likelihood_kwargs`` as a mapping covering every observed site label. Pass
 exactly one of these two options.
 
 The graph names the labelled site vector ``sigma_site`` on

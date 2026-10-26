@@ -314,37 +314,58 @@ multisector recipe is called; the recipes themselves select no default.
 
 The model-owned
 ``models.fixed_ou.add_fixed_ou_gaussian_likelihood`` adds a fixed-timescale,
-within-site Ornstein--Uhlenbeck mismatch covariance. For example::
+within-site Ornstein--Uhlenbeck mismatch covariance. Standard and multisector
+callbacks receive the ordinary observation error; a project-owned callable
+supplies the component's explicit zero fixed covariance. For example::
+
+   import numpy as np
 
    from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+   from openghg_inversions.observation_error import AggregationError
    from openghg_inversions.rhime import run_standard
 
+   def fixed_ou_likelihood(
+       *, observations, observation_error, mean, output_dim,
+       tau_hours, site_amplitude_prior,
+   ):
+       return add_fixed_ou_gaussian_likelihood(
+           observations=observations,
+           observation_error=observation_error,
+           aggregation_error=AggregationError("none", np.zeros(observations.sizes[output_dim])),
+           mean=mean,
+           output_dim=output_dim,
+           tau_hours=tau_hours,
+           site_amplitude_prior=site_amplitude_prior,
+       )
+
    result = run_standard(
-       ...,
-       likelihood_builder=add_fixed_ou_gaussian_likelihood,
+       config_file="config.ini",
+       mismatch_model=None,
+       likelihood_builder=fixed_ou_likelihood,
        likelihood_kwargs={
            "tau_hours": 5.0,
            "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.75},
        },
    )
 
-The residual covariance is
-``R = F F^T + diag(d) + direct_sum_s(a_s^2 T_s(tau_s))``, where
+For this ordinary-recipe adapter the residual covariance is
+``R = diag(observation_error**2) + direct_sum_s(a_s^2 T_s(tau_s))``, where
 ``T_s[i, j] = exp(-abs(t_i - t_j) / tau_s)``. The direct sum gives zero
-cross-site OU covariance. ``F F^T + diag(d)`` is the selected fixed
-aggregation covariance plus reported observation-error variance; this
-component does not apply the historical ``min_error`` floor.
+cross-site OU covariance. This component does not apply the historical
+``min_error`` floor.
 
 ``tau_hours`` may instead be an exact mapping from retained site labels to
-fixed positive timescales. Pass ``fixed_site_amplitudes`` as a scalar or exact
-site mapping to use known amplitudes instead of the inferred prior. An inferred
+fixed positive timescales. To use known amplitudes, change the adapter to accept
+and forward ``fixed_site_amplitudes`` instead of ``site_amplitude_prior`` and
+supply a scalar or exact site mapping in ``likelihood_kwargs``. An inferred
 amplitude requires an explicit ``site_amplitude_prior`` in the same
 concentration units as the observations; no fixed default is assumed. Tau has
 units of hours. Observation rows may be interleaved or nonmonotonic in time;
 the component preserves their order and sets cross-site OU covariance exactly
 to zero.
 
-The component evaluates low-rank aggregation covariance with a fixed-OU
+When composed separately with coherent CO2 prepared inputs, the component
+evaluates low-rank aggregation covariance with a fixed-OU
 generalized-eigen and Woodbury method without forming a dense observation
 covariance. Dense aggregation input is a full-rank fallback. It currently
 requires every generalized base-plus-OU mode variance to be strictly positive.

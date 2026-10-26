@@ -12,7 +12,7 @@ from scipy.stats import multivariate_normal
 
 from openghg_inversions.models.coords import get_coord_registry, registered_model
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
-from openghg_inversions.observation_error import resolve_aggregation_error
+from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
 from openghg_inversions.rhime.multisector import build_multisector_model
 from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.serialization import load_trace, save_trace
@@ -273,6 +273,20 @@ def test_standard_recipes_accept_installed_fixed_ou_likelihood(
         dims=("nmeasure", "region"),
         coords={"nmeasure": data.nmeasure, "region": ["r1"]},
     )
+    def fixed_ou_likelihood(
+        *, observations, observation_error, mean, output_dim, tau_hours, fixed_site_amplitudes,
+    ):
+        """Bind the ordinary recipes' independent errors to the reusable OU component."""
+        return add_fixed_ou_gaussian_likelihood(
+            observations=observations,
+            observation_error=observation_error,
+            aggregation_error=AggregationError("none", np.zeros(observations.sizes[output_dim])),
+            mean=mean,
+            output_dim=output_dim,
+            tau_hours=tau_hours,
+            fixed_site_amplitudes=fixed_site_amplitudes,
+        )
+
     likelihood_kwargs = {"tau_hours": 5.0, "fixed_site_amplitudes": 0.5}
     if multisector:
         source_design = xr.concat(
@@ -302,7 +316,7 @@ def test_standard_recipes_accept_installed_fixed_ou_likelihood(
             data.assign(H=source_design),
             model_spec,
             priors={f"x_{sector.variable_suffix}": sector.x_prior for sector in model_spec.sectors},
-            likelihood_builder=add_fixed_ou_gaussian_likelihood,
+            likelihood_builder=fixed_ou_likelihood,
             likelihood_kwargs=likelihood_kwargs,
         ).model
     else:
@@ -313,7 +327,7 @@ def test_standard_recipes_accept_installed_fixed_ou_likelihood(
         )
         model = build_standard_model(
             data.assign(H=design), model_spec, priors={"x": prior},
-            likelihood_builder=add_fixed_ou_gaussian_likelihood,
+            likelihood_builder=fixed_ou_likelihood,
             likelihood_kwargs=likelihood_kwargs,
         ).model
 
@@ -321,6 +335,7 @@ def test_standard_recipes_accept_installed_fixed_ou_likelihood(
         model.named_vars
     )
     assert "sigma" not in model.named_vars
+    np.testing.assert_allclose(model["epsilon"].eval(), np.sqrt(0.2**2 + 0.5**2))
 
 
 def test_likelihood_trace_annotation_round_trips_identity_and_options(tmp_path) -> None:
