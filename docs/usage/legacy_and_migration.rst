@@ -19,8 +19,10 @@ Observation selection and uncertainty
 -------------------------------------
 
 ``daily_median`` and ``six_hr_mean`` have been removed from the modern filter
-registry and Python module. Configurations using either name fail with migration
-guidance. They aggregated Dataset variables without defining uncertainty
+registry and Python module. Active requests using either name fail ordinary
+unsupported-filter validation. Global scalar and list requests are validated even
+without observation sites; site-specific choices are deferred for absent sites.
+They aggregated Dataset variables without defining uncertainty
 propagation for the new observations. Retain the matching historical software
 when reproducing those calculations.
 

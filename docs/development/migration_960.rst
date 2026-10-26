@@ -705,3 +705,25 @@ migration report to
 `#949 <https://github.com/openghg/openghg_inversions/issues/949>`_. This addendum
 does not define a replacement resampling algorithm or revise the historical
 migration expectations above.
+
+
+Aggregation-filter validation disposition, 26 October 2026
+---------------------------------------------------------
+
+The maintainer's PR #971 review supersedes the named runtime rejection described
+in the 23 October comparison above. Both aggregation functions and registry
+entries remain removed. Runtime validation now treats all unsupported active
+filter names uniformly, with ordinary ``KeyError`` and no historical-name
+mapping or migration translation. Global scalar and list requests validate
+against the supported registry before expansion, including empty and
+metadata-only observations. Site-specific entries validate before any filter
+executes only for sites present in the observations; absent-site choices are
+deferred uniformly regardless of spelling.
+
+The earlier evidence and independent source arithmetic remain a dated record.
+Historical resampling guidance remains in :doc:`/usage/legacy_and_migration`;
+no aggregation statistic or uncertainty-propagation policy is substituted.
+Observation errors still use the acquired population in this change; #964 owns
+the separate selection-first scientific amendment. Focused validation belongs to
+``tests/test_filters.py``, including registry checks without observation sites
+and absent-site deferral, through the supported modern acquisition fixture.

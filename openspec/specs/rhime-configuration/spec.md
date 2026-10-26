@@ -448,21 +448,31 @@ SHALL otherwise remain unchanged.
 
 ### Requirement: Accepted observation-selection filter names
 
-The retired aggregation filter names `daily_median` and `six_hr_mean` SHALL NOT
-be accepted as observation-selection filters or exported as direct Python filter
-functions. Requests naming either filter SHALL raise `KeyError` with guidance to
-make an explicit resampling and uncertainty-propagation decision. Rejection SHALL
-occur before applying any preceding filter or executing lazy scientific data.
-No mean, median or other aggregation statistic SHALL be substituted automatically.
+Observation-selection requests SHALL use supported registered filter names.
+Global scalar and sequence requests SHALL be validated even when no observation
+sites are present. Site-specific requests SHALL validate only entries for sites
+present in the supplied observations; absent-site entries SHALL remain deferred.
+Unsupported active names SHALL raise ordinary `KeyError` before applying any
+preceding filter or executing lazy scientific data, without historical-name
+recognition or migration translation.
 
-#### Scenario: Reject a retired aggregation filter
+Observation selection SHALL NOT provide aggregation filters or direct Python
+aggregation-filter functions. Resampling and propagation of the resulting
+observation uncertainty SHALL be explicit scientific choices separate from
+selection. No aggregation statistic SHALL be substituted automatically.
 
-- **WHEN** an observation-filter request names `daily_median` or `six_hr_mean`,
-  alone, in a sequence or in a site-specific request
-- **THEN** it raises `KeyError` with resampling and uncertainty-propagation guidance
-  before any earlier requested filter or lazy scientific payload executes
-- **AND** neither a direct Python filter function nor a registry entry remains
+#### Scenario: Reject an unsupported active filter
+
+- **WHEN** a global scalar or sequence request, or an active site-specific request, names an unregistered filter
+- **THEN** it raises ordinary `KeyError` before any earlier requested filter or lazy scientific payload executes
+- **AND** global requests receive the same validation with empty or metadata-only observations
 - **AND** no replacement aggregation statistic is selected automatically
+
+#### Scenario: Defer absent-site filter choices
+
+- **WHEN** a site-specific request includes an unsupported filter for a site absent from the observations
+- **THEN** that site's choice is deferred without executing or validating it
+- **AND** requests for present sites are validated before any filter executes
 
 ### Requirement: Configuration supplies explicit scientific choices
 

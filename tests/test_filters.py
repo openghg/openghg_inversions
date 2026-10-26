@@ -143,45 +143,39 @@ def test_invalid_filter_requests_fail_before_any_data_execution(
             filtering(data, request)
 
     assert calls == []
-    if name == "unknown_filter":
-        assert error.value.args == (name,)
-    else:
-        message = str(error.value)
-        assert name in message
-        assert "removed resampling filter" in message
-        assert "uncertainty-propagating resampling before observation selection" in message
+    assert error.value.args == (name,)
 
 
-@pytest.mark.parametrize("name", ["daily_median", "six_hr_mean"])
+@pytest.mark.parametrize("name", ["daily_median", "six_hr_mean", "unknown_filter", None])
 @pytest.mark.parametrize("as_list", [False, True])
 @pytest.mark.parametrize("data", [{}, {".metadata": "unchanged"}])
-def test_retired_global_filters_reject_inputs_without_sites(name, as_list, data):
+def test_global_filters_validate_registry_without_sites(name, as_list, data):
+    if name is None and not as_list:
+        assert filtering(data, None) is data
+        return
     request = [name] if as_list else name
-    with pytest.raises(KeyError, match=f"{name}.*removed resampling filter"):
+    with pytest.raises(KeyError) as error:
         filtering(data, request)
+    assert error.value.args == (name,)
 
 
-@pytest.mark.parametrize("name", ["daily_median", "six_hr_mean"])
+@pytest.mark.parametrize("name", ["daily_median", "six_hr_mean", "unknown_filter", None])
 @pytest.mark.parametrize("as_list", [False, True])
-def test_retired_filters_reject_absent_site_entries(name, as_list):
-    request = {"MHD": [name] if as_list else name}
-    with pytest.raises(KeyError, match=f"{name}.*removed resampling filter"):
-        filtering({}, request)
-
-
-@pytest.mark.parametrize("filters", [
-    {"MHD": "unknown_filter"}, {"MHD": ["unknown_filter"]}, {"MHD": None}, {"MHD": [None]},
-])
-def test_inactive_invalid_filter_entries_remain_ignored(filters):
+@pytest.mark.parametrize("with_active_site", [False, True])
+def test_absent_site_filter_entries_remain_deferred(name, as_list, with_active_site):
     dataset = xr.Dataset({"mf": ("time", [1.0])}, coords={"time": pd.date_range("2020-01-01", periods=1)})
-    result = filtering({"TAC": dataset}, filters)
-    assert result["TAC"] is dataset
+    data = {"TAC": dataset} if with_active_site else {".metadata": "unchanged"}
+    request = {"MHD": [name] if as_list else name}
+    result = filtering(data, request)
+    assert result.keys() == data.keys()
+    for site in data:
+        assert result[site] is data[site]
 
 
-@pytest.mark.parametrize("filters", ["unknown_filter", ["unknown_filter"], [None]])
+@pytest.mark.parametrize("filter_request", ["noon", ["noon"], {"MHD": "noon"}])
 @pytest.mark.parametrize("data", [{}, {".metadata": "unchanged"}])
-def test_unrelated_global_filters_remain_unused_without_sites(filters, data):
-    assert filtering(data, filters) == data
+def test_supported_filters_accept_inputs_without_sites(filter_request, data):
+    assert filtering(data, filter_request) == data
 
 
 @pytest.mark.parametrize("site_mapping", [False, True])
