@@ -120,7 +120,7 @@ They do not establish validation of this restack after PR #974 and updated #971.
 - [x] 8.1 Preserve canonical construction/provenance and BC basis setup from #974, generic supported-filter validation from #971, and pinned Git references to earlier #960 evidence while porting #964's retained-population and model-input behavior.
 - [x] 8.2 Retain strict ordinary raw prepared schema 2; record the provisional retired-v1/ordinary-v2/optional-centered-v3 map without centered implementation. Future #965 must preserve ordinary BCs; #976 review remains open.
 - [x] 8.3 Complete focused restack tests, Ruff, strict OpenSpec validation and independent review.
-- [ ] 8.4 Record fresh final Python 3.12/3.13 and documentation validation for the restacked revision.
+- [x] 8.4 Record fresh final Python 3.12/3.13 and documentation validation for the restacked revision, including failed full-suite diagnostics and successful bounded correction retries.
 
 The latest maintainer direction removes historical aggregation fixtures and their
 calculations from the current test tree and maintained documentation. Earlier
@@ -149,8 +149,9 @@ record; current tests cover supported behavior and generic invalid names only.
 - Independent higher-effort review found no scoped findings; its 119 selected
   tests and Ruff checks on 13 relevant modules passed. These counts overlap the
   local checks and must not be added together.
-- Final CI-equivalent validation remains pending. Earlier complete-matrix records
-  do not establish acceptance of this restacked revision.
+- Final full-suite diagnostics and the successful bounded correction retry are
+  recorded below. Earlier complete-matrix records do not establish acceptance
+  of this restacked revision.
 
 ### Final matrix diagnostics, 26 October 2026
 
@@ -192,7 +193,31 @@ rendered pages in each tree: no broken local links, retired-name mentions or
 retirement-JSON downloads were found. All pinned archive commit/path references
 resolved. No additional broad audit or full-suite repeat was performed.
 
-The selected two-module retry across all three environments remains pending for
-both the merged prerequisite and corrected dependent tree. Task 8.4 stays open;
-that bounded retry will complement these original full-suite results rather than
-claiming another complete-suite run.
+### Successful boundary retry and scoped closeout, 26 October 2026
+
+Slurm array `19728007` completed both primary elements with exit status `0:0`.
+Each ran exactly `tests/test_hbmcmc_boundary.py` and
+`tests/test_observation_error_preparation.py` through `py312-openghgCur`,
+`py313-openghgCur` and moving-dependency `py312-openghgDev`:
+
+- Element `0`, merged prerequisite #971 at `53f6b4b2`, passed 23 tests with two
+  warnings in each environment.
+- Element `1`, corrected dependent #964 at `d0133911`, passed 30 tests with four
+  warnings in each environment.
+- Compiler preflights passed with Python 3.12.11 for both Python 3.12 environments
+  and Python 3.13.7 for the Python 3.13 environment. Selected Ruff checks passed
+  for both elements. Logs are `slurm-971-964-boundary-retry-19728007_0.out` and
+  `slurm-971-964-boundary-retry-19728007_1.out`.
+
+This bounded retry verifies the namespace cleanup and dependency-tolerant test
+correction on the supported locked interpreters and moving dependencies. It
+complements the original full-suite results and their passing lint, borrowed
+typing and documentation checks; it is not a fresh full-suite pass. The original
+failures and exact tested revisions remain recorded above. No production
+scientific behavior changed in the correction.
+
+All scoped restack implementation, independent review and validation work is
+complete. #971 is already merged at `53f6b4b2`; #964 remains draft for maintainer
+review. This records-only closeout changes no executable source or test behavior
+and performs no #964 merge, release or archival. Broader handoff-programme
+acceptance and optional centered/identifier decisions retain their separate owners.
