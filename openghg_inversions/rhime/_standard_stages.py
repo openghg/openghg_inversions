@@ -11,7 +11,6 @@ from uuid import uuid4
 import xarray as xr
 
 from openghg_inversions._provenance import installed_ogi_provenance
-from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.inference.sampling import RhimeSampler, resolve_sampler
 from openghg_inversions.inversion_data import MergedData, PreparedInputs
 from openghg_inversions.postprocessing.contracts import OutputContract
@@ -32,7 +31,7 @@ from .sampling import sample_rhime_model
 from .params import DataConfig, resolve_model_options
 from .specs import RhimeModelSpec, RhimeOutputSpec
 from .standard import build_standard_model, materialize_standard_inputs, prepare_standard
-from .preparation import acquire_merged_data, resolve_basis_inputs
+from .preparation import acquire_merged_data, resolve_basis_inputs, resolve_bc_basis
 
 
 def _require_standard(data_config: DataConfig) -> None:
@@ -134,10 +133,7 @@ def prepare(
         ValueError: If the data configuration or supplied inputs conflict.
     """
     basis_inputs = resolve_basis_inputs(data_config)
-    bc_basis = (
-        load_bc_basis(data_config.bc_basis_paths)
-        if data_config.use_bc and data_config.bc_basis_paths is not None else None
-    )
+    bc_basis = resolve_bc_basis(data_config)
 
     if merged_data is None:
         merged_data = acquire_merged_data(data_config)

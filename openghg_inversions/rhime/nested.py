@@ -14,7 +14,6 @@ from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions._provenance import installed_ogi_provenance
 
 from openghg_inversions.native_flux import resolve_runtime_flux
-from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions.rhime.preparation import resolve_basis_inputs
 from openghg_inversions.rhime._resources import resolve_resource_paths
@@ -59,6 +58,7 @@ from .outputs import (
 from .ini import read_rhime_ini
 from .params import DataConfig, RhimeConfig
 from .preparation import (
+    resolve_bc_basis,
     acquire_merged_data,
     assemble_inputs,
     build_sensitivities,
@@ -1391,10 +1391,7 @@ def run_nested(
         )
         outer_basis_inputs = resolve_basis_inputs(outer_data)
         inner_basis_inputs = resolve_basis_inputs(inner_data)
-        bc_basis = (
-            load_bc_basis(outer_data.bc_basis_paths)
-            if outer_data.use_bc and outer_data.bc_basis_paths is not None else None
-        )
+        bc_basis = resolve_bc_basis(outer_data)
         outer_merged = acquire_merged_data(outer_data)
         inner_merged = acquire_merged_data(inner_data)
         prepared = prepare_nested_rhime_inputs(

@@ -8,7 +8,6 @@ scientist can read or copy this module without reconstructing a pipeline.
 from __future__ import annotations
 
 from openghg_inversions.native_flux import resolve_runtime_flux
-from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions._provenance import installed_ogi_provenance
@@ -70,6 +69,7 @@ from .outputs import (
 from .params import RhimeConfig
 from .requests import load_params
 from .preparation import (
+    resolve_bc_basis,
     assemble_inputs,
     build_sensitivities,
     export_basis,
@@ -574,10 +574,7 @@ def run_standard(
     # 1. Resolve resources, acquire or validate data, then prepare scientific inputs.
     if prepared is None:
         basis_inputs = resolve_basis_inputs(config.data)
-        bc_basis = (
-            load_bc_basis(config.data.bc_basis_paths)
-            if config.data.use_bc and config.data.bc_basis_paths is not None else None
-        )
+        bc_basis = resolve_bc_basis(config.data)
 
         if merged_data is None:
             merged_data = acquire_merged_data(config.data)

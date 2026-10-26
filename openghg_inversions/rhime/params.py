@@ -72,6 +72,7 @@ class DataConfig:
     landsea_path: Path | None = None
     basis_partition_paths: tuple[Path, ...] | None = None
     bc_basis_paths: tuple[Path, ...] | None = None
+    bc_basis_algorithm: str | None = "NESW"
     outer_regions_path: Path | None = None
     bc_input: str | None = None
     basis_algorithm: str | None = "weighted"
@@ -148,6 +149,10 @@ class DataConfig:
         if (remaining.get("basis_path") is None and remaining.get("basis_partition_path") is None
                 and remaining.get("basis_partition_paths") is None and basis_algorithm not in allowed):
             raise ValueError(f"`basis_algorithm` must be one of {allowed!r}; got {basis_algorithm!r}.")
+        bc_algorithm = remaining.get("bc_basis_algorithm", cls.bc_basis_algorithm)
+        if (remaining.get("use_bc", cls.use_bc) and remaining.get("bc_basis_paths") is None
+                and (not isinstance(bc_algorithm, str) or bc_algorithm != "NESW")):
+            raise ValueError(f"`bc_basis_algorithm` must be 'NESW' without selected files; got {bc_algorithm!r}.")
         _bc_frequency_policy(remaining.get("bc_freq", cls.bc_freq))
         remaining["sites"] = as_list(remaining["sites"])
         site_options = SiteOptions.from_inputs(**{
@@ -354,7 +359,7 @@ def resolve_model_options(params: Mapping[str, Any], *, data_config: DataConfig)
     sector_sources = normalise_sector_sources(remaining.pop("sector_sources", None))
     if sector_sources is not None:
         if not data_config.split_by_sectors:
-            raise ValueError("`sector_sources` is only supported by `run_multisector`.")
+            raise ValueError("`sector_sources` is only supported by multisector configuration.")
         _validate_sector_source_mapping(flux_sources, sector_sources)
     x_prior = remaining.pop("x_prior", None)
     if data_config.split_by_sectors:

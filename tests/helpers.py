@@ -225,12 +225,11 @@ def prepare_inputs(**params):
     """Compose canonical RHIME stages for scientific regression fixtures."""
     from openghg_inversions.rhime.params import RhimeConfig
     from openghg_inversions.rhime import preparation
-    from openghg_inversions.basis.support import load_bc_basis
 
     config = RhimeConfig.from_params({"output_format": "none", **params},
                                      multisector=params.get("split_by_sectors", False))
     basis_inputs = preparation.resolve_basis_inputs(config.data)
-    bc_basis = load_bc_basis(config.data.bc_basis_paths) if config.data.use_bc and config.data.bc_basis_paths is not None else None
+    bc_basis = preparation.resolve_bc_basis(config.data)
     merged = preparation.acquire_merged_data(config.data)
     with_errors = preparation.prepare_observation_errors(merged.site_data, averaging_error=config.data.averaging_error)
     filtered, site_options = preparation.filter_observations(

@@ -49,6 +49,7 @@ __all__ = [
     "build_sensitivities",
     "filter_observations",
     "resolve_basis_inputs",
+    "resolve_bc_basis",
     "acquire_merged_data",
     "export_basis",
 ]
@@ -371,6 +372,33 @@ def _validate_multisector_sensitivity_sources(
     return sensitivity
 
 
+
+
+def resolve_bc_basis(data_config: Any) -> xr.Dataset | None:
+    """Load enabled exact BC resources, or select the built-in directional basis.
+
+    Configuration owns algorithm validation. Exact files take precedence over
+    that inactive algorithm choice. With no files, resolved ``"NESW"`` uses
+    acquired directional contributions through the scientific ``None`` input.
+    Disabled BCs perform no resource I/O. Selected files are loaded before
+    acquisition using the existing time combination and spatial alignment.
+    The configuration and borrowed scientific inputs remain unchanged.
+
+    Args:
+        data_config: Resolved acquisition/preparation configuration.
+
+    Returns:
+        Loaded labelled BC basis, or None for disabled BCs or built-in NESW.
+
+    Raises:
+        ValueError: If the exact file selection is empty.
+        OSError: If a selected file is missing or unreadable.
+    """
+    from openghg_inversions.basis.support import load_bc_basis
+
+    if not data_config.use_bc or data_config.bc_basis_paths is None:
+        return None
+    return load_bc_basis(data_config.bc_basis_paths)
 
 
 def resolve_basis_inputs(data_config: Any) -> dict[str, Any]:
