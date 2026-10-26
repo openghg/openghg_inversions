@@ -326,7 +326,7 @@ def test_diagnostics_accept_digest_free_sample_manifest(tmp_path: Path, model: s
     write_json(
         manifest_path,
         {
-            "schema_version": 1,
+            "schema_version": 1 if model == "co2" else 2,
             "producer": "openghg_inversions",
             "stage": "sample",
             "schema": f"openghg_inversions.{model}.sample",

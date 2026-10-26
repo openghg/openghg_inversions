@@ -127,9 +127,13 @@ Acquisition replay is deferred to #829 and does not block prepared/sample handof
 
 The [configuration capability](../../specs/rhime-configuration/spec.md) records
 grouped configuration and independent phase resolution delivered by merged #866.
-This handoff change consumes that baseline without a duplicate configuration delta. Its three
-execution/handoff deltas remain pending, and completed baseline tasks do not
-establish their implementation.
+This handoff change consumes that baseline without a duplicate configuration delta.
+Its execution/handoff capabilities remain active proposals with implemented family
+routes and open programme acceptance. The #876 numerical contracts are owned by
+[rhime-scientific-inputs](../../specs/rhime-scientific-inputs/spec.md), while
+configuration owns option resolution and these handoffs own saved reuse/replay.
+Code implementing the current #876 amendment is present on this branch; CI
+acceptance and broader handoff completion are not established by this placement.
 
 Merged #854 supplies current [model-selection](../../specs/rhime-model-selection/spec.md)
 and [model-composition](../../specs/rhime-model-composition/spec.md) baselines.
@@ -239,17 +243,18 @@ absence of the key in the raw model mapping, not a prematurely filled model defa
 | Choice | Preparation owner | Full and saved model binding |
 | --- | --- | --- |
 | `use_bc` | `DataConfig.use_bc` retains the existing default `True` and controls acquiring/constructing BC inputs. | An omitted model choice inherits the resolved preparation choice. Explicit `False` may ignore available BC inputs; explicit `True` requires them. |
-| `bc_freq` | `DataConfig.bc_freq` retains the existing default `None` and controls the temporal expansion baked into the inputs. | Omission uses the saved/resolved preparation fact. A repeated equivalent value is a compatibility claim; a conflicting value fails, including when `use_bc=False`. No model default re-expands the data. |
+| BC periods | Preparation retains raw spatial BC inputs and the original requested date anchor. | `bc_freq` and any explicit model anchor select temporal grouping at model construction; omission selects one period. Compatible models can choose different periods from one preparation. |
+| Minimum error | Preparation retains observations and the raw inputs needed by supported floor methods. | The selected likelihood owns the floor choice and its calculation from fitted retained observations when consumed. |
 
 The legacy flat `use_bc` option resolves once at its preparation owner and also
 supplies the full run's model choice, preserving existing full-run behavior.
 An explicitly supplied model group may choose `False` while preparation has
 `True`; `True` with preparation `False` fails early for full configuration and
 before model construction for saved sampling. Save the resolved preparation
-BC choice and temporal policy as facts, and check the required arrays separately;
+BC availability and requested date anchor as facts, and check the required arrays separately;
 a missing array must not silently change a requested `True` into `False`.
-`bc_freq=None` is a concrete existing temporal policy, not a marker for an omitted
-model key. No duplicate default table or generic routing registry is required.
+`bc_freq=None` selects one model period rather than recording a baked preparation
+policy. No duplicate default table or generic routing registry is required.
 These rules cover standard/multisector; CO2 retains its family-specific defaults
 and coherent preparation compatibility rules.
 
@@ -347,6 +352,13 @@ family identical stage names. The following sketch consumes #834/#837/#838/#839;
 its helper names must be reconciled with those deliveries and #868 rather than
 implemented again here. Acquisition and preparation receive separate explicit
 selections from `config.data`; resource paths/maps have already been resolved:
+
+These are development choices, not required internal call graphs: call canonical
+`prepare_basis` directly with resolved arguments and use the actual sensitivity,
+selection and assembly implementations. Do not retain forwarding wrappers solely
+for uniform stage names, timing or keyword translation. Pass per-site datasets and
+aligned `SiteOptions` between preparation steps; construct scientific results from
+their inputs rather than mutating a result after construction.
 
 ```python
 merged = acquire(explicit_acquisition_options)
@@ -517,6 +529,14 @@ and supported arguments are descriptive, never imports or executable instruction
 Encoding numerical provenance is an explicit serialization boundary, not a hidden
 computation performed by configuration access or a compatibility hash.
 
+Standard/multisector sample persistence retains the exact fitted BC alignment and
+consumed minimum-error operands with their labels. Raw preparation supports new
+inference choices; replay uses the completed fit's operands without repeating
+alignment or floor estimation. Reject incompatible older baked preparation/sample
+formats with migration guidance rather than infer raw operands from them. Keep
+that family-scoped format boundary separate from independent modern
+`InversionOutput` codecs and CO2's coherent affine loaders.
+
 The current output-consumer inventory establishes the standard slice's boundary:
 
 | Consumer | Saved information it needs |
@@ -549,14 +569,18 @@ new scientific request. Shared result/product owners accept that context; remove
 the competing stage-owned `basic.nc` write and post-write artifact discovery.
 One output policy and one product-writing owner govern both live and saved routes.
 In-memory products remain available without a destination when no writing is requested.
+Keep one `load_samples`/`save_samples` codec owner for the scientific result core
+and preparation generation, and consume it in replay rather than reconstruct
+domain records inline. Keep operational product/export saving in one nearby
+helper so its naming/path policy stays consistent across supported routes.
 
 ### 7. Reuse stops at choices already encoded by preparation
 
 | Later choice | Reuse? |
 | --- | --- |
 | Standard/multisector graph-time scaling, BC or offset priors | Yes, when required arrays/layout exist |
-| Supported likelihood, available minimum-error input, sampler settings | Yes, after the selected component's scientific checks |
-| Observations, filters, averaging, native inventory, basis/sensitivities, `bc_freq` or baked error values | New preparation required |
+| Standard/multisector BC periods, supported floor policies/likelihoods, sampler settings | Yes, when required raw operands exist and the selected component's scientific checks pass |
+| Observations, filters, averaging, native inventory, basis/spatial sensitivities or family-specific baked numerical values | New preparation required |
 | CO2 independent BC/offset priors or supported mismatch settings | Yes, preserving the coherent reduced flux calculation |
 | Defining CO2 native prior/covariance, operator or projection | Newly coherent reduction and matching affine companion required |
 | Cached covariance/eigenbasis inputs | Matching or rebuilt runtime cache required |

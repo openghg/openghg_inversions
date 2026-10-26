@@ -175,7 +175,7 @@ def test_shifted_europe_footprint_and_flux_generate_reconstructable_quadtree(foo
     prepared = _prepare_one_domain(
         aligned, domain="EUROPE", start_date="2019-01-01", flux_sources=("inventory",),
         basis_algorithm="quadtree", nbasis=4, fix_basis_outer_regions=False,
-        use_bc=False, bc_freq=None, min_error=0., min_error_options={"by_site": False},
+        use_bc=False,
         basis_inputs={},
     )
     basis = prepared.basis_functions
@@ -242,7 +242,7 @@ def test_supplied_partition_reconstructs_on_normalized_runtime_grid(domain, shif
     prepared = _prepare_one_domain(
         aligned, domain=domain, start_date="2019-01-01", flux_sources=("inventory",),
         basis_algorithm=None, nbasis=1, fix_basis_outer_regions=False,
-        use_bc=False, bc_freq=None, min_error=0., min_error_options={"by_site": False},
+        use_bc=False,
         basis_inputs=basis_inputs,
     )
     basis = prepared.basis_functions
@@ -272,7 +272,7 @@ def test_supplied_partition_on_distinct_inventory_grid_reconstructs_without_doma
     basis = nested._prepare_one_domain(
         data, domain="EUROPE", start_date="2019-01-01", flux_sources=("inventory",),
         basis_algorithm=None, nbasis=1, fix_basis_outer_regions=False,
-        use_bc=False, bc_freq=None, min_error=0., min_error_options={"by_site": False},
+        use_bc=False,
         basis_inputs={"basis_partition": partition},
     )
     reconstructed = basis.state_to_flux(xr.DataArray([1.], dims="region", coords={"region": [0]}))

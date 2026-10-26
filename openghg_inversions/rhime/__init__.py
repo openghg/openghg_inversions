@@ -28,6 +28,7 @@ from openghg_inversions.inversion_data import MergedData, PreparedInputs, SiteOp
 
 from .api import run
 from .materialization import materialize_pymc_inputs
+from .model_inputs import resolve_model_inputs
 from .ini import read_rhime_ini
 from .params import (
     DataConfig,
@@ -146,6 +147,7 @@ __all__ = [
     "validate_output_resources",
     "validate_standard_output_resources",
     "materialize_pymc_inputs",
+    "resolve_model_inputs",
     "co2_model_input_names",
     "multisector_model_input_names",
     "SiteOptions",

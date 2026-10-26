@@ -230,12 +230,24 @@ def test_bad_records_fail_without_graph_or_products(tmp_path, monkeypatch, corru
     assert not (tmp_path / "products").exists()
 
 
-def test_changed_preparation_policy_fails_before_sampling(tmp_path, monkeypatch):
+def test_saved_preparation_reuses_model_owned_floor_and_boundary_choices(tmp_path):
+    from openghg_inversions.rhime.params import resolve_model_options
+
     preparation, _ = _saved(tmp_path)
-    monkeypatch.setattr(stages, "sample_rhime_model", lambda *a, **k: pytest.fail("inference"))
-    with pytest.raises(ValueError, match="conflicts with data"):
-        stages.sample(preparation, model={"bc_freq": "monthly"}, output_dir=tmp_path / "new-samples")
-    assert not (tmp_path / "new-samples").exists()
+    prepared, data, generation = stages.load_preparation(preparation)
+    assert "min_error" not in prepared.inv_inputs
+    for floor, frequency in ((0.25, None), (0.5, "monthly")):
+        model = resolve_model_options(
+            {"bc_freq": frequency, "mismatch_model": "pollution_event", "min_error": floor},
+            data_config=data,
+        )
+        inputs, priors = standard.materialize_standard_inputs(prepared, model)
+        np.testing.assert_allclose(inputs.min_error, floor)
+        assert model.bc_freq == frequency
+        built = standard.build_standard_model(inputs, model, priors=priors)
+        np.testing.assert_allclose(built.model["min_error"].get_value(), floor)
+    assert "min_error" not in prepared.inv_inputs
+    assert stages.load_preparation(preparation)[2] == generation
 
 
 def test_prior_readiness_catches_graph_failure_but_not_save_failure(tmp_path, monkeypatch):

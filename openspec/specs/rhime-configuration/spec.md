@@ -485,6 +485,19 @@ Prepared-input construction SHALL follow
 Saved format/version admission and replay SHALL remain with the prepared/sample
 handoff and persistence owners rather than configuration resolution.
 
+`averaging_error` SHALL remain a preparation option rather than an acquisition
+compatibility fact, preserving its default (`True`) and established component
+interpretation. Compatible supplied data SHALL permit changing this choice
+without reacquisition. Numerical population and borrowing follow
+`rhime-scientific-inputs`.
+
+#### Scenario: Change averaging error during preparation
+
+- **GIVEN** compatible supplied merged data with uncertainty components and no supplied final `mf_error`
+- **WHEN** a caller changes the valid `averaging_error` preparation choice
+- **THEN** preparation uses it without rejecting the handoff or repeating acquisition
+- **AND** configuration resolution does not calculate observation errors
+
 #### Scenario: Resolve choices without scientific execution
 
 - **WHEN** a caller constructs complete or phase-specific configuration
@@ -694,23 +707,37 @@ accepted only when their required prepared inputs and structure are available;
 they SHALL NOT reinterpret baked preparation choices or reacquire inputs.
 
 For standard and multisector, preparation SHALL own the established `use_bc`
-default (`True`) and `bc_freq` default (`None`). A flat `use_bc` choice SHALL
-route to preparation and the full run's model choice consistently. When resolving
-a model group, omitted `use_bc` SHALL inherit the resolved requested preparation
-choice for a full run or its recorded fact for saved sampling. Explicit model
-`use_bc=False` MAY omit BC terms even when preparation contains BC inputs.
-Explicit model `use_bc=True` SHALL require preparation to provide those inputs;
-it SHALL NOT trigger acquisition or silent fallback. Full requests SHALL reject
-model BC use with preparation BC disabled before acquisition.
+default (`True`) and the presence of spatial BC inputs. A flat `use_bc` request
+SHALL route consistently to preparation and model selection. Omitted model
+`use_bc` SHALL inherit the requested or recorded preparation choice. Explicit
+model `use_bc=False` SHALL permit omitting available BC terms; explicit true
+SHALL require those inputs and SHALL NOT cause acquisition or silent fallback.
+Full requests SHALL reject model BC use with preparation BC disabled before
+acquisition.
 
-`bc_freq` SHALL remain a preparation-owned temporal policy. Sampling SHALL use
-the recorded policy when the key is omitted and SHALL accept a repeated equivalent
-claim; any conflicting claim SHALL fail before model construction, even when
-model BC terms are disabled. An explicit `None` claim SHALL be compared as the
-existing no-frequency policy, not treated as omission. Model binding SHALL NOT
-apply another default to replace saved temporal expansion. The same rules SHALL
-hold for full and independently resolved standard/multisector phases without
-changing CO2's family-specific defaults.
+For standard and multisector, `bc_freq` and `bc_freq_anchor` SHALL belong to the
+model group; `min_error` and `min_error_options` SHALL belong to the selected
+likelihood's model options, not acquisition/preparation. Model-only resolution
+SHALL accept valid choices using authoritative preparation facts without
+requiring acquisition choices to be resolved again. Omitted `bc_freq` SHALL
+select the established one-period policy. Configured requests SHALL resolve an
+omitted `bc_freq_anchor` from the requested start date, using the recorded date
+for saved-input sampling. Explicit `None` SHALL remain an explicit no-anchor
+choice. `bc_freq` SHALL accept `None`, calendar `"monthly"` and positive fixed
+durations; malformed, zero or negative fixed durations SHALL fail configuration
+resolution. `bc_freq_anchor` SHALL accept a valid timestamp or `None`.
+
+Likelihood floor options SHALL accept the established nonnegative finite scalar
+or site-mapping values, `None` as a zero scalar, and named `"residual"` or
+`"percentile"` methods. Omitted `min_error` SHALL resolve to `0.0`;
+`min_error_options` SHALL accept only boolean `by_site`, defaulting to `False`.
+Additive-sigma floor enablement SHALL remain an explicit boolean defaulting to
+`False`. Invalid option values SHALL fail configuration resolution without
+executing estimators. CO2 SHALL retain its independent family-specific defaults.
+
+Numerical resolution, retained estimator populations and supplied-operand
+compatibility follow `rhime-scientific-inputs`; durable preparations and fitted
+operand replay follow `prepared-recipe-handoff` and `sampled-recipe-handoff`.
 
 #### Scenario: Resolve disabled BC consistently across phases
 - **WHEN** standard or multisector preparation resolves `use_bc=False` and the
@@ -733,12 +760,15 @@ changing CO2's family-specific defaults.
 - **AND** explicit `use_bc=True` on a preparation with BC disabled fails before
   inference or artifact writes
 
-#### Scenario: Bind the saved boundary temporal policy
-- **WHEN** preparation baked `bc_freq="3h"` into its numerical inputs
-- **THEN** a later model request omitting `bc_freq` uses that saved temporal policy
-  and a repeated `"3h"` claim is accepted
-- **AND** an explicit different frequency or `None` is rejected before model
-  construction, including when model `use_bc=False`
+#### Scenario: Resolve model-owned options from saved facts
+
+- **WHEN** a sampling request supplies valid BC-period or likelihood-floor choices
+  with recorded preparation facts
+- **THEN** model resolution accepts those choices without asking the caller to
+  repeat acquisition configuration
+- **AND** omitted `bc_freq` resolves to the one-period policy and an omitted
+  `bc_freq_anchor` resolves from the recorded requested start date
+- **AND** explicit `bc_freq_anchor=None` remains `None`
 
 #### Scenario: Sample with model and sampler choices only
 - **WHEN** a caller supplies a prepared handoff, applicable run context and valid

@@ -130,7 +130,7 @@ before a separate model run. The
 :doc:`RHIME terminology and prepared-input reference </usage/rhime>`
 documents the expected variables, dimensions, and coordinates. Acquisition
 mechanics live in ``inversion_data.acquisition``; the prepared
-value and its unchanged version-1 schema live in
+value and its version-2 raw-input schema live in
 ``inversion_data.prepared_inputs``. Import both values from ``openghg_inversions.inversion_data``.
 
 .. autosummary::
@@ -152,6 +152,7 @@ value and its unchanged version-1 schema live in
    openghg_inversions.rhime.preparation.export_basis
    openghg_inversions.rhime.standard.build_standard_model
    openghg_inversions.rhime.standard.materialize_standard_inputs
+   openghg_inversions.rhime.resolve_model_inputs
    openghg_inversions.rhime.standard.prepare_standard
    openghg_inversions.rhime.postprocess_standard_outputs
    openghg_inversions.rhime.annotate_sample_trace

@@ -50,7 +50,8 @@ Resume from external scientific data
 ``run_standard`` and ``run_multisector`` accept ``merged_data`` as a
 Python-only handoff. It bypasses OpenGHG acquisition,
 checks the recorded scientific facts and single- or multi-sector layout, and
-then re-enters the visible recipe at observation-error preparation::
+then re-enters the visible recipe at observation selection and retained-population
+error preparation::
 
    result = run_standard(
        config_file="config.ini",
@@ -84,7 +85,7 @@ Follow the modern preparation spine
 ------------------------------------
 
 The ordinary runner resolves ``basis_path``, support maps and selected BC basis
-files before acquisition. It prepares errors, filters retained observations,
+files before acquisition. It selects observations, prepares their errors,
 then calls the canonical load-or-generate operation with exact paths and
 labelled arrays:
 
@@ -104,11 +105,11 @@ labelled arrays:
    basis_inputs = resolve_basis_inputs(config.data)
    bc_basis = resolve_bc_basis(config.data)
    merged = acquire_merged_data(config.data)
-   with_errors = prepare_observation_errors(
-       merged.site_data, averaging_error=config.data.averaging_error,
-   )
    filtered, site_options = filter_observations(
-       with_errors, merged.site_options, filters=config.data.filters,
+       merged.site_data, merged.site_options, filters=config.data.filters,
+   )
+   filtered = prepare_observation_errors(
+       filtered, averaging_error=config.data.averaging_error,
    )
    runtime_flux = resolve_runtime_flux(
        merged.flux_data, split_by_sectors=merged.split_by_sectors,
@@ -303,11 +304,13 @@ concentration-scale variance, while ``models.pollution_event`` owns the
 pollution-enhancement-scaled equation. Select the absolute additive equation
 directly with ``mismatch_model="additive_sigma"`` in ``run_standard`` or
 ``run_multisector``; ``sigma_prior``, ``sigma_freq``, and
-``sigma_per_site`` then configure its scale. Additive sigma does not load the
-historical ``min_error`` floor unless
+``sigma_per_site`` then configure its scale. Additive sigma does not calculate a
+``min_error`` floor unless
 ``use_minimum_error_floor=True`` is selected explicitly. A custom likelihood
 loads only ``mf`` and ``mf_error`` from the universal observation inputs and
-does not require ``min_error``.
+does not require ``min_error``. Built-in floor choices are model settings;
+named residual and percentile estimates use observations retained after invalid
+rows are dropped. Preparation retains the raw operands for compatible model reuse.
 
 Parameter resolution
 stores built-in mismatch science in ``RhimeModelSpec`` before the standard or
@@ -576,9 +579,11 @@ geometry, and creates the region labels. It then combines the labels with the
 current run's flux in a ``BasisFunctions`` object. That object flows unchanged
 through sensitivity construction and labelled assembly. The concrete recipe's
 adjacent ``standard_model_input_names`` declaration selects the arrays it
-needs. ``materialize_pymc_inputs`` converts only those arrays, together,
-immediately before model construction; project-owned lazy extensions in
-``PreparedInputs`` remain untouched.
+needs. ``materialize_standard_inputs`` computes those arrays and enabled priors
+together, then resolves model-specific BC periods and the likelihood's floor
+before graph construction. Project-owned lazy extensions in
+``PreparedInputs`` remain untouched. The generic ``materialize_pymc_inputs``
+only executes selected arrays; it does not resolve those scientific choices.
 
 The customisation is concentrated in ``_guarded_basis``. The runner's one
 deliberate substitution is marked by an inline comment where

@@ -10,6 +10,8 @@ and [sampled-recipe-handoff](../sampled-recipe-handoff/spec.md), respectively.
 
 Configuration ownership and phase resolution follow the
 [rhime-configuration capability](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md).
+Numerical preparation, model-input alignment and error operands follow
+[rhime-scientific-inputs](../../../../specs/rhime-scientific-inputs/spec.md).
 External resource paths and optional basis exports follow
 [rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md).
 
@@ -256,7 +258,7 @@ These scientific views SHALL NOT hold live models or sampler fields.
 Saved sampler provenance SHALL be plain metadata describing the actual inference
 invocation. Product replay and diagnosis SHALL NOT rebuild the producing model or
 execute inference. Replay SHALL normalize available `draws`, `burn`, `tune`,
-`chains` and `nuts_sampler` values through a pure metadata operation without
+`chains` and `nuts_sampler` values as descriptive metadata without
 constructing a sampler. Missing or invalid descriptions SHALL become `{}`; valid
 partial descriptions SHALL retain only their supplied fields.
 Missing provenance SHALL NOT be filled from current defaults, and descriptive
@@ -274,31 +276,15 @@ the sample manifest.
 - **AND** recorded sampler provenance remains inspectable as metadata without
   rebuilding a model or running inference
 
-### Requirement: Explicit numerical ownership and execution boundaries
+### Requirement: Scientific construction across supported routes
 
-Routes SHALL treat caller-supplied numerical inputs as borrowed and potentially
-lazy. Choice resolution and access SHALL NOT mutate, copy, compute, persist,
-densify or rechunk those inputs implicitly. Related arrays SHALL preserve shared
-execution graphs until an explicit assembly, model-input, serialization or
-eager-kernel boundary materializes the related arrays required there together.
-Preparation SHALL NOT be required to keep every array lazy across an explicit
-scientific execution boundary. Borrowed inputs SHALL remain unchanged.
-Standard callers SHALL explicitly materialize selected inputs and enabled priors
-together before calling the eager builder; the standard prepared-input route
-SHALL use the same construction operation as
-full and saved execution, receiving model choices without output configuration.
+Numerical borrowing and execution boundaries SHALL follow the scientific-inputs
+contract. Standard prepared-input construction SHALL accept model choices without
+requiring output configuration and preserve the full/saved route's scientific meaning.
 Its complete-model-builder hook SHALL be rejected; its custom-likelihood seam
 SHALL remain available. Multisector construction SHALL use the same separation.
 Caller-owned complete models MAY directly compose scientific functions with
 explicit inputs and SHALL own any further materialization they require.
-
-#### Scenario: Borrowed lazy preparation and construction
-- **WHEN** a route receives borrowed inputs with shared lazy arrays
-- **THEN** resolution and preparation preserve borrowed input values and shared
-  execution until an applicable explicit materialization boundary
-- **AND** related arrays required by assembly, construction or an eager kernel
-  materialize together at the declared boundary rather than through incidental
-  configuration access
 
 #### Scenario: Direct multisector complete-model composition
 - **WHEN** a caller needs a multisector complete graph beyond the built-in recipe

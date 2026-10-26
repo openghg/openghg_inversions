@@ -323,7 +323,8 @@ from the ``nmeasure`` site level as zero-based positions into that separate
 site coordinate:
 ``site_metadata.site[site_indicator]`` must equal the ``site`` level of
 ``nmeasure``. The indicator itself is not the CF gathering coordinate, and
-callers do not need to keep a second positional decoder synchronized. Site
+callers do not need to keep a second positional decoder synchronized. Indicators
+and site-name lookup arrays are regenerated on loading rather than serialized. Site
 metadata also aligns averaging periods, with exactly one value per site.
 Metadata that is genuinely constant per site may be stored there too. Nullable
 string metadata such as ``instrument`` preserves missing values separately from
@@ -453,8 +454,6 @@ Adapt the application data with OpenGHG Inversions:
        site_data,
        basis_functions=basis_functions,
        averaging_period="1h",
-       min_error=0.0,
-       start_date="2021-01-01",
    )
 
 Optionally save a durable checkpoint so projection is not repeated when the
@@ -517,9 +516,9 @@ therefore needs a nonempty, explicit, unique ``datetime64`` ``time`` coordinate
 with no ``NaT`` values. Valid non-monotonic input ordering is retained.
 Required observations, projected ``H``, and optional sampled ``H_bc`` values
 must be finite. A site emptied by downstream input preparation is reported as
-an error instead of being silently removed. ``min_error_per_site`` defaults to
-``False``, matching the OpenGHG-backed RHIME preparation route; pass ``True``
-to request per-site minimum errors.
+an error instead of being silently removed. BC periods and minimum-error floors
+are selected by the model after preparation; this adapter does not accept
+``bc_freq``, ``min_error``, ``min_error_per_site`` or a temporal anchor.
 
 ``mf.units`` must be a nonempty string. Every present concentration-valued
 field---observation-error components, canonical ``H`` or the selected cache,
@@ -755,6 +754,11 @@ Each ``SectorSpec`` carries its source, backend suffix, prior, and optional
 ``state_activity`` override; ``RhimeModelSpec.state_activity`` supplies the
 shared policy. Call ``materialize_multisector_inputs(prepared, model_spec)``
 first, then pass its Dataset and eager priors to ``build_multisector_model``.
+The two family materializers compute selected arrays and resolve model-specific
+BC periods and likelihood floors. Reuse their resolved Dataset with matching
+settings; after changing a BC or floor policy, call the helper on the raw
+preparation again. The backend-neutral handoff and direct-builder rules are
+described in :doc:`concrete_rhime_model`.
 ``StateActivity(active=False)`` freezes a complete sector.
 RHIME config-file syntax and persisted activity-reason tables remain follow-up
 work. Each ``SectorSpec.x_prior`` supports the same scalar, full-state array,
