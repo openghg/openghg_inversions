@@ -241,8 +241,10 @@ values without a new graph or calculation. The active
 and :download:`sampled handoff contract
 <../../openspec/changes/replace-recipe-workflow-with-reusable-handoffs/specs/sampled-recipe-handoff/spec.md>`
 own those artifact guarantees. CO2's prior-dependent coherent preparations retain
-their separate reuse constraints. Code for the current #876 amendment is present
-on this branch; CI acceptance and the broader handoff programme remain pending.
+their separate reuse constraints. The :download:`#876 alignment change tasks
+<../../openspec/changes/move-alignments-to-model-boundary/tasks.md>` record
+revision-specific validation evidence and limits. Broader handoff programme
+acceptance remains pending.
 
 Keep one scientific sample codec owner for save/load and let replay consume its
 decoded result. Keep product/export saving in a nearby operational helper with
