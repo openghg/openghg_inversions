@@ -527,6 +527,12 @@ required sensitivity, concentration, or <code class="docutils literal notranslat
 repeatability and variability diagnostic fields alone do not remove a row.
 A configured minimum total-error floor acts later; it cannot recover a site
 discarded during retrieval or bypass the missing-both-fields error.</p>
+<p>Resampling defines observations and must propagate their uncertainty before
+selection. It is a separate operation from accepting/rejecting observations or
+imputing missing errors. Observation-selection filters do not provide aggregation
+statistics. Define resampling and propagated uncertainty explicitly before
+selection; an acquisition mean is not a substitute for a separately chosen
+statistic. See <a class="reference internal" href="../usage/legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a> for the supported workflow.</p>
 </section>
 <section id="why-preserving-nans-is-not-an-incidental-bug-fix">
 <h2>Why preserving NaNs is not an incidental bug fix<a class="headerlink" href="#why-preserving-nans-is-not-an-incidental-bug-fix" title="Link to this heading">#</a></h2>

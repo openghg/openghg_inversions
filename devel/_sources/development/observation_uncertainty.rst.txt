@@ -84,6 +84,13 @@ repeatability and variability diagnostic fields alone do not remove a row.
 A configured minimum total-error floor acts later; it cannot recover a site
 discarded during retrieval or bypass the missing-both-fields error.
 
+Resampling defines observations and must propagate their uncertainty before
+selection. It is a separate operation from accepting/rejecting observations or
+imputing missing errors. Observation-selection filters do not provide aggregation
+statistics. Define resampling and propagated uncertainty explicitly before
+selection; an acquisition mean is not a substitute for a separately chosen
+statistic. See :doc:`/usage/legacy_and_migration` for the supported workflow.
+
 Why preserving NaNs is not an incidental bug fix
 ------------------------------------------------
 

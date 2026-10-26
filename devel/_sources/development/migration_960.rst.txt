@@ -29,6 +29,12 @@ revision ``6a1d22d10c07442514dd610e2ec62b7a2719e297``:
 * `26 October BC, schema-name and contract-owner comparisons
   <https://github.com/openghg/openghg_inversions/blob/6a1d22d10c07442514dd610e2ec62b7a2719e297/tests/fixtures/migration_960/retirements/review_974_2026_10_26.json>`_.
 
+
+The separate #954 aggregation-retirement comparison is also archived in Git:
+
+* `Aggregation retirement comparison
+  <https://github.com/openghg/openghg_inversions/blob/678c8bb4c920ea38fedfd4e2e590a732dfa9ce12/tests/fixtures/migration_960/retirements/aggregation_filters_2026_10_23.json>`_.
+
 These records preserve source revisions/hashes, original cases, dispositions and
 follow-up owners for review and future explicit migration work. They are not
 current expected behavior or proof of an executed scientific check. Dated paths

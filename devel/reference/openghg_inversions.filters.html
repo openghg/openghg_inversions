@@ -613,18 +613,9 @@ to the <cite>filtering_functions</cite> dictionary, under the key “my_new_filt
 <p>If <cite>filters</cite> is a list, the same filters are applied to all sites. If <cite>filters</cite> is a dict
 with site codes as keys, then the filters applied to each site depend on the list supplied
 for that site.</p>
-<p>In any case, filters supplied in a list are applied in order.
-For example, if you wanted a daily, daytime average, you could do this:</p>
-<blockquote>
-<div><dl class="simple">
-<dt>datasets_dictionary = filtering(datasets_dictionary,</dt><dd><p>[“daytime”, “daily_median”])</p>
-</dd>
-</dl>
-</div></blockquote>
-<p>The order of the filters reflects the order they are applied, so for
-instance when applying the “daily_median” filter if you only wanted
-to look at daytime values the filters list should be
-[“daytime”,”daily_median”]</p>
+<p>Filters supplied in a list are applied in order. For example, select
+daytime observations with sufficiently high boundary-layer heights using
+<code class="docutils literal notranslate"><span class="pre">filtering(datasets_dictionary,</span> <span class="pre">[&quot;daytime&quot;,</span> <span class="pre">&quot;pblh_min&quot;])</span></code>.</p>
 <p>If a site is <cite>datasets_in</cite> is not in <cite>filters</cite>, then no filters are applied to that site.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -641,46 +632,6 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.filters.daily_median">
-<span class="sig-name descname"><span class="pre">daily_median</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.daily_median" title="Link to this definition">#</a></dt>
-<dd><p>Resample data to daily frequency and use daily median values.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>filtered dataset</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.filters.six_hr_mean">
-<span class="sig-name descname"><span class="pre">six_hr_mean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.six_hr_mean" title="Link to this definition">#</a></dt>
-<dd><p>Resample data to 6h frequency and use 6h mean values.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>filtered dataset</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -893,8 +844,6 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.register_filter"><code class="docutils literal notranslate"><span class="pre">register_filter()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.list_filters"><code class="docutils literal notranslate"><span class="pre">list_filters()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.filtering"><code class="docutils literal notranslate"><span class="pre">filtering()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.daily_median"><code class="docutils literal notranslate"><span class="pre">daily_median()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.six_hr_mean"><code class="docutils literal notranslate"><span class="pre">six_hr_mean()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.daytime"><code class="docutils literal notranslate"><span class="pre">daytime()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.daytime9to5"><code class="docutils literal notranslate"><span class="pre">daytime9to5()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.nighttime"><code class="docutils literal notranslate"><span class="pre">nighttime()</span></code></a></li>

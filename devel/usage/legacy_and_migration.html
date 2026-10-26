@@ -477,6 +477,19 @@ undecided.</p>
 <p>This page is for users with fixedbasis-style Python calls, INI files, batch
 scripts, or HBMCMC outputs. For a new inversion, start with the
 <a class="reference internal" href="model_recipes.html"><span class="doc">model recipe chooser</span></a> and <a class="reference internal" href="rhime.html"><span class="doc">RHIME guide</span></a>.</p>
+<section id="observation-selection-and-uncertainty">
+<h2>Observation selection and uncertainty<a class="headerlink" href="#observation-selection-and-uncertainty" title="Link to this heading">#</a></h2>
+<p>Observation-selection requests accept supported registered filters. Unsupported
+active names fail ordinary registry validation before any filter or lazy data
+executes. Global scalar and list requests validate even without observation
+sites; site-specific choices are deferred for absent sites.</p>
+<p>Make any resampling an explicit scientific choice before observation selection,
+with uncertainty propagated for the resulting observations. Acquisition’s
+<code class="docutils literal notranslate"><span class="pre">averaging_period</span></code> may be appropriate for a supported provider mean, but it is
+not an automatic replacement: a median differs from a mean, and weighting,
+uncertainty propagation and footprint alignment can also differ. Selection never
+silently substitutes an aggregation statistic.</p>
+</section>
 <section id="development-resource-migration">
 <h2>Development resource migration<a class="headerlink" href="#development-resource-migration" title="Link to this heading">#</a></h2>
 <p>Resource selection now ends at the runner boundary. Update existing calls and
@@ -1203,6 +1216,7 @@ deferred to #829.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#observation-selection-and-uncertainty">Observation selection and uncertainty</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#development-resource-migration">Development resource migration</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#additional-development-python-api-changes">Additional development Python API changes</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#agreed-breaking-development-boundary">Agreed breaking-development boundary</a></li>
