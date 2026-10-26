@@ -147,7 +147,7 @@ record; current tests cover supported behavior and generic invalid names only.
   `tests/test_standard_handoff_parity.py`, `tests/test_multisector_handoff_parity.py`
   and `tests/test_nested_preparation_contracts.py`. Counts overlap other runs.
 - Independent higher-effort review found no scoped findings; its 119 selected
-  tests, Ruff checks and 13 source assertions passed. These counts overlap the
+  tests and Ruff checks on 13 relevant modules passed. These counts overlap the
   local checks and must not be added together.
 - Final CI-equivalent validation remains pending. Earlier complete-matrix records
   do not establish acceptance of this restacked revision.
