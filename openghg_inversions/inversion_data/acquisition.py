@@ -31,7 +31,7 @@ from openghg_inversions.inversion_data._site_options import (
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.inversion_data.getters import get_flux_data, get_footprint_data, get_obs_data
 from openghg_inversions.inversion_data.scenario import merged_scenario_data
-from openghg_inversions.inversion_data.surface import prepare_surface_site
+from openghg_inversions.inversion_data.surface import TransportMode, prepare_surface_site
 
 logger = logging.getLogger(__name__)
 
@@ -241,7 +241,7 @@ class MergedData:
         use_bc: bool = True,
         bc_input: str | None = None,
         flux_non_finite_check: FluxNonFiniteCheck = "lazy",
-        surface_transport: Mapping[str, str] | None = None,
+        surface_transport: Mapping[str, TransportMode] | None = None,
         boundary_representation: Literal["ordinary", "centered"] = "ordinary",
         reference: float | None = None,
         reference_units: str | None = None,
@@ -310,7 +310,7 @@ class MergedData:
                 flux_end = str((pd.Timestamp(end_date) - pd.Timedelta("1ns")).to_period("M").end_time + pd.Timedelta("1ns"))
 
         flux_dict = get_flux_data(
-            sources=flux_sources,
+            sources=list(flux_sources),
             species=species,
             domain=flux_domain or domain,
             start_date=flux_start,
