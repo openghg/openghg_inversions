@@ -20,10 +20,7 @@ from openghg_inversions.models.additive_sigma import (
 from openghg_inversions.models.fixed_error import add_fixed_error_likelihood
 from openghg_inversions.models.pollution_event import add_pollution_event_likelihood
 from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.observation_error import (
-    AggregationError, AGGREGATION_ERROR_SD, AGGREGATION_ERROR_COVARIANCE,
-    LOW_RANK_FACTOR, DIAGONAL_RESIDUAL_VARIANCE,
-)
+from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.sigma import SigmaAlignment
 
@@ -123,16 +120,17 @@ def _call_custom_likelihood(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: AggregationError | None = None,
     mean: TensorVariable,
     output_dim: str,
     likelihood_kwargs: Mapping[str, Any] | None = None,
 ) -> TensorVariable:
-    """Call a custom likelihood with the stable mean-only contract."""
+    """Call a custom likelihood with its recipe's explicit scientific inputs."""
+    covariance_inputs = {} if aggregation_error is None else {"aggregation_error": aggregation_error}
     likelihood = likelihood_builder(
         observations=observations,
         observation_error=observation_error,
-        aggregation_error=aggregation_error,
+        **covariance_inputs,
         mean=mean,
         output_dim=output_dim,
         **(likelihood_kwargs or {}),
@@ -162,7 +160,6 @@ def add_configured_pollution_event_likelihood(
     forward: ForwardModelTerms,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
     minimum_error: xr.DataArray | None,
     output_dim: str,
     sigma_alignment: SigmaAlignment | None = None,
@@ -182,10 +179,10 @@ def add_configured_pollution_event_likelihood(
             anchor_time=settings.sigma_freq_anchor,
         )
     return add_pollution_event_likelihood(
+        aggregation_error=AggregationError("none", np.zeros(observations.sizes[output_dim])),
         observations=observations,
         observation_error=observation_error,
         minimum_error=minimum_error,
-        aggregation_error=aggregation_error,
         mean=forward.total,
         pollution_mean=forward.pollution,
         pollution_event_baseline=forward.baseline,
@@ -208,7 +205,6 @@ def add_configured_additive_sigma_likelihood(
     mean: TensorVariable,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
     minimum_error: xr.DataArray | None,
     output_dim: str,
     sigma_alignment: SigmaAlignment | None = None,
@@ -226,9 +222,9 @@ def add_configured_additive_sigma_likelihood(
         sigma_freq_anchor=settings.sigma_freq_anchor,
     )
     return add_additive_sigma_likelihood(
+        aggregation_error=AggregationError("none", np.zeros(observations.sizes[output_dim])),
         observations=observations,
         observation_error=observation_error,
-        aggregation_error=aggregation_error,
         mean=mean,
         minimum_error_floor=minimum_error if settings.use_minimum_error_floor else None,
         additive_sigma_alignment=alignment,
@@ -242,14 +238,13 @@ def add_configured_fixed_error_likelihood(
     forward: ForwardModelTerms,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
     output_dim: str,
 ) -> TensorVariable:
     """Resolve fixed-error settings into the direct Gaussian component."""
     return add_fixed_error_likelihood(
+        aggregation_error=AggregationError("none", np.zeros(observations.sizes[output_dim])),
         observations=observations,
         observation_error=observation_error,
-        aggregation_error=aggregation_error,
         mean=forward.total,
         output_dim=output_dim,
     )
@@ -261,7 +256,6 @@ def _add_builtin_likelihood(
     forward: ForwardModelTerms,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
     minimum_error: xr.DataArray | None,
     output_dim: str,
     sigma_alignment: SigmaAlignment | None = None,
@@ -275,7 +269,6 @@ def _add_builtin_likelihood(
             forward=forward,
             observations=observations,
             observation_error=observation_error,
-            aggregation_error=aggregation_error,
             minimum_error=minimum_error,
             output_dim=output_dim,
             sigma_alignment=sigma_alignment,
@@ -288,7 +281,6 @@ def _add_builtin_likelihood(
             mean=forward.total,
             observations=observations,
             observation_error=observation_error,
-            aggregation_error=aggregation_error,
             minimum_error=minimum_error,
             output_dim=output_dim,
             sigma_alignment=sigma_alignment,
@@ -299,7 +291,6 @@ def _add_builtin_likelihood(
             forward=forward,
             observations=observations,
             observation_error=observation_error,
-            aggregation_error=aggregation_error,
             output_dim=output_dim,
         )
 
@@ -314,7 +305,6 @@ def add_rhime_likelihood(
     forward: ForwardModelTerms,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
     minimum_error: xr.DataArray | None,
     output_dim: str,
     sigma_alignment: SigmaAlignment | None = None,
@@ -328,7 +318,6 @@ def add_rhime_likelihood(
             likelihood_builder,
             observations=observations,
             observation_error=observation_error,
-            aggregation_error=aggregation_error,
             mean=forward.total,
             output_dim=output_dim,
             likelihood_kwargs=likelihood_kwargs,
@@ -340,7 +329,6 @@ def add_rhime_likelihood(
         forward=forward,
         observations=observations,
         observation_error=observation_error,
-        aggregation_error=aggregation_error,
         minimum_error=minimum_error,
         output_dim=output_dim,
         sigma_alignment=sigma_alignment,
@@ -397,11 +385,6 @@ def builtin_model_build_result(
     supported_output_formats: tuple[OutputFormat, ...] = (
         ("none", "inv_out", "paris") if multisector else ("none", "inv_out", "basic", "paris", "legacy")
     )
-    aggregation_mode = model_spec.aggregation_error_mode
-    aggregation_inputs = {AGGREGATION_ERROR_SD, AGGREGATION_ERROR_COVARIANCE,
-                          LOW_RANK_FACTOR, DIAGONAL_RESIDUAL_VARIANCE}
-    if aggregation_mode != "none" and (aggregation_mode != "auto" or aggregation_inputs.intersection(input_names)):
-        supported_output_formats = ("none", "inv_out")
     return RhimeModelBuildResult(
         model=model,
         output_contract=OutputContract(

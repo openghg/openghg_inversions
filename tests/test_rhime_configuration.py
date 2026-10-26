@@ -93,7 +93,6 @@ def test_invalid_effective_requests_fail_without_acquisition(monkeypatch, overri
     ("option", "value"),
     [
         ("flux_non_finite_check", "typo"),
-        ("aggregation_error_mode", "typo"),
         ("basis_algorithm", "typo"),
         ("basis_algorithm", None),
         ("min_error", "typo"),
@@ -132,19 +131,13 @@ def test_invalid_active_choices_fail_before_acquisition(
     [
         ("flux_non_finite_check", "lazy"),
         ("flux_non_finite_check", "count"),
-        ("aggregation_error_mode", "auto"),
-        ("aggregation_error_mode", "none"),
-        ("aggregation_error_mode", "dense"),
-        ("aggregation_error_mode", "low_rank"),
-        ("aggregation_error_mode", "diagonal"),
         ("min_error", "residual"),
         ("min_error", "percentile"),
     ],
 )
 def test_valid_finite_choices_are_preserved(option, value):
     config = rhime_params.RhimeConfig.from_params(_request(**{option: value}), multisector=False)
-    owner = (config.model.likelihood if option == "min_error"
-             else config.model if option == "aggregation_error_mode" else config.data)
+    owner = config.model.likelihood if option == "min_error" else config.data
     assert getattr(owner, option) == value
 
 

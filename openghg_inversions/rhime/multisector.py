@@ -33,9 +33,6 @@ from openghg_inversions.models._flux import (
     _prepared_sources,
     _select_sector_design,
 )
-from openghg_inversions.observation_error import (
-    aggregation_error_input_names,
-)
 from openghg_inversions.sigma import SigmaAlignment
 from .specs import (
     AdditiveSigmaSettings,
@@ -130,8 +127,10 @@ def _multisector_input_names(
 
     Raises:
         ValueError: If selected inputs are absent, sector identities or source
-            layouts conflict, or the aggregation-error representation is ambiguous.
+            layouts conflict.
     """
+    if model_spec.use_bc and {"H_bc_anomaly", "H_bc_mass", "bc_reference"} & set(model_inputs):
+        raise ValueError("Centered boundary operands require the supported CO2-family pilot model binding.")
     _require_component_inputs(
         model_inputs,
         _MULTISECTOR_FLUX_INPUT_NAMES,
@@ -220,19 +219,6 @@ def _multisector_input_names(
             owner="Multisector baseline component selected by `use_bc=True`",
         )
         names.extend(_BASELINE_INPUT_NAMES)
-    aggregation_names = aggregation_error_input_names(
-        model_inputs,
-        model_spec.aggregation_error_mode,
-    )
-    _require_component_inputs(
-        model_inputs,
-        aggregation_names,
-        owner=(
-            "Aggregation-error component selected by "
-            f"`aggregation_error_mode={model_spec.aggregation_error_mode!r}`"
-        ),
-    )
-    names.extend(aggregation_names)
     return tuple(names)
 
 
@@ -442,6 +428,7 @@ def prepare_multisector(
     runtime_flux = resolve_runtime_flux(
         merged_data.flux_data,
         split_by_sectors=merged_data.split_by_sectors,
+        explicit_surface=any("surface_transport" in data.attrs for data in merged_data.site_data.values()),
     )
     with timed("rhime.prepare_inputs.basis_build", basis_algorithm=basis_algorithm):
         basis_functions = prepare_basis(

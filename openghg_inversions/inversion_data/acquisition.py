@@ -7,11 +7,12 @@ scientific filtering, basis construction and sensitivity preparation.
 
 from __future__ import annotations
 
+import json
 import logging
 import warnings
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field, replace
-from typing import Any
+from dataclasses import asdict, dataclass, field, replace
+from typing import Any, Literal
 
 import pandas as pd
 import xarray as xr
@@ -30,6 +31,7 @@ from openghg_inversions.inversion_data._site_options import (
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.inversion_data.getters import get_flux_data, get_footprint_data, get_obs_data
 from openghg_inversions.inversion_data.scenario import merged_scenario_data
+from openghg_inversions.inversion_data.surface import TransportMode, prepare_surface_site
 
 logger = logging.getLogger(__name__)
 
@@ -239,6 +241,11 @@ class MergedData:
         use_bc: bool = True,
         bc_input: str | None = None,
         flux_non_finite_check: FluxNonFiniteCheck = "lazy",
+        surface_transport: Mapping[str, TransportMode] | None = None,
+        boundary_representation: Literal["ordinary", "centered"] = "ordinary",
+        reference: float | None = None,
+        reference_units: str | None = None,
+        mass_tolerance: float | None = None,
     ) -> MergedData:
         """Acquire fresh merged data using complete aligned selectors.
 
@@ -248,6 +255,14 @@ class MergedData:
         selector and merge errors propagate. ``flux_store`` defaults to ``"user"``;
         ``flux_domain`` selects the source flux dataset domain, defaulting to
         the footprint ``domain``. It does not imply a nested inner domain.
+        ``surface_transport`` explicitly selects independent per-source surface
+        CO2/O2 convolution, bypassing ModelScenario. Boundaries require explicit
+        ``mass_tolerance``. Ordinary absolute boundaries are the default;
+        ``boundary_representation="centered"`` additionally requires ``reference``
+        and ``reference_units``. Reference values alone do not select centering. Resolved
+        transport requires time-resolved selectors and complete flux history
+        and residual months. Mixed native source axes are rejected until native
+        reporting can represent them; supplied-input preparation supports them.
         """
         merged_sites: dict[str, xr.Dataset] = {}
         observation_provenance = {}
@@ -258,15 +273,66 @@ class MergedData:
         if flux_sources is None:
             raise ValueError("`flux_sources` must be specified")
 
+        if boundary_representation not in {"ordinary", "centered"}:
+            raise ValueError("boundary_representation must be ordinary or centered.")
+        if boundary_representation == "centered" and (surface_transport is None or not use_bc):
+            raise ValueError("Centered acquisition requires surface_transport and use_bc=True.")
+
+        flux_start, flux_end = start_date, end_date
+        if surface_transport is not None:
+            if species.lower() not in {"co2", "o2"}:
+                raise ValueError("Surface acquisition currently supports only CO2 and O2.")
+            if flux_domain is not None and flux_domain.lower() != domain.lower():
+                raise ValueError(
+                    "Fresh surface acquisition requires matching flux and footprint domains "
+                    "to retain native reporting axes; use prepare_surface_site for supplied inputs."
+                )
+            if not surface_transport or set(surface_transport) != set(flux_sources):
+                raise ValueError("surface_transport must specify exactly one mode per flux source.")
+            if any(mode not in {"integrated", "time_resolved"} for mode in surface_transport.values()):
+                raise ValueError("Surface transport modes must be 'integrated' or 'time_resolved'.")
+            for inlet, platform in zip(site_options.inlet, site_options.platform, strict=True):
+                if is_column_observation(inlet, platform) or (
+                    platform is not None and str(platform).lower() not in
+                    {"surface", "insitu", "in-situ", "continuous", "tower"}
+                ):
+                    raise ValueError("Surface acquisition supports only continuous surface platforms.")
+            if use_bc and mass_tolerance is None:
+                raise ValueError("Surface boundaries require mass_tolerance.")
+            if use_bc and boundary_representation == "centered" and (reference is None or reference_units is None):
+                raise ValueError("Centered surface boundaries require reference and reference_units.")
+            if "time_resolved" in surface_transport.values():
+                if not all(site_options.time_resolved):
+                    raise ValueError("Time-resolved transport requires time_resolved=True site selectors.")
+                # Request complete months plus bounded history; the producer
+                # validates actual H_back coverage after footprint retrieval.
+                flux_start = str(pd.Timestamp(start_date).to_period("M").start_time - pd.offsets.MonthBegin())
+                flux_end = str((pd.Timestamp(end_date) - pd.Timedelta("1ns")).to_period("M").end_time + pd.Timedelta("1ns"))
+
         flux_dict = get_flux_data(
-            sources=flux_sources,
+            sources=list(flux_sources),
             species=species,
             domain=flux_domain or domain,
-            start_date=start_date,
-            end_date=end_date,
+            start_date=flux_start,
+            end_date=flux_end,
             store=flux_store,
             flux_non_finite_check=flux_non_finite_check,
+            **({"allow_older_flux": False} if surface_transport is not None else {}),
         )
+        if surface_transport is not None and len(flux_dict) > 1:
+            try:
+                aligned_flux = xr.align(
+                    *(value.data.flux for value in flux_dict.values()), join="exact", copy=False
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    "Surface native reporting cannot yet represent mixed native source axes; "
+                    "use prepare_surface_site for source-wise supplied-input responses."
+                ) from exc
+            flux_dict = {
+                source: FluxData(data=value.data.assign(flux=flux), metadata=dict(value.metadata), sort=False)
+                for (source, value), flux in zip(flux_dict.items(), aligned_flux, strict=True)
+            }
         retained_flux_dict = flux_dict
         flux_provenance = {source: selected_provenance(value, flux_store) for source, value in flux_dict.items()}
 
@@ -371,16 +437,27 @@ class MergedData:
                 retained_flux_dict = scenario_flux_dict
 
             try:
-                scenario_combined = merged_scenario_data(
-                    site_data,
-                    footprint_data,
-                    scenario_flux_dict,
-                    bc_data,
-                    platform=scenario_platform,
-                    max_level=site_options.max_level[i],
-                    split_by_sectors=split_by_sectors,
-                    output_units=output_units,
-                )
+                if surface_transport is not None:
+                    scenario_combined = prepare_surface_site(
+                        site_data, footprint_data, scenario_flux_dict,
+                        species=species, transport=surface_transport,
+                        boundary_data=bc_data, boundary_representation=boundary_representation,
+                        boundary_reference=reference,
+                        boundary_reference_units=reference_units,
+                        boundary_mass_tolerance=mass_tolerance,
+                        output_units=output_units,
+                    )
+                else:
+                    scenario_combined = merged_scenario_data(
+                        site_data,
+                        footprint_data,
+                        scenario_flux_dict,
+                        bc_data,
+                        platform=scenario_platform,
+                        max_level=site_options.max_level[i],
+                        split_by_sectors=split_by_sectors,
+                        output_units=output_units,
+                    )
             except (TypeError, ValueError) as exc:
                 if output_units is None:
                     raise
@@ -403,6 +480,18 @@ class MergedData:
             footprint_provenance[site] = selected_provenance(
                 footprint_data, footprint_store, requested_version="latest"
             )
+
+            if surface_transport is not None:
+                transport_provenance = json.loads(scenario_combined.attrs["surface_transport_provenance"])
+                transport_provenance["site_footprint"].update(asdict(footprint_provenance[site]))
+                for source, contribution in transport_provenance["sources"].items():
+                    contribution["footprint"].update(asdict(footprint_provenance[site]))
+                    contribution["flux"] = asdict(flux_provenance[source])
+                if boundary_provenance is not None:
+                    transport_provenance["boundary"] = asdict(boundary_provenance)
+                scenario_combined.attrs["surface_transport_provenance"] = json.dumps(
+                    transport_provenance, sort_keys=True
+                )
 
             if not is_satellite_platform(site_platform):
                 check_scales.add(scenario_combined.scale)

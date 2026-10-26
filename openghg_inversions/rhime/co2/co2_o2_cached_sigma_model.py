@@ -56,6 +56,7 @@ def build_co2_o2_cached_sigma_model(
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     boundary_sensitivity: Mapping[str, xr.DataArray] | None = None,
+    boundary_operands: Mapping[str, xr.Dataset] | None = None,
     bc_prior: Mapping[str, PriorArgs] | None = None,
     bc_state_activity: Mapping[str, StateActivity] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
@@ -78,6 +79,8 @@ def build_co2_o2_cached_sigma_model(
     values are returned separately for sampling; observations, designs,
     activity masks, and covariance stay fixed after construction.
     """
+    if boundary_operands is not None:
+        raise ValueError("Centered boundaries do not support cached likelihoods.")
     validate_observation_error_arrays(
         observations,
         independent_error_sd,
@@ -86,7 +89,7 @@ def build_co2_o2_cached_sigma_model(
         output_dim=output_dim,
     )
     alignment = linked_fixed_ou_alignment(observations)
-    site_coord = alignment.site_labels.rename({"nsigma_site": "ou_site"}).rename("ou_site")
+    site_coord = xr.DataArray(alignment.site_labels).rename({"nsigma_site": "ou_site"}).rename("ou_site")
     site_index = alignment.site_index.rename("ou_site_index")
     initial_amplitudes = _site_values(
         initial_site_amplitudes,
@@ -151,7 +154,10 @@ def build_co2_o2_cached_sigma_model(
             offset_prior=offset_prior,
             offset_args=offset_args,
         )
-        for _, result, design in baselines:
+        for baseline in baselines:
+            result, design = baseline.component, baseline.design
+            # Centered components (whose unused design is None) are rejected above.
+            assert design is not None
             matrix = np.asarray(design.values, dtype=np.float64)
             if isinstance(result, LinearComponentResult):
                 active = np.asarray(result.activity.active.values, dtype=bool)

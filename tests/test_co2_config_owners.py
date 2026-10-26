@@ -15,6 +15,7 @@ from openghg_inversions.rhime.co2.co2_o2_configuration import load_co2_o2_params
 from openghg_inversions.rhime.co2.execution import load_co2_params
 from openghg_inversions.rhime.sampling import RhimeSampler
 from test_co2_o2_fixed_ou import _prepared
+from test_co2_affine_output import _prepared as _single_prepared
 
 
 @pytest.mark.parametrize("linked", [False, True])
@@ -81,7 +82,7 @@ def test_saved_sampling_accepts_concrete_owner_without_reparsing(tmp_path, monke
     model = (Co2O2ModelConfig.from_params({"channels": {"co2": {"units": "ppm", "independent_error_sd": .2},
                                                        "o2": {"units": "ppm", "independent_error_sd": .3}}})
              if linked else Co2ModelConfig.from_params({"likelihood": {"kind": "additive_sigma"}}))
-    prepared = _prepared()
+    prepared = _prepared() if linked else _single_prepared()[0]
     record = SimpleNamespace(prepared=prepared, payload=tmp_path / "payload.nc", affine_payload=None, generation="g")
     monkeypatch.setattr(module, "load_preparation", lambda *a: record)
     monkeypatch.setattr(module, "check_checkpoint_targets", lambda *a, **kw: None)

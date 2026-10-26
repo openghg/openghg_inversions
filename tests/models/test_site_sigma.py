@@ -11,7 +11,7 @@ from scipy.stats import multivariate_normal
 
 from openghg_inversions.models.coords import get_coord_registry, registered_model
 from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
-from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
+from openghg_inversions.observation_error import AggregationError
 from tests.standard_model_helpers import build_standard_graph
 
 
@@ -337,19 +337,32 @@ def test_standard_recipe_accepts_site_sigma_through_public_likelihood_seam() -> 
         coords={"nmeasure": observations.nmeasure, "region": ["r1"]},
     )
 
+    def site_sigma_likelihood(
+        *, observations, observation_error, mean, output_dim, fixed_site_amplitudes,
+    ):
+        """Bind the independent standard-recipe inputs to the reusable component."""
+        return add_site_sigma_gaussian_likelihood(
+            observations=observations,
+            observation_error=observation_error,
+            aggregation_error=AggregationError("none", np.zeros(observations.sizes[output_dim])),
+            mean=mean,
+            output_dim=output_dim,
+            fixed_site_amplitudes=fixed_site_amplitudes,
+        )
+
     model = build_standard_graph(
         design,
         observations=data["mf"],
         observation_error=data["mf_error"],
-        aggregation_error=resolve_aggregation_error(data, "none"),
         use_bc=False,
         x_prior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
-        likelihood_builder=add_site_sigma_gaussian_likelihood,
+        likelihood_builder=site_sigma_likelihood,
         likelihood_kwargs={"fixed_site_amplitudes": FIXED_SITE_SIGMA},
     )
 
     assert {"y", "epsilon", "sigma_site", "sigma_site_index"} <= set(model.named_vars)
     assert "sigma" not in model.named_vars
+    np.testing.assert_allclose(model["epsilon"].eval(), np.sqrt(np.array([0.3, 0.4, 0.2])**2 + np.array([0.5, 1.0, 0.5])**2))
 
 
 def test_fixed_mapping_requires_each_observation_site() -> None:

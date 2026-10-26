@@ -53,8 +53,8 @@ supported behavior.
 ### Requirement: Explicit custom-likelihood scientific inputs
 
 The standard and multisector custom-likelihood seams SHALL call the supplied
-callable with `mean`, `observations`, `observation_error`, `aggregation_error`,
-and `output_dim`. The mean SHALL include the recipe's applicable pollution and
+callable with `mean`, `observations`, `observation_error`, and `output_dim`.
+The mean SHALL include the recipe's applicable pollution and
 baseline contributions. The seam SHALL keep built-in-specific inputs such as
 `minimum_error`, `pollution_mean`, and `pollution_event_baseline` outside this
 common argument set.
@@ -62,8 +62,8 @@ common argument set.
 #### Scenario: Replace the likelihood in a concrete recipe
 
 - **WHEN** a standard or multisector model is built with a custom likelihood
-- **THEN** the callable receives the completed forward mean and the common
-  observation arguments exactly once
+- **THEN** the callable receives `mean`, `observations`, `observation_error`,
+  and `output_dim` exactly once, with the completed forward mean
 - **AND** it receives additional options only through explicit
   `likelihood_kwargs`
 

@@ -59,7 +59,7 @@ def test_data_contracts_preserve_canonical_imports_and_prepared_schema() -> None
     prepared = _prepared_inputs()
     artifact = prepared.to_datatree()
     assert artifact.attrs["schema"] == prepared_contract.PREPARED_INPUTS_SCHEMA
-    assert artifact.attrs["schema_version"] == prepared_contract.PREPARED_INPUTS_SCHEMA_VERSION == 2
+    assert artifact.attrs["schema_version"] == prepared_contract.PREPARED_INPUTS_SCHEMA_VERSION == 3
     assert "site_indicator" not in artifact["inv_inputs"].data_vars
     assert "site_names" not in artifact["inv_inputs"].data_vars
 
@@ -136,79 +136,6 @@ def _prepared_inputs(
         basis_functions=_basis_functions().with_metadata(basis_metadata),
         site_metadata=_site_metadata(("TAC", "MHD"), ("1h", None)),
     )
-
-
-@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
-@pytest.mark.parametrize("representation", ["dense", "low_rank"])
-def test_structured_aggregation_error_survives_prepared_input_round_trip(
-    tmp_path: Path,
-    suffix: str,
-    representation: str,
-) -> None:
-    prepared = _prepared_inputs()
-    inv_inputs = prepared.inv_inputs.copy()
-    covariance = np.array([[0.5, 0.1], [0.1, 0.4]])
-    if representation == "dense":
-        inv_inputs["aggregation_error_covariance"] = (
-            ("nmeasure", "nmeasure_cov"),
-            covariance,
-        )
-    else:
-        factor = np.array([[0.5], [0.2]])
-        inv_inputs["low_rank_factor"] = (("nmeasure", "agg_rank"), factor)
-        inv_inputs["diagonal_residual_variance"] = (
-            "nmeasure",
-            np.diag(covariance) - np.sum(factor**2, axis=1),
-        )
-    structured = PreparedInputs(
-        inv_inputs=inv_inputs,
-        basis_functions=prepared.basis_functions,
-        site_metadata=prepared.site_metadata,
-    )
-    path = tmp_path / f"structured-{representation}{suffix}"
-
-    structured.save(path)
-    loaded = PreparedInputs.load(path)
-
-    xr.testing.assert_identical(loaded.inv_inputs, structured.inv_inputs)
-
-
-def test_derived_outputs_reject_aggregation_error_until_reconstruction_lands(tmp_path, monkeypatch) -> None:
-    country_file = tmp_path / "country.nc"
-    country_file.touch()
-    monkeypatch.setattr(rhime_standard, "sample_rhime_model",
-                        lambda *args, **kwargs: pytest.fail("sampled unsupported covariance outputs"))
-    prepared = _prepared_inputs()
-    prepared.inv_inputs["aggregation_error_sd"] = ("nmeasure", [0.2, 0.3])
-    model_spec = RhimeModelSpec(
-        species="ch4",
-        domain="EUROPE",
-        likelihood=PollutionEventSettings(),
-        sectors=(
-            SectorSpec(
-                name="total",
-                flux_source="total",
-                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-                variable_suffix="total",
-            ),
-        ),
-        use_bc=False,
-        aggregation_error_mode="diagonal",
-    )
-    config = RhimeConfig(
-        data=DataConfig(
-            site_options=SiteOptions.from_inputs(sites=prepared.sites, averaging_period=prepared.averaging_period),
-            species=model_spec.species, domain=model_spec.domain,
-            start_date="2019-01-01", end_date="2019-01-02",
-            flux_sources=("total",), use_bc=False,
-        ),
-        model=model_spec,
-        output=RhimeOutputSpec(output_format="basic", save_inversion_output=False, country_file=country_file),
-        sampler=RhimeSampler(),
-    )
-
-    with pytest.raises(ValueError, match="does not declare output_format='basic' compatible"):
-        rhime_standard.run_standard(prepared=prepared, config=config)
 
 
 def _multisource_prepared_inputs() -> PreparedInputs:

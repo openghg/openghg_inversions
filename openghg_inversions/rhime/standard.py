@@ -13,7 +13,7 @@ from openghg_inversions.basis import prepare_basis
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.rhime.preparation import acquire_merged_data, resolve_basis_inputs
 
-from collections.abc import Mapping
+from collections.abc import Hashable, Mapping
 from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
@@ -39,10 +39,6 @@ from openghg_inversions.models.coords import component_coords, registered_model
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.models.state_activity import prepare_linear_sensitivity, resolve_state_activity
-from openghg_inversions.observation_error import (
-    aggregation_error_input_names,
-    resolve_aggregation_error,
-)
 from openghg_inversions.sigma import SigmaAlignment
 
 from ._model_building import (
@@ -121,8 +117,7 @@ def standard_model_input_names(
         Prepared variable names selected for coordinated materialization.
 
     Raises:
-        ValueError: If a selected component's required input is absent or its
-            aggregation-error representation is ambiguous.
+        ValueError: If a selected component's required input is absent.
     """
     return _standard_input_names(prepared.inv_inputs, model_spec)
 
@@ -131,6 +126,8 @@ def _standard_input_names(
     model_inputs: xr.Dataset, model_spec: RhimeModelSpec, *, materialized: bool = False,
 ) -> tuple[str, ...]:
     """Own selected standard component names and single-sector layout checks."""
+    if model_spec.use_bc and {"H_bc_anomaly", "H_bc_mass", "bc_reference"} & set(model_inputs):
+        raise ValueError("Centered boundary operands require the supported CO2-family pilot model binding.")
     if len(model_spec.sectors) != 1:
         raise ValueError("Standard model specs must include exactly one sector.")
     _require_component_inputs(
@@ -170,19 +167,6 @@ def _standard_input_names(
             owner="Standard baseline component selected by `use_bc=True`",
         )
         names.extend(_BASELINE_INPUT_NAMES)
-    aggregation_names = aggregation_error_input_names(
-        model_inputs,
-        model_spec.aggregation_error_mode,
-    )
-    _require_component_inputs(
-        model_inputs,
-        aggregation_names,
-        owner=(
-            "Aggregation-error component selected by "
-            f"`aggregation_error_mode={model_spec.aggregation_error_mode!r}`"
-        ),
-    )
-    names.extend(aggregation_names)
     return tuple(names)
 
 
@@ -308,7 +292,7 @@ def _build_independent_rhime_model(
     source_sensitivity = model_inputs["H"]
     flux_sensitivity = source_sensitivity
     if multisector:
-        coordinate_names = set()
+        coordinate_names: set[Hashable] = set()
         for name, array in model_inputs.data_vars.items():
             if name == "H":
                 continue
@@ -329,7 +313,6 @@ def _build_independent_rhime_model(
     observations = model_inputs["mf"]
     observation_error = model_inputs["mf_error"]
     minimum_error = model_inputs.get("min_error")
-    aggregation_error = resolve_aggregation_error(model_inputs, model_spec.aggregation_error_mode)
 
     use_bc = model_spec.use_bc
     add_offset = model_spec.add_offset
@@ -411,7 +394,6 @@ def _build_independent_rhime_model(
             forward=forward,
             observations=observations,
             observation_error=observation_error,
-            aggregation_error=aggregation_error,
             minimum_error=minimum_error,
             output_dim="nmeasure",
             sigma_alignment=sigma_alignment,
@@ -458,7 +440,10 @@ def prepare_standard(
     )
     filtered = prepare_observation_errors(filtered, averaging_error=averaging_error)
 
-    runtime_flux = resolve_runtime_flux(merged_data.flux_data, split_by_sectors=merged_data.split_by_sectors)
+    runtime_flux = resolve_runtime_flux(
+        merged_data.flux_data, split_by_sectors=merged_data.split_by_sectors,
+        explicit_surface=any("surface_transport" in data.attrs for data in merged_data.site_data.values()),
+    )
     with timed("rhime.prepare_inputs.basis_build", basis_algorithm=basis_algorithm):
         basis_functions = prepare_basis(
             site_data=filtered,

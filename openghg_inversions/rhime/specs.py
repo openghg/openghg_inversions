@@ -16,7 +16,6 @@ from openghg_inversions.rhime._resources import resolve_resource_paths
 from openghg_inversions.models.priors import PriorArgs, trace_prior_records
 from openghg_inversions.models.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
 from openghg_inversions.models.state_activity import StateActivity
-from openghg_inversions.observation_error import AggregationErrorMode
 
 if TYPE_CHECKING:
     from openghg_inversions.rhime.params import DataConfig
@@ -239,9 +238,6 @@ class RhimeModelSpec:
         likelihood: Resolved built-in likelihood settings, or ``None`` when a
             Python-only custom likelihood owns that step.
         add_offset: Whether model-data offsets are included.
-        aggregation_error_mode: Fixed aggregation-error covariance
-            representation. The default ``"none"`` preserves the ordinary
-            model; other modes are an explicit opt-in.
         bc_prior: Prior specification for boundary-condition scaling factors.
         offset_prior: Prior specification for optional offsets.
         offset_args: Extra keyword arguments forwarded to the offset component.
@@ -258,7 +254,7 @@ class RhimeModelSpec:
     # available to independent builders rather than this configured frontend.
     CONFIG_OPTION_NAMES: ClassVar[tuple[str, ...]] = (
         "x_prior", "bc_prior", "offset_prior", "sector_priors", "sector_sources",
-        "offset_args", "add_offset", "mismatch_model", "aggregation_error_mode",
+        "offset_args", "add_offset", "mismatch_model",
         "bc_freq", "bc_freq_anchor",
     )
     PRIOR_OPTION_NAMES: ClassVar[tuple[str, ...]] = ("x_prior", "bc_prior", "offset_prior")
@@ -272,7 +268,6 @@ class RhimeModelSpec:
     bc_freq_anchor: DatetimeLike | None = field(default=None, kw_only=True)
     likelihood: LikelihoodSettings | None = field(default=None, kw_only=True)
     add_offset: bool = False
-    aggregation_error_mode: AggregationErrorMode = field(default="none", kw_only=True)
     bc_prior: PriorArgs | None = None
     offset_prior: PriorArgs | None = None
     offset_args: dict[str, Any] | None = None
@@ -432,7 +427,7 @@ class RhimeModelSpec:
 
 
 _MODEL_RECORD_FIELDS = (
-    "species", "domain", "use_bc", "bc_freq", "bc_freq_anchor", "add_offset", "aggregation_error_mode",
+    "species", "domain", "use_bc", "bc_freq", "bc_freq_anchor", "add_offset",
     "bc_prior", "offset_prior", "offset_args",
 )
 _LIKELIHOOD_SETTINGS = {
