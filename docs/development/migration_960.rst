@@ -29,6 +29,12 @@ revision ``6a1d22d10c07442514dd610e2ec62b7a2719e297``:
 * `26 October BC, schema-name and contract-owner comparisons
   <https://github.com/openghg/openghg_inversions/blob/6a1d22d10c07442514dd610e2ec62b7a2719e297/tests/fixtures/migration_960/retirements/review_974_2026_10_26.json>`_.
 
+
+The separate #954 aggregation-retirement comparison is also archived in Git:
+
+* `Aggregation retirement comparison
+  <https://github.com/openghg/openghg_inversions/blob/678c8bb4c920ea38fedfd4e2e590a732dfa9ce12/tests/fixtures/migration_960/retirements/aggregation_filters_2026_10_23.json>`_.
+
 These records preserve source revisions/hashes, original cases, dispositions and
 follow-up owners for review and future explicit migration work. They are not
 current expected behavior or proof of an executed scientific check. Dated paths
@@ -642,88 +648,3 @@ implementation. Neither this reconciliation nor Python naming imports #964's
 pending numerical changes, promotes the unfinished handoff programme or implies
 unsupported historical-format compatibility. Fresh acceptance is recorded in
 revision-specific tasks/PR evidence, separately from these source comparisons.
-
-Aggregation filter retirement comparison, 23 October 2026
----------------------------------------------------------
-
-This dated addendum records the removal of ``daily_median`` and ``six_hr_mean``
-under `#954 <https://github.com/openghg/openghg_inversions/issues/954>`_. It
-preserves the preceding evidence, historical rows, expected values and source
-hashes. The source route is ``openghg_inversions.filters.filtering`` at pinned
-revision ``0a32d73a5c4a72be0505a4ed682472e1613e49e9``. The affected filter
-functions were unchanged from that source before retirement on comparison base
-``3b27c542``. This comparison uses inspected source and independent arithmetic;
-no historical execution of these aggregation cases is claimed.
-
-The plain inputs and expectations are retained in
-:download:`aggregation_filters_2026_10_23.json
-<../../tests/fixtures/migration_960/retirements/aggregation_filters_2026_10_23.json>`.
-For site ``TAC``, timestamps are 00:00, 01:00 and 02:00 on 1 January 2020,
-``mf = [0, 1, 100]`` and ``mf_error = [1, 9, 3]``. All three timestamps fall
-within one bin for either source operation, labelled 00:00 on that date.
-With the default ``keep_missing=False``, both operations drop missing time
-rows after aggregation; these inputs contain no missing values. The daily
-median implementation also calls ``dataset.load()`` before resampling.
-
-.. list-table:: Source aggregation and modern disposition
-   :header-rows: 1
-   :widths: 19 27 24 30
-
-   * - Source filter
-     - Inspected operation
-     - Independent expected values
-     - Modern disposition
-   * - ``daily_median``
-     - Daily median of dataset variables.
-     - ``mf = 1``; ``mf_error = 3``.
-     - Function and registry entry removed; named requests raise guided
-       ``KeyError``.
-   * - ``six_hr_mean``
-     - Six-hour mean of dataset variables.
-     - ``mf = 101 / 3``; ``mf_error = 13 / 3``.
-     - Function and registry entry removed; named requests raise guided
-       ``KeyError``.
-
-The old operations aggregated ``mf_error`` generically as another dataset
-variable. The archived arithmetic describes that behavior; it does not endorse
-those mean or median values as propagated observation uncertainty. Modern
-requests receive guidance to perform deliberate uncertainty-propagating
-resampling before observation selection. There is no automatic mean or median
-replacement.
-
-The current behavior is covered by
-``tests/test_filters.py::test_retired_resampling_filters_are_not_available`` and
-``tests/test_filters.py::test_invalid_filter_requests_fail_before_any_data_execution``.
-The latter covers scalar, list and site-specific requests through both
-``filtering`` and the public observation-selection stage, including rejection
-before lazy data execute. These tests own the runtime removal behavior; the
-plain evidence file needs no duplicate runtime test.
-
-Implementation belongs to #954, public API disposition to
-`#945 <https://github.com/openghg/openghg_inversions/issues/945>`_, and the later
-migration report to
-`#949 <https://github.com/openghg/openghg_inversions/issues/949>`_. This addendum
-does not define a replacement resampling algorithm or revise the historical
-migration expectations above.
-
-
-Aggregation-filter validation disposition, 26 October 2026
-----------------------------------------------------------
-
-The maintainer's PR #971 review supersedes the named runtime rejection described
-in the 23 October comparison above. Both aggregation functions and registry
-entries remain removed. Runtime validation now treats all unsupported active
-filter names uniformly, with ordinary ``KeyError`` and no historical-name
-mapping or migration translation. Global scalar and list requests validate
-against the supported registry before expansion, including empty and
-metadata-only observations. Site-specific entries validate before any filter
-executes only for sites present in the observations; absent-site choices are
-deferred uniformly regardless of spelling.
-
-The earlier evidence and independent source arithmetic remain a dated record.
-Historical resampling guidance remains in :doc:`/usage/legacy_and_migration`;
-no aggregation statistic or uncertainty-propagation policy is substituted.
-Observation errors still use the acquired population in this change; #964 owns
-the separate selection-first scientific amendment. Focused validation belongs to
-``tests/test_filters.py``, including registry checks without observation sites
-and absent-site deferral, through the supported modern acquisition fixture.

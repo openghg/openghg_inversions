@@ -11,8 +11,7 @@ revisions, environments, execution status, scientific exceptions and owners.
   each case includes its source justification. NetCDF files are generated only
   as tiny test resources from the declared layout, never as expected results.
 - `historical/`: released 0.7 route/default/scientific evidence and rerun inputs.
-- [Aggregation filter retirement, 23 October 2026](retirements/aggregation_filters_2026_10_23.json):
-  pinned-source arithmetic and the modern removal disposition.
+
 
 Keep source route and version with each expectation. A fixedbasis-looking INI
 can enter the ordinary RHIME wrapper or the explicit legacy executor.

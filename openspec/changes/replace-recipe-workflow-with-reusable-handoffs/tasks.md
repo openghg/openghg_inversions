@@ -12,7 +12,7 @@ existing pinned evidence and per-PR checklist. The implementation slice must:
 - [ ] Make the retired executable, subcommands, five aliases and obsolete adapters
   unavailable, port callers to canonical routes, and check imports/parser/package contents.
 - [ ] Replace old identity/translation/warning tests with canonical-input behavior
-  and ordinary unsupported-input checks while preserving historical witnesses.
+  and ordinary unsupported-input checks; historical witnesses remain in Git/PR history.
 - [ ] Validate scientific parity, selected export paths/provenance and borrowed-array
   execution outcomes; private helper identity/count is not an acceptance condition.
 - [ ] Reconcile focused scientific-input delivery with provider averaging first,

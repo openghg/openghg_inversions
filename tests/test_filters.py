@@ -97,15 +97,7 @@ def test_filters_as_dict_with_missing_site(merged_data, capsys):
     assert "Missing entry for sites ['MHD'] in filters." in logs
 
 
-@pytest.mark.parametrize("name", ["daily_median", "six_hr_mean"])
-def test_retired_resampling_filters_are_not_available(name, capsys):
-    assert not hasattr(filter_module, name)
-    assert name not in filtering_functions
-    filter_module.list_filters()
-    assert name not in capsys.readouterr().out
-
-
-@pytest.mark.parametrize("name", ["daily_median", "six_hr_mean", "unknown_filter", ""])
+@pytest.mark.parametrize("name", ["unknown_filter", ""])
 @pytest.mark.parametrize("request_kind", ["scalar", "list", "site_scalar", "site_list"])
 @pytest.mark.parametrize("public_stage", [False, True])
 def test_invalid_filter_requests_fail_before_any_data_execution(
@@ -146,7 +138,7 @@ def test_invalid_filter_requests_fail_before_any_data_execution(
     assert error.value.args == (name,)
 
 
-@pytest.mark.parametrize("name", ["daily_median", "six_hr_mean", "unknown_filter", "", None])
+@pytest.mark.parametrize("name", ["unknown_filter", "", None])
 @pytest.mark.parametrize("as_list", [False, True])
 @pytest.mark.parametrize("data", [{}, {".metadata": "unchanged"}])
 def test_global_filters_validate_registry_without_sites(name, as_list, data):
@@ -159,7 +151,7 @@ def test_global_filters_validate_registry_without_sites(name, as_list, data):
     assert error.value.args == (name,)
 
 
-@pytest.mark.parametrize("name", ["daily_median", "six_hr_mean", "unknown_filter", "", None])
+@pytest.mark.parametrize("name", ["unknown_filter", "", None])
 @pytest.mark.parametrize("as_list", [False, True])
 @pytest.mark.parametrize("with_active_site", [False, True])
 def test_absent_site_filter_entries_remain_deferred(name, as_list, with_active_site):
