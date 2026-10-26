@@ -127,7 +127,10 @@ def test_zero_error_fallback_uses_retained_population_after_daytime_selection(la
     assert options.sites == ("TAC",)
     assert options.averaging_period == ("1h",)
     assert prepared["TAC"].attrs == dataset.attrs
-    assert prepared["TAC"].mf_error.attrs == {"long_name": "methane_error", "units": "ppb"}
+    error_attrs = prepared["TAC"].mf_error.attrs
+    assert {name: error_attrs[name] for name in ("long_name", "units")} == {
+        "long_name": "methane_error", "units": "ppb",
+    }
     xr.testing.assert_identical(dataset, original)
 
 

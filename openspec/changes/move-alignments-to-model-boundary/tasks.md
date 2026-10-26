@@ -151,3 +151,48 @@ record; current tests cover supported behavior and generic invalid names only.
   local checks and must not be added together.
 - Final CI-equivalent validation remains pending. Earlier complete-matrix records
   do not establish acceptance of this restacked revision.
+
+### Final matrix diagnostics, 26 October 2026
+
+Slurm array `19727663` ran the complete `py312-openghgCur`,
+`py313-openghgCur` and moving-dependency `py312-openghgDev` environments.
+
+- Element `0`, prerequisite #971 at `57bf326d`, had one failure and 4,260
+  passed, eight skipped and four deselected in each environment.
+- Element `1`, dependent #964 at `9bf0ae66`, had one failure and 4,409 passed,
+  eight skipped and four deselected in each locked environment. Its moving
+  environment had three failures and 4,407 passed, eight skipped and four
+  deselected. These are failed full-suite results, not complete-matrix passes.
+- All six runs failed the namespace-unavailable assertion because both reused
+  source checkouts retained an ignored retired package directory containing
+  only ten generated CPython 3.12/3.13 bytecode files. The empty directory was
+  discoverable as a Python namespace package. After inspection, only those
+  bytecode files and empty retired directories were removed in both checkouts;
+  the namespace assertion and production code are unchanged.
+- The two additional moving-dependency failures concerned exact attribute-dict
+  equality in the eager/lazy retained-population fallback test. Numerical values
+  `[5, 2]`, labels and required `long_name`/`units` were correct; the dependency
+  also retained `source="instrument"`. The test now checks its required
+  attributes while permitting retained diagnostic metadata. No production
+  metadata handling or scientific calculations changed.
+- Lint, all four borrowed-typing checks and `docs-full` passed for both elements.
+  Each documentation build reported the same 16 warnings: 13 SiteOptions
+  duplicates, one PreparedInputs ambiguity and two DataConfig ambiguities. Four
+  unrelated generated-RST formatting changes were inspected and restored.
+- #964 incorporates exact merged #971 revision `53f6b4b2`: the additional
+  application change deletes the obsolete 173-line TDMCMC configuration template
+  and updates its release fragment. Historical filter names and fixtures remain
+  absent from maintained contracts, documentation and the current test tree.
+
+The existing-environment run of `tests/test_hbmcmc_boundary.py` and
+`tests/test_observation_error_preparation.py` passed 30 tests after cleanup and
+the test-only correction; changed-test Ruff and whitespace checks passed.
+Independent review accepted the attribute projection and inspected seven affected
+rendered pages in each tree: no broken local links, retired-name mentions or
+retirement-JSON downloads were found. All pinned archive commit/path references
+resolved. No additional broad audit or full-suite repeat was performed.
+
+The selected two-module retry across all three environments remains pending for
+both the merged prerequisite and corrected dependent tree. Task 8.4 stays open;
+that bounded retry will complement these original full-suite results rather than
+claiming another complete-suite run.
