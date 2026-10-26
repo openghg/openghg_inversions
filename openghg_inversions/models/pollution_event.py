@@ -22,6 +22,7 @@ from typing import Any, cast
 
 import numpy as np
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
@@ -122,7 +123,7 @@ def _build_pollution_event_error(
 
     if no_model_error:
         mean_observation = np.nanmean(observations.values)
-        small_amount = pm.floatX(1e-12 * mean_observation)
+        small_amount = floatX(1e-12 * mean_observation)
         # Preserve the exact historical expression before converting it to a
         # variance for covariance-aware observation distributions.
         independent_scale = cast(Any, pt.maximum)(pt.abs(reported_error), small_amount)

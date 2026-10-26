@@ -13,7 +13,6 @@ import pytest
 import xarray as xr
 
 import openghg_inversions.rhime.multisector as rhime_multisector
-import openghg_inversions.rhime.prepared as rhime_prepared
 import openghg_inversions.rhime.standard as rhime_standard
 from openghg_inversions.basis.basis_functions import (
     BASIS_ARTIFACT_PATH_ATTR,
@@ -29,12 +28,11 @@ from openghg_inversions.inversion_data import prepared_inputs as prepared_contra
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime import (
     PollutionEventSettings,
+    RhimeModelBuildResult,
     RhimeModelSpec,
     RhimeOutputSpec,
-    RhimeRunSpec,
     RhimeSampler,
     SectorSpec,
-    run_rhime_from_prepared_inputs,
 )
 from openghg_inversions.serialization import (
     MULTIINDEX_DIMS_ATTR,
@@ -48,21 +46,6 @@ from openghg_inversions.serialization import (
     trace_to_datatree,
 )
 from tests.helpers import make_trace, prepare_inputs
-
-
-def _standard_config(run_spec, prepared, sampler=None):
-    """Retain scientific fixture choices in the standard runner's request."""
-    return RhimeConfig(
-        data=DataConfig(
-            site_options=SiteOptions.from_inputs(sites=prepared.sites, averaging_period=prepared.averaging_period),
-            species=run_spec.model.species, domain=run_spec.model.domain,
-            start_date=run_spec.start_date, end_date=run_spec.end_date,
-            flux_sources=tuple(sector.flux_source for sector in run_spec.model.sectors),
-            use_bc=run_spec.model.use_bc,
-        ),
-        model=run_spec.model, output=run_spec.output,
-        sampler=sampler or RhimeSampler(),
-    )
 
 
 def test_data_contracts_preserve_legacy_imports_and_prepared_schema() -> None:
@@ -207,17 +190,20 @@ def test_derived_outputs_reject_aggregation_error_until_reconstruction_lands(tmp
         use_bc=False,
         aggregation_error_mode="diagonal",
     )
-    run_spec = RhimeRunSpec(
-        start_date="2019-01-01",
-        end_date="2019-01-02",
-        sites=prepared.sites,
-        averaging_period=prepared.averaging_period,
+    config = RhimeConfig(
+        data=DataConfig(
+            site_options=SiteOptions.from_inputs(sites=prepared.sites, averaging_period=prepared.averaging_period),
+            species=model_spec.species, domain=model_spec.domain,
+            start_date="2019-01-01", end_date="2019-01-02",
+            flux_sources=("total",), use_bc=False,
+        ),
         model=model_spec,
         output=RhimeOutputSpec(output_format="basic", save_inversion_output=False, country_file=country_file),
+        sampler=RhimeSampler(),
     )
 
     with pytest.raises(ValueError, match="does not declare output_format='basic' compatible"):
-        rhime_standard.run_standard(prepared=prepared, config=_standard_config(run_spec, prepared))
+        rhime_standard.run_standard(prepared=prepared, config=config)
 
 
 def _multisource_prepared_inputs() -> RhimePreparedInputs:
@@ -487,7 +473,6 @@ def _assert_prepared_identical(
 @pytest.fixture(scope="module")
 def prepared_from_real_route(
     tac_ch4_data_args: dict[str, Any],
-    default_bc_basis_directory: Path,
 ) -> RhimePreparedInputs:
     """Prepare durable inputs through the real RHIME route and test object store."""
     preparation_args = dict(tac_ch4_data_args)
@@ -657,13 +642,16 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         ),
         use_bc=True,
     )
-    run_spec = RhimeRunSpec(
-        start_date="2019-01-01",
-        end_date="2019-01-02",
-        sites=("stale",),
-        averaging_period=("stale",),
+    config = RhimeConfig(
+        data=DataConfig(
+            site_options=SiteOptions.from_inputs(sites=("stale",), averaging_period="1h"),
+            species=model_spec.species, domain=model_spec.domain,
+            start_date="2019-01-01", end_date="2019-01-02",
+            flux_sources=('total-ukghg-edgar7',), use_bc=True,
+        ),
         model=model_spec,
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
+        sampler=RhimeSampler(draws=1, tune=1, chains=1),
     )
     sampled = make_trace(posterior=xr.Dataset({
         "x": (("chain", "draw", "region"), np.ones((1, 1, loaded.inv_inputs.sizes["region"]))),
@@ -706,11 +694,11 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
     monkeypatch.setattr(rhime_standard, "prepare_standard", fail_preparation)
     monkeypatch.setattr(rhime_standard, "build_standard_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_standard, "save_standard_artifacts", fake_outputs)
+    monkeypatch.setattr(rhime_standard, "save_inversion_output", fake_outputs)
 
     result = rhime_standard.run_standard(
         prepared=loaded,
-        config=_standard_config(run_spec, loaded, RhimeSampler(draws=1, tune=1, chains=1)),
+        config=config,
     )
 
     builder_inputs = observed["builder_inputs"]
@@ -1150,13 +1138,16 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         ),
         use_bc=False,
     )
-    run_spec = RhimeRunSpec(
-        start_date="2019-01-01",
-        end_date="2019-01-02",
-        sites=("stale",),
-        averaging_period=("stale",),
+    config = RhimeConfig(
+        data=DataConfig(
+            site_options=SiteOptions.from_inputs(sites=("stale",), averaging_period="1h"),
+            species=model_spec.species, domain=model_spec.domain,
+            start_date="2019-01-01", end_date="2019-01-02",
+            flux_sources=('total-inventory',), use_bc=False,
+        ),
         model=model_spec,
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
+        sampler=RhimeSampler(draws=1, tune=1, chains=1),
     )
     sampled = make_trace(
         posterior=xr.Dataset(
@@ -1202,11 +1193,11 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
     monkeypatch.setattr(rhime_standard, "prepare_standard", fail_preparation)
     monkeypatch.setattr(rhime_standard, "build_standard_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_standard, "save_standard_artifacts", fake_outputs)
+    monkeypatch.setattr(rhime_standard, "save_inversion_output", fake_outputs)
 
     result = rhime_standard.run_standard(
         prepared=loaded,
-        config=_standard_config(run_spec, loaded, RhimeSampler(draws=1, tune=1, chains=1)),
+        config=config,
     )
 
     builder_inputs = observed["builder_inputs"]
@@ -1270,29 +1261,32 @@ def test_multisource_order_survives_load_run_and_reconstruction(
         ),
         use_bc=False,
     )
-    run_spec = RhimeRunSpec(
-        start_date="2019-01-01",
-        end_date="2019-01-02",
-        sites=loaded.sites,
-        averaging_period=loaded.averaging_period,
+    config = RhimeConfig(
+        data=DataConfig(
+            site_options=SiteOptions.from_inputs(sites=loaded.sites, averaging_period=loaded.averaging_period),
+            species=model_spec.species, domain=model_spec.domain,
+            start_date="2019-01-01", end_date="2019-01-02",
+            flux_sources=("B", "A"), use_bc=False, split_by_sectors=True,
+        ),
         model=model_spec,
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
-        split_by_sectors=True,
+        sampler=RhimeSampler(draws=1, tune=1, chains=1),
     )
     sampled = make_trace()
     observed: dict[str, object] = {}
-    original_builder = rhime_multisector.build_multisector_rhime_model
+    original_builder = rhime_multisector.build_multisector_model
 
     def fake_builder(
-        flux_sensitivity: xr.DataArray,
+        model_inputs: xr.Dataset,
+        actual_spec: RhimeModelSpec,
         **kwargs: Any,
-    ) -> pm.Model:
+    ) -> RhimeModelBuildResult:
         """Record ordered builder inputs and build the real canonical graph."""
         assert kwargs["likelihood_builder"] is None
-        assert kwargs["likelihood_settings"] == model_spec.likelihood
-        observed["source_order"] = tuple(flux_sensitivity.source.values)
-        observed["sectors"] = kwargs["sectors"]
-        return original_builder(flux_sensitivity, **kwargs)
+        assert actual_spec.likelihood == model_spec.likelihood
+        observed["source_order"] = tuple(model_inputs["H"].source.values)
+        observed["sectors"] = actual_spec.sectors
+        return original_builder(model_inputs, actual_spec, **kwargs)
 
     def fake_sample(
         self: RhimeSampler,
@@ -1305,30 +1299,15 @@ def test_multisource_order_survives_load_run_and_reconstruction(
         assert variable_roles["concentration"] == "y"
         return sampled
 
-    def fake_outputs(**kwargs: Any) -> None:
-        """Exercise postprocessing reconstruction on the loaded retained basis."""
-        output_prepared = kwargs["prepared"]
-        assert isinstance(output_prepared, RhimePreparedInputs)
-        output_operator = output_prepared.basis_functions.operator
-        assert isinstance(output_operator, MultiSourceBucketBasisOperator)
-        observed["output_order"] = tuple(output_operator.basis_flat)
-        xr.testing.assert_identical(
-            output_prepared.basis_functions.interpolate(state, flux=True),
-            expected_reconstruction,
-        )
-        kwargs["result"].outputs["postprocessed"] = True
-
-    monkeypatch.setattr(rhime_multisector, "build_multisector_rhime_model", fake_builder)
+    monkeypatch.setattr(rhime_multisector, "build_multisector_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_prepared, "make_multisector_rhime_outputs", fake_outputs)
 
-    result = run_rhime_from_prepared_inputs(
-        prepared_inputs=loaded,
-        run_spec=run_spec,
-        sampler=RhimeSampler(draws=1, tune=1, chains=1),
-    )
+    result = rhime_multisector.run_multisector(prepared=loaded, config=config)
 
     assert observed["source_order"] == ("B", "A")
-    assert observed["sectors"] is model_spec.sectors
-    assert observed["output_order"] == ("B", "A")
-    assert result.outputs == {"postprocessed": True}
+    assert observed["sectors"] == model_spec.sectors
+    assert isinstance(result, InversionOutput)
+    assert tuple(result.basis_functions.operator.basis_flat) == ("B", "A")
+    xr.testing.assert_identical(
+        result.basis_functions.interpolate(state, flux=True), expected_reconstruction,
+    )

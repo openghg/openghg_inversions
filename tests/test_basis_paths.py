@@ -78,6 +78,8 @@ def test_missing_selected_resource_fails_before_acquisition(tmp_path, monkeypatc
 
     monkeypatch.chdir(tmp_path)
     params = _params(**options)
+    if route == "nested":
+        params["output_format"] = "none"
     if route == "multisector":
         params["flux_sources"] = ["a", "b"]
     config = RhimeConfig.from_params(params, multisector=route == "multisector")
@@ -88,7 +90,7 @@ def test_missing_selected_resource_fails_before_acquisition(tmp_path, monkeypatc
         elif route == "multisector":
             multisector.run_rhime_multisector(config=config)
         elif route == "nested":
-            nested.prepare_nested_rhime_inputs(config, inner_domain="6km")
+            nested.run_nested(config=config, inner_domain="6km")
         else:
             _standard_stages.prepare(config.data, output_dir=tmp_path / "stage")
     assert not list(tmp_path.glob("**/prepare-manifest.json"))
@@ -204,7 +206,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
     sites, sources = _inputs()
     partition = xr.ones_like(sources["a"].flux.isel(time=0, drop=True), dtype=int)
     options = _params(
-        sites=["A", "B"], averaging_period="1h", flux_sources=list(sources),
+        sites=["A", "B"], averaging_period="1h", flux_sources=list(sources), domain="TEST",
         basis_algorithm="quadtree", nbasis=4, output_format="none",
         basis_output_path=f"runs/prepared/basis{suffix}" if suffix else None,
     )
@@ -251,25 +253,48 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
 
     monkeypatch.setattr(module, "prepare_basis", prepare)
     monkeypatch.setattr(module, "build_sensitivities", sensitivities)
-    if route in {"standard", "staged"}:
-        # Standard preparation is scientific-only; its runner and staged
-        # handoff export the completed basis before using the prepared inputs.
+    exported_bases = []
+    if route == "nested":
+        original_export = module.export_basis
+
+        def export(basis, path):
+            result = original_export(basis, path)
+            exported_bases.append(result)
+            return result
+
+        monkeypatch.setattr(module, "export_basis", export)
+        monkeypatch.setattr(module, "_mask_outer_for_aligned_inner_domain", lambda outer, inner: outer)
+    if route in {"standard", "multisector", "staged", "nested"}:
+        # Scientific preparation completes before runners and staged handoffs
+        # export the basis and use the prepared inputs.
         from openghg_inversions.rhime import _standard_stages
         from tests.test_staged_workflow import _prepared
         monkeypatch.setattr(module, "build_sensitivities", lambda *args, **kwargs: {})
-        monkeypatch.setattr(module, "assemble_rhime_inputs",
-                            lambda site_data, basis, **kwargs: replace(_prepared(), basis_functions=basis))
+        def assemble(site_data, basis, **kwargs):
+            prepared = _prepared()
+            inputs = prepared.inv_inputs
+            if route == "multisector":
+                inputs = inputs.assign(H=inputs.H.expand_dims(source=list(basis.source_labels)))
+            return replace(prepared, inv_inputs=inputs, basis_functions=basis)
+        monkeypatch.setattr(module, "assemble_rhime_inputs", assemble)
         def after_preparation(*args, **kwargs):
             captured.append(args[0].basis_functions)  # the prepared inputs
             raise AfterBasis
-        monkeypatch.setattr(module, "materialize_standard_inputs", after_preparation)
+        model_family = route if route in {"multisector", "nested"} else "standard"
+        monkeypatch.setattr(module, f"materialize_{model_family}_inputs",
+                            after_preparation)
         monkeypatch.setattr(_standard_stages, "save_preparation", after_preparation)
     config = RhimeConfig.from_params(options, multisector=route == "multisector")
     with pytest.raises(AfterBasis):
         if route == "staged":
             _standard_stages.prepare(config.data, output_dir="runs/prepared")
         elif route == "nested":
-            module._prepare_one_domain(merged, data=config.data, basis_support_maps=resolve_basis_inputs(config.data))
+            module.run_nested(
+                config=config, inner_domain="6km", inner_nbasis=4,
+                inner_basis_path=config.data.basis_path,
+                inner_basis_partition_path=config.data.basis_partition_path,
+                inner_basis_output_path=f"runs/prepared/inner_basis{suffix}" if suffix else None,
+            )
         elif route == "example":
             module.run_custom_rhime(**options)
         elif route == "multisector":
@@ -278,25 +303,41 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
             module.run_standard(config=config)
     assert sources["a"].flux.data is borrowed
     assert config.data.basis_output_path == (tmp_path / options["basis_output_path"] if suffix else None)
-    if route in {"standard", "staged", "example"}:
-        # An explicit export preserves scientific basis payloads and acquisition
-        # metadata rather than attaching a destination receipt.
+    if route in {"standard", "multisector", "staged", "example"}:
+        # Exported payloads remain borrowed; standard records its destination.
         assert captured[0].operator is captured[1].operator
         assert captured[0].flux.data is captured[1].flux.data
-        assert captured[1].metadata == original_metadata[0]
-        assert captured[1].basis_artifact_path == (str(tmp_path / "input.nc") if selection == "reused" else None)
+        expected_receipt = (
+            str(tmp_path / options["basis_output_path"]) if route == "standard" and suffix
+            else str(tmp_path / "input.nc") if selection == "reused" else None
+        )
+        assert captured[1].basis_artifact_path == expected_receipt
+        assert captured[0].metadata == original_metadata[0]
+    if route == "nested":
+        assert len(exported_bases) == 2
+        for index, label in enumerate(("basis", "inner_basis")):
+            original = captured[index]
+            exported_basis = exported_bases[index]
+            assert original.operator is exported_basis.operator
+            assert original.flux.data is exported_basis.flux.data
+            assert original.metadata == original_metadata[index]
+            expected = (
+                str(tmp_path / f"runs/prepared/{label}{suffix}") if suffix
+                else str(tmp_path / "input.nc") if selection == "reused" else None
+            )
+            assert exported_basis.basis_artifact_path == expected
+            if suffix:
+                restored = BasisFunctions.load(expected)
+                xr.testing.assert_equal(restored.flat_basis(), original.flat_basis())
+                xr.testing.assert_equal(restored.flux, original.flux)
     if suffix is None:
-        if route not in {"standard", "staged"}:
+        if route not in {"standard", "multisector", "staged", "nested"}:
             assert captured[0] is captured[1]
         assert not list((tmp_path / "runs/prepared").glob("basis*"))
         return
     exported = tmp_path / options["basis_output_path"]
     assert exported.exists()
     assert not (tmp_path / "runs/prepared/runs").exists()
-    if route in {"multisector", "nested"}:
-        # Deferred families retain their historical export receipt copy.
-        assert captured[1].basis_artifact_path == str(exported)
-        assert captured[0].basis_artifact_path != str(exported)
     restored = BasisFunctions.load(exported)
     xr.testing.assert_equal(restored.flat_basis(), captured[0].flat_basis())
     xr.testing.assert_equal(restored.flux, resolve_runtime_flux(sources, split_by_sectors=route == "multisector"))
@@ -306,7 +347,7 @@ def test_nested_resolves_both_domain_paths_before_acquisition(tmp_path, monkeypa
     from openghg_inversions.rhime import nested
 
     monkeypatch.chdir(tmp_path)
-    config = RhimeConfig.from_params(_params(basis_path="outer.nc", basis_output_path="outer-out.nc"),
+    config = RhimeConfig.from_params(_params(basis_path="outer.nc", basis_output_path="outer-out.nc", output_format="none"),
                                      multisector=False)
     captured = []
 
@@ -322,8 +363,8 @@ def test_nested_resolves_both_domain_paths_before_acquisition(tmp_path, monkeypa
     monkeypatch.setattr(nested, "resolve_basis_inputs", resources)
     monkeypatch.setattr(nested.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquired"))
     with pytest.raises(BeforeAcquisition):
-        nested.prepare_nested_rhime_inputs(config, inner_domain="6km", inner_basis_path="inner.nc",
-                                           inner_basis_output_path="inner-out.zarr")
+        nested.run_nested(config=config, inner_domain="6km", inner_basis_path="inner.nc",
+                          inner_basis_output_path="inner-out.zarr")
     assert captured[0].basis_path == tmp_path / "outer.nc"
     assert captured[0].basis_output_path == tmp_path / "outer-out.nc"
     assert captured[1].basis_path == tmp_path / "inner.nc"
@@ -353,6 +394,25 @@ def test_full_ini_resources_keep_invocation_directory_convention(tmp_path, monke
     monkeypatch.setattr(standard.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquired"))
     with pytest.raises(BeforeAcquisition):
         standard.run_standard(config_file=source, basis_output_path="override.nc")
+
+
+def test_single_and_plural_partition_readers_preserve_values_and_metadata(tmp_path):
+    partition = xr.DataArray(
+        [[[1, 2], [3, 4]]], dims=("time", "lat", "lon"), name="basis",
+        coords={"time": [pd.Timestamp("2020-01-01")], "lat": [50., 51.], "lon": [-2., -1.]},
+        attrs={"long_name": "supplied partition"},
+    )
+    partition.lat.attrs["units"] = "degrees_north"
+    partition.lon.attrs["units"] = "degrees_east"
+    path = tmp_path / "partition.nc"
+    partition.to_netcdf(path)
+    config = RhimeConfig.from_params(_params(basis_partition_path=path), multisector=False)
+    single = resolve_basis_inputs(config.data)["basis_partition"]
+    plural = resolve_basis_inputs(replace(
+        config.data, basis_partition_path=None, basis_partition_paths=(path,),
+    ))["basis_partition"]
+    xr.testing.assert_identical(single, partition)
+    xr.testing.assert_identical(plural, partition)
 
 
 def test_plural_partition_paths_use_sorted_coordinate_reference(tmp_path):

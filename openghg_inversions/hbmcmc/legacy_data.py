@@ -12,15 +12,18 @@ from collections.abc import Sequence
 from dataclasses import asdict
 from functools import wraps
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Literal, cast
+from zipfile import ZipFile
 
 import numpy as np
 import xarray as xr
-import zarr
 from numcodecs import Blosc
 from openghg.dataobjects import BoundaryConditionsData, FluxData
 from openghg.dataobjects._basedata import _BaseData
+from openghg.storage._encoding import get_zarr_encoding
 from openghg.util import timestamp_now
+from zarr.storage import ZipStore
 
 from openghg_inversions._serialization_codecs import _json_value
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
@@ -71,6 +74,10 @@ def _save_merged_data(
 
     If `merged_data_name` ends with "nc", "zarr", or "zarr.zip", the output
     format is inferred from the suffix. Otherwise, it defaults to zipped zarr.
+
+    Zarr outputs use format 2. ZIP output stages the store in a temporary
+    directory alongside the destination, requiring space for both until the
+    archive is complete.
 
     Args:
         fp_all: dictionary of merged data to save
@@ -123,10 +130,17 @@ def _save_merged_data(
         encoding = datatree_compression_encoding(dt, comp)
 
         if output_format == "zarr":
-            dt.to_zarr(merged_data_dir / (merged_data_name + ".zarr"), mode="w-", encoding=encoding)
+            dt.to_zarr(
+                merged_data_dir / (merged_data_name + ".zarr"), mode="w-", encoding=encoding, zarr_format=2
+            )
         else:
-            with zarr.ZipStore(merged_data_dir / (merged_data_name + ".zarr.zip"), mode="w") as store:
-                dt.to_zarr(store, mode="w-", encoding=encoding)
+            # Dask tokenization can unpickle a writable ZipStore and truncate its archive.
+            with TemporaryDirectory(dir=merged_data_dir) as temporary:
+                dt.to_zarr(temporary, mode="w-", encoding=encoding, zarr_format=2)
+                with ZipFile(merged_data_dir / (merged_data_name + ".zarr.zip"), mode="w") as archive:
+                    for path in Path(temporary).rglob("*"):
+                        if path.is_file():
+                            archive.write(path, path.relative_to(temporary))
     else:
         # OpenGHG can attach None when a coordinate's units are unknown.
         # Omit that absent metadata, without inventing a physical unit.
@@ -215,7 +229,7 @@ def load_merged_data(
 
     # load merged data
     if merged_data_file.suffixes == [".zarr", ".zip"]:
-        with zarr.ZipStore(merged_data_file, mode="r") as store:
+        with ZipStore(merged_data_file, mode="r") as store:
             with xr.open_datatree(store, engine="zarr") as dt:  # type: ignore[arg-type, unused-ignore]
                 if dt.is_leaf:
                     return fp_all_from_dataset(dt.to_dataset().load())
@@ -341,7 +355,7 @@ def make_combined_scenario(fp_all: dict) -> xr.Dataset:
         fluxes.append(source_flux.expand_dims({"source": [source]}))
 
     # concat fluxes over source before merging into combined scenario
-    combined_fluxes = xr.concat(fluxes, dim="source")
+    combined_fluxes = xr.concat(fluxes, dim="source", join="outer")
     if "flux_time_present" in combined_fluxes:
         combined_fluxes["flux_time_present"] = combined_fluxes["flux_time_present"].fillna(0).astype(np.int8)
         combined_fluxes["flux_time_present"].attrs["long_name"] = "flux source includes this timestamp"
@@ -632,14 +646,13 @@ def datatree_to_fp_all(dt: xr.DataTree) -> dict:
 
 
 def datatree_compression_encoding(dt: xr.DataTree, compressor: Blosc) -> dict:
-    """Creating encoding dictionary for saving DataTree to zarr."""
+    """Return per-group compression settings for the installed Zarr backend."""
     encoding = defaultdict(dict)
 
     for g in dt.groups:
         if not dt[g].data_vars:
             continue
-        for dv in dt[g].data_vars:
-            encoding[g][dv] = {"compressor": compressor, "compressors": (compressor,)}
+        encoding[g] = get_zarr_encoding(dt[g].data_vars, compressor=compressor)
 
     return encoding
 

@@ -1,6 +1,112 @@
 # Design
 
+Positional dates and `--kwargs` remain open design questions. Retaining their
+current meanings for command-name migration does not settle their final syntax.
+
+## Outcome-contract reconciliation — 23 October 2026
+
+The accepted targets describe the modern interface even before runtime retirement
+lands: no HBMCMC namespace, canonical option names, one `rhime` executable and
+unavailable old command/Python alias names. Current source and revision-specific
+delivery evidence remain in tasks and migration guidance; they are not alternative
+conforming branches of the target contracts. Positional dates and `--kwargs`
+remain open for a separately agreed syntax amendment.
+
+Equivalent full, supplied-prepared and saved routes should reuse the existing
+scientific operations through ordinary procedural orchestration. Prefer small
+repeated calls to duplicated numerical implementations. Keep acquisition and
+resolved scientific selections visible, pass per-site datasets and aligned
+`SiteOptions` between ordinary functions, and use the existing explicit joint
+materialization boundaries. These are implementation choices supporting scientific
+parity, borrowing and independently usable phases; the behavioral contract does
+not require identical private helper calls, object plumbing or checkpoint-only
+differences between routes.
+
+Use one operational artifact-saving helper where it makes the runner readable,
+reusing the existing naming/path policy and codecs. This is a design choice, not
+a requirement for helper count or identity. The contract protects requested
+export paths, supported defaults/formats/overwrite behavior, unchanged scientific
+values and source provenance. Likewise, a single resolved-model inference
+predicate avoids drift between full and saved CO2 routes without making the
+predicate's shape part of the public interface. Existing timing observations
+cover neither Numba mode nor nutpie and establish no fastest-backend claim.
+
+The focused scientific-input amendment owns population and numerical-alignment
+policy. When requested, provider resampling happens during acquisition, before inversion-side
+selection and missing-error derivation. Selection excludes unsuitable observations;
+nested retained-domain alignment occurs before errors are derived for the retained
+population. `daily_median` and `six_hr_mean` are historical aggregation operations,
+not target selection filters. Any future aggregation needs separately defined
+uncertainty propagation; it cannot silently replace selection or a statistic.
+
+Python alias removal changes import names, not scientific contents. Persistence
+owners decide supported format versions and explicit conversion/rejection; no
+literal identifier/version freeze or blanket historical-file support follows.
+The historical model-selection source/test inventory includes `rhime/api.py`,
+`cli.py`, public package exports and `tests/test_public_run_api.py`. Its previous
+identity-alias tests characterize the old source; target checks must instead
+cover canonical behavior and unavailable old access paths.
+
 ## Context
+
+The 23 October 2026 #944/#961 amendment permits bounded retirement of the HBMCMC
+namespace, its wrappers/dictionary adapters and temporary parameter/output/flux
+translation enumerated in the
+[retirement delivery checklist](../isolate-and-retire-hbmcmc/tasks.md#migration-evidence-checklist-and-delivery-order).
+Existing explicitly named migrations such as Python `run_rhime`, `RhimeRunSpec`
+and `RhimeResult` retain their scoped contracts; this creates no general public
+signature/result-wrapper exception. The separately approved
+[five-name Python alias map](../isolate-and-retire-hbmcmc/tasks.md#named-python-alias-amendment--23-october-2026)
+permits retiring those assignments without naming-only forwarders; other Python
+names retain their contracts. Preserve canonical callable/class objects,
+constructors, result contents, scientific behavior, borrowed execution boundaries
+and scientific artifact contents, with version support defined independently. Current source still has the aliases.
+Preserve the durable
+[evidence guarantees](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence);
+the linked checklist owns the pinned #960 revision, per-PR checks and current
+delivery order. Historical expectations remain available and scientific changes
+need tests of separately agreed semantics. Finished converters and launchers
+remain release gates. Unresolved public aliases and independent basis
+decisions stay with #945/#951. Numerical/scientific, borrowed-array/execution and
+independently supported codec contracts remain in force; this amendment changes
+no runtime behavior or delivery status.
+
+The [finite CLI map](../isolate-and-retire-hbmcmc/tasks.md#cli-command-name-amendment--23-october-2026)
+separately permits retiring the second executable and redundant full-run names.
+Use `rhime run --model standard|multisector|nested|co2`, preserving the current
+positional-date/`--kwargs` syntax and effective configuration/override/scientific
+and artifact meanings. Source still implements the old names. No package rename
+or general Python-name exception is introduced; broader maps remain #663/#945/#776 work.
+
+The agreed #876 contract split keeps numerical preparation/alignment in a focused
+scientific-input capability, option/default/compatibility rules in configuration,
+and saved-operand reuse/replay in the prepared/sample handoffs.
+The target ordering below follows #876's retained-population amendment;
+its implementation and revision-specific validation remain with #964 after #719
+and the separate #971 prerequisite. Earlier acquired-population statements in
+dated delivery evidence describe their recorded source, not the target policy.
+
+The maintainer's 20 October 2026 amendment is delivered as OPE-219 → OPE-220 →
+OPE-221. It supersedes earlier cached public-runner preservation: one configured
+`run_co2` returns `Co2Output`, and the scientific fixed-OU/inferred-amplitude choice
+selects the matched cached sampler internally. There is no public cached variant,
+algorithm switch, silent fallback or CO2 compatibility alias requirement.
+Existing other likelihoods retain their appropriate inference operations.
+
+OPE-219 first constructs a supported independent positive amplitude prior once
+in the scientific graph. The conditional amplitude update consumes that graph's
+prior density with its Jacobian and physical-amplitude transform. This avoids
+duplicating a HalfNormal distribution or assuming every sampling coordinate is a
+log amplitude. Initialization uses the prior's support point or explicit physical
+values and must be valid in physical and transformed coordinates. The covariance
+target and accepted-cache lifecycle remain unchanged.
+
+OPE-220 supplies shared scientific inference selection and configured full
+execution; OPE-221 migrates saved phases onto the ordinary CO2 handoff/product
+owners. The complete trace and bound affine reconstruction already fit the merged
+`Co2Output`, so the 17 October common-carrier proposal does not require another
+carrier migration. Linked numerical callers follow shared prior changes;
+linked saved workflows and programme closeout retain their separate owners.
 
 See [proposal.md](proposal.md) for the replacement's motivation. The inspected
 landed base is `devel` at `7269f50f` (12 October 2026). PRs #773/#774 and #822–#825
@@ -26,9 +132,15 @@ establish their implementation.
 Merged #854 supplies current [model-selection](../../specs/rhime-model-selection/spec.md)
 and [model-composition](../../specs/rhime-model-composition/spec.md) baselines.
 Preserve the Python selector and installed full-run model choices, argument
-forwarding and established aliases. A saved-phase family selector is a separate
-boundary; it does not add CO2 acquisition or configuration-file support to the
-prepared-only Python recipes or extend the installed full-run selector.
+forwarding, with only the finite CLI/five-name Python exceptions above. Other
+public names retain their contracts pending explicit #945 decisions;
+temporary option translation follows the development retirement gate above.
+The ordinary CO2 selection amendment approved on 16 October 2026 routes both
+Python and CLI selection to `run_co2`, starting from coherent prepared inputs.
+It removes the redundant ordinary raw runner and bundled builder; trace-only
+callers compose the existing numerical operations. Cached/linked prepared-input
+selection remains unchanged. No CO2 acquisition/native-preparation route is added;
+that separate scientific work is tracked in #890.
 
 Construction reuses `CoordRegistry` and the existing custom-likelihood seam,
 including canonical `y`/`epsilon`, explicit kwargs, conflict precedence and
@@ -179,7 +291,8 @@ calls explicitly passing `None` must omit it or pass `"default"` instead, with a
 clear migration error. Update signatures, docstrings, examples and tests together.
 Lower-level operations that require an already resolved sampler can retain their
 object-only argument rather than gain another default-selection boundary.
-For cached CO2, defaults and explicit samplers still enter its matched construction,
+The 20 October amendment above supersedes explicit sampler selection for configured
+CO2 fixed-OU inference. In the earlier cached interface, defaults and explicit samplers enter its matched construction,
 step and prediction operation, never a generic sampler substitution.
 
 These meanings are consistent even though each interface accepts only its
@@ -187,13 +300,13 @@ applicable subset:
 
 | Value | Meaning |
 | --- | --- |
-| A supplied `RhimeSampler` | Use or retain that configured sampler |
+| A supplied `RhimeSampler` | Use that configured sampler for live execution |
 | `"default"` | Request a fresh sampler; for standard execution, `RhimeSampler()` |
-| `None` | No live sampler object is present; valid on results, invalid when sampling is requested |
+| `None` | No sampler supplied; invalid when sampling is requested |
 
 There is no requirement for a three-way argument or a new "skip sampling" mode.
-Preparation and replay do not select a sampler. A replay result with `None` can
-still describe samples produced earlier through its saved provenance.
+Preparation and replay do not select a sampler. Scientific results have no live
+sampler field and describe completed inference through saved provenance.
 
 Take an invocation-local copy of the existing sampler and its owned keyword
 containers. Preserve supported list/tuple/NumPy values and isolate overrides.
@@ -205,14 +318,24 @@ Leave model-dependent argument validation to PyMC. Configuration may hold the ex
 unbound sampler: strict separation into several settings/runtime classes is not
 needed to achieve these guarantees.
 
-Standard results use the existing `InversionOutput` scientific view, including
+Standard and multisector results use the existing `InversionOutput` scientific view, including
 when no files are requested. Its inference description records what happened;
 no live model/sampler or output policy is retained. Model inspection uses the
-eager builder directly. Deferred families keep their existing `RhimeResult`
-compatibility shape until their own adoption slices. This supersedes the earlier
+eager builder directly. Nested uses `NestedOutput`, and ordinary and cached CO2
+use `Co2Output`. This supersedes the earlier
 proposal to preserve the standard result envelope or a deprecated `run_rhime`
 wrapper. The Python `run_rhime` name is removed in 0.8 with import guidance;
-`run-rhime` remains the unchanged CLI spelling and calls `run_standard`.
+`run-rhime` currently calls `run_standard`; the finite CLI amendment above
+permits its retirement in favor of `rhime run`, preserving argument and execution semantics.
+
+The maintainer's 16 October multisector correction also retires the remaining
+`run_rhime_from_prepared_inputs` route and multisector build/result/output
+adapters. Prepared callers use `run_multisector(prepared=..., config=...)`;
+complete custom models compose ordinary materialization, construction, sampling
+and output operations directly. Multisector does not retain a `RhimeRunSpec`
+complete-builder context or a `RhimeResult` compatibility route. The target has
+no shared envelope types or obsolete nested validation context; their absence
+is not conditional on a remaining cached consumer.
 
 ### 3. Keep scientific order visible; save only at explicit boundaries
 
@@ -225,8 +348,9 @@ selections from `config.data`; resource paths/maps have already been resolved:
 
 ```python
 merged = acquire(explicit_acquisition_options)
-with_errors = derive_observation_errors(merged, error_options)
-filtered = filter_observations(with_errors, filters)
+selected = filter_observations(merged, filters)
+# Nested preparation first aligns the retained inner/outer observations.
+filtered = derive_observation_errors(selected, error_options)
 runtime_flux = resolve_runtime_flux(filtered, source_options)
 basis = prepare_basis(
     selected_operator_path=basis_path,
@@ -251,9 +375,11 @@ basis from its returned prepared handoff and uses the existing save codec.
 Preparation aligns metadata to retained observations; inference aligns its own
 numeric per-site choices. Validate every supplied value, including dropped-site
 entries, before selecting retained labels. Empty retained sets fail. Preserve
-custom errors and derive missing errors before filtering/aggregation; nested
-preparation does this for both domains before alignment, without promising new
-nested checkpoint support.
+custom errors and derive missing errors from observations retained by selection;
+nested preparation first aligns the retained inner/outer population and then
+derives its errors. Any requested provider averaging has already occurred during acquisition.
+Detailed numerical rules belong to the focused scientific-input amendment; this
+design does not promise new nested checkpoint support.
 
 Resolution remains data-free. Numerical inputs are borrowed and potentially lazy;
 related arrays cross an explicit joint assembly, model-input, serialization or
@@ -377,7 +503,7 @@ loader/composition boundary.
 | --- | --- |
 | Prepared numerical artifact | Retained observations/site metadata, coordinates, units, basis/operator and retained flux; existing numerical codec |
 | Preparation record and associated configuration | Family and numerical references; original requested dates, species/domain and preparation choices at their existing owner |
-| Sample record | Preparation and posterior references, embedded `OutputContract`, actual inference/sampler description and reference to the run context |
+| Sample record | Preparation/posterior references, actual inference/sampler description and bounded run context; standard/multisector embed `OutputContract`, while CO2 retains trace roles and affine associations |
 | Run context | Configuration used for the run and any required reporting/reconstruction inputs; may be retained beside records or supplied explicitly |
 | Current output policy | Supported products, reporting maps/options, names and destinations |
 
@@ -409,7 +535,7 @@ def postprocess(sample_manifest, *, output):
     validate_standard_output_resources(output)
     inv_out = load_samples(sample_manifest)  # decode the borrowed scientific view
     postprocess_standard_outputs(inv_out, output)
-    save_standard_artifacts(inv_out, output)
+    save_inversion_output(inv_out, output)
     return inv_out
 ```
 
@@ -495,9 +621,9 @@ built = build_standard_model(inputs, model_spec, priors=priors, likelihood_build
 built.output_contract.validate_requested_output(output_spec.output_format)
 posterior = sample_rhime_model(built, sampler)
 annotate_sample_trace(built, posterior, likelihood_builder=...)
-inv_out = make_standard_output(...)
+inv_out = make_model_output(...)
 postprocess_standard_outputs(inv_out, output_spec)  # compute and write derived products
-save_standard_artifacts(inv_out, output_spec)  # export scientific result and trace
+save_inversion_output(inv_out, output_spec)  # export scientific result and trace
 return inv_out
 ```
 
@@ -515,7 +641,7 @@ return inv_out
   written in that case. Its output metadata holds only the inference description.
   In-memory products can be recomputed through existing product functions.
 - The runner calls `postprocess_standard_outputs` for PARIS/legacy generation
-  and writing, then `save_standard_artifacts` for optional self-contained
+  and writing, then `save_inversion_output` for optional self-contained
   inversion-output and trace exports. Standard PARIS/legacy requests require
   a destination before execution; in-memory reporting uses product functions
   directly. Optional basis export remains visible beside preparation.
@@ -597,3 +723,136 @@ with implementation release notes, not with a planning-only completion claim.
   selected run context without implicit copies or fallback search.
 - A broad plan can repeat #798: require real standard scientific evidence and
   a readability review before adoption by other families.
+
+
+### 9. Ordinary CO2 review clarifications — 16 October 2026
+
+The maintainer approved the review corrections and explicitly selected one
+ordinary product runner without an additional trace-only runner. `run_co2` owns
+configured prepared-input product execution and is selected by both Python and
+CLI. Retire ordinary `run_rhime_co2`, the bundled `build_rhime_co2` and the
+unshipped `run_co2_from_config` rather than keeping naming/return aliases.
+Direct scientific composition remains possible through materialize, eager-build,
+sample and annotation operations. Cached/linked runners are outside this reset.
+
+Ordinary CO2 does not have configured native acquisition/preparation. Its CLI
+`prepare` validates/references an existing coherent prepared/affine pair; Python
+can produce a new pair from canonical inputs and an explicit coherent reduction.
+Native sensitivities, defining covariance and retained projection need their own
+scientific integration in [#890](https://github.com/openghg/openghg_inversions/issues/890),
+consuming #493/#566. Do not reinterpret basis-reduced standard `H` as a native
+operator or invent native priors from a gas name. Document this prepared-input
+starting point rather than implying acquisition parity with standard.
+
+CO2 has one parser for each owned section. Section-level overrides preserve
+unspecified choices; affine reconstruction references belong to `prepared_inputs`.
+Saved sampling/readiness accept decoded model/likelihood choices and resolve them
+against saved numerical facts. Explicit requested dates/domain may fill missing
+imported facts but cannot replace conflicting recorded facts. Record the original
+aggregation-error rank request in numerical preparation provenance, alongside
+existing actual-rank/approximation diagnostics, without a parallel manifest truth.
+
+CO2's saved scientific roles and affine associations satisfy the sampled-handoff
+contract without forcing the generic `OutputContract` representation. Construction
+owns bounded actual model metadata, registered prior descriptions and numerical
+parameter references; missing imported descriptions remain unavailable. The CO2
+external-trace validator stays beside the scientific output owner and checks roles,
+dimensions, units and alignment even when products are disabled. Generic contract
+validation does not replace these family-specific checks. Named preparation fields
+remain a concrete handoff. Scientific output views have no live sampler field;
+pure metadata readers normalize the available base inference description and
+CO2 algorithm/tuning details without
+creating an inference object or filling missing values from current defaults.
+Cached output provenance comes from the sample manifest. Replay omits the former
+zero-valued `build_and_sample_seconds` placeholder because it cannot measure the
+earlier inference duration.
+
+Full/saved routes call one trace-annotation operation and one preparation-record
+finisher. They share output policy/resource preflight; calculation trusts that
+preflight. Live planned prior generation and replay's actual saved prior draws
+remain distinct checks. Inference loads coherent prepared inputs without eagerly
+loading its unused affine companion; creation/import and replay retain the
+scientific affine binding checks. CO2 readiness restores the configured optional
+seed without requiring MCMC settings, and preserves the already specified execution-
+error propagation. Returned invalid predictive evidence still produces a failed check.
+
+### 10. One full flux state in standard and multisector — 16 October 2026
+
+The maintainer approved implementing the explored shared-state formulation on
+the combined multisector/ordinary CO2 delivery. This is an amendment to the
+scientific construction and output contract, not a claim that the resulting
+code has received readability acceptance or completed its validation gates.
+
+Standard and multisector use one full labelled physical scaling state `x`, one
+two-dimensional model sensitivity `hx` and one total flux concentration
+contribution `mu`. The scientific calculation is `H @ x`; registered `hx` may
+omit structurally zero columns, with the shared linear operation selecting the
+matching full-state entries. Standard retains its existing state labels.
+Multisector gathers source-local state blocks onto one source-labelled index;
+rectangular input sensitivities are packed for construction only, and existing
+gathered input indexes are preserved. Preparation and retained basis artifacts
+stay borrowed and unchanged. State order comes from the scientific input labels,
+not the order of sector declarations or backend variable suffixes.
+The model-only state dimension may be renamed when its name conflicts with
+another component's input or prior metadata; its scientific index values, level
+names and order remain unchanged.
+
+Independent sector priors may have different distributions, array parameters,
+reparameterizations and active/fixed states. Their private prior variables and
+construction-owned records may retain sector keys such as `x_<suffix>`, while
+the complete physical state and forward calculation are shared. All fixed and
+zero-effect entries remain in `x`. New graphs do not add per-sector full-state,
+sensitivity or contribution aliases solely for output compatibility. One nearby
+concrete flux-construction operation serves standard and multisector; this is
+demonstrated reuse of the same equations, not a generic model or stage engine.
+
+Both recipes declare `flux_scale: x`, `emissions_sensitivity: hx` and
+`flux_contribution: mu`. Multisector product selection uses saved sector-to-source
+associations to select a source block and restore the local basis state labels.
+The output boundary may read existing current-format built-in traces with
+`x_<suffix>` state names when their saved contract lacks the new canonical role.
+An explicit canonical role remains authoritative: missing or incompatible canonical state
+must fail rather than fall back. This bounded reader compatibility neither emits
+new alias variables nor restores historical staged-envelope/schema recovery.
+Generation checks and graph-free replay remain unchanged.
+
+Ordinary CO2 already applies one full correlated retained state to its effective
+sensitivity. Sharing the state representation does not change its defining
+prior/covariance, affine concentration intercept or native reconstruction
+`F [m + U* (alpha - alpha_ref)]`. CO2 native source and sector products are formed
+after this reconstruction, retaining their conditional uncertainty scope. Its
+scientific trace roles and affine owner remain authoritative; no generic
+multiplicative output adapter is introduced.
+
+Validation must compare the actual forward calculation and joint log density,
+including heterogeneous priors and ragged/fixed states, and preserve signed
+source/total flux products and current-format replay. Existing source coverage,
+array ownership, minimum-error and baked BC checks remain at their owners.
+Documentation/examples and the bounded tasks in group 6 follow this amendment;
+multisector, ordinary CO2 and integrated acceptance gates remain separate.
+
+## OPE-214 review amendment — 2026-10-20
+
+The maintainer reconfirmed removal of the configured CO2 backend selector.
+One decision on the resolved scientific model selects inference; full and saved
+execution consume the same sampling controls. Saved Python execution accepts a
+sampling mapping rather than a second sampler override. This keeps the change
+local to CO2 and does not introduce a sampler registry or change linked APIs.
+
+The explicit policy is NumPyro for additive sigma, PyMC for site sigma,
+scalar sigma and fixed-amplitude OU, and matched cached PyMC for inferred OU.
+Site/scalar choices are conservative defaults, not inherent restrictions;
+fixed OU currently has a custom operation without a JAX implementation.
+This is a new policy, not preservation of every historical template edit.
+The normative per-likelihood table is in the recipe-execution delta.
+
+Matched target-accept controls belong to sampling. Construction determines
+whether any flux, boundary or offset states exist; the sampling boundary records
+the actual algorithm and effective controls in the trace and manifest. Replay
+reads those plain fields without constructing a sampler. `rhime_recipe="co2"`
+continues to identify the scientific recipe independently of its update.
+
+Explicit LogNormal reparameterisation requests warn and retain the physical prior
+while recording the direct representation required by the matched sampler.
+Both public independence checks remain. Float32/64 dense-reference tests cover
+the model's own transforms; the cache is not forced to a different precision.

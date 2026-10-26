@@ -92,13 +92,13 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, merged_data_file_na
 
     # get combined scenario for TAC at time 2019-01-01 00:00:00; "frozen" data made
     # with OpenGHG 0.16 ModelScenario
-    ds = xr.open_dataset(raw_data_path / (merged_data_file_name + ".nc"))
-    expected_tac_combined_scenario = fp_all_from_dataset(ds)
-    print(expected_tac_combined_scenario)
-    xr.testing.assert_allclose(
-        result[0]["TAC"][check_vars].isel(time=0).load(),
-        expected_tac_combined_scenario["TAC"][check_vars].isel(time=0),
-    )
+    with xr.open_dataset(raw_data_path / (merged_data_file_name + ".nc")) as ds:
+        expected_tac_combined_scenario = fp_all_from_dataset(ds)
+        print(expected_tac_combined_scenario)
+        xr.testing.assert_allclose(
+            result[0]["TAC"][check_vars].isel(time=0).load(),
+            expected_tac_combined_scenario["TAC"][check_vars].isel(time=0),
+        )
 
 
 def test_load_merged_data(merged_data_dir, merged_data_file_name):
@@ -156,28 +156,23 @@ def test_fp_all_from_dataset_rejects_non_mole_fraction_units() -> None:
         fp_all_from_dataset(combined)
 
 
-def test_load_merged_data_missing_data_error(merged_data_dir, merged_data_file_name):
-    """This should pass by finding the merged data with .zarr suffix."""
+def test_load_merged_data_missing_data_error(tmp_path):
+    """A missing merged dataset raises without loading unrelated artifacts."""
     with pytest.raises(ValueError):
-        load_merged_data(
-            merged_data_dir, merged_data_name=merged_data_file_name + "abc123", output_format="netcdf"
-        )
+        load_merged_data(tmp_path, merged_data_name="missing", output_format="netcdf")
 
 
-def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir):
+def test_save_load_merged_data(tac_ch4_data_args, tmp_path):
     merged_data_name = "test_save_load_merged_data"
-
-    # make merged data dir
-    merged_data_dir.mkdir(exist_ok=True)
 
     fp_all, *_ = data_processing_surface_notracer(
         save_merged_data=True,
-        merged_data_dir=merged_data_dir,
+        merged_data_dir=tmp_path,
         merged_data_name=merged_data_name,
         **tac_ch4_data_args,
     )
 
-    fp_all_reloaded = load_merged_data(merged_data_dir=merged_data_dir, merged_data_name=merged_data_name)
+    fp_all_reloaded = load_merged_data(merged_data_dir=tmp_path, merged_data_name=merged_data_name)
 
     xr.testing.assert_allclose(fp_all["TAC"].load(), fp_all_reloaded["TAC"])
 
@@ -1140,7 +1135,7 @@ def test_add_averaging_error(tac_ch4_data_args):
     """Check that "add averaging error" adds variability to repeatability."""
     # we need to use "mock" to add mf_repeatability to our data
     # since our test data is from picarro and only has variability
-    real_obs = get_obs_surface(site="tac", species="ch4", inlet="185m")
+    real_obs = get_obs_surface(site="tac", species="ch4", inlet="185m", store="inversions_tests")
     real_obs_data = real_obs.data
     real_obs_metadata = real_obs.metadata
     real_obs_data["mf_repeatability"] = xr.ones_like(real_obs_data["mf_variability"])
@@ -1153,8 +1148,8 @@ def test_add_averaging_error(tac_ch4_data_args):
         fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
         ds1 = fp_all["TAC"]
 
-        tac_ch4_data_args["averagingerror"] = False
-        fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
+        data_args = {**tac_ch4_data_args, "averagingerror": False}
+        fp_all, *_ = data_processing_surface_notracer(**data_args)
         ds2 = fp_all["TAC"]
 
         # check that "mf_error", "mf_repeatability", and "mf_variability" are present

@@ -10,6 +10,7 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.cli import main
+from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime import (
     RhimeSampler,
@@ -36,7 +37,10 @@ def _deterministic_trace(model: pm.Model, variable_names: tuple[str, ...]) -> xr
             coords[dim] = np.asarray(coord)
         dims = ("chain", "draw", *model_dims)
         variables[name] = (dims, np.ones(tuple(len(coords[dim]) for dim in dims)))
-    return make_trace(posterior=xr.Dataset(variables, coords=coords))
+    trace = make_trace(posterior=xr.Dataset(variables, coords=coords))
+    registry = get_coord_registry(model)
+    assert registry is not None
+    return restore_inferencedata_coords(trace, registry)
 
 
 def _test_store_overrides(
@@ -141,7 +145,7 @@ def test_multisector_tutorial_runs_to_sector_diagnostics(
     monkeypatch.setattr(
         RhimeSampler,
         "sample",
-        lambda self, model, **kwargs: _deterministic_trace(model, ("x_ff", "x_ocean", "bc")),
+        lambda self, model, **kwargs: _deterministic_trace(model, ("x", "mu", "bc")),
     )
     overrides = _test_store_overrides(tac_ch4_data_args, tmp_path)
     overrides.update(
@@ -157,22 +161,39 @@ def test_multisector_tutorial_runs_to_sector_diagnostics(
             },
         }
     )
-    result = run(
-        model="multisector",config_file=_MULTISECTOR_CONFIG, **overrides)
+    result = run(model="multisector", config_file=_MULTISECTOR_CONFIG, **overrides)
 
-    assert [sector.name for sector in result.model_spec.sectors] == ["FF", "ocean"]
+    assert isinstance(result, InversionOutput)
+    assert [sector["name"] for sector in result.model_metadata["sectors"]] == ["FF", "ocean"]
+    assert result.variable_roles["flux_scale"] == "x"
+    assert "source" in result.trace_group("posterior")["x"].coords
     assert tuple(result.inv_inputs["H"].source.values) == (
         "total-ukghg-edgar7",
         "total-ukghg-edgar7-shuffled",
     )
-    diagnostics = result.outputs["sector_flux_diagnostics"]
+    from openghg_inversions.postprocessing.make_outputs import make_sector_flux_outputs
+
+    diagnostics = make_sector_flux_outputs(
+        result, stats=["mean"], include_scale_factors=True,
+        report_flux_on_inversion_grid=False,
+    )
     assert {
         "flux_ff_posterior_mean",
         "flux_ocean_posterior_mean",
         "flux_total_posterior_mean",
     }.issubset(diagnostics)
-    assert Path(result.output_metadata["sector_flux_diagnostics_path"]).is_file()
-    assert Path(result.output_metadata["inversion_output_path"]).is_file()
+    stem = f"multisector_tutorial{result.start_date}"
+    diagnostics_path = tmp_path / f"{stem}_sector_flux_diagnostics.nc"
+    output_path = tmp_path / f"{stem}_inversion_output.nc"
+    assert diagnostics_path.is_file()
+    xr.testing.assert_allclose(xr.load_dataset(diagnostics_path), diagnostics)
+    reloaded = InversionOutput.load(output_path)
+    assert reloaded.run_metadata["split_by_sectors"] is True
+    assert reloaded.model_metadata["sectors"] == result.model_metadata["sectors"]
+    assert reloaded.variable_roles == result.variable_roles
+    assert reloaded.provenance == result.provenance
+    xr.testing.assert_equal(reloaded.trace_group("posterior"), result.trace_group("posterior"))
+    assert set(result.output_metadata) == {"sampler"}
 
 
 @pytest.mark.parametrize(

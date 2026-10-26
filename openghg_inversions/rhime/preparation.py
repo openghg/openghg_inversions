@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Mapping, Sequence
-from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -43,32 +42,17 @@ from openghg_inversions.inversion_data.observation_errors import prepare_observa
 from openghg_inversions.inversion_data.prepared_inputs import _make_site_metadata
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.model_error import MinErrorConfig
-from openghg_inversions.rhime.specs import RhimeRunSpec
 
 __all__ = [
     "assemble_inputs",
-    "with_prepared_sites",
     "assemble_rhime_inputs",
     "prepare_observation_errors",
     "build_sensitivities",
     "filter_observations",
-    "with_prepared_rhime_sites",
     "resolve_basis_inputs",
     "acquire_merged_data",
     "export_basis",
 ]
-
-
-def with_prepared_sites(
-    run_spec: RhimeRunSpec,
-    prepared: RhimePreparedInputs,
-) -> RhimeRunSpec:
-    """Align run provenance to the observations retained by preparation."""
-    return replace(
-        run_spec,
-        sites=tuple(prepared.sites),
-        averaging_period=tuple(prepared.averaging_period),
-    )
 
 
 def filter_observations(
@@ -388,9 +372,7 @@ def _validate_multisector_sensitivity_sources(
     return sensitivity
 
 
-# Established public imports retained through the 0.9 compatibility cycle.
 assemble_rhime_inputs = assemble_inputs
-with_prepared_rhime_sites = with_prepared_sites
 
 
 def resolve_basis_inputs(data_config: Any) -> dict[str, Any]:
@@ -490,5 +472,6 @@ def export_basis(basis_functions: BasisFunctions, path: str | Path | None) -> Ba
     """
     if path is None:
         return basis_functions
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
     basis_functions.save(path)
     return basis_functions.with_metadata({BASIS_ARTIFACT_PATH_ATTR: str(path)})

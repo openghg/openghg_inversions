@@ -16,7 +16,7 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--kwargs",
         type=json.loads,
-        help="Pass keyword arguments to the RHIME function, e.g. '{\"draws\": 10}'.",
+        help="JSON configuration overrides; CO2 uses model/likelihood/sampling/outputs sections.",
     )
     parser.add_argument("--output-path", help="Path to write results to.")
 
@@ -37,6 +37,9 @@ def _command_kwargs(args: argparse.Namespace) -> dict[str, Any]:
 
 def _run_command(args: argparse.Namespace) -> None:
     """Run the selected configuration-driven recipe."""
+    if args.model == "co2":
+        _run_co2_command(args)
+        return
     from openghg_inversions.rhime import run
 
     run(model=args.model, config_file=args.config, **_command_kwargs(args))
@@ -56,6 +59,17 @@ def _run_rhime_multisector_command(args: argparse.Namespace) -> None:
     run_rhime_multisector(config_file=args.config, **_command_kwargs(args))
 
 
+def _run_co2_command(args: argparse.Namespace) -> None:
+    """Run configured CO2 inference and requested products."""
+    from openghg_inversions.rhime import run
+
+    run(
+        model="co2",
+        config_file=args.config, start_date=args.start, end_date=args.end,
+        output_path=args.output_path, overrides=args.kwargs,
+    )
+
+
 def _merge_paris_outputs_command(args: argparse.Namespace) -> None:
     """Merge sequential PARIS output files with lazy imports for fast help output."""
     from openghg_inversions.postprocessing.merge_paris_outputs import merge_paris_outputs
@@ -71,7 +85,7 @@ def _add_stage_config_args(parser: argparse.ArgumentParser, *, required: bool = 
     source.add_argument("--params-file", help="Explicit JSON file containing RHIME parameter names")
     parser.add_argument(
         "--model",
-        choices=("standard", "multisector", "co2"),
+        choices=("standard", "multisector", "co2", "co2_o2"),
         default="standard",
         help="RHIME model recipe (default: standard); checked against saved handoffs",
     )
@@ -86,19 +100,6 @@ def _add_output_dir(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _stage_setup(args: argparse.Namespace) -> Any:
-    """Load and resolve one staged command's existing RHIME configuration."""
-    from openghg_inversions.rhime.stages import load_stage_params, resolve_stage_setup
-
-    params = load_stage_params(
-        config_file=args.config,
-        params_file=args.params_file,
-        overrides=args.kwargs,
-        model=args.model,
-    )
-    return resolve_stage_setup(params, model=args.model)
-
-
 def _stage_output_dir(args: argparse.Namespace) -> Path:
     """Require an output directory without falling back to the current directory."""
     if args.output_dir is None:
@@ -106,8 +107,8 @@ def _stage_output_dir(args: argparse.Namespace) -> Path:
     return Path(args.output_dir).resolve()
 
 
-def _standard_phase_options(args: argparse.Namespace, *, phase: str) -> dict[str, dict[str, Any]]:
-    """Load the owner groups one standard phase uses from its explicit request."""
+def _rhime_phase_options(args: argparse.Namespace, *, phase: str) -> dict[str, dict[str, Any]]:
+    """Load only the owner groups consumed by a standard or multisector phase."""
     from openghg_inversions.rhime.requests import load_params
 
     return load_params(
@@ -117,78 +118,154 @@ def _standard_phase_options(args: argparse.Namespace, *, phase: str) -> dict[str
     )
 
 
+def _co2_params(args: argparse.Namespace) -> dict[str, Any]:
+    """Read a CO2 request; concrete owners resolve their own choices."""
+    from openghg_inversions.rhime.co2.execution import load_co2_params
+
+    params = load_co2_params(config_file=args.config, params_file=args.params_file,
+                             params={} if args.config is None and args.params_file is None else None,
+                             overrides=args.kwargs)
+    return params
+
+
+def _co2_o2_params(args: argparse.Namespace) -> dict[str, Any]:
+    """Read linked choices without resolving unused phase sections."""
+    from openghg_inversions.rhime.co2.co2_o2_configuration import load_co2_o2_params
+
+    return load_co2_o2_params(
+        config_file=args.config, params_file=args.params_file,
+        params={} if args.config is None and args.params_file is None else None,
+        overrides=args.kwargs,
+    )
+
+
 def _prepare_command(args: argparse.Namespace) -> None:
     """Run the prepare phase for the selected family."""
-    from openghg_inversions.rhime.stages import prepare, prepare_rhime_stage
+    from openghg_inversions.rhime.stages import prepare
     from openghg_inversions.rhime.params import DataConfig
 
-    if args.model == "standard":
-        choices = _standard_phase_options(args, phase="prepare")
-        manifest = prepare(DataConfig.from_params(choices["data"]),
+    if args.model in {"standard", "multisector"}:
+        if args.model == "multisector":
+            from openghg_inversions.rhime.multisector_stages import prepare
+        choices = _rhime_phase_options(args, phase="prepare")
+        manifest = prepare(DataConfig.from_params(choices["data"], multisector=args.model == "multisector"),
                            output_dir=_stage_output_dir(args))
         print(manifest)
-    else:
-        manifest = prepare_rhime_stage(setup=_stage_setup(args), model=args.model,
-                                       output_dir=_stage_output_dir(args))
-        print(manifest["manifest_path"])
+    elif args.model == "co2_o2":
+        from openghg_inversions.rhime.co2.co2_o2_configuration import Co2O2PreparationConfig
+        from openghg_inversions.rhime.co2.co2_o2_handoffs import prepare as prepare_linked
+
+        print(prepare_linked(
+            **Co2O2PreparationConfig.from_params(_co2_o2_params(args), require_path=True).preparation_arguments(),
+            output_dir=_stage_output_dir(args),
+        ))
+    elif args.model == "co2":
+        from openghg_inversions.rhime.co2.execution import load_co2_params
+        from openghg_inversions.rhime.co2.configuration import Co2PreparationConfig
+        from openghg_inversions.rhime.co2.handoffs import prepare as prepare_co2
+
+        params = load_co2_params(config_file=args.config, params_file=args.params_file, overrides=args.kwargs)
+        print(prepare_co2(**Co2PreparationConfig.from_params(params, require_path=True).preparation_arguments(), output_dir=_stage_output_dir(args)))
 
 
-
-def _check_saved_family(args: argparse.Namespace) -> None:
+def _check_saved_family(args: argparse.Namespace) -> dict[str, Any] | None:
     """Reject an explicit selector that contradicts a current saved handoff."""
     manifest = args.sample_manifest if args.command == "postprocess" else args.preparation_manifest
+    if not Path(manifest).exists():
+        if args.model == "co2":
+            raise FileNotFoundError(2, "Saved manifest does not exist", str(manifest))
+        return None
     record = json.loads(Path(manifest).read_text(encoding="utf-8"))
-    schema = record.get("schema", "") if isinstance(record, dict) else ""
-    if schema.startswith("openghg_inversions.standard.") and args.model != "standard":
-        raise ValueError(f"Saved standard checkpoint does not match --model {args.model!r}.")
+    if not isinstance(record, dict) and args.model != "co2":
+        return None
+    if not isinstance(record, dict):
+        raise argparse.ArgumentError(None, "Saved manifest must contain one JSON object.")
+    schema = record.get("schema", "")
+    if not isinstance(schema, str) and args.model != "co2":
+        return record
+    if not isinstance(schema, str):
+        raise argparse.ArgumentError(None, "Saved manifest schema must be a string.")
+    for family in ("standard", "multisector", "co2_o2"):
+        if schema.startswith(f"openghg_inversions.{family}.") and args.model != family:
+            raise ValueError(f"Saved {family} checkpoint does not match --model {args.model!r}.")
+    if schema.startswith("openghg_inversions.co2.") and args.model != "co2":
+        raise ValueError(f"Saved CO2 checkpoint does not match --model {args.model!r}.")
+    if args.model == "co2":
+        stage = "sample" if args.command == "postprocess" else "prepare"
+        if schema != f"openghg_inversions.co2.{stage}":
+            raise argparse.ArgumentError(None, f"Unsupported CO2 manifest schema: {schema!r}.")
+    return record
+
 
 def _prior_predictive_command(args: argparse.Namespace) -> None:
     """Run the prior-predictive readiness check for the selected family."""
-    from openghg_inversions.rhime.stages import prior_predictive, prior_predictive_stage
+    from openghg_inversions.rhime.stages import prior_predictive
 
     common = dict(output_dir=_stage_output_dir(args), check_output=args.check_output,
                   draws=args.draws, stage=args.check_stage)
-    if args.model == "standard":
-        _reject_standard_artifact_args(args)
-        choices = _standard_phase_options(args, phase="prior")
+    _check_saved_family(args)
+    if args.model == "co2_o2":
+        from openghg_inversions.rhime.co2.co2_o2_handoffs import prior_predictive as prior_linked
+        from openghg_inversions.rhime.co2.co2_o2_configuration import resolve_co2_o2_prior_seed
+
+        params = _co2_o2_params(args)
+        result = prior_linked(
+            args.preparation_manifest, model=params,
+            random_seed=resolve_co2_o2_prior_seed(params), **common,
+        )
+    elif args.model == "co2":
+        from openghg_inversions.rhime.co2.handoffs import prior_predictive as prior_co2
+
+        from openghg_inversions.rhime.co2.configuration import resolve_co2_prior_seed
+
+        params = _co2_params(args)
+        choices: dict[str, Any] = {name: params[name] for name in ("model", "likelihood") if name in params}
+        result = prior_co2(args.preparation_manifest, model=choices,
+                           random_seed=resolve_co2_prior_seed(params), **common)
+    elif args.model in {"standard", "multisector"}:
+        if args.model == "multisector":
+            from openghg_inversions.rhime.multisector_stages import prior_predictive
+        choices = _rhime_phase_options(args, phase="prior")
         result = prior_predictive(args.preparation_manifest, model=choices["model"], **common)
-    else:
-        _check_saved_family(args)
-        result = prior_predictive_stage(setup=_stage_setup(args), model=args.model,
-                                        prepared_inputs=args.prepared_inputs,
-                                        preparation_manifest=args.preparation_manifest, **common)
     print(json.dumps(result, sort_keys=True))
     if args.strict and result["status"] == "fail":
         raise SystemExit(1)
 
 
-def _reject_standard_artifact_args(args: argparse.Namespace) -> None:
-    """Reject the multi-artifact arguments that standard manifests replace."""
-    if getattr(args, "prepared_inputs", None) or getattr(args, "posterior", None):
-        raise ValueError("Standard saved phases take one manifest; remove --prepared-inputs and --posterior.")
-    if args.command == "postprocess" and args.preparation_manifest:
-        raise ValueError("Standard postprocess takes only --sample-manifest.")
-
-
 def _sample_command(args: argparse.Namespace) -> None:
     """Run the sample phase for the selected family."""
-    from openghg_inversions.rhime.stages import sample, sample_rhime_stage
+    from openghg_inversions.rhime.stages import sample
     from openghg_inversions.rhime.params import resolve_sampler_options
 
-    if args.model == "standard":
-        _reject_standard_artifact_args(args)
-        choices = _standard_phase_options(args, phase="sample")
+    _check_saved_family(args)
+    if args.model == "co2_o2":
+        from openghg_inversions.rhime.co2.co2_o2_handoffs import sample as sample_linked
+        from openghg_inversions.rhime.co2.co2_o2_configuration import Co2O2ModelConfig, resolve_co2_o2_sampler
+
+        params = _co2_o2_params(args)
+        model = Co2O2ModelConfig.from_params(params)
+        result = sample_linked(
+            args.preparation_manifest, model=model, sampler=resolve_co2_o2_sampler(params, model=model),
+            output_dir=_stage_output_dir(args),
+        )
+        print(result)
+    elif args.model == "co2":
+        from openghg_inversions.rhime.co2.handoffs import sample as sample_co2
+
+
+        params = _co2_params(args)
+        choices: dict[str, Any] = {name: params[name] for name in ("model", "likelihood") if name in params}
+        result = sample_co2(args.preparation_manifest, model=choices,
+                            sampling=params.get("sampling", {}), output_dir=_stage_output_dir(args))
+        print(result)
+    elif args.model in {"standard", "multisector"}:
+        if args.model == "multisector":
+            from openghg_inversions.rhime.multisector_stages import sample
+        choices = _rhime_phase_options(args, phase="sample")
         result = sample(args.preparation_manifest, model=choices["model"],
                         sampler=resolve_sampler_options(choices["sampler"]),
                         output_dir=_stage_output_dir(args))
         print(result)
-    else:
-        _check_saved_family(args)
-        result = sample_rhime_stage(setup=_stage_setup(args), model=args.model,
-                                   prepared_inputs=args.prepared_inputs,
-                                   preparation_manifest=args.preparation_manifest,
-                                   output_dir=_stage_output_dir(args))
-        print(result["artifacts"]["posterior"])
 
 
 def _diagnose_command(args: argparse.Namespace) -> None:
@@ -212,21 +289,31 @@ def _diagnose_command(args: argparse.Namespace) -> None:
 
 def _postprocess_command(args: argparse.Namespace) -> None:
     """Run the postprocess phase for the selected family."""
-    from openghg_inversions.rhime.stages import postprocess, postprocess_rhime_stage
+    from openghg_inversions.rhime.stages import postprocess
     from openghg_inversions.rhime.specs import RhimeOutputSpec
 
-    if args.model == "standard":
-        _reject_standard_artifact_args(args)
-        choices = _standard_phase_options(args, phase="postprocess")["output"]
+    _check_saved_family(args)
+    if args.model == "co2_o2":
+        from openghg_inversions.rhime.co2.co2_o2_handoffs import postprocess as postprocess_linked
+        from openghg_inversions.rhime.co2.co2_o2_outputs import resolve_co2_o2_output
+
+        params = _co2_o2_params(args)
+        params["outputs"] = {**params.get("outputs", {}), "output_path": _stage_output_dir(args)}
+        postprocess_linked(args.sample_manifest, **resolve_co2_o2_output(params))
+    elif args.model == "co2":
+        from openghg_inversions.rhime.co2.handoffs import postprocess as postprocess_co2
+
+        from openghg_inversions.rhime.co2.execution import resolve_co2_output
+
+        params = _co2_params(args)
+        params["outputs"] = {**params.get("outputs", {}), "output_path": _stage_output_dir(args)}
+        postprocess_co2(args.sample_manifest, **resolve_co2_output(params))
+    elif args.model in {"standard", "multisector"}:
+        if args.model == "multisector":
+            from openghg_inversions.rhime.multisector_stages import postprocess
+        choices = _rhime_phase_options(args, phase="postprocess")["output"]
         choices["output_path"] = str(_stage_output_dir(args))
-        postprocess(args.sample_manifest, output=RhimeOutputSpec.from_params(choices, multisector=False))
-    else:
-        _check_saved_family(args)
-        postprocess_rhime_stage(setup=_stage_setup(args), model=args.model,
-                               prepared_inputs=args.prepared_inputs,
-                               preparation_manifest=args.preparation_manifest,
-                               sample_manifest=args.sample_manifest, posterior=args.posterior,
-                               output_dir=_stage_output_dir(args))
+        postprocess(args.sample_manifest, output=RhimeOutputSpec.from_params(choices, multisector=args.model == "multisector"))
 
 
 def _run_rhime_nested_command(args: argparse.Namespace) -> None:
@@ -251,7 +338,7 @@ def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser
     selected_run = subparsers.add_parser("run", help="Run a selected RHIME model")
     _add_run_args(selected_run)
     selected_run.add_argument(
-        "--model", choices=("standard", "multisector", "nested"), default="standard",
+        "--model", choices=("standard", "multisector", "nested", "co2"), default="standard",
         help="Configuration-driven model recipe (default: standard)",
     )
     selected_run.set_defaults(func=_run_command)
@@ -265,6 +352,10 @@ def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser
     )
     _add_run_args(run_multi_parser)
     run_multi_parser.set_defaults(func=_run_rhime_multisector_command)
+
+    co2_parser = subparsers.add_parser("run-co2", help="Alias for run --model co2")
+    _add_run_args(co2_parser)
+    co2_parser.set_defaults(func=_run_co2_command)
 
     merge_parser = subparsers.add_parser(
         "merge-paris-outputs",
@@ -289,7 +380,6 @@ def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser
     )
     _add_stage_config_args(prior_parser, required=False)
     _add_output_dir(prior_parser)
-    prior_parser.add_argument("--prepared-inputs", help="Deferred multisector/CO2 route only")
     prior_parser.add_argument("--preparation-manifest", required=True)
     prior_parser.add_argument("--check-output")
     prior_parser.add_argument("--draws", type=int, default=100)
@@ -300,13 +390,12 @@ def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser
     sample_parser = subparsers.add_parser("sample", help="Sample explicitly supplied RHIME inputs")
     _add_stage_config_args(sample_parser, required=False)
     _add_output_dir(sample_parser)
-    sample_parser.add_argument("--prepared-inputs", help="Deferred multisector/CO2 route only")
     sample_parser.add_argument("--preparation-manifest", required=True)
     sample_parser.set_defaults(func=_sample_command)
 
     diagnose_parser = subparsers.add_parser("diagnose", help="Calculate posterior convergence checks")
     _add_output_dir(diagnose_parser)
-    diagnose_parser.add_argument("--posterior", required=True)
+    diagnose_parser.add_argument("--posterior", help="Posterior path; omit to use a current sample manifest")
     diagnose_parser.add_argument(
         "--sample-manifest",
         help="Optional saved sampling context",
@@ -325,10 +414,7 @@ def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser
     )
     _add_stage_config_args(postprocess_parser, required=False)
     _add_output_dir(postprocess_parser)
-    postprocess_parser.add_argument("--prepared-inputs", help="Deferred multisector/CO2 route only")
-    postprocess_parser.add_argument("--preparation-manifest", help="Deferred multisector/CO2 route only")
     postprocess_parser.add_argument("--sample-manifest", required=True)
-    postprocess_parser.add_argument("--posterior", help="Deferred multisector/CO2 route only")
     postprocess_parser.set_defaults(func=_postprocess_command)
 
     run_nested_parser = subparsers.add_parser(
@@ -349,7 +435,17 @@ def main(argv: list[str] | None = None, *, prog: str = "openghg-inversions") -> 
     """
     parser = build_parser(prog=prog)
     args = parser.parse_args(argv)
-    args.func(args)
+    try:
+        args.func(args)
+    except argparse.ArgumentError as exc:
+        parser.error(str(exc))
+    except FileNotFoundError as exc:
+        manifests = [getattr(args, name, None) for name in ("preparation_manifest", "sample_manifest")]
+        if exc.filename is not None and any(
+            name is not None and Path(name).resolve() == Path(exc.filename).resolve() for name in manifests
+        ):
+            parser.error(f"Saved manifest does not exist: {exc.filename}")
+        raise
 
 
 def rhime_main(argv: list[str] | None = None) -> None:

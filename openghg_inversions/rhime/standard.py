@@ -16,6 +16,7 @@ from openghg_inversions.rhime.preparation import acquire_merged_data, resolve_ba
 
 from collections.abc import Mapping
 from contextlib import nullcontext
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -28,13 +29,17 @@ import xarray as xr
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.models.components import (
+    _add_multisource_state_vector,
     add_linear_component,
     add_offset_component,
+    add_state_vector,
+    apply_linear_sensitivity,
 )
-from openghg_inversions.models.coords import registered_model
+from openghg_inversions.models._flux import _stack_multisector_sensitivity
+from openghg_inversions.models.coords import component_coords, registered_model
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
-from openghg_inversions.models.state_activity import prepare_linear_sensitivity
+from openghg_inversions.models.state_activity import prepare_linear_sensitivity, resolve_state_activity
 from openghg_inversions.observation_error import (
     aggregation_error_input_names,
     resolve_aggregation_error,
@@ -56,9 +61,9 @@ from .materialization import (
     _materialize_pymc_inputs_and_priors,
 )
 from .outputs import (
-    make_standard_output,
+    make_model_output,
     postprocess_standard_outputs,
-    save_standard_artifacts,
+    save_inversion_output,
     annotate_sample_trace,
     validate_standard_output_resources,
 )
@@ -67,6 +72,7 @@ from .requests import load_params
 from .preparation import (
     assemble_rhime_inputs,
     build_sensitivities,
+    export_basis,
     filter_observations,
     prepare_observation_errors,
 )
@@ -260,13 +266,50 @@ def build_standard_model(
     missing_priors = _standard_prior_parameters(model_spec).keys() - priors.keys()
     if missing_priors:
         raise ValueError(f"Missing materialized prior parameter mappings: {sorted(missing_priors)!r}.")
-    likelihood_settings = model_spec.likelihood
     lazy_priors, _ = unpack_collections(priors)
     if any(is_dask_collection(model_inputs[name]) for name in names) or lazy_priors:
         raise ValueError("Standard model inputs and prior parameters must be materialized before building.")
 
+    return _build_independent_rhime_model(
+        model_inputs, model_spec, priors=priors,
+        likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs,
+        sigma_alignment=sigma_alignment, multisector=False,
+    )
+
+
+def _build_independent_rhime_model(
+    model_inputs: xr.Dataset,
+    model_spec: RhimeModelSpec,
+    *,
+    priors: Mapping[str, PriorArgs],
+    likelihood_builder: RhimeLikelihoodBuilder | None,
+    likelihood_kwargs: Mapping[str, Any] | None,
+    sigma_alignment: SigmaAlignment | None,
+    multisector: bool,
+) -> RhimeModelBuildResult:
+    """Construct the shared independent-state RHIME recipe after boundary validation."""
     timing_start = timer_start()
-    flux_sensitivity = model_inputs["H"]
+    source_sensitivity = model_inputs["H"]
+    flux_sensitivity = source_sensitivity
+    if multisector:
+        coordinate_names = set()
+        for name, array in model_inputs.data_vars.items():
+            if name == "H":
+                continue
+            registered_array = component_coords(array, "bc" if name == "H_bc" else None)
+            coordinate_names.update(registered_array.dims)
+            coordinate_names.update(registered_array.coords)
+        # Flux prior coordinates are registered under private source namespaces.
+        flux_prior_names = {f"x_{sector.variable_suffix}" for sector in model_spec.sectors}
+        for name, parameters in priors.items():
+            if name in flux_prior_names:
+                continue
+            for value in parameters.values():
+                if isinstance(value, xr.DataArray):
+                    registered_value = component_coords(value, "bc" if name == "bc" else None)
+                    coordinate_names.update(registered_value.dims)
+                    coordinate_names.update(registered_value.coords)
+        flux_sensitivity = _stack_multisector_sensitivity(source_sensitivity, reserved_names=coordinate_names)
     observations = model_inputs["mf"]
     observation_error = model_inputs["mf_error"]
     minimum_error = model_inputs.get("min_error")
@@ -275,11 +318,8 @@ def build_standard_model(
     use_bc = model_spec.use_bc
     add_offset = model_spec.add_offset
     offset_args = model_spec.offset_args
-    sector = model_spec.sectors[0]
-    state_activity = sector.state_activity if sector.state_activity is not None else model_spec.state_activity
     bc_state_activity = model_spec.bc_state_activity
 
-    x_prior = dict(priors["x"])
     bc_prior = dict(priors.get("bc", DEFAULT_BC_PRIOR))
     offset_prior = dict(priors.get("offset_latent", DEFAULT_OFFSET_PRIOR))
 
@@ -291,17 +331,28 @@ def build_standard_model(
     )
 
     with registered_model() as model:
-        flux_component = add_linear_component(
-            prepared_flux,
-            data_name="hx",
-            prior_args=x_prior,
-            var_name="x",
-            output_name="mu",
-            output_dim="nmeasure",
-            compute_deterministic=True,
-            state_activity=state_activity,
+        if multisector:
+            prior_blocks = {
+                sector.flux_source: (
+                    f"x_{sector.variable_suffix}", priors[f"x_{sector.variable_suffix}"],
+                    sector.state_activity if sector.state_activity is not None else model_spec.state_activity,
+                )
+                for sector in model_spec.sectors
+            }
+            local_state_dim = next(
+                str(dim) for dim in source_sensitivity.dims if dim not in {"nmeasure", "source"}
+            )
+            state = _add_multisource_state_vector(
+                prepared_flux.removed, prior_blocks, local_state_dim=local_state_dim, var_name="x",
+            )
+        else:
+            sector = model_spec.sectors[0]
+            policy = sector.state_activity if sector.state_activity is not None else model_spec.state_activity
+            activity = resolve_state_activity(prepared_flux.removed, policy)
+            state = add_state_vector(activity, prior_args=dict(priors["x"]), var_name="x").state
+        pollution_mean = apply_linear_sensitivity(
+            prepared_flux, state, data_name="hx", output_name="mu",
         )
-        pollution_mean = flux_component.output
 
         boundary_mean = None
         if prepared_boundary is not None:
@@ -314,6 +365,7 @@ def build_standard_model(
                 output_dim="nmeasure",
                 compute_deterministic=True,
                 state_activity=bc_state_activity,
+                coordinate_owner="bc",
             ).output
 
         offset = None
@@ -337,7 +389,7 @@ def build_standard_model(
             baseline=baseline_mean,
         )
         add_rhime_likelihood(
-            settings=likelihood_settings,
+            settings=model_spec.likelihood,
             likelihood_builder=likelihood_builder,
             likelihood_kwargs=likelihood_kwargs,
             forward=forward,
@@ -350,10 +402,10 @@ def build_standard_model(
             prior_parameters=priors,
         )
     result = builtin_model_build_result(
-        model, model_spec=model_spec, multisector=False,
+        model, model_spec=model_spec, multisector=multisector,
         input_names=tuple(str(name) for name in model_inputs.data_vars),
     )
-    log_timing("rhime.model_build", timer_seconds(timing_start), multisector=False)
+    log_timing("rhime.model_build", timer_seconds(timing_start), multisector=multisector)
     return result
 
 
@@ -548,8 +600,9 @@ def run_standard(
         prepared = prepared.validated()
 
     if config.data.basis_output_path is not None:
-        Path(config.data.basis_output_path).parent.mkdir(parents=True, exist_ok=True)
-        prepared.basis_functions.save(config.data.basis_output_path)
+        prepared = replace(
+            prepared, basis_functions=export_basis(prepared.basis_functions, config.data.basis_output_path),
+        )
 
     # 2. Materialize selected inputs and priors together, then build and sample.
     model_inputs, priors = materialize_standard_inputs(prepared, config.model)
@@ -568,14 +621,19 @@ def run_standard(
     output_start = timer_start()
     with (timed("rhime.output.inversion_output_create", output_format=config.output.output_format)
           if config.output.output_format != "none" else nullcontext()):
-        inv_out = make_standard_output(
-            prepared=prepared, model_spec=config.model, posterior=posterior,
-            output_contract=built.output_contract, start_date=config.data.start_date,
-            end_date=config.data.end_date, actual_inference=sampler.describe(),
+        inv_out = make_model_output(
+            prepared=prepared,
+            model_spec=config.model,
+            posterior=posterior,
+            output_contract=built.output_contract,
+            start_date=config.data.start_date,
+            end_date=config.data.end_date,
+            actual_inference=sampler.describe(),
             provenance=installed_ogi_provenance(),
+            split_by_sectors=config.data.split_by_sectors,
         )
     postprocess_standard_outputs(inv_out, config.output)
-    save_standard_artifacts(inv_out, config.output)
+    save_inversion_output(inv_out, config.output)
     log_timing(
         "rhime.output_total", timer_seconds(output_start),
         multisector=False, output_format=config.output.output_format,

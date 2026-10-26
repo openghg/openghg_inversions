@@ -36,6 +36,7 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytensor.tensor as pt
 from pytensor.tensor.variable import TensorVariable
 import xarray as xr
@@ -586,7 +587,7 @@ def _fixed_parameter(
     resolution: RatioResolution,
 ) -> TensorVariable:
     """Expose a fixed scalar or state-aligned parameter as a deterministic."""
-    scalar = pt.as_tensor_variable(pm.floatX(value))
+    scalar = pt.as_tensor_variable(floatX(value))
     if resolution == "spatial":
         return pm.Deterministic(name, pt.ones_like(state) * scalar, dims=state_dim)
     return pm.Deterministic(name, scalar)
@@ -606,7 +607,7 @@ def _ratio_tensors(
     )
     prior_dims = state_dim if sector.ratio_resolution == "spatial" else None
     if sector.ratio_prior is not None:
-        kwargs = {"dims": prior_dims} if prior_dims is not None else {}
+        kwargs: dict[str, Any] = {"dims": prior_dims} if prior_dims is not None else {}
         parameter = parse_prior(parameter_name, sector.ratio_prior, **kwargs)
     else:
         assert sector.fixed_ratio is not None
@@ -624,7 +625,7 @@ def _ratio_tensors(
     assert sector.reference_ratio is not None
     emission_ratio = pm.Deterministic(
         f"emission_ratio_{variable_suffix}",
-        pm.floatX(sector.reference_ratio) * parameter,
+        floatX(sector.reference_ratio) * parameter,
         dims=prior_dims,
     )
     return parameter, emission_ratio

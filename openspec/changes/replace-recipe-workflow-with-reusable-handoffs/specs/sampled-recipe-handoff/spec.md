@@ -123,6 +123,14 @@ transitive authentication or rehashing dependencies before and after inference.
 - **AND** an explicit posterior trace selection keeping only `x_latent` and `mu` is rejected at the sampler boundary
 - **AND** replay cannot write an apparently valid inversion output with an absent flux-scale role
 
+#### Scenario: Retain the shared multisector physical state
+
+- **WHEN** multisector sampling completes with the shared flux-state formulation
+- **THEN** its saved contract declares the complete `x` as `flux_scale` and default
+  trace retention includes its gathered source/local-state labels
+- **AND** per-source products select from that state using the recorded source
+  associations without requiring per-sector full-state aliases
+
 ### Requirement: Replay uses existing scientific validation
 
 Replay SHALL read the current supported record and output-contract formats and
@@ -152,6 +160,18 @@ implicit preparation.
 - **THEN** replay reports the scientific incompatibility after loading and before
   product writes, without reconstructing a model
 
+#### Scenario: Replay an existing current-format per-sector trace
+
+- **WHEN** a supported current-format built-in sample record declares
+  `x_<suffix>` per-sector scaling variables and lacks an explicit canonical
+  `flux_scale` role
+- **THEN** the existing saved variable names and source associations remain
+  readable without reconstructing a model or changing the preparation generation
+- **AND** a record declaring a canonical role cannot recover a missing or
+  incompatible canonical state by silently selecting per-sector variables
+- **AND** this reader compatibility does not restore historical staged envelopes
+  or create alias variables in new sampled graphs
+
 ### Requirement: Postprocessing consumes one sampled handoff and one output policy
 
 Each supported concrete workflow SHALL accept a sample-manifest path and a
@@ -165,11 +185,12 @@ Replay SHALL NOT import or execute recorded construction or likelihood callables
 Sampler provenance SHALL be a small description of completed sampling consumed
 by the shared output owner. It SHALL NOT be a scientific acceptance gate or be
 replaced by fresh sampler defaults. Missing descriptive fields SHALL remain
-unavailable rather than be invented. Constructing a `RhimeSampler` configuration
-to obtain its metadata SHALL be permitted and SHALL NOT imply sampling or model
-construction; no separate sampler settings type or metadata strict flag SHALL be
-required. An ordinary replay result SHALL have `sampler=None`, retaining saved
-sampler provenance as metadata rather than a live inference sampler. Replay SHALL
+unavailable rather than be invented. A shared pure metadata operation SHALL
+normalize available `draws`, `burn`, `tune`, `chains` and `nuts_sampler` values
+without constructing a `RhimeSampler`. Missing or invalid descriptions SHALL
+become `{}`, while valid partial descriptions SHALL remain partial. No separate
+sampler settings type or metadata strict flag SHALL be required. Replay results
+SHALL retain saved sampler provenance as metadata without a live sampler field. Replay SHALL
 use the preparation's retained flux rather than resolve current native
 flux or load historical flux from a separate basis artifact.
 Current output choices SHALL NOT replace recorded scientific or inference choices.
@@ -182,7 +203,7 @@ with the corresponding in-memory route.
   context and compatible current output choices with a new destination or naming policy
 - **THEN** it returns the requested products using recorded inference provenance
   and the same saved scientific output meaning without model execution
-- **AND** its result has `sampler=None` and its output metadata describes the completed sampling invocation without resampling or selecting new defaults
+- **AND** its result has no live sampler field and its output metadata describes the completed sampling invocation without resampling or selecting new defaults
 
 #### Scenario: Requested output is unsupported
 - **WHEN** current output choices request a format not supported by the saved

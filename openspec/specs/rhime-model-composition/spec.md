@@ -86,34 +86,42 @@ meaning and dimensions of `epsilon`. The custom callable owns those guarantees.
 
 Standard and multisector requests SHALL reject a custom `likelihood_builder`
 combined with configured built-in mismatch/likelihood settings before acquisition
-in ordinary runners or materialization in the prepared-input runner. The
-standard builder `build_standard_model` SHALL take eager numerical inputs,
-`RhimeModelSpec` and materialized prior parameters without output configuration
-and SHALL NOT accept `model_builder`. Materialization SHALL be an explicit
-runner/caller operation; a shared helper MAY compute selected related inputs and
-enabled priors jointly to preserve shared Dask execution. Construction SHALL NOT
-compute lazy payloads, rebuild the model spec solely to replace prior values, or
-introduce lazy/eager builder variants or another saved-workflow phase.
-Standard `run_standard(prepared=...)` SHALL use the same scientific operations
-as acquired-data and saved execution without a complete-model-builder hook.
-`run_rhime_from_prepared_inputs` SHALL retain only its multisector contract. The retained
-multisector `build_multisector_rhime_model_result` compatibility stage SHALL reject
-simultaneous `model_builder` and `likelihood_builder` inputs before either
-callable runs. The lower-level
-`build_standard_model` and `build_multisector_rhime_model` functions do not
-accept `model_builder`.
+in ordinary runners or materialization in prepared-input execution. Their eager
+builders `build_standard_model` and `build_multisector_model` SHALL take numerical
+inputs, `RhimeModelSpec` and materialized prior parameters without output
+configuration and SHALL NOT accept `model_builder`.
+
+Materialization SHALL be an explicit runner/caller operation. Selected related
+inputs and enabled priors SHALL preserve shared Dask execution at that named
+boundary. Construction SHALL NOT compute lazy payloads or require a separate
+lazy/eager builder variant or saved-workflow phase. The optional `sigma_alignment`
+argument SHALL remain available on the canonical eager builders.
+
+`run_standard(prepared=..., config=...)` and
+`run_multisector(prepared=..., config=...)` SHALL use the same scientific
+operations as acquired-data and saved execution without a complete-model-builder
+hook. Whole-model customization SHALL directly compose scientific functions with
+explicit inputs, materialization, sampling and compatible output operations.
+`run_rhime_from_prepared_inputs`, `build_multisector_rhime_model_result` and
+`build_multisector_rhime_model` SHALL be unavailable; no run-specification context
+or forwarding adapter SHALL preserve those interfaces.
 
 #### Scenario: Reject competing likelihood selections
 
-- **WHEN** an ordinary or prepared-input standard/multisector run supplies a
-  custom likelihood alongside a configured built-in selection
+- **WHEN** an ordinary or prepared-input standard/multisector run supplies a custom likelihood alongside a configured built-in selection
 - **THEN** it raises `ValueError` before acquisition or model-input materialization
 
-#### Scenario: Reject competing builder ownership
+#### Scenario: Reject a complete-model runner hook
 
-- **WHEN** `build_multisector_rhime_model_result` receives both a complete-model builder
-  and a likelihood builder
-- **THEN** it raises `ValueError` before either builder executes
+- **WHEN** a standard or multisector runner receives `model_builder`, with or without `likelihood_builder`
+- **THEN** it rejects that unsupported option before constructing a model or invoking a likelihood
+- **AND** whole-model callers can directly compose the supported scientific operations
+
+#### Scenario: Construct an eager multisector model
+
+- **WHEN** a caller supplies eager numerical inputs, resolved `RhimeModelSpec` and materialized priors to `build_multisector_model`
+- **THEN** it constructs the scientific model without output configuration or an intermediate compatibility builder
+- **AND** supported explicit `sigma_alignment` is preserved
 
 ### Requirement: Explicit custom options and recorded provenance
 
@@ -162,8 +170,9 @@ are recorded as options.
   `tests/test_rhime.py`:
   `test_ordinary_runners_reject_orphaned_likelihood_options_before_config` and
   `test_likelihood_builder_provenance_is_saved_with_result_metadata`.
-- `openghg_inversions/rhime/standard.py`, `multisector.py`, and `prepared.py`:
+- `openghg_inversions/rhime/standard.py` and `multisector.py`:
   extension-point validation; `tests/test_rhime.py`:
   `test_ordinary_runners_reject_custom_likelihood_with_configured_mismatch`,
   `test_prepared_runner_rejects_custom_likelihood_with_builtin_selection_before_materialization`,
-  and `test_public_build_stages_reject_simultaneous_model_and_likelihood_builders`.
+  `test_standard_prepared_run_rejects_complete_model_builder`, and
+  `test_multisector_builder_accepts_canonical_inputs_and_resolved_spec`.

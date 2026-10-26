@@ -3,10 +3,12 @@ Running and validating inversions
 
 Use the staged workflow to separate preparation, prior prediction, sampling,
 diagnosis, and postprocessing into inspectable artifacts. It currently supports
-standard, multisector and CO₂-only model recipes. The CO₂-only route accepts
+standard, multisector, CO₂-only and same-unit linked CO₂/O₂ model recipes.
+The CO₂-only route accepts
 a saved coherent prepared-input artifact and supports ordinary and cached
 fixed-OU execution; see :doc:`co2_model_family` for its commands and output
-boundary. Linked CO₂/O₂ staging remains follow-up work.
+boundary. The same-unit linked CO₂/O₂ recipe has its own joint handoffs; see
+:ref:`linked-staged-commands`.
 
 Scientific validation is broader than a successful software run. Interpret
 convergence diagnostics and predictive checks using the
@@ -23,4 +25,5 @@ user guide does not yet provide a dedicated end-to-end procedure for them.
    :maxdepth: 1
 
    staged_workflow
+   multisector_handoffs
    prior_predictive_checking

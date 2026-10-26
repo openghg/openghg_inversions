@@ -21,19 +21,19 @@ A design recommendation is not evidence that an API implements it.
 Keep legacy dependencies one-way
 --------------------------------
 
-The delivered :download:`HBMCMC isolation contract
+The :download:`HBMCMC isolation and retirement contract
 <../../openspec/specs/hbmcmc-isolation-retirement/spec.md>`
-sets the boundary: HBMCMC may call modern APIs, while production code
-outside HBMCMC must not import, re-export or execute through it. Keep historical
-resource translation inside the legacy entry point. Retained RHIME spelling
-aliases belong to runner frontends, which translate and warn before constructing
-canonical configuration. ``RhimeConfig.from_params`` has no alias vocabulary,
-translation or deprecation warnings. Give retained modern behavior modern owners;
-small duplication inside HBMCMC is acceptable to preserve this direction.
-The separate contract owns the exact compatibility rules and 0.9 removal timing.
-The 0.8 isolation requirements are promoted in PR 869; complete 0.9 removal
-remains in the active retirement change. See :doc:`specifications` for delivery
-status.
+defines a target modern distribution without the HBMCMC namespace, forwarding
+shims or temporary option translation. Modern behavior must have modern owners;
+normal execution must not invoke migration tooling. Canonical configuration
+rejects unsupported options before scientific work, including every explicit
+``use_tracer`` occurrence.
+
+PR 869 delivered the earlier one-way isolation boundary; transitional adapters
+remain implemented pending the active retirement change. The
+:doc:`agreed development boundary </usage/legacy_and_migration>` supersedes the
+old version timetable and records the evidence gate. It does not establish
+that runtime removal has landed. See :doc:`specifications` for delivery status.
 
 Start with the scientific recipe
 --------------------------------
@@ -188,8 +188,9 @@ recursive immutability of borrowed arrays or caller-owned containers.
 Configuration groups acquisition and preparation choices under
 ``RhimeConfig.data: DataConfig``. The runner acquires data separately and passes
 it into scientific preparation. ``MergedData`` holds acquired data only;
-preparation steps pass per-site datasets and ``SiteOptions`` between them. The standard recipe supports reusable preparation and sample manifests; see
-:doc:`/usage/staged_workflow`. The remaining family adoption tasks from
+preparation steps pass per-site datasets and ``SiteOptions`` between them.
+Standard and multisector recipes support reusable preparation and sample
+manifests; see :doc:`/usage/staged_workflow`. The remaining family adoption tasks from
 `PR 802 <https://github.com/openghg/openghg_inversions/pull/802>`_ remain active.
 This guide does not fix private module locations, configuration class layout,
 or future manifest structure. Existing templates and complete option listings

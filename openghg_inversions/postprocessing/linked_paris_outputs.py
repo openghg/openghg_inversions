@@ -52,20 +52,25 @@ def _role(trace: xr.DataTree, role: str, group: str) -> xr.DataArray:
 def reconstruct_co2_o2_concentrations(
     trace: xr.DataTree,
     prepared: Co2O2PreparedInputs,
+    *,
+    require_prior: bool = True,
 ) -> dict[str, xr.Dataset]:
     """Reconstruct channel components while preserving joint sample axes.
 
     Args:
         trace: Joint DataTree with scientific roles and restored indexes.
-            Prior/posterior flux scaling and posterior modelled concentration are required.
-            A selected boundary/offset also requires prior draws for that term.
+            Posterior flux scaling and modelled concentration are required.
+            Present prior groups require full state scaling. A selected
+            boundary/offset requires draws in each included sample group.
         prepared: Labelled inputs used for this posterior.
+        require_prior: Require saved prior state draws, as needed by PARIS.
+            Set false for posterior-only basic products.
 
     Returns:
         CO2 and O2 datasets with observations, posterior model means, residuals
         (observed minus modelled), affine, boundary, offset, and per-source
         contributions in channel units. Chain/draw labels remain shared. Prior
-        draws are required so fixed-state activity is preserved. Their sample
+        draws, when present, preserve fixed-state activity. Their sample
         dimensions are named ``prior_chain`` and ``prior_draw``.
         Inputs remain borrowed; computation is deferred to product creation.
 
@@ -86,16 +91,20 @@ def reconstruct_co2_o2_concentrations(
         join="exact",
         copy=False,
     )
-    prior_scale = _role(trace, "flux_scale", "prior")
-    sensitivity, prior_scale = xr.align(sensitivity, prior_scale, join="exact", copy=False)
+    scales_by_group = {"posterior": scaling}
+    if require_prior or "prior" in trace.children:
+        prior_scale = _role(trace, "flux_scale", "prior")
+        sensitivity, prior_scale = xr.align(sensitivity, prior_scale, join="exact", copy=False)
+        scales_by_group["prior"] = prior_scale
     result = {}
     for species in ("co2", "o2"):
         rows = np.flatnonzero(observations["species"].values == species)
         observed = observations.isel(observation=rows)
         fixed = prepared.fixed_prior_contribution.isel(observation=rows)
         data = {"observed": observed, "affine": fixed, "modelled_posterior": modelled.isel(observation=rows)}
-        total_prior = fixed
-        for when, scales in (("posterior", scaling), ("prior", prior_scale)):
+        sources = []
+        for when, scales in scales_by_group.items():
+            total = fixed
             for component in ("boundary", "offset"):
                 role = f"{component}_concentration"
                 value = (
@@ -104,8 +113,7 @@ def reconstruct_co2_o2_concentrations(
                     else xr.zeros_like(observed)
                 )
                 data[f"{component}_{when}"] = value
-                if when == "prior":
-                    total_prior = total_prior + value
+                total = total + value
             selected = prepared.retained_prior.mean.tracer_scope.str.lower().isin(["shared", species])
             for source in np.unique(prepared.retained_prior.mean.source.values[selected.values]):
                 states = np.flatnonzero((selected & (prepared.retained_prior.mean.source == source)).values)
@@ -115,15 +123,27 @@ def reconstruct_co2_o2_concentrations(
                     dim=state_dim,
                 )
                 data[f"{str(source).lower()}_{when}"] = term
-                if when == "prior":
-                    total_prior = total_prior + term
-        data["modelled_prior"] = total_prior
-        data["residual_posterior"] = observed - data["modelled_posterior"]
+                total = total + term
+                if when == "posterior":
+                    sources.append(str(source).lower())
+            if when == "prior":
+                data["modelled_prior"] = total
+            data[f"pollution_{when}"] = total - data[f"boundary_{when}"] - data[f"offset_{when}"]
+            data[f"residual_{when}"] = observed - data[f"modelled_{when}"]
+            predictive_group = f"{when}_predictive"
+            if predictive_group in trace.children and "concentration" in roles:
+                prediction = _role(trace, "concentration", predictive_group)
+                prediction, _ = xr.align(prediction, observations, join="exact", copy=False)
+                data[f"predictive_{when}"] = prediction.isel(observation=rows).rename(
+                    {dim: f"{predictive_group}_{dim}" for dim in ("chain", "draw") if dim in prediction.dims}
+                )
         data["total_error"] = _role(trace, "total_marginal_error", "posterior").isel(observation=rows)
         dataset = xr.Dataset(data)
         dataset.attrs.update(
             species=species,
-            has_offset=f"{species}_offset_concentration" in roles,
+            has_offset=int(f"{species}_offset_concentration" in roles),
+            source_components=json.dumps(sources),
+            units=str(observed.observation_units.values[0]),
         )
         result[species] = dataset
     return result
@@ -150,7 +170,7 @@ def _concentration_product(
         raise ValueError("Linked PARIS concentration requires datetime observation coordinates.")
     sampled_dims = [dim for dim in ("chain", "draw", "prior_chain", "prior_draw") if dim in components.dims]
     means = components.mean(sampled_dims).reset_index("observation").rename(observation="index")
-    sources = [
+    sources = json.loads(components.attrs["source_components"]) if "source_components" in components.attrs else [
         str(name).removesuffix("_posterior")
         for name in means.data_vars
         if str(name).endswith("_posterior")

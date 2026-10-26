@@ -25,6 +25,7 @@ from typing import Any
 
 import numpy as np
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
@@ -36,7 +37,7 @@ from openghg_inversions.models._gaussian_observation import (
 )
 from openghg_inversions.models.components import add_model_data
 from openghg_inversions.models.coords import add_coords
-from openghg_inversions.models.priors import parse_prior, positive_prior_args
+from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.observation_error import (
     AggregationError,
     validate_observation_error_arrays,
@@ -82,8 +83,9 @@ def add_site_sigma_gaussian_likelihood(
         mean: Completed one-dimensional forward-model concentration tensor
             aligned with ``output_dim`` and ``observations``.
         fixed_site_amplitudes: Fixed amplitudes keyed by site label, in the same
-            units as ``observations``. Entries for sites absent after filtering
-            are ignored.
+            units as ``observations``. Every supplied value must be numeric,
+            finite and non-negative; valid entries for sites absent after
+            filtering are ignored.
         site_amplitude_prior: Explicit positive-support prior for inferred site
             amplitudes, in the same units as ``observations``.
         output_dim: Observation dimension used by named PyMC variables.
@@ -121,22 +123,24 @@ def add_site_sigma_gaussian_likelihood(
     )
 
     if fixed_site_amplitudes is not None:
-        if any(isinstance(value, (bool, np.bool_)) for value in fixed_site_amplitudes.values()):
+        if any(
+            isinstance(value, (bool, np.bool_))
+            or not isinstance(value, (int, float, np.integer, np.floating))
+            for value in fixed_site_amplitudes.values()
+        ):
             raise ValueError("Fixed site amplitudes must be numeric, not boolean.")
+        supplied_values = np.asarray(list(fixed_site_amplitudes.values()), dtype=np.float64)
+        if not np.isfinite(supplied_values).all() or (supplied_values < 0.0).any():
+            raise ValueError(
+                "`fixed_site_amplitudes` must contain only finite, non-negative values."
+            )
         fixed_sigma = expand_mapping(
             fixed_site_amplitudes,
             site_coord,
             name=SITE_SIGMA,
         )
-        try:
-            fixed_sigma = fixed_sigma.astype(np.float64)
-        except (TypeError, ValueError) as error:
-            raise ValueError("Fixed site amplitudes must be numeric.") from error
+        fixed_sigma = fixed_sigma.astype(np.float64)
         amplitude_values = np.asarray(fixed_sigma.values)
-        if not np.isfinite(amplitude_values).all() or (amplitude_values < 0.0).any():
-            raise ValueError(
-                "`fixed_site_amplitudes` must contain only finite, non-negative values."
-            )
         aligned_variance = np.square(amplitude_values[np.asarray(site_index.values)])
         fixed_independent_variance = (
             np.square(np.asarray(observation_error.values, dtype=np.float64)) + aligned_variance
@@ -168,7 +172,8 @@ def add_site_sigma_gaussian_likelihood(
         add_coords({SITE_SIGMA_DIM: site_coord})
         sigma_site = parse_prior(
             SITE_SIGMA,
-            positive_prior_args(site_amplitude_prior),
+            site_amplitude_prior,
+            positive=True,
             dims=SITE_SIGMA_DIM,
         )
 
@@ -184,7 +189,7 @@ def add_site_sigma_gaussian_likelihood(
         dims=output_dim,
     )
     return add_gaussian_observation_likelihood(
-        observed=pm.floatX(observations.compute().values),
+        observed=floatX(observations.compute().values),
         mean=mean,
         independent_variance=independent_variance,
         aggregation_error=registered_aggregation_error,

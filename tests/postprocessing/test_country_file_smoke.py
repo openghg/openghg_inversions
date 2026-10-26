@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from importlib import import_module
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
@@ -36,21 +37,17 @@ def _version(package: str) -> str:
         return "not installed"
 
 
-def _is_pixi_environment() -> bool:
-    return bool(os.environ.get("PIXI_ENVIRONMENT_NAME") or os.environ.get("PIXI_PROJECT_ROOT"))
-
-
 def _require_backend(engine: str | None) -> None:
     if engine == "h5netcdf":
-        pytest.importorskip("h5netcdf")
+        import_module("h5netcdf")
     elif engine == "netcdf4":
-        pytest.importorskip("netCDF4")
+        import_module("netCDF4")
 
 
 def _country_file_path(country_file_smoke_dir: Path, file_name: str) -> Path:
     path = country_file_smoke_dir / file_name
-    if not path.exists():
-        pytest.skip(f"Country-file smoke input {path} is not available")
+    if not path.is_file():
+        pytest.fail(f"Country-file smoke input {path} is not a file")
     return path
 
 
@@ -104,8 +101,6 @@ def test_xarray_open_country_file_engine_matrix(
             loaded = dataset.load()
     except Exception as error:
         print(f"{file_name} engine={engine_label}: failed {type(error).__name__}: {error}")
-        if not _is_pixi_environment():
-            pytest.xfail(f"{file_name} engine={engine_label} failed outside Pixi: {error}")
         raise
 
     print(f"{file_name} engine={engine_label}: ok {_summarise_dataset(loaded)}")
@@ -124,8 +119,6 @@ def test_load_country_dataset_real_files(
         dataset = load_country_dataset(path)
     except Exception as error:
         print(f"{file_name} load_country_dataset: failed {type(error).__name__}: {error}")
-        if not _is_pixi_environment():
-            pytest.xfail(f"{file_name} load_country_dataset failed outside Pixi: {error}")
         raise
 
     selected_engine = dataset.attrs[COUNTRY_FILE_SELECTED_ENGINE_ATTR]

@@ -15,12 +15,14 @@ from openghg_inversions.rhime.co2.co2_affine_output import (
 from openghg_inversions.rhime.co2.co2_outputs import (
     _affine_products,
     _basic_product,
-    make_co2_rhime_outputs,
-    make_co2_rhime_result,
+    Co2OutputOptions,
+    calculate_co2_products,
+    save_co2_products,
+    make_co2_output,
     reconstruct_co2_concentrations,
     validate_co2_outputs,
+    validate_co2_product_request,
 )
-from openghg_inversions.rhime.specs import RhimeModelSpec, RhimeOutputSpec, RhimeRunSpec
 from openghg_inversions.serialization import restore_serialisation_multiindexes
 from test_co2_affine_output import _prepared
 
@@ -113,19 +115,16 @@ def test_direct_basic_output_roundtrips_observation_multiindex_without_mutating_
     prepared, trace = _components_fixture()
     inputs_before = prepared.inv_inputs.copy(deep=True)
     trace_before = trace.copy(deep=True)
-    run_spec = RhimeRunSpec(
+    result = make_co2_output(
+        prepared=prepared, trace=trace,
         start_date="2020-01-01",
         end_date="2020-02-01",
-        sites=("MHD",),
-        averaging_period=("1h",),
-        model=RhimeModelSpec(species="co2", domain="EUROPE", sectors=()),
-        output=RhimeOutputSpec(
-            output_format="basic", output_path=str(tmp_path), save_inversion_output=False
-        ),
+        domain="EUROPE",
     )
-    result = make_co2_rhime_result(prepared=prepared, run_spec=run_spec, sampler=None, idata=trace)
-
-    make_co2_rhime_outputs(result=result, prepared=prepared)
+    output = Co2OutputOptions(output_format="basic", output_path=tmp_path, save_trace=tmp_path / "trace.nc")
+    countries = validate_co2_product_request(output, prepared=prepared)
+    calculate_co2_products(result=result, prepared=prepared, output=output, countries=countries)
+    save_co2_products(result, output=output)
 
     with xr.open_dataset(result.output_metadata["basic_path"]) as saved:
         restored = restore_serialisation_multiindexes(saved.load(), strict=True)
@@ -133,23 +132,34 @@ def test_direct_basic_output_roundtrips_observation_multiindex_without_mutating_
     assert isinstance(result.outputs["basic"].indexes["nmeasure"], pd.MultiIndex)
     xr.testing.assert_identical(prepared.inv_inputs, inputs_before)
     xr.testing.assert_identical(trace, trace_before)
+    assert result.idata is trace
+    assert result.prepared is prepared
+    from openghg_inversions.serialization import load_trace
+    xr.testing.assert_identical(load_trace(result.output_metadata["trace_path"]), trace)
+    assert not hasattr(result, "output_spec")
 
 
 def test_unsupported_requests_are_rejected_before_destinations_exist(tmp_path):
     for output_format in ("legacy", "inv_out", "paris"):
-        spec = RhimeOutputSpec(
-            output_format=output_format, output_path=str(tmp_path / "unopened"), save_inversion_output=False
-        )
         with pytest.raises(ValueError):
+            spec = Co2OutputOptions(output_format=output_format, output_path=tmp_path / "unopened")
             validate_co2_outputs(spec)
-    with pytest.raises(ValueError, match="save_inversion_output"):
-        validate_co2_outputs(RhimeOutputSpec(output_format="basic"))
     with pytest.raises(ValueError, match="country"):
         validate_co2_outputs(
-            RhimeOutputSpec(output_format="basic", country_file="countries.nc", save_inversion_output=False)
+            Co2OutputOptions(output_format="basic", country_file="countries.nc")
         )
-    validate_co2_outputs(RhimeOutputSpec(output_format="basic", save_inversion_output=False))
+    validate_co2_outputs(Co2OutputOptions())
     assert not (tmp_path / "unopened").exists()
+
+
+def test_output_options_preserve_unsupported_inversion_output_guard(tmp_path):
+    from openghg_inversions.rhime.co2.execution import resolve_co2_output
+
+    params = {"outputs": {"output_format": "basic", "save_inversion_output": True}}
+    with pytest.raises(ValueError, match="save_inversion_output"):
+        resolve_co2_output(params)
+    del params["outputs"]["save_inversion_output"]
+    assert isinstance(resolve_co2_output(params)["output"], Co2OutputOptions)
 
 
 def test_basic_native_product_uses_affine_nonunit_reference_and_signed_flux():
@@ -173,7 +183,7 @@ def test_source_to_sector_sums_signed_joint_draws_before_uncertainty():
     from postprocessing.test_co2_flux_outputs import _fixture
 
     bound, trace, countries = _fixture()
-    spec = RhimeOutputSpec(output_format="basic", save_inversion_output=False)
+    spec = Co2OutputOptions()
     mapping = {"fossil": "net", "biosphere": "net"}
     validate_co2_outputs(spec, bound=bound, source_to_sector=mapping)
     native, country = _affine_products(trace, bound, countries, mapping)
@@ -200,8 +210,6 @@ def test_absent_baseline_is_zero_and_basic_reduces_it_without_sample_axes():
 
 
 def test_conditional_paris_uses_affine_draw_statistics_and_template_units():
-    from types import SimpleNamespace
-
     from postprocessing.test_co2_flux_outputs import _fixture
     from openghg_inversions.rhime.co2.co2_outputs import _paris_products
 
@@ -209,16 +217,12 @@ def test_conditional_paris_uses_affine_draw_statistics_and_template_units():
     components = reconstruct_co2_concentrations(concentration_trace, prepared)
     bound, flux_trace, countries = _fixture()
     native, country = _affine_products(flux_trace, bound, countries, None)
-    result = SimpleNamespace(
-        model_spec=SimpleNamespace(domain="EUROPE"),
-        output_spec=RhimeOutputSpec(
-            output_format="paris",
-            save_inversion_output=False,
-            paris_postprocessing_kwargs={"flux_frequency": "monthly"},
-        ),
-        run_spec=SimpleNamespace(start_date="2020-01-01", end_date="2020-02-01", averaging_period=("1h",)),
+    result = make_co2_output(
+        prepared=prepared, trace=concentration_trace, domain="EUROPE",
+        start_date="2020-01-01", end_date="2020-02-01",
     )
-    concentration, flux = _paris_products(components, native, country, countries, result, None)
+    output = Co2OutputOptions(output_format="paris", paris_postprocessing_kwargs={"flux_frequency": "monthly"})
+    concentration, flux = _paris_products(components, native, country, countries, result, None, output=output)
     assert flux.attrs["uncertainty_scope"] == "retained_state_conditional"
     np.testing.assert_allclose(
         flux.flux_total_posterior.isel(time=0), native.flux_total_posterior_mean, rtol=1e-6
@@ -244,8 +248,6 @@ def test_concentration_only_basic_accepts_posterior_without_prior_predictions():
 
 @pytest.mark.parametrize("time_axis", ["time", "flux_time"])
 def test_paris_two_month_affine_flux_infers_frequency_and_preserves_bounds(time_axis):
-    from types import SimpleNamespace
-
     from postprocessing.test_co2_flux_outputs import _fixture
     from openghg_inversions.rhime.co2.co2_outputs import _paris_products
 
@@ -260,12 +262,13 @@ def test_paris_two_month_affine_flux_infers_frequency_and_preserves_bounds(time_
         bound, artifact=replace(bound.artifact, affine_map=replace(bound.affine_map, flux=signed_flux))
     )
     native, country = _affine_products(flux_trace, bound, countries, None)
-    result = SimpleNamespace(
-        model_spec=SimpleNamespace(domain="EUROPE"),
-        output_spec=RhimeOutputSpec(output_format="paris", save_inversion_output=False),
-        run_spec=SimpleNamespace(start_date="2020-01-01", end_date="2020-03-01", averaging_period=("1h",)),
+    result = make_co2_output(
+        prepared=prepared, trace=concentration_trace, domain="EUROPE",
+        start_date="2020-01-01", end_date="2020-03-01",
     )
-    _, exported = _paris_products(components, native, country, countries, result, None)
+    _, exported = _paris_products(
+        components, native, country, countries, result, None, output=Co2OutputOptions(output_format="paris"),
+    )
     assert exported.sizes["time"] == 2
     np.testing.assert_allclose(
         exported.flux_total_posterior.transpose("time", "latitude", "longitude"),
@@ -279,3 +282,44 @@ def test_paris_two_month_affine_flux_infers_frequency_and_preserves_bounds(time_
     expected_days = (expected_bounds - epoch) / np.timedelta64(1, "D")
     np.testing.assert_allclose(exported.time_bnds, expected_days)
     np.testing.assert_allclose(exported.time, expected_days.mean(axis=1))
+
+
+def test_product_calculation_trusts_the_completed_request_preflight(monkeypatch):
+    from openghg_inversions.rhime.co2 import co2_outputs
+
+    prepared, trace = _components_fixture()
+    output = Co2OutputOptions()
+    result = make_co2_output(
+        prepared=prepared, trace=trace, domain="EUROPE", start_date="2020-01-01", end_date="2020-02-01",
+    )
+    countries = validate_co2_product_request(output, prepared=prepared)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Calculation must trust request validation and reporting inputs")
+
+    monkeypatch.setattr(co2_outputs, "validate_co2_outputs", forbidden)
+    monkeypatch.setattr(co2_outputs, "validate_co2_reporting_inputs", forbidden)
+    calculate_co2_products(result=result, prepared=prepared, output=output, countries=countries)
+    assert "basic" in result.outputs
+
+
+@pytest.mark.parametrize("output_format", ["basic", "paris"])
+@pytest.mark.parametrize("select_countries", [False, True])
+def test_reporting_country_selection_accepts_iterables_and_preserves_none(
+    europe_country_file, output_format, select_countries,
+):
+    from types import SimpleNamespace
+    from openghg_inversions.rhime.co2.co2_outputs import validate_co2_reporting_inputs
+
+    with xr.open_dataset(europe_country_file) as source:
+        names = list(map(str, source.name.values))
+    selections = iter(names[:2]) if select_countries else None
+    output = Co2OutputOptions(
+        output_format=output_format, country_file=europe_country_file,
+        paris_postprocessing_kwargs={"country_selections": selections},
+    )
+    countries = validate_co2_reporting_inputs(
+        output, SimpleNamespace(averaging_period=["1h"]),
+        SimpleNamespace(affine_map=SimpleNamespace(flux=xr.DataArray(1.0))),
+    )
+    assert list(countries.matrix.country.values) == (names[:2] if select_countries else names)

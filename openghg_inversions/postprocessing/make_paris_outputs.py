@@ -25,7 +25,6 @@ from openghg_inversions.postprocessing.make_outputs import (
     make_country_outputs,
     make_flux_outputs,
     make_multisector_country_trace_outputs,
-    make_multisector_flux_trace_outputs,
     observation_and_error_outputs,
 )
 from openghg_inversions.postprocessing.stats import calculate_stats, combine_chain_draw, stats_functions
@@ -1503,7 +1502,7 @@ def paris_flux_output(
             return ds
 
     result = (
-        xr.merge([flux_outs, country_outs, country_fraction.reindex_like(flux_outs)], join="outer")
+        xr.merge([flux_outs, country_outs, align_sparse_lat_lon(country_fraction, flux_outs)], join="outer")
         .rename(dim_rename_dict)
         .pipe(time_func)
         .pipe(convert_time_to_unix_epoch, "1d")
@@ -1528,7 +1527,7 @@ def paris_flux_output(
             .pipe(add_variable_attrs, emissions_attrs)
             .rename(inversion_grid_flux_rename_dict)
         )
-        result = result.merge(inversion_grid_flux_outs)
+        result = result.merge(inversion_grid_flux_outs, join="outer", compat="no_conflicts")
 
     result = result.transpose("time", "percentile", "country", "latitude", "longitude")
 
@@ -1598,25 +1597,12 @@ def paris_flux_output_latest(
     sector_name_by_suffix = _paris_sector_name_by_suffix(inv_out)
     sector_names = list(sector_name_by_suffix.values())
 
-    spatial_flux_trace = (
-        make_multisector_flux_trace_outputs(
-            inv_out,
-            report_flux_on_inversion_grid=False,
-            materialize=False,
-        )
-        if inv_out.is_multisector
-        else None
-    )
-    flux_outs = (
-        calculate_stats(spatial_flux_trace, stats=stats, **stats_args)
-        if spatial_flux_trace is not None
-        else make_flux_outputs(
-            inv_out,
-            stats=stats,
-            stats_args=stats_args,
-            report_flux_on_inversion_grid=False,
-            include_scale_factors=False,
-        )
+    flux_outs = make_flux_outputs(
+        inv_out,
+        stats=stats,
+        stats_args=stats_args,
+        report_flux_on_inversion_grid=False,
+        include_scale_factors=False,
     )
     countries = _latest_paris_countries(
         country_file=country_file,
@@ -1729,6 +1715,7 @@ def paris_flux_output_latest(
                 align_sparse_lat_lon(cell_area, flux_outs),
             ],
             join="outer",
+            compat="no_conflicts",
         )
         .rename(dim_rename_dict)
         .pipe(_assign_flux_time_bounds, flux_frequency, inv_out.start_time, inv_out.end_time)
@@ -1761,7 +1748,7 @@ def paris_flux_output_latest(
             .rename(inversion_grid_flux_rename_dict)
             .pipe(add_variable_attrs, emissions_attrs)
         )
-        result = result.merge(inversion_grid_flux_outs)
+        result = result.merge(inversion_grid_flux_outs, join="outer", compat="no_conflicts")
 
     result = result.transpose(
         "percentile",
@@ -1792,7 +1779,7 @@ def paris_flux_output_latest(
     result.attrs["paris_flux_template_version"] = template_files.flux_version
     result = copy_flux_nonfinite_attrs(
         result,
-        spatial_flux_trace if spatial_flux_trace is not None else flux_outs,
+        flux_outs,
     )
 
     result = _cast_data_vars_to_template_dtypes(result, template_files.flux, sector_names=sector_names)
@@ -1859,6 +1846,30 @@ def infer_flux_frequency(flux: xr.DataArray) -> str:
             return flux_frequency
 
 
+
+def validate_paris_options(
+    *, template_version: ParisTemplateVersion, time_point: Literal["start", "midpoint"],
+    flux_frequency: str | None,
+) -> None:
+    """Validate scalar reporting choices before constructing PARIS products.
+
+    Args:
+        template_version: Selected PARIS CDL schema.
+        time_point: Flux interval timestamp convention.
+        flux_frequency: Explicit calendar period or positive duration; None requests inference.
+
+    Raises:
+        ValueError: If the schema, timestamp, or explicit frequency is unsupported.
+    """
+    paris_template_files(template_version)
+    if time_point not in ("start", "midpoint"):
+        raise ValueError("PARIS time_point must be 'start' or 'midpoint'.")
+    if template_version == "latest" and time_point != "midpoint":
+        raise ValueError("Latest PARIS flux output requires midpoint time coordinates and time bounds.")
+    if flux_frequency is not None:
+        _flux_frequency_to_offset(flux_frequency)
+
+
 def make_paris_outputs(
     inv_out: InversionOutput,
     country_file: str | Path | None = None,
@@ -1869,6 +1880,7 @@ def make_paris_outputs(
     domain: str | None = None,
     template_version: ParisTemplateVersion = DEFAULT_PARIS_TEMPLATE_VERSION,
     country_selections: Iterable[str] | None = PARIS_LATEST_COUNTRIES,
+    flux_frequency: str | None = None,
 ) -> tuple[xr.Dataset, xr.Dataset]:
     """Create matching PARIS flux and concentration products.
 
@@ -1887,6 +1899,8 @@ def make_paris_outputs(
         country_selections: Optional latest-template country names or codes.
             The default emits the canonical 22-country EUROPE v03 schema; pass
             ``None`` to include all countries from another domain file.
+        flux_frequency: Explicit calendar period or positive fixed duration.
+            If omitted, infer it from the retained prior flux.
 
     Returns:
         A tuple containing the flux dataset followed by the concentration
@@ -1896,8 +1910,11 @@ def make_paris_outputs(
         ValueError: If required inversion metadata is missing or template
             constraints are not satisfied.
     """
-    # infer flux frequency
-    flux_frequency = infer_flux_frequency(inv_out.flux)
+    validate_paris_options(
+        template_version=template_version, time_point=time_point, flux_frequency=flux_frequency,
+    )
+    if flux_frequency is None:
+        flux_frequency = infer_flux_frequency(inv_out.flux)
     conc_outs = paris_concentration_outputs(
         inv_out,
         report_mode=report_mode,

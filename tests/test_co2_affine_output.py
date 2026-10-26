@@ -356,3 +356,24 @@ def test_saved_bucket_flux_must_match_prepared_basis(tmp_path, multisource: bool
 
     with pytest.raises(ValueError, match="bucket flux differs"):
         load_and_bind_affine_flux_map(reconstruction_path, prepared_path)
+
+
+@pytest.mark.parametrize("multisource", [False, True])
+@pytest.mark.parametrize("mismatch", ["assignments", "flux"])
+def test_in_memory_binding_preserves_saved_bucket_compatibility(multisource, mismatch):
+    """Live and saved binding reject numerically different bucket ingredients."""
+    prepared, native_mean = _multisource_prepared() if multisource else _prepared()
+    artifact = produce_bucket_affine_flux_map(prepared, native_mean, prepared_inputs_id="fixture")
+    if mismatch == "flux":
+        affine_map = replace(artifact.affine_map, flux=artifact.affine_map.flux.copy(data=artifact.affine_map.flux.values * 2))
+    else:
+        original = prepared.basis_functions.operator
+        if multisource:
+            altered_bases = dict(original.basis_flat)
+            altered_bases["fossil"] = altered_bases["fossil"].copy(data=[[2, 1]])
+            operator = MultiSourceBucketBasisOperator(altered_bases, state_dim=original.meta.state_dim)
+        else:
+            operator = BucketBasisOperator(original.basis_flat.copy(data=[[2, 1]]), state_dim=original.meta.state_dim)
+        affine_map = replace(artifact.affine_map, prolongation=operator)
+    with pytest.raises(ValueError, match=f"bucket {mismatch}.*differ"):
+        _bind_affine_flux_map(replace(artifact, affine_map=affine_map), prepared, prepared_inputs_id="fixture")

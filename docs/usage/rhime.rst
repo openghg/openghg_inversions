@@ -140,7 +140,14 @@ operator; it does not rename arbitrary state axes to ``region``.
 ``source`` remains the OpenGHG retrieval identity; sector names and priors live
 in the model specification and select ``H`` by source label. Source-coordinate
 order therefore does not determine sector routing. The current builder
-supports one distinct source and one independent state vector per sector.
+supports one distinct source and one independent prior block per sector in a
+single full physical state ``x``. Its two-dimensional model sensitivity ``hx``
+uses the matching retained entries of that state to produce the combined flux
+concentration contribution ``mu``. Rectangular sensitivity inputs are packed
+into a gathered source/local state index for construction only; prepared inputs and basis artifacts retain
+their existing layouts. Select source blocks from ``x`` by label. The first
+requested ``flux_sources`` entry still supplies basis weighting, independently
+of sector declaration order.
 Rectangular legacy inputs may carry ``source_region_count(source)`` so padded
 layouts can be rejected; modern preparation does not create that compatibility
 metadata.
@@ -225,18 +232,27 @@ inference description in ``result.output_metadata["sampler"]`` without a live
 sampler or PyMC model. Replay reuses that description without inference or current
 defaults.
 
-``run_rhime_from_prepared_inputs`` is retained only for multisector execution with
-``RhimeRunSpec``. The standard 0.7 call using ``prepared_inputs`` plus a one-sector
-``run_spec`` must migrate to ``run_standard(prepared=..., config=...)``; it is not
-accepted by the retained multisector entry point. That entry point and the nested,
-CO2 and CO2/O2 prepared runners accept ``sampler="default"`` (also omission) or a
-configured ``RhimeSampler``. Explicit ``sampler=None`` is rejected. Each invocation
-isolates mutable option containers while borrowing scientific arrays.
+For multisector execution with ordinary resolved configuration, use
+``run_multisector(prepared=prepared, config=config)`` with
+``RhimeConfig.from_params(options, multisector=True)``. It returns ``InversionOutput``
+and uses the same materialization, construction, inference and output operations
+as a full multisector run. Saved phases use those operations through
+``rhime.multisector_stages``; see :doc:`staged_workflow` for preparation reuse,
+compatible prior/likelihood changes and graph-free product replay.
+
+The old ``run_rhime_from_prepared_inputs`` entry point is removed. Standard and
+multisector callers use their ordinary runner with ``prepared`` and ``config``.
+For whole-model changes, compose construction and sampling directly as shown in
+:ref:`rhime-complete-model-composition`. The nested, CO2 and CO2/O2 prepared
+runners retain their separate interfaces; they accept ``sampler="default"``
+(also omission) or a configured ``RhimeSampler``. Explicit ``sampler=None`` is
+rejected. Each invocation isolates mutable option containers while borrowing
+scientific arrays.
 
 The prepared object is trusted canonical input: it must already contain the
 observation, error, sensitivity, and optional boundary-condition variables
-required by the selected model. A multisector run requires
-``run_spec.split_by_sectors=True`` and a source-resolved layout on
+required by the selected model. A multisector run requires sector-split
+configuration and a source-resolved layout on
 ``prepared.inv_inputs["H"]``. Shared-basis inputs may use a rectangular
 ``source`` dimension. Source-specific, ragged state blocks use one gathered
 state dimension with a ``(source, region_in_source)`` MultiIndex. A scalar
@@ -455,43 +471,33 @@ prepared object:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import RhimeModelSpec, SectorSpec
-   from openghg_inversions.rhime import (
-       RhimeOutputSpec,
-       RhimeRunSpec,
-       RhimeSampler,
-       run_rhime_from_prepared_inputs,
-   )
+   from openghg_inversions.rhime import RhimeConfig, run_multisector
 
    sources = ["ocean", "FF", "GPP", "TER"]
-   sectors = tuple(
-       SectorSpec(
-           name=source,
-           flux_source=source,
-           x_prior={"pdf": "lognormal", "mean": 1.0, "stdev": 1.0},
-           variable_suffix=source.lower(),
-       )
-       for source in sources
+   config = RhimeConfig.from_params(
+       {
+           "species": "co2",
+           "domain": "EUROPE",
+           "start_date": "2021-01-01",
+           "end_date": "2021-01-05",
+           "sites": list(prepared.sites),
+           "averaging_period": list(prepared.averaging_period),
+           "flux_sources": sources,
+           "sector_priors": {
+               source: {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0}
+               for source in sources
+           },
+           "sigma_freq": "monthly",
+           "use_bc": False,
+           "output_name": "external-inputs",
+           "output_format": "none",
+           "draws": 1000,
+           "tune": 1000,
+           "chains": 4,
+       },
+       multisector=True,
    )
-   run_spec = RhimeRunSpec(
-       start_date="2021-01-01",
-       end_date="2021-01-05",
-       sites=prepared.sites,
-       averaging_period=prepared.averaging_period,
-       model=RhimeModelSpec(
-           species="co2",
-           domain="EUROPE",
-           sectors=sectors,
-           sigma_freq="monthly",
-       ),
-       output=RhimeOutputSpec(output_format="none"),
-       split_by_sectors=True,
-   )
-   result = run_rhime_from_prepared_inputs(
-       prepared_inputs=prepared,
-       run_spec=run_spec,
-       sampler=RhimeSampler(draws=1000, tune=1000, chains=4),
-   )
+   result = run_multisector(prepared=prepared, config=config)
 
 This adapter is an extension boundary for data acquisition and assembly, not a
 plugin interface for alternative RHIME models or likelihood components.
@@ -727,7 +733,8 @@ containing the value ``"outer"``:
    from openghg_inversions.models import StateActivity
    from dataclasses import replace
    from openghg_inversions.rhime.standard import (
-       build_standard_model, materialize_standard_inputs,
+       build_standard_model,
+       materialize_standard_inputs,
    )
 
    state_policy = StateActivity(
@@ -736,13 +743,19 @@ containing the value ``"outer"``:
    )
    selected_model = replace(model_spec, state_activity=state_policy)
    inputs, priors = materialize_standard_inputs(prepared, selected_model)
-   built = build_standard_model(inputs, selected_model, priors=priors)
+   built = build_standard_model(
+       inputs,
+       selected_model,
+       priors=priors,
+   )
    model = built.model
 
-The direct multisector builder accepts one ordered sequence of ``SectorSpec``
-objects. Each sector carries its source, backend suffix, prior, and optional
-``state_activity`` override; the builder's ``state_activity`` argument supplies
-the shared policy. ``StateActivity(active=False)`` freezes a complete sector.
+The multisector builder reads the ordered ``RhimeModelSpec.sectors`` sequence.
+Each ``SectorSpec`` carries its source, backend suffix, prior, and optional
+``state_activity`` override; ``RhimeModelSpec.state_activity`` supplies the
+shared policy. Call ``materialize_multisector_inputs(prepared, model_spec)``
+first, then pass its Dataset and eager priors to ``build_multisector_model``.
+``StateActivity(active=False)`` freezes a complete sector.
 RHIME config-file syntax and persisted activity-reason tables remain follow-up
 work. Each ``SectorSpec.x_prior`` supports the same scalar, full-state array,
 and labelled ``DataArray`` parameter forms; labelled values must match the
@@ -755,8 +768,8 @@ consume the resulting ``ResolvedStateActivity``; they do not inspect ``H`` or
 infer its output dimension.
 
 Boundary-condition scaling states can be handled the same way. Set
-``RhimeModelSpec(bc_state_activity=StateActivity(active=False))`` (or the
-equivalent low-level builder argument) to retain ``mu_bc = H_bc @ bc`` with a
+``bc_state_activity=StateActivity(active=False)`` on ``RhimeModelSpec`` to retain
+``mu_bc = H_bc @ bc`` with a
 fixed ``bc`` vector and no boundary-condition random variable. This is distinct
 from supplying a standalone baseline time series, which belongs to a separate
 baseline component.
@@ -881,7 +894,8 @@ This example uses canonical ``prepared`` inputs and a resolved one-sector
    )
    from dataclasses import replace
    from openghg_inversions.rhime.standard import (
-       build_standard_model, materialize_standard_inputs,
+       build_standard_model,
+       materialize_standard_inputs,
    )
 
    x_prior_stdev = project_basis_prior_stdev(
@@ -895,7 +909,11 @@ This example uses canonical ``prepared`` inputs and a resolved one-sector
    )
    selected_model = replace(model_spec, sectors=(selected_sector,))
    inputs, priors = materialize_standard_inputs(prepared, selected_model)
-   built = build_standard_model(inputs, selected_model, priors=priors)
+   built = build_standard_model(
+       inputs,
+       selected_model,
+       priors=priors,
+   )
    model = built.model
 
 ``calibrate_basis_prior_stdev`` accepts a caller-defined target matrix and
@@ -940,7 +958,7 @@ configuration construction. Prefer ``legacy`` in new configurations.
 the standard runner. To inspect reporting results in memory, call
 ``basic_output(result, country_file=...)`` on the returned ``InversionOutput``.
 The runner calls ``postprocess_standard_outputs`` to compute and write configured
-PARIS or legacy products, then ``save_standard_artifacts`` to export the scientific
+PARIS or legacy products, then ``save_inversion_output`` to export the scientific
 result and trace. PARIS and legacy requests require an ``output_path`` before
 sampling. Export defaults and filename policy remain unchanged. See
 :doc:`staged_workflow` for the distinction between checkpoints, self-contained
@@ -949,6 +967,17 @@ inversion outputs, traces and basis exports.
 Single-sector ``paris`` keeps the legacy template by default. Pass
 ``paris_postprocessing_kwargs={"template_version": "latest"}`` to write the
 PARIS concentration v04 and flux v03 templates.
+
+Standard, multisector, nested and ordinary CO₂ recipes resolve their PARIS
+choices through shared typed options, including template version, time point
+and optional ``flux_frequency``.
+Set these through the existing ``paris_postprocessing_kwargs`` mapping; omitted
+frequency is inferred from the retained flux. Invalid option names, explicit
+frequencies and incompatible template/time-point choices fail before inference.
+Each recipe retains its own supported defaults and restrictions: multisector
+and CO₂ products require the latest templates, while standard and nested output
+keep the legacy default. Nested output adds the inner country file and cache
+directory; see :doc:`nested_domains`.
 
 PARIS global attributes automatically use the selected prior flux sources and
 metadata read from the footprint files; scripts do not need to pass these
@@ -986,3 +1015,60 @@ RHIME: the direct ``fixedbasisMCMC`` / ``inferpymc`` implementation and the
 should use ``openghg-inversions run-rhime`` or ``run_standard(...)`` directly.
 See :doc:`legacy_and_migration` for the parameter map, return-type changes,
 and interfaces without a current equivalent.
+
+Postprocessing memory
+~~~~~~~~~~~~~~~~~~~~~
+
+Standard flux products reduce samples in basis-state space before reconstructing
+the grid. Multisector nonlinear statistics first combine matching sector draws; marginal
+sector intervals are not added together. Mean-only requests keep the existing
+state-space shortcut when the sector sample masks permit it. Built-in
+bucket-basis reconstruction uses bounded spatial and flux-time chunks. Built-in
+statistics complete one bounded non-sample block at a time, retaining all required
+samples and reusing its sources across requested summaries and HDI probabilities.
+Postprocessing pools all chains and draws at the reduction boundary within each block,
+retaining its statistic kernels and missing-sample handling.
+
+Custom statistics registered with ``register_stat`` are called once per variable.
+Register with ``whole_dataset=True`` for a statistic that combines related
+variables. Requests containing a custom statistic run on the complete dataset
+and do not inherit the built-in statistics' block memory bound, unless every
+requested statistic is registered with ``pointwise=True``, declaring that each
+non-sample point is reduced independently.
+
+Quantities derived from several sampled variables, such as a baseline formed
+from a modelled boundary contribution and an offset, use ``summarize_derived``
+from ``openghg_inversions.postprocessing.stats``. It broadcasts the operands as
+borrowed views. When every requested statistic declares ``pointwise=True``, it
+applies the arithmetic within bounded blocks before computing statistics. If any
+requested statistic lacks that declaration, the compatibility path applies the
+arithmetic once to the complete dataset. Basis reconstruction applies the shared
+spatial and flux-time chunk limits by default.
+
+Operands and companion variables use outer alignment, preserving all coordinate
+labels and padding missing values. Derived and companion dataset attributes are
+combined without conflicts; contradictory attributes raise an error rather than
+silently replacing quantity meaning or provenance.
+
+Variables with matching point dimensions and compatible chunk layouts share
+source tasks within each block. Lower-dimensional operands or companions may be
+read again in other blocks or groups; reuse across those computations is not
+guaranteed.
+
+Multisector flux products retain the selected compact state samples for the duration
+of the product, preserving their sample chunks and reusing them for grid tiles and
+scale-factor summaries. Full reconstructed grid samples are not retained.
+
+Trace selection occurs within each prior/posterior group before their coordinates
+are aligned, so requesting flux scaling does not pad unrelated concentration
+variables. ``InversionOutput.trace_dataset`` accepts semantic ``var_roles`` or
+exact ``var_names`` for this selection.
+
+These bounds limit additional computation workspace. Country projection geometry
+and region-mean prior flux retain their existing spatial calculations. Already
+resident inputs, retained compact intermediates, and the completed output still
+require memory, and an externally supplied lazy source must itself have suitably
+bounded producer tasks. Splitting its result into small blocks cannot shrink a
+task that reads or constructs a larger array. The shared
+``calculate_stats`` boundary executes blocks serially and returns completed
+summaries; individual statistic helpers can still return lazy arrays.

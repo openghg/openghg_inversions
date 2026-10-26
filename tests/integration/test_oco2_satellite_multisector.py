@@ -9,6 +9,7 @@ the ``OPENGHG_OCO2_*`` environment variables below.
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -21,7 +22,7 @@ from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.rhime import (
     RhimeSampler,
     RhimeConfig,
-    run_rhime_from_prepared_inputs,
+    run_multisector,
 )
 
 
@@ -169,14 +170,13 @@ def test_real_oco2_prepared_inputs_run_through_multisector_model(
         },
         multisector=True,
     )
-    result = run_rhime_from_prepared_inputs(
-        prepared_inputs=real_oco2_prepared_inputs,
-        run_spec=config.retained_run_spec(real_oco2_prepared_inputs),
-        sampler=RhimeSampler(draws=1, tune=0, chains=1, progressbar=False),
+    result = run_multisector(
+        prepared=real_oco2_prepared_inputs,
+        config=replace(config, sampler=RhimeSampler(draws=1, tune=0, chains=1, progressbar=False)),
     )
 
     assert result.inv_inputs.sizes["nmeasure"] == 6
     assert tuple(result.inv_inputs.source.values) == _FLUX_SOURCES
-    assert {"x_anth", "x_resp", "x_gpp_atm"}.issubset(result.idata.posterior)
-    assert result.model_build_result is not None
-    assert result.model_build_result.output_contract.variable_roles["flux_scale:anth"] == "x_anth"
+    assert {"x", "mu"}.issubset(result.trace["posterior"])
+    assert result.variable_roles["flux_scale"] == "x"
+    assert tuple(dict.fromkeys(result.trace["posterior"]["x"].source.values.tolist())) == _FLUX_SOURCES

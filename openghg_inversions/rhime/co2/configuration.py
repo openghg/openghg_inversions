@@ -3,150 +3,25 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 from math import isfinite
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, cast
+from typing import Any
 import tomllib
 
-import numpy as np
 
-from openghg_inversions.models import StateActivity
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.priors import positive_prior_args
 from openghg_inversions.models.scalar_sigma import add_scalar_sigma_eigen_likelihood
 from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
-from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.rhime.sampling import RhimeSampler
+from openghg_inversions.rhime.specs import normalise_optional_mapping
 
-from .co2_cached_sigma_runner import run_rhime_co2_cached_sigma
-from .co2_o2_cached_sigma_runner import run_rhime_co2_o2_cached_sigma_from_prepared_inputs
-from .co2_o2_preparation import Co2O2PreparedInputs
-from .co2_o2_runner import run_rhime_co2_o2_from_prepared_inputs
-from .co2_preparation import Co2PreparedInputs
-from .co2_runner import run_rhime_co2
-
-
-Runner = Callable[..., Any]
-
-
-@dataclass(frozen=True, slots=True)
-class Co2RunSetup:
-    """Resolved execution setup for CO2 prepared-input replay.
-
-    Attributes:
-        preparation_kwargs: Artifact-location values resolved from the
-            configuration. ``path`` is suitable for
-            :meth:`Co2PreparedInputs.load`.
-        runner: Selected public prepared-input runner.
-        runner_kwargs: Validated scientific arguments for ``runner``.
-        sampler: Validated sampling configuration for ``runner``.
-    """
-
-    preparation_kwargs: Mapping[str, object]
-    runner: Runner
-    runner_kwargs: Mapping[str, object]
-    sampler: RhimeSampler
-
-    def runner_arguments(self, prepared_inputs: Co2PreparedInputs) -> Mapping[str, object]:
-        """Bind a prepared artifact to the selected runner.
-
-        Args:
-            prepared_inputs: In-memory CO2 artifact to replay.
-
-        Returns:
-            Exact keyword arguments for :attr:`runner`.
-        """
-        return _frozen(
-            {
-                "prepared_inputs": prepared_inputs,
-                **self.runner_kwargs,
-                "sampler": self.sampler,
-            }
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class Co2O2RunSetup:
-    """Resolved execution setup for linked CO2/O2 prepared-input replay.
-
-    Attributes:
-        preparation_kwargs: Validated ``co2_units`` and ``o2_units`` arguments
-            for :func:`prepare_co2_o2_inputs`.
-        runner: Selected public linked prepared-input runner.
-        runner_kwargs: Validated channel error settings used when binding the
-            prepared observations.
-        sampler: Validated sampling configuration for ``runner``.
-    """
-
-    preparation_kwargs: Mapping[str, object]
-    runner: Runner
-    runner_kwargs: Mapping[str, object]
-    sampler: RhimeSampler
-
-    def runner_arguments(self, prepared_inputs: Co2O2PreparedInputs) -> Mapping[str, object]:
-        """Bind configured channel errors to the joint observation axis.
-
-        Args:
-            prepared_inputs: In-memory linked artifact whose observations have
-                observation-aligned ``species`` and ``observation_units``
-                coordinates. Species must contain exactly ``co2`` and ``o2``;
-                their unit labels must match the resolved configuration.
-
-        Returns:
-            Exact keyword arguments for :attr:`runner`, including a labelled
-            ``independent_error_sd`` array expanded over the observation axis.
-            When both channel error settings are omitted, the artifact must
-            contain that error vector. Explicit settings are checked against
-            any saved errors at the runner's materialization boundary.
-
-        Raises:
-            ValueError: If the required coordinates are absent or misaligned,
-                the species are not exactly CO2 and O2, or configured and
-                prepared unit labels differ.
-        """
-        observations = prepared_inputs.observations
-        if "species" not in observations.coords or observations["species"].dims != ("observation",):
-            raise ValueError(
-                "Linked prepared observations require an observation-aligned species coordinate."
-            )
-        if "observation_units" not in observations.coords or observations["observation_units"].dims != (
-            "observation",
-        ):
-            raise ValueError("Linked prepared observations require observation-aligned observation_units.")
-        configured_errors = self.runner_kwargs["independent_error_sd"]
-        assert isinstance(configured_errors, Mapping)
-        species = np.asarray(observations["species"].values).astype(str)
-        observation_units = np.asarray(observations["observation_units"].values).astype(str)
-        if set(species) != {"co2", "o2"}:
-            raise ValueError("Linked prepared observations must contain exactly CO2 and O2 channels.")
-        error_values = np.empty(observations.size, dtype=np.float64) if configured_errors else None
-        for name in ("co2", "o2"):
-            selected = species == name
-            if not np.all(observation_units[selected] == self.preparation_kwargs[f"{name}_units"]):
-                raise ValueError(f"Configured channels.{name}.units do not match prepared observation_units.")
-            if error_values is not None:
-                error_values[selected] = configured_errors[name]
-        if error_values is None:
-            independent_error = getattr(prepared_inputs, "independent_error_sd", None)
-            if independent_error is None:
-                raise ValueError(
-                    "Omitted channel independent_error_sd requires errors in the prepared artifact."
-                )
-        else:
-            independent_error = observations.copy(data=error_values).rename("independent_error_sd")
-            independent_error.attrs = {"units": "mixed; see observation_units coordinate"}
-        return _frozen(
-            {
-                "prepared_inputs": prepared_inputs,
-                **self.runner_kwargs,
-                "independent_error_sd": independent_error,
-                "sampler": self.sampler,
-            }
-        )
+from .co2_cached_sigma_runner import validate_cached_co2_sampler
+from .inference import uses_cached_ou
 
 
 def _frozen(values: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -268,14 +143,84 @@ def _prior(value: object, path: str, *, positive: bool = False) -> Mapping[str, 
     return _frozen(result)
 
 
-def _prepared_inputs(options: dict[str, object]) -> Mapping[str, object]:
-    prepared = _table(_take(options, "prepared_inputs", "config"), "prepared_inputs")
-    path = Path(_string(_take(prepared, "path", "prepared_inputs"), "prepared_inputs.path"))
-    _reject_unknown(prepared, "prepared_inputs")
-    return _frozen({"path": path})
+def validate_co2_config(config: Mapping[str, object]) -> dict[str, Any]:
+    """Validate the CO2 file envelope without resolving its sections.
+
+    Missing headers select CO2 for phase-only requests. Component
+    parsers own scientific values and resource paths; unrelated sections are
+    neither traversed nor materialized here.
+    """
+    options = _table(config, "config")
+    version = options.get("format_version", 1)
+    if type(version) is not int or version != 1:
+        raise ValueError("config.format_version must be the integer 1.")
+    if options.get("recipe", "co2") != "co2":
+        raise ValueError("config.recipe must be 'co2' for CO2 execution.")
+    allowed = {"format_version", "recipe", "prepared_inputs", "model", "likelihood", "sampling", "outputs"}
+    _reject_unknown({name: value for name, value in options.items() if name not in allowed}, "config")
+    return options
 
 
-def _sampling(value: object, *, cached: bool) -> RhimeSampler:
+@dataclass(frozen=True)
+class Co2PreparationConfig:
+    """Artifact selection and original requested context, without scientific I/O.
+
+    Paths resolve from the invocation directory. The affine companion is an
+    association of the preparation, independent of current output choices.
+    """
+
+    prepared_path: Path | None = None
+    affine_path: Path | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    domain: str | None = None
+
+    @classmethod
+    def from_params(cls, config: Mapping[str, object], *, require_path: bool = False) -> Co2PreparationConfig:
+        """Parse only prepared-input options; optionally require an import path."""
+        options = _table(config, "config")
+        prepared = _table(options.get("prepared_inputs", {}), "prepared_inputs")
+        result: dict[str, Any] = {
+            "prepared_path": None, "affine_path": None,
+            "start_date": None, "end_date": None, "domain": None,
+        }
+        if require_path and "path" not in prepared:
+            raise ValueError("Missing required option prepared_inputs.path.")
+        for name, argument in (("path", "prepared_path"), ("reconstruction_path", "affine_path")):
+            if name in prepared:
+                value = prepared.pop(name)
+                if not isinstance(value, str | Path):
+                    raise TypeError(f"prepared_inputs.{name} must be a filesystem path.")
+                if isinstance(value, str):
+                    value = _string(value, f"prepared_inputs.{name}")
+                result[argument] = Path(value).expanduser().resolve()
+        for name in ("start_date", "end_date", "domain"):
+            if name in prepared:
+                result[name] = _string(prepared.pop(name), f"prepared_inputs.{name}")
+        _reject_unknown(prepared, "prepared_inputs")
+        return cls(**result)
+
+    def preparation_arguments(self) -> dict[str, Any]:
+        """Return explicit keywords for the saved preparation boundary."""
+        return {item.name: getattr(self, item.name) for item in fields(self)}
+
+
+def _random_seed(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("sampling.random_seed must be a non-negative integer.")
+    return value
+
+
+def resolve_co2_prior_seed(config: Mapping[str, object]) -> int | None:
+    """Resolve only the random seed consumed by prior predictive sampling.
+
+    MCMC options are unused by prior prediction and remain unvalidated here.
+    """
+    options = _table(_table(config, "config").get("sampling", {}), "sampling")
+    return _random_seed(options["random_seed"]) if "random_seed" in options else None
+
+
+def _sampling(value: object) -> RhimeSampler:
     options = _table(value, "sampling")
     kwargs: dict[str, Any] = {}
     for name in ("draws", "burn", "tune", "chains"):
@@ -316,20 +261,13 @@ def _sampling(value: object, *, cached: bool) -> RhimeSampler:
 
     sample_kwargs: dict[str, Any] = {}
     if "target_accept" in options:
-        if cached:
-            raise ValueError(
-                "sampling.target_accept is not valid for cached_fixed_ou; use "
-                "likelihood.sigma_target_accept and likelihood.state_target_accept."
-            )
         target_accept = _number(options.pop("target_accept"), "sampling.target_accept")
         if not 0.0 < target_accept < 1.0:
             raise ValueError("sampling.target_accept must be between zero and one.")
         sample_kwargs["target_accept"] = target_accept
     posterior_kwargs: dict[str, Any] = {}
     if "random_seed" in options:
-        random_seed = options.pop("random_seed")
-        if isinstance(random_seed, bool) or not isinstance(random_seed, int) or random_seed < 0:
-            raise ValueError("sampling.random_seed must be a non-negative integer.")
+        random_seed = _random_seed(options.pop("random_seed"))
         sample_kwargs["random_seed"] = random_seed
         posterior_kwargs["random_seed"] = random_seed
     _reject_unknown(options, "sampling")
@@ -340,16 +278,6 @@ def _sampling(value: object, *, cached: bool) -> RhimeSampler:
     sampler = RhimeSampler(**kwargs)
     if sampler.burn >= sampler.draws:
         raise ValueError("sampling.burn must be less than sampling.draws.")
-    if cached and sampler.nuts_sampler != "pymc":
-        raise ValueError("The cached_fixed_ou variant requires sampling.nuts_sampler='pymc'.")
-    posterior_predictive = sampler.sample_posterior_predictive
-    if cached and not isinstance(posterior_predictive, bool):
-        unsupported = set(posterior_predictive) - {"y", "concentration"}
-        if unsupported:
-            raise ValueError(
-                "cached_fixed_ou sampling.sample_posterior_predictive supports only "
-                f"'y' or 'concentration'; got {sorted(unsupported)!r}."
-            )
     return sampler
 
 
@@ -389,7 +317,7 @@ def _model(value: object) -> dict[str, Any]:
     return result
 
 
-def _ordinary_likelihood(value: object) -> dict[str, Any]:
+def _co2_likelihood(value: object, *, matched_ou: bool = False) -> dict[str, Any]:
     options = _table(value, "likelihood")
     kind = _string(_take(options, "kind", "likelihood"), "likelihood.kind")
     result: dict[str, Any] = {}
@@ -461,6 +389,10 @@ def _ordinary_likelihood(value: object) -> dict[str, Any]:
             raise ValueError(
                 "fixed_ou requires exactly one of fixed_site_amplitudes or site_amplitude_prior."
             )
+        if matched_ou and "site_amplitude_prior" in kwargs and "initial_site_amplitudes" in options:
+            kwargs["initial_site_amplitudes"] = _number_or_mapping(
+                options.pop("initial_site_amplitudes"), "likelihood.initial_site_amplitudes", positive=True,
+            )
         result.update(
             likelihood_builder=add_fixed_ou_gaussian_likelihood,
             likelihood_kwargs=_frozen(kwargs),
@@ -492,136 +424,6 @@ def _ordinary_likelihood(value: object) -> dict[str, Any]:
     return result
 
 
-def _cached_likelihood(value: object) -> dict[str, Any]:
-    options = _table(value, "likelihood")
-    kind = _string(_take(options, "kind", "likelihood"), "likelihood.kind")
-    if kind != "fixed_ou":
-        raise ValueError("The cached_fixed_ou variant requires likelihood.kind='fixed_ou'.")
-    result: dict[str, Any] = {
-        "tau_hours": _number_or_mapping(
-            _take(options, "tau_hours", "likelihood"),
-            "likelihood.tau_hours",
-            positive=True,
-        ),
-        "site_amplitude_prior_scale": _number(
-            _take(options, "site_amplitude_prior_scale", "likelihood"),
-            "likelihood.site_amplitude_prior_scale",
-            positive=True,
-        ),
-    }
-    if "initial_site_amplitudes" in options:
-        result["initial_site_amplitudes"] = _number_or_mapping(
-            options.pop("initial_site_amplitudes"),
-            "likelihood.initial_site_amplitudes",
-            positive=True,
-        )
-    for name in ("sigma_target_accept", "state_target_accept"):
-        if name not in options:
-            continue
-        target = _number(options.pop(name), f"likelihood.{name}")
-        if not 0.0 < target < 1.0:
-            raise ValueError(f"likelihood.{name} must be between zero and one.")
-        result[name] = target
-    _reject_unknown(options, "likelihood")
-    return result
-
-
-def _resolve_co2(options: dict[str, object], variant: str) -> Co2RunSetup:
-    if variant not in ("ordinary", "cached_fixed_ou"):
-        raise ValueError("recipe='co2' requires variant='ordinary' or 'cached_fixed_ou'.")
-    prepared = _prepared_inputs(options)
-    model = _model(options.pop("model", {}))
-    likelihood = _take(options, "likelihood", "config")
-    cached = variant == "cached_fixed_ou"
-    sampler = _sampling(options.pop("sampling", {}), cached=cached)
-    _reject_unknown(options, "config")
-    if cached:
-        runner: Runner = run_rhime_co2_cached_sigma
-        runner_kwargs = {**model, **_cached_likelihood(likelihood)}
-    else:
-        runner = run_rhime_co2
-        runner_kwargs = {**model, **_ordinary_likelihood(likelihood)}
-    return Co2RunSetup(prepared, runner, _frozen(runner_kwargs), sampler)
-
-
-def _resolve_linked(options: dict[str, object], variant: str) -> Co2O2RunSetup:
-    if variant not in ("linked", "cached_fixed_ou"):
-        raise ValueError("recipe='co2_o2' requires variant='linked' or 'cached_fixed_ou'.")
-    channels = _table(_take(options, "channels", "config"), "channels")
-    errors: dict[str, float] = {}
-    units: dict[str, str] = {}
-    channel_model: dict[str, dict[str, Any]] = {}
-    for name in ("co2", "o2"):
-        channel = _table(_take(channels, name, "channels"), f"channels.{name}")
-        channel_units = _string(_take(channel, "units", f"channels.{name}"), f"channels.{name}.units")
-        mole_fraction_unit_scale(channel_units, context=f"channels.{name}.units")
-        if "independent_error_sd" in channel:
-            errors[name] = _number(
-                channel.pop("independent_error_sd"),
-                f"channels.{name}.independent_error_sd",
-                positive=True,
-            )
-        model_options = {key: channel.pop(key) for key in ("boundary", "offset") if key in channel}
-        if "boundary" in model_options:
-            boundary = _table(model_options["boundary"], f"channels.{name}.boundary")
-            if "activity" in boundary:
-                activity = _table(boundary.pop("activity"), f"channels.{name}.boundary.activity")
-                active = _bool(activity.pop("active", True), f"channels.{name}.boundary.activity.active")
-                fixed_value = _number(
-                    activity.pop("fixed_value", 1.0), f"channels.{name}.boundary.activity.fixed_value"
-                )
-                _reject_unknown(activity, f"channels.{name}.boundary.activity")
-                if boundary.get("enabled", True) is False:
-                    raise ValueError("Boundary activity requires enabled=true.")
-                channel_model.setdefault("bc_state_activity", {})[name] = StateActivity(
-                    active=active, fixed_value=fixed_value
-                )
-            model_options["boundary"] = boundary
-        for key, value in _model(model_options).items():
-            channel_model.setdefault(key, {})[name] = value
-        _reject_unknown(channel, f"channels.{name}")
-        units[name] = channel_units
-    _reject_unknown(channels, "channels")
-    if errors and len(errors) != 2:
-        raise ValueError("Configure independent_error_sd for both linked channels or omit it for both.")
-    if units["co2"] != units["o2"]:
-        raise ValueError(
-            "The linked configuration currently requires identical CO2 and O2 channel units."
-        )
-    cached = variant == "cached_fixed_ou"
-    likelihood = options.pop("likelihood", None)
-    runner: Runner = run_rhime_co2_o2_from_prepared_inputs
-    likelihood_kwargs: dict[str, Any] = {}
-    if cached:
-        runner = run_rhime_co2_o2_cached_sigma_from_prepared_inputs
-        likelihood_kwargs = _cached_likelihood(likelihood)
-    elif likelihood is not None:
-        likelihood_options = _table(likelihood, "likelihood")
-        if likelihood_options.get("kind") != "fixed_ou":
-            raise ValueError("The linked recipe supports config.likelihood.kind='fixed_ou'.")
-        likelihood_kwargs = dict(
-            cast(Mapping[str, object], _ordinary_likelihood(likelihood_options)["likelihood_kwargs"])
-        )
-    sampling = _table(options.pop("sampling", {}), "sampling")
-    sampling.setdefault("nuts_sampler", "pymc" if likelihood is not None or cached else "numpyro")
-    if not cached:
-        sampling.setdefault("target_accept", 0.95)
-    sampler = _sampling(sampling, cached=cached)
-    if likelihood is not None and sampler.nuts_sampler != "pymc":
-        raise ValueError("The linked fixed_ou likelihood requires sampling.nuts_sampler='pymc'.")
-    _reject_unknown(options, "config")
-    preparation_kwargs = {
-        "co2_units": units["co2"],
-        "o2_units": units["o2"],
-    }
-    return Co2O2RunSetup(
-        _frozen(preparation_kwargs),
-        runner,
-        _frozen({"independent_error_sd": _frozen(errors), **channel_model, **likelihood_kwargs}),
-        sampler,
-    )
-
-
 def load_co2_family_config(path: str | Path | Traversable) -> Mapping[str, object]:
     """Load one CO2-family TOML file without applying recipe semantics."""
     resource = Path(path) if isinstance(path, str | Path) else path
@@ -633,31 +435,97 @@ def co2_config_templates() -> Mapping[str, Traversable]:
     """Return installed CO2-family TOML templates keyed by file name."""
     directory = files("openghg_inversions.rhime").joinpath("config")
     return MappingProxyType(
-        {name: directory.joinpath(name) for name in ("co2.toml", "co2_cached_sigma.toml", "co2_o2.toml")}
+        {name: directory.joinpath(name) for name in ("co2.toml", "co2_fixed_ou.toml", "co2_o2.toml")}
     )
 
 
-def resolve_co2_family_config(
-    config: Mapping[str, object],
-) -> Co2RunSetup | Co2O2RunSetup:
-    """Resolve a format-neutral mapping into one concrete recipe setup."""
+@dataclass(frozen=True)
+class Co2ModelConfig:
+    """Scientific choices for ordinary CO2, independent of arrays and inference.
+
+    Construction through :meth:`from_params` validates only model and likelihood
+    sections. Ordinary containers are owned; opaque numerical values are borrowed.
+    Defaults omitted here remain owned by the concrete scientific recipe.
+    """
+
+    use_bc: bool | None = None
+    bc_prior: Mapping[str, Any] | None = None
+    offset_prior: Mapping[str, Any] | None = None
+    offset_args: Mapping[str, Any] | None = None
+    no_model_error: bool | None = None
+    sigma_prior: Mapping[str, Any] | None = None
+    fixed_model_mismatch: float | None = None
+    likelihood_builder: Callable[..., Any] | None = None
+    likelihood_kwargs: Mapping[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        for item in fields(self):
+            value = getattr(self, item.name)
+            if isinstance(value, Mapping):
+                object.__setattr__(self, item.name, normalise_optional_mapping(value))
+
+    @classmethod
+    def from_params(cls, config: Mapping[str, object]) -> Co2ModelConfig:
+        """Parse active science without opening artifacts or creating a sampler."""
+        options = _table(config, "config")
+        model = _model(options.get("model", {}))
+        likelihood = _co2_likelihood(_take(options, "likelihood", "config"), matched_ou=True)
+        kwargs = likelihood.get("likelihood_kwargs", {})
+        if "eigenbasis_path" in kwargs:
+            likelihood["likelihood_kwargs"] = _frozen({
+                **kwargs, "eigenbasis_path": kwargs["eigenbasis_path"].expanduser().resolve(),
+            })
+        return cls(**model, **likelihood)
+
+    def model_arguments(self) -> dict[str, Any]:
+        """Bind these choices as keywords at the ordinary scientific boundary."""
+        return {item.name: getattr(self, item.name) for item in fields(self) if getattr(self, item.name) is not None}
+
+
+@dataclass(frozen=True)
+class _Co2Sampling:
+    """Resolved sampler and the matched OU transition tuning controls."""
+
+    sampler: RhimeSampler
+    sigma_target_accept: float = 0.8
+    state_target_accept: float = 0.9
+
+
+def _resolve_co2_sampling(config: Mapping[str, object], *, model: Mapping[str, Any]) -> _Co2Sampling:
+    """Resolve sampling options after the scientific model has selected its graph.
+
+    The configured backend is selected from resolved scientific choices.
+    Additive sigma uses NumPyro; supported custom likelihoods use PyMC. Inferred
+    OU amplitudes use the matched PyMC transition and its two explicit controls.
+
+    Returns:
+        object: Resolved sampler and matched OU tuning controls, with attributes
+            ``sampler``, ``sigma_target_accept``, and ``state_target_accept``.
+    """
     options = _table(config, "config")
-    version = _take(options, "format_version", "config")
-    if isinstance(version, bool) or not isinstance(version, int) or version != 1:
-        raise ValueError("config.format_version must be the integer 1.")
-    recipe = _string(_take(options, "recipe", "config"), "config.recipe")
-    variant = _string(_take(options, "variant", "config"), "config.variant")
-    if recipe == "co2":
-        return _resolve_co2(options, variant)
-    if recipe == "co2_o2":
-        return _resolve_linked(options, variant)
-    raise ValueError("config.recipe must be 'co2' or 'co2_o2'.")
+    sampling = _table(options.get("sampling", {}), "sampling")
+    if "nuts_sampler" in sampling:
+        raise ValueError("Configured CO2 selects its sampler from the likelihood; remove sampling.nuts_sampler.")
+    cached = uses_cached_ou(model)
+    targets = {}
+    for name, default in (("sigma_target_accept", 0.8), ("state_target_accept", 0.9)):
+        if name in sampling and not cached:
+            raise ValueError(f"sampling.{name} requires inferred fixed-OU amplitudes.")
+        target = _number(sampling.pop(name, default), f"sampling.{name}")
+        if not 0.0 < target < 1.0:
+            raise ValueError(f"sampling.{name} must be between zero and one.")
+        targets[name] = target
+    sampling["nuts_sampler"] = "pymc" if model.get("likelihood_builder") is not None else "numpyro"
+    sampler = _sampling(sampling)
+    if cached:
+        validate_cached_co2_sampler(sampler)
+    return _Co2Sampling(
+        sampler=sampler,
+        sigma_target_accept=targets["sigma_target_accept"], state_target_accept=targets["state_target_accept"],
+    )
 
 
 __all__ = [
-    "Co2O2RunSetup",
-    "Co2RunSetup",
-    "co2_config_templates",
-    "load_co2_family_config",
-    "resolve_co2_family_config",
+    "Co2PreparationConfig", "Co2ModelConfig", "co2_config_templates",
+    "load_co2_family_config", "resolve_co2_prior_seed", "validate_co2_config",
 ]

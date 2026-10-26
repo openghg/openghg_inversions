@@ -19,6 +19,7 @@ from typing import Any, cast
 
 import numpy as np
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
@@ -80,7 +81,7 @@ def add_fixed_error_likelihood(
     )
 
     observed = observations.transpose(output_dim).compute()
-    small_amount = pm.floatX(1e-12 * np.nanmean(observed.values))
+    small_amount = floatX(1e-12 * np.nanmean(observed.values))
     independent_scale = cast(Any, pt.maximum)(pt.abs(reported_error), small_amount)
     independent_variance = independent_scale**2
     pm.Deterministic(
@@ -89,7 +90,7 @@ def add_fixed_error_likelihood(
         dims=output_dim,
     )
     return add_gaussian_observation_likelihood(
-        observed=pm.floatX(observed.values),
+        observed=floatX(observed.values),
         mean=mean,
         independent_variance=independent_variance,
         aggregation_error=registered_aggregation_error,

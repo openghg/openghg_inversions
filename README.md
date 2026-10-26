@@ -294,10 +294,11 @@ interfaces.
 
 ### Results
 
-`run_rhime` returns a `RhimeResult`. Its `idata` attribute is an xarray
-`DataTree` containing ArviZ-compatible posterior and predictive groups,
-`inv_inputs` contains labelled model inputs, and `outputs` contains requested
-derived products. See the
+Standard and multisector runners return an `InversionOutput` with the annotated
+trace, observations and retained basis. Nested execution returns two native
+`InversionOutput` views in a `NestedOutput`. Ordinary and cached CO₂ outputs use
+`Co2Output`, which borrows the preparation and trace and retains calculated
+products. See the
 [RHIME guide](docs/usage/rhime.rst) for output formats and persistence.
 
 
@@ -353,6 +354,42 @@ This is the required check before pushing a draft pull request. GitHub Actions
 tests the committed `uv.lock` against the latest OpenGHG release and tests the
 OpenGHG devel branch separately. It fails if the lockfile lags a new release.
 
+The normal CI suite always uses PyTensor's Python linker to avoid repeated JIT
+compilation. Tests marked `compiled_backend` also form a small Numba compatibility
+suite covering likelihood values and gradients, predictive draws, cached sampling
+and spawned chains. They remain part of the normal Python run, with the same
+assertions. A separate serial pytest process reruns only that marked subset with
+Numba for changes to production code, backend-sensitive tests, dependencies or CI
+configuration, and for pushes. The
+[backend selector](.github/scripts/select-test-linker.cjs) owns those path rules;
+incomplete or failed change detection enables the additional compiled checks.
+
+For explicit marked Numba checks from Actions, use:
+
+```bash
+gh workflow run workflow.yaml --ref <branch> -f compiled_backend=true
+```
+
+To select the same checks locally, start a fresh process:
+
+```bash
+PYTENSOR_FLAGS=linker=numba DASK_NUM_WORKERS=2 uv run pytest \
+  -m 'compiled_backend and not slow and not create_frozen'
+```
+
+Local pytest, tox and production defaults are unchanged. To opt into Python
+linking for a focused local check with no existing PyTensor flags, start a new process with
+`PYTENSOR_FLAGS=linker=py DASK_NUM_WORKERS=2 uv run pytest <test-path>`.
+If `PYTENSOR_FLAGS` is already set, preserve its other entries and add or replace
+only `linker`. The marked suite checks our integration with PyTensor's Numba
+lowering, including intentional Python fallbacks for custom Ops and the cached
+amplitude sampler's private CVM graph. For a broader check, explicitly run the
+whole suite with `PYTENSOR_FLAGS=linker=numba` and omit `-m compiled_backend`.
+The marked subset does not establish full float32 predictive accuracy; the known
+upstream float32 multivariate-normal issue remains tracked separately in
+[#770](https://github.com/openghg/openghg_inversions/issues/770).
+The suite can still invoke other compiled backends such as NumPyro/JAX explicitly.
+
 On a Slurm cluster, submit tox from the repository root instead of creating its
 environments on a shared worktree filesystem:
 
@@ -364,11 +401,51 @@ sbatch scripts/slurm_tox.sh -e type
 The Slurm runner creates `TOX_WORK_DIR` on node-local storage and removes it on
 exit. It continues to use the shared uv cache for downloaded artifacts; files
 still have to be installed into each isolated tox environment, but those
-node-local copies are temporary.
+node-local copies are temporary. Tox environments and pytest run serially by
+default, with two Dask workers and one numerical thread per process. The runner
+preserves an explicit `DASK_NUM_WORKERS` setting through tox. Budget Dask workers
+together with pytest workers and parallel tox environments when overriding
+these defaults; a worker limit is not a total job memory limit.
 
-The tox environments do not require a C++ compiler. PyTensor can use its
-Python implementations when no compiler is configured, so cluster module
-loading is not needed before running the tests.
+Direct pytest and GitHub Actions bypass the Slurm runner. To bound Dask during
+a direct real-data test run, set `DASK_NUM_WORKERS=2 uv run pytest <test-path>`.
+GitHub's scientific jobs use two pytest workers, two Dask workers per process
+and set OpenBLAS, OpenMP, MKL, NumExpr and BLIS thread limits to one. These
+per-process limits are not a total job memory bound or a limit on JAX/XLA pools.
+
+An optional serial CI probe records CPU model, affinity/quota, effective loaded
+thread pools and PyTensor cache settings from the actual pytest process.
+Cache-lock acquisition time is an upper bound on waiting, not a measurement of
+compilation time or proof of contention. Installed CLI and sampling subprocesses
+are outside these reports. Diagnostics do not import PyTensor before test
+collection or change scientific settings. To run it in the locked Python
+3.12 and 3.13 GitHub environments:
+
+```bash
+gh workflow run workflow.yaml --ref <branch> -f runtime_comparison=true
+```
+
+This profiles the full suite serially with two Dask workers and one numerical
+thread and selects the default compiled backend, recording elapsed/CPU time and
+peak RSS. Four focused runs then compare
+one/two numerical threads in reverse order, also with xdist disabled and two Dask
+workers per process.
+Every run has fresh PyTensor/Numba caches. The existing float64 scientific probes
+retain their backend, precision and assertions. Logs, JUnit, process diagnostics,
+wall time and aggregate child CPU time are uploaded as `test-runtime-*` artifacts.
+This small sample does not establish the best settings for the complete suite or contention
+between pytest workers. To run locally, choose a fresh output directory:
+
+```bash
+uv run --group test python scripts/compare_test_runtime.py /tmp/ogi-runtime-comparison
+```
+
+Use Slurm for cluster comparisons.
+
+Scientific tox environments check the resolved Python's development headers
+and PyTensor's configured C++ compiler before pytest. The Slurm runner prefers
+uv-managed Python installations, which include those headers. If PyTensor's
+compiler was explicitly disabled with `cxx=`, the compilation check is skipped.
 
 On a cluster compute node, a writable node-local PyTensor compilation cache
 also avoids shared-filesystem contention. Preserve any existing

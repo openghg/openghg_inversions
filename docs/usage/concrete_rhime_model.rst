@@ -284,6 +284,7 @@ helpers:
            var_name="bc",
            output_name="mu_bc",
            output_dim="nmeasure",
+           coordinate_owner="bc",
        )
        pollution_mean = flux.output
        baseline_mean = boundary.output
@@ -321,31 +322,61 @@ forward operator without constructing a second prior.
 Multisector model
 -----------------
 
-For the current shared-basis multisector model, each sector has an independent
-state and forward contribution:
+The multisector model uses one full physical state, with an independent prior
+for each source block:
 
 .. math::
 
    x_s &\sim p_s, \\
-   \mu_s &= H_s x_s, \\
-   \mu &= \sum_s \mu_s.
+   x &= \operatorname{concat}_s x_s, \\
+   H &= [H_1\; H_2\; \cdots], \\
+   \mu &= H x.
 
-If the normalized PyMC suffix for sector ``s`` is ``ff``, its variables are
-``x_ff`` and ``mu_ff`` and its sensitivity data is ``hx_ff``. Source values select
-the corresponding ``H`` slices; sector names provide model identities. They
-are not required to be the same strings.
+Standard and multisector expose the same physical ``x``, two-dimensional
+sensitivity data ``hx`` and combined flux contribution ``mu``. Multisector
+``x`` carries a gathered source/local-state index, including when sources have
+different region counts. Source values select the corresponding input blocks;
+sector names identify their priors and reporting labels. They are not required
+to be the same strings. Rectangular preparation is packed only for construction,
+without changing the retained preparation or basis.
+Registered ``hx`` may omit structurally zero columns; the shared linear operation
+selects ``x`` entries for the columns retained in ``hx``. Use complete prepared
+source blocks with their matching full-state blocks when reconstructing the
+scientific forward equation directly.
 
-Every sector state and every reparameterization-generated latent must have a
-unique backend name. Concrete composition relies on PyMC to reject duplicate
-generated names.
+Private prior variables and reparameterization-generated latents may still
+have source-block names, and their construction-owned prior records retain the
+sector associations. New models do not add separate ``x_ff``, ``hx_ff`` or
+``mu_ff`` full-state aliases for reporting. Every private prior and generated
+latent still needs a unique backend name; PyMC rejects duplicate names.
+
+Boundary coordinates
+--------------------
+
+Built-in standard, multisector, nested and CO2 recipes qualify boundary-state
+coordinates with ``bc_`` when registering the graph. Existing ``bc_`` names,
+including ``bc_region``, keep their names. Linked CO2/O2 uses its existing
+``co2_`` and ``o2_`` channel prefixes, such as ``co2_bc_region``. Flux dimensions,
+source labels and supplied ``sector`` auxiliaries keep their scientific names.
+
+This lets a flux ``source(region)`` coordinate coexist with a boundary-prior
+``source(bc_region)`` coordinate, stored as ``bc_source`` in the trace. Saved
+traces retain the qualified boundary names; output selection does not rename
+flux coordinates. Borrowed inputs retain their original labels and payloads.
+
+Observation coordinates and scalar metadata remain shared. Their values must
+agree across components; conflicting scalar metadata raises an explicit error.
+State coordinates with different ownership or local-name metadata cannot share
+a registered name, even when their values match. Custom compositions can use
+``coordinate_owner`` on ``add_linear_component`` for the same boundary behavior.
 
 Names and generated names
 -------------------------
 
 PyMC model variables currently share one flat effective namespace. A prior can
 create more names than the requested base name. In particular, a
-reparameterized lognormal requested as ``x_ff`` creates both ``x_ff`` and
-``x_ff_latent``.
+reparameterized lognormal prior requested as ``scale`` creates both ``scale``
+and ``scale_latent``.
 
 Both names should be treated as reserved for that prior. No data variable,
 other state, forward-term deterministic, or total should use either name. PyMC
@@ -354,19 +385,18 @@ helper still relies on conventional names for boundary, offset, error, and
 likelihood components; there is not yet one allocator for the complete model
 namespace.
 
-Generated-name reporting, whole-model allocation, and component namespaces are
+Generated-name reporting and whole-model variable-name allocation are
 not implemented. They are tracked in
 `issue #532 <https://github.com/openghg/openghg_inversions/issues/532>`_.
 
 Alternative models and likelihoods
 ----------------------------------
 
-Direct-Python likelihood builders enter through ``run_standard``,
-``run_rhime_multisector``, or ``run_rhime_from_prepared_inputs``.
-Complete-model builders remain available only at the prepared-input boundary.
-Callables are never read from configuration or stored on ``RhimeModelSpec`` or
-``RhimeRunSpec``, so model and run specs remain serializable. There is no
-entry-point or config-file plugin registry.
+Direct-Python likelihood builders enter through ``run_standard`` or
+``run_multisector``. Complete-model changes use the explicit construction and
+sampling operations below. Callables are never read from configuration or
+stored on ``RhimeModelSpec``, so model settings remain serializable. There is
+no entry-point or config-file plugin registry.
 
 A concrete recipe owns the complete forward-model mean: pollution, baseline,
 and optional offset contributions are composed visibly and packaged as named
@@ -469,108 +499,90 @@ posterior variables. The ordinary runner records the callable identity,
 and JSON-compatible options in the saved output. The component reuses OpenGHG
 Inversions' aggregation-error and Gaussian likelihood machinery.
 
-Advanced whole-model compatibility boundary
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. _rhime-complete-model-composition:
 
-A complete model builder is a retained multisector compatibility escape hatch
-available through ``run_rhime_from_prepared_inputs`` when
-``run_spec.split_by_sectors=True``.
-The standard ``run_standard(prepared=..., config=...)`` route accepts alternative
-or cached preparation, then
-uses the same construction, sampling, result and product operations as full and
-saved execution. Its builder takes ``RhimeModelSpec`` without output settings.
-Standard callers must replace ``model_builder`` with ``likelihood_builder`` when
-changing the likelihood, or construct and sample a custom PyMC model directly
-when replacing the complete graph. The retained multisector builder receives a
-``RhimeModelBuilderContext`` containing the validated ``RhimePreparedInputs``,
-updated ``RhimeRunSpec``, and validated multisector mode, and
-returns a ``RhimeModelBuildResult``. Ordinary standard and multisector recipes
-never construct or consume this context. Complete builders also bypass the
-ordinary recipe-owned materialization step, so they must select, validate, and
-materialize any lazy arrays they consume:
+Compose a complete model directly
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Standard and multisector prepared execution use the same construction,
+sampling and output operations as their full and saved routes. A complete-model
+change belongs in an ordinary scientific function receiving the inputs it
+needs. Copy the nearby concrete builder, edit its scientific operations, and
+call it directly; the multisector runner has no ``model_builder`` hook or
+ambient run-specification context.
+
+This example exposes the multisector operations using an existing canonical
+``prepared`` value and resolved ``config``. Replace the ``build_multisector_model``
+call with your copied builder to change the complete graph. Keep input and prior
+materialization explicit, so selected scientific arrays and enabled prior
+parameters compute together. Construction consumes these eager values; it does
+not materialize them or read unrelated lazy preparation extensions:
 
 .. code-block:: python
 
-   from importlib.metadata import version
-
-   import pymc as pm
-
-   from openghg_inversions.rhime import (
-       RhimeModelBuilderContext,
-       RhimeModelBuildResult,
-       run_rhime_from_prepared_inputs,
+   from openghg_inversions.rhime.multisector import (
+       build_multisector_model,
+       materialize_multisector_inputs,
    )
-   from openghg_inversions.models import (
-       add_coords,
-       registered_model,
+   from openghg_inversions.rhime.outputs import (
+       annotate_sample_trace,
+       make_model_output,
+       postprocess_multisector_outputs,
+       save_inversion_output,
+       validate_multisector_output_resources,
    )
-   from openghg_inversions.postprocessing.contracts import OutputContract
+   from openghg_inversions.rhime.sampling import sample_rhime_model
 
-
-   def complete_model(
-       context: RhimeModelBuilderContext,
-   ) -> RhimeModelBuildResult:
-       data = context.prepared_inputs.inv_inputs
-       with registered_model() as model:
-           add_coords(data.coords, model_dims=("nmeasure",))
-           mean = pm.Normal("custom_mean", mu=0.0, sigma=10.0)
-           pm.Normal(
-               "custom_y",
-               mu=mean,
-               sigma=data.mf_error.values,
-               observed=data.mf.values,
-               dims="nmeasure",
-           )
-       return RhimeModelBuildResult(
-           model=model,
-           output_contract=OutputContract(
-               variable_roles={
-                   "observation": "mf",
-                   "observation_error": "mf_error",
-                   "concentration": "custom_y",
-               },
-               supported_output_formats=("none", "inv_out"),
-               metadata={
-                   "package": "my-rhime-models",
-                   "version": version("my-rhime-models"),
-                   "model": "complete_model_v1",
-               },
-           ),
-       )
-
-
-   # prepared and run_spec must describe a multisector run.
-   result = run_rhime_from_prepared_inputs(
-       prepared_inputs=prepared,
-       run_spec=run_spec,
-       model_builder=complete_model,
+   validate_multisector_output_resources(config.output)
+   model_inputs, priors = materialize_multisector_inputs(prepared, config.model)
+   built = build_multisector_model(
+       model_inputs,
+       config.model,
+       priors=priors,
    )
+   built.output_contract.validate_requested_output(config.output.output_format)
+   posterior = sample_rhime_model(built, config.sampler)
+   annotate_sample_trace(built, posterior)
+   result = make_model_output(
+       prepared=prepared,
+       model_spec=config.model,
+       split_by_sectors=config.data.split_by_sectors,
+       posterior=posterior,
+       output_contract=built.output_contract,
+       start_date=config.data.start_date,
+       end_date=config.data.end_date,
+       actual_inference=config.sampler.describe(),
+   )
+   postprocess_multisector_outputs(result, config.output)
+   save_inversion_output(result, config.output)
 
-The compatibility rules are explicit:
+The standard recipe exposes corresponding ``materialize_standard_inputs`` and
+``build_standard_model`` functions. Both recipes share ``make_model_output``
+with an explicit ``split_by_sectors`` choice and ``save_inversion_output`` for
+scientific result and trace exports. Each recipe has one eager model builder.
+Both builders return ``RhimeModelBuildResult``, containing the concrete
+``pm.Model`` and its ``OutputContract``. The sampler consumes that graph and
+its scientific variable roles; it does not resolve model choices or output destinations.
+Pass ``sigma_alignment=...`` to either builder when you already have a
+``SigmaAlignment`` for the selected observations; otherwise the likelihood
+constructs its alignment from those observations.
 
-* a complete builder must return a concrete ``pm.Model`` and a non-empty role
-  manifest; ``concentration`` is required;
-* every declared role name must exist in either the model or prepared inversion
-  inputs;
-* builders must construct their graph with ``registered_model()`` before
-  calling ``add_coords`` or public model components, so
-  ``RhimeSampler`` can restore MultiIndexes and auxiliary scientific
-  coordinates;
-* builder metadata must be JSON serializable, and external packages should
-  record their package version and stable model identity there;
-* custom builders support only ``output_format="none"`` unless they explicitly
-  declare more formats; declaring a format promises that the trace, roles,
-  basis layout, and variables required by that output really are present;
-* ``model_builder`` and ``likelihood_builder`` are mutually exclusive; and
-* a component that does not exist, such as inferred model error in a fixed-error
-  model, is omitted from the role manifest rather than represented by a magic
-  name.
+A copied builder should use ``registered_model()`` before ``add_coords`` or
+public model components so inference can restore MultiIndexes and auxiliary
+scientific coordinates. Keep the output contract consistent with the graph:
+standard and multisector roles include ``flux_scale: x``,
+``emissions_sensitivity: hx`` and ``flux_contribution: mu``. Multisector
+sector/source metadata selects blocks from the full state. Omit roles for absent
+terms. The flux reconstruction and products shown here require the existing
+multiplicative sector-state meaning,
+retained basis and source mappings. A model that changes those meanings must
+provide its own reconstruction and product functions rather than reuse an
+incompatible contract. Direct construction does not make a custom graph
+recordable by the package's saved multisector sampling operation.
 
-The eager standard builder returns ``RhimeModelBuildResult`` for direct graph
-inspection. The multisector compatibility runner retains that contract on
-``RhimeResult.model_build_result``. Multisector roles use keys such as
-``flux_scale:FF`` and ``flux_contribution:FF``. Deferred-family low-level builders
-retain their existing plain-model and result-wrapper interfaces.
+Nested construction also accepts explicit model inputs and materialized priors;
+see :doc:`nested_domains`. Model construction takes scientific choices directly;
+the former ``RhimeRunSpec`` execution envelope is removed.
 
 Structurally distinct observation-channel models belong in readable named
 recipes with concrete builders. The active design guidance is

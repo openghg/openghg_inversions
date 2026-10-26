@@ -194,7 +194,6 @@ def make_likelihood_settings(
     return settings_type(**options)
 
 
-
 @dataclass(frozen=True)
 class SectorSpec:
     """Configuration for one separately optimised flux sector.
@@ -203,8 +202,9 @@ class SectorSpec:
         name: User-facing sector name.
         flux_source: OpenGHG flux ``source`` used to retrieve this sector.
         x_prior: Prior specification for this sector's flux scaling factors.
-        variable_suffix: PyMC-safe suffix used in multi-sector model variable
-            names. Standard single-sector RHIME uses plain ``x``/``mu`` names.
+        variable_suffix: Stable suffix for sector prior records, private latent
+            variables and sector reporting names. The physical flux state and
+            its total contribution use shared ``x`` and ``mu`` names.
         state_activity: Optional labelled active/fixed policy for this sector's
             flux-scaling states. ``None`` still applies the default flux policy,
             fixing exactly-zero sensitivity columns to one.
@@ -331,14 +331,16 @@ class RhimeModelSpec:
         """
         self.validate_recordable()
         if (self.species != data_config.species or self.domain != data_config.domain
-                or tuple(sector.flux_source for sector in self.sectors) != data_config.flux_sources
+                or set(sector.flux_source for sector in self.sectors) != set(data_config.flux_sources)
+                or len(self.sectors) != len(data_config.flux_sources)
                 or (self.use_bc and not data_config.use_bc)):
             raise ValueError("Sample model conflicts with its preparation.")
         record = self.describe(priors=trace_prior_records(trace))
         record.pop("species")
         record.pop("domain")
-        for sector in record["sectors"]:
-            sector.pop("flux_source")
+        if not data_config.split_by_sectors:
+            for sector in record["sectors"]:
+                sector.pop("flux_source")
         return record
 
     @classmethod
@@ -386,10 +388,15 @@ class RhimeModelSpec:
                 values["likelihood"] = settings_type(**likelihood["options"])
             if len(values["sectors"]) != len(data_config.flux_sources):
                 raise ValueError("Saved model sector count conflicts with its preparation.")
-            values["sectors"] = tuple(
-                SectorSpec(**sector, flux_source=source)
-                for sector, source in zip(values["sectors"], data_config.flux_sources, strict=True)
-            )
+            if data_config.split_by_sectors:
+                values["sectors"] = tuple(SectorSpec(**sector) for sector in values["sectors"])
+                if set(sector.flux_source for sector in values["sectors"]) != set(data_config.flux_sources):
+                    raise ValueError("Saved model sources conflict with its preparation.")
+            else:
+                values["sectors"] = tuple(
+                    SectorSpec(**sector, flux_source=source)
+                    for sector, source in zip(values["sectors"], data_config.flux_sources, strict=True)
+                )
             if values["use_bc"] and not data_config.use_bc:
                 raise ValueError("Saved model requires unavailable prepared BC inputs.")
             return cls(**values)
@@ -479,31 +486,6 @@ class RhimeOutputSpec:
     country_file: Path | None = None
     paris_postprocessing_kwargs: dict[str, Any] | None = None
     output_filename_convention: OutputFilenameConvention = "rhime"
-
-
-@dataclass(frozen=True)
-class RhimeRunSpec:
-    """Top-level run metadata for a RHIME run.
-
-    Args:
-        start_date: Inclusive inversion start date.
-        end_date: Exclusive inversion end date.
-        sites: Sites included after data preparation and filtering.
-        averaging_period: Observation averaging period per retained site.
-        model: Mathematical model specification.
-        output: Output settings.
-        split_by_sectors: Whether flux data were prepared in sector-resolved
-            mode. Single-sector and multi-sector RHIME are runner/model modes;
-            this flag records the prepared data layout.
-    """
-
-    start_date: str
-    end_date: str
-    sites: tuple[str, ...]
-    averaging_period: tuple[str | None, ...]
-    model: RhimeModelSpec
-    output: RhimeOutputSpec
-    split_by_sectors: bool = False
 
 
 def validate_output_format(output_format: str) -> None:

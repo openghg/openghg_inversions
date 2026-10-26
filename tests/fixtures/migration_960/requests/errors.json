@@ -1,0 +1,93 @@
+{
+  "source_revision": "0a32d73a5c4a72be0505a4ed682472e1613e49e9",
+  "status": "Inspected exact source messages; see named runtime tests for independently exercised boundaries. No scientific equivalence is asserted.",
+  "cases": [
+    {
+      "route": "ordinary run_hbmcmc",
+      "base_input": "fixedbasis.ini",
+      "overrides": {"no_model_error": true},
+      "error_type": "ValueError",
+      "message": "run_hbmcmc no_model_error=True compatibility was removed in 0.8; use OpenGHG Inversions 0.7 for the historical behavior, or run_standard with mismatch_model='fixed_error' for the current fixed-error model.",
+      "disposition": "Scientific change: current fixed_error is a candidate requiring acknowledgement, not an equivalent spelling.",
+      "source": "hbmcmc/run_hbmcmc.py::main",
+      "runtime_test": "tests/test_run_hbmcmc_shim.py::test_run_hbmcmc_rejects_no_model_error_before_copy_or_acquisition",
+      "owner": "#948 / #949"
+    },
+    {
+      "route": "ordinary run_hbmcmc",
+      "base_input": "fixedbasis.ini",
+      "overrides": {"add_offset": true, "pollution_events_from_obs": true},
+      "error_type": "ValueError",
+      "message": "run_hbmcmc observation-based pollution error with add_offset=True used a historical boundary-only baseline removed in 0.8; use OpenGHG Inversions 0.7 for that behavior, or run_standard for the current full baseline.",
+      "disposition": "Scientific change: choose and record the baseline equation; do not silently rename.",
+      "source": "hbmcmc/run_hbmcmc.py::main",
+      "runtime_test": "tests/test_run_hbmcmc_shim.py::test_run_hbmcmc_rejects_default_observed_pollution_with_offset_before_copy_or_acquisition",
+      "owner": "#948 / #949"
+    },
+    {
+      "route": "ordinary run_hbmcmc",
+      "base_input": "fixedbasis.ini",
+      "overrides": {"calculate_min_error": true},
+      "error_type": "ValueError",
+      "message": "`calculate_min_error` is deprecated and can only be translated when set to one of ['percentile', 'residual']; use `min_error` instead.",
+      "disposition": "Unresolved method: boolean True does not select residual or percentile.",
+      "source": "hbmcmc/compatibility.py::_translate_calculate_min_error",
+      "runtime_test": "tests/test_run_hbmcmc_shim.py::test_run_hbmcmc_main_validates_before_copying_config",
+      "owner": "#949"
+    },
+    {
+      "route": "ordinary run_hbmcmc",
+      "base_input": "fixedbasis.ini",
+      "overrides": {"likelihood": "additive_sigma", "aggregation_error_mode": "dense"},
+      "error_type": "ValueError",
+      "message": "run_hbmcmc additive_sigma does not support `aggregation_error_mode`; remove it or set it to 'none'.",
+      "disposition": "Unsupported source combination; additive wrapper owns a no-aggregation policy.",
+      "source": "hbmcmc/run_hbmcmc.py::_select_additive_sigma_model_options",
+      "runtime_test": "tests/test_run_hbmcmc_shim.py::test_additive_sigma_selection_rejects_aggregation_error",
+      "owner": "#948 / #949"
+    },
+    {
+      "route": "ordinary run_hbmcmc",
+      "base_input": "fixedbasis.ini",
+      "overrides": {"additive_sigma_prior": {"pdf": "halfnormal", "sigma": 5.0}},
+      "error_type": "ValueError",
+      "message": "`additive_sigma_prior` requires likelihood='additive_sigma'.",
+      "disposition": "Unsupported source combination; identify the intended likelihood before conversion.",
+      "source": "hbmcmc/run_hbmcmc.py::_select_additive_sigma_model_options",
+      "runtime_test": "tests/test_run_hbmcmc_shim.py::test_additive_sigma_prior_requires_additive_likelihood",
+      "owner": "#949"
+    },
+    {
+      "route": "run_standard / installed run-rhime",
+      "base_input": "modern.ini",
+      "overrides": {"use_tracer": true},
+      "error_type": "ValueError",
+      "message": "`use_tracer=True` is not supported; tracer inversions are not implemented.",
+      "disposition": "Unsupported scientific route, not a request alias.",
+      "source": "rhime/_runner_compat.py::normalise_param_aliases",
+      "runtime_test": "tests/test_unsupported_tracer.py::test_rhime_runner_rejects_tracer_before_acquisition",
+      "owner": "#948 / #949"
+    },
+    {
+      "route": "run_standard / installed run-rhime",
+      "base_input": "modern.ini",
+      "overrides": {"nit": 7},
+      "error_type": "ValueError",
+      "message": "Unsupported RHIME parameter(s): ['nit'].",
+      "disposition": "Route-specific spelling: only the ordinary HBMCMC wrapper interprets nit as draws.",
+      "source": "rhime/requests.py::load_params",
+      "runtime_test": "tests/test_migration_960_requests.py::test_installed_run_rhime_rejects_nit_before_acquisition",
+      "owner": "#949 / #950"
+    },
+    {
+      "route": "Python openghg_inversions.rhime.run_rhime",
+      "input": "from openghg_inversions.rhime import run_rhime",
+      "error_type": "ImportError",
+      "message": "`run_rhime` was removed in 0.8; use `run_standard`, which returns an `InversionOutput`. The `run-rhime` CLI command is unchanged.",
+      "disposition": "Candidate run_standard requires result-consumer migration as well as a name change.",
+      "source": "rhime/__init__.py::__getattr__",
+      "runtime_test": "tests/test_migration_960_requests.py::test_current_python_name_removal_and_explicit_likelihood_requirement",
+      "owner": "#945 / #949 / #950"
+    }
+  ]
+}

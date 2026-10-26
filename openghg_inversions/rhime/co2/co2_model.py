@@ -224,6 +224,7 @@ def build_co2_model(
                 output_dim="nmeasure",
                 compute_deterministic=True,
                 state_activity=bc_state_activity,
+            coordinate_owner="bc",
             ).output
 
         offset = None

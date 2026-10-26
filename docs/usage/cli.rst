@@ -48,15 +48,66 @@ guide. New configuration files should use the RHIME vocabulary documented in
 validated production-shape examples are used by
 :doc:`rhime_standard_tutorial` and :doc:`rhime_multisector_tutorial`.
 
-Saved standard phases
-----------------------
+CO₂ runs
+------------------
+
+Use ``rhime run --model co2`` with a CO₂ TOML configuration and prepared
+scientific inputs:
+
+.. code-block:: console
+
+   $ rhime run --model co2 --config co2.toml --output-path run/full
+
+The configured model, sampler and output choices govern execution and requested
+products. Original requested dates and domain must be supplied explicitly or
+retained in preparation provenance. ``rhime run-co2`` is a transitional alias
+approved for retirement below. See :doc:`co2_model_family` for its scientific prerequisites.
+
+Saved standard and multisector phases
+--------------------------------------
 
 ``rhime prepare`` resolves preparation choices and prints one manifest path.
 ``rhime sample --preparation-manifest ...`` accepts current model/sampler
 choices; ``rhime postprocess --sample-manifest ...`` accepts current output
 choices. Sampling and postprocessing do not require a full configuration file.
-See :doc:`staged_workflow` for the complete preparation/two-model/two-output
-sequence and the separate multisector/CO2 interfaces.
+Select ``--model multisector`` for the same one-manifest command forms with
+sector-labelled inputs. See :doc:`staged_workflow` for the complete
+preparation/two-model/two-output sequence and the separate CO2 interface.
+
+.. _rhime-cli-command-retirement:
+
+Approved CLI command retirement
+--------------------------------
+
+The agreed development target requires the following finite command-name
+migration. Removal is pending: current source still installs both executables
+and accepts the old full-run commands. Use the canonical routes in new scripts.
+
+.. list-table:: Accepted command replacements
+   :header-rows: 1
+
+   * - Retire
+     - Canonical replacement
+   * - ``openghg-inversions`` executable
+     - The same subcommands under ``rhime``
+   * - ``run-rhime`` under either executable
+     - ``rhime run --model standard`` or ``rhime run``
+   * - ``run-rhime-multisector`` under either executable
+     - ``rhime run --model multisector``
+   * - ``run-rhime-nested`` under either executable
+     - ``rhime run --model nested``
+   * - ``run-co2`` under either executable
+     - ``rhime run --model co2``
+
+The target has one installed executable, ``rhime``. Positional dates,
+``--kwargs``, effective configuration, date/output overrides, scientific
+execution, outputs and artifact contracts retain their meanings. No replacement
+argument syntax is agreed: positional dates and ``--kwargs`` remain open for
+discussion and possible revision in a separate argument-design change. Their
+current preservation applies to this command-name migration, not a final syntax
+decision. The Python package, distribution and installation
+names do not change. See :doc:`legacy_and_migration` for the evidence gate;
+broader Python symbols/imports require their own explicit replacement maps.
 
 Python model selection and compatibility
 ----------------------------------------
@@ -69,24 +120,60 @@ The public Python selector is :func:`openghg_inversions.rhime.run`:
 
    result = run(config_file="rhime.ini")  # model="standard" by default
    result = run(model="multisector", config_file="rhime_multisector.ini")
+   result = run(model="co2", config_file="co2.toml")
 
-The ``co2``, ``co2_cached_sigma``, ``co2_o2`` and ``co2_o2_cached_sigma`` Python
-choices call their existing prepared-input recipes. They require the appropriate
-``prepared_inputs`` object and preserve each recipe's arguments and return type;
-selection does not provide a new acquisition or checkpoint route. These families
-are therefore not choices for the configuration-driven ``rhime run`` command.
-Existing CO2 staged commands retain their current support boundaries.
+Python ``run(model="co2")`` and CLI ``rhime run --model co2`` both use
+:func:`openghg_inversions.rhime.co2.run_co2`, consuming a configured product
+request and returning ``Co2Output`` in Python. CO₂ uses prepared
+scientific inputs and explicit requested dates/domain; it has no configured
+OpenGHG acquisition or native-reduction preparation route. The
+``co2_o2`` and ``co2_o2_cached_sigma`` Python choices retain
+their existing ``prepared_inputs`` interfaces and trace returns. Linked recipes are not choices for the configuration-driven ``rhime run`` command.
+See :doc:`co2_model_family` for the TOML configuration and handoff commands.
 
-``openghg-inversions`` and its ``run-rhime``, ``run-rhime-multisector`` and
-``run-rhime-nested`` subcommands remain supported through the 0.9 compatibility
-cycle. Both executables expose the same command set. The existing runner imports and
-shared handoff/assembly names listed here remain aliases to their implementations: ``run_standard`` is
-``run_standard``, ``run_rhime_multisector`` is ``run_multisector``, and
-``run_rhime_nested`` is ``run_nested``. No argument conversion or warning is
-added to these aliases. Shared ``MergedData`` and ``PreparedInputs`` retain the
-``RhimeMergedData`` and ``RhimePreparedInputs`` aliases and unchanged serialized
-schemas. ``assemble_inputs`` and ``with_prepared_sites`` retain their former
-``assemble_rhime_inputs`` and ``with_prepared_rhime_sites`` imports.
+The finite CLI names listed above are absent from the target interface under the
+:doc:`agreed development boundary <legacy_and_migration>`. The separately
+approved five-name Python map below defines the required alias removals;
+broader Python naming/types/module moves need separately agreed maps.
+
+.. _rhime-python-alias-retirement:
+
+Approved Python alias retirement
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Use the canonical names in new Python calls and imports. These five aliases
+are absent from the target interface, including naming-only forwarding aliases.
+Current source still implements them as direct assignments; this contract
+amendment does not delete them.
+
+.. list-table:: Accepted Python alias replacements
+   :header-rows: 1
+
+   * - Retire
+     - Canonical name
+   * - ``run_rhime_multisector``
+     - ``run_multisector``
+   * - ``run_rhime_nested``
+     - ``run_nested``
+   * - ``RhimeMergedData``
+     - ``MergedData``
+   * - ``RhimePreparedInputs``
+     - ``PreparedInputs``
+   * - ``assemble_rhime_inputs``
+     - ``assemble_inputs``
+
+The canonical callable/class objects, constructors, argument/default meanings,
+result contents, scientific behavior and borrowed/lazy execution guarantees are
+preserved. Import-name retirement must not silently reinterpret persisted
+scientific contents or incidentally rename scientific variables and coordinates.
+Supported artifact formats/versions and explicit conversion or rejection of
+unsupported inputs are specified independently; this naming change promises no
+automatic compatibility with 0.7 artifacts. Broader public names remain outside
+this finite map. The separate existing ``run_rhime``, ``RhimeRunSpec`` and ``RhimeResult``
+migrations retain their own contracts; there is no blanket result-wrapper exemption.
+
+The obsolete ``with_prepared_sites`` and ``with_prepared_rhime_sites`` run-spec
+helpers are removed; use the retained sites on the prepared handoff directly.
 
 Package naming, the recipe-module relocation proposed in #764/#776 and complete
 workflow parity remain separate changes.
@@ -197,7 +284,7 @@ for supported older fixedbasis-style INI files. It does not turn such a file
 into a multisector configuration. For new batch jobs, start from the RHIME
 template, use ``flux_sources`` for standard runs, and configure the sector
 sources described in :doc:`rhime` before selecting
-``run-rhime-multisector``.
+``rhime run --model multisector``.
 
 Merging PARIS outputs
 ---------------------
@@ -223,10 +310,14 @@ Staged execution
 
 ``prepare``, ``prior-predictive``, ``sample``, ``diagnose`` and ``postprocess``
 separate a run into persisted handoffs. Select ``--model standard``,
-``--model multisector`` or ``--model co2`` explicitly on scientific stages;
-``diagnose`` reads the posterior independently of the recipe. See
+``--model multisector``, ``--model co2`` or ``--model co2_o2`` explicitly on
+scientific stages; ``diagnose`` reads the posterior independently of the recipe.
+See
 :doc:`staged_workflow` for the shared stage interface and
-:doc:`co2_model_family` for ordinary and cached fixed-OU CO2 TOML examples.
-The CO2 route starts from a saved coherent prepared-input artifact and requires
-an identifiable installed Git revision; it uses its own constrained output
-contract.
+:doc:`co2_model_family` for CO2-family TOML examples, including inferred fixed OU
+and the same-unit joint linked route. CO₂ and linked CO₂/O₂ sampling consume
+one preparation manifest; replay consumes only its sample manifest plus current
+output choices. Saved scientific meaning and provenance drive replay without
+constructing a graph. Git revision
+and checkout status are recorded when available, with unavailable values left
+explicitly unknown.

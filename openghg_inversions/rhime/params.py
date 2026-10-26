@@ -11,7 +11,7 @@ defaults; scientific callable signatures do not define the external schema.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import MISSING, dataclass, field, fields, replace
+from dataclasses import MISSING, dataclass, field, fields
 from pathlib import Path
 from typing import Any, get_args, get_type_hints
 
@@ -21,7 +21,6 @@ from openghg_inversions.rhime._resources import resolve_resource_paths
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._site_options import SiteOptions
 from openghg_inversions.model_error import MinErrorConfig
-from openghg_inversions.inversion_data.prepared_inputs import RhimePreparedInputs
 from openghg_inversions.inversion_inputs import normalise_frequency
 from openghg_inversions.model_error import normalise_min_error, normalise_min_error_options
 from openghg_inversions.models._flux import safe_pymc_name
@@ -34,7 +33,6 @@ from openghg_inversions.rhime.specs import (
     LikelihoodSettings,
     RhimeModelSpec,
     RhimeOutputSpec,
-    RhimeRunSpec,
     SectorSpec,
     LIKELIHOOD_OPTION_NAMES,
     LIKELIHOOD_PRIOR_OPTION_NAMES,
@@ -176,30 +174,6 @@ class DataConfig:
         return params
 
 
-def retained_run_spec(
-    data: DataConfig, prepared: RhimePreparedInputs, *, model: RhimeModelSpec, output: RhimeOutputSpec,
-) -> RhimeRunSpec:
-    """Compose the sites retained by preparation with the requested dates and choices.
-
-    Multisector and nested execution retain this transitional run envelope.
-    Standard execution passes the separate choices and prepared inputs directly.
-
-    Args:
-        data: Data choices that produced ``prepared``.
-        prepared: Prepared inputs whose retained sites and averaging periods are recorded.
-        model: Resolved model choices.
-        output: Requested output choices.
-
-    Returns:
-        The run specification used by model construction, results and products.
-    """
-    return RhimeRunSpec(
-        start_date=data.start_date, end_date=data.end_date,
-        sites=tuple(prepared.sites), averaging_period=tuple(prepared.averaging_period),
-        model=model, output=output, split_by_sectors=data.split_by_sectors,
-    )
-
-
 @dataclass(frozen=True, kw_only=True)
 class RhimeConfig:
     """Complete requested configuration with one authoritative owner per group."""
@@ -244,18 +218,11 @@ class RhimeConfig:
                 _validate_sector_source_mapping(source_names, normalise_sector_sources(sector_sources) or {})
         data = DataConfig.from_params(sections["data"], multisector=multisector)
         model = resolve_model_options(sections["model"], data_config=data)
-        # Multisector source routing owns the retained source order.
-        if multisector and sections["model"].get("sector_sources") is not None:
-            data = replace(data, flux_sources=tuple(s.flux_source for s in model.sectors))
         return cls(
             data=data, model=model,
             sampler=resolve_sampler_options(sections["sampler"]),
             output=RhimeOutputSpec.from_params(sections["output"], multisector=multisector),
         )
-
-    def retained_run_spec(self, prepared: RhimePreparedInputs) -> RhimeRunSpec:
-        """Compose retained sites with this request; see :func:`retained_run_spec`."""
-        return retained_run_spec(self.data, prepared, model=self.model, output=self.output)
 
 
 # Data facts a model request may repeat; each must agree with the data configuration.

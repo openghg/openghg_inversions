@@ -21,6 +21,14 @@ API requirements. Plans preserve dated proposals, research, and delivery
 history; they do not define current production architecture or feature support.
 See `docs/plans/README.md` for dispositions and owning issues.
 
+## Specification changes
+
+Only change specifications under `openspec/` after conferring with a developer
+and agreeing on the proposed changes. Keep specifications focused on behavioral
+contracts and tolerant of external changes, including changes to dependencies
+and surrounding systems. Do not use them to record every implementation choice
+or incidental detail.
+
 ## Numerical array ownership and execution
 
 Treat xarray objects as borrowed and potentially Dask-backed. Do not mutate
@@ -48,23 +56,49 @@ Keep the worktree-local `uv` environment lean. A plain `uv sync` installs the
 runtime dependencies plus pytest and Ruff; Jupyter, tox, Pyright, and Mypy are
 intentionally excluded from the default dependency group.
 
-Run relevant tests and lint only the changed Python paths while iterating:
+Bounded test runs, linting and type checking may run directly on the login node.
+Use focused paths while iterating:
 
 ```bash
 uv run pytest tests/test_array_ops.py
 uv run ruff check path/to/changed_file.py tests/path/to/changed_test.py
+uv run --extra dev mypy path/to/changed_file.py
 git diff --check
 ```
+
+The type-check command explicitly opts into the developer tools; ordinary test
+and lint runs can keep the default environment lean. If the required tools are
+already installed, invoke them directly from that environment.
 
 Use focused test paths while iterating and run the relevant broader pytest
 coverage before handing off a change. We support Python 3.12 and 3.13.
 
-Do not run tox locally in a Codex-managed worktree. Submit compatibility,
-full-suite, and type-check environments to Slurm with
-`sbatch scripts/slurm_tox.sh`; pass tox arguments after the script name when a
-subset is sufficient (for example, `sbatch scripts/slurm_tox.sh -e type`). The
-runner builds tox environments on node-local storage and removes them when the
-job exits.
+Use tox for final CI-equivalent validation, rather than routine iteration.
+On the cluster, tox invocations that create or recreate environments must run
+on Slurm; this restriction does not apply to direct bounded checks in an
+existing environment. Submit the required CI environments with
+`sbatch scripts/slurm_tox.sh`, passing tox arguments after the script name
+(for example, `sbatch scripts/slurm_tox.sh -e py312-openghgCur,py313-openghgCur`).
+The runner builds tox environments on node-local storage and removes them when
+the job exits. It runs tox environments and pytest serially by default, with
+two Dask workers and one numerical thread per process. Set `DASK_NUM_WORKERS`
+explicitly to override the Dask limit; the runner preserves it through tox.
+Explicit tox `-p` and `PYTEST_XDIST_WORKERS` overrides enable concurrency;
+budget their combined memory, Dask workers and numerical threads within the
+Slurm allocation. Each tox environment gets its own temporary directory.
+Real-data fixtures use a fresh store per pytest invocation, shared by that run's
+local workers, with separate ground and satellite stores.
+
+Direct pytest and GitHub Actions bypass the Slurm runner. For bounded real-data
+setup in a direct run, use `DASK_NUM_WORKERS=2 uv run pytest <test-path>`.
+The worker limit applies per process, not to the job's total memory.
+
+The runner prefers uv-managed Python installations, which include development
+headers. Set `UV_PYTHON_PREFERENCE` explicitly to override this choice. Scientific
+tox environments report their resolved interpreter and check its headers and
+configured C++ compiler before pytest. The runner preserves scientific
+`PYTENSOR_FLAGS` settings while replacing `base_compiledir` with a node-local
+cache; tox forwards those flags and the selected numerical thread limits.
 
 ## Release notes
 

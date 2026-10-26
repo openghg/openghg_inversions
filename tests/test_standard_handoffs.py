@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -14,6 +15,7 @@ from openghg_inversions.postprocessing.inversion_output import InversionOutput
 import pymc
 
 from openghg_inversions import serialization
+from openghg_inversions.inference.sampling import RhimeSampler
 from openghg_inversions.rhime import _standard_stages as stages, standard
 from openghg_inversions.rhime.params import RhimeConfig
 from openghg_inversions.rhime.requests import load_params
@@ -48,6 +50,96 @@ def _model(sampled):
 
 def _contract(sampled):
     return OutputContract.from_dict(json.loads(sampled.read_text())["output_contract"])
+
+
+def test_saved_sampling_forwards_scientific_objects_and_persists_returned_trace(tmp_path, monkeypatch):
+    config = RhimeConfig.from_params(_params(), multisector=False)
+    preparation = stages.save_preparation(_prepared(), data_config=config.data, output_dir=tmp_path / "prepared")
+    posterior = make_trace(posterior=xr.Dataset(
+        {"x": (("chain", "draw", "region"), [[[0.75], [1.25]]])},
+        coords={"chain": [4], "draw": [6, 8], "region": [0]},
+        attrs={"units": "dimensionless"},
+    ))
+    posterior.attrs["sampler_reference"] = "controlled trace"
+    constructed_priors = {"x": {"pdf": "normal", "mu": 0.75, "sigma": 0.125}}
+    contract = OutputContract(
+        variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "inv_out"),
+        metadata={"construction_reference": "standard adapter"},
+    )
+    built = SimpleNamespace(model=SimpleNamespace(_openghg_prior_records=constructed_priors), output_contract=contract)
+    sampler = RhimeSampler(draws=2, tune=7, chains=1, sample_prior_predictive=False,
+                           sample_posterior_predictive=False)
+    inference = sampler.describe()
+    provenance = {"version": "recorded version", "revision": "recorded revision", "dirty": False}
+    loaded = []
+    resolved = []
+    load = stages._load_preparation
+    resolve = stages.resolve_model_options
+    model_inputs = xr.Dataset({"eager_reference": ("region", [3.0])})
+    priors = {"x_prior": constructed_priors["x"]}
+
+    def likelihood_builder(**kwargs):
+        pytest.fail("adapter executed likelihood instead of forwarding it")
+
+    likelihood_kwargs = {"scale": 0.25}
+
+    def load_preparation(*args, **kwargs):
+        result = load(*args, **kwargs)
+        loaded.append(result)
+        return result
+
+    def resolve_model(options, *, data_config):
+        assert data_config == loaded[0][1]
+        result = resolve(options, data_config=data_config)
+        resolved.append(result)
+        return result
+
+    def materialize(prepared, model):
+        assert prepared is loaded[0][0] and model == resolved[0]
+        return model_inputs, priors
+
+    def build(inputs, model, **kwargs):
+        assert inputs is model_inputs and model == resolved[0]
+        assert kwargs["priors"] == priors
+        assert kwargs["likelihood_builder"] is likelihood_builder
+        assert kwargs["likelihood_kwargs"] == likelihood_kwargs
+        return built
+
+    def sample(actual_sampler, model, *, variable_roles):
+        assert actual_sampler.describe() == inference
+        assert model is built.model and variable_roles == contract.variable_roles
+        return posterior
+
+    monkeypatch.setattr(stages, "_load_preparation", load_preparation)
+    monkeypatch.setattr(stages, "resolve_model_options", resolve_model)
+    monkeypatch.setattr(stages, "materialize_standard_inputs", materialize)
+    monkeypatch.setattr(stages, "build_standard_model", build)
+    monkeypatch.setattr(RhimeSampler, "sample", sample)
+    monkeypatch.setattr(stages, "installed_ogi_provenance", lambda: provenance)
+    sampled = stages.sample(
+        preparation, model={"mismatch_model": None}, sampler=sampler, output_dir=tmp_path / "samples",
+        likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs,
+    )
+    record = json.loads(sampled.read_text())
+    assert sampler.describe() == inference
+    assert record["preparation_generation"] == loaded[0][2]
+    assert record["output_contract"] == contract.to_dict()
+    assert record["actual_inference"] == inference
+    assert record["provenance"] == provenance
+    assert record["model"]["sectors"][0]["x_prior"] == constructed_priors["x"]
+    assert json.loads(posterior.attrs["rhime_likelihood_kwargs"]) == likelihood_kwargs
+    assert json.loads(posterior.attrs["rhime_likelihood_builder"]) == {
+        "module": likelihood_builder.__module__, "qualname": likelihood_builder.__qualname__,
+    }
+    monkeypatch.setattr(stages, "resolve_sampler", lambda *a, **k: pytest.fail("fresh sampler"))
+    monkeypatch.setattr(stages, "build_standard_model", lambda *a, **k: pytest.fail("built graph"))
+    monkeypatch.setattr(stages, "materialize_standard_inputs", lambda *a, **k: pytest.fail("materialized model inputs"))
+    monkeypatch.setattr(RhimeSampler, "sample", lambda *a, **k: pytest.fail("inference"))
+    monkeypatch.setattr(stages, "installed_ogi_provenance", lambda: pytest.fail("replaced recorded provenance"))
+    restored = stages.load_samples(sampled)
+    xr.testing.assert_identical(restored.trace, posterior)
+    assert restored.provenance == provenance
+    assert restored.output_metadata["sampler"] == inference
 
 
 def test_manifest_relative_and_absolute_references_preserve_inputs(tmp_path, monkeypatch):
@@ -581,17 +673,6 @@ def test_prior_predictive_targets_cannot_alias_preparation(tmp_path, monkeypatch
         )
     assert payload.read_bytes() == original
 
-
-def test_multisector_load_checks_required_scientific_state(tmp_path):
-    from openghg_inversions.rhime.stages import postprocess_rhime_stage
-    from tests.test_staged_workflow import _saved_multisector_binding
-
-    arguments = _saved_multisector_binding(tmp_path)
-    posterior = stages.load_trace(arguments["posterior"])
-    posterior["posterior"] = posterior["posterior"].to_dataset().drop_vars("x")
-    stages.save_trace(posterior, arguments["posterior"])
-    with pytest.raises(ValueError, match="reconstruction state.*x"):
-        postprocess_rhime_stage(**arguments)
 
 
 @pytest.mark.parametrize("name", ["actual_inference", "provenance"])

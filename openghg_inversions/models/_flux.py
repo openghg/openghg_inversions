@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Hashable, Iterable
 
 import pandas as pd
 import xarray as xr
 
-from openghg_inversions.array_ops import select_gathered_data_array
+from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array
 
 
 def safe_pymc_name(value: str) -> str:
@@ -59,6 +60,31 @@ def _prepared_sources(design: xr.DataArray, *, observation_dim: str = "nmeasure"
             f"Gathered multi-sector H requires unique state labels; duplicate state {duplicate!r}."
         )
     return list(dict.fromkeys(source_labels))
+
+
+def _stack_multisector_sensitivity(
+    design: xr.DataArray, *, reserved_names: Iterable[Hashable] = (),
+) -> xr.DataArray:
+    """Gather source/state columns without colliding with other components' coordinates."""
+    state_dims = [str(dim) for dim in design.dims if dim not in {"nmeasure", "source"}]
+    if len(state_dims) != 1:
+        raise ValueError("Multisector H requires one observation, source and state dimension.")
+    state_dim = state_dims[0]
+    reserved_names = set(reserved_names)
+    if "source" not in design.dims and state_dim not in reserved_names:
+        return design.transpose("nmeasure", state_dim)
+    occupied = set(design.dims) | set(design.coords) | reserved_names
+    stacked_dim = "state"
+    suffix = 0
+    while stacked_dim in occupied:
+        suffix += 1
+        stacked_dim = "flux_state" if suffix == 1 else f"flux_state_{suffix}"
+    if "source" not in design.dims:
+        return design.rename({state_dim: stacked_dim}).transpose("nmeasure", stacked_dim)
+    return concat_gather_data_arrays(
+        {source: design.sel(source=source, drop=True) for source in design.get_index("source")},
+        key_dim="source", ragged_dim=state_dim, stack_dim=stacked_dim, join="exact",
+    ).transpose("nmeasure", stacked_dim)
 
 
 def _validate_unpadded_sector_design(

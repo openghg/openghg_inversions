@@ -30,10 +30,13 @@ Choose the smallest starting point that fits the change:
   fluxes, pass a borrowed ``RhimeMergedData`` object as ``merged_data``.
 * To change a preparation stage such as basis construction, copy the visible
   runner and replace that stage.
-* To start from alternative or cached prepared data with the standard model, use
-  ``run_standard(prepared=prepared, config=config)``. To replace the complete standard graph,
-  construct and sample a PyMC model directly; the complete-builder hook remains
-  available only for multisector compatibility.
+* To start from alternative or cached prepared data, use
+  ``run_standard(prepared=prepared, config=config)`` or
+  ``run_multisector(prepared=prepared, config=config)``. To replace the complete
+  standard or multisector graph, construct and sample a PyMC model directly;
+  see :ref:`rhime-complete-model-composition` for the explicit multisector
+  materialization, construction, sampling and output operations. Both ordinary
+  runners return ``InversionOutput``.
 
 .. _cached-sigma-co2-recipe:
 .. _run-the-production-cached-sigma-co2-recipe:
@@ -190,9 +193,12 @@ provenance. Its arrays remain borrowed and may be Dask-backed. It has no
 window bounds alongside other retrieval choices. For example,
 ``AcquisitionFacts(species="ch4", domain="EUROPE")`` makes no claim about dates.
 Explicit ``from_legacy_fp_all`` and ``to_legacy_fp_all`` utility functions
-in ``openghg_inversions.hbmcmc.legacy_data`` support legacy callers in 0.8.
-The entire HBMCMC subpackage, including these utilities, is removed in 0.9;
-see :doc:`legacy_and_migration` for replacements and older-release guidance.
+in ``openghg_inversions.hbmcmc.legacy_data`` support legacy callers while retained
+on devel. The :doc:`agreed development boundary <legacy_and_migration>` permits
+bounded retirement of the subpackage, including these utilities, after affected
+migration evidence and scientific regressions are preserved. That permission
+does not mean removal has landed; the migration guide identifies replacements
+and older-release guidance.
 They are separate from the modern data model.
 
 Acquisition stays in memory. For a reusable file, prepare the data with the
@@ -384,8 +390,10 @@ Run it with a normal RHIME configuration and optional JSON overrides::
    python -m package_name.run_with_likelihood config.ini \
        --kwargs '{"output_path": "outputs", "output_format": "inv_out"}'
 
-``run_rhime_multisector`` accepts the same Python-only builder contract. The
-standard multi-sector model retains sector flux components and roles, then
+``run_multisector`` accepts the same Python-only likelihood-builder contract,
+including with ``prepared=...``. Saved sampling through
+``multisector_stages.sample`` uses that contract too. The multisector model
+retains sector flux components and roles, then
 passes their combined observation mean to the likelihood, so no special case
 or semantic compromise is required.
 

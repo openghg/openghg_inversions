@@ -2,21 +2,28 @@
 # Replace this path with an artifact written by Co2PreparedInputs.save().
 format_version = 1
 recipe = "co2"
-variant = "cached_fixed_ou"
 
 [prepared_inputs]
 path = "prepared-co2.zarr"
+# Preserve the original requested window after filtering.
+start_date = "2020-01-01"
+end_date = "2020-02-01"
+domain = "EUROPE"
 
 [likelihood]
 kind = "fixed_ou"
 tau_hours = 24.0
-site_amplitude_prior_scale = 1.0
-sigma_target_accept = 0.8
-state_target_accept = 0.9
+site_amplitude_prior = {pdf = "halfnormal", sigma = 1.0}
 
 [sampling]
+sigma_target_accept = 0.8
+state_target_accept = 0.9
 draws = 1000
 tune = 1000
 chains = 4
-nuts_sampler = "pymc"
 random_seed = 12345
+
+[outputs]
+output_format = "basic"
+output_path = "outputs"
+output_name = "co2-fixed-ou"

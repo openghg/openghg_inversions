@@ -10,18 +10,17 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-import openghg_inversions.rhime.prepared as rhime_prepared
+import openghg_inversions.rhime.multisector as rhime_multisector
 import openghg_inversions.rhime.standard as rhime_standard
 from openghg_inversions.basis.basis_functions import BasisFunctions
-from openghg_inversions.inversion_data import prepare_rhime_inputs_from_xarray
+from openghg_inversions.inversion_data import SiteOptions, prepare_rhime_inputs_from_xarray
+from openghg_inversions.rhime.params import DataConfig
 from openghg_inversions.rhime import (
     PollutionEventSettings,
     RhimeModelSpec,
     RhimeOutputSpec,
-    RhimeRunSpec,
     RhimeSampler,
     SectorSpec,
-    run_rhime_from_prepared_inputs,
     run_standard,
     RhimeConfig,
 )
@@ -919,31 +918,38 @@ def test_unequal_source_regions_round_trip_and_execute(
             sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
         ),
     )
-    run_spec = RhimeRunSpec(
-        start_date="2021-01-01",
-        end_date="2021-01-05",
-        sites=("stale",),
-        averaging_period=(None,),
+    config = RhimeConfig(
+        data=DataConfig(
+            site_options=SiteOptions.from_inputs(sites=("stale",), averaging_period="1h"),
+            species=model_spec.species, domain=model_spec.domain,
+            start_date="2021-01-01", end_date="2021-01-05",
+            flux_sources=tuple(source_order), use_bc=True, split_by_sectors=True,
+        ),
         model=model_spec,
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
-        split_by_sectors=True,
+        sampler=RhimeSampler(),
     )
+    models = []
+    original_builder = rhime_multisector.build_multisector_model
 
-    def skip_diagnostics(**kwargs: object) -> None:
-        """Keep this regression focused on the prepared-input execution seam."""
-        output_prepared = kwargs["prepared"]
-        assert isinstance(output_prepared, type(loaded))
-        xr.testing.assert_identical(output_prepared.inv_inputs, loaded.inv_inputs)
-        xr.testing.assert_identical(output_prepared.site_metadata, loaded.site_metadata)
-        kwargs["result"].outputs["executed"] = True  # type: ignore[attr-defined,index]
+    def build(*args, **kwargs):
+        model = original_builder(*args, **kwargs)
+        models.append(model.model)
+        return model
 
+    monkeypatch.setattr(rhime_multisector, "build_multisector_model", build)
+    monkeypatch.setattr(rhime_multisector, "prepare_multisector",
+                        lambda *args, **kwargs: pytest.fail("repeated acquisition/preparation"))
     monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: make_trace())
-    monkeypatch.setattr(rhime_prepared, "make_multisector_rhime_outputs", skip_diagnostics)
 
-    result = run_rhime_from_prepared_inputs(prepared_inputs=loaded, run_spec=run_spec)
+    result = rhime_multisector.run_multisector(prepared=loaded, config=config)
 
     xr.testing.assert_identical(result.inv_inputs, loaded.inv_inputs)
-    assert result.run_spec.sites == ("TAC", "MHD")
-    assert result.model is not None
-    assert {"x_ocean", "x_ff", "bc", "mu_bc", "y"}.issubset(result.model.named_vars)
-    assert result.outputs == {"executed": True}
+    assert tuple(result.run_metadata["sites"]) == ("TAC", "MHD")
+    assert tuple(result.run_metadata["averaging_period"]) == ("2h", "1h")
+    assert len(models) == 1
+    assert {"x", "hx", "mu", "bc", "mu_bc", "y"}.issubset(models[0].named_vars)
+    assert result.variable_name("flux_scale") == "x"
+    np.testing.assert_allclose(models[0]["hx"].get_value(),
+                               loaded.inv_inputs.H.transpose("nmeasure", "region"))
+    xr.testing.assert_identical(result.basis_functions.flux, loaded.basis_functions.flux)

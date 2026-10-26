@@ -10,6 +10,7 @@ from typing import Any, cast
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytensor.tensor as pt
 import xarray as xr
 from pytensor.gradient import DisconnectedType, grad_not_implemented
@@ -17,11 +18,12 @@ from pytensor.graph.basic import Apply, Variable
 from pytensor.graph.op import Op, OutputStorageType
 from pytensor.tensor.variable import TensorVariable
 from scipy.linalg import cho_solve, eigh, solve_triangular
+from scipy.linalg.lapack import dpocon
 from scipy.sparse import csr_matrix
 
 from openghg_inversions.array_ops import expand_mapping
 from openghg_inversions.models.components import add_model_data
-from openghg_inversions.models.priors import parse_prior, positive_prior_args
+from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.observation_error import (
     AggregationError,
     aggregation_error_as_low_rank,
@@ -67,6 +69,71 @@ def _rejection_gradient_amplitude(amplitude: FloatArray) -> FloatArray:
     finite_large = np.isfinite(amplitude) & (amplitude > 1.0)
     gradient[finite_large] = -np.reciprocal(amplitude[finite_large])
     return gradient
+
+
+def _solve_full_width_factor(
+    factor: FloatArray,
+    rhs: FloatArray,
+) -> tuple[FloatArray, float] | None:
+    """Use primal Cholesky when conditioning estimates permit half the digits.
+
+    Return ``None`` when forming ``I + factor factor.T`` is unsafe, preserving
+    the square-root QR/SVD route for dominant, nearly dependent factor columns.
+    """
+    core = factor @ factor.T
+    core.flat[:: core.shape[0] + 1] += 1.0
+    try:
+        cholesky = np.linalg.cholesky(core)
+    except np.linalg.LinAlgError:
+        return None
+    # Forming the Gram matrix can erase the identity even if Cholesky succeeds.
+    reciprocal_condition, info = dpocon(cholesky, np.linalg.norm(core, 1), uplo="L")
+    if info or not reciprocal_condition > np.sqrt(np.finfo(np.float64).eps):
+        return None
+    solution = cho_solve((cholesky, True), rhs, check_finite=False)
+    logdet = float(2.0 * np.log(np.diag(cholesky)).sum())
+    return cast(FloatArray, solution), logdet
+
+
+def _evaluate_whitened_fallback(
+    factor: FloatArray,
+    residual: FloatArray,
+    logdet: float,
+) -> tuple[float, float, FloatArray, FloatArray]:
+    """Evaluate the whitened covariance in joint factor/residual coordinates.
+
+    A complete QR basis supplies the orthogonal complement needed for the
+    precision diagonal. Both its contribution and the scaled factor-space
+    contribution are sums of squares, avoiding subtraction from one. Keeping
+    the residual in the same basis as the factor also preserves their shared
+    rounding errors for strongly aligned inputs. This exceptional route needs
+    an observation-sized square basis; complement reductions use small blocks.
+    Orthogonal projections still have absolute roundoff at the input scale;
+    arbitrarily small solved components do not have guaranteed relative accuracy.
+    """
+    joint = np.column_stack((factor, residual))
+    basis, _ = np.linalg.qr(joint, mode="complete")
+    retained = min(factor.shape[0], factor.shape[1] + 1)
+    joint_basis = basis[:, :retained]
+    # Preserve shared rounding for aligned factor and residual columns.
+    coordinates = joint_basis.T @ joint
+    factor_coordinates = coordinates[:, :-1]
+    residual_coordinates = coordinates[:, -1]
+    left_vectors, singular_values, _ = np.linalg.svd(factor_coordinates, full_matrices=True)
+    rotated_residual = left_vectors.T @ residual_coordinates
+    inverse_scales = np.ones(retained, dtype=np.float64)
+    scales = np.hypot(1.0, singular_values)
+    inverse_scales[: len(singular_values)] = np.reciprocal(scales)
+    scaled_residual = inverse_scales * rotated_residual
+    quadratic = float(scaled_residual @ scaled_residual)
+    logdet += float(2.0 * np.log(scales).sum())
+    solved_residual = joint_basis @ (left_vectors @ (inverse_scales * scaled_residual))
+    scaled_basis = (joint_basis @ left_vectors) * inverse_scales[None, :]
+    precision_diagonal = np.einsum("ij,ij->i", scaled_basis, scaled_basis)
+    for start in range(retained, factor.shape[0], 256):
+        complement = basis[:, start : start + 256]
+        precision_diagonal += np.einsum("ij,ij->i", complement, complement)
+    return quadratic, logdet, cast(FloatArray, solved_residual), precision_diagonal
 
 
 class _FixedOuLogpOp(Op):
@@ -200,6 +267,22 @@ class FixedOuLowRank:
         Raises:
             ValueError: If either input has the wrong shape.
         """
+        log_likelihood, gradient_residual, gradient_amplitude = self._evaluate(residual, site_amplitude)
+        assert gradient_residual is not None
+        return FixedOuLikelihoodEvaluation(log_likelihood, gradient_residual, gradient_amplitude)
+
+    def _evaluate(
+        self,
+        residual: ArrayLike,
+        site_amplitude: ArrayLike | float,
+        *,
+        amplitude_only: bool = False,
+    ) -> tuple[float, FloatArray | None, FloatArray]:
+        """Evaluate in observation coordinates, or cached mode coordinates for amplitudes only.
+
+        ``amplitude_only`` requires an already transformed residual and omits
+        the observation-residual gradient, returning ``None`` in its place.
+        """
         residual_value = np.asarray(residual, dtype=np.float64)
         amplitude = np.atleast_1d(np.asarray(site_amplitude, dtype=np.float64))
         if residual_value.shape != (self.n_observation,):
@@ -219,83 +302,109 @@ class FixedOuLowRank:
             or not np.isfinite(amplitude_squared).all()
         )
         if invalid_amplitude:
-            return FixedOuLikelihoodEvaluation(
-                log_likelihood=-np.inf,
-                gradient_residual=np.zeros(self.n_observation, dtype=np.float64),
-                gradient_site_amplitude=_rejection_gradient_amplitude(amplitude),
+            return (
+                -np.inf,
+                None if amplitude_only else np.zeros(self.n_observation, dtype=np.float64),
+                _rejection_gradient_amplitude(amplitude),
             )
         if not np.isfinite(residual_value).all():
-            gradient_residual = np.zeros(self.n_observation, dtype=np.float64)
-            infinite = np.isinf(residual_value)
-            gradient_residual[infinite] = -np.sign(residual_value[infinite])
-            return FixedOuLikelihoodEvaluation(
-                log_likelihood=-np.inf,
-                gradient_residual=gradient_residual,
-                gradient_site_amplitude=np.zeros(self.n_site, dtype=np.float64),
-            )
+            gradient_residual: FloatArray | None = None
+            if not amplitude_only:
+                gradient_residual = np.zeros(self.n_observation, dtype=np.float64)
+                infinite = np.isinf(residual_value)
+                gradient_residual[infinite] = -np.sign(residual_value[infinite])
+            return -np.inf, gradient_residual, np.zeros(self.n_site, dtype=np.float64)
 
         mode_variance = self.mode_eigenvalues + amplitude_squared[self.mode_site_index]
         if not np.isfinite(mode_variance).all() or np.any(mode_variance <= 0.0):
-            return FixedOuLikelihoodEvaluation(
-                log_likelihood=-np.inf,
-                gradient_residual=np.zeros(self.n_observation, dtype=np.float64),
-                gradient_site_amplitude=np.zeros(self.n_site, dtype=np.float64),
+            return (
+                -np.inf,
+                None if amplitude_only else np.zeros(self.n_observation, dtype=np.float64),
+                np.zeros(self.n_site, dtype=np.float64),
             )
         weights = np.reciprocal(mode_variance)
-        transformed_residual = cast(FloatArray, self.mode_transform @ residual_value)
+        transformed_residual = (
+            residual_value if amplitude_only else cast(FloatArray, self.mode_transform @ residual_value)
+        )
         square_root_weights = np.sqrt(weights)
         whitened_residual = transformed_residual * square_root_weights
+        logdet = self.base_logdet + float(np.log(mode_variance).sum())
 
         if self.rank:
             whitened_factor = self.transformed_factor * square_root_weights[:, None]
-            core = np.eye(self.rank, dtype=np.float64) + (
-                whitened_factor.T @ whitened_factor
-            )
-            core = (core + core.T) * 0.5
-            cholesky = np.linalg.cholesky(core)
-            projected = whitened_factor.T @ whitened_residual
-            latent_mode = cho_solve((cholesky, True), projected, check_finite=False)
-            conditional_whitened = whitened_residual - whitened_factor @ latent_mode
-            quadratic = float(
-                conditional_whitened @ conditional_whitened
-                + latent_mode @ latent_mode
-            )
-            logdet_core = float(2.0 * np.log(np.diag(cholesky)).sum())
-            conditional_residual = (
-                transformed_residual - self.transformed_factor @ latent_mode
-            )
-            transformed = solve_triangular(
-                cholesky,
-                self.transformed_factor.T,
-                lower=True,
-                check_finite=False,
-            )
-            leverage = np.square(transformed).sum(axis=0)
+            tolerance = np.sqrt(np.finfo(np.float64).eps)
+            roundoff = (self.rank + 1) * np.finfo(np.float64).eps
+            roundoff /= 1.0 - roundoff
+            with np.errstate(over="ignore", invalid="ignore"):
+                core = np.eye(self.rank, dtype=np.float64) + (
+                    whitened_factor.T @ whitened_factor
+                )
+                core = (core + core.T) * 0.5
+            use_cholesky = bool(np.isfinite(core).all())
+            if use_cholesky:
+                try:
+                    cholesky = np.linalg.cholesky(core)
+                except np.linalg.LinAlgError:
+                    use_cholesky = False
+                else:
+                    reciprocal_condition, info = dpocon(cholesky, np.linalg.norm(core, 1), uplo="L")
+                    use_cholesky = bool(not info and reciprocal_condition > tolerance)
+            if use_cholesky:
+                projected = whitened_factor.T @ whitened_residual
+                latent_mode = cho_solve((cholesky, True), projected, check_finite=False)
+                solved_residual = whitened_residual - whitened_factor @ latent_mode
+                # A well-conditioned scalar core can still lose the residual
+                # in subtraction. Budget that rounding relative to the solve,
+                # whose accuracy is needed by both gradients, not just logp.
+                with np.errstate(over="ignore", invalid="ignore"):
+                    residual_roundoff = roundoff * (
+                        np.linalg.norm(whitened_residual)
+                        + np.linalg.norm(whitened_factor) * np.linalg.norm(latent_mode)
+                    )
+                use_cholesky = bool(
+                    np.isfinite(residual_roundoff)
+                    and residual_roundoff <= tolerance * np.linalg.norm(solved_residual)
+                )
+            if use_cholesky:
+                transformed = solve_triangular(
+                    cholesky, whitened_factor.T, lower=True, check_finite=False
+                )
+                leverage = np.square(transformed).sum(axis=0)
+                precision_diagonal = 1.0 - leverage
+                # Independently protect the precision diagonal even when the
+                # residual is zero. These screens address known cancellation;
+                # neither the condition estimate nor the normwise residual
+                # budget certifies every individual gradient component.
+                use_cholesky = bool(
+                    np.all(precision_diagonal > 0.0)
+                    and np.all(roundoff * (1.0 + leverage) <= tolerance * precision_diagonal)
+                )
+            if use_cholesky:
+                quadratic = float(solved_residual @ solved_residual + latent_mode @ latent_mode)
+                logdet += float(2.0 * np.log(np.diag(cholesky)).sum())
+            else:
+                quadratic, logdet, solved_residual, precision_diagonal = _evaluate_whitened_fallback(
+                    whitened_factor, whitened_residual, logdet
+                )
         else:
             quadratic = float(whitened_residual @ whitened_residual)
-            logdet_core = 0.0
-            conditional_residual = transformed_residual
-            leverage = np.zeros(self.n_observation, dtype=np.float64)
+            solved_residual = whitened_residual
+            precision_diagonal = np.ones(self.n_observation, dtype=np.float64)
 
-        logdet = self.base_logdet + float(np.log(mode_variance).sum()) + logdet_core
         log_likelihood = -0.5 * (
             self.n_observation * math.log(2.0 * math.pi) + logdet + quadratic
         )
-        mode_score = (
-            np.square(weights) * (np.square(conditional_residual) + leverage) - weights
-        )
+        mode_score = weights * (np.square(solved_residual) - precision_diagonal)
         gradient_amplitude = amplitude * np.bincount(
             self.mode_site_index,
             weights=mode_score,
             minlength=self.n_site,
         )
-        solved_transformed = weights * conditional_residual
-        gradient_residual = -(self.mode_transform.T @ solved_transformed)
-        return FixedOuLikelihoodEvaluation(
-            log_likelihood=float(log_likelihood),
-            gradient_residual=cast(FloatArray, np.asarray(gradient_residual)),
-            gradient_site_amplitude=cast(FloatArray, gradient_amplitude),
-        )
+        gradient_residual = None
+        if not amplitude_only:
+            solved_transformed = square_root_weights * solved_residual
+            gradient_residual = cast(FloatArray, np.asarray(-(self.mode_transform.T @ solved_transformed)))
+        return float(log_likelihood), gradient_residual, cast(FloatArray, gradient_amplitude)
 
     def solve(
         self,
@@ -308,7 +417,9 @@ class FixedOuLowRank:
         state-likelihood cache conditioned on supplied site amplitudes. It
         reuses the generalized eigenbasis prepared by
         :func:`prepare_fixed_ou_low_rank` and never constructs a second
-        eigensolver.
+        eigensolver. Factors at least as wide as the observation vector use
+        observation-space Cholesky when well conditioned; otherwise the
+        square-root QR/SVD solve preserves small covariance directions.
         """
         rhs_value = np.asarray(rhs, dtype=np.float64)
         if rhs_value.ndim not in (1, 2) or rhs_value.shape[0] != self.n_observation:
@@ -318,6 +429,19 @@ class FixedOuLowRank:
             )
         if not np.isfinite(rhs_value).all():
             raise ValueError("rhs must contain only finite values.")
+        transformed_rhs = cast(FloatArray, self.mode_transform @ rhs_value)
+        transformed_solve = self._solve_transformed(transformed_rhs, site_amplitude)
+        return FixedOuCovarianceSolve(
+            solution=cast(FloatArray, np.asarray(self.mode_transform.T @ transformed_solve.solution)),
+            logdet=transformed_solve.logdet,
+        )
+
+    def _solve_transformed(
+        self,
+        rhs: FloatArray,
+        site_amplitude: ArrayLike | float,
+    ) -> FixedOuCovarianceSolve:
+        """Solve prepared-mode RHS and retain the full covariance log determinant."""
         amplitude = _site_values(
             site_amplitude,
             self.n_site,
@@ -325,36 +449,41 @@ class FixedOuLowRank:
             positive=False,
         )
         weights, logdet = self._mode_weights_and_logdet(amplitude)
-        transformed_rhs = cast(FloatArray, self.mode_transform @ rhs_value)
-        rhs_2d = transformed_rhs[:, None] if transformed_rhs.ndim == 1 else transformed_rhs
+        rhs_2d = rhs[:, None] if rhs.ndim == 1 else rhs
         square_root_weights = np.sqrt(weights)
         whitened_rhs = square_root_weights[:, None] * rhs_2d
         if self.rank:
             whitened_factor = self.transformed_factor * square_root_weights[:, None]
-            basis, _ = np.linalg.qr(
-                np.column_stack((whitened_factor, whitened_rhs)),
-                mode="reduced",
+            dense_solution = (
+                _solve_full_width_factor(whitened_factor, whitened_rhs)
+                if self.rank >= self.n_observation
+                else None
             )
-            factor_coordinates = basis.T @ whitened_factor
-            rhs_coordinates = basis.T @ whitened_rhs
-            left_vectors, singular_values, _ = np.linalg.svd(
-                factor_coordinates,
-                full_matrices=True,
-            )
-            rotated_rhs = left_vectors.T @ rhs_coordinates
-            rotated_rhs[: singular_values.size] /= (
-                1.0 + np.square(singular_values)
-            )[:, None]
-            whitened_solution = basis @ (left_vectors @ rotated_rhs)
-            logdet += float(np.log1p(np.square(singular_values)).sum())
+            if dense_solution is not None:
+                whitened_solution, logdet_update = dense_solution
+                logdet += logdet_update
+            else:
+                basis, _ = np.linalg.qr(
+                    np.column_stack((whitened_factor, whitened_rhs)),
+                    mode="reduced",
+                )
+                factor_coordinates = basis.T @ whitened_factor
+                rhs_coordinates = basis.T @ whitened_rhs
+                left_vectors, singular_values, _ = np.linalg.svd(
+                    factor_coordinates,
+                    full_matrices=True,
+                )
+                rotated_rhs = left_vectors.T @ rhs_coordinates
+                rotated_rhs[: singular_values.size] /= (
+                    1.0 + np.square(singular_values)
+                )[:, None]
+                whitened_solution = basis @ (left_vectors @ rotated_rhs)
+                logdet += float(np.log1p(np.square(singular_values)).sum())
         else:
             whitened_solution = whitened_rhs
         solved = square_root_weights[:, None] * whitened_solution
-        solution = self.mode_transform.T @ (
-            solved[:, 0] if transformed_rhs.ndim == 1 else solved
-        )
         return FixedOuCovarianceSolve(
-            solution=cast(FloatArray, np.asarray(solution)),
+            solution=cast(FloatArray, solved[:, 0] if rhs.ndim == 1 else solved),
             logdet=logdet,
         )
 
@@ -375,8 +504,8 @@ class FixedOuLowRank:
         amplitude = pt.atleast_1d(site_amplitude)
         site_index = pt.as_tensor_variable(self.site_index)
         return (
-            pm.floatX(self.diagonal_variance)
-            + pm.floatX(np.square(self.factor).sum(axis=1))
+            floatX(self.diagonal_variance)
+            + floatX(np.square(self.factor).sum(axis=1))
             + pt.square(amplitude[site_index])
         )
 
@@ -586,20 +715,32 @@ def _tau_values(
 
 
 def _site_values(
-    value: ArrayLike | float,
+    value: ArrayLike | float | Mapping[str, float],
     n_site: int,
     name: str,
     *,
     positive: bool,
+    coordinate: xr.DataArray | None = None,
 ) -> FloatArray:
-    values = np.asarray(value, dtype=np.float64)
+    supplied = list(value.values()) if isinstance(value, Mapping) else value
+    raw = np.asarray(supplied, dtype=object)
+    if any(
+        isinstance(item, (bool, np.bool_))
+        or not isinstance(item, (int, float, np.integer, np.floating))
+        for item in (value.values() if isinstance(value, Mapping) else raw.flat)
+    ):
+        raise ValueError(f"{name} must contain numeric values, not boolean or nonnumeric values.")
+    values = np.asarray(supplied, dtype=np.float64)
+    if not np.isfinite(values).all() or np.any(values <= 0.0 if positive else values < 0.0):
+        qualifier = "strictly positive" if positive else "non-negative"
+        raise ValueError(f"{name} must contain finite, {qualifier} values.")
+    if isinstance(value, Mapping):
+        assert coordinate is not None
+        values = np.asarray(expand_mapping(value, coordinate).values, dtype=np.float64)
     if values.ndim == 0:
         values = np.full(n_site, values.item(), dtype=np.float64)
     elif values.shape != (n_site,):
         raise ValueError(f"{name} must be scalar or have shape {(n_site,)}, got {values.shape}.")
-    if not np.isfinite(values).all() or np.any(values <= 0.0 if positive else values < 0.0):
-        qualifier = "strictly positive" if positive else "non-negative"
-        raise ValueError(f"{name} must contain finite, {qualifier} values.")
     return cast(FloatArray, values.copy())
 
 
@@ -624,6 +765,9 @@ def add_fixed_ou_gaussian_likelihood(
     strictly positive generalized base-plus-OU mode variances before the
     low-rank update. ``sigma_alignment`` may explicitly map a labelled joint
     observation axis to species/site groups; by default groups are sites.
+    Site mappings must cover the retained labels. Every supplied amplitude
+    must be numeric, finite and non-negative, and every supplied time scale
+    must be numeric, finite and positive, including entries for dropped sites.
     """
     if fixed_site_amplitudes is not None and site_amplitude_prior is not None:
         raise ValueError("Pass either `fixed_site_amplitudes` or `site_amplitude_prior`, not both.")
@@ -651,10 +795,8 @@ def add_fixed_ou_gaussian_likelihood(
     site_labels = tuple(str(label) for label in site_coord.values)
     observation_variance = np.square(np.asarray(observation_error.values, dtype=np.float64))
     factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation_error)
-    resolved_tau = (
-        expand_mapping(tau_hours, site_coord).values
-        if isinstance(tau_hours, Mapping)
-        else tau_hours
+    resolved_tau = _site_values(
+        tau_hours, alignment.nsite, "tau_hours", positive=True, coordinate=site_coord
     )
     prepared = prepare_fixed_ou_low_rank(
         factor,
@@ -667,12 +809,11 @@ def add_fixed_ou_gaussian_likelihood(
     fixed_amplitudes = None
     if fixed_site_amplitudes is not None:
         fixed_amplitudes = _site_values(
-            expand_mapping(fixed_site_amplitudes, site_coord).values
-            if isinstance(fixed_site_amplitudes, Mapping)
-            else fixed_site_amplitudes,
+            fixed_site_amplitudes,
             alignment.nsite,
             "fixed_site_amplitudes",
             positive=False,
+            coordinate=site_coord,
         )
         mode_variance = prepared.mode_eigenvalues + np.square(fixed_amplitudes)[
             prepared.mode_site_index
@@ -692,7 +833,8 @@ def add_fixed_ou_gaussian_likelihood(
         assert site_amplitude_prior is not None
         amplitude = parse_prior(
             "ou_site_amplitude",
-            positive_prior_args(site_amplitude_prior),
+            site_amplitude_prior,
+            positive=True,
             dims="ou_site",
         )
     else:

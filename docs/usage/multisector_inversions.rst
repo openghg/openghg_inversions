@@ -7,8 +7,8 @@ same public runner and model. They differ only in their observation and
 footprint acquisition options.
 
 Use :func:`openghg_inversions.rhime.run_rhime_multisector` when every flux
-component should have its own scaling state. The ``flux_sources`` values are
-the OpenGHG ``source`` metadata used for retrieval. Optional
+component should have its own scaling prior within the full state. The
+``flux_sources`` values are the OpenGHG ``source`` metadata used for retrieval. Optional
 ``sector_sources`` entries give those sources shorter model-facing names.
 
 Before running
@@ -145,7 +145,9 @@ multisector model used for surface sites.
 Inspecting and processing results
 ---------------------------------
 
-Both calls return a :class:`openghg_inversions.rhime.RhimeResult`. Inspect the
+Both calls return an
+:class:`~openghg_inversions.postprocessing.inversion_output.InversionOutput`.
+Inspect the
 canonical inputs before interpreting the posterior:
 
 .. code-block:: python
@@ -154,7 +156,7 @@ canonical inputs before interpreting the posterior:
 
    print(result.inv_inputs["H"].dims)
    print(result.inv_inputs["H"].coords["source"].values)
-   print(result.idata.posterior)
+   print(result.trace_group("posterior"))
    print(result.output_metadata)
 
 For a shared basis, expect a distinct ``source`` dimension and one sensitivity
@@ -164,25 +166,44 @@ slice per requested flux source. Satellite inputs should also contain finite
 applied. Column runs retain ``mf_prior_factor`` and, when supplied,
 ``mf_prior_upper_level_factor`` in ``inv_inputs``.
 
-The posterior contains one sector scaling variable per sanitized sector name,
-for example ``x_anth``, ``x_resp``, and ``x_gpp_atm``. Use the semantic mapping
-instead of constructing names in downstream code:
+The posterior contains one full scaling variable, ``x``, on a gathered state
+coordinate carrying the source and local state labels. Its blocks retain their
+sector-specific priors. Use the scientific role to find the variable and the
+recorded source association to select a sector:
 
 .. code-block:: python
 
-   roles = result.model_build_result.variable_roles
-   for sector in result.model_spec.sectors:
-       role = f"flux_scale:{sector.name}"
-       variable = roles[role]
-       print(sector.name, result.idata.posterior[variable].mean().item())
+   scales = result.trace_group("posterior")[result.variable_name("flux_scale")]
+   for sector in result.model_metadata["sectors"]:
+       block = scales.sel(source=sector["flux_source"], drop=True)
+       print(sector["name"], block.mean().item())
 
-With ``output_format="inv_out"``, ``result.inv_out`` is the modern,
-serializable inversion product and is also saved when
-``save_inversion_output=True``. Multisector runs additionally populate
-``result.outputs`` and ``result.output_metadata`` with any requested sector
-diagnostics. Legacy output is intentionally unavailable for multisector runs;
-use ``inv_out``, ``basic``, ``paris``, or ``none`` according to the required
-downstream product.
+The model uses one two-dimensional sensitivity ``hx`` and one total flux
+concentration contribution ``mu``. Rectangular prepared ``H`` is packed only
+for model construction; the prepared inputs and retained basis remain unchanged.
+The first requested ``flux_sources`` entry supplies automatic basis weighting.
+Changing the order of ``sector_sources`` does not change that preparation choice.
+
+The returned value is the modern, serializable scientific result, including with
+``output_format="none"``. ``output_format="inv_out"`` requests its file export;
+``save_inversion_output`` and ``save_trace`` control optional exports. Current
+output policy is separate from the result's scientific context and inference
+metadata. Compute in-memory sector diagnostics explicitly:
+
+.. code-block:: python
+
+   from openghg_inversions.postprocessing.make_outputs import make_sector_flux_outputs
+
+   diagnostics = make_sector_flux_outputs(
+       result, stats=["mean"], include_scale_factors=True,
+       report_flux_on_inversion_grid=False,
+   )
+
+Copied runners call ``postprocess_multisector_outputs(result, output_spec)`` for
+configured products, then ``save_inversion_output(result, output_spec)`` for
+exports. Use ``inv_out``, ``paris``, or ``none`` for multisector runs;
+``basic`` and legacy HBMCMC output remain single-sector-only. See :doc:`staged_workflow` for
+reusing prepared inputs and saved samples with current product choices.
 
 Configuration and batch runs
 ----------------------------

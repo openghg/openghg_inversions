@@ -14,10 +14,6 @@ from openghg_inversions.inference.sampling import RhimeSampler, resolve_sampler
 
 
 RUNNERS = (
-    ("rhime.prepared", "run_rhime_from_prepared_inputs"),
-    ("rhime.nested", "run_rhime_nested_from_prepared_inputs"),
-    ("rhime.co2.co2_runner", "run_rhime_co2"),
-    ("rhime.co2.co2_cached_sigma_runner", "run_rhime_co2_cached_sigma"),
     ("rhime.co2.co2_o2_runner", "run_rhime_co2_o2_from_prepared_inputs"),
     ("rhime.co2.co2_o2_cached_sigma_runner", "run_rhime_co2_o2_cached_sigma_from_prepared_inputs"),
     ("experimental.ramsden2022.model", "run_ramsden_from_prepared_inputs"),
@@ -171,3 +167,15 @@ def test_posterior_selection_rejected_without_restricting_prediction() -> None:
     sampler.sample_kwargs = {"var_names": ["x_latent"]}
     with pytest.raises(ValueError, match="var_names"):
         sampler.sample(pm.Model())
+
+
+@pytest.mark.parametrize("invalid", [None, "unknown"])
+def test_nested_resolves_configured_sampler_before_prepared_inputs(invalid):
+    """Nested inference selection precedes the supplied preparation boundary."""
+    from dataclasses import replace
+    from openghg_inversions.rhime import RhimeConfig, run_nested
+    from tests.test_staged_workflow import _params
+
+    config = RhimeConfig.from_params(_params(output_format="none"), multisector=False)
+    with pytest.raises(TypeError, match="Omit the optional sampler argument"):
+        run_nested(config=replace(config, sampler=invalid), prepared=object())

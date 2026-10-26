@@ -1,31 +1,47 @@
-# Pending HBMCMC retirement
+# HBMCMC retirement
 
 ## ADDED Requirements
 
-### Requirement: HBMCMC is completely removed in 0.9
+### Requirement: HBMCMC is unavailable in the modern distribution
 
-Version 0.9 SHALL remove the entire `openghg_inversions.hbmcmc` subpackage,
-including the executable wrapper, compatibility adapters and legacy data/basis
-utilities within that subpackage. Separately supported `basis.compatibility`
-adapters retain their own schedules and SHALL NOT depend on HBMCMC. No import aliases, forwarding shims or entry points SHALL preserve
-that namespace. Supported modern workflows SHALL continue independently.
+The modern wheel and source distribution SHALL contain no
+`openghg_inversions.hbmcmc` subpackage, executable wrapper, configuration adapter
+or legacy data/basis utility. No import alias, re-export, forwarding shim or
+executable entry point SHALL recreate that namespace. Modern execution SHALL NOT
+import or invoke migration tooling.
 
-Migration guidance SHALL distinguish 0.8 isolation from complete 0.9 removal,
-list modern replacements for retained workflows, and direct users needing
-legacy-only utilities or unsupported historical artifacts to a compatible older
-release. It SHALL distinguish removals from unrelated 0.9 deprecations without
-inventing a removal date for those other features.
+Modern runner/acquisition boundaries SHALL accept canonical options and reject
+the historical spellings and output-format aliases enumerated in
+[Compatible public adapters and scientific choices](../../../../specs/rhime-configuration/spec.md#requirement-compatible-public-adapters-and-scientific-choices)
+through ordinary unsupported-option validation before scientific work.
+Every explicit `use_tracer` occurrence SHALL be unsupported, regardless of value;
+omission SHALL remain valid without enabling tracer execution.
 
-#### Scenario: Install the 0.9 distribution
+Public Python names SHALL follow only the finite
+[five-alias retirement](../../../../specs/rhime-model-selection/spec.md#requirement-retire-named-python-aliases).
+Installed commands SHALL use the canonical `rhime` routes in
+[Bounded installed-command retirement](../../../../specs/rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement).
+Other Python names, canonical signatures, result contents and scientific meanings
+SHALL retain their separately specified contracts.
 
-- **WHEN** a user installs the 0.9 wheel or source distribution
+Historical observations and canonical scientific coverage SHALL retain the
+[migration evidence guarantees](../../../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
+Modern `output_format="legacy"`, saved `InversionOutput` exports, exact artifact
+destinations and independently supported basis capabilities SHALL remain
+available. Supported artifact formats and versions SHALL follow their owning
+codec contracts, without implied historical-format compatibility from Python
+naming changes.
+
+#### Scenario: Install the modern distribution
+
+- **WHEN** a user installs the modern wheel or source distribution
 - **THEN** it contains no HBMCMC subpackage or executable entry point
-- **AND** the HBMCMC module path cannot be imported through a compatibility shim
-- **AND** modern workflows and separately supported output formats remain usable
+- **AND** the HBMCMC module path cannot resolve through a compatibility shim
+- **AND** modern workflows and independently supported output formats remain usable
 
-#### Scenario: Follow the 0.8 migration guidance
+#### Scenario: Execute with canonical choices
 
-- **WHEN** a user reviews the legacy migration documentation before upgrading
-- **THEN** complete HBMCMC removal is explicitly listed for 0.9
-- **AND** RHIME execution and prepared-input/basis artifacts are identified where applicable
-- **AND** unsupported legacy-only operations are identified without promising new codecs
+- **WHEN** a caller supplies supported canonical modern choices
+- **THEN** normal execution performs no HBMCMC or migration-tool translation
+- **AND** old request spellings and every explicit `use_tracer` occurrence are rejected before scientific work
+- **AND** independent scientific and artifact capabilities remain available

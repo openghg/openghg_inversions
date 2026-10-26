@@ -165,6 +165,12 @@ jobs:
 
       - name: Assemble preview and browsing instructions
         run: |
+          # download-artifact extracts a lone artifact directly into its destination.
+          if [ -f builds/index.html ]; then
+            mv builds docs-preview-build-devel
+            mkdir builds
+            mv docs-preview-build-devel builds/
+          fi
           for BUILD in builds/docs-preview-build-*; do
             VERSION=${BUILD##*/}
             VERSION=${VERSION#docs-preview-build-}

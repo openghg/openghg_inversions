@@ -10,7 +10,6 @@ from collections.abc import Callable, Mapping
 from openghg_inversions.inference.diagnostics import posterior_summary
 import numpy as np
 
-from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.serialization import load_trace, reset_serialisation_multiindexes
 
 from ._stage_artifacts import (
@@ -18,6 +17,7 @@ from ._stage_artifacts import (
     write_json as _write_json,
     _output_path,
     _stage_output_directory,
+    reference,
 )
 from ._stage_authentication import _load_stage_manifest
 
@@ -153,7 +153,7 @@ def _validate_diagnostic_thresholds(
 
 def diagnose_rhime_stage(
     *,
-    posterior: str | Path,
+    posterior: str | Path | None = None,
     output_dir: str | Path,
     sample_manifest: str | Path | None = None,
     check_output: str | Path | None = None,
@@ -163,10 +163,14 @@ def diagnose_rhime_stage(
     max_divergences: int = 0,
     stage: str = "posterior",
 ) -> dict[str, Any]:
-    """Calculate convergence from the supplied posterior.
+    """Calculate convergence from a posterior path or current sample manifest.
 
     An optional sample manifest supplies descriptive run context, without
-    authenticating the posterior file.
+    authenticating the posterior file. When ``posterior`` is omitted, resolve
+    its reference beside the sample manifest. Diagnosis needs no preparation,
+    model construction or inference; explicit posterior paths take precedence.
+    A draw diverges when either its ordinary or cached-amplitude NUTS flag is
+    true. Missing both flags leaves divergence assessment unknown.
     """
     stage = _check_stage(stage)
     _validate_diagnostic_thresholds(
@@ -175,10 +179,14 @@ def diagnose_rhime_stage(
         min_tail_ess=min_tail_ess,
         max_divergences=max_divergences,
     )
-    posterior_path = Path(posterior).resolve()
     sample_contract = None
     if sample_manifest is not None:
-        _, sample_contract = _load_stage_manifest(sample_manifest, stage="sample")
+        manifest_path, sample_contract = _load_stage_manifest(sample_manifest, stage="sample")
+        if posterior is None:
+            posterior = reference(manifest_path, sample_contract.get("posterior"))
+    if posterior is None:
+        raise ValueError("Pass a posterior path or a current sample manifest containing its reference.")
+    posterior_path = Path(posterior).resolve()
     idata = load_trace(posterior_path)
     summary = posterior_summary(idata["posterior"].to_dataset())
     destination = _stage_output_directory(output_dir)
@@ -230,9 +238,15 @@ def diagnose_rhime_stage(
     tail_ess, tail_ess_variable, unassessable_tail_ess = finite_extreme("ess_tail", "min")
     posterior_group = idata["posterior"].to_dataset() if "posterior" in idata.children else None
     sample_stats = idata["sample_stats"].to_dataset() if "sample_stats" in idata.children else None
+    diverging = None
+    if sample_stats is not None:
+        for name in ("diverging", "sigma_nuts_diverging"):
+            if name in sample_stats:
+                flags = sample_stats[name].astype(bool)
+                diverging = flags if diverging is None else diverging | flags
     divergences_by_chain = (
-        np.asarray(sample_stats["diverging"].sum("draw").values, dtype=int).tolist()
-        if sample_stats is not None and "diverging" in sample_stats
+        np.asarray(diverging.sum("draw").values, dtype=int).tolist()
+        if diverging is not None
         else None
     )
     divergences: int | None = sum(divergences_by_chain) if divergences_by_chain is not None else None
@@ -289,23 +303,5 @@ def diagnose_rhime_stage(
         artifact_paths=[_artifact_path(summary_path)],
         stage=stage,
     )
-    check_path = _write_json(_output_path(destination, check_output, "sampler-convergence.json"), result)
-    if (
-        sample_contract is not None
-        and sample_contract.get("effective_configuration", {}).get("model") == "co2"
-    ):
-        _write_json(
-            destination / "diagnose-manifest.json",
-            {
-                "schema_version": 1,
-                "producer": "openghg_inversions",
-                "stage": "diagnose",
-                "configuration_identity": sample_contract.get("configuration_identity"),
-                "ogi": installed_ogi_provenance(),
-                "artifacts": {
-                    "diagnostics": _artifact_path(summary_path),
-                    "check": _artifact_path(check_path),
-                },
-            },
-        )
+    _write_json(_output_path(destination, check_output, "sampler-convergence.json"), result)
     return result

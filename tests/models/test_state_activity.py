@@ -31,11 +31,8 @@ from openghg_inversions.models import (
 from openghg_inversions.models.components import add_linear_component, resolve_model_variable
 from openghg_inversions.models.components import add_state_vector
 from openghg_inversions.observation_error import resolve_aggregation_error
-from openghg_inversions.rhime.multisector import (
-    _prepare_multisector_flux_components,
-    build_multisector_rhime_model as _build_multisector_model,
-)
-from openghg_inversions.rhime.specs import FixedErrorSettings, PollutionEventSettings, SectorSpec
+from openghg_inversions.rhime.specs import FixedErrorSettings, PollutionEventSettings, RhimeModelSpec, SectorSpec
+from tests.multisector_model_helpers import build_multisector_graph
 from tests.standard_model_helpers import build_standard_graph as _build_standard_model
 from openghg_inversions.serialization import load_inferencedata, save_inferencedata
 from openghg_inversions.sigma import SigmaAlignment
@@ -82,20 +79,6 @@ def build_rhime_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
     """Adapt test datasets to the standard builder's named-array contract."""
     _select_pollution_event_likelihood(inputs, kwargs)
     return _build_standard_model(
-        inputs["H"],
-        observations=inputs["mf"],
-        observation_error=inputs["mf_error"],
-        aggregation_error=resolve_aggregation_error(inputs, "none"),
-        minimum_error=inputs.get("min_error"),
-        boundary_sensitivity=inputs.get("H_bc"),
-        **kwargs,
-    )
-
-
-def build_rhime_multisector_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
-    """Adapt test datasets to the multisector builder's named-array contract."""
-    _select_pollution_event_likelihood(inputs, kwargs)
-    return _build_multisector_model(
         inputs["H"],
         observations=inputs["mf"],
         observation_error=inputs["mf_error"],
@@ -689,9 +672,9 @@ def test_multisector_rhime_can_freeze_a_sector_and_use_array_priors() -> None:
         coords={"region": ["inner-b", "outer-a", "zero", "inner-a"]},
     )
 
-    model = build_rhime_multisector_model(
-        inputs,
-        sigma_alignment=_sigma_alignment(inputs),
+    model_spec = RhimeModelSpec(
+        species="ch4",
+        domain="EUROPE",
         sectors=(
             SectorSpec(
                 name="FF",
@@ -708,20 +691,22 @@ def test_multisector_rhime_can_freeze_a_sector_and_use_array_priors() -> None:
             ),
         ),
         use_bc=False,
-        no_model_error=True,
+        likelihood=FixedErrorSettings(),
     )
+    model = build_multisector_graph(inputs, model_spec)
 
     assert "x_ff_active" not in model.named_vars
     assert "x_ocean_active" in model.named_vars
-    np.testing.assert_allclose(model.named_vars["x_ff"].eval(), np.ones(4))
-    assert model.named_vars["x_ocean"].eval().shape == (4,)
-    assert model.named_vars["mu_ff"].eval().shape == (2,)
-    assert model.named_vars["mu_ocean"].eval().shape == (2,)
-    assert "mu" not in model.named_vars
+    state, mean = pm.draw([model["x"], model["mu"]], random_seed=42)
+    np.testing.assert_allclose(state[:4], np.ones(4))
+    assert state.shape == (8,)
+    np.testing.assert_allclose(mean, h.values @ state[:4] + 2.0 * h.values @ state[4:])
+    np.testing.assert_allclose(model["x_ocean_prior_mu"].get_value(), [1.1, 1.2, 1.3, 1.4])
+    assert not {"mu_ff", "mu_ocean", "hx_ff", "hx_ocean"}.intersection(model.named_vars)
 
 
-def test_multisector_flux_preparation_applies_sector_override_and_shared_activity() -> None:
-    """Flux preparation applies an override and the shared fallback directly."""
+def test_multisector_model_applies_sector_override_and_shared_activity() -> None:
+    """The graph uses sector-specific fixed states and the shared fallback."""
     h = _sensitivity()
     multi_h = xr.concat(
         [h.expand_dims(source=["ff-source"]), (2.0 * h).expand_dims(source=["ocean-source"])],
@@ -743,17 +728,18 @@ def test_multisector_flux_preparation_applies_sector_override_and_shared_activit
         ),
     )
 
-    components = _prepare_multisector_flux_components(
-        multi_h,
-        sectors,
+    model_spec = RhimeModelSpec(
+        species="ch4",
+        domain="EUROPE",
+        sectors=sectors,
+        use_bc=False,
+        likelihood=FixedErrorSettings(),
         state_activity=StateActivity(active=False, fixed_value=3.0),
     )
+    model = build_multisector_graph(_model_inputs(multi_h), model_spec)
 
-    ff_sector, _, _, ff_activity = components[0]
-    ocean_sector, _, _, ocean_activity = components[1]
-    assert ff_sector is sectors[0]
-    assert ocean_sector is sectors[1]
-    assert not ff_activity.active.any()
-    assert not ocean_activity.active.any()
-    np.testing.assert_allclose(ff_activity.fixed_value, 2.0)
-    np.testing.assert_allclose(ocean_activity.fixed_value, 3.0)
+    assert not any(rv.name.startswith("x_") for rv in model.free_RVs)
+    state, mean = pm.draw([model["x"], model["mu"]], random_seed=42)
+    np.testing.assert_allclose(state[:4], 2.0)
+    np.testing.assert_allclose(state[4:], 3.0)
+    np.testing.assert_allclose(mean, h.values.sum(axis=1) * 8.0)
