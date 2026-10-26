@@ -468,7 +468,9 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html">openghg_inversions.rhime.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.ini.html">openghg_inversions.rhime.ini</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.likelihood_inputs.html">openghg_inversions.rhime.likelihood_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.materialization.html">openghg_inversions.rhime.materialization</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.model_inputs.html">openghg_inversions.rhime.model_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector.html">openghg_inversions.rhime.multisector</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector_stages.html">openghg_inversions.rhime.multisector_stages</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.nested.html">openghg_inversions.rhime.nested</a></li>
@@ -582,7 +584,7 @@ defaults; scientific callable signatures do not define the external schema.</p>
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">DataConfig</span></span><span class="sig-paren">(</span>
 
 <dl>
-<dd><em class="sig-param"><span class="n"><span class="pre">*</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">site_options</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">species</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span></em>,</dd>
@@ -612,10 +614,7 @@ defaults; scientific callable signatures do not define the external schema.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">filters</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">fix_basis_outer_regions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">averaging_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">bc_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">basis_output_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">min_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">min_error_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">flux_non_finite_check</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'lazy'</span></span></em>,</dd>
 </dl>
 
@@ -804,7 +803,8 @@ inactive groups; each selected resolver owns its value validation.</p>
 <span class="sig-name descname"><span class="pre">resolve_model_options</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.params.resolve_model_options" title="Link to this definition">#</a></dt>
 <dd><p>Bind raw model choices to authoritative acquisition and preparation choices.</p>
 <p>Omitted BC use inherits the data configuration. Explicit BC use requires prepared BC
-inputs; repeated temporal or source facts must agree with the data configuration.</p>
+inputs; repeated source facts must agree with the data configuration. BC
+periods and likelihood floors remain independently selectable model choices.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">

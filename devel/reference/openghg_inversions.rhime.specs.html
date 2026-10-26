@@ -468,7 +468,9 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html">openghg_inversions.rhime.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.ini.html">openghg_inversions.rhime.ini</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.likelihood_inputs.html">openghg_inversions.rhime.likelihood_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.materialization.html">openghg_inversions.rhime.materialization</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.model_inputs.html">openghg_inversions.rhime.model_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector.html">openghg_inversions.rhime.multisector</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector_stages.html">openghg_inversions.rhime.multisector_stages</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.nested.html">openghg_inversions.rhime.nested</a></li>
@@ -593,6 +595,8 @@
 <dd><em class="sig-param"><span class="n"><span class="pre">sigma_freq_anchor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">pollution_events_from_obs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">power</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.99</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">min_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">min_error_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.specs.PollutionEventSettings" title="Link to this definition">#</a></dt>
@@ -609,15 +613,11 @@ one period.</p></li>
 <li><p><strong>pollution_events_from_obs</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Derive pollution events from observations
 after removing the baseline instead of from modelled pollution.</p></li>
 <li><p><strong>power</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a>) – Exponent or prior used in pollution-event error scaling.</p></li>
+<li><p><strong>min_error</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'percentile'</em><em>, </em><em>'residual'</em><em>] </em><em>| </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>float</em><em>] </em><em>| </em><em>None</em><em> | </em><em>int</em><em> | </em><em>float</em>) – Numeric, site-specific, or calculated minimum total-error floor.</p></li>
+<li><p><strong>min_error_options</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a><em>]</em>) – Options for calculated floors, defaulting to pooled sites.</p></li>
 </ul>
 </dd>
 </dl>
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.specs.PollutionEventSettings.required_prepared_inputs">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">required_prepared_inputs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.rhime.specs.PollutionEventSettings.required_prepared_inputs" title="Link to this definition">#</a></dt>
-<dd><p>Return prepared arrays owned by this likelihood.</p>
-</dd></dl>
-
 </dd></dl>
 
 <dl class="py class">
@@ -630,6 +630,8 @@ after removing the baseline instead of from modelled pollution.</p></li>
 <dd><em class="sig-param"><span class="n"><span class="pre">sigma_per_site</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">sigma_freq_anchor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">use_minimum_error_floor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">min_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">min_error_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.specs.AdditiveSigmaSettings" title="Link to this definition">#</a></dt>
@@ -643,17 +645,12 @@ after removing the baseline instead of from modelled pollution.</p></li>
 one period.</p></li>
 <li><p><strong>sigma_per_site</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether model error varies by observation site.</p></li>
 <li><p><strong>sigma_freq_anchor</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.15)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional anchor for fixed-duration periods.</p></li>
-<li><p><strong>use_minimum_error_floor</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Apply the prepared historical minimum total-
-error floor.</p></li>
+<li><p><strong>use_minimum_error_floor</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Apply a minimum total-error floor.</p></li>
+<li><p><strong>min_error</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'percentile'</em><em>, </em><em>'residual'</em><em>] </em><em>| </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>float</em><em>] </em><em>| </em><em>None</em><em> | </em><em>int</em><em> | </em><em>float</em>) – Numeric, site-specific, or calculated minimum total-error floor.</p></li>
+<li><p><strong>min_error_options</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a><em>]</em>) – Options for calculated floors, defaulting to pooled sites.</p></li>
 </ul>
 </dd>
 </dl>
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.specs.AdditiveSigmaSettings.required_prepared_inputs">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">required_prepared_inputs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.rhime.specs.AdditiveSigmaSettings.required_prepared_inputs" title="Link to this definition">#</a></dt>
-<dd><p>Return prepared arrays owned by this likelihood.</p>
-</dd></dl>
-
 </dd></dl>
 
 <dl class="py class">
@@ -663,12 +660,6 @@ error floor.</p></li>
 <p>Serializable selection of reported observation error only.</p>
 <dl class="field-list simple">
 </dl>
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.specs.FixedErrorSettings.required_prepared_inputs">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">required_prepared_inputs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.rhime.specs.FixedErrorSettings.required_prepared_inputs" title="Link to this definition">#</a></dt>
-<dd><p>Return prepared arrays owned by this likelihood.</p>
-</dd></dl>
-
 </dd></dl>
 
 <dl class="py function">
@@ -738,6 +729,8 @@ fixing exactly-zero sensitivity columns to one.</p></li>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_freq_anchor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">likelihood</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">aggregation_error_mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'none'</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -756,6 +749,10 @@ output naming.</p></li>
 <li><p><strong>sectors</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><em>tuple</em></a><em>[</em><a class="reference internal" href="#openghg_inversions.rhime.specs.SectorSpec" title="openghg_inversions.rhime.specs.SectorSpec"><em>SectorSpec</em></a><em>, </em><em>...</em><em>]</em>) – Flux sectors included in the model. Each sector is optimized
 separately and is normally backed by one OpenGHG flux <code class="docutils literal notranslate"><span class="pre">source</span></code>.</p></li>
 <li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether boundary-condition scaling is included.</p></li>
+<li><p><strong>bc_freq</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Boundary-condition scaling period; <code class="docutils literal notranslate"><span class="pre">None</span></code> uses one period.</p></li>
+<li><p><strong>bc_freq_anchor</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.15)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Anchor for fixed-duration boundary-condition periods,
+normalized to an ISO string (UTC for timezone-aware values).
+<code class="docutils literal notranslate"><span class="pre">None</span></code> anchors periods to the earliest retained observation timestamp.</p></li>
 <li><p><strong>likelihood</strong> (<a class="reference internal" href="#openghg_inversions.rhime.specs.PollutionEventSettings" title="openghg_inversions.rhime.specs.PollutionEventSettings"><em>PollutionEventSettings</em></a><em> | </em><a class="reference internal" href="#openghg_inversions.rhime.specs.AdditiveSigmaSettings" title="openghg_inversions.rhime.specs.AdditiveSigmaSettings"><em>AdditiveSigmaSettings</em></a><em> | </em><a class="reference internal" href="#openghg_inversions.rhime.specs.FixedErrorSettings" title="openghg_inversions.rhime.specs.FixedErrorSettings"><em>FixedErrorSettings</em></a><em> | </em><em>None</em>) – Resolved built-in likelihood settings, or <code class="docutils literal notranslate"><span class="pre">None</span></code> when a
 Python-only custom likelihood owns that step.</p></li>
 <li><p><strong>add_offset</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether model-data offsets are included.</p></li>
@@ -766,9 +763,9 @@ model; other modes are an explicit opt-in.</p></li>
 <li><p><strong>offset_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Prior specification for optional offsets.</p></li>
 <li><p><strong>offset_args</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Extra keyword arguments forwarded to the offset component.</p></li>
 <li><p><strong>bc_state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional active/fixed policy for the boundary-
-condition scaling vector. <code class="docutils literal notranslate"><span class="pre">None</span></code> preserves the ordinary fully
-sampled BC graph without zero pruning. Supplying a policy opts into
-active/fixed BC construction.</p></li>
+condition scaling vector. <code class="docutils literal notranslate"><span class="pre">None</span></code> samples states with nonzero
+sensitivity and retains fixed values for structurally absent states.
+Supplying a policy can fix or group additional states.</p></li>
 <li><p><strong>state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional labelled active/fixed state policy shared by
 flux sectors. The default retains exact-zero pruning.</p></li>
 </ul>
@@ -1092,18 +1089,9 @@ Format and filename-convention values are case-insensitive.</p></li>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.normalise_optional_mapping"><code class="docutils literal notranslate"><span class="pre">normalise_optional_mapping()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.PollutionEventSettings"><code class="docutils literal notranslate"><span class="pre">PollutionEventSettings</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.PollutionEventSettings.required_prepared_inputs"><code class="docutils literal notranslate"><span class="pre">PollutionEventSettings.required_prepared_inputs</span></code></a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.AdditiveSigmaSettings"><code class="docutils literal notranslate"><span class="pre">AdditiveSigmaSettings</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.AdditiveSigmaSettings.required_prepared_inputs"><code class="docutils literal notranslate"><span class="pre">AdditiveSigmaSettings.required_prepared_inputs</span></code></a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.FixedErrorSettings"><code class="docutils literal notranslate"><span class="pre">FixedErrorSettings</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.FixedErrorSettings.required_prepared_inputs"><code class="docutils literal notranslate"><span class="pre">FixedErrorSettings.required_prepared_inputs</span></code></a></li>
-</ul>
-</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.PollutionEventSettings"><code class="docutils literal notranslate"><span class="pre">PollutionEventSettings</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.AdditiveSigmaSettings"><code class="docutils literal notranslate"><span class="pre">AdditiveSigmaSettings</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.FixedErrorSettings"><code class="docutils literal notranslate"><span class="pre">FixedErrorSettings</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.make_likelihood_settings"><code class="docutils literal notranslate"><span class="pre">make_likelihood_settings()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.SectorSpec"><code class="docutils literal notranslate"><span class="pre">SectorSpec</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.RhimeModelSpec"><code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code></a><ul class="nav section-nav flex-column">

@@ -468,7 +468,9 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html">openghg_inversions.rhime.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.ini.html">openghg_inversions.rhime.ini</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.likelihood_inputs.html">openghg_inversions.rhime.likelihood_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.materialization.html">openghg_inversions.rhime.materialization</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.model_inputs.html">openghg_inversions.rhime.model_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector.html">openghg_inversions.rhime.multisector</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector_stages.html">openghg_inversions.rhime.multisector_stages</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.nested.html">openghg_inversions.rhime.nested</a></li>
@@ -591,7 +593,9 @@ sensitivities must have exactly matching labelled state coordinates. A ratio may
 be applied directly to a ratio-free tracer sensitivity, or interpreted as a
 multiplier when the sensitivity already includes an explicit reference ratio. Boundary states
 are optional and independent by gas. The caller is responsible for consistent
-units; this module performs no retrieval, conversion, or postprocessing.</p>
+units for observations, errors, sensitivities, and prior scales. The shared
+residual-floor estimator converts modelled concentration operands to observation
+units. This module performs no retrieval or postprocessing.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RamsdenPreparedInputs</span></span><span class="sig-paren">(</span>
@@ -607,8 +611,8 @@ units; this module performs no retrieval, conversion, or postprocessing.</p>
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Canonical primary-gas and tracer inputs for one joint inversion.</p>
-<p>Each dataset requires <code class="docutils literal notranslate"><span class="pre">H</span></code>, <code class="docutils literal notranslate"><span class="pre">mf</span></code>, <code class="docutils literal notranslate"><span class="pre">mf_error</span></code>, <code class="docutils literal notranslate"><span class="pre">min_error</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">site_indicator</span></code> on <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>; <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> is required when that
+<p>Each dataset requires <code class="docutils literal notranslate"><span class="pre">H</span></code>, <code class="docutils literal notranslate"><span class="pre">mf</span></code>, and <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> on <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>,
+with observation-aligned <code class="docutils literal notranslate"><span class="pre">site</span></code> labels; <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> is required when that
 channel’s boundary component is enabled. Observation axes may differ.
 Coupled sector designs must have exactly matching labelled state
 coordinates and, for positional numeric labels, retained basis objects.</p>
@@ -647,6 +651,8 @@ every coupled sector.</p></li>
 <dd><em class="sig-param"><span class="n"><span class="pre">sigma_frequency_anchor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">min_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">min_error_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec" title="Link to this definition">#</a></dt>
@@ -668,6 +674,13 @@ multiplied by the modelled enhancement.</p></li>
 <li><p><strong>sigma_frequency</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional pandas-compatible frequency for model-error
 periods.</p></li>
 <li><p><strong>sigma_frequency_anchor</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.15)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional anchor for fixed-duration periods.</p></li>
+<li><p><strong>min_error</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'percentile'</em><em>, </em><em>'residual'</em><em>] </em><em>| </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>float</em><em>] </em><em>| </em><em>None</em><em> | </em><em>int</em><em> | </em><em>float</em>) – Minimum total-error floor in this channel’s observation units:
+a scalar, site mapping, <code class="docutils literal notranslate"><span class="pre">&quot;residual&quot;</span></code>, or <code class="docutils literal notranslate"><span class="pre">&quot;percentile&quot;</span></code>. <code class="docutils literal notranslate"><span class="pre">None</span></code>
+retains an explicitly supplied dataset <code class="docutils literal notranslate"><span class="pre">min_error</span></code>, or uses zero
+for the historical absolute-error likelihood when none is supplied.
+An explicit setting overrides any dataset floor.</p></li>
+<li><p><strong>min_error_options</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – Options for calculated floors; <code class="docutils literal notranslate"><span class="pre">by_site</span></code> controls
+residual estimation and defaults to <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
 <li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether this channel has an independent boundary component.</p></li>
 <li><p><strong>bc_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Prior mapping for the state that scales this channel’s
 <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> design.</p></li>
@@ -771,8 +784,8 @@ and the two namespaced likelihood and predictive variables.</p></li>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs" title="openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs"><em>RamsdenPreparedInputs</em></a>) – Two canonical gas datasets. Each requires <code class="docutils literal notranslate"><span class="pre">H</span></code>,
-<code class="docutils literal notranslate"><span class="pre">mf</span></code>, <code class="docutils literal notranslate"><span class="pre">mf_error</span></code>, <code class="docutils literal notranslate"><span class="pre">min_error</span></code>, and <code class="docutils literal notranslate"><span class="pre">site_indicator</span></code> on
-<code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>; <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> is required for enabled boundary states.
+<code class="docutils literal notranslate"><span class="pre">mf</span></code>, and <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> on <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>, with observation-aligned
+<code class="docutils literal notranslate"><span class="pre">site</span></code> labels; <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> is required for enabled boundary states.
 Observation coordinates may differ, but coupled sector state
 coordinates must match exactly.</p></li>
 <li><p><strong>model_spec</strong> (<a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec" title="openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec"><em>RamsdenModelSpec</em></a>) – Shared-state, ratio, likelihood, unit, and boundary
@@ -795,9 +808,11 @@ the declared reference ratio.</p></li>
 </dl>
 <p class="rubric">Notes</p>
 <p>This function builds a PyMC graph only. It performs no data retrieval,
-sampling, unit conversion, or postprocessing. Observation, error,
-sigma-prior, and forward-model values must already use each channel’s
-declared <code class="docutils literal notranslate"><span class="pre">observation_units</span></code>.</p>
+sampling, or postprocessing. Observation, error, sigma-prior, and
+forward-model values must already use each channel’s declared
+<code class="docutils literal notranslate"><span class="pre">observation_units</span></code>. The residual-floor estimator converts <code class="docutils literal notranslate"><span class="pre">mf_mod</span></code>
+and <code class="docutils literal notranslate"><span class="pre">bc_mod</span></code> to observation units. Calculated minimum-error operands
+must be eager; materialize them explicitly before calling this builder.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -829,7 +844,9 @@ posterior predictive sampling. Explicit <code class="docutils literal notranslat
 </dl>
 <p class="rubric">Notes</p>
 <p>This function samples the model and may run multiple chains. It does
-not retrieve data, convert units, or write postprocessed products.
+not retrieve data or write postprocessed products. Observations, errors,
+sensitivities, and priors must use the declared channel units; only
+modelled concentration operands for residual floors are converted.
 Sampling exceptions raised by
 <a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><code class="xref py py-class docutils literal notranslate"><span class="pre">RhimeSampler</span></code></a> are
 propagated.</p>

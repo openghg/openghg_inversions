@@ -35,6 +35,9 @@ The separate #954 aggregation-retirement comparison is also archived in Git:
 * `Aggregation retirement comparison
   <https://github.com/openghg/openghg_inversions/blob/678c8bb4c920ea38fedfd4e2e590a732dfa9ce12/tests/fixtures/migration_960/retirements/aggregation_filters_2026_10_23.json>`_.
 
+* `Model-input ownership comparison
+  <https://github.com/openghg/openghg_inversions/blob/a3dbf46c27e50101f6b00464b69c67c024c541a8/tests/fixtures/migration_960/retirements/model_inputs_2026_10_23.json>`_.
+
 These records preserve source revisions/hashes, original cases, dispositions and
 follow-up owners for review and future explicit migration work. They are not
 current expected behavior or proof of an executed scientific check. Dated paths
@@ -648,3 +651,17 @@ implementation. Neither this reconciliation nor Python naming imports #964's
 pending numerical changes, promotes the unfinished handoff programme or implies
 unsupported historical-format compatibility. Fresh acceptance is recorded in
 revision-specific tasks/PR evidence, separately from these source comparisons.
+
+
+Model-input ownership disposition, 26 October 2026
+---------------------------------------------------
+
+The #876 / PR #964 implementation builds on #974's canonical construction,
+provenance and BC basis setup and #971's generic supported-filter validation.
+Observation selection precedes missing-error derivation and imputation; named
+floors use retained rows; ordinary BC periods resolve at the model boundary.
+Prepared schema 2 contains reusable raw ordinary inputs and rejects older baked
+formats. Sample replay uses exact fitted operands without recalculation.
+Configuration, scientific inputs and prepared/sample handoffs retain their
+separate contracts. Fresh restack acceptance belongs to revision-specific tasks
+and PR evidence; historical archive records are not current expected behavior.

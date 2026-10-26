@@ -500,10 +500,33 @@ multisector graph lives beside <code class="xref py py-func docutils literal not
 </div>
 <p>The standard builder is <code class="docutils literal notranslate"><span class="pre">build_standard_model(model_inputs,</span> <span class="pre">model_spec,</span>
 <span class="pre">priors=...)</span></code> and returns the concrete model plus its output contract. It accepts
-already materialized numerical arrays and prior parameters. Call
-<code class="docutils literal notranslate"><span class="pre">materialize_standard_inputs(prepared,</span> <span class="pre">model_spec)</span></code> explicitly when these may
-be lazy; the helper computes selected inputs and enabled priors together. Builder
-construction does not execute a borrowed lazy graph or consume output choices.</p>
+already materialized model operands and prior parameters. Call
+<code class="docutils literal notranslate"><span class="pre">materialize_standard_inputs(prepared,</span> <span class="pre">model_spec)</span></code> for raw prepared inputs,
+including when their arrays are already eager. The helper computes selected
+inputs and enabled priors together, then resolves BC periods and any selected
+minimum-error floor. Multisector uses <code class="docutils literal notranslate"><span class="pre">materialize_multisector_inputs</span></code>.
+The generic <code class="docutils literal notranslate"><span class="pre">materialize_pymc_inputs</span></code> only materializes arrays and does not
+perform these recipe-specific calculations. Direct eager builders reject raw
+boundary operands; construction does not execute a borrowed lazy graph or
+consume output choices.</p>
+<p>The resolved Dataset is backend-neutral but specific to the selected model:
+<code class="docutils literal notranslate"><span class="pre">H_bc</span></code> contains fitted boundary periods, and <code class="docutils literal notranslate"><span class="pre">min_error</span></code> contains the floor
+selected by the likelihood. <code class="docutils literal notranslate"><span class="pre">resolve_model_inputs(eager_inputs,</span> <span class="pre">model_spec)</span></code>
+performs these scientific calculations without building a PyMC graph, so an
+analytic inversion can use the same boundary alignment. Its selected operands
+must already be eager; the family materializers arrange their joint execution
+with enabled priors before calling it.</p>
+<p><code class="docutils literal notranslate"><span class="pre">mf_error</span></code> is the prepared observation-error standard deviation and is carried
+through unchanged. Selection and observation-error imputation happen in
+scientific preparation; the selected likelihood separately prepares its minimum
+total-error floor. The resolver composes that likelihood-input operation with
+BC resolution.</p>
+<p>Pass the resolved Dataset to a builder with the same BC and consumed floor
+settings. Changing their frequency, anchor or floor policy requires resolving
+the raw preparation again; builders reject conflicting producer-recorded
+settings. Sigma periods remain a graph-time choice. Independently supplied final
+arrays without resolution provenance remain authoritative for direct builders;
+they do not request new temporal expansion or floor estimation.</p>
 </section>
 <section id="stability-contract">
 <span id="rhime-builder-stability"></span><h2>Stability contract<a class="headerlink" href="#stability-contract" title="Link to this heading">#</a></h2>
@@ -545,8 +568,9 @@ before construction. Select
 <code class="docutils literal notranslate"><span class="pre">mismatch_model=&quot;additive_sigma&quot;</span></code> for an absolute concentration-scale
 mismatch instead; this is a resolved model option and does not use the custom
 <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> extension point. Additive sigma does not select the
-prepared <code class="docutils literal notranslate"><span class="pre">min_error</span></code> input unless <code class="docutils literal notranslate"><span class="pre">use_minimum_error_floor=True</span></code> is also
-set. Aggregation error is disabled by default. Let
+model-owned <code class="docutils literal notranslate"><span class="pre">min_error</span></code> floor unless <code class="docutils literal notranslate"><span class="pre">use_minimum_error_floor=True</span></code> is also
+set. Named minimum-error estimates use observations retained after unusable rows
+are dropped. Aggregation error is disabled by default. Let
 <span class="math notranslate nohighlight">\(P\)</span> be the pollution event and let <code class="docutils literal notranslate"><span class="pre">sigma</span></code> be the observation-aligned
 fractional model-error parameter. With the default
 <code class="docutils literal notranslate"><span class="pre">pollution_events_from_obs=False</span></code>,</p>
@@ -684,13 +708,17 @@ config prior to request the API-default parameterization shown here.</p>
 <p>The default production builder constructs the graph in the same direct style
 shown below. A researcher does not need to construct a private plan to write an
 equivalent concrete single-flux model. The following uses public component
-helpers:</p>
+helpers. Here <code class="docutils literal notranslate"><span class="pre">inv_inputs</span></code> contains the selected raw inputs already
+materialized at an explicit boundary; the floor and fitted BC periods are model
+choices:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">add_linear_component</span><span class="p">,</span>
     <span class="n">prepare_linear_sensitivity</span><span class="p">,</span>
     <span class="n">registered_model</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models.pollution_event</span><span class="w"> </span><span class="kn">import</span> <span class="n">add_pollution_event_likelihood</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.boundary_sensitivity</span><span class="w"> </span><span class="kn">import</span> <span class="n">BoundaryAlignment</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.model_error</span><span class="w"> </span><span class="kn">import</span> <span class="n">MinimumError</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.observation_error</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve_aggregation_error</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.sigma</span><span class="w"> </span><span class="kn">import</span> <span class="n">SigmaAlignment</span>
 
@@ -714,7 +742,11 @@ helpers:</p>
     <span class="n">per_site</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="n">flux_sensitivity</span> <span class="o">=</span> <span class="n">prepare_linear_sensitivity</span><span class="p">(</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H"</span><span class="p">])</span>
-<span class="n">boundary_sensitivity</span> <span class="o">=</span> <span class="n">prepare_linear_sensitivity</span><span class="p">(</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H_bc"</span><span class="p">])</span>
+<span class="n">boundary</span> <span class="o">=</span> <span class="n">BoundaryAlignment</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span>
+    <span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H_bc"</span><span class="p">],</span> <span class="n">frequency</span><span class="o">=</span><span class="s2">"monthly"</span><span class="p">,</span> <span class="n">anchor_time</span><span class="o">=</span><span class="s2">"2021-01-01"</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">boundary_sensitivity</span> <span class="o">=</span> <span class="n">prepare_linear_sensitivity</span><span class="p">(</span><span class="n">boundary</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+<span class="n">minimum_error</span> <span class="o">=</span> <span class="n">MinimumError</span><span class="o">.</span><span class="n">from_observations</span><span class="p">(</span><span class="n">inv_inputs</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
 
 <span class="k">with</span> <span class="n">registered_model</span><span class="p">()</span> <span class="k">as</span> <span class="n">model</span><span class="p">:</span>
     <span class="n">flux</span> <span class="o">=</span> <span class="n">add_linear_component</span><span class="p">(</span>
@@ -741,7 +773,7 @@ helpers:</p>
     <span class="n">add_pollution_event_likelihood</span><span class="p">(</span>
         <span class="n">observations</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"mf"</span><span class="p">],</span>
         <span class="n">observation_error</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"mf_error"</span><span class="p">],</span>
-        <span class="n">minimum_error</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"min_error"</span><span class="p">],</span>
+        <span class="n">minimum_error</span><span class="o">=</span><span class="n">minimum_error</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
         <span class="n">aggregation_error</span><span class="o">=</span><span class="n">resolve_aggregation_error</span><span class="p">(</span><span class="n">inv_inputs</span><span class="p">,</span> <span class="s2">"none"</span><span class="p">),</span>
         <span class="n">mean</span><span class="o">=</span><span class="n">modelled_mean</span><span class="p">,</span>
         <span class="n">pollution_mean</span><span class="o">=</span><span class="n">pollution_mean</span><span class="p">,</span>

@@ -17,7 +17,7 @@ retrieving observations, building a model or sampling.
 The returned ``RhimeConfig`` is the complete requested configuration:
 
 * ``data`` is one ``DataConfig`` containing
-  ``species``, ``domain``, dates, stores, basis, filtering and error settings.
+  ``species``, ``domain``, dates, stores, basis, filtering and observation-error settings.
   ``data.site_options`` is one public ``SiteOptions`` record containing complete
   aligned tuples of requested sites and their selectors.
 * ``model`` is the existing ``RhimeModelSpec`` containing sectors, priors,
@@ -95,6 +95,22 @@ Grouped mappings use ``data``, ``model``, ``sampler`` and ``output``; the unship
 ``config.data`` and pass the acquired handoff with separately selected named
 arguments to scientific preparation. Preparation never retrieves data or exports
 a basis itself.
+
+``bc_freq`` and ``bc_freq_anchor`` belong to ``model``. Omitted frequency means
+one BC period; an omitted anchor uses the requested start date, whereas explicit
+``None`` uses the earliest retained observation timestamp. ``min_error`` and
+``min_error_options`` belong to the selected likelihood in ``model``. The
+pollution-event likelihood always uses its floor; additive sigma uses it only
+with ``use_minimum_error_floor=True``. Fixed-error and custom likelihoods do not
+accept these built-in floor options. Flat INI options are routed to these owners;
+placing them in a grouped ``data`` mapping is an error.
+
+Prepared inputs retain raw spatial BC sensitivities and ordinary observation
+data. Different compatible frequencies or floor choices reuse that preparation.
+Named floors are estimated after unusable observation rows are dropped, so they
+can differ from historical estimates made before row removal. Scalar and
+per-site floors retain their concentration units. The model boundary computes
+only the operands selected by its active components, together with enabled priors.
 
 INI files and overrides
 -----------------------
@@ -296,23 +312,26 @@ Direct retrieval APIs retain their scalar shorthand without requiring model,
 output or sampler settings. The acquisition-and-preparation convenience function
 ``prepare_rhime_inputs`` has been removed. For a complete inversion, use
 ``run_standard``; for custom preparation, call ``acquire_merged_data`` (or
-``MergedData.from_options``) followed by ``prepare_observation_errors``,
-``filter_observations``, ``openghg_inversions.basis.prepare_basis``,
+``MergedData.from_options``) followed by ``filter_observations``,
+``prepare_observation_errors``, ``openghg_inversions.basis.prepare_basis``,
 ``build_sensitivities`` and ``assemble_inputs``. These steps take the
 acquired per-site datasets and ``SiteOptions`` and return new mappings; the
 acquired ``MergedData`` never carries derived errors or filtered data.
+``averaging_error`` is a preparation choice: missing ``mf_error`` is derived
+from repeatability/variability after observation-selection filtering. Fallback
+estimates use only retained observations; rejected observations do not
+contribute through concentration spread or error median. Existing custom errors
+remain authoritative. ``averaging_period`` selects OpenGHG acquisition/resampling.
 The historical six-tuple retrieval wrapper is removed; use
-``MergedData.from_options`` for fresh acquisition from resolved selectors. ``averaging_error`` is a preparation choice: missing ``mf_error`` is derived
-from acquired repeatability/variability before temporal filtering or aggregation.
-Existing custom errors remain authoritative. ``averaging_period`` still selects
-OpenGHG acquisition/resampling. Acquisition stays in memory; persist the completed
-``PreparedInputs`` for reuse. Runners reuse a supplied ``merged_data``
-handoff before acquisition, bypassing store access. Before preparation, the merged
-owner checks known species, domain, date bounds and source layout against the
-request. Conflicts, including changed acquisition windows, raise without
-relabeling or selecting observations. Recorded selectors remain authoritative;
-unknown historical facts stay unknown. See :doc:`customising_rhime` for
-in-memory acquisition and :doc:`rhime` for saving and loading prepared inputs.
+``MergedData.from_options`` for fresh acquisition from resolved selectors.
+Acquisition stays in memory; persist completed ``PreparedInputs`` for reuse.
+Runners reuse a supplied ``merged_data`` handoff before acquisition, bypassing
+store access. Before preparation, the merged owner checks known species, domain,
+date bounds and source layout against the request. Conflicts, including changed
+acquisition windows, raise without relabeling or selecting observations.
+Recorded selectors remain authoritative; unknown historical facts stay unknown.
+See :doc:`customising_rhime` for in-memory acquisition and :doc:`rhime` for saving
+and loading prepared inputs.
 
 The requested configuration contains no acquired/prepared handoff.
 Merged and prepared handoffs describe the sites retained by acquisition and
@@ -335,10 +354,10 @@ values for an ordinary keyword call:
    merged.validate_for_preparation(
        **config.data.select("species", "domain", "start_date", "end_date", "split_by_sectors")
    )
-   with_errors = prepare_observation_errors(merged.site_data, averaging_error=config.data.averaging_error)
    filtered, site_options = filter_observations(
-       with_errors, merged.site_options, **config.data.select("filters")
+       merged.site_data, merged.site_options, **config.data.select("filters")
    )
+   filtered = prepare_observation_errors(filtered, averaging_error=config.data.averaging_error)
 
 ``config.data.select(*names)`` returns a fresh dictionary of the named attributes.
 Use ``config.model`` and ``config.output`` for their separate owners;

@@ -482,7 +482,7 @@ retrieving observations, building a model or sampling.
 The returned <code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code> is the complete requested configuration:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">data</span></code> is one <code class="docutils literal notranslate"><span class="pre">DataConfig</span></code> containing
-<code class="docutils literal notranslate"><span class="pre">species</span></code>, <code class="docutils literal notranslate"><span class="pre">domain</span></code>, dates, stores, basis, filtering and error settings.
+<code class="docutils literal notranslate"><span class="pre">species</span></code>, <code class="docutils literal notranslate"><span class="pre">domain</span></code>, dates, stores, basis, filtering and observation-error settings.
 <code class="docutils literal notranslate"><span class="pre">data.site_options</span></code> is one public <code class="docutils literal notranslate"><span class="pre">SiteOptions</span></code> record containing complete
 aligned tuples of requested sites and their selectors.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">model</span></code> is the existing <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code> containing sectors, priors,
@@ -553,6 +553,20 @@ Grouped mappings use <code class="docutils literal notranslate"><span class="pre
 <code class="docutils literal notranslate"><span class="pre">config.data</span></code> and pass the acquired handoff with separately selected named
 arguments to scientific preparation. Preparation never retrieves data or exports
 a basis itself.</p>
+<p><code class="docutils literal notranslate"><span class="pre">bc_freq</span></code> and <code class="docutils literal notranslate"><span class="pre">bc_freq_anchor</span></code> belong to <code class="docutils literal notranslate"><span class="pre">model</span></code>. Omitted frequency means
+one BC period; an omitted anchor uses the requested start date, whereas explicit
+<code class="docutils literal notranslate"><span class="pre">None</span></code> uses the earliest retained observation timestamp. <code class="docutils literal notranslate"><span class="pre">min_error</span></code> and
+<code class="docutils literal notranslate"><span class="pre">min_error_options</span></code> belong to the selected likelihood in <code class="docutils literal notranslate"><span class="pre">model</span></code>. The
+pollution-event likelihood always uses its floor; additive sigma uses it only
+with <code class="docutils literal notranslate"><span class="pre">use_minimum_error_floor=True</span></code>. Fixed-error and custom likelihoods do not
+accept these built-in floor options. Flat INI options are routed to these owners;
+placing them in a grouped <code class="docutils literal notranslate"><span class="pre">data</span></code> mapping is an error.</p>
+<p>Prepared inputs retain raw spatial BC sensitivities and ordinary observation
+data. Different compatible frequencies or floor choices reuse that preparation.
+Named floors are estimated after unusable observation rows are dropped, so they
+can differ from historical estimates made before row removal. Scalar and
+per-site floors retain their concentration units. The model boundary computes
+only the operands selected by its active components, together with enabled priors.</p>
 </section>
 <section id="ini-files-and-overrides">
 <h2>INI files and overrides<a class="headerlink" href="#ini-files-and-overrides" title="Link to this heading">#</a></h2>
@@ -731,23 +745,26 @@ aligned values and checks their structural alignment. For example:</p>
 output or sampler settings. The acquisition-and-preparation convenience function
 <code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> has been removed. For a complete inversion, use
 <code class="docutils literal notranslate"><span class="pre">run_standard</span></code>; for custom preparation, call <code class="docutils literal notranslate"><span class="pre">acquire_merged_data</span></code> (or
-<code class="docutils literal notranslate"><span class="pre">MergedData.from_options</span></code>) followed by <code class="docutils literal notranslate"><span class="pre">prepare_observation_errors</span></code>,
-<code class="docutils literal notranslate"><span class="pre">filter_observations</span></code>, <code class="docutils literal notranslate"><span class="pre">openghg_inversions.basis.prepare_basis</span></code>,
+<code class="docutils literal notranslate"><span class="pre">MergedData.from_options</span></code>) followed by <code class="docutils literal notranslate"><span class="pre">filter_observations</span></code>,
+<code class="docutils literal notranslate"><span class="pre">prepare_observation_errors</span></code>, <code class="docutils literal notranslate"><span class="pre">openghg_inversions.basis.prepare_basis</span></code>,
 <code class="docutils literal notranslate"><span class="pre">build_sensitivities</span></code> and <code class="docutils literal notranslate"><span class="pre">assemble_inputs</span></code>. These steps take the
 acquired per-site datasets and <code class="docutils literal notranslate"><span class="pre">SiteOptions</span></code> and return new mappings; the
 acquired <code class="docutils literal notranslate"><span class="pre">MergedData</span></code> never carries derived errors or filtered data.
+<code class="docutils literal notranslate"><span class="pre">averaging_error</span></code> is a preparation choice: missing <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> is derived
+from repeatability/variability after observation-selection filtering. Fallback
+estimates use only retained observations; rejected observations do not
+contribute through concentration spread or error median. Existing custom errors
+remain authoritative. <code class="docutils literal notranslate"><span class="pre">averaging_period</span></code> selects OpenGHG acquisition/resampling.
 The historical six-tuple retrieval wrapper is removed; use
-<code class="docutils literal notranslate"><span class="pre">MergedData.from_options</span></code> for fresh acquisition from resolved selectors. <code class="docutils literal notranslate"><span class="pre">averaging_error</span></code> is a preparation choice: missing <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> is derived
-from acquired repeatability/variability before temporal filtering or aggregation.
-Existing custom errors remain authoritative. <code class="docutils literal notranslate"><span class="pre">averaging_period</span></code> still selects
-OpenGHG acquisition/resampling. Acquisition stays in memory; persist the completed
-<code class="docutils literal notranslate"><span class="pre">PreparedInputs</span></code> for reuse. Runners reuse a supplied <code class="docutils literal notranslate"><span class="pre">merged_data</span></code>
-handoff before acquisition, bypassing store access. Before preparation, the merged
-owner checks known species, domain, date bounds and source layout against the
-request. Conflicts, including changed acquisition windows, raise without
-relabeling or selecting observations. Recorded selectors remain authoritative;
-unknown historical facts stay unknown. See <a class="reference internal" href="customising_rhime.html"><span class="doc">Customising RHIME</span></a> for
-in-memory acquisition and <a class="reference internal" href="rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a> for saving and loading prepared inputs.</p>
+<code class="docutils literal notranslate"><span class="pre">MergedData.from_options</span></code> for fresh acquisition from resolved selectors.
+Acquisition stays in memory; persist completed <code class="docutils literal notranslate"><span class="pre">PreparedInputs</span></code> for reuse.
+Runners reuse a supplied <code class="docutils literal notranslate"><span class="pre">merged_data</span></code> handoff before acquisition, bypassing
+store access. Before preparation, the merged owner checks known species, domain,
+date bounds and source layout against the request. Conflicts, including changed
+acquisition windows, raise without relabeling or selecting observations.
+Recorded selectors remain authoritative; unknown historical facts stay unknown.
+See <a class="reference internal" href="customising_rhime.html"><span class="doc">Customising RHIME</span></a> for in-memory acquisition and <a class="reference internal" href="rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a> for saving
+and loading prepared inputs.</p>
 <p>The requested configuration contains no acquired/prepared handoff.
 Merged and prepared handoffs describe the sites retained by acquisition and
 filtering. If only TAC remains from a TAC/MHD request, the configuration
@@ -765,10 +782,10 @@ values for an ordinary keyword call:</p>
 <span class="n">merged</span><span class="o">.</span><span class="n">validate_for_preparation</span><span class="p">(</span>
     <span class="o">**</span><span class="n">config</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">"species"</span><span class="p">,</span> <span class="s2">"domain"</span><span class="p">,</span> <span class="s2">"start_date"</span><span class="p">,</span> <span class="s2">"end_date"</span><span class="p">,</span> <span class="s2">"split_by_sectors"</span><span class="p">)</span>
 <span class="p">)</span>
-<span class="n">with_errors</span> <span class="o">=</span> <span class="n">prepare_observation_errors</span><span class="p">(</span><span class="n">merged</span><span class="o">.</span><span class="n">site_data</span><span class="p">,</span> <span class="n">averaging_error</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">averaging_error</span><span class="p">)</span>
 <span class="n">filtered</span><span class="p">,</span> <span class="n">site_options</span> <span class="o">=</span> <span class="n">filter_observations</span><span class="p">(</span>
-    <span class="n">with_errors</span><span class="p">,</span> <span class="n">merged</span><span class="o">.</span><span class="n">site_options</span><span class="p">,</span> <span class="o">**</span><span class="n">config</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">"filters"</span><span class="p">)</span>
+    <span class="n">merged</span><span class="o">.</span><span class="n">site_data</span><span class="p">,</span> <span class="n">merged</span><span class="o">.</span><span class="n">site_options</span><span class="p">,</span> <span class="o">**</span><span class="n">config</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">"filters"</span><span class="p">)</span>
 <span class="p">)</span>
+<span class="n">filtered</span> <span class="o">=</span> <span class="n">prepare_observation_errors</span><span class="p">(</span><span class="n">filtered</span><span class="p">,</span> <span class="n">averaging_error</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">averaging_error</span><span class="p">)</span>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">config.data.select(*names)</span></code> returns a fresh dictionary of the named attributes.

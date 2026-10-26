@@ -468,7 +468,9 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html">openghg_inversions.rhime.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.ini.html">openghg_inversions.rhime.ini</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.likelihood_inputs.html">openghg_inversions.rhime.likelihood_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.materialization.html">openghg_inversions.rhime.materialization</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.model_inputs.html">openghg_inversions.rhime.model_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector.html">openghg_inversions.rhime.multisector</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector_stages.html">openghg_inversions.rhime.multisector_stages</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.nested.html">openghg_inversions.rhime.nested</a></li>
@@ -586,8 +588,8 @@ Integer <code class="docutils literal notranslate"><span class="pre">inv_inputs.
 project-schema positions into its <code class="docutils literal notranslate"><span class="pre">site</span></code> coordinate; they are distinct
 from CF compression-by-gathering indexes. The invariant is
 <code class="docutils literal notranslate"><span class="pre">site_metadata.site[site_indicator]</span> <span class="pre">==</span> <span class="pre">nmeasure.site</span></code>.
-<code class="docutils literal notranslate"><span class="pre">site_names</span></code> remains available in memory for existing model code, but is
-regenerated from <code class="docutils literal notranslate"><span class="pre">site_metadata</span></code> rather than serialized.</p>
+<code class="docutils literal notranslate"><span class="pre">site_indicator</span></code> and <code class="docutils literal notranslate"><span class="pre">site_names</span></code> remain available in memory but are
+regenerated from measurement labels and <code class="docutils literal notranslate"><span class="pre">site_metadata</span></code> rather than serialized.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -675,7 +677,7 @@ reconstructing the prepared inputs.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.from_datatree">
 <span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.from_datatree" title="Link to this definition">#</a></dt>
-<dd><p>Construct prepared RHIME inputs from a version-1 DataTree.</p>
+<dd><p>Construct prepared RHIME inputs from the current raw-input DataTree.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>dt</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a>) – DataTree using the <code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime_prepared_inputs</span></code>

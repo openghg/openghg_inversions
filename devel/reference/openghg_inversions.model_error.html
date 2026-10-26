@@ -468,7 +468,9 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html">openghg_inversions.rhime.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.ini.html">openghg_inversions.rhime.ini</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.likelihood_inputs.html">openghg_inversions.rhime.likelihood_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.materialization.html">openghg_inversions.rhime.materialization</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.model_inputs.html">openghg_inversions.rhime.model_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector.html">openghg_inversions.rhime.multisector</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector_stages.html">openghg_inversions.rhime.multisector_stages</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.nested.html">openghg_inversions.rhime.nested</a></li>
@@ -567,12 +569,46 @@
                   
   <section id="module-openghg_inversions.model_error">
 <span id="openghg-inversions-model-error"></span><h1>openghg_inversions.model_error<a class="headerlink" href="#module-openghg_inversions.model_error" title="Link to this heading">#</a></h1>
-<p>Normalize, calculate, and align minimum model-error values.</p>
+<p>Normalize, calculate, and align minimum total-error floors.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.model_error.minimum_error_input_names">
+<span class="sig-name descname"><span class="pre">minimum_error_input_names</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">observations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.model_error.minimum_error_input_names" title="Link to this definition">#</a></dt>
+<dd><p>Select estimator operands, including optional modelled BC concentration.</p>
+<p>Site and time coordinates travel with <code class="docutils literal notranslate"><span class="pre">mf</span></code>. Consumers materialize these
+arrays and their auxiliary coordinates together before estimating a floor.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)">tuple</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, …]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.model_error.minimum_error_source_policy">
+<span class="sig-name descname"><span class="pre">minimum_error_source_policy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sites</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">by_site</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.model_error.minimum_error_source_policy" title="Link to this definition">#</a></dt>
+<dd><p>Describe only estimator choices relevant to the retained observations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)">object</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.model_error.validate_minimum_error_policy">
+<span class="sig-name descname"><span class="pre">validate_minimum_error_policy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">floor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">by_site</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.model_error.validate_minimum_error_policy" title="Link to this definition">#</a></dt>
+<dd><p>Reject changed estimator choices without executing the floor’s arrays.</p>
+<p>Unmarked independently supplied final floors remain authoritative. Site-map
+comparison covers only the retained sites recorded by the producer.</p>
+<dl class="field-list simple">
+</dl>
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.model_error.MinimumError">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">MinimumError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">by_site</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sites</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.model_error.MinimumError" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Observation-aligned minimum model error.</p>
+<p>Observation-aligned minimum total-error floor.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Variables<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -584,15 +620,16 @@
 </dd>
 </dl>
 <dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.model_error.MinimumError.prepare">
-<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">prepare</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">observations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fp_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">by_site</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.model_error.MinimumError.prepare" title="Link to this definition">#</a></dt>
+<dt class="sig sig-object py" id="openghg_inversions.model_error.MinimumError.from_observations">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_observations</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">observations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">by_site</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.model_error.MinimumError.from_observations" title="Link to this definition">#</a></dt>
 <dd><p>Prepare minimum error from a scalar, site mapping, or named method.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Gathered observations containing <code class="docutils literal notranslate"><span class="pre">mf</span></code> and a labelled
-<code class="docutils literal notranslate"><span class="pre">site</span></code> coordinate for per-site values.</p></li>
-<li><p><strong>fp_data</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a><em>]</em>) – Per-site scientific datasets used by calculated methods.</p></li>
+<code class="docutils literal notranslate"><span class="pre">site</span></code> coordinate for per-site values. Named methods consume
+retained eager observations: residual also requires <code class="docutils literal notranslate"><span class="pre">mf_mod</span></code>
+and accepts <code class="docutils literal notranslate"><span class="pre">bc_mod</span></code>; percentile requires a <code class="docutils literal notranslate"><span class="pre">time</span></code> coordinate.</p></li>
 <li><p><strong>value</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><em>None</em>) – Scalar, per-site mapping, <code class="docutils literal notranslate"><span class="pre">&quot;residual&quot;</span></code>, or <code class="docutils literal notranslate"><span class="pre">&quot;percentile&quot;</span></code>.
 <code class="docutils literal notranslate"><span class="pre">None</span></code> uses a zero scalar floor.</p></li>
 <li><p><strong>by_site</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether residual values are calculated separately by site.</p></li>
@@ -645,47 +682,6 @@ checked later against retained sites; this boundary copies the mapping.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)">bool</a>]</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.model_error.residual_error_method">
-<span class="sig-name descname"><span class="pre">residual_error_method</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds_dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">robust</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">by_site</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.model_error.residual_error_method" title="Link to this definition">#</a></dt>
-<dd><p>Compute estimate of model error using residual error method.</p>
-<p>This method is explained in “Modeling of Atmospheric Chemistry” by Brasseur
-and Jacobs in Box 11.2 on p.499-500, following “Comparative inverse analysis of satellitle (MOPITT)
-and aircraft (TRACE-P) observations to estimate Asian sources of carbon monoxide”, by Heald, Jacob,
-Jones, et.al. (Journal of Geophysical Research, vol. 109, 2004).</p>
-<p>Roughly, we assume that the observations y are equal to the modelled observations y_mod (mf_mod + bc_mod),
-plus a bias term b, and instrument, representation, and model error:</p>
-<p>y = y_mod + b + err_I + err_R + err_M</p>
-<p>Assuming the errors are mean zero, we have</p>
-<p>(y - y_mod) - mean(y - y_mod) = err_I + err_R + err_M  (*)</p>
-<p>where the mean is taken over all observations.</p>
-<p>Calculating the RMS of the LHS of (*) gives us an estimate for</p>
-<p>sqrt(sigma_I^2 + sigma_R^2 +  sigma_M^2),</p>
-<p>where sigma_I is the standard deviation of err_I, and so on.</p>
-<p>Thus a rough estimate for sigma_M is the RMS of the LHS of (*), possibly with the RMS of
-the instrument/observation and averaging errors removed (this isn’t implemented here).</p>
-<p>Note: in the “non-robust” case, we are computing the standard deviation of y - y_mod. The mean on the LHS
-of equation (*) could be taken over a subset of the observation, in which case the value calculated is not
-a standard deviation. We wrote the derivation this way to match Brasseur and Jacobs.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>ds_dict</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a><em>]</em>) – dictionary of combined scenario datasets, keyed by site codes.</p></li>
-<li><p><strong>robust</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – if True, use the “median absolute deviation” (<a class="reference external" href="https://en.wikipedia.org/wiki/Median_absolute_deviation">https://en.wikipedia.org/wiki/Median_absolute_deviation</a>)
-instead of the standard deviation. MAD is a measure of spread, similar to standard deviation, but
-is more robust to outliers.</p></li>
-<li><p><strong>by_site</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – if True, return array with one mininum error value per site</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>estimated value(s) for model error.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>np.ndarray</p>
 </dd>
 </dl>
 </dd></dl>
@@ -762,13 +758,15 @@ an accurate flux map. So this provides a rough calculation for the likely impact
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.model_error.minimum_error_input_names"><code class="docutils literal notranslate"><span class="pre">minimum_error_input_names()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.model_error.minimum_error_source_policy"><code class="docutils literal notranslate"><span class="pre">minimum_error_source_policy()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.model_error.validate_minimum_error_policy"><code class="docutils literal notranslate"><span class="pre">validate_minimum_error_policy()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.model_error.MinimumError"><code class="docutils literal notranslate"><span class="pre">MinimumError</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.model_error.MinimumError.prepare"><code class="docutils literal notranslate"><span class="pre">MinimumError.prepare()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.model_error.MinimumError.from_observations"><code class="docutils literal notranslate"><span class="pre">MinimumError.from_observations()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.model_error.normalise_min_error"><code class="docutils literal notranslate"><span class="pre">normalise_min_error()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.model_error.normalise_min_error_options"><code class="docutils literal notranslate"><span class="pre">normalise_min_error_options()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.model_error.residual_error_method"><code class="docutils literal notranslate"><span class="pre">residual_error_method()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.model_error.percentile_error_method"><code class="docutils literal notranslate"><span class="pre">percentile_error_method()</span></code></a></li>
 </ul>
   </nav></div>

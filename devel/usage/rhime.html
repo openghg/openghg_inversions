@@ -759,7 +759,8 @@ from the <code class="docutils literal notranslate"><span class="pre">nmeasure</
 site coordinate:
 <code class="docutils literal notranslate"><span class="pre">site_metadata.site[site_indicator]</span></code> must equal the <code class="docutils literal notranslate"><span class="pre">site</span></code> level of
 <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>. The indicator itself is not the CF gathering coordinate, and
-callers do not need to keep a second positional decoder synchronized. Site
+callers do not need to keep a second positional decoder synchronized. Indicators
+and site-name lookup arrays are regenerated on loading rather than serialized. Site
 metadata also aligns averaging periods, with exactly one value per site.
 Metadata that is genuinely constant per site may be stored there too. Nullable
 string metadata such as <code class="docutils literal notranslate"><span class="pre">instrument</span></code> preserves missing values separately from
@@ -893,8 +894,6 @@ the supplied site datasets; it does not acquire or normalize the upstream data.<
     <span class="n">site_data</span><span class="p">,</span>
     <span class="n">basis_functions</span><span class="o">=</span><span class="n">basis_functions</span><span class="p">,</span>
     <span class="n">averaging_period</span><span class="o">=</span><span class="s2">"1h"</span><span class="p">,</span>
-    <span class="n">min_error</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
-    <span class="n">start_date</span><span class="o">=</span><span class="s2">"2021-01-01"</span><span class="p">,</span>
 <span class="p">)</span>
 </pre></div>
 </div>
@@ -952,9 +951,9 @@ therefore needs a nonempty, explicit, unique <code class="docutils literal notra
 with no <code class="docutils literal notranslate"><span class="pre">NaT</span></code> values. Valid non-monotonic input ordering is retained.
 Required observations, projected <code class="docutils literal notranslate"><span class="pre">H</span></code>, and optional sampled <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> values
 must be finite. A site emptied by downstream input preparation is reported as
-an error instead of being silently removed. <code class="docutils literal notranslate"><span class="pre">min_error_per_site</span></code> defaults to
-<code class="docutils literal notranslate"><span class="pre">False</span></code>, matching the OpenGHG-backed RHIME preparation route; pass <code class="docutils literal notranslate"><span class="pre">True</span></code>
-to request per-site minimum errors.</p>
+an error instead of being silently removed. BC periods and minimum-error floors
+are selected by the model after preparation; this adapter does not accept
+<code class="docutils literal notranslate"><span class="pre">bc_freq</span></code>, <code class="docutils literal notranslate"><span class="pre">min_error</span></code>, <code class="docutils literal notranslate"><span class="pre">min_error_per_site</span></code> or a temporal anchor.</p>
 <p><code class="docutils literal notranslate"><span class="pre">mf.units</span></code> must be a nonempty string. Every present concentration-valued
 field—observation-error components, canonical <code class="docutils literal notranslate"><span class="pre">H</span></code> or the selected cache,
 and <code class="docutils literal notranslate"><span class="pre">H_bc</span></code>—must declare the same exact unit string at every site. The
@@ -1166,6 +1165,11 @@ Each <code class="docutils literal notranslate"><span class="pre">SectorSpec</sp
 <code class="docutils literal notranslate"><span class="pre">state_activity</span></code> override; <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec.state_activity</span></code> supplies the
 shared policy. Call <code class="docutils literal notranslate"><span class="pre">materialize_multisector_inputs(prepared,</span> <span class="pre">model_spec)</span></code>
 first, then pass its Dataset and eager priors to <code class="docutils literal notranslate"><span class="pre">build_multisector_model</span></code>.
+The two family materializers compute selected arrays and resolve model-specific
+BC periods and likelihood floors. Reuse their resolved Dataset with matching
+settings; after changing a BC or floor policy, call the helper on the raw
+preparation again. The backend-neutral handoff and direct-builder rules are
+described in <a class="reference internal" href="concrete_rhime_model.html"><span class="doc">Standard and multisector RHIME models</span></a>.
 <code class="docutils literal notranslate"><span class="pre">StateActivity(active=False)</span></code> freezes a complete sector.
 RHIME config-file syntax and persisted activity-reason tables remain follow-up
 work. Each <code class="docutils literal notranslate"><span class="pre">SectorSpec.x_prior</span></code> supports the same scalar, full-state array,

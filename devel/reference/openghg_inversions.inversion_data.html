@@ -468,7 +468,9 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html">openghg_inversions.rhime.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.ini.html">openghg_inversions.rhime.ini</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.likelihood_inputs.html">openghg_inversions.rhime.likelihood_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.materialization.html">openghg_inversions.rhime.materialization</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.model_inputs.html">openghg_inversions.rhime.model_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector.html">openghg_inversions.rhime.multisector</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector_stages.html">openghg_inversions.rhime.multisector_stages</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.nested.html">openghg_inversions.rhime.nested</a></li>
@@ -747,8 +749,8 @@ Integer <code class="docutils literal notranslate"><span class="pre">inv_inputs.
 project-schema positions into its <code class="docutils literal notranslate"><span class="pre">site</span></code> coordinate; they are distinct
 from CF compression-by-gathering indexes. The invariant is
 <code class="docutils literal notranslate"><span class="pre">site_metadata.site[site_indicator]</span> <span class="pre">==</span> <span class="pre">nmeasure.site</span></code>.
-<code class="docutils literal notranslate"><span class="pre">site_names</span></code> remains available in memory for existing model code, but is
-regenerated from <code class="docutils literal notranslate"><span class="pre">site_metadata</span></code> rather than serialized.</p>
+<code class="docutils literal notranslate"><span class="pre">site_indicator</span></code> and <code class="docutils literal notranslate"><span class="pre">site_names</span></code> remain available in memory but are
+regenerated from measurement labels and <code class="docutils literal notranslate"><span class="pre">site_metadata</span></code> rather than serialized.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -836,7 +838,7 @@ reconstructing the prepared inputs.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.PreparedInputs.from_datatree">
 <span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.PreparedInputs.from_datatree" title="Link to this definition">#</a></dt>
-<dd><p>Construct prepared RHIME inputs from a version-1 DataTree.</p>
+<dd><p>Construct prepared RHIME inputs from the current raw-input DataTree.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>dt</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a>) – DataTree using the <code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime_prepared_inputs</span></code>
@@ -1179,10 +1181,6 @@ against this record’s resolved uppercase site labels.</p></li>
 <dd><em class="sig-param"><span class="n"><span class="pre">basis_functions</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">sites</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">averaging_period</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">bc_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">min_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">min_error_per_site</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">start_date</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray" title="Link to this definition">#</a></dt>
@@ -1226,12 +1224,6 @@ flux and any source-specific operator.</p></li>
 <li><p><strong>sites</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>] </em><em>| </em><em>None</em>) – Optional site selection and order.</p></li>
 <li><p><strong>averaging_period</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em><em>] </em><em>| </em><em>None</em>) – One common period, a site-aligned sequence or
 mapping, or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
-<li><p><strong>bc_freq</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Frequency used to expand sampled <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> contributions.</p></li>
-<li><p><strong>min_error</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a>) – Minimum model error accepted by <code class="docutils literal notranslate"><span class="pre">make_inv_inputs</span></code>.</p></li>
-<li><p><strong>min_error_per_site</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether calculated minimum errors vary by site.
-Defaults to <code class="docutils literal notranslate"><span class="pre">False</span></code>, matching the OpenGHG-backed RHIME
-preparation route.</p></li>
-<li><p><strong>start_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.15)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional frequency anchor passed to <code class="docutils literal notranslate"><span class="pre">make_inv_inputs</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>

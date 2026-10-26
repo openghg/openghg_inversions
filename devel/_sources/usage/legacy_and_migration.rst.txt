@@ -30,6 +30,18 @@ not an automatic replacement: a median differs from a mean, and weighting,
 uncertainty propagation and footprint alignment can also differ. Selection never
 silently substitutes an aggregation statistic.
 
+Selection filters now run before missing observation-error standard deviations
+are derived or imputed. The empirical fallback uses only the retained
+observations' concentration spread and nonzero-error median. Rejected outliers
+can therefore no longer change accepted observations' fallback errors. Supplied
+custom ``mf_error`` values remain authoritative; missing-both-component and NaN
+rules retain their existing meanings. See
+:doc:`/development/observation_uncertainty` for those distinctions.
+
+Saved preparations retain their supplied errors, and saved sample replay uses
+the fitted operands. Regenerate preparation to adopt the new imputation
+population; loading an existing artifact does not recompute its errors.
+
 Development resource migration
 -------------------------------
 
@@ -599,6 +611,13 @@ executor's exact trace or all its historical attributes.
 
 Removed Python helper APIs
 --------------------------
+
+The public ``openghg_inversions.model_error.residual_error_method`` helper,
+including its robust median-absolute-deviation path, is removed. Continue
+workflows requiring that helper on the 0.7.x release line; there is no mandatory
+replacement API. Current ``min_error="residual"`` configuration and
+``MinimumError.from_observations(..., value="residual")`` remain available,
+using the non-robust residual standard deviation.
 
 Code that imported fixed-basis preparation or model helpers should move to
 the retained RHIME abstractions:

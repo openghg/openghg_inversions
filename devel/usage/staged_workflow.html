@@ -471,8 +471,9 @@
 <p>The standard and multisector recipes can prepare once, sample compatible models
 into separate locations, and produce different outputs from saved samples.
 <code class="docutils literal notranslate"><span class="pre">run_standard</span></code> and <code class="docutils literal notranslate"><span class="pre">run_multisector</span></code>, with or without <code class="docutils literal notranslate"><span class="pre">prepared=...</span></code>,
-use the same scientific operations as their saved phases: prepare inputs, explicitly materialize selected arrays and
-enabled priors where needed, build one eager model, sample, construct an
+use the same scientific operations as their saved phases: prepare inputs,
+materialize selected arrays and enabled priors together, resolve the model’s
+boundary periods and likelihood floor, build one eager model, sample, construct an
 <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> view, then write requested products and exports. Checkpoints
 add loading and saving at those boundaries; full execution needs no intermediate
 saves. Model construction accepts no output configuration and performs no hidden
@@ -486,18 +487,34 @@ that <code class="docutils literal notranslate"><span class="pre">DataConfig</sp
 is validated exactly as a full-run request is. Retained sites and their averaging
 periods come from the
 numerical artifact, including when acquisition or filtering drops a site.
-Observation errors are established before filtering, then basis construction,
-sensitivities and assembly run in scientific order. No filtered checkpoint is
-written.</p>
+Observation-selection filters run before missing observation errors are derived
+or imputed from the retained population. Basis construction, sensitivities and
+assembly follow. No filtered checkpoint is written.</p>
 <p><code class="docutils literal notranslate"><span class="pre">sample</span></code> takes that manifest and current model and sampler choices, returning
 one absolute path to <code class="docutils literal notranslate"><span class="pre">sample-manifest.json</span></code>. A Python <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code>
 (with <code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code>) may replace the built-in likelihood, as in
 <code class="docutils literal notranslate"><span class="pre">run_standard</span></code>. Compatible graph-time priors and
-likelihoods reuse the preparation. Required BC and minimum-error arrays must be
+likelihoods reuse the preparation. Required raw BC and estimator inputs must be
 available. Omitted model <code class="docutils literal notranslate"><span class="pre">use_bc</span></code> inherits the preparation choice; explicit
-<code class="docutils literal notranslate"><span class="pre">False</span></code> may ignore available BC inputs. A repeated <code class="docutils literal notranslate"><span class="pre">bc_freq</span></code> must agree with
-the baked policy, even when the selected model ignores BCs. Changing acquired
-data, filters, basis, native flux or baked numerical policy needs new preparation.</p>
+<code class="docutils literal notranslate"><span class="pre">False</span></code> may ignore available BC inputs. Model <code class="docutils literal notranslate"><span class="pre">bc_freq</span></code> can change without
+new preparation; omission uses one period. Fixed-duration periods use the saved
+requested start date unless <code class="docutils literal notranslate"><span class="pre">bc_freq_anchor</span></code> is supplied; explicit <code class="docutils literal notranslate"><span class="pre">None</span></code>
+anchors them at the earliest retained observation timestamp. Minimum-error choices belong to
+the selected likelihood and named estimates use observations retained after
+invalid rows are dropped. Changing acquired data, filters, basis or native flux
+needs new preparation.</p>
+<p>The raw preparation is distinct from the resolved model-input Dataset. Changing
+BC periods or minimum-error policy reuses the former and repeats model-input
+resolution. A direct builder checks that producer-resolved BC and floor operands
+match its settings; it does not recalculate them. See
+<a class="reference internal" href="concrete_rhime_model.html"><span class="doc">Standard and multisector RHIME models</span></a> for the backend-neutral resolution interface.</p>
+<p>Standard and multisector preparation and sample manifests use version 2, and
+prepared numerical artifacts use schema version 2. Incompatible older artifacts
+are rejected with guidance to use the matching software or prepare again; baked
+policies are not silently reinterpreted. Independent <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> exports
+and modern legacy-format products retain their own support. Saved replay reads
+the exact fitted BC, minimum-error and sigma-alignment operands from trace
+constants without recalculating them.</p>
 <p><code class="docutils literal notranslate"><span class="pre">load_samples</span></code> decodes the sample manifest to <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code>.
 <code class="docutils literal notranslate"><span class="pre">postprocess</span></code> uses that reader with current output choices, calls
 <code class="docutils literal notranslate"><span class="pre">postprocess_standard_outputs</span></code> to compute and write requested PARIS or legacy
@@ -713,7 +730,7 @@ dropped. Original requested dates remain the inversion window for later products
 <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> without preparing again. The custom likelihood requires
 <code class="docutils literal notranslate"><span class="pre">mismatch_model=None</span></code> and receives the combined sector observation mean through
 the existing likelihood interface. Missing required arrays, incompatible source
-layouts, or a conflicting baked <code class="docutils literal notranslate"><span class="pre">bc_freq</span></code> require corrected inputs or a new
+layouts, or absent operands for a named estimator require corrected inputs or a new
 preparation. Current model choices cannot change acquisition, filtering, basis
 construction or the saved native flux.</p>
 <p>Saved sampling follows the standard recordable-model limits: explicit

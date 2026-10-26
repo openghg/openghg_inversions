@@ -489,6 +489,16 @@ with uncertainty propagated for the resulting observations. Acquisition’s
 not an automatic replacement: a median differs from a mean, and weighting,
 uncertainty propagation and footprint alignment can also differ. Selection never
 silently substitutes an aggregation statistic.</p>
+<p>Selection filters now run before missing observation-error standard deviations
+are derived or imputed. The empirical fallback uses only the retained
+observations’ concentration spread and nonzero-error median. Rejected outliers
+can therefore no longer change accepted observations’ fallback errors. Supplied
+custom <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> values remain authoritative; missing-both-component and NaN
+rules retain their existing meanings. See
+<a class="reference internal" href="../development/observation_uncertainty.html"><span class="doc">Missing observation uncertainty: behavior and decisions</span></a> for those distinctions.</p>
+<p>Saved preparations retain their supplied errors, and saved sample replay uses
+the fitted operands. Regenerate preparation to adopt the new imputation
+population; loading an existing artifact does not recompute its errors.</p>
 </section>
 <section id="development-resource-migration">
 <h2>Development resource migration<a class="headerlink" href="#development-resource-migration" title="Link to this heading">#</a></h2>
@@ -1037,6 +1047,12 @@ executor’s exact trace or all its historical attributes.</p>
 </section>
 <section id="removed-python-helper-apis">
 <h2>Removed Python helper APIs<a class="headerlink" href="#removed-python-helper-apis" title="Link to this heading">#</a></h2>
+<p>The public <code class="docutils literal notranslate"><span class="pre">openghg_inversions.model_error.residual_error_method</span></code> helper,
+including its robust median-absolute-deviation path, is removed. Continue
+workflows requiring that helper on the 0.7.x release line; there is no mandatory
+replacement API. Current <code class="docutils literal notranslate"><span class="pre">min_error=&quot;residual&quot;</span></code> configuration and
+<code class="docutils literal notranslate"><span class="pre">MinimumError.from_observations(...,</span> <span class="pre">value=&quot;residual&quot;)</span></code> remain available,
+using the non-robust residual standard deviation.</p>
 <p>Code that imported fixed-basis preparation or model helpers should move to
 the retained RHIME abstractions:</p>
 <div class="pst-scrollable-table-container"><table class="table" id="id6">

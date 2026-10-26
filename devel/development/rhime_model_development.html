@@ -469,7 +469,7 @@ checks are recorded in the active change’s tasks and PR #974. Specification
 synchronization and archival remain separate closeout work. The
 <a class="reference internal" href="../usage/legacy_and_migration.html"><span class="doc">development migration guide</span></a> records removed
 interfaces and replacements. See <a class="reference internal" href="specifications.html"><span class="doc">Development guidance and behavioral specifications</span></a> for capability ownership
-and pending scientific amendments.</p>
+and the scientific amendments on this branch.</p>
 </section>
 <section id="start-with-the-scientific-recipe">
 <h2>Start with the scientific recipe<a class="headerlink" href="#start-with-the-scientific-recipe" title="Link to this heading">#</a></h2>
@@ -506,6 +506,12 @@ whose interface explains what RHIME supplies.</p>
 necessary compatibility boundary. A uniform stage name, timing, or argument
 renaming alone does not justify a second forwarding signature. Keep shared
 indexing reusable and model-specific preparation policy beside its recipe.
+Call canonical <code class="docutils literal notranslate"><span class="pre">prepare_basis</span></code> directly with resolved arguments and use the
+actual sensitivity, selection and assembly implementations. Do not retain
+forwarding wrappers solely for uniform stage names, timing or keyword translation.
+Pass per-site datasets and aligned <code class="docutils literal notranslate"><span class="pre">SiteOptions</span></code> between preparation steps;
+acquired <code class="docutils literal notranslate"><span class="pre">MergedData</span></code> remains separate. Construct results from their scientific
+inputs rather than modifying the result after construction.
 Use <a class="reference internal" href="architecture_principles.html"><span class="doc">Architecture principles and recipe boundaries</span></a> to assess responsibilities and consumer
 interfaces, and <a class="reference internal" href="validation_and_xarray.html"><span class="doc">Validation and labelled-array patterns</span></a> to identify validation owners.</p>
 </section>
@@ -624,15 +630,33 @@ can compose reusable prepared values without pretending to be substitutable
 for another family.</p>
 <p>Moving a preparation equation, including observation-error derivation,
 minimum-error calculation, or boundary-period expansion, is a scientific
-change requiring its own parity evidence. The
-<a class="reference download internal" download="" href="../_downloads/4b3e00ea2632734940dd77c2d257e855/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">scientific-input</span> <span class="pre">contract</span></code></a>
-owns preparation operations. Current recipes prepare observation errors before
-filtering, as shown in <a class="reference internal" href="../usage/customising_rhime.html"><span class="doc">Customising RHIME</span></a>; the selection-first change
-proposed in <a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/964">PR 964</a>
-remains separate work. Supported prepared-input
+change requiring evidence for unchanged behavior and explicit tests for agreed
+semantic changes. Model-owned minimum-error estimates use retained observations
+after invalid-row removal; historical pre-drop estimates are not a parity target.
+Observation-error imputation follows selection filters and uses only retained
+observations. These numerical rules belong to the
+<a class="reference download internal" download="" href="../_downloads/4b3e00ea2632734940dd77c2d257e855/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">scientific-inputs</span> <span class="pre">contract</span></code></a>; configuration owns the
+accepted choices and phase resolution. Supported prepared-input
 contents and examples are in <a class="reference internal" href="../usage/rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a> and
 <a class="reference internal" href="../usage/customising_rhime.html"><span class="doc">Customising RHIME</span></a>; checkpoint limitations are in
 <a class="reference internal" href="../usage/staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a>.</p>
+<p>Standard and multisector preparation retains raw spatial BC inputs and operands
+for supported minimum-error choices. A compatible later model can change BC
+periods or floor policy without repeating spatial preparation. Saved samples
+retain the fitted alignment and floor operands; replay consumes those exact
+values without a new graph or calculation. The active
+<a class="reference download internal" download="" href="../_downloads/45da628f09c6419ede485f3c0a1755f3/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">prepared</span> <span class="pre">handoff</span> <span class="pre">contract</span></code></a>
+and <a class="reference download internal" download="" href="../_downloads/1db47ccb1272e3c17c2a3d7af3432fba/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">sampled</span> <span class="pre">handoff</span> <span class="pre">contract</span></code></a>
+own those artifact guarantees. CO2’s prior-dependent coherent preparations retain
+their separate reuse constraints. The <a class="reference download internal" download="" href="../_downloads/d2769d283e4b24d531e52de86e5bcabf/tasks.md"><code class="xref download docutils literal notranslate"><span class="pre">#876</span> <span class="pre">alignment</span> <span class="pre">change</span> <span class="pre">tasks</span></code></a> record
+revision-specific validation evidence and limits. Broader handoff programme
+acceptance remains pending.</p>
+<p>Keep one scientific sample codec owner for save/load and let replay consume its
+decoded result. Keep product/export saving in a nearby operational helper with
+shared naming/path policy, and normalize descriptive sampler provenance through
+a shared pure metadata operation. These are development recommendations; the behavioral
+contracts require scientific parity and artifact meaning without fixing internal
+helper names or call graphs.</p>
 <p>Source selection and state grouping should remain plainly named operations on
 labelled values and retained artifacts. Resolutions, partitions, sources, and
 observation channels need explicit labels. Variable suffixes or positions alone
