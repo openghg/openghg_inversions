@@ -77,10 +77,11 @@ observations, with repeatability and variability propagated separately. Inversio
 preparation combines the returned components, preserving supplied `mf_error`.
 The selection population used for missing errors is a distinct scientific choice.
 
-The #971 retirement covers exactly `daily_median` and `six_hr_mean` and their
-registered names. Their historical post-error aggregation order is source evidence,
-not a target requirement. Filters select observations; any aggregation is an
-explicit scientific operation with its own uncertainty propagation. These records
+The #971 filter contract accepts supported registered selection functions and
+validates unsupported active requests uniformly without historical-name handling.
+Filters select observations; any aggregation is an explicit scientific operation
+with its own uncertainty propagation. Historical comparisons remain in Git and PR
+history rather than current test fixtures or behavioral contracts. These records
 do not prescribe error combination before provider resampling or implement the
 separate scientific change. #719, including tracer cleanup, precedes #964; #971
 is a separate prerequisite for #964, not for #719.

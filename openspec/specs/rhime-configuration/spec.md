@@ -446,6 +446,34 @@ SHALL otherwise remain unchanged.
 - **THEN** it fails before inference with guidance to omit the argument or pass `"default"`
 - **AND** omission continues to select the established defaults
 
+### Requirement: Accepted observation-selection filter names
+
+Observation-selection requests SHALL use supported registered filter names.
+Global scalar and sequence requests SHALL be validated even when no observation
+sites are present. Site-specific requests SHALL validate only entries for sites
+present in the supplied observations; absent-site entries SHALL remain deferred.
+Unsupported active names SHALL raise ordinary `KeyError` before applying any
+preceding filter or executing lazy scientific data, without historical-name
+recognition or migration translation.
+
+Observation selection SHALL NOT provide aggregation filters or direct Python
+aggregation-filter functions. Resampling and propagation of the resulting
+observation uncertainty SHALL be explicit scientific choices separate from
+selection. No aggregation statistic SHALL be substituted automatically.
+
+#### Scenario: Reject an unsupported active filter
+
+- **WHEN** a global scalar or sequence request, or an active site-specific request, names an unregistered filter
+- **THEN** it raises ordinary `KeyError` before any earlier requested filter or lazy scientific payload executes
+- **AND** global requests receive the same validation with empty or metadata-only observations
+- **AND** no replacement aggregation statistic is selected automatically
+
+#### Scenario: Defer absent-site filter choices
+
+- **WHEN** a site-specific request includes an unsupported filter for a site absent from the observations
+- **THEN** that site's choice is deferred without executing or validating it
+- **AND** requests for present sites are validated before any filter executes
+
 ### Requirement: Configuration supplies explicit scientific choices
 
 Configuration SHALL resolve requested choices without acquiring data, preparing

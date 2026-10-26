@@ -15,6 +15,21 @@ This page is for users with fixedbasis-style Python calls, INI files, batch
 scripts, or HBMCMC outputs. For a new inversion, start with the
 :doc:`model recipe chooser <model_recipes>` and :doc:`RHIME guide <rhime>`.
 
+Observation selection and uncertainty
+-------------------------------------
+
+Observation-selection requests accept supported registered filters. Unsupported
+active names fail ordinary registry validation before any filter or lazy data
+executes. Global scalar and list requests validate even without observation
+sites; site-specific choices are deferred for absent sites.
+
+Make any resampling an explicit scientific choice before observation selection,
+with uncertainty propagated for the resulting observations. Acquisition's
+``averaging_period`` may be appropriate for a supported provider mean, but it is
+not an automatic replacement: a median differs from a mean, and weighting,
+uncertainty propagation and footprint alignment can also differ. Selection never
+silently substitutes an aggregation statistic.
+
 Development resource migration
 -------------------------------
 

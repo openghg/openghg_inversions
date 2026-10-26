@@ -295,11 +295,11 @@ def test_minimum_error_none_resolves_to_numeric_default():
 
 def test_filtering_preserves_typed_filter_request():
     """Filtering can normalize a copy of owned choices."""
-    request = _request(filters={"TAC": "six_hr_mean", "MHD": None})
+    request = _request(filters={"TAC": "noon", "MHD": None})
     config = rhime_params.RhimeConfig.from_params(request, multisector=False)
     before = deepcopy(config.data.filters)
     data = xr.Dataset(
-        {"mf": ("time", [1.0, 3.0])},
+        {"mf": ("time", [1.0, 3.0]), "release_lon": ("time", [0.0, 0.0])},
         coords={"time": [datetime(2019, 1, 1, 12), datetime(2019, 1, 1, 13)]},
     )
     merged = MergedData(site_data={"TAC": data, "MHD": data}, flux_data={}, site_options=config.data.site_options)
@@ -310,7 +310,7 @@ def test_filtering_preserves_typed_filter_request():
 
     assert site_options == config.data.site_options
     assert filtered["TAC"].sizes["time"] == 1
-    assert filtered["TAC"].mf.item() == 2.0
+    assert filtered["TAC"].mf.item() == 1.0
     assert filtered["MHD"].sizes["time"] == 2
     assert config.data.filters == before
     assert request["filters"] == before
@@ -359,7 +359,7 @@ def test_multisector_preparation_selects_sources_from_typed_request():
 
 
 def test_class_factory_preserves_inputs():
-    request = _request(filters={"TAC": ["six_hr_mean"], "MHD": None})
+    request = _request(filters={"TAC": ["noon"], "MHD": None})
     before = deepcopy(request)
 
     resolved = rhime_params.RhimeConfig.from_params(request, multisector=False)
@@ -370,7 +370,7 @@ def test_class_factory_preserves_inputs():
 
 def test_config_selection_borrows_values_and_rejects_unknown_attributes():
     config = rhime_params.RhimeConfig.from_params(
-        _request(filters={"TAC": ["six_hr_mean"]}), multisector=False,
+        _request(filters={"TAC": ["noon"]}), multisector=False,
     )
 
     selected = config.data.select("site_options", "species", "filters")

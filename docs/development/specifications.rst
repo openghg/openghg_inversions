@@ -169,9 +169,10 @@ the bounded contract placement on 23 October 2026:
 The scientific-input capability now records only already-delivered canonical
 construction and preparation. The selection/imputation/nested amendments remain
 with their owning PRs; their placement is agreed, not awaiting another API decision. #876 supersedes preservation of pre-filter
-imputation and tests the retained population. #954 owns explicit rejection of
-retired aggregation filters without a replacement statistic; its scenario is
-``Reject a retired aggregation filter``. Nested population/alignment, common-site
+imputation and tests the retained population. #954 owns supported selection and
+generic registry validation without substituting an aggregation statistic.
+Its scenarios cover unsupported active filters and deferred absent-site choices.
+Nested population/alignment, common-site
 selection and ``averaging_error`` configuration are separate claims and scenarios.
 Historical witnesses remain evidence rather than required modern expectations.
 Provider acquisition averaging precedes inversion-side error combination; the

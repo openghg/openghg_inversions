@@ -35,9 +35,11 @@ The focused scientific-input amendment owns population and numerical-alignment
 policy. When requested, provider resampling happens during acquisition, before inversion-side
 selection and missing-error derivation. Selection excludes unsuitable observations;
 nested retained-domain alignment occurs before errors are derived for the retained
-population. `daily_median` and `six_hr_mean` are historical aggregation operations,
-not target selection filters. Any future aggregation needs separately defined
+population. Selection requests use supported registered filters and ordinary
+validation of unsupported active names. Aggregation needs separately defined
 uncertainty propagation; it cannot silently replace selection or a statistic.
+Historical aggregation comparisons remain in Git and PR history, not current
+test fixtures or behavioral contracts.
 
 Python alias removal changes import names, not scientific contents. Persistence
 owners decide supported format versions and explicit conversion/rejection; no
