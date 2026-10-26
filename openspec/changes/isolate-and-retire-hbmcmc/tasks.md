@@ -636,3 +636,39 @@ failed/successful checks retain their original dates/revisions. PR #974 remains
 draft and #719 open pending review/merge. Task 3.2 stays unchecked for subsequent
 BC contract promotion/archive after review/merge. No archival, merge,
 publication, release number or release-readiness claim is made.
+
+
+### Documentation and evidence location closeout — 26 October 2026
+
+Review `5651498753` and the maintainer's follow-up request are addressed by
+`397d8cb0` and `f6b93bc318aa443e762a7e5e8ca9081f8d122ec0`:
+
+- Remove only the five dated `retirements/*.json` audit records from the current
+  test tree. They have no production, script or pytest consumers. The migration
+  ledger now links each original file at full revision
+  `6a1d22d10c07442514dd610e2ec62b7a2719e297`. Historical inputs, observations,
+  source hashes, dispositions and owners remain accessible without legacy imports;
+  dated paths above refer to that preserved archive. #948/#949 can consult it
+  for source coverage/conversion work. Normal CI needs no access to this archive.
+- Preserve all eighteen original #960 files byte-for-byte, including the cases
+  used by current migration tests and later historical converter checks. Retain
+  the independent CO2 numerical JSON fixture. No scientific regression is removed.
+- Add the public BC resolver to the hand-maintained API landing page. Correct
+  the preparation-policy owner to scientific inputs and current customization
+  guidance, retaining error-before-filtering behavior and separating pending #964.
+- **105 existing migration/documentation checks passed**; strict OpenSpec
+  **11/11**, original-fixture/pinned-archive verification and whitespace checks
+  passed. A full API regeneration and Sphinx build passed at `f6b93bc3`, with
+  the same ten existing duplicate/ambiguous reference warnings. Rendered API
+  target, preparation links/wording and all five archive links were inspected.
+  GitHub documentation run `40319308963` independently passed on that revision.
+- The first local build attempts exposed an obsolete user Jupyter kernel and
+  missing template search path. The successful retry used the existing runtime
+  and documentation tools through a temporary kernel/data path; no environment,
+  repository dependency or user kernel configuration was created or changed.
+
+This is a documentation/evidence-location change; production, scientific tests,
+configuration, package metadata and dependencies match accepted `8b602b6e`.
+No new full scientific matrix is claimed. Task 2.5 remains accepted; task 3.2
+remains pending review/merge and subsequent BC promotion/archive. PR #974 stays
+draft and #719 open; nothing is merged, archived or published.
