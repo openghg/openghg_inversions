@@ -8,6 +8,7 @@ from dask.callbacks import Callback
 import numpy as np
 import pandas as pd
 import pytest
+import sparse
 import xarray as xr
 
 from openghg_inversions.inversion_data._boundary import baseline_reference_sensitivities
@@ -281,6 +282,38 @@ def test_nonuniform_native_operands_match_per_cell_oracle():
         expected_anomaly = expected_mass * (bc[f"vmr_{d}"].values - 209300)
         np.testing.assert_allclose(result[f"bc_mass_{d}"], expected_mass, rtol=2e-15)
         np.testing.assert_allclose(result[f"bc_anomaly_{d}"], expected_anomaly, rtol=2e-15)
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+def test_sparse_curtains_keep_zero_fill_and_match_dense_normalization(lazy):
+    bc, fp = inputs()
+    for d in "nesw":
+        values = fp[f"particle_locations_{d}"].data
+        values[:, 0, 0] = 0
+    total = sum(fp[f"particle_locations_{d}"].values.reshape(2, -1).sum(axis=1) for d in "nesw")
+    for d in "nesw":
+        fp[f"particle_locations_{d}"].data /= total[:, None, None]
+    expected = calculate(bc, fp)
+    for d in "nesw":
+        fp[f"particle_locations_{d}"].data = sparse.COO.from_numpy(fp[f"particle_locations_{d}"].data)
+    if lazy:
+        bc, fp = bc.chunk({"time": 1}), fp.chunk({"time": 1})
+    borrowed = {name: value.data for name, value in fp.data_vars.items()}
+    tasks = []
+    with Callback(pretask=lambda key, *_: tasks.append(key)):
+        result = calculate(bc, fp)
+    assert not tasks
+    if lazy:
+        assert all(isinstance(result[f"bc_mass_{d}"].data, da.Array) for d in "nesw")
+        result = result.compute(scheduler="synchronous")
+    for d in "nesw":
+        for kind in ("mass", "anomaly"):
+            value = result[f"bc_{kind}_{d}"].data
+            assert isinstance(value, sparse.COO)
+            assert value.fill_value == 0
+            np.testing.assert_allclose(value.todense(), expected[f"bc_{kind}_{d}"], rtol=2e-15)
+    for name, value in fp.data_vars.items():
+        assert value.data is borrowed[name]
 
 
 @pytest.mark.parametrize("north_units", ["ppm", "1e-06 mol/mol"])

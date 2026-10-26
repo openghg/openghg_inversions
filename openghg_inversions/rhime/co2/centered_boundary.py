@@ -11,7 +11,7 @@ import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
-from openghg_inversions.boundary_sensitivity import align_boundary_operands
+from openghg_inversions.boundary_sensitivity import _select_native_boundary, align_boundary_operands
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.components import LinearComponentResult, add_state_vector
@@ -36,8 +36,10 @@ def bind_boundary_operands(
 ) -> xr.Dataset:
     """Align and expand raw boundary operands for one observation channel.
 
-    Observation dimension labels own the row order; auxiliary ``time`` values
-    determine period membership. This calls
+    Observation dimension labels own the row order; their auxiliary ``time``
+    values own period membership when supplied, replacing auxiliary boundary
+    timestamps. Indexed boundary times must match; this binding check may compute
+    a lazy timestamp coordinate, while numerical operands remain borrowed. This calls
     :func:`~openghg_inversions.boundary_sensitivity.align_boundary_operands`
     before linked-channel padding, retaining its raw-operand validation and
     lazy payloads. Reference units must match observation ``units`` (or their
@@ -62,12 +64,10 @@ def bind_boundary_operands(
     require_centered_precision()
     native_dim = str(observations.dims[0])
     raw_dim = "time" if "H_bc_anomaly" in operands and "time" in operands.H_bc_anomaly.dims else "nmeasure"
-    labels = xr.DataArray(observations[native_dim].data, dims=raw_dim)
     aligned = align_boundary_operands(
-        operands,
+        _select_native_boundary(operands, observations, raw_dim),
         frequency=frequency,
         anchor_time=anchor_time,
-        observation_labels=labels,
     )
     units = observations.attrs.get("units")
     if "observation_units" in observations.coords:

@@ -315,3 +315,19 @@ def test_v2_rejects_ambiguous_or_baked_artifacts(mutation):
         tree["inv_inputs"]["H_bc"].attrs["boundary_sensitivity_preparation"] = "sampled-period-expansion"
     with pytest.raises(ValueError, match="[Rr]egenerate"):
         PreparedInputs.from_datatree(tree)
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_centered_absolute_diagnostic_marker_survives_adapter_and_codec(tmp_path, suffix):
+    site = _site()
+    site["H_bc"] = (site.H_bc_anomaly + site.bc_reference * site.H_bc_mass).assign_attrs(
+        units="ppm", boundary_sensitivity_preparation="unexpanded",
+    )
+    original = site.copy(deep=True)
+    prepared = prepare_rhime_inputs_from_xarray({"AAA": site}, basis_functions=_basis_functions())
+    assert prepared.inv_inputs.H_bc.attrs["boundary_sensitivity_preparation"] == "unexpanded"
+    path = tmp_path / f"centered-diagnostic{suffix}"
+    prepared.save(path)
+    restored = PreparedInputs.load(path)
+    xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)
+    xr.testing.assert_identical(site, original)

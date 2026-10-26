@@ -46,8 +46,12 @@ resolution. A direct builder checks that producer-resolved BC and floor operands
 match its settings; it does not recalculate them. See
 :doc:`concrete_rhime_model` for the backend-neutral resolution interface.
 
-Standard and multisector preparation and sample manifests use version 2, and
-generic prepared numerical artifacts use schema version 3 with an explicit
+Standard and multisector preparation manifests use version 2; sample manifests
+use version 3, whose model records omit retired aggregation-error options.
+Older sample manifests are rejected before loading scientific payloads: use the
+software version that wrote them, or repeat sampling from a supported preparation.
+Do not change a manifest's version field to bypass this check. Generic prepared
+numerical artifacts use schema version 3 with an explicit
 ordinary or centered representation. A narrow reader also accepts known ordinary
 raw-spatial version-2 artifacts. Baked version-1 and ambiguous historical centered
 version-2 artifacts must be regenerated; baked policies are not silently

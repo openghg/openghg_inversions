@@ -397,6 +397,8 @@ def make_inv_inputs(
         ):
             raise ValueError("Preparation requires raw spatial H_bc, without fitted boundary periods.")
         ds["H_bc"].attrs = dict(ds["H_bc"].attrs)
-        ds["H_bc"].attrs["boundary_sensitivity_preparation"] = "raw-spatial"
+        ds["H_bc"].attrs["boundary_sensitivity_preparation"] = (
+            "unexpanded" if reference is not None else "raw-spatial"
+        )
 
     return _drop_nan_and_compute(ds)

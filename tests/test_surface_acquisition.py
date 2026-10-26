@@ -7,6 +7,7 @@ import dask.array as da
 import numpy as np
 import pandas as pd
 import pytest
+import sparse
 import xarray as xr
 from dask.callbacks import Callback
 
@@ -461,6 +462,40 @@ def test_local_boundary_operands_without_upstream_kernel(
     assert result.attrs["surface_policy_revision"] == "957-source-wise-v1"
     xr.testing.assert_identical(bc, saved_bc)
     xr.testing.assert_identical(fp, saved_fp)
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+@pytest.mark.parametrize("representation", ["ordinary", "centered"])
+def test_sparse_boundary_weights_through_surface_preparation(inputs, lazy, representation):
+    obs, fp, flux = inputs
+    fp = fp.assign_coords(height=[10., 20.])
+    bc = xr.Dataset(coords={"height": fp.height, "lat": fp.lat, "lon": fp.lon, "time": fp.time},
+                    attrs={"time_period": "1 hour"})
+    for direction in "nesw":
+        side = "lon" if direction in "ns" else "lat"
+        weights = np.zeros((2, 1, 3))
+        weights[0] = 0.25
+        fp[f"particle_locations_{direction}"] = xr.DataArray(
+            sparse.COO.from_numpy(weights), dims=("height", side, "time"), attrs={"units": "1"}
+        )
+        bc[f"vmr_{direction}"] = xr.DataArray(
+            np.full((2, 1, 3), 400.05), dims=("height", side, "time"), attrs={"units": "ppm"}
+        )
+    if lazy:
+        fp, bc = fp.chunk({"time": 1}), bc.chunk({"time": 1})
+    borrowed = {name: value.data for name, value in fp.data_vars.items()}
+    with Callback(pretask=lambda *args: pytest.fail("preparation computed borrowed payload")):
+        result = prepare_surface_site(
+            obs, fp, {"a": flux}, species="co2", transport={"a": "integrated"},
+            boundary_representation=representation, boundary_data=bc,
+            boundary_reference=400., boundary_reference_units="ppm", boundary_mass_tolerance=0.001,
+        )
+    if lazy:
+        assert isinstance(result.bc_mod.data, da.Array)
+        result = result.compute(scheduler="synchronous")
+    np.testing.assert_allclose(result.bc_mod.data.todense(), 400.05, rtol=0, atol=1e-12)
+    for name, value in fp.data_vars.items():
+        assert value.data is borrowed[name]
 
 
 @pytest.mark.parametrize("target,bad_units", [

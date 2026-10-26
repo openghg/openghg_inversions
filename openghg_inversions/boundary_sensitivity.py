@@ -117,6 +117,32 @@ def _expand_boundary_periods(
     return result
 
 
+def _select_native_boundary(
+    inputs: xr.Dataset, observations: xr.DataArray, observation_dim: str,
+) -> xr.Dataset:
+    """Select rows, borrow native timestamps, and check indexed-time identity.
+
+    Indexed boundary times cannot be replaced independently of observation
+    labels. This named model-binding check computes only native timestamp
+    coordinates if necessary, leaving numerical boundary payloads borrowed.
+    """
+    if observation_dim not in inputs.dims:
+        return inputs  # The operand validator owns malformed layouts.
+    native_dim = str(observations.dims[0])
+    labels = xr.DataArray(observations[native_dim].data, dims=observation_dim)
+    selected = inputs.sel({observation_dim: labels})
+    time = observations.coords.get("time")
+    if time is not None and time.dims == (native_dim,):
+        if "time" in selected.indexes:
+            if hasattr(time.data, "__dask_graph__"):
+                time = time.compute()
+            if not np.array_equal(selected.time.data, time.data):
+                raise ValueError("Indexed boundary time labels conflict with native observation timestamps.")
+        else:
+            selected = selected.assign_coords(time=(observation_dim, time.data))
+    return selected
+
+
 def bind_boundary_sensitivity(
     sensitivity: xr.DataArray,
     observations: xr.DataArray,
@@ -126,7 +152,10 @@ def bind_boundary_sensitivity(
 ) -> xr.DataArray:
     """Select an ordinary boundary and expand raw spatial states at model binding.
 
-    Observation labels own the row order. Raw sensitivities can be reused with
+    Observation labels own the row order and their auxiliary timestamps own
+    period membership when supplied. Indexed boundary times must match those
+    timestamps; this binding check may materialize a lazy timestamp coordinate,
+    while boundary payloads remain borrowed. Raw sensitivities can be reused with
     different frequencies; already expanded sensitivities may be consumed only
     without a period override. Direct callers may supply an independently named
     state axis. Unmarked direct inputs retain their state labels when no temporal
@@ -141,7 +170,9 @@ def bind_boundary_sensitivity(
         str(dim) for dim in sensitivity.dims if dim in ("nmeasure", "time")
     )
     state_dim = next(str(dim) for dim in sensitivity.dims if dim != raw_dim)
-    labels = xr.DataArray(observations[native_dim].data, dims=raw_dim)
+    sensitivity = _select_native_boundary(
+        sensitivity.rename("H_bc").to_dataset(), observations, raw_dim,
+    ).H_bc
     expanded = (
         sensitivity.attrs.get("boundary_sensitivity_preparation") == "sampled-period-expansion"
         or "bc_period" in sensitivity.coords
@@ -150,20 +181,20 @@ def bind_boundary_sensitivity(
     if expanded:
         if frequency is not None or anchor_time is not None:
             raise ValueError("Boundary period overrides require raw spatial sensitivity; regenerate baked inputs.")
-        aligned = sensitivity.sel({raw_dim: labels})
+        aligned = sensitivity
     elif (frequency is None and anchor_time is None
           and sensitivity.attrs.get("boundary_sensitivity_preparation") != "raw-spatial"):
         # Direct scientific callers retain state labels shared with their priors
         # when requesting no expansion. Prepared raw-spatial arrays explicitly
         # opt into the reusable curtain/period contract, including one period.
-        aligned = sensitivity.sel({raw_dim: labels})
+        aligned = sensitivity
     else:
         if state_dim != "bc_region":
             sensitivity = sensitivity.rename({state_dim: "bc_region"})
             state_dim = "bc_region"
         aligned = _expand_boundary_periods(
             sensitivity.rename("H_bc").to_dataset(), observation_dim=raw_dim,
-            frequency=frequency, anchor_time=anchor_time, observation_labels=labels,
+            frequency=frequency, anchor_time=anchor_time, observation_labels=None,
         ).H_bc
     if raw_dim != native_dim:
         aligned = aligned.rename({raw_dim: native_dim})

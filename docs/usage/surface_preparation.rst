@@ -196,6 +196,11 @@ period/anchor choice and must agree when both specify it. Their tables are
 ``channels.co2.boundary`` and ``channels.o2.boundary``. Anchors apply to fixed
 durations and must be omitted for calendar-month periods.
 
+Native observation labels select boundary rows. When observations carry a
+``time`` coordinate, it determines period membership and replaces auxiliary
+boundary timestamps. Boundary times that also serve as indexed row labels must
+agree with the observation timestamps; conflicting values raise an error.
+
 Use the ordinary additive-Gaussian recipe. Cached, fixed-OU and custom likelihood
 routes reject centered inputs until separately validated. Standard and multisector
 model builders also reject centered inputs; their preparation operations can

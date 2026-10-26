@@ -3,6 +3,8 @@
 import numpy as np
 import xarray as xr
 
+from openghg_inversions.array_ops import to_dense
+
 from ._units import mole_fraction_unit_scale
 
 
@@ -166,6 +168,8 @@ def baseline_reference_sensitivities(
 
     total = sum(w.sum([dim for dim in w.dims if dim != "time"], skipna=False) for w in weights.values())
     total = xr.apply_ufunc(checked_total, total, dask="parallelized", output_dtypes=[np.float64])
+    # A sparse denominator's implicit zero would make the quotient's fill value NaN.
+    total = to_dense(total)
     result = {}
     for direction in "nesw":
         mass = weights[direction] / total
