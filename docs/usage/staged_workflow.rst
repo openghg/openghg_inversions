@@ -102,14 +102,13 @@ For file-backed boundary conditions, specify exact files, for example
 ``"bc_basis_paths": ["bc/january.nc", "bc/february.nc"]`` in the parameter JSON.
 ``prepare`` loads all selected files before acquisition and passes their labelled
 data to sensitivity construction, preserving time combination and alignment.
-Missing or unreadable selected files fail before acquisition. Omit
-``bc_basis_paths`` for NESW: it uses acquired directional contributions without
-reading a BC basis file. Disabled BCs load no BC basis resources. Staged commands
-reject historical ``fp_basis_case``, ``basis_directory``, ``bc_basis_case`` and
-``bc_basis_directory`` options. Use explicit modern paths. While retained on devel,
-only the HBMCMC entry route translates those historical selectors after winning overrides;
-on that route, an NESW directory warns that it is unused without any lookup.
-
+Missing or unreadable selected files fail before acquisition.
+``"bc_basis_algorithm": "NESW"`` selects the built-in calculation and is the
+default without exact paths. Explicit ``bc_basis_paths`` take precedence, leaving
+the algorithm inactive. NESW uses acquired directional contributions without
+reading a BC basis file. ``use_bc=False`` bypasses BC basis resolution and loading.
+Staged commands accept canonical resource names; see :doc:`legacy_and_migration`
+for historical selector replacements.
 
 ``country_directory`` is removed in 0.8. Use ``country_file`` for reporting,
 ``landsea_path`` for preparation land/sea classes, or ``outer_regions_path`` for

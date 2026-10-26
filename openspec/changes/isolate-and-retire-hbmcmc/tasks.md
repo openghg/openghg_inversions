@@ -1,8 +1,12 @@
 # Tasks
 
-The 0.8 implementation was accepted for merge on PR #869 after green CI at
-`7260b43d`. Delivered contracts are promoted; development deletion and final archive
-remain open. Spec promotion precedes the authorized merge by maintainer request.
+The current #719 branch implements namespace/adapters and the approved finite
+API/command retirements, including the separately approved prepared factory.
+Completed revision-specific checks are recorded below. The 26 October follow-up
+adds explicit BC selection and reconciles positive owners; its fresh acceptance
+remains pending. Delivered construction contracts are synchronized, while the
+new BC delta and final archive remain open. Dated sections preserve prior
+implementation, approval and validation history rather than current task status.
 
 ## Development-boundary amendment — 23 October 2026
 
@@ -189,6 +193,13 @@ does not finalize CLI positional-date/`--kwargs` syntax or complete a delivery t
   import/duplicate-validation paths and stale template/doc text, reconcile the
   narrowly approved contract and run fresh implementation checks.
 
+- [ ] 2.5 Deliver the 26 October approved explicit `bc_basis_algorithm="NESW"`
+  selection with exact-file precedence and disabled-BC I/O bypass; reconcile
+  positive contract owners, current status prose and Python-only prepared schema
+  constants. Preserve pre-change evidence and obtain fresh focused/full/package/
+  documentation checks before completing this follow-up. Persisted identifier
+  migration remains #976/OPE-233; no release or VG integration is claimed here.
+
 ## 3. Promote only delivered contracts
 
 - [x] 3.1 After 0.8 implementation and acceptance, verify the already-aligned
@@ -197,9 +208,10 @@ does not finalize CLI positional-date/`--kwargs` syntax or complete a delivery t
   configuration requirements. Rebase the remaining active delta to retain the
   pending 0.9 removal. Verify the durable alias contract and resource-I/O links
   express the accepted boundary without claiming deletion is delivered.
-- [ ] 3.2 After development deletion and acceptance, sync the remaining removal requirement
-  and archive this change. Validate both capabilities, delivery status and links;
-  verify no active consumer restores the superseded dependency rule.
+- [ ] 3.2 After fresh BC amendment acceptance, sync the remaining BC delta and
+  archive this change. Verify durable owners, delivery status, links and absence
+  of duplicate delivered `ADDED` requirements; preserve all dated evidence.
+  The 26 October owner reconciliation does not complete archival.
 
 ## Issue 719 implementation evidence — 23 October 2026
 
@@ -511,3 +523,55 @@ review threads have replies and are resolved. PR #974 remains draft and #719 ope
 pending review/merge. Task 3.2 remains unchecked for subsequent specification
 promotion/archive. No merge, publication, release number or release-readiness
 claim is made.
+
+
+## Approved owner and BC amendment — 26 October 2026
+
+- Approval: review 5649950083 and the maintainer's bounded implementation request.
+- Before edits, `retirements/review_974_2026_10_26.json` captures `1c15954c`
+  sources against pinned `0a32d73a` and base `b288ac25`, original BC regression
+  inputs/expectations, schema constant values and requirement dispositions.
+- Delivered canonical prepared construction and existing preparation semantics
+  move to `rhime-scientific-inputs`; no #964 science is imported. Configuration
+  owns options/applicable values, resource I/O owns BC loading, existing handoff
+  and persistence contracts own stored formats/version/replay. Scientific model
+  semantics and all-retained-chain products keep scientific owners.
+- Durable requirements describe supported interfaces and generic validation.
+  Historical deletion inventories/maps remain migration evidence/guidance.
+  The duplicated delivered factory/isolation `ADDED` requirements are removed;
+  only the new BC amendment remains in the active delta.
+- Oct26 supersedes the operative schema-freeze restriction. Dated Oct24 approval
+  and unchanged-schema observations stay intact. Python constants lose the
+  redundant RHIME prefix; stored identifiers/versions/layout do not change here.
+  #976 owns that separate migration; OPE-233 owns selected VG baseline integration.
+- Fresh validation is pending for this amendment. Prior green matrices remain
+  revision-specific evidence and do not complete task 2.5. Task 3.2 remains open;
+  no archival, merge, publication or release-readiness claim is made.
+
+Focused checks on the completed 26 October working tree atop `1c15954c`:
+
+- BC resource/route checks: **77 passed**; the final explicit BC-selection
+  module, including nested inner policy: **16 passed**. Broader configuration,
+  ordinary/multisector handoff, nested and resolved-run coverage: **345 passed**.
+  Directional labels/default sensitivities, lazy borrowed inputs, file time/grid
+  alignment, disabled-BC bypass and selected-resource early failures are covered.
+- Prepared serialization/public API/CO2 preparation: **117 passed**, including
+  real-data NetCDF/Zarr round trips and replay. Python constants use their new
+  names; assertions retain the exact stored schema identifier and version.
+- Documentation contracts: **50 passed**; both modern INI templates and the
+  satellite schema example: **3 passed**. Counts overlap and are not summed.
+- Ruff, strict OpenSpec **11/11**, `git diff --check`, 37 specification
+  links/anchors and 54 source revision hash records pass. All eighteen original
+  fixtures remain byte-identical to the base. A bounded nine-page Sphinx
+  warning-as-error render passes; references outside that set are excluded, so
+  it does not replace the complete documentation check.
+- Separate follow-ups are created: GitHub **#976** owns exact persisted schema
+  identifiers/versions and one selected campaign migration; Linear **OPE-233**,
+  under **OPE-145**, owns the supported future VG/OGI baseline and its integration.
+  No VG artifacts, environments or campaign references have been modified.
+
+Fresh committed-revision wheel/sdist and full tox results remain pending;
+task 2.5 is intentionally unchecked. The existing green GitHub runs
+`40069509661` (tests) and `40069509766` (docs) are the `1c15954c` baseline,
+not validation of this amendment. Task 3.2 remains pending acceptance and
+subsequent BC contract promotion/archive.

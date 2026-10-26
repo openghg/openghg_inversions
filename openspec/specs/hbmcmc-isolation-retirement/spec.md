@@ -1,94 +1,51 @@
-# HBMCMC isolation and retirement
+# Independent modern execution and migration evidence
 
 ## Purpose
 
-Define modern execution without the historical HBMCMC namespace, retaining
-independent scientific and artifact capabilities and usable historical evidence.
+Define normal execution through supported modern interfaces and preserve usable
+historical evidence independently of retired runtime implementations.
 
 ## Requirements
 
-### Requirement: Modern execution has no HBMCMC dependency
+### Requirement: Modern execution is independent of migration tooling
 
-The modern wheel and source distribution SHALL contain no
-`openghg_inversions.hbmcmc` subpackage, executable wrapper or HBMCMC-owned
-configuration, data or basis utility. No import alias, re-export, forwarding shim
-or executable entry point SHALL recreate that namespace. Modern full, staged,
-nested, prepared-input and output-only workflows SHALL operate independently of
-HBMCMC. Normal modern execution SHALL NOT import or invoke migration tooling.
+Modern full, staged, nested, prepared-input and output-only workflows SHALL
+execute through their supported canonical scientific interfaces. Normal
+execution SHALL NOT require or invoke historical execution, migration tooling,
+option translation or compatibility forwarding. Packaging SHALL provide the
+canonical Python interfaces and installed commands under
+[model selection](../rhime-model-selection/spec.md).
 
-#### Scenario: Install the modern distribution
+#### Scenario: Execute a supported modern workflow
 
-- **WHEN** a user installs the modern wheel or source distribution
-- **THEN** it contains no HBMCMC subpackage or executable entry point
-- **AND** importing the old namespace cannot reach a forwarding shim
-- **AND** supported modern workflows remain usable
-
-#### Scenario: Execute without historical tooling
-
-- **WHEN** a modern full, saved, prepared-input or output-only workflow executes
-- **THEN** it uses its supported modern interfaces without loading HBMCMC or migration helpers
-
-### Requirement: Historical scientific quirks remain outside modern construction
-
-Modern runner and builder interfaces SHALL NOT accept `preserve_legacy_likelihood`,
-`_compatibility_unused_sigma_settings`, `_compatibility_minimum_error_floor`,
-`compatibility_output_chain`, `retain_unused_sigma` or `derived_output_chain`.
-Modern scientific construction SHALL NOT reproduce historical boundary-only
-pollution-event likelihood behavior, disconnected sigma-prior variables or
-additive fixed-error minimum-error floors. Modern standard offsets SHALL remain
-supported with their declared full-baseline semantics.
-
-Derived outputs SHALL use all retained chains, including legacy-format summaries.
-Reproducing historical equations, wrapper defaults or chain-0-only summaries
-SHALL require matching historical software rather than a modern compatibility
-switch. Modern legacy-format codecs and explicit save paths SHALL remain
-independently supported.
-
-#### Scenario: Modern derived products use all retained chains
-
-- **WHEN** a modern run writes derived products, including legacy-format summaries
-- **THEN** those products use all retained chains under the ordinary output policy
-- **AND** no private compatibility switch selects only chain 0
+- **WHEN** a caller runs a supported full, saved, prepared-input or output-only workflow
+- **THEN** execution uses its canonical scientific interfaces directly
+- **AND** migration tooling is not a runtime dependency
 
 ### Requirement: Retained modern behavior has modern owners
 
-Supported modern INI decoding, canonical configuration construction, path
-conversion and vendored preparation defaults SHALL remain available independently
-of HBMCMC. Runner/acquisition boundaries SHALL validate supported option names and
-applicable values generically under
-[Compatible public adapters and scientific choices](../rhime-configuration/spec.md#requirement-compatible-public-adapters-and-scientific-choices).
-Unknown names SHALL be rejected before scientific work; known inactive values
-SHALL remain deferred until their consuming phase. Validation SHALL NOT recognize
-historical names or values specially, translate them or emit deprecation warnings
-in place of rejection.
+Canonical configuration, INI decoding, phase validation and defaults SHALL follow
+[configuration](../rhime-configuration/spec.md#requirement-canonical-requests-and-phase-owned-validation).
+Canonical scientific input construction SHALL follow
+[scientific inputs](../rhime-scientific-inputs/spec.md).
+Exact resource selection, optional exports and independently supported basis
+capabilities SHALL follow [resource I/O](../rhime-resource-io/spec.md).
+Model likelihood/prior semantics SHALL follow
+[model composition](../rhime-model-composition/spec.md#requirement-declared-likelihood-and-prior-semantics);
+derived output sample populations SHALL follow
+[retained-state reconstruction](../retained-state-reconstruction/spec.md#requirement-derived-products-use-all-retained-chains).
 
-Modern `output_format="legacy"`, `save_inversion_output` and independently
-supported basis readers, writers, discovery and reconstruction operations SHALL
-retain their separate contracts. A legacy or compatibility name alone SHALL NOT
-remove a scientific representation or artifact codec.
+Modern `output_format="legacy"` and `save_inversion_output` SHALL remain supported
+by their output owners. A historical-looking name SHALL NOT itself remove a
+scientific representation, basis reader/writer or independently supported codec.
+Saved format/version admission and replay SHALL follow the prepared/sample
+handoff and persistence contracts rather than a runtime retirement inventory.
 
-Public Python naming removals SHALL follow the finite
-[five-alias retirement](../rhime-model-selection/spec.md#requirement-retire-named-python-aliases).
-The additional
-[prepared-input factory retirement](../rhime-configuration/spec.md#requirement-retire-the-prepared-input-compatibility-factory)
-SHALL remove only its named compatibility constructor, preserving canonical
-construction and existing schema/codec behavior.
-CLI names SHALL follow the canonical routes in
-[Bounded installed-command retirement](../rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement).
-Those named removals SHALL NOT alter other Python paths, canonical signatures,
-result contents, scientific behavior or independently supported artifact formats.
+#### Scenario: Resolve supported resources and outputs
 
-#### Scenario: Packaged preparation survives HBMCMC retirement
-
-- **WHEN** a modern run needs the exact domain's packaged preparation map
-- **THEN** it obtains that map without importing HBMCMC
-- **AND** explicit overrides and missing-default errors retain the resource-I/O contract
-
-#### Scenario: Reject a retired runtime spelling
-
-- **WHEN** a modern runner or acquisition request includes an enumerated historical spelling
-- **THEN** ordinary unsupported-option validation rejects it before scientific work
-- **AND** canonical `legacy` output remains available independently
+- **WHEN** modern preparation or reporting selects supported resources or a supported output format
+- **THEN** its owning capability resolves the selection and preserves the declared scientific behavior
+- **AND** ordinary configuration validation and independent codec support remain separate
 
 ### Requirement: Development removals require affected migration evidence
 
@@ -105,12 +62,9 @@ and explicit scientific changes SHALL have tests of their agreed new semantics.
 An intentional scientific change SHALL NOT overwrite its historical witness or
 require restoring a superseded historical expectation.
 
-Scientific requirements, borrowed-array and explicit execution boundaries,
-modern `output_format="legacy"`, saved `InversionOutput` codecs, exact artifact
-destinations and independently supported labelled basis partitions SHALL remain
-supported. Namespace and alias retirement SHALL NOT itself change equations,
-canonical defaults, independent artifact support or other public interfaces.
-Supported artifact formats and versions SHALL follow their owning codec contracts;
+Supported scientific behavior, numerical ownership/execution, output codecs,
+exact resource destinations and independent basis capabilities SHALL retain their
+own contracts. Format/version admission SHALL remain a persistence decision;
 Python naming changes SHALL NOT imply historical-format compatibility.
 
 #### Scenario: Historical evidence remains usable

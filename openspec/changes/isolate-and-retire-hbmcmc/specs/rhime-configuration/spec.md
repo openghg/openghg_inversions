@@ -1,36 +1,37 @@
-# Prepared-input compatibility factory retirement
+# Explicit boundary-condition basis selection
 
 ## ADDED Requirements
 
-### Requirement: Retire the prepared-input compatibility factory
+### Requirement: Explicit boundary-condition basis choices
 
-`PreparedInputs.from_legacy_inputs` SHALL be unavailable, without a forwarding
-factory or the addition of its legacy arguments to the canonical constructor.
-The supported replacement SHALL remain
-`PreparedInputs(inv_inputs=..., basis_functions=..., site_metadata=...)`.
+Canonical data configuration SHALL accept `bc_basis_algorithm`, defaulting to
+`"NESW"`, separately from exact `bc_basis_paths`. `use_bc=False` SHALL disable BC
+basis resolution and loading. With BCs enabled, explicit `bc_basis_paths` SHALL
+select the file-backed basis and make `bc_basis_algorithm` inactive. Otherwise,
+`bc_basis_algorithm="NESW"` SHALL select the built-in directional calculation.
 
-Canonical construction and xarray preparation SHALL preserve scientific input
-values, site/averaging-period ordering, observation-aligned release coordinates,
-borrowed/lazy numerical arrays and existing basis source/path provenance,
-including the xarray interface's `"supplied"` fallback for an unannotated basis.
-This factory retirement SHALL NOT change existing persisted schema or codec
-behavior, scientific variables, units or supported artifacts.
+Supported-name validation SHALL apply ordinarily, including inactive groups.
+An active algorithm SHALL be validated against supported algorithms by its
+configuration owner before acquisition or scientific preparation. An inactive
+algorithm value SHALL remain deferred, following the shared phase policy.
+No historical-name or historical-token validation branch SHALL be introduced.
+Resource resolution SHALL follow
+[Boundary-condition basis selection precedes scientific preparation](../../../../specs/rhime-resource-io/spec.md#requirement-boundary-condition-basis-selection-precedes-scientific-preparation).
 
-This separately approved constructor removal SHALL NOT extend the
-[five-alias retirement](../../../../specs/rhime-model-selection/spec.md#requirement-retire-named-python-aliases)
-or authorize removal of other constructors or basis capabilities. It SHALL
-preserve the [migration evidence guarantees](../../../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
+#### Scenario: Select built-in NESW explicitly or by default
 
-#### Scenario: Construct canonical prepared inputs
+- **WHEN** BCs are enabled without exact file paths and the algorithm is omitted or `"NESW"`
+- **THEN** configuration selects built-in NESW before acquisition
+- **AND** numerical sensitivity construction receives the same resource-free BC operand
 
-- **WHEN** a caller constructs `PreparedInputs` from canonical inversion inputs, a basis and labeled site metadata
-- **THEN** the scientific inputs, metadata ordering and borrowed-array guarantees retain their meanings
-- **AND** supported serialization retains its existing schema and codec behavior
+#### Scenario: Exact files take precedence
 
-#### Scenario: Prepare supplied xarray inputs after factory retirement
+- **WHEN** BCs are enabled and exact BC basis paths are supplied with an algorithm value
+- **THEN** the paths select the file-backed basis and the algorithm is inactive
+- **AND** an invalid selected file fails rather than falling back to NESW
 
-- **WHEN** xarray preparation receives supported stationary or moving release coordinates and a supplied basis
-- **THEN** observation-aligned coordinates and existing basis source/path provenance are retained
-- **AND** an unannotated supplied basis retains the `"supplied"` provenance fallback without mutation of the caller's basis
-- **AND** the removed factory is not a public construction path
+#### Scenario: Disabled BCs do not resolve resources
 
+- **WHEN** `use_bc=False` accompanies BC basis paths or an algorithm value
+- **THEN** no BC basis file is read and no BC algorithm value is consumed
+- **AND** unsupported option names still receive ordinary validation

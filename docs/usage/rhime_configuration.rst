@@ -260,9 +260,13 @@ construction, preserving time combination and alignment. Missing or unreadable
 selected files fail before acquisition. Scientific sensitivity functions accept
 resolved data, not ``bc_basis_case`` or ``bc_basis_directory`` discovery options.
 
-The default NESW calculation uses acquired directional boundary contributions
-and needs no basis file. Leave ``bc_basis_paths`` unset for NESW; scientific
-calls use ``bc_basis=None``. ``use_bc=False`` skips BC resource loading.
+``bc_basis_algorithm="NESW"`` selects the built-in calculation and is the
+canonical default. It uses acquired directional boundary contributions without
+reading a basis file; scientific calls receive ``bc_basis=None``. Exact
+``bc_basis_paths`` take precedence over the algorithm, whose value is then
+inactive. Selected files fail on read errors rather than falling back to NESW.
+``use_bc=False`` skips BC basis resolution and loading, including selected files.
+Supported names are still validated; inactive algorithm values are deferred.
 
 ``country_directory`` is removed from run configuration in 0.8 and is rejected
 before acquisition. Replace it with ``country_file`` for reporting,

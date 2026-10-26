@@ -227,3 +227,46 @@ Remove dead HBMCMC Jinja branches and historical vocabulary from active template
 INI/preparation docstrings describe canonical decoding/resources. Retained legacy
 output and basis/artifact capabilities are unchanged. Fresh validation belongs
 to the resulting revision; earlier complete matrices do not validate this slice.
+
+
+## Positive owners and explicit BC selection — 26 October 2026
+
+[Review 5649950083](https://github.com/openghg/openghg_inversions/pull/974#pullrequestreview-5649950083)
+supersedes the operative blanket schema-freeze language in the 24 October scope.
+That dated approval and its unchanged-schema execution observations remain
+historical evidence. This follow-up renames only the two Python prepared schema
+constants; persisted literals, versions, numerical variables and layout remain
+unchanged in this implementation. #976 owns a later explicit persisted-identifier
+and supported-version migration, with selected VG integration tracked in OPE-233.
+No compatibility aliases or artifact conversion are added here.
+
+Keep the already-delivered canonical prepared constructor and preparation
+invariants in `rhime-scientific-inputs`. Do not import #964's pending retained
+population/imputation/alignment rules. Configuration resolves requested names,
+choices and phase applicability; it does not construct scientific arrays.
+Prepared/sample handoff and reconstruction/persistence owners retain codec,
+format/version-admission and replay semantics. Retained-state reconstruction owns
+all-retained-chain products, and model composition owns likelihood/prior semantics.
+The durable execution boundary states independence from migration translation;
+old namespace/options/aliases/command maps remain migration documentation and
+immutable dated evidence. Existing absent-name/runtime tests are still required.
+
+Remove the already-delivered duplicate factory/isolation `ADDED` delta rather
+than maintaining it beside its durable copy. Keep only the newly approved BC
+selection delta active until fresh acceptance and synchronization. Final archival
+is separate work, not implied by this ownership edit.
+
+Expose `bc_basis_algorithm="NESW"` separately from exact `bc_basis_paths`.
+At the application boundary, resolve the enabled algorithm or file-backed
+selection once before acquisition. `use_bc=False` bypasses BC basis resolution
+and I/O. With enabled BCs, exact paths take precedence and the algorithm is
+inactive; otherwise validate the active algorithm generically and resolve NESW
+to the existing `None` numerical seam. Selected files continue through the
+existing reader and yield the same labeled Dataset operand. Scientific functions
+do not read configuration or resolve the choice again. No old selector/token
+checks, framework or new numerical equations are introduced.
+
+`retirements/review_974_2026_10_26.json` captures pre-change revision `1c15954c`,
+pinned/base source hashes, original BC test cases, constant literal/version and
+contract dispositions before code edits. Fresh checks belong to the resulting
+revision; prior acceptance is not evidence for this new selector.

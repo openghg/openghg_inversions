@@ -23,17 +23,19 @@ Keep legacy dependencies one-way
 
 The :download:`HBMCMC isolation and retirement contract
 <../../openspec/specs/hbmcmc-isolation-retirement/spec.md>`
-defines a target modern distribution without the HBMCMC namespace, forwarding
-shims or temporary option translation. Modern behavior must have modern owners;
+defines normal execution through supported modern interfaces without migration
+translation. Modern behavior must have modern owners;
 normal execution must not invoke migration tooling. Canonical configuration
 rejects unsupported options before scientific work, including every explicit
 ``use_tracer`` occurrence.
 
-PR 869 delivered the earlier one-way isolation boundary; transitional adapters
-remain implemented pending the active retirement change. The
-:doc:`agreed development boundary </usage/legacy_and_migration>` supersedes the
-old version timetable and records the evidence gate. It does not establish
-that runtime removal has landed. See :doc:`specifications` for delivery status.
+PR 869 delivered the earlier one-way isolation boundary. The current #719 branch
+removes the transitional namespace and adapters; completed revision-specific
+checks are recorded in the active change's tasks and PR #974. Specification
+synchronization and archival remain separate closeout work. The
+:doc:`development migration guide </usage/legacy_and_migration>` records removed
+interfaces and replacements. See :doc:`specifications` for capability ownership
+and pending scientific amendments.
 
 Start with the scientific recipe
 --------------------------------
@@ -177,11 +179,14 @@ its syntax, apply raw overrides before normalization, and forward resolved
 values explicitly. A moderately long keyword-only signature can be clearer
 than an ambient context object or implicit forwarding through the pipeline.
 
-The current standard/multisector request and its compatibility adapters are
+The current standard/multisector requests are
 described in :doc:`/usage/rhime_configuration`. That reference and the reviewed
 :download:`configuration change
 <../../openspec/specs/rhime-configuration/spec.md>`
-own constructor and resolution details. The request precedes preparation;
+own requested choices and their resolution. Canonical prepared construction
+belongs to the :download:`scientific-input contract
+<../../openspec/specs/rhime-scientific-inputs/spec.md>`; persisted formats and replay
+belong to the prepared/sample handoff contracts. The request precedes preparation;
 retained-site execution facts become known later. Frozen records do not imply
 recursive immutability of borrowed arrays or caller-owned containers.
 

@@ -91,11 +91,10 @@ labelled arrays:
 .. code-block:: python
 
    from openghg_inversions.basis import prepare_basis
-   from openghg_inversions.basis.support import load_bc_basis
    from openghg_inversions.native_flux import resolve_runtime_flux
    from openghg_inversions.rhime.preparation import (
        acquire_merged_data, filter_observations, prepare_observation_errors,
-       resolve_basis_inputs,
+       resolve_basis_inputs, resolve_bc_basis,
    )
    from openghg_inversions.rhime import validate_output_resources
 
@@ -103,10 +102,7 @@ labelled arrays:
    # For a complete run that will produce outputs:
    validate_output_resources(config.output)
    basis_inputs = resolve_basis_inputs(config.data)
-   bc_basis = (
-       load_bc_basis(config.data.bc_basis_paths)
-       if config.data.use_bc and config.data.bc_basis_paths is not None else None
-   )
+   bc_basis = resolve_bc_basis(config.data)
    merged = acquire_merged_data(config.data)
    with_errors = prepare_observation_errors(
        merged.site_data, averaging_error=config.data.averaging_error,

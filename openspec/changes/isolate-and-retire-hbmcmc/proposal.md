@@ -4,6 +4,28 @@ Positional dates and `--kwargs` remain open for discussion and possible revision
 The finite CLI naming amendment preserves their current meanings for that slice;
 it does not establish their final design.
 
+## Current delivery and contract ownership — 26 October 2026
+
+The current #719 branch implements namespace/adapter retirement, the approved
+command/Python name removals and the separately approved prepared-input factory
+removal. Revision-specific runtime/package/documentation acceptance is recorded
+in tasks and PR #974; those earlier results do not validate later amendments.
+[Review 5649950083](https://github.com/openghg/openghg_inversions/pull/974#pullrequestreview-5649950083)
+approves a bounded follow-up: explicit public BC selection, positive contract
+ownership, current status cleanup and Python-only prepared schema constant names.
+Persisted identifiers and their supported-version migration remain separately
+tracked in [#976](https://github.com/openghg/openghg_inversions/issues/976).
+
+Delivered canonical construction/preparation contracts now have the focused
+`rhime-scientific-inputs` owner. Configuration owns requested names/defaults and
+phase applicability; resource I/O owns selected BC resources. Existing
+prepared/sample handoff and codec contracts retain saved formats/version/replay.
+Historical inventories and replacement maps live in migration evidence/guidance.
+The active delta now contains only the newly approved BC selection amendment;
+its acceptance/promotion and final archive remain pending. No #964 scientific
+amendment or unfinished handoff programme is promoted by this reconciliation.
+The dated sections below preserve earlier approvals and delivery history.
+
 ## Development-boundary amendment — 23 October 2026
 
 The maintainer-approved #944 treatment and bounded #961 amendment supersede the
@@ -92,8 +114,12 @@ in the target interface. The historical mechanism is recorded in [design.md](des
 
 ### Modified Capabilities
 
-- `rhime-configuration`: Canonical-only requested options and concrete scientific
-  results, with INI decoding independent of execution and no historical translator.
+- `rhime-configuration`: Canonical requested options and phase-owned validation,
+  with INI decoding independent of execution and no migration translator.
+- `rhime-scientific-inputs`: Already-delivered numerical preparation and canonical
+  prepared construction, independently of configuration and persistence.
+- `rhime-resource-io`: Explicit algorithm/file BC selection resolved at the owning
+  application boundary before acquisition.
 
 ## Impact
 
@@ -113,6 +139,7 @@ The 0.8 implementation is accepted for merge in PR #869 and promoted to
 [rhime-configuration](../../specs/rhime-configuration/spec.md),
 [rhime-resource-io](../../specs/rhime-resource-io/spec.md) and the
 [isolation contract](../../specs/hbmcmc-isolation-retirement/spec.md).
-Complete development retirement remains in this change's delta; its deletion
-and final archive tasks remain unchecked. Earlier 0.8 descriptions record
-delivered isolation rather than a renewed compatibility window.
+The current branch delivers development retirement as recorded above. Its
+already-delivered positive contracts are synchronized; the new BC selector delta
+and final archive remain pending. Earlier 0.8 descriptions record historical
+isolation rather than a renewed compatibility window.

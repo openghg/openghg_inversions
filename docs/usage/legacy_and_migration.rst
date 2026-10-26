@@ -35,8 +35,10 @@ configuration as follows:
   ``("/data/bc/january.nc", "/data/bc/february.nc")``. Runners load these files
   before acquisition and preserve their time combination and alignment.
   Custom scientific sensitivity calls receive the loaded ``bc_basis`` dataset.
-  NESW uses acquired directional contributions and ``bc_basis=None``; it needs
-  no file. Disabled BCs load no BC resources.
+  ``bc_basis_algorithm="NESW"`` is the default built-in selection. It uses
+  acquired directional contributions and ``bc_basis=None`` without a file.
+  Exact ``bc_basis_paths`` win over the inactive algorithm; ``use_bc=False``
+  skips BC basis resolution and loading.
 * Modern runners reject ``fp_basis_case``, ``basis_directory``, ``bc_basis_case``
   and ``bc_basis_directory``. Replace them with exact basis/BC selections.
   Scientific functions receive explicit selections and never discover files.
@@ -84,8 +86,13 @@ to observations in ``inv_inputs``; for raw stationary or moving xarray inputs,
 use ``prepare_rhime_inputs_from_xarray`` so its existing boundary normalizes them.
 The xarray path preserves source/path metadata and its ``supplied`` provenance
 fallback without mutating the supplied basis. The old per-site coordinate
-arguments are not added to the constructor. Canonical serialization and the
-existing persisted schema remain unchanged. This exact factory removal was
+arguments are not added to the constructor. Prepared-input formats, versions and
+saved replay follow their persistence contracts independently of constructor
+names. The Python constants are now ``PREPARED_INPUTS_SCHEMA`` and
+``PREPARED_INPUTS_SCHEMA_VERSION``; their stored values and codec layout are
+unchanged in this change. Persisted identifier migration is tracked separately in
+`#976 <https://github.com/openghg/openghg_inversions/issues/976>`_.
+This exact factory removal was
 approved on 24 October 2026 under #945/#663; other constructors and independent
 basis capabilities retain their own contracts.
 
@@ -224,16 +231,16 @@ an output consumer resolves it. The consumer rejects invalid formats against its
 supported values. Modern validation has no special historical-name or token
 checks; replacement advice belongs in this guide and migration tooling.
 
-The amended promises are `compatible public adapters
-<https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md#requirement-compatible-public-adapters-and-scientific-choices>`_,
+The current promises are `canonical request validation
+<https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md#requirement-canonical-requests-and-phase-owned-validation>`_,
 `independent INI decoding
 <https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md#requirement-ini-decoding-is-independent-of-semantic-construction>`_,
 `configuration identity
 <https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md#requirement-configuration-is-not-a-historical-identity-schema>`_,
 `modern flux selectors
 <https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md#requirement-canonical-modern-flux-selectors>`_,
-`named Python aliases
-<https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-model-selection/spec.md#requirement-retire-named-python-aliases>`_,
+`canonical Python interfaces
+<https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-model-selection/spec.md#requirement-canonical-public-python-interfaces>`_,
 and `retained modern behavior
 <https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md#requirement-retained-modern-behavior-has-modern-owners>`_.
 The `affected-evidence requirement
@@ -474,8 +481,8 @@ aliases or emit alias deprecation warnings.
      - ``basis_path``, ``basis_partition_path`` or ``basis_partition_paths``
      - Select the retained artifact or exact labelled partition file(s); remove both discovery options
    * - ``bc_basis_case="NESW"`` + ``bc_basis_directory``
-     - Omit both options
-     - NESW is built in and needs no BC basis files
+     - ``bc_basis_algorithm="NESW"`` (also the default)
+     - ``bc_basis_algorithm="NESW"`` is the default; no BC files are needed
    * - Other ``bc_basis_case`` + ``bc_basis_directory``
      - ``bc_basis_paths``
      - Select the exact BC basis files, including the months needed by the run

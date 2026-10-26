@@ -126,7 +126,7 @@ contracts. Normal modern execution SHALL contain no HBMCMC namespace dependency
 or historical option translation. The enumerated obsolete options, special
 tracer handling, installed command names and five Python aliases SHALL follow
 the canonical-only target in
-[Compatible public adapters and scientific choices](../../../../specs/rhime-configuration/spec.md#requirement-compatible-public-adapters-and-scientific-choices).
+[Canonical requests and phase-owned validation](../../../../specs/rhime-configuration/spec.md#requirement-canonical-requests-and-phase-owned-validation).
 The [migration evidence guarantees](../../../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence)
 SHALL preserve historical observations and relevant scientific coverage.
 

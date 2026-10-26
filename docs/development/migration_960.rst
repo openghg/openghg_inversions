@@ -561,3 +561,51 @@ named the unsupported builder option; the modern comparison expects the ordinary
 resolved/raw source conflict while preserving the callback guard. The dated
 fixture labels this retrospective source capture explicitly; fresh execution
 is recorded separately, not claimed as a pre-removal observation.
+
+
+26 October addendum: positive owners and explicit BC selection
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+`Review 5649950083
+<https://github.com/openghg/openghg_inversions/pull/974#pullrequestreview-5649950083>`_
+approves the bounded follow-up. Before code edits,
+``retirements/review_974_2026_10_26.json`` captures revision
+``1c15954cf191899462cf0fe2faeca5079873b842`` against pinned ``0a32d73a`` and
+base ``b288ac25``: source hashes, exact original BC regression cases, the
+prepared-schema constants and their values, and the previous contract ownership.
+These are source observations, not a fresh scientific execution claim. The
+original eighteen fixtures and earlier dated comparisons remain unchanged.
+
+* **BC selection (I4/legacy-basis):** the previous configuration exposed exact
+  files but no algorithm field; absent files passed ``None`` to the same NESW
+  numerical calculation. Add canonical ``bc_basis_algorithm="NESW"`` as its
+  default. Exact files win and make the algorithm inactive; disabled BCs resolve
+  and read no BC basis resources. Preserve directional labels, temporal/grid
+  alignment and lazy borrowed data. #719 delivers this selector; #951 retains
+  independent basis decisions. Ordinary name/applicable-value validation remains
+  separate from resource loading.
+* **Python constants (prepared-input/O1/O2):** replace
+  ``RHIME_PREPARED_INPUTS_SCHEMA`` and ``RHIME_PREPARED_INPUTS_SCHEMA_VERSION``
+  with ``PREPARED_INPUTS_SCHEMA`` and ``PREPARED_INPUTS_SCHEMA_VERSION``.
+  Persisted ``openghg_inversions.rhime_prepared_inputs``, version 1 and codec
+  layout stay unchanged in this slice. This is not a permanent freeze:
+  `#976 <https://github.com/openghg/openghg_inversions/issues/976>`_ owns the
+  separate persisted-identifier migration and explicit version support.
+  `OPE-233 <https://linear.app/openghg-inversions/issue/OPE-233>`_ tracks a selected
+  VG/OGI baseline and migration; none is claimed delivered here.
+* **Contract disposition (all slices):** replace negative deletion inventories
+  in durable configuration/selection/execution requirements with positive
+  supported-interface contracts. Preserve the exact namespace/option/command/
+  alias/factory maps in :doc:`/usage/legacy_and_migration`, the earlier ledger
+  addenda and dated source records. Canonical construction belongs to the
+  scientific-input owner; codecs/replay remain with persistence/handoffs.
+  Remove the already-delivered factory's duplicated active ``ADDED`` requirement.
+  Keep the new BC delta and final archive pending; #719 owns reconciliation,
+  #945/#663 broader Python naming and #876/#964 separate scientific amendments.
+
+The 26 October approval supersedes the operative blanket unchanged-schema clause.
+The 24 October unchanged-schema observations above remain true for that earlier
+implementation. Neither this reconciliation nor Python naming imports #964's
+pending numerical changes, promotes the unfinished handoff programme or implies
+unsupported historical-format compatibility. Fresh acceptance is recorded in
+revision-specific tasks/PR evidence, separately from these source comparisons.
