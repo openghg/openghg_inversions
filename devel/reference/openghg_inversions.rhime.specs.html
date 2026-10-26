@@ -391,12 +391,6 @@
 </details></li>
 </ul>
 </details></li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html">openghg_inversions.hbmcmc.compatibility</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_data.html">openghg_inversions.hbmcmc.legacy_data</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_basis.html">openghg_inversions.hbmcmc.legacy_basis</a></li>
-</ul>
-</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.cached_sigma.html">openghg_inversions.inference.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.diagnostics.html">openghg_inversions.inference.diagnostics</a></li>
@@ -687,7 +681,7 @@ alignment defaults use the winning requested start date.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>remaining</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – Owned working options after alias and type normalization;
+<li><p><strong>remaining</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – Owned working options after type normalization;
 selected likelihood names are removed from this mapping.</p></li>
 <li><p><strong>mismatch_model</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'pollution_event'</em><em>, </em><em>'additive_sigma'</em><em>, </em><em>'fixed_error'</em><em>] </em><em>| </em><em>None</em>) – Selected built-in mismatch equation, or <code class="docutils literal notranslate"><span class="pre">None</span></code> for a
 custom likelihood with no built-in options.</p></li>
@@ -895,9 +889,8 @@ and false for derived product formats.</p></li>
 <li><p><strong>paris_postprocessing_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Extra keyword arguments for PARIS output
 creation.</p></li>
 <li><p><strong>output_filename_convention</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'rhime'</em><em>, </em><em>'legacy'</em><em>]</em>) – Filename convention for derived products.
-Direct RHIME runs use <code class="docutils literal notranslate"><span class="pre">&quot;rhime&quot;</span></code>. The <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code>
-compatibility shim uses <code class="docutils literal notranslate"><span class="pre">&quot;legacy&quot;</span></code> for old SLURM/config
-workflows.</p></li>
+Defaults to <code class="docutils literal notranslate"><span class="pre">&quot;rhime&quot;</span></code>; select <code class="docutils literal notranslate"><span class="pre">&quot;legacy&quot;</span></code> explicitly to use
+the independently supported legacy filename convention.</p></li>
 </ul>
 </dd>
 </dl>
@@ -925,7 +918,7 @@ must supply paths resolved against their own documented file base.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – Canonical output option names after aliases and overrides.
+<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – Canonical output option names after invocation overrides.
 Format and filename-convention values are case-insensitive.</p></li>
 <li><p><strong>multisector</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether to enforce the multisector output restrictions.</p></li>
 </ul>

@@ -16,7 +16,7 @@ import xarray as xr
 from openghg_inversions._labelled_matrices import renamed_column_coordinates
 from openghg_inversions.basis import BasisFunctions
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
-from openghg_inversions.inversion_data import RhimePreparedInputs, SiteOptions
+from openghg_inversions.inversion_data import PreparedInputs, SiteOptions
 from openghg_inversions.rhime.co2 import prepare_co2_inputs
 from openghg_inversions.rhime.co2.co2_affine_output import produce_bucket_affine_flux_map
 from openghg_inversions.rhime.preparation import filter_observations
@@ -67,7 +67,7 @@ def synthetic_inputs(destination: Path) -> tuple:
     )
     for name in ("H", "H_bc", "mf", "mf_error"):
         inputs[name].attrs["units"] = "ppm"
-    canonical = RhimePreparedInputs(
+    canonical = PreparedInputs(
         inputs, basis,
         xr.Dataset({"averaging_period": ("site", ["1h"])}, coords={"site": ["MHD"]}),
     )

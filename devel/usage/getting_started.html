@@ -518,7 +518,7 @@ options and limits.</p>
 <p>For an INI configuration, copy
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions/config/templates/rhime_template.ini</span></code> and use the
 installed command:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">openghg</span><span class="o">-</span><span class="n">inversions</span> <span class="n">run</span><span class="o">-</span><span class="n">rhime</span> \
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">rhime</span> <span class="n">run</span> \
     <span class="mi">2019</span><span class="o">-</span><span class="mi">01</span><span class="o">-</span><span class="mi">01</span> <span class="mi">2019</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="mi">01</span> <span class="o">-</span><span class="n">c</span> <span class="n">rhime</span><span class="o">.</span><span class="n">ini</span> <span class="o">--</span><span class="n">output</span><span class="o">-</span><span class="n">path</span> <span class="n">outputs</span>
 </pre></div>
 </div>
@@ -549,7 +549,7 @@ minimal batch script is:</p>
 <span class="c1"># Load the Python environment modules used by your cluster.</span>
 <span class="n">source</span> <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">venv</span><span class="o">/</span><span class="nb">bin</span><span class="o">/</span><span class="n">activate</span>
 
-<span class="n">openghg</span><span class="o">-</span><span class="n">inversions</span> <span class="n">run</span><span class="o">-</span><span class="n">rhime</span> \
+<span class="n">rhime</span> <span class="n">run</span> \
     <span class="mi">2019</span><span class="o">-</span><span class="mi">01</span><span class="o">-</span><span class="mi">01</span> <span class="mi">2019</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="mi">01</span> \
     <span class="o">-</span><span class="n">c</span> <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">rhime</span><span class="o">.</span><span class="n">ini</span> \
     <span class="o">--</span><span class="n">output</span><span class="o">-</span><span class="n">path</span> <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">outputs</span>
@@ -565,10 +565,9 @@ outputs can be substantially larger than source code or configuration files.</p>
 <section id="migrate-an-old-fixedbasis-workflow">
 <h2>Migrate an old fixedbasis workflow<a class="headerlink" href="#migrate-an-old-fixedbasis-workflow" title="Link to this heading">#</a></h2>
 <p>The direct <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> and <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code> implementation has been
-removed. Existing supported fixedbasis-style INI files can temporarily use
-<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">openghg_inversions.hbmcmc.run_hbmcmc</span></code>; the wrapper translates
-them and always runs RHIME. It does not support <code class="docutils literal notranslate"><span class="pre">--legacy-fixedbasis</span></code> or
-generate new legacy templates.</p>
+removed, together with the complete HBMCMC namespace and transitional wrapper.
+Use canonical RHIME settings with <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span></code>, or retain matching 0.7 software
+for historical execution.</p>
 <p>See <a class="reference internal" href="legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a> for parameter mappings, batch-script changes,
 return types, legacy-format output, and interfaces with no current equivalent.</p>
 </section>

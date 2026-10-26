@@ -458,16 +458,18 @@ A design recommendation is not evidence that an API implements it.</p>
 <section id="keep-legacy-dependencies-one-way">
 <h2>Keep legacy dependencies one-way<a class="headerlink" href="#keep-legacy-dependencies-one-way" title="Link to this heading">#</a></h2>
 <p>The <a class="reference download internal" download="" href="../_downloads/2b40e8f781ee62206dd844c68db3e2e7/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">HBMCMC</span> <span class="pre">isolation</span> <span class="pre">and</span> <span class="pre">retirement</span> <span class="pre">contract</span></code></a>
-defines a target modern distribution without the HBMCMC namespace, forwarding
-shims or temporary option translation. Modern behavior must have modern owners;
+defines normal execution through supported modern interfaces without migration
+translation. Modern behavior must have modern owners;
 normal execution must not invoke migration tooling. Canonical configuration
 rejects unsupported options before scientific work, including every explicit
 <code class="docutils literal notranslate"><span class="pre">use_tracer</span></code> occurrence.</p>
-<p>PR 869 delivered the earlier one-way isolation boundary; transitional adapters
-remain implemented pending the active retirement change. The
-<a class="reference internal" href="../usage/legacy_and_migration.html"><span class="doc">agreed development boundary</span></a> supersedes the
-old version timetable and records the evidence gate. It does not establish
-that runtime removal has landed. See <a class="reference internal" href="specifications.html"><span class="doc">Development guidance and behavioral specifications</span></a> for delivery status.</p>
+<p>PR 869 delivered the earlier one-way isolation boundary. The current #719 branch
+removes the transitional namespace and adapters; completed revision-specific
+checks are recorded in the active change’s tasks and PR #974. Specification
+synchronization and archival remain separate closeout work. The
+<a class="reference internal" href="../usage/legacy_and_migration.html"><span class="doc">development migration guide</span></a> records removed
+interfaces and replacements. See <a class="reference internal" href="specifications.html"><span class="doc">Development guidance and behavioral specifications</span></a> for capability ownership
+and pending scientific amendments.</p>
 </section>
 <section id="start-with-the-scientific-recipe">
 <h2>Start with the scientific recipe<a class="headerlink" href="#start-with-the-scientific-recipe" title="Link to this heading">#</a></h2>
@@ -593,10 +595,12 @@ argument or introducing a generic option registry. Let each file frontend own
 its syntax, apply raw overrides before normalization, and forward resolved
 values explicitly. A moderately long keyword-only signature can be clearer
 than an ambient context object or implicit forwarding through the pipeline.</p>
-<p>The current standard/multisector request and its compatibility adapters are
+<p>The current standard/multisector requests are
 described in <a class="reference internal" href="../usage/rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a>. That reference and the reviewed
 <a class="reference download internal" download="" href="../_downloads/79c713b960fe2b8d6f921406d647266f/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">configuration</span> <span class="pre">change</span></code></a>
-own constructor and resolution details. The request precedes preparation;
+own requested choices and their resolution. Canonical prepared construction
+belongs to the <a class="reference download internal" download="" href="../_downloads/4b3e00ea2632734940dd77c2d257e855/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">scientific-input</span> <span class="pre">contract</span></code></a>; persisted formats and replay
+belong to the prepared/sample handoff contracts. The request precedes preparation;
 retained-site execution facts become known later. Frozen records do not imply
 recursive immutability of borrowed arrays or caller-owned containers.</p>
 <p>Configuration groups acquisition and preparation choices under
@@ -620,8 +624,12 @@ can compose reusable prepared values without pretending to be substitutable
 for another family.</p>
 <p>Moving a preparation equation, including observation-error derivation,
 minimum-error calculation, or boundary-period expansion, is a scientific
-change requiring its own parity evidence. The configuration contract records
-the current observation-error-before-filtering policy. Supported prepared-input
+change requiring its own parity evidence. The
+<a class="reference download internal" download="" href="../_downloads/4b3e00ea2632734940dd77c2d257e855/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">scientific-input</span> <span class="pre">contract</span></code></a>
+owns preparation operations. Current recipes prepare observation errors before
+filtering, as shown in <a class="reference internal" href="../usage/customising_rhime.html"><span class="doc">Customising RHIME</span></a>; the selection-first change
+proposed in <a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/964">PR 964</a>
+remains separate work. Supported prepared-input
 contents and examples are in <a class="reference internal" href="../usage/rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a> and
 <a class="reference internal" href="../usage/customising_rhime.html"><span class="doc">Customising RHIME</span></a>; checkpoint limitations are in
 <a class="reference internal" href="../usage/staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a>.</p>

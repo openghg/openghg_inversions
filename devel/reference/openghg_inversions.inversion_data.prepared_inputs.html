@@ -391,12 +391,6 @@
 </details></li>
 </ul>
 </details></li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html">openghg_inversions.hbmcmc.compatibility</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_data.html">openghg_inversions.hbmcmc.legacy_data</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_basis.html">openghg_inversions.hbmcmc.legacy_basis</a></li>
-</ul>
-</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.cached_sigma.html">openghg_inversions.inference.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.diagnostics.html">openghg_inversions.inference.diagnostics</a></li>
@@ -616,45 +610,6 @@ implying that model builders consume them.</p></li>
     labels are inconsistent.</p>
 </dd>
 </dl>
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.from_legacy_inputs">
-<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_legacy_inputs</span></span><span class="sig-paren">(</span>
-
-<dl>
-<dd><em class="sig-param"><span class="n"><span class="pre">inv_inputs</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">basis_functions</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">sites</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">averaging_period</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">basis_artifact_source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">basis_artifact_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">site_lats</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">site_lons</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-</dl>
-
-<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.from_legacy_inputs" title="Link to this definition">#</a></dt>
-<dd><p>Adapt the former positional fields to the labeled-data contract.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>inv_inputs</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Canonical inversion inputs.</p></li>
-<li><p><strong>basis_functions</strong> (<a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><em>FluxWeightedBasis</em></a>) – Retained basis object.</p></li>
-<li><p><strong>sites</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>]</em>) – Site labels in indicator-decoding order.</p></li>
-<li><p><strong>averaging_period</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em><em>]</em>) – Observation periods aligned to <code class="docutils literal notranslate"><span class="pre">sites</span></code>.</p></li>
-<li><p><strong>basis_artifact_source</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional basis provenance value.</p></li>
-<li><p><strong>basis_artifact_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional basis provenance path.</p></li>
-<li><p><strong>site_lats</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Optional legacy release latitudes, one per site.</p></li>
-<li><p><strong>site_lons</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Optional legacy release longitudes, one per site.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Prepared inputs using labeled site metadata.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.15)"><em>Self</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.sites">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">sites</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.sites" title="Link to this definition">#</a></dt>
@@ -792,12 +747,6 @@ replaces the corresponding suffix.</p></li>
 
 </dd></dl>
 
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs">
-<span class="sig-name descname"><span class="pre">RhimePreparedInputs</span></span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs" title="Link to this definition">#</a></dt>
-<dd><p>alias of <a class="reference internal" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">PreparedInputs</span></code></a></p>
-</dd></dl>
-
 </section>
 
 
@@ -848,7 +797,6 @@ replaces the corresponding suffix.</p></li>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs"><code class="docutils literal notranslate"><span class="pre">PreparedInputs</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.from_legacy_inputs"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.from_legacy_inputs()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.sites"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.sites</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.averaging_period"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.averaging_period</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.basis_artifact_source"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.basis_artifact_source</span></code></a></li>
@@ -860,7 +808,6 @@ replaces the corresponding suffix.</p></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.load"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.load()</span></code></a></li>
 </ul>
 </li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code></a></li>
 </ul>
   </nav></div>
 

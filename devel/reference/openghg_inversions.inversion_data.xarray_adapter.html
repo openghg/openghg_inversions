@@ -391,12 +391,6 @@
 </details></li>
 </ul>
 </details></li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html">openghg_inversions.hbmcmc.compatibility</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_data.html">openghg_inversions.hbmcmc.legacy_data</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_basis.html">openghg_inversions.hbmcmc.legacy_basis</a></li>
-</ul>
-</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.cached_sigma.html">openghg_inversions.inference.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.diagnostics.html">openghg_inversions.inference.diagnostics</a></li>
@@ -581,7 +575,7 @@
 acquisition. It accepts site data already held in xarray objects, applies a
 retained <a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.BasisFunctions" title="openghg_inversions.basis.basis_functions.BasisFunctions"><code class="xref py py-class docutils literal notranslate"><span class="pre">BasisFunctions</span></code></a>
 object when only footprint-times-flux caches are available, and returns the
-same <a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code></a>
+same <a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">PreparedInputs</span></code></a>
 contract used by the OpenGHG-backed preparation path.</p>
 <p>Each site-local input dataset must contain a <code class="docutils literal notranslate"><span class="pre">time</span></code> dimension and the
 observation variables required by
@@ -619,8 +613,8 @@ Labels on explicit <code class="docutils literal notranslate"><span class="pre">
 be nonempty, unique Python or NumPy strings in their intended order, and
 non-string labels are not coerced. Repeated source values inside a gathered
 <code class="docutils literal notranslate"><span class="pre">(source,</span> <span class="pre">region_in_source)</span></code> state MultiIndex are valid.</p>
-<p>Use <code class="xref py py-meth docutils literal notranslate"><span class="pre">RhimePreparedInputs.save</span></code> and
-<code class="xref py py-meth docutils literal notranslate"><span class="pre">load()</span></code>
+<p>Use <a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.save" title="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.save"><code class="xref py py-meth docutils literal notranslate"><span class="pre">PreparedInputs.save</span></code></a> and
+<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.load" title="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.load"><code class="xref py py-meth docutils literal notranslate"><span class="pre">load()</span></code></a>
 for durable canonical artifacts. Serialized or otherwise pre-stacked
 <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> data should not be passed back through this adapter.</p>
 <dl class="py function">
@@ -663,9 +657,9 @@ explicit <code class="docutils literal notranslate"><span class="pre">source</sp
 and are never coerced from bytes or numbers. Repeated source values in a
 gathered source-specific state MultiIndex remain valid.</p>
 <p>Persist and reopen canonical artifacts with
-<code class="xref py py-meth docutils literal notranslate"><span class="pre">RhimePreparedInputs.save</span></code>
+<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.save" title="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.save"><code class="xref py py-meth docutils literal notranslate"><span class="pre">PreparedInputs.save</span></code></a>
 and
-<code class="xref py py-meth docutils literal notranslate"><span class="pre">load()</span></code>;
+<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.load" title="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.load"><code class="xref py py-meth docutils literal notranslate"><span class="pre">load()</span></code></a>;
 do not pass serialized <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> data back to this adapter.
 The reserved <code class="docutils literal notranslate"><span class="pre">fixed_baseline</span></code> input is rejected until a reusable
 semantic Baseline component is available; use sampled <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> or omit it.</p>

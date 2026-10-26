@@ -504,10 +504,11 @@ unused sector keys are errors.</p>
 linked forward models. The standard-family acquisition and preparation path
 does not support tracer inversions; the advanced linked CO₂/O₂ recipe starts
 from separately prepared channel arrays. The generic <code class="docutils literal notranslate"><span class="pre">use_tracer</span></code> flag
-must be omitted or <code class="docutils literal notranslate"><span class="pre">False</span></code>; <code class="docutils literal notranslate"><span class="pre">True</span></code> raises <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> before
-acquisition or execution, including when merged data is supplied.</p>
+must be omitted. Every explicit value, including <code class="docutils literal notranslate"><span class="pre">False</span></code>, receives
+ordinary unsupported-option validation before scientific work, including
+when merged data is supplied.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">emissions_name</span></code></dt><dd><p>Legacy compatibility spelling accepted only when <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> is absent.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">emissions_name</span></code></dt><dd><p>Unsupported historical spelling; use <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code>.</p>
 </dd>
 </dl>
 </section>
@@ -606,7 +607,7 @@ metadata.</p>
 </section>
 <section id="inspecting-configuration">
 <h2>Inspecting configuration<a class="headerlink" href="#inspecting-configuration" title="Link to this heading">#</a></h2>
-<p>Pass options directly to <code class="docutils literal notranslate"><span class="pre">run_standard</span></code> or <code class="docutils literal notranslate"><span class="pre">run_rhime_multisector</span></code> for an
+<p>Pass options directly to <code class="docutils literal notranslate"><span class="pre">run_standard</span></code> or <code class="docutils literal notranslate"><span class="pre">run_multisector</span></code> for an
 ordinary inversion. To inspect their resolved choices before retrieving data,
 use <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params(options,</span> <span class="pre">multisector=False)</span></code> (or
 <code class="docutils literal notranslate"><span class="pre">multisector=True</span></code> for the multisector recipe), then pass the result as
@@ -640,15 +641,15 @@ legacy HBMCMC output formatting does not support column observations.</p>
 <section id="running-prepared-inputs">
 <h2>Running Prepared Inputs<a class="headerlink" href="#running-prepared-inputs" title="Link to this heading">#</a></h2>
 <p>Advanced standard workflows can prepare canonical inputs separately from data
-acquisition. Pass the retained <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> as <code class="docutils literal notranslate"><span class="pre">prepared</span></code> to
+acquisition. Pass the retained <code class="docutils literal notranslate"><span class="pre">PreparedInputs</span></code> as <code class="docutils literal notranslate"><span class="pre">prepared</span></code> to
 <code class="docutils literal notranslate"><span class="pre">run_standard</span></code> with the ordinary resolved configuration. This skips acquisition
 and preparation, then uses the same explicit materialization, model construction,
 sampling and output operations. The result is <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code>:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">PreparedInputs</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeConfig</span><span class="p">,</span> <span class="n">run_standard</span>
 
 <span class="c1"># Constructed by another preparation graph or restored from a numerical cache.</span>
-<span class="n">prepared</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"prepared-inputs.nc"</span><span class="p">)</span>
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">PreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"prepared-inputs.nc"</span><span class="p">)</span>
 <span class="n">config</span> <span class="o">=</span> <span class="n">RhimeConfig</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
     <span class="p">{</span>
         <span class="s2">"species"</span><span class="p">:</span> <span class="s2">"ch4"</span><span class="p">,</span>
@@ -747,7 +748,7 @@ public model components, and links to tracked extension work are described in
 corresponding recipe module. See
 <a class="reference internal" href="concrete_rhime_model.html#rhime-builder-stability"><span class="std std-ref">the concrete model stability contract</span></a> for the
 full contract.</p>
-<p><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.save</span></code> accepts NetCDF paths ending in <code class="docutils literal notranslate"><span class="pre">.nc</span></code> and Zarr
+<p><code class="docutils literal notranslate"><span class="pre">PreparedInputs.save</span></code> accepts NetCDF paths ending in <code class="docutils literal notranslate"><span class="pre">.nc</span></code> and Zarr
 paths ending in <code class="docutils literal notranslate"><span class="pre">.zarr</span></code>. Each artifact contains the canonical inversion
 inputs and the retained operator-backed basis, including its reference flux;
 <code class="docutils literal notranslate"><span class="pre">basis_artifact_path</span></code> is recorded only as provenance and is not needed to
@@ -805,7 +806,7 @@ retained.</p></td>
 <td><p>Unsupported</p></td>
 <td><p>Wrap one or more site-local datasets in an ordered mapping or a
 direct-child <code class="docutils literal notranslate"><span class="pre">DataTree</span></code>. Load an already canonical artifact with
-<code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.load</span></code>.</p></td>
+<code class="docutils literal notranslate"><span class="pre">PreparedInputs.load</span></code>.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Dense <code class="docutils literal notranslate"><span class="pre">Dataset(site,</span> <span class="pre">time)</span></code></p></td>
 <td><p>Unsupported</p></td>
@@ -820,7 +821,7 @@ semantics.</p></td>
 <tr class="row-odd"><td><p>Pre-stacked <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> data</p></td>
 <td><p>Unsupported</p></td>
 <td><p>Pass per-site data to the adapter. Load an already canonical prepared
-artifact with <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.load</span></code> instead.</p></td>
+artifact with <code class="docutils literal notranslate"><span class="pre">PreparedInputs.load</span></code> instead.</p></td>
 </tr>
 </tbody>
 </table>
@@ -899,10 +900,10 @@ the supplied site datasets; it does not acquire or normalize the upstream data.<
 </div>
 <p>Optionally save a durable checkpoint so projection is not repeated when the
 prepared artifact is reopened:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">PreparedInputs</span>
 
 <span class="n">prepared</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"base-prepared-inputs.zarr"</span><span class="p">)</span>
-<span class="n">prepared</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"base-prepared-inputs.zarr"</span><span class="p">)</span>
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">PreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"base-prepared-inputs.zarr"</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>Finally, construct and execute the OpenGHG Inversions run from the canonical
@@ -989,8 +990,7 @@ adapter.</p>
 deterministic observation-aligned <code class="docutils literal notranslate"><span class="pre">fixed_baseline</span></code> is deliberately rejected
 until a reusable semantic Baseline component defines common likelihood and
 output behavior; this follow-up is tracked in <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/550">issue #550</a>. New prepared-input
-features do not change the transitional old-INI wrapper’s compatibility
-contract.</p>
+features do not establish historical artifact compatibility.</p>
 </section>
 <section id="config-files">
 <h2>Config Files<a class="headerlink" href="#config-files" title="Link to this heading">#</a></h2>
@@ -1047,7 +1047,7 @@ case/directory options.</p>
 <p>The lower-level Python basis API also supports <code class="docutils literal notranslate"><span class="pre">&quot;region_constrained&quot;</span></code> when a
 caller supplies an already loaded <code class="docutils literal notranslate"><span class="pre">region_classes</span></code> <code class="docutils literal notranslate"><span class="pre">DataArray</span></code>. That path
 keeps generated labels from crossing land/sea, country, inner/outer, or other
-class boundaries, but RHIME config and <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> do not yet load
+class boundaries, but RHIME config does not yet load
 <code class="docutils literal notranslate"><span class="pre">region_classes</span></code> from files. For RHIME runs that need these masks today,
 build and save the basis through the Python basis API, then select its exact
 <code class="docutils literal notranslate"><span class="pre">basis_path</span></code>.</p>
@@ -1182,10 +1182,8 @@ infer its output dimension.</p>
 fixed <code class="docutils literal notranslate"><span class="pre">bc</span></code> vector and no boundary-condition random variable. This is distinct
 from supplying a standalone baseline time series, which belongs to a separate
 baseline component.</p>
-<p>The transitional <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> wrapper supports only the standard
-single-sector RHIME recipe; it does not add multisector behaviour to an old INI
-file. Migrate source-resolved workflows to <code class="docutils literal notranslate"><span class="pre">run_rhime_multisector</span></code> and its
-canonical configuration vocabulary.</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">run_multisector</span></code> and canonical configuration for source-resolved
+workflows; the historical HBMCMC wrapper is removed.</p>
 </section>
 <section id="correlated-positive-reduced-states">
 <h2>Correlated Positive Reduced States<a class="headerlink" href="#correlated-positive-reduced-states" title="Link to this heading">#</a></h2>
@@ -1335,9 +1333,8 @@ in one <code class="docutils literal notranslate"><span class="pre">Dataset</spa
 <h2>Output Formats<a class="headerlink" href="#output-formats" title="Link to this heading">#</a></h2>
 <p>Standard single-sector RHIME supports <code class="docutils literal notranslate"><span class="pre">inv_out</span></code>, <code class="docutils literal notranslate"><span class="pre">basic</span></code>, <code class="docutils literal notranslate"><span class="pre">paris</span></code>, and
 <code class="docutils literal notranslate"><span class="pre">legacy</span></code> output formats. <code class="docutils literal notranslate"><span class="pre">legacy</span></code> writes the old HBMCMC-compatible NetCDF
-product from the modern <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code>. The deprecated names <code class="docutils literal notranslate"><span class="pre">hbmcmc</span></code>
-and <code class="docutils literal notranslate"><span class="pre">hbmcmc_postprocessing</span></code> are accepted with <code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code> during
-configuration construction. Prefer <code class="docutils literal notranslate"><span class="pre">legacy</span></code> in new configurations.</p>
+product from the modern <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code>. The historical names <code class="docutils literal notranslate"><span class="pre">hbmcmc</span></code>
+and <code class="docutils literal notranslate"><span class="pre">hbmcmc_postprocessing</span></code> are unsupported; use <code class="docutils literal notranslate"><span class="pre">legacy</span></code>.</p>
 <p><code class="docutils literal notranslate"><span class="pre">basic</span></code> selects no written product and does not compute a discarded summary in
 the standard runner. To inspect reporting results in memory, call
 <code class="docutils literal notranslate"><span class="pre">basic_output(result,</span> <span class="pre">country_file=...)</span></code> on the returned <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code>.
@@ -1385,12 +1382,9 @@ products, and convert completed products to dense data before serialization.
 Derived flux products keep their existing <code class="docutils literal notranslate"><span class="pre">flux_time</span></code> coordinate label;
 see <a class="reference internal" href="retained_state_reconstruction.html"><span class="doc">Linear retained-state reconstruction</span></a> for the linear reconstruction and
 source-axis contract.</p>
-<p><code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> is a transitional compatibility wrapper for supported old
-fixedbasis-style INI files. It translates legacy option names to the modern
-<code class="docutils literal notranslate"><span class="pre">run_standard</span></code> API and uses the legacy filename convention. It always executes
-RHIME: the direct <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> / <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code> implementation and the
-<code class="docutils literal notranslate"><span class="pre">--legacy-fixedbasis</span></code> option have been removed. New scripts and new configs
-should use <code class="docutils literal notranslate"><span class="pre">openghg-inversions</span> <span class="pre">run-rhime</span></code> or <code class="docutils literal notranslate"><span class="pre">run_standard(...)</span></code> directly.
+<p>The complete HBMCMC namespace and runtime request translation are removed.
+Use canonical settings with <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span></code> or <code class="docutils literal notranslate"><span class="pre">run_standard(...)</span></code> directly;
+matching older software is required for historical execution.
 See <a class="reference internal" href="legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a> for the parameter map, return-type changes,
 and interfaces without a current equivalent.</p>
 <section id="postprocessing-memory">

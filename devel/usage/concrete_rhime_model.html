@@ -470,7 +470,7 @@
   <section id="standard-and-multisector-rhime-models">
 <h1>Standard and multisector RHIME models<a class="headerlink" href="#standard-and-multisector-rhime-models" title="Link to this heading">#</a></h1>
 <p>This page makes the model graph behind <code class="xref py py-func docutils literal notranslate"><span class="pre">run_standard()</span></code> and
-<code class="xref py py-func docutils literal notranslate"><span class="pre">run_rhime_multisector()</span></code> explicit. The advanced CO₂-only and linked
+<code class="xref py py-func docutils literal notranslate"><span class="pre">run_multisector()</span></code> explicit. The advanced CO₂-only and linked
 CO₂/O₂ graphs have their canonical home in <a class="reference internal" href="co2_models.html"><span class="doc">CO₂ model recipes</span></a>. This page has two
 purposes:</p>
 <ul class="simple">
@@ -488,7 +488,7 @@ helpers.</p></li>
 <h2>The current builders<a class="headerlink" href="#the-current-builders" title="Link to this heading">#</a></h2>
 <p>Each recipe directly composes one readable concrete graph. The standard graph
 lives beside <code class="xref py py-func docutils literal notranslate"><span class="pre">run_standard()</span></code> in <code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime.standard</span></code>; the
-multisector graph lives beside <code class="xref py py-func docutils literal notranslate"><span class="pre">run_rhime_multisector()</span></code> in
+multisector graph lives beside <code class="xref py py-func docutils literal notranslate"><span class="pre">run_multisector()</span></code> in
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime.multisector</span></code>:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>RhimeModelSpec + canonical inversion inputs
 -&gt; concrete standard or multisector builder
@@ -537,8 +537,7 @@ mean of the observed distribution is therefore</p>
 \[\mu_{\mathrm{obs}} = \mu + \mu_{bc} + \mathrm{offset},\]</div>
 <p>where omitted components are left out of the sum.</p>
 <p>The configuration template explicitly selects
-<code class="docutils literal notranslate"><span class="pre">mismatch_model=&quot;pollution_event&quot;</span></code>. This preserves the fractional-error
-equation used by <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> for users who start from that template.
+<code class="docutils literal notranslate"><span class="pre">mismatch_model=&quot;pollution_event&quot;</span></code> for the documented fractional-error model.
 Direct runner calls must make a likelihood selection explicitly. The concrete
 model recipe has no mismatch default: parameter resolution converts the
 selector to <code class="docutils literal notranslate"><span class="pre">PollutionEventSettings</span></code> in the serializable model specification
@@ -563,15 +562,12 @@ pollution event from observations after removing the complete baseline,
 including any boundary and offset contributions. Thus
 <span class="math notranslate nohighlight">\(P=|Y-(\mu_{bc}+\mathrm{offset})|\)</span> when a baseline exists; without one,
 it uses <span class="math notranslate nohighlight">\(P=|Y|+10^{-6}\operatorname{mean}(Y)\)</span>.</p>
-<p>The <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> compatibility path retains its historical boundary-only
-variant: <span class="math notranslate nohighlight">\(P=|Y-\mu_{bc}|\)</span>, even when an offset is also included in
-<span class="math notranslate nohighlight">\(\mu_{\mathrm{obs}}\)</span>. That exception preserves existing configurations;
-it is not the scientific default for new RHIME recipes.</p>
+<p>Historical boundary-only variants require matching older software; modern
+construction uses the full baseline above.</p>
 <p>Select <code class="docutils literal notranslate"><span class="pre">mismatch_model=&quot;fixed_error&quot;</span></code> to omit inferred mismatch error. Its
 likelihood scale uses the reported observation error and does not select
 <code class="docutils literal notranslate"><span class="pre">min_error</span></code>.
-<code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> privately preserves the different historical floor and
-unused-variable details of its two <code class="docutils literal notranslate"><span class="pre">no_model_error</span></code> routes.</p>
+Historical fixed-error floors and disconnected sigma variables are not restored.</p>
 <p>Aggregation covariance is an explicit advanced opt-in. If a caller selects a
 prepared covariance <span class="math notranslate nohighlight">\(C_{agg}\)</span> with marginal variance
 <span class="math notranslate nohighlight">\(v_{agg}=\operatorname{diag}(C_{agg})\)</span>, the marginal floor and observed

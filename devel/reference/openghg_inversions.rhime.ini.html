@@ -391,12 +391,6 @@
 </details></li>
 </ul>
 </details></li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html">openghg_inversions.hbmcmc.compatibility</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_data.html">openghg_inversions.hbmcmc.legacy_data</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_basis.html">openghg_inversions.hbmcmc.legacy_basis</a></li>
-</ul>
-</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.cached_sigma.html">openghg_inversions.inference.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.diagnostics.html">openghg_inversions.inference.diagnostics</a></li>
@@ -579,7 +573,7 @@
 <p>Decode RHIME INI syntax without resolving a scientific recipe.</p>
 <p>Section flattening, first-occurrence precedence and literal decoding belong to
 this frontend. Callers combine overrides and consume recipe-specific options
-before translating compatibility names and constructing configuration.</p>
+before constructing canonical configuration.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.ini.read_rhime_ini">
 <span class="sig-name descname"><span class="pre">read_rhime_ini</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.ini.read_rhime_ini" title="Link to this definition">#</a></dt>
@@ -592,7 +586,7 @@ option names; repeated names retain their first occurrence.</p>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>A new dictionary of decoded file options. Names and external shorthand
 are preserved, including recipe-specific options. The reader does not
-apply overrides, translate aliases, supply defaults or resolve a recipe.</p>
+apply overrides, supply defaults or resolve a recipe.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>

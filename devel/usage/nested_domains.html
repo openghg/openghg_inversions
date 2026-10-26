@@ -531,11 +531,11 @@ distinct observation-space sensitivities.</p>
 </section>
 <section id="surface-site-example">
 <h2>Surface-site example<a class="headerlink" href="#surface-site-example" title="Link to this heading">#</a></h2>
-<p>Use <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_nested" title="openghg_inversions.rhime.run_rhime_nested"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_nested()</span></code></a> with the ordinary modern
+<p>Use <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_nested" title="openghg_inversions.rhime.run_nested"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_nested()</span></code></a> with the ordinary modern
 RHIME arguments plus the inner-domain options:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime_nested</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_nested</span>
 
-<span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime_nested</span><span class="p">(</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">run_nested</span><span class="p">(</span>
     <span class="n">species</span><span class="o">=</span><span class="s2">"ch4"</span><span class="p">,</span>
     <span class="n">sites</span><span class="o">=</span><span class="p">[</span><span class="s2">"TAC"</span><span class="p">,</span> <span class="s2">"MHD"</span><span class="p">],</span>
     <span class="n">averaging_period</span><span class="o">=</span><span class="p">[</span><span class="s2">"1h"</span><span class="p">,</span> <span class="s2">"1h"</span><span class="p">],</span>
@@ -609,7 +609,7 @@ explicitly when <code class="docutils literal notranslate"><span class="pre">nba
 <p>Saved outer and inner bases remain separate because each belongs to its own
 native grid. Configure the exact outer and inner artifacts independently with
 <code class="docutils literal notranslate"><span class="pre">basis_path</span></code> and <code class="docutils literal notranslate"><span class="pre">inner_basis_path</span></code>:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime_nested</span><span class="p">(</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="n">run_nested</span><span class="p">(</span>
     <span class="n">config_file</span><span class="o">=</span><span class="s2">"nested_rhime.ini"</span><span class="p">,</span>
     <span class="n">basis_path</span><span class="o">=</span><span class="s2">"/data/basis/outer.nc"</span><span class="p">,</span>
     <span class="n">inner_basis_path</span><span class="o">=</span><span class="s2">"/data/basis/inner-6km.zarr"</span><span class="p">,</span>
@@ -660,7 +660,7 @@ and option names must not be repeated between sections.</p>
 <span class="na">save_inversion_output</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">False</span>
 </pre></div>
 </div>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>openghg-inversions<span class="w"> </span>run-rhime-nested<span class="w"> </span>-c<span class="w"> </span>nested_rhime.ini
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>rhime<span class="w"> </span>run<span class="w"> </span>--model<span class="w"> </span>nested<span class="w"> </span>-c<span class="w"> </span>nested_rhime.ini
 </pre></div>
 </div>
 </section>
@@ -669,7 +669,7 @@ and option names must not be repeated between sections.</p>
 <p>Exact inner and outer observation timestamps are required by default. If an
 inner footprint product uses a known small timestamp offset, set an explicit
 tolerance:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime_nested</span><span class="p">(</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="n">run_nested</span><span class="p">(</span>
     <span class="n">config_file</span><span class="o">=</span><span class="s2">"nested_rhime.ini"</span><span class="p">,</span>
     <span class="n">inner_time_tolerance</span><span class="o">=</span><span class="s2">"30min"</span><span class="p">,</span>
 <span class="p">)</span>
@@ -684,7 +684,7 @@ with zero.</p>
 <h2>Satellite example<a class="headerlink" href="#satellite-example" title="Link to this heading">#</a></h2>
 <p>Satellite data uses the same nested workflow. Keep all site-aligned selectors
 as lists, even for one synthetic site, so they retain the modern schema shape:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">satellite</span> <span class="o">=</span> <span class="n">run_rhime_nested</span><span class="p">(</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">satellite</span> <span class="o">=</span> <span class="n">run_nested</span><span class="p">(</span>
     <span class="n">species</span><span class="o">=</span><span class="s2">"ch4"</span><span class="p">,</span>
     <span class="n">sites</span><span class="o">=</span><span class="p">[</span><span class="s2">"GOSAT-BRAZIL"</span><span class="p">],</span>
     <span class="n">averaging_period</span><span class="o">=</span><span class="p">[</span><span class="s2">"1D"</span><span class="p">],</span>
@@ -767,7 +767,7 @@ to <code class="docutils literal notranslate"><span class="pre">prepare_nested_r
 when requesting automatic total-budget allocation.</p>
 <p>Omitting <code class="docutils literal notranslate"><span class="pre">outer_overlap_masked=True</span></code> raises rather than silently combining
 two ordinary overlapping sensitivity matrices. The retrieval-backed
-<code class="docutils literal notranslate"><span class="pre">run_rhime_nested</span></code> path performs the mask before preparation and supplies
+<code class="docutils literal notranslate"><span class="pre">run_nested</span></code> path performs the mask before preparation and supplies
 this acknowledgement internally.</p>
 </section>
 <section id="current-output-boundary">
@@ -801,7 +801,7 @@ a map when the actual target grid changes);</p></li>
 (<code class="docutils literal notranslate"><span class="pre">mu</span> <span class="pre">=</span> <span class="pre">mu_outer</span> <span class="pre">+</span> <span class="pre">mu_inner</span> <span class="pre">+</span> <span class="pre">baseline</span></code>) already reports one concentration
 per observation – there is no separate “inner concentration” product.</p></li>
 </ul>
-<p><code class="docutils literal notranslate"><span class="pre">run_rhime_nested</span></code> requires <code class="docutils literal notranslate"><span class="pre">output_path</span></code> for PARIS and writes all three, using the
+<p><code class="docutils literal notranslate"><span class="pre">run_nested</span></code> requires <code class="docutils literal notranslate"><span class="pre">output_path</span></code> for PARIS and writes all three, using the
 inner domain’s label (e.g. <code class="docutils literal notranslate"><span class="pre">EUROPE-6km</span></code>) in the inner flux file’s name.
 Before acquisition or inference, shared PARIS option resolution validates the
 postprocessing option names, template version, time point, explicit flux

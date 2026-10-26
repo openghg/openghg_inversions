@@ -517,7 +517,7 @@ invocation with <code class="docutils literal notranslate"><span class="pre">pix
 <section id="prepare-the-data-once">
 <h2>Prepare the data once<a class="headerlink" href="#prepare-the-data-once" title="Link to this heading">#</a></h2>
 <p>Run the preparation stage:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>openghg-inversions<span class="w"> </span>prepare<span class="w"> </span><span class="se">\</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>rhime<span class="w"> </span>prepare<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--config<span class="w"> </span><span class="s2">"</span><span class="nv">$CONFIG</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--model<span class="w"> </span>standard<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--output-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/prepare"</span>
@@ -578,7 +578,7 @@ locally, outputs go to <code class="docutils literal notranslate"><span class="p
 <h2>Generate prior predictions<a class="headerlink" href="#generate-prior-predictions" title="Link to this heading">#</a></h2>
 <p>Start with 500 simulated datasets to see the distribution’s broad shape and
 tails:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>openghg-inversions<span class="w"> </span>prior-predictive<span class="w"> </span><span class="se">\</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>rhime<span class="w"> </span>prior-predictive<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--config<span class="w"> </span><span class="s2">"</span><span class="nv">$CONFIG</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--model<span class="w"> </span>standard<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--preparation-manifest<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/prepare/prepare-manifest.json"</span><span class="w"> </span><span class="se">\</span>
@@ -625,10 +625,10 @@ are scientifically plausible.</p>
 <div class="jupyter_cell jupyter_container docutils container">
 <div class="cell_input code_cell docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.serialization</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_trace</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">PreparedInputs</span>
 
 <span class="n">prior</span> <span class="o">=</span> <span class="n">load_trace</span><span class="p">(</span><span class="n">run</span> <span class="o">/</span> <span class="s2">"prior-predictive/prior-predictive.nc"</span><span class="p">)</span>
-<span class="n">prepared</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">prepared_path</span><span class="p">)</span>
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">PreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">prepared_path</span><span class="p">)</span>
 <span class="n">observations</span> <span class="o">=</span> <span class="n">prepared</span><span class="o">.</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"mf"</span><span class="p">]</span>
 <span class="n">concentration_units</span> <span class="o">=</span> <span class="n">observations</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"units"</span><span class="p">,</span> <span class="s2">"mole fraction"</span><span class="p">)</span>
 <span class="p">{</span>
@@ -836,7 +836,7 @@ sampler settings and enable convergence checks for a scientific run.
 Sampler-only changes and compatible graph-time model or prior changes reuse the
 prepared artifact. Changes to acquired data, filtering or averaging, basis or
 sensitivities, or other baked preparation policies require new preparation.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>openghg-inversions<span class="w"> </span>sample<span class="w"> </span><span class="se">\</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>rhime<span class="w"> </span>sample<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--config<span class="w"> </span><span class="s2">"</span><span class="nv">$CONFIG</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--model<span class="w"> </span>standard<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--preparation-manifest<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/prepare/prepare-manifest.json"</span><span class="w"> </span><span class="se">\</span>
@@ -867,7 +867,7 @@ graph from the prior-predictive process.</p>
 </div>
 </div>
 <p>Next run the staged convergence check:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>openghg-inversions<span class="w"> </span>diagnose<span class="w"> </span><span class="se">\</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>rhime<span class="w"> </span>diagnose<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--posterior<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/sample/posterior.nc"</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--sample-manifest<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/sample/sample-manifest.json"</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--output-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/diagnose"</span>

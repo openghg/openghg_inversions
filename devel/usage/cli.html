@@ -517,8 +517,7 @@ scientific inputs:</p>
 </div>
 <p>The configured model, sampler and output choices govern execution and requested
 products. Original requested dates and domain must be supplied explicitly or
-retained in preparation provenance. <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run-co2</span></code> is a transitional alias
-approved for retirement below. See <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for its scientific prerequisites.</p>
+retained in preparation provenance. See <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for its scientific prerequisites.</p>
 </section>
 <section id="saved-standard-and-multisector-phases">
 <h2>Saved standard and multisector phases<a class="headerlink" href="#saved-standard-and-multisector-phases" title="Link to this heading">#</a></h2>
@@ -530,11 +529,11 @@ Select <code class="docutils literal notranslate"><span class="pre">--model</spa
 sector-labelled inputs. See <a class="reference internal" href="staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> for the complete
 preparation/two-model/two-output sequence and the separate CO2 interface.</p>
 </section>
-<section id="approved-cli-command-retirement">
-<span id="rhime-cli-command-retirement"></span><h2>Approved CLI command retirement<a class="headerlink" href="#approved-cli-command-retirement" title="Link to this heading">#</a></h2>
-<p>The agreed development target requires the following finite command-name
-migration. Removal is pending: current source still installs both executables
-and accepts the old full-run commands. Use the canonical routes in new scripts.</p>
+<section id="removed-cli-commands">
+<span id="rhime-cli-command-retirement"></span><h2>Removed CLI commands<a class="headerlink" href="#removed-cli-commands" title="Link to this heading">#</a></h2>
+<p>Modern development uses the following finite command-name migration. The old
+executable and full-run aliases are unavailable. Update existing scripts to the
+canonical routes.</p>
 <div class="pst-scrollable-table-container"><table class="table" id="id1">
 <caption><span class="caption-text">Accepted command replacements</span><a class="headerlink" href="#id1" title="Link to this table">#</a></caption>
 <thead>
@@ -561,7 +560,7 @@ and accepts the old full-run commands. Use the canonical routes in new scripts.<
 </tbody>
 </table>
 </div>
-<p>The target has one installed executable, <code class="docutils literal notranslate"><span class="pre">rhime</span></code>. Positional dates,
+<p>The package has one installed executable, <code class="docutils literal notranslate"><span class="pre">rhime</span></code>. Positional dates,
 <code class="docutils literal notranslate"><span class="pre">--kwargs</span></code>, effective configuration, date/output overrides, scientific
 execution, outputs and artifact contracts retain their meanings. No replacement
 argument syntax is agreed: positional dates and <code class="docutils literal notranslate"><span class="pre">--kwargs</span></code> remain open for
@@ -589,16 +588,15 @@ OpenGHG acquisition or native-reduction preparation route. The
 <code class="docutils literal notranslate"><span class="pre">co2_o2</span></code> and <code class="docutils literal notranslate"><span class="pre">co2_o2_cached_sigma</span></code> Python choices retain
 their existing <code class="docutils literal notranslate"><span class="pre">prepared_inputs</span></code> interfaces and trace returns. Linked recipes are not choices for the configuration-driven <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span></code> command.
 See <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for the TOML configuration and handoff commands.</p>
-<p>The finite CLI names listed above are absent from the target interface under the
+<p>The finite CLI names listed above are absent from the interface under the
 <a class="reference internal" href="legacy_and_migration.html"><span class="doc">agreed development boundary</span></a>. The separately
 approved five-name Python map below defines the required alias removals;
 broader Python naming/types/module moves need separately agreed maps.</p>
-<section id="approved-python-alias-retirement">
-<span id="rhime-python-alias-retirement"></span><h3>Approved Python alias retirement<a class="headerlink" href="#approved-python-alias-retirement" title="Link to this heading">#</a></h3>
+<section id="removed-python-aliases">
+<span id="rhime-python-alias-retirement"></span><h3>Removed Python aliases<a class="headerlink" href="#removed-python-aliases" title="Link to this heading">#</a></h3>
 <p>Use the canonical names in new Python calls and imports. These five aliases
-are absent from the target interface, including naming-only forwarding aliases.
-Current source still implements them as direct assignments; this contract
-amendment does not delete them.</p>
+are unavailable, including naming-only forwarding aliases. Their canonical
+replacements remain supported.</p>
 <div class="pst-scrollable-table-container"><table class="table" id="id2">
 <caption><span class="caption-text">Accepted Python alias replacements</span><a class="headerlink" href="#id2" title="Link to this table">#</a></caption>
 <thead>
@@ -633,7 +631,10 @@ Supported artifact formats/versions and explicit conversion or rejection of
 unsupported inputs are specified independently; this naming change promises no
 automatic compatibility with 0.7 artifacts. Broader public names remain outside
 this finite map. The separate existing <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code>, <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> and <code class="docutils literal notranslate"><span class="pre">RhimeResult</span></code>
-migrations retain their own contracts; there is no blanket result-wrapper exemption.</p>
+migrations retain their own contracts; there is no blanket result-wrapper exemption.
+The separately approved
+<a class="reference internal" href="legacy_and_migration.html#prepared-input-factory-retirement"><span class="std std-ref">prepared-input factory removal</span></a> has its
+own canonical-constructor replacement; it is not a sixth alias.</p>
 <p>The obsolete <code class="docutils literal notranslate"><span class="pre">with_prepared_sites</span></code> and <code class="docutils literal notranslate"><span class="pre">with_prepared_rhime_sites</span></code> run-spec
 helpers are removed; use the retained sites on the prepared handoff directly.</p>
 <p>Package naming, the recipe-module relocation proposed in #764/#776 and complete
@@ -725,11 +726,10 @@ pixi<span class="w"> </span>run<span class="w"> </span>--locked<span class="w"> 
 <span class="w">    </span>--output-path<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">"</span>
 </pre></div>
 </div>
-<p>The historical <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> entry point remains a compatibility wrapper
-for supported older fixedbasis-style INI files. It does not turn such a file
-into a multisector configuration. For new batch jobs, start from the RHIME
-template, use <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> for standard runs, and configure the sector
-sources described in <a class="reference internal" href="rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a> before selecting
+<p>The historical <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> entry point is removed. Convert fixedbasis-style
+settings explicitly or retain matching older software. For modern batch jobs,
+start from the RHIME template, use <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> for standard runs, and
+configure the sector sources described in <a class="reference internal" href="rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a> before selecting
 <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span> <span class="pre">--model</span> <span class="pre">multisector</span></code>.</p>
 </section>
 </section>
@@ -738,7 +738,7 @@ sources described in <a class="reference internal" href="rhime.html"><span class
 <p>Merge sequential annual or sub-annual PARIS NetCDF files with the installed
 CLI. The command detects legacy and latest PARIS concentration and flux
 templates from their schema:</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>openghg-inversions<span class="w"> </span>merge-paris-outputs<span class="w"> </span><span class="se">\</span>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>rhime<span class="w"> </span>merge-paris-outputs<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>SF6_EUROPE_PARIS_flux_2019-01-01.nc<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>SF6_EUROPE_PARIS_flux_2020-01-01.nc<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--output<span class="w"> </span>SF6_EUROPE_PARIS_flux_2019-2020.nc
@@ -817,9 +817,9 @@ explicitly unknown.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#standard-multisector-and-nested-runs">Standard, multisector, and nested runs</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-runs">CO₂ runs</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#saved-standard-and-multisector-phases">Saved standard and multisector phases</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#approved-cli-command-retirement">Approved CLI command retirement</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#removed-cli-commands">Removed CLI commands</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#python-model-selection-and-compatibility">Python model selection and compatibility</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#approved-python-alias-retirement">Approved Python alias retirement</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#removed-python-aliases">Removed Python aliases</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#translating-the-older-batch-example">Translating the older batch example</a><ul class="nav section-nav flex-column">

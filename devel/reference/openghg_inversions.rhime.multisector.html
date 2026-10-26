@@ -391,12 +391,6 @@
 </details></li>
 </ul>
 </details></li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html">openghg_inversions.hbmcmc.compatibility</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_data.html">openghg_inversions.hbmcmc.legacy_data</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_basis.html">openghg_inversions.hbmcmc.legacy_basis</a></li>
-</ul>
-</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.cached_sigma.html">openghg_inversions.inference.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.diagnostics.html">openghg_inversions.inference.diagnostics</a></li>
@@ -787,88 +781,7 @@ runs require at least two <code class="docutils literal notranslate"><span class
 complete <code class="docutils literal notranslate"><span class="pre">sector_priors</span></code> mapping keyed by sector name. When model
 sector labels differ from OpenGHG source values, pass
 <code class="docutils literal notranslate"><span class="pre">sector_sources</span></code> as a one-to-one mapping from sector name to one
-unique value in <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code>. Legacy <code class="docutils literal notranslate"><span class="pre">emissions_name</span></code> is
-accepted only as a compatibility alias when <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> is
-absent.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Scientific inversion output borrowing preparation and trace, even when
-output is disabled. Use scientific product functions for in-memory diagnostics.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.15)"><strong>TypeError</strong></a> – If a likelihood builder is not callable or returns the
-    wrong result type.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If required parameters are missing, unsupported parameters
-    are supplied, fewer than two flux sources are provided, or
-    likelihood variables or requested-output compatibility are invalid.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><em>InversionOutput</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.multisector.run_rhime_multisector">
-<span class="sig-name descname"><span class="pre">run_rhime_multisector</span></span><span class="sig-paren">(</span>
-
-<dl>
-<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">config_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">merged_data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">prepared</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">likelihood_builder</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">likelihood_kwargs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em>,</dd>
-</dl>
-
-<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.multisector.run_rhime_multisector" title="Link to this definition">#</a></dt>
-<dd><p>Run a source-resolved multisector inversion.</p>
-<p>The visible process is resolve → acquire or accept supplied data → observation
-errors → filter → basis → sensitivities → assemble → materialize → build → sample → scientific output →
-requested outputs.
-This module keeps source layout validation and sector-aware outputs beside
-that process instead of hiding them behind standard/multisector branching.</p>
-<p>Selected basis/support files and reporting country files are checked before
-acquisition, including when merged data is supplied. Basis partitions and
-support maps are loaded at that boundary. Saved bases are rebound to current
-flux; <code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> is an exact retained-artifact destination.</p>
-<p>Without supplied data, this runner acquires fresh data. Supplying <code class="docutils literal notranslate"><span class="pre">prepared</span></code>
-joins the same materialize/build/sample sequence without acquisition or preparation.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>config_file</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a><em> | </em><em>None</em>) – Optional INI configuration file. Values in <code class="docutils literal notranslate"><span class="pre">kwargs</span></code>
-override values read from this file.</p></li>
-<li><p><strong>config</strong> (<a class="reference internal" href="openghg_inversions.rhime.params.html#openghg_inversions.rhime.params.RhimeConfig" title="openghg_inversions.rhime.params.RhimeConfig"><em>RhimeConfig</em></a><em> | </em><em>None</em>) – Complete request from <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>.
-It is used without resolving again and cannot
-be combined with <code class="docutils literal notranslate"><span class="pre">config_file</span></code> or raw run parameters in <code class="docutils literal notranslate"><span class="pre">kwargs</span></code>.</p></li>
-<li><p><strong>merged_data</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.MergedData" title="openghg_inversions.inversion_data.acquisition.MergedData"><em>MergedData</em></a><em> | </em><em>None</em>) – Optional externally supplied source-resolved merged
-scientific data. Passing this in-memory handoff bypasses OpenGHG
-acquisition and resumes at observation-error preparation after validating
-recorded species, domain, time window, and sector layout.</p></li>
-<li><p><strong>prepared</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs"><em>PreparedInputs</em></a><em> | </em><em>None</em>) – Optional borrowed canonical inputs and retained basis. Cannot
-be combined with <code class="docutils literal notranslate"><span class="pre">merged_data</span></code>.</p></li>
-<li><p><strong>likelihood_builder</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.15)"><em>Callable</em></a><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional Python-only callable invoked with a
-completed forward-model mean and explicit error-model inputs in
-the active PyMC model. It must return the canonical observed
-variable <code class="docutils literal notranslate"><span class="pre">y</span></code> and create the canonical error scale <code class="docutils literal notranslate"><span class="pre">epsilon</span></code>.
-The callable is never read from configuration or stored in
-run/model specifications.</p></li>
-<li><p><strong>likelihood_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Options specific to the custom likelihood. Common
-scientific arrays are passed explicitly by the recipe.</p></li>
-<li><p><strong>**kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>) – RHIME run parameters using snake-case names. Multi-sector
-runs require at least two <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> and may include a
-complete <code class="docutils literal notranslate"><span class="pre">sector_priors</span></code> mapping keyed by sector name. When model
-sector labels differ from OpenGHG source values, pass
-<code class="docutils literal notranslate"><span class="pre">sector_sources</span></code> as a one-to-one mapping from sector name to one
-unique value in <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code>. Legacy <code class="docutils literal notranslate"><span class="pre">emissions_name</span></code> is
-accepted only as a compatibility alias when <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> is
-absent.</p></li>
+unique value in <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -944,7 +857,6 @@ output is disabled. Use scientific product functions for in-memory diagnostics.<
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.multisector.build_multisector_model"><code class="docutils literal notranslate"><span class="pre">build_multisector_model()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.multisector.prepare_multisector"><code class="docutils literal notranslate"><span class="pre">prepare_multisector()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.multisector.run_multisector"><code class="docutils literal notranslate"><span class="pre">run_multisector()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.multisector.run_rhime_multisector"><code class="docutils literal notranslate"><span class="pre">run_rhime_multisector()</span></code></a></li>
 </ul>
   </nav></div>
 

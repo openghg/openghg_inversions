@@ -579,9 +579,9 @@ recipe is scientifically suitable for a particular inversion. Remaining
 scientist acceptance is tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-79">OPE-79</a>. The CO₂ commands reuse
 the TOML configuration boundary and prepared-input scientific operations.</p>
 <p>The CO2-only handoff is intentionally separate from both the generic
-<code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> boundary and the linked CO2/O2 preparation contract.
+<code class="docutils literal notranslate"><span class="pre">PreparedInputs</span></code> boundary and the linked CO2/O2 preparation contract.
 It does not add coherent-reduction or aggregation-error options to the
-standard and multisector runners or to <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code>.</p>
+standard and multisector runners.</p>
 <div class="toctree-wrapper compound">
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
@@ -658,9 +658,7 @@ explains which choices are technical requirements and which are defaults.
 Inferred-OU tuning belongs to <code class="docutils literal notranslate"><span class="pre">sampling.sigma_target_accept</span></code> and
 <code class="docutils literal notranslate"><span class="pre">sampling.state_target_accept</span></code>. Saved Python sampling takes the same
 <code class="docutils literal notranslate"><span class="pre">sampling</span></code> mapping as the full configuration.</p>
-<p><code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run-co2</span></code> remains a transitional alias until its approved
-<a class="reference internal" href="cli.html#rhime-cli-command-retirement"><span class="std std-ref">command-name retirement</span></a> lands.
-This configured CLI route uses
+<p>The configured <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span> <span class="pre">--model</span> <span class="pre">co2</span></code> CLI route uses
 <code class="docutils literal notranslate"><span class="pre">run_co2</span></code> and writes requested products. Python
 <code class="docutils literal notranslate"><span class="pre">rhime.run(model=&quot;co2&quot;,</span> <span class="pre">config_file=&quot;co2.toml&quot;)</span></code> selects the same configured
 runner and returns <code class="docutils literal notranslate"><span class="pre">Co2Output</span></code>. Acquisition and construction of the defining

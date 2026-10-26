@@ -1057,14 +1057,14 @@ and <a class="reference internal" href="coherent_reduction.html"><span class="do
 native covariance products.
 Pass <code class="docutils literal notranslate"><span class="pre">aggregation_error_rank=None</span></code> to keep the reduction’s exact dense
 unresolved covariance:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">PreparedInputs</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_co2_inputs</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2.co2_runner</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">annotate_co2_trace</span><span class="p">,</span> <span class="n">materialize_co2_inputs</span><span class="p">,</span> <span class="n">build_co2_from_materialized</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.sampling</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeSampler</span><span class="p">,</span> <span class="n">sample_rhime_model</span>
 
-<span class="n">canonical_inputs</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"base-prepared-inputs.zarr"</span><span class="p">)</span>
+<span class="n">canonical_inputs</span> <span class="o">=</span> <span class="n">PreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"base-prepared-inputs.zarr"</span><span class="p">)</span>
 <span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_co2_inputs</span><span class="p">(</span>
     <span class="n">canonical_inputs</span><span class="p">,</span>
     <span class="n">reduction</span><span class="p">,</span>

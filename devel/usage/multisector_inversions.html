@@ -472,7 +472,7 @@
 flux components independently. Surface-site and satellite inversions use the
 same public runner and model. They differ only in their observation and
 footprint acquisition options.</p>
-<p>Use <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_multisector" title="openghg_inversions.rhime.run_rhime_multisector"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_multisector()</span></code></a> when every flux
+<p>Use <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_multisector" title="openghg_inversions.rhime.run_multisector"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_multisector()</span></code></a> when every flux
 component should have its own scaling prior within the full state. The
 <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> values are the OpenGHG <code class="docutils literal notranslate"><span class="pre">source</span></code> metadata used for retrieval. Optional
 <code class="docutils literal notranslate"><span class="pre">sector_sources</span></code> entries give those sources shorter model-facing names.</p>
@@ -491,9 +491,9 @@ the basis and sampling sizes for a scientific run.</p>
 <p>The following example estimates fossil-fuel and biospheric methane
 components from one surface site. Replace store names, source names, and
 paths with values available in your OpenGHG installation.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime_multisector</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_multisector</span>
 
-<span class="n">site_result</span> <span class="o">=</span> <span class="n">run_rhime_multisector</span><span class="p">(</span>
+<span class="n">site_result</span> <span class="o">=</span> <span class="n">run_multisector</span><span class="p">(</span>
     <span class="n">species</span><span class="o">=</span><span class="s2">"ch4"</span><span class="p">,</span>
     <span class="n">sites</span><span class="o">=</span><span class="p">[</span><span class="s2">"TAC"</span><span class="p">],</span>
     <span class="n">averaging_period</span><span class="o">=</span><span class="p">[</span><span class="s2">"1h"</span><span class="p">],</span>
@@ -537,9 +537,9 @@ not suitable for a component whose scaling may be negative.</p>
 options explicitly. This short OCO2 example separates anthropogenic,
 respiration, and gross-primary-productivity fluxes and selects
 high-time-resolution footprints.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime_multisector</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_multisector</span>
 
-<span class="n">satellite_result</span> <span class="o">=</span> <span class="n">run_rhime_multisector</span><span class="p">(</span>
+<span class="n">satellite_result</span> <span class="o">=</span> <span class="n">run_multisector</span><span class="p">(</span>
     <span class="n">species</span><span class="o">=</span><span class="s2">"co2"</span><span class="p">,</span>
     <span class="n">sites</span><span class="o">=</span><span class="p">[</span><span class="s2">"OCO2-EASTASIA"</span><span class="p">],</span>
     <span class="n">averaging_period</span><span class="o">=</span><span class="p">[</span><span class="s2">"1H"</span><span class="p">],</span>
@@ -657,7 +657,7 @@ reusing prepared inputs and saved samples with current product choices.</p>
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions/config/templates/rhime_template.ini</span></code>. Put measurement,
 store, prior, basis, sampler, and output values in a copied configuration, then
 run it with the multisector command:</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">openghg-inversions run-rhime-multisector 2022-03-31T04:00:00 2022-04-01T04:08:10 \</span>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">rhime run --model multisector 2022-03-31T04:00:00 2022-04-01T04:08:10 \</span>
 <span class="go">    --config /path/to/oco2_multisector.ini</span>
 </pre></div>
 </div>

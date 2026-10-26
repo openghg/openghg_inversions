@@ -575,26 +575,17 @@ stays available until that last step: changing sites or averaging periods before
 resolution expands the final values together. The resulting <code class="docutils literal notranslate"><span class="pre">config</span></code> can be
 passed to a runner without resolving again.</p>
 <p><code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> is the single construction entry point; the former
-<code class="docutils literal notranslate"><span class="pre">resolve_rhime_config</span></code> wrapper has been removed. Runner frontends, including
-<code class="docutils literal notranslate"><span class="pre">run_standard</span></code> and staged commands, translate supported deprecated names before
-calling this constructor. While this transitional translation remains on devel,
-it emits <code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code>. The <a class="reference internal" href="legacy_and_migration.html"><span class="doc">agreed development boundary</span></a> permits bounded removal after affected evidence and
-regression migration. For names such as <code class="docutils literal notranslate"><span class="pre">xprior</span></code> and <code class="docutils literal notranslate"><span class="pre">outputname</span></code>,
-canonical names take precedence. Flux keyword deprecations follow the stricter
-rules below. Canonical inputs emit no warning. Configuration construction has no
-alias vocabulary; deprecated names passed directly to <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>
-are ordinary unknown options. Modern configuration and runners do not import or
-call HBMCMC.</p>
-<p>The deprecated dictionary-returning <code class="docutils literal notranslate"><span class="pre">params_from_config</span></code> adapter is available
-only from <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.compatibility</span></code> while that transitional
-adapter remains; its RHIME
-re-export is removed. <code class="docutils literal notranslate"><span class="pre">normalise=False</span></code> returns decoded values plus winning
-overrides. <code class="docutils literal notranslate"><span class="pre">normalise=True</span></code> translates aliases and historical resource
-selections after overrides and returns canonical keys and resolved <code class="docutils literal notranslate"><span class="pre">Path</span></code>
-values. It does not construct configuration defaults or expand site shorthand.
-Modern callers use <code class="docutils literal notranslate"><span class="pre">read_rhime_ini</span></code>, apply overrides, then call
-<code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> as above. Prefer <code class="docutils literal notranslate"><span class="pre">x_prior</span></code>, <code class="docutils literal notranslate"><span class="pre">output_name</span></code> and
-<code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> when migrating code or files.</p>
+<code class="docutils literal notranslate"><span class="pre">resolve_rhime_config</span></code> wrapper and historical dictionary-returning
+<code class="docutils literal notranslate"><span class="pre">params_from_config</span></code> adapter are removed. Runner frontends, staged commands
+and acquisition accept canonical names and reject historical spellings before
+scientific work. No alias translation or deprecation warnings remain at these
+boundaries. Unknown names are rejected in every group. Applicable values use
+ordinary validation against their owner’s supported choices; known inactive
+values remain deferred until the consuming phase. Use <code class="docutils literal notranslate"><span class="pre">x_prior</span></code>,
+<code class="docutils literal notranslate"><span class="pre">output_name</span></code> and <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code>.
+Every explicit <code class="docutils literal notranslate"><span class="pre">use_tracer</span></code> occurrence is unsupported regardless of value;
+omission remains valid. Modern callers use <code class="docutils literal notranslate"><span class="pre">read_rhime_ini</span></code>, apply overrides,
+then construct <code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code>. See <a class="reference internal" href="legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a> for mappings.</p>
 <p>Basis artifact defaults and the 0.8 transition are described below; a redesign
 of the INI sections remains a separate decision.</p>
 </section>
@@ -606,16 +597,10 @@ footprint <code class="docutils literal notranslate"><span class="pre">domain</s
 a nested inner domain. Nested preparation uses <code class="docutils literal notranslate"><span class="pre">inner_flux_store</span></code> (default:
 outer flux store) and <code class="docutils literal notranslate"><span class="pre">inner_flux_domain</span></code> (default: inner footprint domain,
 independent of the outer flux-domain selector).</p>
-<p>At runner frontends, the deprecated spellings <code class="docutils literal notranslate"><span class="pre">emissions_store</span></code>,
-<code class="docutils literal notranslate"><span class="pre">emissions_domain</span></code>,
-<code class="docutils literal notranslate"><span class="pre">inner_emissions_store</span></code> and <code class="docutils literal notranslate"><span class="pre">inner_emissions_domain</span></code> remain accepted with
-<code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code> until their bounded removal under the
-<a class="reference internal" href="legacy_and_migration.html"><span class="doc">agreed development boundary</span></a>. Supply only one spelling of
-each selector: old and new names together raise <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>, including
-equal values and explicit <code class="docutils literal notranslate"><span class="pre">None</span></code>. These modern deprecations are resolved
-before configuration construction. <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> accepts only
-the <code class="docutils literal notranslate"><span class="pre">flux_*</span></code> names, with no translation or deprecation warnings. Resolved
-configuration fields and canonical option inventories contain only the new names.</p>
+<p>The historical spellings <code class="docutils literal notranslate"><span class="pre">emissions_store</span></code>, <code class="docutils literal notranslate"><span class="pre">emissions_domain</span></code>,
+<code class="docutils literal notranslate"><span class="pre">inner_emissions_store</span></code> and <code class="docutils literal notranslate"><span class="pre">inner_emissions_domain</span></code> are unsupported at
+runner and acquisition boundaries, including when their canonical replacement
+is also supplied. Use only the corresponding <code class="docutils literal notranslate"><span class="pre">flux_*</span></code> names.</p>
 </section>
 <section id="basis-paths-support-maps-and-compatibility">
 <h2>Basis paths, support maps and compatibility<a class="headerlink" href="#basis-paths-support-maps-and-compatibility" title="Link to this heading">#</a></h2>
@@ -652,9 +637,7 @@ writing an export and no longer accepts <code class="docutils literal notranslat
 save it through <code class="docutils literal notranslate"><span class="pre">BasisFunctions.save</span></code> when <code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> is requested,
 then retain the selected export path in metadata. The application helper
 <code class="docutils literal notranslate"><span class="pre">rhime.preparation.resolve_basis_inputs(config.data)</span></code> loads these scientific inputs.
-Historical case/directory selections are accepted only by the temporary HBMCMC
-entry points while present on devel, which translate winning selections before calling modern
-APIs. Modern runners reject <code class="docutils literal notranslate"><span class="pre">fp_basis_case</span></code>, <code class="docutils literal notranslate"><span class="pre">basis_directory</span></code>,
+Historical case/directory selectors are unsupported. Modern runners reject <code class="docutils literal notranslate"><span class="pre">fp_basis_case</span></code>, <code class="docutils literal notranslate"><span class="pre">basis_directory</span></code>,
 <code class="docutils literal notranslate"><span class="pre">bc_basis_case</span></code> and <code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code> before acquisition; resolved requests
 contain explicit selections. The numerical functions do no file discovery.
 When the selected algorithm needs a packaged support map, the application
@@ -716,12 +699,13 @@ acquisition and passes a labelled <code class="docutils literal notranslate"><sp
 construction, preserving time combination and alignment. Missing or unreadable
 selected files fail before acquisition. Scientific sensitivity functions accept
 resolved data, not <code class="docutils literal notranslate"><span class="pre">bc_basis_case</span></code> or <code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code> discovery options.</p>
-<p>The default NESW calculation uses acquired directional boundary contributions
-and needs no basis file. Leave <code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code> unset for NESW; scientific
-calls use <code class="docutils literal notranslate"><span class="pre">bc_basis=None</span></code>. On the HBMCMC route only, a legacy
-<code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code> supplied with NESW warns that it is unused and deprecated;
-it triggers neither discovery nor a missing-directory error. <code class="docutils literal notranslate"><span class="pre">use_bc=False</span></code>
-skips BC resource loading.</p>
+<p><code class="docutils literal notranslate"><span class="pre">bc_basis_algorithm=&quot;NESW&quot;</span></code> selects the built-in calculation and is the
+canonical default. It uses acquired directional boundary contributions without
+reading a basis file; scientific calls receive <code class="docutils literal notranslate"><span class="pre">bc_basis=None</span></code>. Exact
+<code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code> take precedence over the algorithm, whose value is then
+inactive. Selected files fail on read errors rather than falling back to NESW.
+<code class="docutils literal notranslate"><span class="pre">use_bc=False</span></code> skips BC basis resolution and loading, including selected files.
+Supported names are still validated; inactive algorithm values are deferred.</p>
 <p><code class="docutils literal notranslate"><span class="pre">country_directory</span></code> is removed from run configuration in 0.8 and is rejected
 before acquisition. Replace it with <code class="docutils literal notranslate"><span class="pre">country_file</span></code> for reporting,
 <code class="docutils literal notranslate"><span class="pre">landsea_path</span></code> for land/sea classes, or <code class="docutils literal notranslate"><span class="pre">outer_regions_path</span></code> for fixed outer
@@ -747,21 +731,17 @@ aligned values and checks their structural alignment. For example:</p>
 output or sampler settings. The acquisition-and-preparation convenience function
 <code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> has been removed. For a complete inversion, use
 <code class="docutils literal notranslate"><span class="pre">run_standard</span></code>; for custom preparation, call <code class="docutils literal notranslate"><span class="pre">acquire_merged_data</span></code> (or
-<code class="docutils literal notranslate"><span class="pre">RhimeMergedData.from_options</span></code>) followed by <code class="docutils literal notranslate"><span class="pre">prepare_observation_errors</span></code>,
+<code class="docutils literal notranslate"><span class="pre">MergedData.from_options</span></code>) followed by <code class="docutils literal notranslate"><span class="pre">prepare_observation_errors</span></code>,
 <code class="docutils literal notranslate"><span class="pre">filter_observations</span></code>, <code class="docutils literal notranslate"><span class="pre">openghg_inversions.basis.prepare_basis</span></code>,
-<code class="docutils literal notranslate"><span class="pre">build_sensitivities</span></code> and <code class="docutils literal notranslate"><span class="pre">assemble_rhime_inputs</span></code>. These steps take the
+<code class="docutils literal notranslate"><span class="pre">build_sensitivities</span></code> and <code class="docutils literal notranslate"><span class="pre">assemble_inputs</span></code>. These steps take the
 acquired per-site datasets and <code class="docutils literal notranslate"><span class="pre">SiteOptions</span></code> and return new mappings; the
-acquired <code class="docutils literal notranslate"><span class="pre">MergedData</span></code> never carries derived errors or filtered data. The explicit legacy function
-<code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.legacy_data.retrieve_inversion_data</span></code> performs
-fresh surface or column acquisition and returns its established six-tuple of
-merged data and retained metadata lists. The former
-<code class="docutils literal notranslate"><span class="pre">data_processing_surface_notracer</span></code> name is a deprecated wrapper with the same
-signature and return. <code class="docutils literal notranslate"><span class="pre">RhimeMergedData.from_options</span></code> performs fresh acquisition
-from resolved selectors. <code class="docutils literal notranslate"><span class="pre">averaging_error</span></code> is a preparation choice: missing <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> is derived
+acquired <code class="docutils literal notranslate"><span class="pre">MergedData</span></code> never carries derived errors or filtered data.
+The historical six-tuple retrieval wrapper is removed; use
+<code class="docutils literal notranslate"><span class="pre">MergedData.from_options</span></code> for fresh acquisition from resolved selectors. <code class="docutils literal notranslate"><span class="pre">averaging_error</span></code> is a preparation choice: missing <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> is derived
 from acquired repeatability/variability before temporal filtering or aggregation.
 Existing custom errors remain authoritative. <code class="docutils literal notranslate"><span class="pre">averaging_period</span></code> still selects
 OpenGHG acquisition/resampling. Acquisition stays in memory; persist the completed
-<code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> for reuse. Runners reuse a supplied <code class="docutils literal notranslate"><span class="pre">merged_data</span></code>
+<code class="docutils literal notranslate"><span class="pre">PreparedInputs</span></code> for reuse. Runners reuse a supplied <code class="docutils literal notranslate"><span class="pre">merged_data</span></code>
 handoff before acquisition, bypassing store access. Before preparation, the merged
 owner checks known species, domain, date bounds and source layout against the
 request. Conflicts, including changed acquisition windows, raise without

@@ -391,12 +391,6 @@
 </details></li>
 </ul>
 </details></li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html">openghg_inversions.hbmcmc.compatibility</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_data.html">openghg_inversions.hbmcmc.legacy_data</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_basis.html">openghg_inversions.hbmcmc.legacy_basis</a></li>
-</ul>
-</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.cached_sigma.html">openghg_inversions.inference.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.diagnostics.html">openghg_inversions.inference.diagnostics</a></li>
@@ -578,7 +572,7 @@
 <span id="openghg-inversions-inversion-data-acquisition"></span><h1>openghg_inversions.inversion_data.acquisition<a class="headerlink" href="#module-openghg_inversions.inversion_data.acquisition" title="Link to this heading">#</a></h1>
 <p>Retrieve RHIME observations, transport, flux and boundary data.</p>
 <p>Acquisition owns store access and consumes the complete site-aligned
-selection record. It returns a borrowed <code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code> handoff for subsequent
+selection record. It returns a borrowed <code class="docutils literal notranslate"><span class="pre">MergedData</span></code> handoff for subsequent
 scientific filtering, basis construction and sensitivity preparation.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.acquisition.AcquisitionFacts">
@@ -749,10 +743,8 @@ numerical arrays remain borrowed, including any backing open files.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'user'</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">obs_store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'user'</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">footprint_store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'user'</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">flux_store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">_Unset.TOKEN</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">flux_domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">_Unset.TOKEN</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">emissions_store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">_Unset.TOKEN</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">emissions_domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">_Unset.TOKEN</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux_store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'user'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux_domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">fp_model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">fp_species</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">calibration_scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -768,10 +760,7 @@ are unavailable. Returned datasets may be lazy and remain borrowed by
 later preparation. <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> names OpenGHG sources. Store,
 selector and merge errors propagate. <code class="docutils literal notranslate"><span class="pre">flux_store</span></code> defaults to <code class="docutils literal notranslate"><span class="pre">&quot;user&quot;</span></code>;
 <code class="docutils literal notranslate"><span class="pre">flux_domain</span></code> selects the source flux dataset domain, defaulting to
-the footprint <code class="docutils literal notranslate"><span class="pre">domain</span></code>. It does not imply a nested inner domain.
-Deprecated <code class="docutils literal notranslate"><span class="pre">emissions_store</span></code>/<code class="docutils literal notranslate"><span class="pre">emissions_domain</span></code> are removed in 0.9.
-Supplying an old and new spelling together raises <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>, even
-when their values are equal or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+the footprint <code class="docutils literal notranslate"><span class="pre">domain</span></code>. It does not imply a nested inner domain.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.inversion_data.acquisition.MergedData" title="openghg_inversions.inversion_data.acquisition.MergedData"><em>MergedData</em></a></p>
@@ -790,12 +779,6 @@ when their values are equal or <code class="docutils literal notranslate"><span 
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.FluxData" title="(in OpenGHG v0.19.0)"><em>FluxData</em></a>]</p>
 </dd>
 </dl>
-</dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.acquisition.RhimeMergedData">
-<span class="sig-name descname"><span class="pre">RhimeMergedData</span></span><a class="headerlink" href="#openghg_inversions.inversion_data.acquisition.RhimeMergedData" title="Link to this definition">#</a></dt>
-<dd><p>alias of <a class="reference internal" href="#openghg_inversions.inversion_data.acquisition.MergedData" title="openghg_inversions.inversion_data.acquisition.MergedData"><code class="xref py py-class docutils literal notranslate"><span class="pre">MergedData</span></code></a></p>
 </dd></dl>
 
 <dl class="py class">
@@ -1020,7 +1003,6 @@ against this record’s resolved uppercase site labels.</p></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.acquisition.interpolate_flux_to_footprint_grid"><code class="docutils literal notranslate"><span class="pre">interpolate_flux_to_footprint_grid()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.acquisition.RhimeMergedData"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.SiteOptions"><code class="docutils literal notranslate"><span class="pre">SiteOptions</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.SiteOptions.from_inputs"><code class="docutils literal notranslate"><span class="pre">SiteOptions.from_inputs()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.SiteOptions.select_indices"><code class="docutils literal notranslate"><span class="pre">SiteOptions.select_indices()</span></code></a></li>

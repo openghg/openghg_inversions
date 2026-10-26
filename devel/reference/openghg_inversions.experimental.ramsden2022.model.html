@@ -58,7 +58,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.hbmcmc" href="openghg_inversions.hbmcmc.html" />
+    <link rel="next" title="openghg_inversions.inference" href="openghg_inversions.inference.html" />
     <link rel="prev" title="openghg_inversions.experimental.ramsden2022" href="openghg_inversions.experimental.ramsden2022.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -391,12 +391,6 @@
 </details></li>
 </ul>
 </details></li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html">openghg_inversions.hbmcmc.compatibility</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_data.html">openghg_inversions.hbmcmc.legacy_data</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_basis.html">openghg_inversions.hbmcmc.legacy_basis</a></li>
-</ul>
-</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.cached_sigma.html">openghg_inversions.inference.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.diagnostics.html">openghg_inversions.inference.diagnostics</a></li>
@@ -582,7 +576,7 @@
 <p>Modern PyMC implementation of the Ramsden et al. (2022) two-gas model.</p>
 <p>The implementation is deliberately prepared-input first. Each gas is supplied
 as a canonical RHIME-style <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.Dataset</span></code></a>, normally obtained from a
-<code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.inv_inputs</span></code> object. Data retrieval and postprocessing
+<code class="docutils literal notranslate"><span class="pre">PreparedInputs.inv_inputs</span></code> object. Data retrieval and postprocessing
 remain outside this historical comparison module.</p>
 <p>For primary-gas sector <code class="docutils literal notranslate"><span class="pre">s</span></code> with state <code class="docutils literal notranslate"><span class="pre">x_s</span></code> the forward models are</p>
 <p><code class="docutils literal notranslate"><span class="pre">mu_primary</span> <span class="pre">=</span> <span class="pre">sum_s(H_primary,s</span> <span class="pre">&#64;</span> <span class="pre">x_s)</span></code></p>
@@ -863,11 +857,11 @@ propagated.</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.hbmcmc.html"
+       href="openghg_inversions.inference.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.hbmcmc</p>
+        <p class="prev-next-title">openghg_inversions.inference</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

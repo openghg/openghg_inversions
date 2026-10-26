@@ -448,6 +448,31 @@ maintainers removing compatibility and authors of the later explicit converter.
 It records source behavior, not a new configuration contract or a promise of
 numerical reproduction. Production code and behavioral specifications are
 unchanged by this evidence PR.</p>
+<section id="archived-retirement-records">
+<h2>Archived retirement records<a class="headerlink" href="#archived-retirement-records" title="Link to this heading">#</a></h2>
+<p>The five dated #719 retirement records are historical review evidence, not
+inputs consumed by pytest. They were removed from the current test tree on
+26 October 2026; their original contents remain available at the full Git
+revision <code class="docutils literal notranslate"><span class="pre">6a1d22d10c07442514dd610e2ec62b7a2719e297</span></code>:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://github.com/openghg/openghg_inversions/blob/6a1d22d10c07442514dd610e2ec62b7a2719e297/tests/fixtures/migration_960/retirements/runtime_719_2026_10_23.json">Initial runtime removal comparisons</a>.</p></li>
+<li><p><a class="reference external" href="https://github.com/openghg/openghg_inversions/blob/6a1d22d10c07442514dd610e2ec62b7a2719e297/tests/fixtures/migration_960/retirements/legacy_codec_witnesses_2026_10_23.json">Supplementary historical codec witnesses</a>.</p></li>
+<li><p><a class="reference external" href="https://github.com/openghg/openghg_inversions/blob/6a1d22d10c07442514dd610e2ec62b7a2719e297/tests/fixtures/migration_960/retirements/review_974_2026_10_23.json">23 October review and rebase comparisons</a>.</p></li>
+<li><p><a class="reference external" href="https://github.com/openghg/openghg_inversions/blob/6a1d22d10c07442514dd610e2ec62b7a2719e297/tests/fixtures/migration_960/retirements/factory_and_cleanup_2026_10_24.json">Prepared factory and cleanup comparisons</a>.</p></li>
+<li><p><a class="reference external" href="https://github.com/openghg/openghg_inversions/blob/6a1d22d10c07442514dd610e2ec62b7a2719e297/tests/fixtures/migration_960/retirements/review_974_2026_10_26.json">26 October BC, schema-name and contract-owner comparisons</a>.</p></li>
+</ul>
+<p>These records preserve source revisions/hashes, original cases, dispositions and
+follow-up owners for review and future explicit migration work. They are not
+current expected behavior or proof of an executed scientific check. Dated paths
+in the ledger below refer to this archive. Actual validation remains attributed
+to its implementation revision in the task and PR records.</p>
+<p>The original #960 plain inputs and expectations remain in
+<code class="docutils literal notranslate"><span class="pre">tests/fixtures/migration_960/</span></code>. Current tests consume the applicable cases;
+the historical cases also remain available for later explicit converter checks.
+The retirement-record cleanup does not remove or rewrite those original files.</p>
+</section>
+<section id="original-evidence-scope-and-fixtures">
+<h2>Original evidence scope and fixtures<a class="headerlink" href="#original-evidence-scope-and-fixtures" title="Link to this heading">#</a></h2>
 <p>Read the ledger together with the plain inputs and expected observations in
 <code class="docutils literal notranslate"><span class="pre">tests/fixtures/migration_960/</span></code>. Those files do not import HBMCMC and remain
 available after its deletion. Runtime characterization tests deliberately call
@@ -462,6 +487,7 @@ from the replacement translator.</p>
 <li class="toctree-l1"><a class="reference internal" href="migration_960_resources.html">Migration resource evidence for issue 960</a></li>
 </ul>
 </div>
+</section>
 <section id="evidence-vocabulary-and-pinned-comparison">
 <h2>Evidence vocabulary and pinned comparison<a class="headerlink" href="#evidence-vocabulary-and-pinned-comparison" title="Link to this heading">#</a></h2>
 <ul class="simple">
@@ -545,8 +571,8 @@ these bounded direct checks.</p>
 <a class="reference internal" href="migration_960_resources.html"><span class="doc">Migration resource evidence for issue 960</span></a>. Each entry separates the source meaning from
 its candidate replacement and names the issue owning the next decision.
 These owners identify workstreams, not accepted personal assignments.</p>
-<div class="pst-scrollable-table-container"><table class="table" id="id3">
-<caption><span class="caption-text">Route identity and dispositions</span><a class="headerlink" href="#id3" title="Link to this table">#</a></caption>
+<div class="pst-scrollable-table-container"><table class="table" id="id5">
+<caption><span class="caption-text">Route identity and dispositions</span><a class="headerlink" href="#id5" title="Link to this table">#</a></caption>
 <colgroup>
 <col style="width: 14.0%" />
 <col style="width: 25.0%" />
@@ -601,8 +627,8 @@ change / unresolved supported subset.</p></td>
 </tbody>
 </table>
 </div>
-<div class="pst-scrollable-table-container"><table class="table" id="id4">
-<caption><span class="caption-text">Input interpretation and dispositions</span><a class="headerlink" href="#id4" title="Link to this table">#</a></caption>
+<div class="pst-scrollable-table-container"><table class="table" id="id6">
+<caption><span class="caption-text">Input interpretation and dispositions</span><a class="headerlink" href="#id6" title="Link to this table">#</a></caption>
 <colgroup>
 <col style="width: 12.0%" />
 <col style="width: 27.0%" />
@@ -683,8 +709,8 @@ scientific ledger for non-equivalent cases.</p></td>
 </section>
 <section id="output-and-unsupported-boundaries">
 <h2>Output and unsupported boundaries<a class="headerlink" href="#output-and-unsupported-boundaries" title="Link to this heading">#</a></h2>
-<div class="pst-scrollable-table-container"><table class="table" id="id5">
-<caption><span class="caption-text">Output intent and exclusions</span><a class="headerlink" href="#id5" title="Link to this table">#</a></caption>
+<div class="pst-scrollable-table-container"><table class="table" id="id7">
+<caption><span class="caption-text">Output intent and exclusions</span><a class="headerlink" href="#id7" title="Link to this table">#</a></caption>
 <colgroup>
 <col style="width: 12.0%" />
 <col style="width: 27.0%" />
@@ -824,6 +850,244 @@ run is claimed. Final cross-version, packaging and scientific acceptance remains
 with #952. Source-inspected equations, historical resources, arbitrary external
 scripts and the final supported patch-version subset retain their stated limits.</p>
 </section>
+<section id="dated-retirement-comparison-issue-719-23-october-2026">
+<h2>Dated retirement comparison: issue 719, 23 October 2026<a class="headerlink" href="#dated-retirement-comparison-issue-719-23-october-2026" title="Link to this heading">#</a></h2>
+<p>This addition records the affected retirement evidence without replacing any
+original source observation above or any <code class="docutils literal notranslate"><span class="pre">requests/</span></code>, <code class="docutils literal notranslate"><span class="pre">resources/</span></code> or
+<code class="docutils literal notranslate"><span class="pre">historical/</span></code> fixture. Plain discoveries and dispositions are captured in
+<code class="docutils literal notranslate"><span class="pre">tests/fixtures/migration_960/retirements/runtime_719_2026_10_23.json</span></code>.
+The PR base is <code class="docutils literal notranslate"><span class="pre">17e28ed081954b4155c9d85b66eaeef2ad81853c</span></code>. It includes
+merged #966 (evidence, merge <code class="docutils literal notranslate"><span class="pre">3b27c542</span></code>) and #972 (approved desired contracts,
+merge <code class="docutils literal notranslate"><span class="pre">17e28ed0</span></code>). Contract/documentation checks from #972 do not validate
+runtime removal. The comparisons below are source inspection; fresh executed
+checks belong to the implementation revision’s task and PR records.</p>
+<section id="pinned-source-comparison">
+<h3>Pinned-source comparison<a class="headerlink" href="#pinned-source-comparison" title="Link to this heading">#</a></h3>
+<p>Comparing the affected sources at pinned <code class="docutils literal notranslate"><span class="pre">0a32d73a</span></code> with the PR base finds:</p>
+<ul class="simple">
+<li><p>No changes in <code class="docutils literal notranslate"><span class="pre">hbmcmc/compatibility.py</span></code>, <code class="docutils literal notranslate"><span class="pre">hbmcmc/run_hbmcmc.py</span></code>,
+<code class="docutils literal notranslate"><span class="pre">hbmcmc/legacy_basis.py</span></code>, the runner alias/request/acquisition/nested sources,
+<code class="docutils literal notranslate"><span class="pre">cli.py</span></code>, or the five Python alias assignments/re-exports.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">hbmcmc/legacy_data.py::make_combined_scenario</span></code> gained explicit
+<code class="docutils literal notranslate"><span class="pre">xr.concat(...,</span> <span class="pre">join=&quot;outer&quot;)</span></code> through #956. Its intended source-union
+behavior must survive in canonical labeled-input regressions; deletion does
+not license changing source ordering, missing-time markers or signed fluxes.</p></li>
+<li><p>#956 also made modern trace/statistic merges explicitly use
+<code class="docutils literal notranslate"><span class="pre">join=&quot;outer&quot;,</span> <span class="pre">compat=&quot;no_conflicts&quot;</span></code> and updated supported PyMC imports;
+#959/#969 fixed fixed-OU projection/roundoff, #963 calibrated posterior
+Monte Carlo checks, and #967 added compiled-backend checks. These intervening
+changes stay in the base; they are not retirement changes or claims of exact
+numerical equivalence with the pinned environment.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> changed xarray’s lower bound and test markers. Its two
+console-script declarations were unchanged. Removing the second executable
+therefore needs fresh built-distribution checks.</p></li>
+</ul>
+</section>
+<section id="affected-entries-cases-and-dispositions">
+<h3>Affected entries, cases and dispositions<a class="headerlink" href="#affected-entries-cases-and-dispositions" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p><strong>R1/R2, I2:</strong> the accepted command map replaces the second executable and
+four full-run aliases with <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span> <span class="pre">--model</span> <span class="pre">standard|multisector|nested|co2</span></code>.
+Original <code class="docutils literal notranslate"><span class="pre">invocations.txt</span></code> files retain the historical commands. Dated case
+<code class="docutils literal notranslate"><span class="pre">command-map</span></code> records the new map and preserved dates/JSON/override/CO2/staged
+meanings. Disposition: mechanically migrated. #719 delivers removal; #945
+retains broader naming decisions and #950 owns launcher migration.</p></li>
+<li><p><strong>I3/I4/O2:</strong> original request/precedence/conflict observations remain archived.
+<code class="docutils literal notranslate"><span class="pre">runtime-options</span></code> adds the exact eight parameter, four flux-selector and
+two output-format spellings. Every spelling now receives unsupported-option
+validation rather than translation, including old/new flux names supplied
+together. Canonical values remain supported. Disposition: mechanically
+migrated request vocabulary; #949 owns explicit conversion and conflict reports.</p></li>
+<li><p><strong>I6:</strong> <code class="docutils literal notranslate"><span class="pre">tracer</span></code> preserves false-consumed/true-special-error source behavior.
+The approved modern outcome rejects every explicit value ordinarily before
+scientific work, with omission valid. Disposition: unsupported; #719 owns
+removal, #949 reporting. Draft #964/#973 overlap was inspected, not imported;
+their validation does not validate this revision. #971 is separate from #719.</p></li>
+<li><p><strong>R3/R4, I2/I5/I6, O1/O2:</strong> <code class="docutils literal notranslate"><span class="pre">namespace-wrapper</span></code> retires the ordinary wrapper,
+dictionary normalization, config-copy behavior and module execution together.
+Original <code class="docutils literal notranslate"><span class="pre">fixedbasis.ini</span></code>, <code class="docutils literal notranslate"><span class="pre">explicit-wrapper.json</span></code>, defaults and sampling
+witnesses remain available. Disposition: unsupported execution on modern
+development; matching 0.7 execution belongs to #946/#947, finite conversion
+and launcher support to #948/#949/#950.</p></li>
+<li><p><strong>U1 and the resource ledger:</strong> <code class="docutils literal notranslate"><span class="pre">legacy-data</span></code> and <code class="docutils literal notranslate"><span class="pre">legacy-basis</span></code> add the
+previously uncatalogued six-tuple retrieval/cache, dictionary/scenario/DataTree
+serialization, fp_all basis conversion and weight dispatch surfaces.
+Disposition: unsupported historical adapters/artifacts, not deletion of
+scientific representations. Original resource cases still describe sorted
+partitions, retained-artifact preference/ambiguity, NESW/no-BC, missing resources,
+conflicts and invocation-relative paths. #948/#949 own converter coverage;
+#951 retains independent basis discovery/read/write and flat partitions.</p></li>
+<li><p><strong>R2/U2:</strong> <code class="docutils literal notranslate"><span class="pre">python-aliases</span></code> supplies a bounded source witness for the five
+approved aliases, absent from the original ledger. Their canonical functions
+and classes remain. Disposition: mechanically migrated; #950 consumes the map,
+while #945 owns all unresolved names. Artifact acceptance remains codec-owned.</p></li>
+<li><p><strong>O1/O3, H2-H6:</strong> canonical sampling, offset/fixed-error semantics, all-chain
+summaries, modern <code class="docutils literal notranslate"><span class="pre">legacy</span></code> products, <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> exports and exact
+paths remain independently supported. Disposition: retained. Ported scientific
+regressions use canonical labeled inputs; historical quirks are not restored.
+#948/#949 own historical scientific-choice reporting and #952 final acceptance.</p></li>
+</ul>
+<p>The modern migration tests use canonical request settings and exact resource
+paths. They no longer execute a removed adapter. The archived plain expectations
+remain later converter inputs; checking their preservation is not historical
+execution. No converter, launcher, new artifact format support, release number
+or release-readiness decision is supplied here. Retained-population imputation
+and nested alignment remain #876/#964; provider acquisition averaging precedes
+inversion-side error combination, and aggregation is not selection.</p>
+<p>Additional bounded discovery before the CO2 validation slice: known inactive
+configuration sections in <code class="docutils literal notranslate"><span class="pre">validate_co2_config</span></code> / <code class="docutils literal notranslate"><span class="pre">load_co2_o2_params</span></code> did
+not validate option names. An <code class="docutils literal notranslate"><span class="pre">outputs.use_tracer=False</span></code> could survive
+preparation, and <code class="docutils literal notranslate"><span class="pre">sampling.use_tracer</span></code> could survive postprocessing. Dated
+case <code class="docutils literal notranslate"><span class="pre">co2-inactive-section-names</span></code> preserves that inspected behavior. Ordinary
+name-only validation now owns unsupported options in all groups and phases;
+inactive scientific values and resource loading remain deferred. Disposition:
+unsupported, #719 implementation and #949 migration reporting. This discovery
+does not authorize resolving inactive values or changing CO2 science.</p>
+<p>The affected <code class="docutils literal notranslate"><span class="pre">rhime/co2/configuration.py</span></code>, <code class="docutils literal notranslate"><span class="pre">co2_o2_configuration.py</span></code> and
+<code class="docutils literal notranslate"><span class="pre">execution.py</span></code> have no changes between pinned <code class="docutils literal notranslate"><span class="pre">0a32d73a</span></code> and base
+<code class="docutils literal notranslate"><span class="pre">17e28ed0</span></code>. Generic validation treats scientific mapping contents as opaque
+and retains supported output fields, including <code class="docutils literal notranslate"><span class="pre">source_to_sector</span></code>; it checks
+option names without evaluating numerical arrays or resolving resources.</p>
+</section>
+<section id="supplementary-codec-witnesses-after-initial-acceptance">
+<h3>Supplementary codec witnesses after initial acceptance<a class="headerlink" href="#supplementary-codec-witnesses-after-initial-acceptance" title="Link to this heading">#</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">tests/fixtures/migration_960/retirements/legacy_codec_witnesses_2026_10_23.json</span></code>
+preserves ten concrete adapter-only input/expectation cases, with exact pinned
+and PR-base blob hashes, SHA256 values and source links. They cover typed
+metadata, dotted markers, source labels/order, borrowed serialization, native
+source times, period fallback and lazy/all-NaN layouts. This source-inspected
+supplement follows the initial retirement commit and expands the earlier
+<code class="docutils literal notranslate"><span class="pre">legacy-data</span></code> inventory; it is not historical execution or newly promised
+artifact support. Disposition remains unsupported historical codecs under
+U1, with coverage/reporting owned by #948/#949 and independent basis support
+by #951. Original #960 inputs and observations remain unchanged.</p>
+</section>
+<section id="review-follow-up-and-current-devel-source-refresh">
+<h3>Review follow-up and current-devel source refresh<a class="headerlink" href="#review-follow-up-and-current-devel-source-refresh" title="Link to this heading">#</a></h3>
+<p>Maintainer review <a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/974#pullrequestreview-5634401507">5634401507</a>
+clarifies generic name validation and phase-owned effective-value validation.
+The dated <code class="docutils literal notranslate"><span class="pre">retirements/review_974_2026_10_23.json</span></code> supplement preserves the
+pre-change diagnostics and output-value cases alongside source hashes.
+The earlier <code class="docutils literal notranslate"><span class="pre">runtime-options</span></code> comparison grouped removed option names and
+output values together; the clarified contract rejects all unknown names but
+keeps validation of known inactive values deferred. A preparation-only shared
+request can contain an invalid output format, which is checked only by its
+later consuming phase. No special historical-token rejection is introduced.
+Every explicit <code class="docutils literal notranslate"><span class="pre">use_tracer</span></code> remains an unknown name regardless of its value.</p>
+<p>Before removal, the reviewed <code class="docutils literal notranslate"><span class="pre">_request_validation</span></code> helper added replacement
+advice after generic name rejection, and nested execution had dedicated errors
+for three historical inner resource selectors. The follow-up removes those
+diagnostic tables/branches and unsupported extraction names. Bounded before/after
+request checks observed generic rejection with advice becoming generic rejection
+alone, without acquisition or scientific work. Disposition: unsupported names
+remain unsupported; #719 owns implementation and #949 replacement reporting.
+Independent supported basis adapters remain with #951.</p>
+<p>The new PR base is <code class="docutils literal notranslate"><span class="pre">b288ac2530ad93ae8f67c5f1d47ee8ee7b666000</span></code>.
+<code class="docutils literal notranslate"><span class="pre">requests.py</span></code>, <code class="docutils literal notranslate"><span class="pre">_runner_compat.py</span></code> and <code class="docutils literal notranslate"><span class="pre">nested.py</span></code> are unchanged from pinned
+<code class="docutils literal notranslate"><span class="pre">0a32d73a</span></code> through that base; <code class="docutils literal notranslate"><span class="pre">_request_validation.py</span></code> was introduced by the
+retirement and is compared at reviewed <code class="docutils literal notranslate"><span class="pre">ad293dac</span></code>. Intervening #975 changes
+historical Zarr writing to format 2, backend-compatible compression and staged
+ZIP creation; its borrowed-metadata tests add ZIP expectations. The supplement
+records exact new-base source hashes and those expectations before resolving the
+namespace deletion. Modern serializers retain #975’s independently supported
+fixes; historical cache support is not restored. Original eighteen #960 fixtures,
+previous codec witnesses and dated validation results remain unchanged. Fresh
+follow-up validation belongs to its resulting revision’s task and PR records.</p>
+</section>
+<section id="october-addendum-prepared-input-factory-and-review-cleanup">
+<h3>24 October addendum: prepared-input factory and review cleanup<a class="headerlink" href="#october-addendum-prepared-input-factory-and-review-cleanup" title="Link to this heading">#</a></h3>
+<p>The maintainer’s <a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/974#issuecomment-6380451664">approved factory disposition</a>
+and <a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/974#issuecomment-6380430675">analysis</a>
+authorize removing only <code class="docutils literal notranslate"><span class="pre">PreparedInputs.from_legacy_inputs</span></code> in addition to the
+five aliases. The exact replacement is
+<code class="docutils literal notranslate"><span class="pre">PreparedInputs(inv_inputs=...,</span> <span class="pre">basis_functions=...,</span> <span class="pre">site_metadata=...)</span></code>.
+This is a compatibility-constructor disposition under #945/#663, not a sixth
+alias or a #951 basis capability decision.</p>
+<p>Before deletion, <code class="docutils literal notranslate"><span class="pre">retirements/factory_and_cleanup_2026_10_24.json</span></code> records
+source revision <code class="docutils literal notranslate"><span class="pre">e1d020f04640a7689079a57642952e324ded4eb5</span></code>, the exact factory
+signature, original two test inputs/expectations, provenance overrides,
+coordinate validation/precedence and sole modern caller. The factory body has
+an identical source hash at pinned <code class="docutils literal notranslate"><span class="pre">0a32d73a</span></code>, base <code class="docutils literal notranslate"><span class="pre">b288ac25</span></code> and this
+pre-removal revision. The caller already normalizes stationary/mobile release
+coordinates; it never supplies the factory’s legacy per-site coordinate lists.
+Its existing <code class="docutils literal notranslate"><span class="pre">supplied</span></code> provenance fallback, namespaced/plain source/path
+metadata, site/period order and borrowed lazy arrays remain supported through
+canonical construction. Persisted schema, variables, units and codecs do not
+change. Historical scalar-coordinate adaptation remains captured rather than
+being added to the canonical constructor. Disposition: unsupported compatibility
+constructor; #719 delivers removal, #945/#663 own this bounded API decision.</p>
+<p>The same dated fixture captures <a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/974#pullrequestreview-5637015484">review 5637015484</a>’s
+remaining cleanup before editing: bespoke removed-import errors, resolved/raw
+request conflict checks preceded by unnecessary parsing, repeated CO2 whole-request
+name scans, and the independent basis alias helper’s root-module location and
+unapproved 0.9 warning date. Pinned-to-base sources are unchanged except #975’s
+linked-CO2 string-coordinate fixes, which remain. Compared with that base,
+earlier retirement introduced the repeated scans and source-conflict parsing;
+finite Python-name updates left the factory’s body unchanged.</p>
+<p>Disposition: removed interfaces remain ordinarily unavailable; ambiguous sources
+fail without parsing; one outer CO2 request owner validates names while consuming
+components validate applicable values; supported basis alias behavior remains
+with #951 while its private sentinel/resolution logic becomes inline in the
+sole consumer, the root helper is removed and the unapproved schedule is dropped. Known inactive values stay deferred, and unknown inactive
+names still fail at the outer boundary. Replacement advice remains migration
+material. These are inspected source/disposition records; fresh executed checks
+belong to the new implementation revision. Earlier dated validation and all
+original eighteen #960 fixtures remain unchanged.</p>
+<p>One additional source-conflict witness was inspected after its test assertion
+was ported: <code class="docutils literal notranslate"><span class="pre">test_standard_prepared_run_rejects_complete_model_builder</span></code> at
+<code class="docutils literal notranslate"><span class="pre">e1d020f0</span></code> combined resolved configuration/prepared inputs with a
+<code class="docutils literal notranslate"><span class="pre">model_builder</span></code> callback that must not execute. Its original expected error
+named the unsupported builder option; the modern comparison expects the ordinary
+resolved/raw source conflict while preserving the callback guard. The dated
+fixture labels this retrospective source capture explicitly; fresh execution
+is recorded separately, not claimed as a pre-removal observation.</p>
+</section>
+<section id="october-addendum-positive-owners-and-explicit-bc-selection">
+<h3>26 October addendum: positive owners and explicit BC selection<a class="headerlink" href="#october-addendum-positive-owners-and-explicit-bc-selection" title="Link to this heading">#</a></h3>
+<p><a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/974#pullrequestreview-5649950083">Review 5649950083</a>
+approves the bounded follow-up. Before code edits,
+<code class="docutils literal notranslate"><span class="pre">retirements/review_974_2026_10_26.json</span></code> captures revision
+<code class="docutils literal notranslate"><span class="pre">1c15954cf191899462cf0fe2faeca5079873b842</span></code> against pinned <code class="docutils literal notranslate"><span class="pre">0a32d73a</span></code> and
+base <code class="docutils literal notranslate"><span class="pre">b288ac25</span></code>: source hashes, exact original BC regression cases, the
+prepared-schema constants and their values, and the previous contract ownership.
+These are source observations, not a fresh scientific execution claim. The
+original eighteen fixtures and earlier dated comparisons remain unchanged.</p>
+<ul class="simple">
+<li><p><strong>BC selection (I4/legacy-basis):</strong> the previous configuration exposed exact
+files but no algorithm field; absent files passed <code class="docutils literal notranslate"><span class="pre">None</span></code> to the same NESW
+numerical calculation. Add canonical <code class="docutils literal notranslate"><span class="pre">bc_basis_algorithm=&quot;NESW&quot;</span></code> as its
+default. Exact files win and make the algorithm inactive; disabled BCs resolve
+and read no BC basis resources. Preserve directional labels, temporal/grid
+alignment and lazy borrowed data. #719 delivers this selector; #951 retains
+independent basis decisions. Ordinary name/applicable-value validation remains
+separate from resource loading.</p></li>
+<li><p><strong>Python constants (prepared-input/O1/O2):</strong> replace
+<code class="docutils literal notranslate"><span class="pre">RHIME_PREPARED_INPUTS_SCHEMA</span></code> and <code class="docutils literal notranslate"><span class="pre">RHIME_PREPARED_INPUTS_SCHEMA_VERSION</span></code>
+with <code class="docutils literal notranslate"><span class="pre">PREPARED_INPUTS_SCHEMA</span></code> and <code class="docutils literal notranslate"><span class="pre">PREPARED_INPUTS_SCHEMA_VERSION</span></code>.
+Persisted <code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime_prepared_inputs</span></code>, version 1 and codec
+layout stay unchanged in this slice. This is not a permanent freeze:
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/976">#976</a> owns the
+separate persisted-identifier migration and explicit version support.
+<a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-233">OPE-233</a> tracks a selected
+VG/OGI baseline and migration; none is claimed delivered here.</p></li>
+<li><p><strong>Contract disposition (all slices):</strong> replace negative deletion inventories
+in durable configuration/selection/execution requirements with positive
+supported-interface contracts. Preserve the exact namespace/option/command/
+alias/factory maps in <a class="reference internal" href="../usage/legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a>, the earlier ledger
+addenda and dated source records. Canonical construction belongs to the
+scientific-input owner; codecs/replay remain with persistence/handoffs.
+Remove the already-delivered factory’s duplicated active <code class="docutils literal notranslate"><span class="pre">ADDED</span></code> requirement.
+Keep the new BC delta and final archive pending; #719 owns reconciliation,
+#945/#663 broader Python naming and #876/#964 separate scientific amendments.</p></li>
+</ul>
+<p>The 26 October approval supersedes the operative blanket unchanged-schema clause.
+The 24 October unchanged-schema observations above remain true for that earlier
+implementation. Neither this reconciliation nor Python naming imports #964’s
+pending numerical changes, promotes the unfinished handoff programme or implies
+unsupported historical-format compatibility. Fresh acceptance is recorded in
+revision-specific tasks/PR evidence, separately from these source comparisons.</p>
+</section>
+</section>
 </section>
 
 
@@ -873,6 +1137,8 @@ scripts and the final supported patch-version subset retain their stated limits.
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#archived-retirement-records">Archived retirement records</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#original-evidence-scope-and-fixtures">Original evidence scope and fixtures</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#evidence-vocabulary-and-pinned-comparison">Evidence vocabulary and pinned comparison</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#current-development-environment">Current development environment</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#rerun-the-bounded-checks">Rerun the bounded checks</a></li>
@@ -880,6 +1146,15 @@ scripts and the final supported patch-version subset retain their stated limits.
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#output-and-unsupported-boundaries">Output and unsupported boundaries</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#removal-and-validation-handoff">Removal and validation handoff</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#observed-validation-on-22-october-2026">Observed validation on 22 October 2026</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#dated-retirement-comparison-issue-719-23-october-2026">Dated retirement comparison: issue 719, 23 October 2026</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#pinned-source-comparison">Pinned-source comparison</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#affected-entries-cases-and-dispositions">Affected entries, cases and dispositions</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#supplementary-codec-witnesses-after-initial-acceptance">Supplementary codec witnesses after initial acceptance</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#review-follow-up-and-current-devel-source-refresh">Review follow-up and current-devel source refresh</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#october-addendum-prepared-input-factory-and-review-cleanup">24 October addendum: prepared-input factory and review cleanup</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#october-addendum-positive-owners-and-explicit-bc-selection">26 October addendum: positive owners and explicit BC selection</a></li>
+</ul>
+</li>
 </ul>
   </nav></div>
 

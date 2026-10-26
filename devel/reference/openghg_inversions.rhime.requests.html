@@ -391,12 +391,6 @@
 </details></li>
 </ul>
 </details></li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html">openghg_inversions.hbmcmc.compatibility</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_data.html">openghg_inversions.hbmcmc.legacy_data</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_basis.html">openghg_inversions.hbmcmc.legacy_basis</a></li>
-</ul>
-</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.cached_sigma.html">openghg_inversions.inference.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.diagnostics.html">openghg_inversions.inference.diagnostics</a></li>
@@ -577,16 +571,15 @@
   <section id="module-openghg_inversions.rhime.requests">
 <span id="openghg-inversions-rhime-requests"></span><h1>openghg_inversions.rhime.requests<a class="headerlink" href="#module-openghg_inversions.rhime.requests" title="Link to this heading">#</a></h1>
 <p>The single RHIME request loader shared by full runs and saved phases.</p>
-<p>It reads one explicit source, applies invocation overrides and translates
-deprecated spellings at the runner frontend, so configuration owners in
-<a class="reference internal" href="openghg_inversions.rhime.params.html#module-openghg_inversions.rhime.params" title="openghg_inversions.rhime.params"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.rhime.params</span></code></a> stay canonical-only.</p>
+<p>It reads one explicit source, applies invocation overrides and validates
+canonical options before configuration or scientific work.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.requests.load_params">
 <span class="sig-name descname"><span class="pre">load_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">config_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overrides</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phase_groups</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.requests.load_params" title="Link to this definition">#</a></dt>
 <dd><p>Read one explicit request, apply overrides and group it by owner.</p>
 <p>This is the single request loader for full runs and saved phases. Raw
-overrides replace file values before alias translation, so a canonical
-spelling wins over a deprecated one. <code class="docutils literal notranslate"><span class="pre">CONFIG_FILE</span></code> is never consulted.</p>
+overrides replace file values before canonical configuration construction.
+<code class="docutils literal notranslate"><span class="pre">CONFIG_FILE</span></code> is never consulted.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -606,7 +599,7 @@ facts belong to <code class="docutils literal notranslate"><span class="pre">mod
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If both sources are given, the source is not a mapping, or any
     name is unknown or unsuitable for the phase. All such names are
-    reported together with migration guidance.</p>
+    reported together.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]]</p>

@@ -391,12 +391,6 @@
 </details></li>
 </ul>
 </details></li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html">openghg_inversions.hbmcmc.compatibility</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_data.html">openghg_inversions.hbmcmc.legacy_data</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_basis.html">openghg_inversions.hbmcmc.legacy_basis</a></li>
-</ul>
-</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.cached_sigma.html">openghg_inversions.inference.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.diagnostics.html">openghg_inversions.inference.diagnostics</a></li>
@@ -716,10 +710,8 @@ numerical arrays remain borrowed, including any backing open files.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'user'</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">obs_store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'user'</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">footprint_store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'user'</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">flux_store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">_Unset.TOKEN</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">flux_domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">_Unset.TOKEN</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">emissions_store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">_Unset.TOKEN</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">emissions_domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">_Unset.TOKEN</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux_store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'user'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux_domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">fp_model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">fp_species</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">calibration_scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -735,10 +727,7 @@ are unavailable. Returned datasets may be lazy and remain borrowed by
 later preparation. <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> names OpenGHG sources. Store,
 selector and merge errors propagate. <code class="docutils literal notranslate"><span class="pre">flux_store</span></code> defaults to <code class="docutils literal notranslate"><span class="pre">&quot;user&quot;</span></code>;
 <code class="docutils literal notranslate"><span class="pre">flux_domain</span></code> selects the source flux dataset domain, defaulting to
-the footprint <code class="docutils literal notranslate"><span class="pre">domain</span></code>. It does not imply a nested inner domain.
-Deprecated <code class="docutils literal notranslate"><span class="pre">emissions_store</span></code>/<code class="docutils literal notranslate"><span class="pre">emissions_domain</span></code> are removed in 0.9.
-Supplying an old and new spelling together raises <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>, even
-when their values are equal or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+the footprint <code class="docutils literal notranslate"><span class="pre">domain</span></code>. It does not imply a nested inner domain.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.MergedData" title="openghg_inversions.inversion_data.acquisition.MergedData"><em>MergedData</em></a></p>
@@ -782,45 +771,6 @@ implying that model builders consume them.</p></li>
     labels are inconsistent.</p>
 </dd>
 </dl>
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.PreparedInputs.from_legacy_inputs">
-<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_legacy_inputs</span></span><span class="sig-paren">(</span>
-
-<dl>
-<dd><em class="sig-param"><span class="n"><span class="pre">inv_inputs</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">basis_functions</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">sites</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">averaging_period</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">basis_artifact_source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">basis_artifact_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">site_lats</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">site_lons</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-</dl>
-
-<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.PreparedInputs.from_legacy_inputs" title="Link to this definition">#</a></dt>
-<dd><p>Adapt the former positional fields to the labeled-data contract.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>inv_inputs</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Canonical inversion inputs.</p></li>
-<li><p><strong>basis_functions</strong> (<a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><em>FluxWeightedBasis</em></a>) – Retained basis object.</p></li>
-<li><p><strong>sites</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>]</em>) – Site labels in indicator-decoding order.</p></li>
-<li><p><strong>averaging_period</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em><em>]</em>) – Observation periods aligned to <code class="docutils literal notranslate"><span class="pre">sites</span></code>.</p></li>
-<li><p><strong>basis_artifact_source</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional basis provenance value.</p></li>
-<li><p><strong>basis_artifact_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional basis provenance path.</p></li>
-<li><p><strong>site_lats</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Optional legacy release latitudes, one per site.</p></li>
-<li><p><strong>site_lons</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Optional legacy release longitudes, one per site.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Prepared inputs using labeled site metadata.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.15)"><em>Self</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.PreparedInputs.sites">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">sites</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.PreparedInputs.sites" title="Link to this definition">#</a></dt>
@@ -982,12 +932,6 @@ replaces the corresponding suffix.</p></li>
 <p>Metadata never copy or compute the borrowed scientific arrays.</p>
 <dl class="field-list simple">
 </dl>
-</dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.RhimeMergedData">
-<span class="sig-name descname"><span class="pre">RhimeMergedData</span></span><a class="headerlink" href="#openghg_inversions.inversion_data.RhimeMergedData" title="Link to this definition">#</a></dt>
-<dd><p>alias of <a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.MergedData" title="openghg_inversions.inversion_data.acquisition.MergedData"><code class="xref py py-class docutils literal notranslate"><span class="pre">MergedData</span></code></a></p>
 </dd></dl>
 
 <dl class="py class">
@@ -1225,12 +1169,6 @@ against this record’s resolved uppercase site labels.</p></li>
 
 </dd></dl>
 
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.RhimePreparedInputs">
-<span class="sig-name descname"><span class="pre">RhimePreparedInputs</span></span><a class="headerlink" href="#openghg_inversions.inversion_data.RhimePreparedInputs" title="Link to this definition">#</a></dt>
-<dd><p>alias of <a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">PreparedInputs</span></code></a></p>
-</dd></dl>
-
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray">
 <span class="sig-name descname"><span class="pre">prepare_rhime_inputs_from_xarray</span></span><span class="sig-paren">(</span>
@@ -1271,9 +1209,9 @@ explicit <code class="docutils literal notranslate"><span class="pre">source</sp
 and are never coerced from bytes or numbers. Repeated source values in a
 gathered source-specific state MultiIndex remain valid.</p>
 <p>Persist and reopen canonical artifacts with
-<code class="xref py py-meth docutils literal notranslate"><span class="pre">RhimePreparedInputs.save</span></code>
+<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.save" title="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.save"><code class="xref py py-meth docutils literal notranslate"><span class="pre">PreparedInputs.save</span></code></a>
 and
-<code class="xref py py-meth docutils literal notranslate"><span class="pre">load()</span></code>;
+<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.load" title="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.load"><code class="xref py py-meth docutils literal notranslate"><span class="pre">load()</span></code></a>;
 do not pass serialized <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> data back to this adapter.
 The reserved <code class="docutils literal notranslate"><span class="pre">fixed_baseline</span></code> input is rejected until a reusable
 semantic Baseline component is available; use sampled <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> or omit it.</p>
@@ -1330,7 +1268,6 @@ preparation route.</p></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.interpolate_flux_to_footprint_grid"><code class="docutils literal notranslate"><span class="pre">interpolate_flux_to_footprint_grid()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.RhimeMergedData"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.SiteOptions"><code class="docutils literal notranslate"><span class="pre">SiteOptions</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.SiteOptions.from_inputs"><code class="docutils literal notranslate"><span class="pre">SiteOptions.from_inputs()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.SiteOptions.select_indices"><code class="docutils literal notranslate"><span class="pre">SiteOptions.select_indices()</span></code></a></li>
@@ -1354,7 +1291,6 @@ preparation route.</p></li>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs"><code class="docutils literal notranslate"><span class="pre">PreparedInputs</span></code></a><ul>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.from_legacy_inputs"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.from_legacy_inputs()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.sites"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.sites</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.averaging_period"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.averaging_period</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.basis_artifact_source"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.basis_artifact_source</span></code></a></li>
@@ -1366,7 +1302,6 @@ preparation route.</p></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.load"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.load()</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a><ul>
@@ -1438,7 +1373,6 @@ preparation route.</p></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.PreparedInputs"><code class="docutils literal notranslate"><span class="pre">PreparedInputs</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.PreparedInputs.from_legacy_inputs"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.from_legacy_inputs()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.PreparedInputs.sites"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.sites</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.PreparedInputs.averaging_period"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.averaging_period</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.PreparedInputs.basis_artifact_source"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.basis_artifact_source</span></code></a></li>
@@ -1451,7 +1385,6 @@ preparation route.</p></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.AcquisitionFacts"><code class="docutils literal notranslate"><span class="pre">AcquisitionFacts</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.RhimeMergedData"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.InputProvenance"><code class="docutils literal notranslate"><span class="pre">InputProvenance</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.MergedDataProvenance"><code class="docutils literal notranslate"><span class="pre">MergedDataProvenance</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.MergedDataProvenance.from_retrieval"><code class="docutils literal notranslate"><span class="pre">MergedDataProvenance.from_retrieval()</span></code></a></li>
@@ -1465,7 +1398,6 @@ preparation route.</p></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.SiteOptions.retain_sites"><code class="docutils literal notranslate"><span class="pre">SiteOptions.retain_sites()</span></code></a></li>
 </ul>
 </li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.RhimePreparedInputs"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray"><code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs_from_xarray()</span></code></a></li>
 </ul>
   </nav></div>

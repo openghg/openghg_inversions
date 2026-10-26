@@ -539,10 +539,10 @@ labels.</p>
 reduction products together with canonical RHIME observations, basis data,
 and site metadata. Load the canonical inputs from a checkpoint produced by
 the <a class="reference internal" href="rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a> workflow:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">PreparedInputs</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_co2_inputs</span>
 
-<span class="n">canonical_inputs</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"base-prepared-inputs.zarr"</span><span class="p">)</span>
+<span class="n">canonical_inputs</span> <span class="o">=</span> <span class="n">PreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"base-prepared-inputs.zarr"</span><span class="p">)</span>
 <span class="n">co2_inputs</span> <span class="o">=</span> <span class="n">prepare_co2_inputs</span><span class="p">(</span><span class="n">canonical_inputs</span><span class="p">,</span> <span class="n">reduction</span><span class="p">)</span>
 </pre></div>
 </div>
@@ -554,7 +554,7 @@ the <a class="reference internal" href="rhime.html"><span class="doc">RHIME term
 covariance. The artifact records one representation, and the CO2 runners use
 it without a separate mode argument.
 This handoff does not alter the prepared-input contracts of the standard,
-multisector, or <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> paths.</p>
+or multisector paths.</p>
 <p>For larger cases, request an explicit low-rank-plus-diagonal (LRPD) rank at the
 handoff:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">co2_inputs</span> <span class="o">=</span> <span class="n">prepare_co2_inputs</span><span class="p">(</span>
