@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from openghg_inversions.inversion_data import RhimeMergedData
+from openghg_inversions.inversion_data import MergedData
 from openghg_inversions.rhime import nested as nested_module
 from openghg_inversions.rhime.params import RhimeConfig
 from tests.test_nested_core import _nested
@@ -44,8 +44,8 @@ def test_preparation_records_footprint_rectangle_even_when_basis_flux_labels_dif
     })
     # Observation/error policy and basis fitting are independent of this retained
     # fact. Exercise real shared-grid masking and the final combine boundary.
-    outer = RhimeMergedData(outer.site_data, outer.flux_data, outer.site_options)
-    inner = RhimeMergedData(inner.site_data, inner.flux_data, inner.site_options)
+    outer = MergedData(outer.site_data, outer.flux_data, outer.site_options)
+    inner = MergedData(inner.site_data, inner.flux_data, inner.site_options)
     monkeypatch.setattr(nested_module, "prepare_observation_errors", lambda data, **kwargs: data)
     monkeypatch.setattr(nested_module, "filter_observations", lambda data, options, **kwargs: (data, options))
     prepared_sites = {}

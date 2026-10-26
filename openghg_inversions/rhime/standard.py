@@ -8,7 +8,6 @@ scientist can read or copy this module without reconstructing a pipeline.
 from __future__ import annotations
 
 from openghg_inversions.native_flux import resolve_runtime_flux
-from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions._provenance import installed_ogi_provenance
@@ -27,7 +26,7 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
-from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
+from openghg_inversions.inversion_data import MergedData, PreparedInputs
 from openghg_inversions.models.components import (
     _add_multisource_state_vector,
     add_linear_component,
@@ -70,7 +69,8 @@ from .outputs import (
 from .params import RhimeConfig
 from .requests import load_params
 from .preparation import (
-    assemble_rhime_inputs,
+    resolve_bc_basis,
+    assemble_inputs,
     build_sensitivities,
     export_basis,
     filter_observations,
@@ -104,7 +104,7 @@ def _require_component_inputs(
 
 
 def standard_model_input_names(
-    prepared: RhimePreparedInputs,
+    prepared: PreparedInputs,
     model_spec: RhimeModelSpec,
 ) -> tuple[str, ...]:
     """Declare arrays required by selected standard-model components.
@@ -196,7 +196,7 @@ def _standard_prior_parameters(model_spec: RhimeModelSpec) -> dict[str, PriorArg
 
 
 def materialize_standard_inputs(
-    prepared: RhimePreparedInputs,
+    prepared: PreparedInputs,
     model_spec: RhimeModelSpec,
 ) -> tuple[xr.Dataset, dict[str, PriorArgs]]:
     """Materialize selected standard inputs and enabled priors in one Dask operation.
@@ -410,13 +410,13 @@ def _build_independent_rhime_model(
 
 
 def prepare_standard(
-    merged_data: RhimeMergedData, *,
+    merged_data: MergedData, *,
     domain: str, start_date: str, flux_sources: tuple[str, ...],
     averaging_error: bool, filters: Any, basis_algorithm: str | None, nbasis: int,
     fix_basis_outer_regions: bool, use_bc: bool, bc_freq: str | None,
     min_error: MinErrorConfig, min_error_options: Mapping[str, bool],
     basis_inputs: Mapping[str, Any], bc_basis: xr.Dataset | None = None,
-) -> RhimePreparedInputs:
+) -> PreparedInputs:
     """Prepare observations and sensitivities from supplied scientific resources.
 
     Args:
@@ -463,7 +463,7 @@ def prepare_standard(
         multisector=False,
     )
 
-    prepared = assemble_rhime_inputs(
+    prepared = assemble_inputs(
         sensitivities,
         basis_functions,
         site_options=site_options,
@@ -487,8 +487,8 @@ def run_standard(
     *,
     config_file: str | Path | None = None,
     config: RhimeConfig | None = None,
-    merged_data: RhimeMergedData | None = None,
-    prepared: RhimePreparedInputs | None = None,
+    merged_data: MergedData | None = None,
+    prepared: PreparedInputs | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     **kwargs: Any,
@@ -534,9 +534,7 @@ def run_standard(
             ``output_path``, ``output_name``, ``flux_sources``, and
             ``x_prior``. ``species`` names the primary gas or tracer used for
             object-store lookup and output naming. ``flux_sources`` contains
-            OpenGHG flux ``source`` values. Legacy ``emissions_name`` is
-            accepted only as a compatibility alias when ``flux_sources`` is
-            absent.
+            OpenGHG flux ``source`` values.
 
     Returns:
         Scientific inversion output borrowing the prepared arrays, basis and
@@ -561,7 +559,7 @@ def run_standard(
         if config_file is not None or kwargs:
             raise ValueError("Pass either resolved `config` or `config_file`/run parameters, not both.")
         if config.data.split_by_sectors:
-            raise ValueError("`run_standard` received configuration for a different sector layout.")
+            raise ValueError("Standard model received configuration for a different sector layout.")
     else:
         params = load_params(config_file=config_file, overrides=kwargs)
         config = RhimeConfig.from_params(params, multisector=False)
@@ -576,10 +574,7 @@ def run_standard(
     # 1. Resolve resources, acquire or validate data, then prepare scientific inputs.
     if prepared is None:
         basis_inputs = resolve_basis_inputs(config.data)
-        bc_basis = (
-            load_bc_basis(config.data.bc_basis_paths)
-            if config.data.use_bc and config.data.bc_basis_paths is not None else None
-        )
+        bc_basis = resolve_bc_basis(config.data)
 
         if merged_data is None:
             merged_data = acquire_merged_data(config.data)

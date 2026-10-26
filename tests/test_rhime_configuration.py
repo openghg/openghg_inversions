@@ -12,18 +12,13 @@ import pytest
 import xarray as xr
 
 import openghg_inversions.rhime as rhime
-from openghg_inversions.hbmcmc.compatibility import params_from_config
 from openghg_inversions.rhime.ini import read_rhime_ini
-from openghg_inversions.hbmcmc.legacy_basis import basis_functions
+from openghg_inversions.rhime.requests import load_params
 from openghg_inversions.inference.sampling import RhimeSampler
-from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
+from openghg_inversions.inversion_data import MergedData, SiteOptions
 from openghg_inversions.rhime import multisector, standard
 from openghg_inversions.rhime import params as rhime_params
 from openghg_inversions.rhime import specs as rhime_specs
-from openghg_inversions.hbmcmc.legacy_data import (
-    from_legacy_fp_all,
-    to_legacy_fp_all,
-)
 
 
 def _request(**overrides):
@@ -88,7 +83,7 @@ def test_invalid_effective_requests_fail_without_acquisition(monkeypatch, overri
     def fail(*args, **kwargs):
         pytest.fail("option resolution must not acquire or sample")
 
-    monkeypatch.setattr(rhime.RhimeMergedData, "from_options", fail)
+    monkeypatch.setattr(rhime.MergedData, "from_options", fail)
     monkeypatch.setattr(RhimeSampler, "sample", fail)
     with pytest.raises(ValueError, match=option):
         rhime_params.RhimeConfig.from_params(_request(**overrides), multisector=False)
@@ -117,9 +112,9 @@ def test_invalid_active_choices_fail_before_acquisition(
         rhime_params.RhimeConfig.from_params(request, multisector=multisector_mode)
 
     recipe = multisector if multisector_mode else standard
-    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_standard
+    runner = recipe.run_multisector if multisector_mode else recipe.run_standard
     acquire = Mock(side_effect=AssertionError("invalid configuration must fail before acquisition"))
-    monkeypatch.setattr(recipe.RhimeMergedData, "from_options", acquire)
+    monkeypatch.setattr(recipe.MergedData, "from_options", acquire)
     if from_ini:
         path = tmp_path / "invalid.ini"
         path.write_text(
@@ -167,12 +162,9 @@ def test_builtin_basis_algorithms_resolve(algorithm):
     assert config.data.basis_algorithm == algorithm
 
 
-def test_basis_resolution_is_independent_of_legacy_registry(monkeypatch):
-    monkeypatch.setitem(basis_functions, "project_algorithm", object())
+def test_unknown_basis_algorithm_is_rejected():
     with pytest.raises(ValueError, match="basis_algorithm.*project_algorithm"):
-        rhime_params.RhimeConfig.from_params(
-            _request(basis_algorithm="project_algorithm"), multisector=False
-        )
+        rhime_params.RhimeConfig.from_params(_request(basis_algorithm="project_algorithm"), multisector=False)
 
 
 @pytest.mark.parametrize("replace_periods", [False, True])
@@ -221,17 +213,16 @@ def test_ini_decoding_precedes_recipe_defaults_and_overrides(tmp_path: Path, mul
     assert overrides == {"start_date": "2020-02-01"}
 
 
-def test_ini_dictionary_adapter_retains_normalization_controls(tmp_path: Path):
-    path = tmp_path / "adapter.ini"
-    path.write_text("[RHIME]\noutputname = 'old-name'\ndraws = '7'\n", encoding="utf-8")
-    with pytest.warns(DeprecationWarning, match="params_from_config"):
-        raw = params_from_config(path, normalise=False)
-    assert raw == {"outputname": "old-name", "draws": "7"}
-    with pytest.warns(DeprecationWarning, match="params_from_config"), pytest.warns(DeprecationWarning, match="outputname"):
-        normalized = params_from_config(
-            path, output_path="cli-output", extra_kwargs={"output_path": "winning-output"}
-        )
-    assert normalized == {"output_name": "old-name", "draws": 7, "output_path": Path.cwd() / "winning-output"}
+def test_canonical_request_loader_applies_overrides_before_coercion(tmp_path: Path):
+    path = tmp_path / "request.ini"
+    path.write_text("[RHIME]\noutput_name = 'name'\ndraws = '7'\n", encoding="utf-8")
+    raw = read_rhime_ini(path)
+    assert raw == {"output_name": "name", "draws": "7"}
+    request = load_params(config_file=path, overrides={"output_path": "winning-output"})
+    config = rhime_params.RhimeConfig.from_params({**_request(), **raw, "output_path": request["output"]["output_path"]}, multisector=False)
+    assert config.output.output_name == "name"
+    assert config.sampler.draws == 7
+    assert config.output.output_path == Path.cwd() / "winning-output"
 
 
 @pytest.mark.parametrize("invalid", [False, True])
@@ -303,7 +294,7 @@ def test_minimum_error_none_resolves_to_numeric_default():
 
 
 def test_filtering_preserves_typed_filter_request():
-    """The legacy filtering function can normalize a copy of owned choices."""
+    """Filtering can normalize a copy of owned choices."""
     request = _request(filters={"TAC": "six_hr_mean", "MHD": None})
     config = rhime_params.RhimeConfig.from_params(request, multisector=False)
     before = deepcopy(config.data.filters)
@@ -311,9 +302,7 @@ def test_filtering_preserves_typed_filter_request():
         {"mf": ("time", [1.0, 3.0])},
         coords={"time": [datetime(2019, 1, 1, 12), datetime(2019, 1, 1, 13)]},
     )
-    merged = from_legacy_fp_all(
-        fp_all={"TAC": data, "MHD": data}, site_options=config.data.site_options
-    )
+    merged = MergedData(site_data={"TAC": data, "MHD": data}, flux_data={}, site_options=config.data.site_options)
 
     filtered, site_options = rhime.filter_observations(
         merged.site_data, merged.site_options, filters=config.data.filters,
@@ -325,7 +314,7 @@ def test_filtering_preserves_typed_filter_request():
     assert filtered["MHD"].sizes["time"] == 2
     assert config.data.filters == before
     assert request["filters"] == before
-    assert to_legacy_fp_all(merged)["TAC"].sizes["time"] == 2
+    assert merged.site_data["TAC"].sizes["time"] == 2
 
 
 def test_configuration_api_is_public():
@@ -352,9 +341,9 @@ def test_multisector_preparation_selects_sources_from_typed_request():
         dims=("source", "region", "time"),
         coords={"source": ["first", "second"], "region": [0], "time": [datetime(2019, 1, 1)]},
     )
-    merged = from_legacy_fp_all(
-        {"TAC": sensitivity.sum("region").rename("fp_x_flux_sectoral").to_dataset()},
-        config.data.site_options,
+    merged = MergedData(
+        site_data={"TAC": sensitivity.sum("region").rename("fp_x_flux_sectoral").to_dataset()},
+        flux_data={}, site_options=config.data.site_options, split_by_sectors=True,
     )
     basis = SimpleNamespace(sensitivity=lambda values: sensitivity)
 
@@ -464,9 +453,9 @@ def test_ini_reader_decodes_recipe_options_without_semantic_resolution(tmp_path,
 def test_invalid_minimum_error_fails_before_acquisition(monkeypatch, value, multisector_mode):
     def forbidden(*args, **kwargs):
         pytest.fail("invalid minimum error reached acquisition")
-    monkeypatch.setattr(RhimeMergedData, "from_options", forbidden)
+    monkeypatch.setattr(MergedData, "from_options", forbidden)
     recipe = multisector if multisector_mode else standard
-    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_standard
+    runner = recipe.run_multisector if multisector_mode else recipe.run_standard
     with pytest.raises(ValueError, match="min_error"):
         runner(**_request(min_error=value, flux_sources=["one", "two"] if multisector_mode else ["one"]))
 
@@ -479,37 +468,18 @@ def test_minimum_error_owns_any_mapping_without_requiring_dropped_sites():
     assert config.data.min_error == {"TAC": 0.5}
 
 
-@pytest.mark.parametrize(("old", "new", "value"), [
-    ("emissions_store", "flux_store", "selected-store"),
-    ("emissions_domain", "flux_domain", "COARSE"),
-])
-def test_runner_flux_deprecation_exports_canonical_configuration(old, new, value):
-    """Accepted deprecated options resolve to canonical fields without raw keys."""
-    from dataclasses import asdict
-
-    from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
-
-    request = _request(**{old: value})
-    with pytest.warns(DeprecationWarning, match=r"removed in 0\.9"):
-        config = rhime_params.RhimeConfig.from_params(translate_rhime_aliases(request), multisector=False)
+@pytest.mark.parametrize(("new", "value"), [("flux_store", "selected-store"), ("flux_domain", "COARSE")])
+def test_runner_flux_selectors_export_canonical_configuration(new, value):
+    config = rhime_params.RhimeConfig.from_params(load_params(overrides=_request(**{new: value})), multisector=False)
     assert getattr(config.data, new) == value
-    assert old not in asdict(config)
-    assert old not in config.supported_option_names()
     assert new in config.supported_option_names()
-    assert request[old] == value
 
 
-@pytest.mark.parametrize(("old", "new"), [
-    ("emissions_store", "flux_store"),
-    ("emissions_domain", "flux_domain"),
-])
+@pytest.mark.parametrize(("old", "new"), [("emissions_store", "flux_store"), ("emissions_domain", "flux_domain")])
 @pytest.mark.parametrize("value", [None, "same"])
-def test_runner_flux_deprecation_rejects_explicit_equal_conflicts(old, new, value):
-    """Explicit duplicates are ambiguous even if both have the same value."""
-    from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
-
-    with pytest.raises(ValueError, match="cannot be supplied together"):
-        translate_rhime_aliases(_request(**{old: value, new: value}))
+def test_runner_rejects_retired_flux_selectors_even_with_canonical_values(old, new, value):
+    with pytest.raises(ValueError, match=f"Unsupported RHIME parameter.*{old}"):
+        load_params(overrides=_request(**{old: value, new: value}))
 
 
 def test_canonical_flux_defaults_and_explicit_source_domain():
@@ -608,23 +578,22 @@ def test_scalar_site_shorthand_stays_one_site():
     assert config.data.site_options.time_resolved == (True,)
 
 
-def test_resource_paths_follow_annotations_and_preserve_origins(tmp_path, monkeypatch):
+def test_resource_paths_follow_annotations_and_invocation_directory(tmp_path, monkeypatch):
     from dataclasses import fields
-    from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
 
     invocation = tmp_path / "invocation"
     invocation.mkdir()
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    path = config_dir / "request.ini"
+    values = _request(basis_path="file.nc", country_file="country.nc", bc_basis_paths=["bc.nc"])
+    path.write_text("[RUN]\n" + "\n".join(f"{key} = {value!r}" for key, value in values.items()))
     monkeypatch.chdir(invocation)
-    saved = tmp_path / "saved"
-    options = adapt_resource_params(
-        _request(basis_path="file.nc", country_file="country.nc", bc_basis_paths=["bc.nc"]),
-        base_dir=saved,
-        overrides={"basis_path": "override.nc", "save_trace": True},
-    )
+    options = load_params(config_file=path, overrides={"basis_path": "override.nc", "save_trace": True})
     config = rhime_params.RhimeConfig.from_params(options, multisector=False)
     assert config.data.basis_path == invocation / "override.nc"
-    assert config.output.country_file == saved / "country.nc"
-    assert config.data.bc_basis_paths == (saved / "bc.nc",)
+    assert config.output.country_file == invocation / "country.nc"
+    assert config.data.bc_basis_paths == (invocation / "bc.nc",)
     assert config.data.domain == "EUROPE"
     assert config.output.save_trace is True
     assert not {"fp_basis_case", "basis_directory", "bc_basis_case", "bc_basis_directory", "country_directory"} & {
@@ -632,47 +601,16 @@ def test_resource_paths_follow_annotations_and_preserve_origins(tmp_path, monkey
     }
 
 
-def test_resource_adapter_discovers_only_winning_legacy_selection(tmp_path, monkeypatch):
-    from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
-
-    monkeypatch.chdir(tmp_path)
-    directory = tmp_path / "chosen" / "EUROPE"
-    directory.mkdir(parents=True)
-    for month in ("01", "02"):
-        xr.Dataset({"basis": ("region", [1])}).to_netcdf(directory / f"case_EUROPE_{month}.nc")
-    with pytest.warns(DeprecationWarning):
-        options = adapt_resource_params(
-            _request(fp_basis_case="missing", basis_directory="absent"),
-            base_dir=tmp_path / "file-origin",
-            overrides={"fp_basis_case": "case", "basis_directory": "chosen"},
-        )
-    assert options["basis_partition_paths"] == tuple(sorted(directory.glob("*.nc")))
-    assert "fp_basis_case" not in options
-    assert "basis_directory" not in options
 
 
-@pytest.mark.parametrize("use_bc,case", [(True, "NESW"), (True, "nesw"), (False, "missing")])
-def test_resource_adapter_skips_unused_bc_discovery(tmp_path, use_bc, case):
-    from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
 
-    with pytest.warns(DeprecationWarning, match="unused" if use_bc else "deprecated"):
-        options = adapt_resource_params(
-            _request(use_bc=use_bc, bc_basis_case=case, bc_basis_directory=tmp_path / "missing")
-        )
-    assert "bc_basis_paths" not in options
-    assert "bc_basis_case" not in options
-    assert not (tmp_path / "missing").exists()
+
 
 
 @pytest.mark.parametrize("value", [None, "old-country-dir"])
 def test_removed_country_directory_rejects_before_config_or_discovery(value):
-    from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
-
-    from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
-
-    for resolve in (adapt_resource_params, translate_rhime_aliases):
-        with pytest.raises(ValueError, match="country_file.*landsea_path.*outer_regions_path"):
-            resolve(_request(country_directory=value, fp_basis_case="missing"))
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*country_directory.*fp_basis_case"):
+        load_params(overrides=_request(country_directory=value, fp_basis_case="missing"))
 
 
 def test_canonical_path_construction_does_not_load_resources(tmp_path, monkeypatch):
@@ -691,20 +629,7 @@ def test_canonical_path_construction_does_not_load_resources(tmp_path, monkeypat
     assert config.output.country_file == tmp_path / "missing-country.nc"
 
 
-def test_legacy_bc_discovery_preserves_file_directory_origin(tmp_path):
-    from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
 
-    selected = tmp_path / "bc" / "EUROPE"
-    selected.mkdir(parents=True)
-    # Discovery must not read these files; the runner owns loading and errors.
-    paths = [selected / f"monthly_EUROPE_{month}.nc" for month in ("01", "02")]
-    for path in paths:
-        path.touch()
-    with pytest.warns(DeprecationWarning):
-        resolved = adapt_resource_params(
-            _request(bc_basis_case="monthly", bc_basis_directory="bc"), base_dir=tmp_path,
-        )
-    assert resolved["bc_basis_paths"] == tuple(paths)
 
 
 @pytest.mark.parametrize("factory", [rhime_specs.make_output_spec, rhime_specs.RhimeOutputSpec.from_params])
@@ -787,47 +712,20 @@ def test_canonical_configuration_rejects_aliases_without_warnings(name):
             rhime_params.RhimeConfig.from_params(_request(**{name: "old"}), multisector=False)
 
 
-@pytest.mark.parametrize("runner", [rhime.run_standard, rhime.run_rhime_multisector])
+@pytest.mark.parametrize("runner", [rhime.run_standard, rhime.run_multisector])
 @pytest.mark.parametrize("grouped", [False, True])
-def test_runner_translates_before_canonical_configuration(monkeypatch, runner, grouped):
-    """Compatibility warnings belong to the runner, before config construction."""
-    import warnings
-
-    original = rhime_params.RhimeConfig.from_params
-    seen = []
-
-    class ConfigReached(Exception):
-        pass
-
-    def capture(params, *, multisector):
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", DeprecationWarning)
-            seen.append(original(params, multisector=multisector))
-        raise ConfigReached
-
-    monkeypatch.setattr(rhime_params.RhimeConfig, "from_params", capture)
-    params = _request(emissions_store="archive", outputname="old", xprior={"pdf": "normal", "mu": 1, "sigma": 1})
-    if runner is rhime.run_rhime_multisector:
-        params["flux_sources"] = ["anthro", "natural"]
-    if grouped:
-        canonical = rhime_params.group_params({
-            name: value for name, value in params.items()
-            if name not in {"emissions_store", "outputname", "xprior"}
-        })
-        canonical["data"]["emissions_store"] = params["emissions_store"]
-        canonical["model"]["xprior"] = params["xprior"]
-        canonical["output"]["outputname"] = params["outputname"]
-        params = canonical
+def test_runner_rejects_retired_options_before_canonical_configuration(monkeypatch, runner, grouped):
+    monkeypatch.setattr(rhime_params.RhimeConfig, "from_params", lambda *a, **kw: pytest.fail("must validate first"))
+    params = {"data": {"emissions_store": "archive"}, "model": {"xprior": {}}, "output": {"outputname": "old"}} if grouped else {"emissions_store": "archive", "xprior": {}, "outputname": "old"}
     before = deepcopy(params)
-    with pytest.warns(DeprecationWarning), pytest.raises(ConfigReached):
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter") as error:
         runner(**params)
+    assert all(name in str(error.value) for name in ("emissions_store", "xprior", "outputname"))
     assert params == before
-    assert seen[0].data.flux_store == "archive"
-    assert seen[0].model.sectors[0].x_prior["mu"] == 1
 
 
-@pytest.mark.parametrize("output_format", ["hbmcmc", "hbmcmc_postprocessing"])
-def test_canonical_configuration_rejects_old_output_formats_without_warnings(output_format):
+@pytest.mark.parametrize("output_format", ["not-a-format", ""])
+def test_canonical_configuration_rejects_unknown_output_formats_without_warnings(output_format):
     import warnings
 
     with warnings.catch_warnings():

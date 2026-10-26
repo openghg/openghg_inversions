@@ -15,7 +15,7 @@ and never mutated. Filtering may
 compute when a selected filter cannot operate lazily.  Basis construction may
 read or fit a basis; runners own optional exports. Sensitivity construction may execute
 the basis and boundary-condition algorithms.  Labelled assembly validates the
-durable :class:`~openghg_inversions.inversion_data.RhimePreparedInputs`
+durable :class:`~openghg_inversions.inversion_data.PreparedInputs`
 artifact and jointly materializes core payloads before dropping unusable
 observations. This assembly boundary preserves sparse payloads and leaves
 unselected extensions lazy. Backend-specific selection and densification
@@ -37,7 +37,7 @@ from openghg_inversions.basis._helpers import bc_sensitivity
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR, BasisFunctions
 from openghg_inversions.boundary_sensitivity import scale_satellite_boundary_sensitivity_to_column_signal
 from openghg_inversions.filters import filtering
-from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, SiteOptions
+from openghg_inversions.inversion_data import MergedData, PreparedInputs, SiteOptions
 from openghg_inversions.inversion_data.observation_errors import prepare_observation_errors
 from openghg_inversions.inversion_data.prepared_inputs import _make_site_metadata
 from openghg_inversions.inversion_inputs import make_inv_inputs
@@ -45,11 +45,11 @@ from openghg_inversions.model_error import MinErrorConfig
 
 __all__ = [
     "assemble_inputs",
-    "assemble_rhime_inputs",
     "prepare_observation_errors",
     "build_sensitivities",
     "filter_observations",
     "resolve_basis_inputs",
+    "resolve_bc_basis",
     "acquire_merged_data",
     "export_basis",
 ]
@@ -83,7 +83,7 @@ def filter_observations(
         KeyError: If a requested filter is unknown.
     """
     if isinstance(filters, dict):
-        # The legacy filter implementation normalizes this working mapping.
+        # The filter implementation normalizes this working mapping.
         filters = dict(filters)
 
     with timed(
@@ -202,12 +202,12 @@ def assemble_inputs(
     min_error: MinErrorConfig = 0.0,
     min_error_options: Mapping[str, Any] | None = None,
     use_bc: bool = True,
-) -> RhimePreparedInputs:
+) -> PreparedInputs:
     """Construct and validate durable, backend-neutral RHIME model inputs.
 
     The stage attaches domain metadata to shallow per-site copies, assembles
     observation-aligned arrays, applies the satellite boundary-condition
-    scaling, and retains basis and site metadata. It also preserves the legacy
+    scaling, and retains basis and site metadata. It also preserves the existing
     construction of the minimum-error floor and boundary-condition temporal
     parameterization. Those are inverse-model settings, not properties of the
     acquired data; moving them to their model components is a later semantic
@@ -290,7 +290,7 @@ def assemble_inputs(
             "site",
             [footprint_attr(site, name) for site in site_options.sites],
         )
-    return RhimePreparedInputs(
+    return PreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=basis_functions,
         site_metadata=site_metadata,
@@ -372,18 +372,43 @@ def _validate_multisector_sensitivity_sources(
     return sensitivity
 
 
-assemble_rhime_inputs = assemble_inputs
+
+
+def resolve_bc_basis(data_config: Any) -> xr.Dataset | None:
+    """Load enabled exact BC resources, or select the built-in directional basis.
+
+    Configuration owns algorithm validation. Exact files take precedence over
+    that inactive algorithm choice. With no files, resolved ``"NESW"`` uses
+    acquired directional contributions through the scientific ``None`` input.
+    Disabled BCs perform no resource I/O. Selected files are loaded before
+    acquisition using the existing time combination and spatial alignment.
+    The configuration and borrowed scientific inputs remain unchanged.
+
+    Args:
+        data_config: Resolved acquisition/preparation configuration.
+
+    Returns:
+        Loaded labelled BC basis, or None for disabled BCs or built-in NESW.
+
+    Raises:
+        ValueError: If the exact file selection is empty.
+        OSError: If a selected file is missing or unreadable.
+    """
+    from openghg_inversions.basis.support import load_bc_basis
+
+    if not data_config.use_bc or data_config.bc_basis_paths is None:
+        return None
+    return load_bc_basis(data_config.bc_basis_paths)
 
 
 def resolve_basis_inputs(data_config: Any) -> dict[str, Any]:
     """Resolve exact scientific inputs before acquisition.
 
     Configuration resolution itself stays data-free. This application boundary
-    reads selected maps and partitions and checks retained paths. Entry
-    adapters have already translated deprecated case/directory selections.
-    Numerical preparation receives only
-    the resulting exact artifact path and borrowed labelled arrays. Reporting
-    resources are validated separately by the output owner.
+    reads selected maps and partitions and checks retained paths from canonical
+    configuration. Numerical preparation receives only the resulting exact
+    artifact path and borrowed labelled arrays. Reporting resources are
+    validated separately by the output owner.
 
     Args:
         data_config: Resolved :class:`~openghg_inversions.rhime.params.DataConfig`.
@@ -435,7 +460,7 @@ def resolve_basis_inputs(data_config: Any) -> dict[str, Any]:
     return selected
 
 
-def acquire_merged_data(data_config: Any) -> RhimeMergedData:
+def acquire_merged_data(data_config: Any) -> MergedData:
     """Acquire the configured observations, transport and flux.
 
     Args:
@@ -449,7 +474,7 @@ def acquire_merged_data(data_config: Any) -> RhimeMergedData:
         "rhime.prepare_inputs.merged_data",
         sites=len(data_config.site_options.sites), split_by_sectors=data_config.split_by_sectors,
     ):
-        return RhimeMergedData.from_options(
+        return MergedData.from_options(
             **data_config.select(
                 "site_options", "species", "domain", "start_date", "end_date", "flux_sources",
                 "split_by_sectors", "bc_store", "obs_store", "footprint_store", "flux_store",

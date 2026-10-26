@@ -27,7 +27,7 @@ Choose the smallest starting point that fits the change:
   <co2-cached-sigma-recipe>` in
   the :doc:`CO₂ model family <co2_model_family>`.
 * To resume from externally supplied merged observations, footprints, and
-  fluxes, pass a borrowed ``RhimeMergedData`` object as ``merged_data``.
+  fluxes, pass a borrowed ``MergedData`` object as ``merged_data``.
 * To change a preparation stage such as basis construction, copy the visible
   runner and replace that stage.
 * To start from alternative or cached prepared data, use
@@ -47,7 +47,7 @@ The cached-sigma CO₂ recipe documentation moved to the
 Resume from external scientific data
 ----------------------------------------------
 
-``run_standard`` and ``run_rhime_multisector`` accept ``merged_data`` as a
+``run_standard`` and ``run_multisector`` accept ``merged_data`` as a
 Python-only handoff. It bypasses OpenGHG acquisition,
 checks the recorded scientific facts and single- or multi-sector layout, and
 then re-enters the visible recipe at observation-error preparation::
@@ -57,12 +57,12 @@ then re-enters the visible recipe at observation-error preparation::
        merged_data=my_merged_data,
    )
 
-The supplied ``RhimeMergedData`` and its xarray or Dask arrays remain borrowed.
+The supplied ``MergedData`` and its xarray or Dask arrays remain borrowed.
 Filtering returns retained per-site datasets and aligned ``SiteOptions``; basis
 construction and labelled assembly consume those values without mutating the
 external object.
 
-Before preparation, ``RhimeMergedData.validate_for_preparation`` checks known
+Before preparation, ``MergedData.validate_for_preparation`` checks known
 species, domain and acquisition date bounds against the requested run. A
 conflict raises before filtering or basis construction. Changed windows,
 including narrower ones, are unsupported: acquire data for the new window
@@ -91,11 +91,10 @@ labelled arrays:
 .. code-block:: python
 
    from openghg_inversions.basis import prepare_basis
-   from openghg_inversions.basis.support import load_bc_basis
    from openghg_inversions.native_flux import resolve_runtime_flux
    from openghg_inversions.rhime.preparation import (
        acquire_merged_data, filter_observations, prepare_observation_errors,
-       resolve_basis_inputs,
+       resolve_basis_inputs, resolve_bc_basis,
    )
    from openghg_inversions.rhime import validate_output_resources
 
@@ -103,10 +102,7 @@ labelled arrays:
    # For a complete run that will produce outputs:
    validate_output_resources(config.output)
    basis_inputs = resolve_basis_inputs(config.data)
-   bc_basis = (
-       load_bc_basis(config.data.bc_basis_paths)
-       if config.data.use_bc and config.data.bc_basis_paths is not None else None
-   )
+   bc_basis = resolve_bc_basis(config.data)
    merged = acquire_merged_data(config.data)
    with_errors = prepare_observation_errors(
        merged.site_data, averaging_error=config.data.averaging_error,
@@ -164,13 +160,13 @@ Acquire a merged handoff
 site order. Normalize scalar or per-site inputs once, then acquire an in-memory
 merged handoff::
 
-   from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
+   from openghg_inversions.inversion_data import MergedData, SiteOptions
    from openghg_inversions.rhime import run_standard
 
    selectors = SiteOptions.from_inputs(
        sites=["TAC", "MHD"], averaging_period="4h", inlet=["185m", "10m"],
    )
-   merged = RhimeMergedData.from_options(
+   merged = MergedData.from_options(
        site_options=selectors,
        species="ch4", domain="EUROPE",
        start_date="2020-01-01", end_date="2020-02-01",
@@ -182,27 +178,22 @@ merged handoff::
 Use your configured object stores and flux source names. Fresh acquisition may
 drop unavailable sites; the returned ``merged.site_options`` retains every
 selector in the resulting site order.
-Fresh retrieval constructs this dataset handoff directly; the older
-tuple-returning API derives its ``fp_all`` mapping from the handoff.
+Fresh retrieval constructs this dataset handoff directly. The historical
+tuple-returning API is removed.
 
-``RhimeMergedData`` stores per-site xarray datasets in ``site_data``,
+``MergedData`` stores per-site xarray datasets in ``site_data``,
 source-labelled flux datasets in ``flux_data``, optional boundary conditions
 in ``boundary_data``, complete ``SiteOptions``, acquisition facts and selected
 provenance. Its arrays remain borrowed and may be Dask-backed. It has no
 ``fp_all`` property. ``AcquisitionFacts`` records known species, domain and
 window bounds alongside other retrieval choices. For example,
 ``AcquisitionFacts(species="ch4", domain="EUROPE")`` makes no claim about dates.
-Explicit ``from_legacy_fp_all`` and ``to_legacy_fp_all`` utility functions
-in ``openghg_inversions.hbmcmc.legacy_data`` support legacy callers while retained
-on devel. The :doc:`agreed development boundary <legacy_and_migration>` permits
-bounded retirement of the subpackage, including these utilities, after affected
-migration evidence and scientific regressions are preserved. That permission
-does not mean removal has landed; the migration guide identifies replacements
-and older-release guidance.
-They are separate from the modern data model.
+The historical ``from_legacy_fp_all`` and ``to_legacy_fp_all`` dictionary
+utilities are removed with HBMCMC. See :doc:`legacy_and_migration` for the
+canonical routes and matching older-software guidance.
 
 Acquisition stays in memory. For a reusable file, prepare the data with the
-named stages below and call ``RhimePreparedInputs.save``; the staged
+named stages below and call ``PreparedInputs.save``; the staged
 ``prepare`` command writes this same durable contract. See :doc:`rhime` for
 prepared-input persistence and reuse. Selected provenance
 includes each input's available store, UUID and dataversion, plus the
@@ -222,19 +213,10 @@ is false in boolean tests; that does not establish data validity. Missing
 input identities default to unknown without replacing supplied identities.
 
 Selected ``MergedDataProvenance`` remains on the in-memory merged handoff. It
-is not included in saved ``RhimePreparedInputs`` or the staged preparation
+is not included in saved ``PreparedInputs`` or the staged preparation
 manifest. Retain it separately when an audit requires selected input identities;
 persistence of acquisition provenance is deferred to
 `issue #829 <https://github.com/openghg/openghg_inversions/issues/829>`_.
-
-For the existing tuple-returning retrieval API, use
-``openghg_inversions.hbmcmc.legacy_data.retrieve_inversion_data``. The former
-``data_processing_surface_notracer`` name forwards the same arguments and
-return value and emits ``DeprecationWarning``.
-The tuple's flux and boundary wrappers are reconstructed from the modern
-datasets and selected source identities. Their metadata no longer includes
-arbitrary OpenGHG catalogue fields; scientific dataset attributes remain
-available on the datasets.
 
 Change the likelihood with a Python function
 --------------------------------------------
@@ -320,15 +302,14 @@ custom-callback contract. In particular,
 concentration-scale variance, while ``models.pollution_event`` owns the
 pollution-enhancement-scaled equation. Select the absolute additive equation
 directly with ``mismatch_model="additive_sigma"`` in ``run_standard`` or
-``run_rhime_multisector``; ``sigma_prior``, ``sigma_freq``, and
+``run_multisector``; ``sigma_prior``, ``sigma_freq``, and
 ``sigma_per_site`` then configure its scale. Additive sigma does not load the
 historical ``min_error`` floor unless
 ``use_minimum_error_floor=True`` is selected explicitly. A custom likelihood
 loads only ``mf`` and ``mf_error`` from the universal observation inputs and
 does not require ``min_error``.
 
-Legacy ``run_hbmcmc`` additive configuration is translated at that script's
-entry point into the same explicit likelihood settings. Parameter resolution
+Parameter resolution
 stores built-in mismatch science in ``RhimeModelSpec`` before the standard or
 multisector recipe is called; the recipes themselves select no default.
 
@@ -597,7 +578,7 @@ through sensitivity construction and labelled assembly. The concrete recipe's
 adjacent ``standard_model_input_names`` declaration selects the arrays it
 needs. ``materialize_pymc_inputs`` converts only those arrays, together,
 immediately before model construction; project-owned lazy extensions in
-``RhimePreparedInputs`` remain untouched.
+``PreparedInputs`` remain untouched.
 
 The customisation is concentrated in ``_guarded_basis``. The runner's one
 deliberate substitution is marked by an inline comment where

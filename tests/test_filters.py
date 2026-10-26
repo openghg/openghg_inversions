@@ -4,19 +4,15 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.filters import filtering, filtering_functions
-from openghg_inversions.hbmcmc.legacy_data import load_merged_data
+from openghg_inversions.rhime.params import DataConfig
+from openghg_inversions.rhime.preparation import acquire_merged_data
 
 
 @pytest.fixture
-def merged_data(merged_data_dir, merged_data_file_name):
-    result = load_merged_data(
-        merged_data_dir=merged_data_dir,
-        species="ch4",
-        start_date="2019-01-01",
-        output_name="test_run",
-        merged_data_name=merged_data_file_name,
-    )
-    return result
+def merged_data(tac_ch4_data_args):
+    return acquire_merged_data(
+        DataConfig.from_params(tac_ch4_data_args, multisector=False)
+    ).site_data
 
 
 @pytest.mark.parametrize("longitude", [30.0, -30.0, 330.0])

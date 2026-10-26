@@ -46,14 +46,13 @@ from openghg_inversions.basis.algorithms import (
     region_constrained_basis,
 )
 from openghg_inversions.native_flux import resolve_runtime_flux
-from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.rhime import (
     RhimeConfig,
     make_model_output,
     postprocess_standard_outputs,
     save_inversion_output,
     annotate_sample_trace,
-    assemble_rhime_inputs,
+    assemble_inputs,
     build_sensitivities,
     filter_observations,
     prepare_observation_errors,
@@ -63,7 +62,7 @@ from openghg_inversions.rhime import (
 )
 from openghg_inversions.rhime.standard import build_standard_model, materialize_standard_inputs
 from openghg_inversions.rhime.requests import load_params
-from openghg_inversions.rhime.preparation import acquire_merged_data
+from openghg_inversions.rhime.preparation import resolve_bc_basis, acquire_merged_data
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 
 
@@ -282,7 +281,7 @@ def run_custom_rhime(
     params.pop("basis_path", None)
     config = RhimeConfig.from_params(load_params(overrides=params), multisector=False)
     validate_standard_output_resources(config.output)
-    bc_basis = load_bc_basis(config.data.bc_basis_paths) if config.data.use_bc and config.data.bc_basis_paths is not None else None
+    bc_basis = resolve_bc_basis(config.data)
 
     # This project selects and loads its scientific class map before acquisition.
     region_classes = None
@@ -326,7 +325,7 @@ def run_custom_rhime(
         multisector=False,
     )
 
-    prepared = assemble_rhime_inputs(
+    prepared = assemble_inputs(
         sensitivities,
         basis_functions,
         site_options=site_options,

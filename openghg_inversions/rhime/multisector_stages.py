@@ -11,9 +11,8 @@ from uuid import uuid4
 import xarray as xr
 
 from openghg_inversions._provenance import installed_ogi_provenance
-from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.inference.sampling import RhimeSampler, resolve_sampler
-from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
+from openghg_inversions.inversion_data import MergedData, PreparedInputs
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.serialization import load_trace, save_trace
@@ -44,7 +43,7 @@ from .multisector import (
     materialize_multisector_inputs,
     prepare_multisector,
 )
-from .preparation import acquire_merged_data, resolve_basis_inputs
+from .preparation import acquire_merged_data, resolve_basis_inputs, resolve_bc_basis
 
 
 __all__ = [
@@ -77,7 +76,7 @@ def _check_generation(manifest: Path, record: Mapping[str, Any], expected: str) 
 
 
 def save_preparation(
-    prepared: RhimePreparedInputs,
+    prepared: PreparedInputs,
     *,
     data_config: DataConfig,
     output_dir: str | Path,
@@ -119,18 +118,18 @@ def _load_preparation(
     manifest: str | Path,
     *,
     expected_generation: str | None = None,
-) -> tuple[RhimePreparedInputs, DataConfig, str, Path]:
+) -> tuple[PreparedInputs, DataConfig, str, Path]:
     """Load numerical inputs and capture the generation from the same manifest."""
     path, record = _preparation_record(manifest)
     if expected_generation is not None:
         _check_generation(path, record, expected_generation)
     data_config = DataConfig.from_params(record["data"], multisector=True)
     payload = reference(path, record["prepared_inputs"])
-    prepared = RhimePreparedInputs.load(payload)
+    prepared = PreparedInputs.load(payload)
     return prepared, data_config, record["generation"], payload
 
 
-def load_preparation(manifest: str | Path) -> tuple[RhimePreparedInputs, DataConfig, str]:
+def load_preparation(manifest: str | Path) -> tuple[PreparedInputs, DataConfig, str]:
     """Load prepared inputs and their recorded acquisition/preparation choices.
 
     Args:
@@ -153,7 +152,7 @@ def prepare(
     data_config: DataConfig,
     *,
     output_dir: str | Path,
-    merged_data: RhimeMergedData | None = None,
+    merged_data: MergedData | None = None,
 ) -> Path:
     """Run shared multisector preparation and save its reusable checkpoint.
 
@@ -170,10 +169,7 @@ def prepare(
     """
     _require_multisector(data_config)
     basis_inputs = resolve_basis_inputs(data_config)
-    bc_basis = (
-        load_bc_basis(data_config.bc_basis_paths)
-        if data_config.use_bc and data_config.bc_basis_paths is not None else None
-    )
+    bc_basis = resolve_bc_basis(data_config)
 
     if merged_data is None:
         merged_data = acquire_merged_data(data_config)

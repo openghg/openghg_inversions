@@ -3,7 +3,7 @@
 ## Purpose
 
 Define canonical Python recipe selection and installed commands, their scientific
-input/result boundaries, and the exact retired access paths.
+input/result boundaries and supported operations.
 
 ## Requirements
 
@@ -85,103 +85,42 @@ or the separately supplied configuration path.
 - **THEN** it forwards the JSON values for the overridden dates
 - **AND** positional values remain effective for dates without a JSON override
 
-### Requirement: Bounded installed-command retirement
+### Requirement: Canonical installed commands
 
-`rhime` SHALL be the sole installed executable. The following executable and
-subcommand names SHALL be unavailable, with these canonical replacements for
-their corresponding scientific routes:
+`rhime` SHALL be the sole installed executable. Its canonical full-run routes
+SHALL be `run --model standard` (also `run`), `run --model multisector`,
+`run --model nested` and configured `run --model co2`. Supported staged and
+product operations SHALL remain available under `rhime`.
 
-| Retire | Canonical replacement |
-| --- | --- |
-| `openghg-inversions` executable | `rhime` with the same supported subcommands, including staged and product operations |
-| `run-rhime` subcommand under either executable | `rhime run --model standard`, or `rhime run` |
-| `run-rhime-multisector` subcommand under either executable | `rhime run --model multisector` |
-| `run-rhime-nested` subcommand under either executable | `rhime run --model nested` |
-| `run-co2` subcommand under either executable | `rhime run --model co2` for configured CO2 execution |
+These routes SHALL preserve effective configuration, current positional dates,
+`--kwargs`, recipe-specific date/output override precedence, scientific execution,
+result contents, written outputs, export defaults, logging and artifact contracts.
+Positional dates and `--kwargs` remain open to separately agreed argument-syntax
+revision; command names SHALL NOT prescribe that future design. The Python
+package, distribution and installation commands SHALL retain their names.
 
-The retired executable SHALL NOT be installed and the retired subcommand names
-SHALL NOT be accepted under `rhime`. No forwarding commands SHALL restore those
-names solely for naming compatibility.
+#### Scenario: Execute through a canonical command
 
-For this command-name migration, canonical routes SHALL preserve effective
-configuration and the meanings of current positional dates, `--kwargs` and
-date/output overrides, including their recipe-specific precedence. Positional
-dates and `--kwargs` remain open to revision through a separately specified
-argument-syntax amendment; this command map SHALL NOT fix the final argument
-design. Command renaming alone SHALL NOT introduce replacement syntax or change scientific
-execution, result contents, written outputs, export defaults, logging or artifact
-contracts. Retained staged/product operations SHALL remain available under
-`rhime`. Retiring the executable SHALL NOT rename the Python package or
-distribution, or change package installation commands.
+- **WHEN** a caller selects a supported full, staged or product route under `rhime`
+- **THEN** it executes the selected scientific operation with its effective configuration and overrides
+- **AND** scientific results, written outputs and artifact meanings retain their declared contracts
 
-This exception SHALL NOT authorize Python import/type/constructor renaming,
-signature or result-wrapper changes, or removal of other command operations.
-Retirement SHALL preserve the
-[migration evidence guarantees](../hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
+### Requirement: Canonical public Python interfaces
 
-#### Scenario: Migrate a full-run command name
+Standard, multisector and nested execution SHALL use `run_standard`,
+`run_multisector` and `run_nested` respectively. Canonical acquired and prepared
+scientific values SHALL use `MergedData` and `PreparedInputs`; input assembly
+SHALL use `assemble_inputs`. Their arguments, constructor behavior, scientific
+results and borrowed-array/execution guarantees SHALL follow their owning
+configuration, scientific-input and model contracts.
 
-- **WHEN** a caller replaces one of the four listed full-run subcommands with its canonical `rhime run --model` route
-- **THEN** the same effective configuration, date/output overrides and scientific recipe are used
-- **AND** the resulting outputs and artifact meanings are unchanged
+Python names SHALL NOT by themselves require changes to serialized fields,
+coordinates, scientific variables or artifact meaning. Supported artifact formats
+and versions, including explicit conversion or rejection of unsupported data,
+SHALL follow their persistence contracts rather than public Python vocabulary.
 
-#### Scenario: Retire the second executable without losing staged operations
+#### Scenario: Use the canonical scientific interface
 
-- **WHEN** a modern distribution is installed
-- **THEN** only `rhime` is installed and supported staged/product operations remain available there
-- **AND** the four retired full-run subcommands are unsupported
-- **AND** the Python package, distribution and installation commands keep their names
-
-### Requirement: Retire named Python aliases
-
-The following five aliases SHALL be retired in favor of their canonical public
-names. This supersedes their earlier identity-alias preservation promises:
-
-| Retire | Canonical replacement | Defining module within `openghg_inversions` |
-| --- | --- | --- |
-| `run_rhime_multisector` | `run_multisector` | `rhime.multisector` |
-| `run_rhime_nested` | `run_nested` | `rhime.nested` |
-| `RhimeMergedData` | `MergedData` | `inversion_data.acquisition` |
-| `RhimePreparedInputs` | `PreparedInputs` | `inversion_data.prepared_inputs` |
-| `assemble_rhime_inputs` | `assemble_inputs` | `rhime.preparation` |
-
-The five old names SHALL be unavailable from their defining modules and public
-re-exports. No forwarding alias SHALL restore them solely for naming compatibility.
-The canonical callables and types SHALL remain supported with their scientific
-behavior, arguments, constructor behavior and result contents unchanged.
-
-Python naming SHALL NOT itself require changes to serialized fields, coordinates,
-scientific variables or artifact meaning. Supported artifact formats and versions,
-and conversion or rejection of unsupported historical data, SHALL follow their
-own persistence contracts; this naming requirement SHALL NOT promise historical
-file compatibility or freeze a schema identifier or version. Borrowed-array and
-explicit execution guarantees SHALL remain in force.
-
-This finite exception SHALL NOT authorize removal or renaming of other Python
-imports, types or constructors. Retirement SHALL preserve the
-[migration evidence guarantees](../hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence).
-Installed command names follow only the separate exact exceptions in
-`Bounded installed-command retirement` above.
-
-Python `run_rhime`, `RhimeRunSpec`, `with_prepared_sites` and
-`with_prepared_rhime_sites` SHALL be unavailable. Standard Python execution uses
-`run_standard`; retained sites belong to the prepared handoff.
-
-#### Scenario: Removed standard Python alias
-
-- **WHEN** a caller requests standard execution through `rhime run --model standard` or `rhime run`
-- **THEN** it executes the standard recipe, whose Python counterpart is `run_standard`
-- **AND** effective inputs, written files, export defaults and logging retain their meanings
-- **AND** the obsolete Python `run_rhime` name is unavailable
-
-#### Scenario: Use a canonical replacement after alias retirement
-
-- **WHEN** a caller replaces one of the five listed aliases with its canonical name
-- **THEN** it uses the same scientific callable or data type with unchanged arguments and result contents
-- **AND** naming alone does not change scientific artifact contents or their independently specified support
-
-#### Scenario: A retired alias is no longer a public access path
-
-- **WHEN** a caller requests one of the five old names
-- **THEN** their old names are unavailable from the defining modules and public re-exports
-- **AND** no forwarding alias restores those old names solely for naming compatibility
+- **WHEN** a caller constructs canonical acquired/prepared inputs and selects a supported Python recipe
+- **THEN** it uses the declared scientific arguments and result contents
+- **AND** Python naming alone does not establish stored-format compatibility or freeze a schema identifier

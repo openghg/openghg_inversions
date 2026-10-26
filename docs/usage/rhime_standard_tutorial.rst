@@ -261,8 +261,7 @@ resolved sampling options. It does not snapshot the OpenGHG object store or
 guarantee that the original acquisition query can be replayed unchanged.
 Supported ``basic`` and PARIS postprocessing uses every retained chain in this
 artifact, preserving ``chain`` and ``draw`` identity until a statistic or
-covariance is calculated. The 0.8 ``run_hbmcmc.py`` compatibility command also
-uses all retained chains; see :doc:`legacy_and_migration` for historical
+covariance is calculated. See :doc:`legacy_and_migration` for historical
 reproduction with OpenGHG Inversions 0.7.
 The companion-data tag is likewise not added to this output automatically:
 record ``v1.0.0`` with the run so the file-level manifest can be matched to the

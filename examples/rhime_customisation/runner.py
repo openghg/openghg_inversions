@@ -15,8 +15,7 @@ from __future__ import annotations
 
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions.native_flux import resolve_runtime_flux
-from openghg_inversions.basis.support import load_bc_basis
-from openghg_inversions.rhime.preparation import acquire_merged_data, resolve_basis_inputs
+from openghg_inversions.rhime.preparation import resolve_bc_basis, acquire_merged_data, resolve_basis_inputs
 
 import argparse
 from collections.abc import Sequence
@@ -30,7 +29,7 @@ from openghg_inversions.rhime import (
     postprocess_standard_outputs,
     save_inversion_output,
     annotate_sample_trace,
-    assemble_rhime_inputs,
+    assemble_inputs,
     build_sensitivities,
     filter_observations,
     prepare_observation_errors,
@@ -80,7 +79,7 @@ def run_custom_rhime(
 
     # Resolve selected support files before acquiring observations or flux.
     basis_inputs = resolve_basis_inputs(config.data)
-    bc_basis = load_bc_basis(config.data.bc_basis_paths) if config.data.use_bc and config.data.bc_basis_paths is not None else None
+    bc_basis = resolve_bc_basis(config.data)
     merged = acquire_merged_data(config.data)
 
     # Keep the scientific preparation order visible; ``merged`` stays acquired data.
@@ -116,7 +115,7 @@ def run_custom_rhime(
         multisector=False,
     )
 
-    prepared = assemble_rhime_inputs(
+    prepared = assemble_inputs(
         sensitivities,
         basis_functions,
         site_options=site_options,

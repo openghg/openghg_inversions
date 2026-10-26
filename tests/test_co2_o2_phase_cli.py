@@ -20,7 +20,7 @@ CHANNELS = {"co2": {"units": "ppm"}, "o2": {"units": "ppm"}}
 
 
 def _cli(*arguments):
-    executable = Path(sys.executable).with_name("openghg-inversions")
+    executable = Path(sys.executable).with_name("rhime")
     result = subprocess.run([str(executable), *map(str, arguments)], text=True,
                             capture_output=True, env=os.environ.copy(), timeout=240)
     assert result.returncode == 0, result.stdout + result.stderr

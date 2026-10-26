@@ -102,14 +102,13 @@ For file-backed boundary conditions, specify exact files, for example
 ``"bc_basis_paths": ["bc/january.nc", "bc/february.nc"]`` in the parameter JSON.
 ``prepare`` loads all selected files before acquisition and passes their labelled
 data to sensitivity construction, preserving time combination and alignment.
-Missing or unreadable selected files fail before acquisition. Omit
-``bc_basis_paths`` for NESW: it uses acquired directional contributions without
-reading a BC basis file. Disabled BCs load no BC basis resources. Staged commands
-reject historical ``fp_basis_case``, ``basis_directory``, ``bc_basis_case`` and
-``bc_basis_directory`` options. Use explicit modern paths. While retained on devel,
-only the HBMCMC entry route translates those historical selectors after winning overrides;
-on that route, an NESW directory warns that it is unused without any lookup.
-
+Missing or unreadable selected files fail before acquisition.
+``"bc_basis_algorithm": "NESW"`` selects the built-in calculation and is the
+default without exact paths. Explicit ``bc_basis_paths`` take precedence, leaving
+the algorithm inactive. NESW uses acquired directional contributions without
+reading a BC basis file. ``use_bc=False`` bypasses BC basis resolution and loading.
+Staged commands accept canonical resource names; see :doc:`legacy_and_migration`
+for historical selector replacements.
 
 ``country_directory`` is removed in 0.8. Use ``country_file`` for reporting,
 ``landsea_path`` for preparation land/sea classes, or ``outer_regions_path`` for
@@ -172,17 +171,11 @@ directories or recursive directory scanning.
 directory. It is resolved at the frontend and forwarded unchanged to the runner's
 optional basis export.
 
-Legacy fixedbasis-style PARIS INIs contain options such as ``nit``, ``nchain``,
-``xprior`` and ``mcmc_type``. Fixedbasis policy such as ``nit``, ``nchain`` and
-``mcmc_type`` belongs to the temporary ``run_hbmcmc`` route while it remains on
-devel. Modern name aliases such as ``xprior`` retain deprecation warnings and
-their existing precedence at the staged frontend until their bounded removal
-under the :doc:`agreed development boundary <legacy_and_migration>`; prefer
-``x_prior`` in new files. Translation happens before ``RhimeConfig.from_params``,
-which accepts canonical names only and emits no alias warnings. Migrate fixedbasis policy and
-resource discovery to canonical RHIME options before using staged commands.
-HBMCMC retirement requires affected migration evidence and scientific regression
-migration; permission to remove the subpackage does not mean removal has landed.
+Legacy fixedbasis-style PARIS INIs contain unsupported options such as
+``nit``, ``nchain``, ``xprior`` and ``mcmc_type``. Use canonical settings before
+invoking modern staged commands; no runtime alias translation or HBMCMC wrapper
+remains. See :doc:`legacy_and_migration` for explicit setting mappings and
+historical execution guidance.
 
 Configuration and CLI
 ---------------------
@@ -192,9 +185,12 @@ Sampling and postprocessing optionally accept either source; a shared full
 configuration contributes only the active phase's choices. JSON can contain
 flat options or ``data``, ``model``, ``sampler`` and ``output`` mappings.
 Unknown names remain errors, while known inactive values are not resolved.
+For example, preparation does not validate a known output format from a shared
+file. A later output consumer validates its effective format against supported
+values; historical-looking values receive no special handling.
 Explicit ``--kwargs`` overrides for another phase and unsupported names are
 reported together in one error. Raw file options and overrides are combined
-before alias translation; a canonical spelling wins over its deprecated alias. Relative input
+before canonical validation. Historical spellings are unsupported. Relative input
 paths resolve from the invocation working directory. ``CONFIG_FILE`` is not an automatic
 source; ``OUTPUT_DIR`` is an optional destination default.
 
@@ -345,9 +341,7 @@ CO₂ uses its own coherent preparation and conditional affine output
 meaning. ``run_co2`` and its saved phases call the same preparation,
 materialization, construction, sampling and product operations; full execution
 requires no manifests. ``rhime run --model co2`` consumes the configured model,
-sampler and output request. ``rhime run-co2`` remains a transitional alias
-until its approved :ref:`command-name retirement <rhime-cli-command-retirement>`
-lands. Python
+sampler and output request. Python
 ``rhime.run(model="co2", config_file="co2.toml")`` selects the same ``run_co2``
 entry point and returns the scientific ``Co2Output`` view. This route requires
 prepared inputs or caller-supplied canonical inputs with a coherent reduction;

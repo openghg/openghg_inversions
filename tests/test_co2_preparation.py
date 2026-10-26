@@ -16,7 +16,7 @@ import xarray as xr
 from openghg_inversions._labelled_matrices import renamed_column_coordinates
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.rhime.co2 import Co2PreparedInputs, prepare_co2_inputs
 from openghg_inversions.rhime.co2 import (
     co2_cached_sigma_runner,
@@ -26,7 +26,7 @@ from openghg_inversions.rhime.co2 import (
 )
 
 
-def _canonical_inputs() -> RhimePreparedInputs:
+def _canonical_inputs() -> PreparedInputs:
     """Build canonical inputs with a labelled observation MultiIndex."""
     observations = pd.MultiIndex.from_arrays(
         [
@@ -65,7 +65,7 @@ def _canonical_inputs() -> RhimePreparedInputs:
     )
     inv_inputs["mf"].attrs["units"] = "ppm"
     inv_inputs["mf_error"].attrs["units"] = "ppm"
-    return RhimePreparedInputs(
+    return PreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=BasisFunctions.from_flat_basis(
             basis_flat=basis,
@@ -79,7 +79,7 @@ def _canonical_inputs() -> RhimePreparedInputs:
     )
 
 
-def _reduction(canonical: RhimePreparedInputs) -> CoherentGaussianReduction:
+def _reduction(canonical: PreparedInputs) -> CoherentGaussianReduction:
     """Build a coherent reduction aligned to the canonical test inputs."""
     observation_index = canonical.inv_inputs.indexes["nmeasure"]
     observation_coords = xr.Coordinates.from_pandas_multiindex(

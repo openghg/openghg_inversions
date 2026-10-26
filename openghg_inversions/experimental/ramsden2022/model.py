@@ -2,7 +2,7 @@
 
 The implementation is deliberately prepared-input first. Each gas is supplied
 as a canonical RHIME-style :class:`xarray.Dataset`, normally obtained from a
-``RhimePreparedInputs.inv_inputs`` object. Data retrieval and postprocessing
+``PreparedInputs.inv_inputs`` object. Data retrieval and postprocessing
 remain outside this historical comparison module.
 
 For primary-gas sector ``s`` with state ``x_s`` the forward models are

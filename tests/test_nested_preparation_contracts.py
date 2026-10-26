@@ -268,7 +268,7 @@ def test_supplied_partition_on_distinct_inventory_grid_reconstructs_without_doma
     partition = partition.assign_coords(lat=partition.lat + 1e-7, lon=partition.lon + 1e-7)
     # Observation projection is independent of native prior-flux reconstruction.
     monkeypatch.setattr(nested, "build_sensitivities", lambda *args, **kwargs: {})
-    monkeypatch.setattr(nested, "assemble_rhime_inputs", lambda sites, basis, **kwargs: basis)
+    monkeypatch.setattr(nested, "assemble_inputs", lambda sites, basis, **kwargs: basis)
     basis = nested._prepare_one_domain(
         data, domain="EUROPE", start_date="2019-01-01", flux_sources=("inventory",),
         basis_algorithm=None, nbasis=1, fix_basis_outer_regions=False,

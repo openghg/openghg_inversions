@@ -68,3 +68,15 @@ In-tree reconstruction consumers SHALL use the directional operations and explic
 #### Scenario: Migrate an output consumer
 - **WHEN** an in-tree output consumer needs a total flux field
 - **THEN** it applies `state_to_flux`, explicitly sums sources where present, and converts at its established output boundary
+
+### Requirement: Derived products use all retained chains
+
+Derived scientific outputs SHALL use all retained posterior chains, including
+legacy-format summaries. Output format selection SHALL preserve the same retained
+sample population and scientific reconstruction semantics.
+
+#### Scenario: Export a legacy-format summary
+
+- **WHEN** a supported output codec writes derived products from a multi-chain result
+- **THEN** those products use all retained chains under the ordinary output policy
+- **AND** choosing a file format does not select a different posterior population

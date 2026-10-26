@@ -143,7 +143,7 @@ def make_likelihood_settings(
     alignment defaults use the winning requested start date.
 
     Args:
-        remaining: Owned working options after alias and type normalization;
+        remaining: Owned working options after type normalization;
             selected likelihood names are removed from this mapping.
         mismatch_model: Selected built-in mismatch equation, or ``None`` for a
             custom likelihood with no built-in options.
@@ -436,9 +436,8 @@ class RhimeOutputSpec:
         paris_postprocessing_kwargs: Extra keyword arguments for PARIS output
             creation.
         output_filename_convention: Filename convention for derived products.
-            Direct RHIME runs use ``"rhime"``. The ``run_hbmcmc.py``
-            compatibility shim uses ``"legacy"`` for old SLURM/config
-            workflows.
+            Defaults to ``"rhime"``; select ``"legacy"`` explicitly to use
+            the independently supported legacy filename convention.
     """
 
     MAPPING_OPTION_NAMES: ClassVar[tuple[str, ...]] = ("paris_postprocessing_kwargs",)
@@ -461,7 +460,7 @@ class RhimeOutputSpec:
         must supply paths resolved against their own documented file base.
 
         Args:
-            params: Canonical output option names after aliases and overrides.
+            params: Canonical output option names after invocation overrides.
                 Format and filename-convention values are case-insensitive.
             multisector: Whether to enforce the multisector output restrictions.
 

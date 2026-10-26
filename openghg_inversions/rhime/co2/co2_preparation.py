@@ -26,7 +26,7 @@ from openghg.util import (  # pyright: ignore[reportPrivateImportUsage, reportAt
 from openghg_inversions._serialization_codecs import _copy_json_mapping, _decode_json_mapping
 from openghg_inversions.array_ops import require_unique_index, same_index, validate_covariance_coordinates
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_COVARIANCE,
@@ -271,7 +271,7 @@ class Co2PreparedInputs:
             artifacts include approximation diagnostics.
     """
 
-    rhime_inputs: RhimePreparedInputs
+    rhime_inputs: PreparedInputs
     aggregation_error_mode: Co2AggregationErrorMode
     provenance: Mapping[str, Any] = field(default_factory=dict)
 
@@ -376,7 +376,7 @@ class Co2PreparedInputs:
                 DIAGONAL_RESIDUAL_VARIANCE
             ].copy(deep=False, data=aggregation_error.diagonal_variance.data)
         serializable_inputs = self.inv_inputs._replace(variables=variables)
-        serializable = RhimePreparedInputs(
+        serializable = PreparedInputs(
             inv_inputs=serializable_inputs,
             basis_functions=self.basis_functions,
             site_metadata=self.site_metadata,
@@ -425,7 +425,7 @@ class Co2PreparedInputs:
             tree.attrs.get("provenance_json", "{}"), "Serialized CO2 provenance"
         )
         prepared = cls(
-            RhimePreparedInputs.from_datatree(cast(xr.DataTree, tree["rhime_inputs"])),
+            PreparedInputs.from_datatree(cast(xr.DataTree, tree["rhime_inputs"])),
             aggregation_error_mode=cast(Co2AggregationErrorMode, mode),
             provenance=provenance,
         )
@@ -510,7 +510,7 @@ def requested_co2_facts(
 
 
 def prepare_co2_inputs(
-    canonical_inputs: RhimePreparedInputs,
+    canonical_inputs: PreparedInputs,
     reduction: CoherentGaussianReduction,
     *,
     aggregation_error_rank: int | None = 512,
@@ -744,7 +744,7 @@ def prepare_co2_inputs(
     if approximation is not None:
         metadata["aggregation_error"] = dict(approximation.diagnostics)
     return Co2PreparedInputs(
-        RhimePreparedInputs(
+        PreparedInputs(
             inv_inputs=mapped,
             basis_functions=canonical.basis_functions,
             site_metadata=canonical.site_metadata,
