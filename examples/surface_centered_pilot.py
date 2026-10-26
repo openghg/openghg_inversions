@@ -53,6 +53,8 @@ def surface_inputs(*, mixed_transport=False):
         coords={**grid, "time": times, "height": [10.]},
         attrs={"model": "NAME", "met_model": "toy"},
     )
+    fp["release_lon"] = xr.DataArray(np.zeros(len(times)), dims="time")
+    fp["release_lat"] = xr.DataArray(np.full(len(times), 50.), dims="time")
     fluxes = {}
     for source, values in {"fossil": [1., 2.], "biosphere": [-.2, .4]}.items():
         fluxes[source] = xr.Dataset(
@@ -82,21 +84,21 @@ def surface_inputs(*, mixed_transport=False):
 
 
 def acquire_supplied(obs, fp, fluxes, bc, *, mixed_transport=False):
-    """Use OpenGHG convolution and local reference-sensitivity arithmetic."""
+    """Use OpenGHG convolution and reference-sensitivity arithmetic."""
     return prepare_surface_site(
         obs, fp, fluxes, species="co2",
         transport={source: "time_resolved" if mixed_transport and source == "biosphere" else "integrated"
                    for source in fluxes},
-        boundary_data=bc, boundary_reference=400., boundary_reference_units="ppm", boundary_mass_tolerance=1e-6,
+        boundary_representation="centered", boundary_data=bc, boundary_reference=400., boundary_reference_units="ppm", boundary_mass_tolerance=1e-6,
     )
 
 
 def prepare_pilot(site, fluxes):
-    """Derive errors before means, project curtains, gather, then reduce H/B/m."""
-    errors = prepare_observation_errors({"TOY": site})
+    """Select rows, derive missing errors, project curtains, then reduce H/B/m."""
     filtered, options = filter_observations(
-        errors, SiteOptions.from_inputs(sites=["TOY"], averaging_period="3h"), filters=["six_hr_mean"],
+        {"TOY": site}, SiteOptions.from_inputs(sites=["TOY"], averaging_period="3h"), filters=["daytime9to5"],
     )
+    filtered = prepare_observation_errors(filtered)
     retained = filtered["TOY"]
     # Two physical boundary states: north/east and south/west. Apply one spatial
     # map to anomaly and mass, preserving the original multiplicative factors.
@@ -116,7 +118,7 @@ def prepare_pilot(site, fluxes):
     # source totals for reporting, and feed the summed response to that state.
     canonical = prepare_rhime_inputs_from_xarray(
         {"TOY": projected.drop_vars("fp_x_flux_sectoral")}, basis_functions=basis,
-        averaging_period=options.averaging_period, start_date="2020-01-16",
+        averaging_period=options.averaging_period,
     )
     observations = canonical.inv_inputs.indexes["nmeasure"]
     native_h = retained.fp_x_flux.rename(time="observation").assign_coords(

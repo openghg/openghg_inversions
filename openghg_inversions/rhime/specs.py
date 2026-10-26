@@ -7,12 +7,15 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, ClassVar, Literal, TYPE_CHECKING, cast, get_args, get_type_hints
 
-from openghg_inversions.inversion_inputs import DatetimeLike
+import numpy as np
+import pandas as pd
+
+from openghg_inversions.inversion_inputs import DatetimeLike, normalise_frequency
+from openghg_inversions.model_error import MinErrorConfig, normalise_min_error, normalise_min_error_options
 from openghg_inversions.rhime._resources import resolve_resource_paths
 from openghg_inversions.models.priors import PriorArgs, trace_prior_records
 from openghg_inversions.models.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
 from openghg_inversions.models.state_activity import StateActivity
-from openghg_inversions.observation_error import AggregationErrorMode
 
 if TYPE_CHECKING:
     from openghg_inversions.rhime.params import DataConfig
@@ -70,6 +73,8 @@ class PollutionEventSettings:
         pollution_events_from_obs: Derive pollution events from observations
             after removing the baseline instead of from modelled pollution.
         power: Exponent or prior used in pollution-event error scaling.
+        min_error: Numeric, site-specific, or calculated minimum total-error floor.
+        min_error_options: Options for calculated floors, defaulting to pooled sites.
     """
 
     sigma_prior: PriorArgs | None = None
@@ -78,11 +83,12 @@ class PollutionEventSettings:
     sigma_freq_anchor: DatetimeLike | None = None
     pollution_events_from_obs: bool = False
     power: PriorArgs | float = 1.99
+    min_error: MinErrorConfig = 0.0
+    min_error_options: Mapping[str, bool] = field(default_factory=lambda: {"by_site": False})
 
-    @property
-    def required_prepared_inputs(self) -> tuple[str, ...]:
-        """Return prepared arrays owned by this likelihood."""
-        return ("min_error",)
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "min_error", normalise_min_error(self.min_error))
+        object.__setattr__(self, "min_error_options", normalise_min_error_options(self.min_error_options))
 
 
 @dataclass(frozen=True)
@@ -95,8 +101,9 @@ class AdditiveSigmaSettings:
             one period.
         sigma_per_site: Whether model error varies by observation site.
         sigma_freq_anchor: Optional anchor for fixed-duration periods.
-        use_minimum_error_floor: Apply the prepared historical minimum total-
-            error floor.
+        use_minimum_error_floor: Apply a minimum total-error floor.
+        min_error: Numeric, site-specific, or calculated minimum total-error floor.
+        min_error_options: Options for calculated floors, defaulting to pooled sites.
     """
 
     sigma_prior: PriorArgs | None = None
@@ -104,21 +111,17 @@ class AdditiveSigmaSettings:
     sigma_per_site: bool = True
     sigma_freq_anchor: DatetimeLike | None = None
     use_minimum_error_floor: bool = False
+    min_error: MinErrorConfig = 0.0
+    min_error_options: Mapping[str, bool] = field(default_factory=lambda: {"by_site": False})
 
-    @property
-    def required_prepared_inputs(self) -> tuple[str, ...]:
-        """Return prepared arrays owned by this likelihood."""
-        return ("min_error",) if self.use_minimum_error_floor else ()
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "min_error", normalise_min_error(self.min_error))
+        object.__setattr__(self, "min_error_options", normalise_min_error_options(self.min_error_options))
 
 
 @dataclass(frozen=True)
 class FixedErrorSettings:
     """Serializable selection of reported observation error only."""
-
-    @property
-    def required_prepared_inputs(self) -> tuple[str, ...]:
-        """Return prepared arrays owned by this likelihood."""
-        return ()
 
 
 LikelihoodSettings = PollutionEventSettings | AdditiveSigmaSettings | FixedErrorSettings
@@ -143,7 +146,7 @@ def make_likelihood_settings(
     alignment defaults use the winning requested start date.
 
     Args:
-        remaining: Owned working options after alias and type normalization;
+        remaining: Owned working options after type normalization;
             selected likelihood names are removed from this mapping.
         mismatch_model: Selected built-in mismatch equation, or ``None`` for a
             custom likelihood with no built-in options.
@@ -228,19 +231,20 @@ class RhimeModelSpec:
         sectors: Flux sectors included in the model. Each sector is optimized
             separately and is normally backed by one OpenGHG flux ``source``.
         use_bc: Whether boundary-condition scaling is included.
+        bc_freq: Boundary-condition scaling period; ``None`` uses one period.
+        bc_freq_anchor: Anchor for fixed-duration boundary-condition periods,
+            normalized to an ISO string (UTC for timezone-aware values).
+            ``None`` anchors periods to the earliest retained observation timestamp.
         likelihood: Resolved built-in likelihood settings, or ``None`` when a
             Python-only custom likelihood owns that step.
         add_offset: Whether model-data offsets are included.
-        aggregation_error_mode: Fixed aggregation-error covariance
-            representation. The default ``"none"`` preserves the ordinary
-            model; other modes are an explicit opt-in.
         bc_prior: Prior specification for boundary-condition scaling factors.
         offset_prior: Prior specification for optional offsets.
         offset_args: Extra keyword arguments forwarded to the offset component.
         bc_state_activity: Optional active/fixed policy for the boundary-
-            condition scaling vector. ``None`` preserves the ordinary fully
-            sampled BC graph without zero pruning. Supplying a policy opts into
-            active/fixed BC construction.
+            condition scaling vector. ``None`` samples states with nonzero
+            sensitivity and retains fixed values for structurally absent states.
+            Supplying a policy can fix or group additional states.
         state_activity: Optional labelled active/fixed state policy shared by
             flux sectors. The default retains exact-zero pruning.
 
@@ -250,7 +254,8 @@ class RhimeModelSpec:
     # available to independent builders rather than this configured frontend.
     CONFIG_OPTION_NAMES: ClassVar[tuple[str, ...]] = (
         "x_prior", "bc_prior", "offset_prior", "sector_priors", "sector_sources",
-        "offset_args", "add_offset", "mismatch_model", "aggregation_error_mode",
+        "offset_args", "add_offset", "mismatch_model",
+        "bc_freq", "bc_freq_anchor",
     )
     PRIOR_OPTION_NAMES: ClassVar[tuple[str, ...]] = ("x_prior", "bc_prior", "offset_prior")
     MAPPING_OPTION_NAMES: ClassVar[tuple[str, ...]] = ("sector_sources", "offset_args")
@@ -259,14 +264,31 @@ class RhimeModelSpec:
     domain: str
     sectors: tuple[SectorSpec, ...]
     use_bc: bool = True
+    bc_freq: str | None = field(default=None, kw_only=True)
+    bc_freq_anchor: DatetimeLike | None = field(default=None, kw_only=True)
     likelihood: LikelihoodSettings | None = field(default=None, kw_only=True)
     add_offset: bool = False
-    aggregation_error_mode: AggregationErrorMode = field(default="none", kw_only=True)
     bc_prior: PriorArgs | None = None
     offset_prior: PriorArgs | None = None
     offset_args: dict[str, Any] | None = None
     bc_state_activity: StateActivity | None = field(default=None, kw_only=True)
     state_activity: StateActivity | None = field(default=None, kw_only=True)
+
+    def __post_init__(self) -> None:
+        try:
+            normalise_frequency(self.bc_freq)
+        except ValueError as exc:
+            raise ValueError(f"Invalid `bc_freq`: {self.bc_freq!r}.") from exc
+        if self.bc_freq_anchor is not None:
+            try:
+                anchor = pd.Timestamp(self.bc_freq_anchor)
+                if pd.isna(anchor):
+                    raise ValueError("anchor must be a valid date")
+                object.__setattr__(
+                    self, "bc_freq_anchor", str(np.datetime_as_string(anchor.to_datetime64(), unit="auto")),
+                )
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError(f"Invalid `bc_freq_anchor`: {self.bc_freq_anchor!r}.") from exc
 
     def describe(self, *, priors: Mapping[str, PriorArgs] | None = None) -> dict[str, Any]:
         """Describe structural choices and construction-owned prior parameters.
@@ -405,7 +427,7 @@ class RhimeModelSpec:
 
 
 _MODEL_RECORD_FIELDS = (
-    "species", "domain", "use_bc", "add_offset", "aggregation_error_mode",
+    "species", "domain", "use_bc", "bc_freq", "bc_freq_anchor", "add_offset",
     "bc_prior", "offset_prior", "offset_args",
 )
 _LIKELIHOOD_SETTINGS = {
@@ -436,9 +458,8 @@ class RhimeOutputSpec:
         paris_postprocessing_kwargs: Extra keyword arguments for PARIS output
             creation.
         output_filename_convention: Filename convention for derived products.
-            Direct RHIME runs use ``"rhime"``. The ``run_hbmcmc.py``
-            compatibility shim uses ``"legacy"`` for old SLURM/config
-            workflows.
+            Defaults to ``"rhime"``; select ``"legacy"`` explicitly to use
+            the independently supported legacy filename convention.
     """
 
     MAPPING_OPTION_NAMES: ClassVar[tuple[str, ...]] = ("paris_postprocessing_kwargs",)
@@ -461,7 +482,7 @@ class RhimeOutputSpec:
         must supply paths resolved against their own documented file base.
 
         Args:
-            params: Canonical output option names after aliases and overrides.
+            params: Canonical output option names after invocation overrides.
                 Format and filename-convention values are case-insensitive.
             multisector: Whether to enforce the multisector output restrictions.
 

@@ -67,8 +67,7 @@ When ``inner_x_prior`` is omitted, ``x_inner`` uses a copy of the outer
 scaling prior; pass ``inner_x_prior`` to choose it independently. Any enabled
 outer boundary-condition or offset contribution is added to this pollution sum
 when constructing the mean passed to the shared likelihood, which applies the
-configured observation error, aggregation error, and model-data mismatch
-treatment.
+configured observation error and model-data mismatch treatment.
 
 Both state vectors are sampled jointly. Separating their posterior influence
 therefore depends on the outer and inner footprints producing sufficiently
@@ -77,14 +76,14 @@ distinct observation-space sensitivities.
 Surface-site example
 --------------------
 
-Use :func:`openghg_inversions.rhime.run_rhime_nested` with the ordinary modern
+Use :func:`openghg_inversions.rhime.run_nested` with the ordinary modern
 RHIME arguments plus the inner-domain options:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import run_rhime_nested
+   from openghg_inversions.rhime import run_nested
 
-   result = run_rhime_nested(
+   result = run_nested(
        species="ch4",
        sites=["TAC", "MHD"],
        averaging_period=["1h", "1h"],
@@ -165,7 +164,7 @@ native grid. Configure the exact outer and inner artifacts independently with
 
 .. code-block:: python
 
-   result = run_rhime_nested(
+   result = run_nested(
        config_file="nested_rhime.ini",
        basis_path="/data/basis/outer.nc",
        inner_basis_path="/data/basis/inner-6km.zarr",
@@ -222,7 +221,7 @@ and option names must not be repeated between sections.
 
 .. code-block:: bash
 
-   openghg-inversions run-rhime-nested -c nested_rhime.ini
+   rhime run --model nested -c nested_rhime.ini
 
 Timestamp alignment
 -------------------
@@ -233,7 +232,7 @@ tolerance:
 
 .. code-block:: python
 
-   result = run_rhime_nested(
+   result = run_nested(
        config_file="nested_rhime.ini",
        inner_time_tolerance="30min",
    )
@@ -251,7 +250,7 @@ as lists, even for one synthetic site, so they retain the modern schema shape:
 
 .. code-block:: python
 
-   satellite = run_rhime_nested(
+   satellite = run_nested(
        species="ch4",
        sites=["GOSAT-BRAZIL"],
        averaging_period=["1D"],
@@ -339,7 +338,7 @@ when requesting automatic total-budget allocation.
 
 Omitting ``outer_overlap_masked=True`` raises rather than silently combining
 two ordinary overlapping sensitivity matrices. The retrieval-backed
-``run_rhime_nested`` path performs the mask before preparation and supplies
+``run_nested`` path performs the mask before preparation and supplies
 this acknowledgement internally.
 
 Current output boundary
@@ -375,7 +374,7 @@ trace is unchanged. This produces three products:
   (``mu = mu_outer + mu_inner + baseline``) already reports one concentration
   per observation -- there is no separate "inner concentration" product.
 
-``run_rhime_nested`` requires ``output_path`` for PARIS and writes all three, using the
+``run_nested`` requires ``output_path`` for PARIS and writes all three, using the
 inner domain's label (e.g. ``EUROPE-6km``) in the inner flux file's name.
 Before acquisition or inference, shared PARIS option resolution validates the
 postprocessing option names, template version, time point, explicit flux

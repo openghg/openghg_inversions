@@ -18,6 +18,8 @@ from openghg_inversions.rhime.specs import normalise_optional_mapping
 
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .configuration import (
+    _validate_section_option_names, _PREPARATION_OPTION_NAMES, _SAMPLING_OPTION_NAMES,
+    _PRIOR_OPTION_NAMES, _MODEL_SECTION_OPTION_NAMES,
     _reject_unknown,
     _bool, _number, _take, _model, _co2_likelihood, _frozen,
     Co2PreparationConfig,
@@ -55,6 +57,7 @@ def load_co2_o2_params(
             raise ValueError("Linked CO2/O2 params file must contain one JSON object.")
     else:
         options = _table(params, "config")
+    _validate_co2_o2_option_names(options, overrides or {})
     for name, value in (overrides or {}).items():
         if name in {"prepared_inputs", "channels", "likelihood", "sampling", "outputs"} and isinstance(value, Mapping):
             previous = _table(options.get(name, {}), name)
@@ -75,9 +78,36 @@ def load_co2_o2_params(
         raise ValueError("config.recipe must be 'co2_o2' for linked execution.")
     if "variant" in options:
         raise ValueError("Linked CO2/O2 configuration has no variant selector; select the scientific likelihood.")
-    allowed = {"format_version", "recipe", "prepared_inputs", "channels", "likelihood", "sampling", "outputs"}
-    _reject_unknown({name: value for name, value in options.items() if name not in allowed}, "config")
     return options
+
+
+def _validate_co2_o2_option_names(*requests: Mapping[str, object]) -> None:
+    """Check request names while deferring scientific and inactive values."""
+    allowed = {"format_version", "recipe", "variant", "prepared_inputs", "channels", "likelihood", "sampling", "outputs"}
+    from .co2_o2_outputs import Co2O2OutputOptions
+
+    channel_sections = {
+        "": frozenset({"units", "independent_error_sd", "boundary", "offset"}),
+        **_MODEL_SECTION_OPTION_NAMES,
+        "boundary": _MODEL_SECTION_OPTION_NAMES["boundary"] | {"activity"},
+        "boundary.activity": frozenset({"active", "fixed_value"}),
+    }
+    _validate_section_option_names(requests, {
+        "": frozenset(allowed),
+        "prepared_inputs": _PREPARATION_OPTION_NAMES,
+        "channels": frozenset({"co2", "o2"}),
+        **{f"channels.{channel}" + (f".{path}" if path else ""): names
+           for channel in ("co2", "o2") for path, names in channel_sections.items()},
+        "likelihood": frozenset({"kind", "tau_hours", "fixed_site_amplitudes", "site_amplitude_prior",
+                                 "site_amplitude_prior_scale"}),
+        "likelihood.site_amplitude_prior": _PRIOR_OPTION_NAMES,
+        "sampling": _SAMPLING_OPTION_NAMES,
+        "outputs": frozenset(Co2O2OutputOptions.__dataclass_fields__),
+        "outputs.paris_postprocessing_kwargs": frozenset({
+            "template_version", "obs_avg_period", "flux_frequency", "country_selections",
+        }),
+        "outputs.native_flux_bases": frozenset({"co2", "o2"}),
+    })
 
 
 @dataclass(frozen=True)
@@ -121,9 +151,9 @@ def validate_co2_o2_units(prepared: Co2O2PreparedInputs) -> str:
     for name in ("species", "observation_units"):
         if name not in observations.coords or observations[name].dims != ("observation",):
             raise ValueError(f"Linked prepared observations require observation-aligned {name}.")
-    if set(observations.species.values.astype(str)) != {"co2", "o2"}:
+    if set(observations.species.values.tolist()) != {"co2", "o2"}:
         raise ValueError("Linked prepared observations must contain exactly CO2 and O2 channels.")
-    units = np.unique(observations.observation_units.values.astype(str))
+    units = np.unique([str(unit) for unit in observations.observation_units.values])
     if units.size != 1:
         raise ValueError("Linked staged inputs require identical CO2 and O2 units (OPE-86).")
     unit = _string(str(units[0]), "prepared observation_units")
@@ -157,7 +187,7 @@ class Co2O2ModelConfig:
     be supplied for both channels or omitted for both to use saved errors.
     Fixed independent error and fixed-amplitude OU are supported; inferred OU
     and per-meg transformations remain separate work.
-    Boundary frequency and anchor choices apply to all enabled centered
+    Boundary frequency and anchor choices apply to all enabled raw boundary
     channels; choices supplied under both channels must agree.
     """
 
@@ -237,17 +267,9 @@ class Co2O2ModelConfig:
         unit = validate_co2_o2_units(prepared)
         if unit != self.co2_units or unit != self.o2_units:
             raise ValueError("Configured channels.co2/o2.units do not match prepared observation_units.")
-        if self.bc_freq is not None or self.bc_anchor_time is not None:
-            enabled = self.use_bc or {}
-            operands = getattr(prepared, "boundary_operands", {})
-            for channel in ("co2", "o2"):
-                if enabled.get(channel, True) and channel not in operands and (
-                    channel in prepared.boundary_sensitivity or enabled.get(channel, False)
-                ):
-                    raise ValueError("Boundary frequency/anchor_time require centered prepared operands; legacy absolute H_bc is already expanded.")
         observations = prepared.observations
         if self.independent_error_sd:
-            species = np.asarray(observations.species.values).astype(str)
+            species = observations.species.values
             errors = np.empty(observations.size, dtype=np.float64)
             for name in ("co2", "o2"):
                 errors[species == name] = self.independent_error_sd[name]

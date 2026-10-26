@@ -80,16 +80,9 @@ def filtering(
     with site codes as keys, then the filters applied to each site depend on the list supplied
     for that site.
 
-    In any case, filters supplied in a list are applied in order.
-    For example, if you wanted a daily, daytime average, you could do this:
-
-        datasets_dictionary = filtering(datasets_dictionary,
-                                    ["daytime", "daily_median"])
-
-    The order of the filters reflects the order they are applied, so for
-    instance when applying the "daily_median" filter if you only wanted
-    to look at daytime values the filters list should be
-    ["daytime","daily_median"]
+    Filters supplied in a list are applied in order. For example, select
+    daytime observations with sufficiently high boundary-layer heights using
+    ``filtering(datasets_dictionary, ["daytime", "pblh_min"])``.
 
     If a site is `datasets_in` is not in `filters`, then no filters are applied to that site.
 
@@ -104,7 +97,7 @@ def filtering(
         dict in same format as datasets_in, with filters applied
 
     """
-    if not filters:
+    if filters is None or filters == [] or filters == {}:
         return datasets_in
 
     # Get list of sites
@@ -114,6 +107,9 @@ def filtering(
     if not isinstance(filters, dict):
         if not isinstance(filters, list):
             filters = [filters]  # type: ignore
+        for filt in filters:
+            if filt is None or filt not in filtering_functions:
+                raise KeyError(filt)
         filters = dict.fromkeys(sites, filters)  # type: ignore
     else:
         for site, filt in filters.items():
@@ -121,6 +117,12 @@ def filtering(
                 filters[site] = [filt]
 
     filter_map = cast(dict[str, list[str | None] | None], filters)
+
+    # Validate active requests before a preceding filter can execute data.
+    for site in sites:
+        for filt in filter_map.get(site) or []:
+            if filt is None or filt not in filtering_functions:
+                raise KeyError(filt)
 
     # Check that filters are defined for all sites
     # TODO: just set filters for missing sites to None?
@@ -139,8 +141,6 @@ def filtering(
             for filt in site_filters:
                 n_nofilter = datasets[site].time.values.shape[0]
 
-                if filt is None:
-                    raise KeyError(filt)
                 datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
 
                 n_filter = datasets[site].time.values.shape[0]
@@ -169,90 +169,6 @@ def _local_solar_time(dataset: xr.Dataset) -> list[int]:
     local_time = dataset.time + pd.Timedelta(minutes=float(24 * 60 * sitelon / 360.0))
     hours = local_time.dt.hour.values
     return list(hours)
-
-
-def _has_centered_boundary(dataset: xr.Dataset) -> bool:
-    """Recognize centered data before or after spatial projection."""
-    return dataset.attrs.get("boundary_representation") == "centered-v1" or any(
-        str(name).startswith(("bc_anomaly_", "bc_mass_", "H_bc_anomaly", "H_bc_mass"))
-        for name in dataset
-    )
-
-
-@register_filter
-def daily_median(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Resample absolute-boundary data to daily median values.
-
-    Loads the dataset before resampling. Centered boundary operands do not
-    support median aggregation; see :ref:`surface-centered-boundary-contract`.
-
-    Args:
-        dataset: Dataset to filter.
-        keep_missing: If True, retain daily bins containing missing values;
-            otherwise drop bins with missing values in any time-varying field.
-
-    Returns:
-        Dataset of daily medians.
-
-    Raises:
-        ValueError: If the dataset contains centered boundary operands.
-    """
-    if _has_centered_boundary(dataset):
-        raise ValueError("daily_median is unsupported for centered boundary operands.")
-    if keep_missing:
-        return dataset.load().resample(indexer={"time": "1D"}).median()
-    else:
-        return dataset.load().resample(indexer={"time": "1D"}).median().dropna(dim="time")
-
-
-@register_filter
-def six_hr_mean(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Resample data to six-hour means.
-
-    For centered boundaries, use one common valid-row mask for observations,
-    derived errors, flux responses and boundary operands. A nonfinite value
-    anywhere in a required science field excludes that observation row from
-    every mean. Optional diagnostics do not select science rows or decide
-    which output bins are dropped. Scalar ``bc_reference`` is preserved
-    unchanged, without resampling. Derive observation errors before filtering;
-    see :ref:`surface-centered-boundary-contract`.
-
-    Args:
-        dataset: Dataset to filter.
-        keep_missing: If True, retain empty bins. Otherwise drop bins missing
-            required science values for centered inputs, or any time-varying
-            field for absolute inputs.
-
-    Returns:
-        Dataset of six-hour means, preserving centered operand units and
-        boundary representation.
-    """
-    if _has_centered_boundary(dataset):
-        # Required observation/response fields choose one common set of rows.
-        # Optional diagnostics cannot silently change the scientific average.
-        # Errors are already derived; scalar reference is never resampled.
-        time_names = [name for name in dataset.data_vars if "time" in dataset[name].dims]
-        science_names = [
-            name for name in time_names
-            if str(name) in {"mf", "mf_error", "H", "H_bc", "bc_mod", "bc_n", "bc_e", "bc_s", "bc_w"}
-            or str(name).startswith(("H_bc_", "bc_anomaly_", "bc_mass_", "fp_x_flux", "mf_mod"))
-        ]
-        valid = xr.ones_like(dataset.time, dtype=bool)
-        for name in science_names:
-            if not np.issubdtype(dataset[name].dtype, np.number):
-                continue
-            finite = np.isfinite(dataset[name])
-            other_dims = [dim for dim in finite.dims if dim != "time"]
-            valid = valid & (finite.all(other_dims) if other_dims else finite)
-        with xr.set_options(keep_attrs=True):
-            averaged = dataset[time_names].where(valid).resample(time="6h").mean()
-        result = dataset.drop_vars(time_names).drop_dims("time", errors="ignore").assign(averaged)
-        result.attrs = dict(dataset.attrs)
-        return result if keep_missing else result.dropna(dim="time", subset=science_names)
-    if keep_missing:
-        return dataset.resample(indexer={"time": "6h"}).mean()
-    else:
-        return dataset.resample(indexer={"time": "6h"}).mean().dropna(dim="time")
 
 
 @register_filter
@@ -473,10 +389,7 @@ def pblh_inlet_diff(
     filt = pblh_da > inlet_height + diff_threshold
     drop = not keep_missing
 
-    result = dataset.where(filt.compute(), drop=drop)
-    if "bc_reference" in dataset:
-        result["bc_reference"] = dataset.bc_reference
-    return result
+    return dataset.where(filt.compute(), drop=drop)
 
 
 @register_filter

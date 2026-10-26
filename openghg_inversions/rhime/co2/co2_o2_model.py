@@ -35,6 +35,8 @@ from openghg_inversions.models.components import (
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from .co2_model import _normalise_offset_args
+from openghg_inversions.boundary_sensitivity import bind_boundary_sensitivity
+
 from .centered_boundary import bind_boundary_operands, add_centered_boundary
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 
@@ -423,10 +425,19 @@ def build_co2_o2_model(
         ValueError: If shared-state sensitivity preparation, activity
             resolution, or registered coordinate alignment fails.
     """
-    if not boundary_operands and (bc_freq is not None or bc_anchor_time is not None):
-        raise ValueError("Boundary period choices require raw centered operands, not absolute sensitivity.")
-    if boundary_sensitivity and (bc_freq is not None or bc_anchor_time is not None):
-        raise ValueError("Boundary period choices require centered operands for every active boundary channel.")
+    if not boundary_operands and not boundary_sensitivity and (bc_freq is not None or bc_anchor_time is not None):
+        raise ValueError("Boundary period choices require boundary inputs.")
+    if boundary_sensitivity:
+        aligned_boundaries = {}
+        for channel, sensitivity in boundary_sensitivity.items():
+            channel_h = co2_sensitivity if channel == "co2" else o2_sensitivity
+            native = select_gathered_data_array(
+                observations, key=channel, key_dim="species", ragged_dim="channel_observation", stack_dim=output_dim,
+            ).rename({output_dim: str(channel_h.dims[0])})
+            aligned_boundaries[channel] = bind_boundary_sensitivity(
+                sensitivity, native, frequency=bc_freq, anchor_time=bc_anchor_time,
+            )
+        boundary_sensitivity = aligned_boundaries
     if boundary_operands:
         if tau_hours is not None:
             raise ValueError("Centered boundaries do not support fixed-OU likelihoods.")

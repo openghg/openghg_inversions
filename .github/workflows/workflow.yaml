@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       compiled_backend:
-        description: "Run the full suite with PyTensor's default compiled backend"
+        description: "Also run the marked compiled_backend checks with Numba"
         type: boolean
         default: false
       runtime_comparison:
@@ -27,7 +27,7 @@ on:
 
 jobs:
   backend:
-    name: Select test backend
+    name: Select compiled-backend checks
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -39,7 +39,7 @@ jobs:
         uses: actions/checkout@v7
       - name: Check backend selection rules
         run: node --test .github/scripts/select-test-linker.test.cjs
-      - name: Select full-suite linker
+      - name: Select optional compiled checks
         id: select
         uses: actions/github-script@v9
         with:
@@ -53,7 +53,7 @@ jobs:
     needs: backend
     runs-on: ubuntu-latest
     env:
-      PYTENSOR_FLAGS: linker=${{ needs.backend.outputs.linker }}
+      PYTENSOR_FLAGS: linker=py
       DASK_NUM_WORKERS: '2'
       OPENBLAS_NUM_THREADS: '1'
       OMP_NUM_THREADS: '1'
@@ -89,13 +89,20 @@ jobs:
         run: python -c "import arviz"
       - name: Run tests
         run: pytest tests/ -n 2 --dist=worksteal --ignore=tests/typing --durations=25
+      - name: Run marked Numba checks
+        if: needs.backend.outputs.linker == 'auto'
+        env:
+          PYTENSOR_FLAGS: linker=numba
+        run: |
+          python -c 'import pytensor; from pytensor.compile.mode import get_mode; assert type(get_mode(None).linker).__name__ == "NumbaLinker"; print("Compiled checks:", pytensor.config.linker)'
+          pytest tests/ -n 0 -m 'compiled_backend and not slow and not create_frozen' --ignore=tests/typing --durations=10
 
   locked-test:
     name: Run tests with uv.lock (Python ${{ matrix.python-version }})
     needs: backend
     runs-on: ubuntu-latest
     env:
-      PYTENSOR_FLAGS: linker=${{ needs.backend.outputs.linker }}
+      PYTENSOR_FLAGS: linker=py
       DASK_NUM_WORKERS: '2'
       OPENBLAS_NUM_THREADS: '1'
       OMP_NUM_THREADS: '1'
@@ -155,9 +162,17 @@ jobs:
       - name: Run tests
         if: github.event_name != 'workflow_dispatch' || !inputs.runtime_comparison
         run: uv run --no-sync pytest tests/ -n 2 --dist=worksteal --ignore=tests/typing --durations=25
+      - name: Run marked Numba checks
+        if: needs.backend.outputs.linker == 'auto' && !(github.event_name == 'workflow_dispatch' && inputs.runtime_comparison)
+        env:
+          PYTENSOR_FLAGS: linker=numba
+        run: |
+          uv run --no-sync python -c 'import pytensor; from pytensor.compile.mode import get_mode; assert type(get_mode(None).linker).__name__ == "NumbaLinker"; print("Compiled checks:", pytensor.config.linker)'
+          uv run --no-sync pytest tests/ -n 0 -m 'compiled_backend and not slow and not create_frozen' --ignore=tests/typing --durations=10
       - name: Profile serial suite
         if: github.event_name == 'workflow_dispatch' && inputs.runtime_comparison
         env:
+          PYTENSOR_FLAGS: linker=numba
           DASK_NUM_WORKERS: '2'
           OPENBLAS_NUM_THREADS: '1'
           OMP_NUM_THREADS: '1'
@@ -168,6 +183,8 @@ jobs:
           /usr/bin/time -v -o runtime-suite/time.txt uv run --no-sync python -m pytest tests/ -p no:xdist -p tests.ci_runtime --ignore=tests/typing --durations=25 --junitxml=runtime-suite/results.xml
       - name: Compare numerical thread limits
         if: github.event_name == 'workflow_dispatch' && inputs.runtime_comparison
+        env:
+          PYTENSOR_FLAGS: linker=numba
         run: uv run --no-sync python scripts/compare_test_runtime.py runtime-comparison
       - name: Upload test runtime diagnostics
         if: always() && github.event_name == 'workflow_dispatch' && inputs.runtime_comparison
@@ -180,7 +197,7 @@ jobs:
           retention-days: 7
 
   surface-pilot:
-    name: Check pinned surface preparation pilot
+    name: Check surface preparation with pinned OpenGHG
     runs-on: ubuntu-latest
     env:
       PYTENSOR_FLAGS: floatX=float64
@@ -196,7 +213,7 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: '3.12'
-      - name: Test explicit provider revision
+      - name: Test supported surface transport
         run: uvx --from 'tox>=4.24' --with tox-uv tox -e py312-surfacePilot
 
   lint:
@@ -259,7 +276,7 @@ jobs:
             exit 1
           fi
           if [ "${{ needs.surface-pilot.result }}" != "success" ]; then
-            echo "Pinned surface pilot tests failed, were cancelled, or were skipped."
+            echo "Surface preparation tests failed, were cancelled, or were skipped."
             exit 1
           fi
           if [ "${{ needs.lint.result }}" != "success" ]; then
@@ -270,4 +287,4 @@ jobs:
             echo "Borrowed-reference typing failed, was cancelled, or was skipped (result: ${{ needs.borrowed-types.result }})."
             exit 1
           fi
-          echo "OpenGHG devel and locked-release tests, lint, and borrowed-reference typing checks passed."
+          echo "OpenGHG devel and locked-dependency tests, lint, and borrowed-reference typing checks passed."

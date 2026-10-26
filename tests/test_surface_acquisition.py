@@ -242,8 +242,25 @@ def test_actual_resolved_kernel_counts_residual_once(inputs, species, compatible
     )
     np.testing.assert_allclose(result.mf_mod_sectoral.sel(source="resolved"), 14.0)
     np.testing.assert_allclose(result.mf_mod, 16.0)
-    assert result.attrs["surface_provider_policy_revision"] == "1790-midmonth-residual-v1"
+    assert result.attrs["surface_provider_policy_revision"] == "openghg-time-resolved-v1"
 
+
+
+def test_resolved_provider_borrows_lazy_flux(inputs, compatible_provider):
+    obs, fp, flux = resolved_inputs(inputs)
+    flux = flux.chunk({"time": 744})
+    borrowed = flux.flux.data
+    before = flux.copy(deep=True)
+    tasks = []
+    with Callback(pretask=lambda key, *_: tasks.append(key)):
+        result = prepare_surface_site(
+            obs, fp, {"a": flux}, species="co2", transport={"a": "time_resolved"}
+        )
+    assert not tasks
+    assert isinstance(result.fp_x_flux.data, da.Array)
+    assert flux.flux.data is borrowed
+    np.testing.assert_allclose(result.mf_mod.compute(scheduler="synchronous"), 14.)
+    xr.testing.assert_identical(flux, before)
 
 def test_resolved_rejects_missing_history_and_incomplete_residual_month(inputs, compatible_provider):
     obs, fp, flux = resolved_inputs(inputs)
@@ -309,7 +326,7 @@ def test_native_boundaries_forwarded_and_reconstructed_before_rounding(inputs, m
         {"a": flux},
         species="co2",
         transport={"a": "integrated"},
-        boundary_data=bc,
+        boundary_representation="centered", boundary_data=bc,
         boundary_reference=400.0,
         boundary_reference_units="ppm",
         boundary_mass_tolerance=0.01,
@@ -390,7 +407,7 @@ def test_fresh_rejects_mixed_native_axes(inputs, monkeypatch):
     ("1e-06 mol/mol", "ppm", "ppb"),
     ("1e-06 mol/mol", "1e-06 mol/mol", "ppm"),
 ])
-def test_local_boundary_operands_with_released_provider(
+def test_local_boundary_operands_without_upstream_kernel(
     inputs, species, monkeypatch, north_units, reference_units, output_units
 ):
     import openghg.analyse._modelled_baseline as provider
@@ -420,7 +437,7 @@ def test_local_boundary_operands_with_released_provider(
         {"a": flux},
         species=species,
         transport={"a": "integrated"},
-        boundary_data=bc,
+        boundary_representation="centered", boundary_data=bc,
         boundary_reference=400.0,
         boundary_reference_units=reference_units,
         boundary_mass_tolerance=0.001,
@@ -462,7 +479,7 @@ def test_surface_rejects_invalid_boundary_units(inputs, target, bad_units):
     with pytest.raises(ValueError, match="Invalid boundary units"):
         prepare_surface_site(
             obs, fp, {"a": flux}, species="co2", transport={"a": "integrated"},
-            boundary_data=bc, boundary_reference=400, boundary_reference_units=reference_units,
+            boundary_representation="centered", boundary_data=bc, boundary_reference=400, boundary_reference_units=reference_units,
             boundary_mass_tolerance=0.001,
         )
 
@@ -590,7 +607,7 @@ def test_mapped_boundaries_use_explicit_site_transport(inputs, monkeypatch):
             species="co2",
             transport={"a": "integrated"},
             site_footprint_data=site_fp,
-            boundary_data=xr.Dataset(),
+            boundary_representation="centered", boundary_data=xr.Dataset(),
             boundary_reference=400.0,
             boundary_reference_units="ppm",
             boundary_mass_tolerance=0.001,
@@ -610,28 +627,13 @@ def test_mapped_boundaries_use_explicit_site_transport(inputs, monkeypatch):
     assert provenance["sources"]["a"]["mode"] == "integrated"
 
 
-@pytest.mark.parametrize("broken", ["missing", "midmonth_nan"])
-def test_resolved_requires_monthly_flux_fix(inputs, monkeypatch, broken):
+def test_resolved_requires_provider_convolution_operation(inputs, monkeypatch):
     import openghg.analyse._modelled_obs as provider
 
-    if broken == "missing":
-        monkeypatch.delattr(provider, "_make_low_freq_flux")
-    else:
-        def missing_month(flux, fp):
-            return flux.copy(data=np.full(flux.shape, np.nan))
-        monkeypatch.setattr(provider, "_make_low_freq_flux", missing_month)
+    monkeypatch.delattr(provider, "fp_x_flux_time_resolved")
     obs, fp, flux = resolved_inputs(inputs)
-    with pytest.raises(RuntimeError, match="midmonth residual-flux fix"):
+    with pytest.raises(RuntimeError, match="convolution helpers"):
         prepare_surface_site(obs, fp, {"a": flux}, species="co2", transport={"a": "time_resolved"})
-
-
-def test_residual_month_check_accepts_fixed_behavior_without_boundary_api(monkeypatch):
-    import openghg.analyse._modelled_baseline as boundary
-    import openghg.analyse._modelled_obs as provider
-
-    monkeypatch.delattr(boundary, "baseline_reference_sensitivities", raising=False)
-    monkeypatch.setattr(provider, "_make_low_freq_flux", lambda flux, fp: flux)
-    surface._require_residual_month_support()
 
 
 @pytest.mark.parametrize("representation", ["split", "legacy"])
@@ -751,3 +753,37 @@ def test_integrated_declared_year_validity_never_reuses_climatological_year(inpu
     annual.flux.attrs["time_period"] = "yearly"
     result = prepare_surface_site(obs, fp, {"annual": annual}, species="co2", transport={"annual": "integrated"})
     np.testing.assert_allclose(result.mf_mod, 1.0)
+
+
+def test_boundary_representation_is_explicit_and_ordinary_needs_no_reference():
+    from examples.surface_centered_pilot import surface_inputs
+    from openghg_inversions.basis._helpers import bc_sensitivity
+
+    obs, fp, fluxes, bc = surface_inputs()
+    options = dict(species="co2", transport={source: "integrated" for source in fluxes},
+                   boundary_data=bc, boundary_mass_tolerance=1e-6)
+    ordinary = prepare_surface_site(obs, fp, fluxes, **options)
+    referenced = prepare_surface_site(obs, fp, fluxes, **options,
+                                      boundary_reference=400., boundary_reference_units="ppm")
+    centered = prepare_surface_site(obs, fp, fluxes, **options, boundary_representation="centered",
+                                    boundary_reference=400., boundary_reference_units="ppm")
+    for result in (ordinary, referenced):
+        assert "bc_reference" not in result and "bc_anomaly_n" not in result
+        assert "boundary_representation" not in result.attrs
+        np.testing.assert_allclose(result.bc_mod, 400.05, atol=1e-12, rtol=0)
+    raw = bc_sensitivity({"TOY": ordinary})["TOY"].H_bc
+    centered_raw = bc_sensitivity({"TOY": centered})["TOY"]
+    xr.testing.assert_allclose(raw, centered_raw.H_bc_anomaly + centered_raw.bc_reference * centered_raw.H_bc_mass)
+    with pytest.raises(ValueError, match="require reference"):
+        prepare_surface_site(obs, fp, fluxes, **options, boundary_representation="centered")
+
+
+@pytest.mark.parametrize("transport,use_bc", [(None, True), ({"a": "integrated"}, False)])
+def test_centered_acquisition_rejects_ignored_choice(monkeypatch, transport, use_bc):
+    monkeypatch.setattr(acquisition, "get_flux_data", lambda **kw: pytest.fail("retrieved ignored centering choice"))
+    with pytest.raises(ValueError, match="requires surface_transport and use_bc"):
+        MergedData.from_options(
+            species="co2", site_options=SiteOptions.from_inputs(sites=["MHD"], averaging_period="1h"),
+            domain="EUROPE", start_date="2020-01-01", end_date="2020-02-01", flux_sources=["a"],
+            surface_transport=transport, use_bc=use_bc, boundary_representation="centered",
+        )

@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.models.priors import prior_records
 from openghg_inversions.rhime.specs import FixedErrorSettings, RhimeModelSpec, SectorSpec
 from openghg_inversions.rhime.standard import build_standard_model, materialize_standard_inputs
@@ -53,7 +53,7 @@ def test_materialize_once_then_build_without_replacing_requested_settings():
         _model({"pdf": "normal", "mu": mean, "sigma": .2}),
         offset_prior={"pdf": "normal", "mu": da.from_delayed(unused(), shape=(), dtype=float), "sigma": 1.},
     )
-    prepared = cast(RhimePreparedInputs, SimpleNamespace(inv_inputs=inputs))
+    prepared = cast(PreparedInputs, SimpleNamespace(inv_inputs=inputs))
     eager, priors = materialize_standard_inputs(prepared, model)
     assert calls == ["source"]
     assert is_dask_collection(inputs["H"])
@@ -110,31 +110,27 @@ def test_builder_requires_materialized_parameters_for_configured_likelihood_prio
                              priors={"x": model.sectors[0].x_prior})
 
 
-@pytest.mark.parametrize(("mode", "aggregation_names", "derived_supported"), [
-    ("none", ("aggregation_error_sd",), True),
-    ("auto", (), True),
-    ("auto", ("aggregation_error_sd",), False),
-    ("diagonal", ("aggregation_error_sd",), False),
-])
-def test_builtin_contract_owns_aggregation_output_capability(mode, aggregation_names, derived_supported):
-    """Every runner receives the same covariance reconstruction limitation."""
-    import pymc as pm
-
-    from openghg_inversions.rhime._model_building import builtin_model_build_result
-
-    built = builtin_model_build_result(
-        pm.Model(), model_spec=replace(_model(), aggregation_error_mode=mode),
-        multisector=False, input_names=("H", "mf", "mf_error", *aggregation_names),
-    )
-    assert ("basic" in built.output_contract.supported_output_formats) is derived_supported
-    built.output_contract.validate_requested_output("inv_out")
-    if not derived_supported:
-        with pytest.raises(ValueError, match="output_format='basic'"):
-            built.output_contract.validate_requested_output("basic")
-
-
 def test_standard_runner_rejects_conflicting_supplied_handoffs_before_resolution():
     from openghg_inversions.rhime.standard import run_standard
 
     with pytest.raises(ValueError, match="either prepared or merged_data"):
         run_standard(prepared=object(), merged_data=object())
+
+
+def test_one_raw_preparation_supports_different_boundary_periods():
+    """The model boundary expands raw spatial BCs without changing preparation."""
+    inputs = _inputs().assign_coords(
+        site=("nmeasure", ["TAC", "TAC"]),
+        time=("nmeasure", np.array(["2019-01-01", "2019-01-02"], dtype="datetime64[ns]")),
+        bc_region=["north"],
+    ).assign(H_bc=(("bc_region", "nmeasure"), [[2., 3.]]))
+    original = inputs.copy(deep=True)
+    prepared = cast(PreparedInputs, SimpleNamespace(inv_inputs=inputs))
+    for frequency, expected in ((None, [[2., 3.]]), ("1D", [[2., 0.], [0., 3.]])):
+        model = replace(_model(), use_bc=True, bc_freq=frequency,
+                        bc_freq_anchor="2019-01-01", bc_prior={"pdf": "normal", "mu": 1., "sigma": .2})
+        eager, priors = materialize_standard_inputs(prepared, model)
+        np.testing.assert_allclose(eager.H_bc, expected)
+        built = build_standard_model(eager, model, priors=priors)
+        np.testing.assert_allclose(built.model["hbc"].get_value(), np.asarray(expected).T)
+    xr.testing.assert_identical(inputs, original)

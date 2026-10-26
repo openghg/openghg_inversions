@@ -122,8 +122,6 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     if requested_sampler.nuts_sampler != "pymc":
         raise ValueError("Linked cached fixed-OU requires nuts_sampler='pymc'.")
     prepared = prepared_inputs
-    if getattr(prepared, "boundary_operands", {}):
-        raise ValueError("Centered boundaries do not support cached likelihoods.")
     boundaries = dict(getattr(prepared, "boundary_sensitivity", {}))
     if use_bc is not None:
         if (
@@ -132,6 +130,12 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             or any(not isinstance(value, bool) for value in use_bc.values())
         ):
             raise ValueError("use_bc must map co2/o2 to booleans.")
+    selected_centered = {
+        channel for channel in prepared.boundary_operands if (use_bc or {}).get(channel, True)
+    }
+    if selected_centered:
+        raise ValueError("Centered boundaries do not support cached likelihoods.")
+    if use_bc is not None:
         for channel, enabled in use_bc.items():
             if enabled and channel not in boundaries:
                 raise ValueError(f"{channel} use_bc requires prepared boundary_sensitivity.")

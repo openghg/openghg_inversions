@@ -21,7 +21,7 @@ import xarray as xr
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load as load_affine, save as save_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.rhime._stage_artifacts import (
     _output_path, check_checkpoint_targets, finish_checkpoint, read_manifest,
@@ -31,6 +31,8 @@ from openghg_inversions.rhime._stage_checks import (
     PREPARATION_CHECK_NAME, _check_draws, _check_stage, _check_result,
 )
 from openghg_inversions.serialization import load_trace, save_trace
+
+from .execution import load_co2_params
 
 from .co2_affine_output import (
     _bind_affine_flux_map, load_and_bind_affine_flux_map, prepared_inputs_content_id,
@@ -123,7 +125,7 @@ def save_preparation(
 def prepare(
     *, output_dir: str | Path, prepared_path: str | Path | None = None,
     start_date: str | None = None, end_date: str | None = None, domain: str | None = None,
-    canonical_inputs: RhimePreparedInputs | None = None,
+    canonical_inputs: PreparedInputs | None = None,
     reduction: CoherentGaussianReduction | None = None,
     aggregation_error_rank: int | None = 512,
     affine_artifact: AffineFluxMapArtifact | None = None, affine_path: str | Path | None = None,
@@ -235,7 +237,7 @@ def sample(
     Full execution and saved sampling share the explicit build and sample owners.
     Current sampling choices select fresh model-matched defaults and tuning.
     """
-    model_config = model if isinstance(model, Co2ModelConfig) else Co2ModelConfig.from_params(model)
+    model_config = model if isinstance(model, Co2ModelConfig) else Co2ModelConfig.from_params(load_co2_params(params=model))
     model_options = model_config.model_arguments()
     choices = _resolve_co2_sampling({"sampling": sampling if sampling is not None else {}}, model=model_options)
     preparation = load_preparation(preparation_manifest)
@@ -325,8 +327,8 @@ def prior_predictive(
     """
     _check_draws(draws)
     stage = _check_stage(stage)
+    model_config = model if isinstance(model, Co2ModelConfig) else Co2ModelConfig.from_params(load_co2_params(params=model))
     preparation = load_preparation(preparation_manifest)
-    model_config = model if isinstance(model, Co2ModelConfig) else Co2ModelConfig.from_params(model)
     model_options = model_config.bind(preparation.prepared)
     destination = Path(output_dir).resolve()
     report = _output_path(destination, check_output, "prior-predictive-readiness.json")

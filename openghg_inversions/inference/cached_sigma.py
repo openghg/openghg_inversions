@@ -22,6 +22,7 @@ from typing import Any, ClassVar, Literal, cast
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 import pymc as pm
+from pymc.step_methods import CompoundStep
 import pytensor
 import pytensor.tensor as pt
 from pytensor.compile.mode import Mode
@@ -450,7 +451,7 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
     sigma_target_accept: float = 0.8,
     state_target_accept: float = 0.9,
     rng: RandomGenerator = None,
-) -> pm.CompoundStep:
+) -> CompoundStep:
     """Construct the required sigma-then-state stock PyMC compound sweep.
 
     At the start of each sweep, the sigma step evaluates ``modelled_mean`` at
@@ -482,7 +483,7 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
         rng=sigma_rng,
     )
     if not states:
-        return pm.CompoundStep([sigma_step])
+        return CompoundStep([sigma_step])
     state_function = None
     if cached_state_logp is not None:
         state_values = get_value_vars_from_user_vars(list(states), model)
@@ -510,7 +511,7 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
             rng=state_rng,
             logp_dlogp_func=state_function,
         )
-    return pm.CompoundStep([sigma_step, state_step])
+    return CompoundStep([sigma_step, state_step])
 
 
 __all__ = [

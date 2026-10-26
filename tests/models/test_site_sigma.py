@@ -11,7 +11,7 @@ from scipy.stats import multivariate_normal
 
 from openghg_inversions.models.coords import get_coord_registry, registered_model
 from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
-from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
+from openghg_inversions.observation_error import AggregationError
 from tests.standard_model_helpers import build_standard_graph
 
 
@@ -341,7 +341,6 @@ def test_standard_recipe_accepts_site_sigma_through_public_likelihood_seam() -> 
         design,
         observations=data["mf"],
         observation_error=data["mf_error"],
-        aggregation_error=resolve_aggregation_error(data, "none"),
         use_bc=False,
         x_prior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
         likelihood_builder=add_site_sigma_gaussian_likelihood,

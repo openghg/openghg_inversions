@@ -25,6 +25,7 @@ from typing import Any
 
 import numpy as np
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
@@ -188,7 +189,7 @@ def add_site_sigma_gaussian_likelihood(
         dims=output_dim,
     )
     return add_gaussian_observation_likelihood(
-        observed=pm.floatX(observations.compute().values),
+        observed=floatX(observations.compute().values),
         mean=mean,
         independent_variance=independent_variance,
         aggregation_error=registered_aggregation_error,

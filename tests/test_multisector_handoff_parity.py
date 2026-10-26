@@ -12,7 +12,7 @@ import pytest
 import xarray as xr
 
 from examples.multisector_handoffs import model_options, run_example, synthetic_inputs
-from openghg_inversions.inversion_data import RhimePreparedInputs, SiteOptions
+from openghg_inversions.inversion_data import PreparedInputs, SiteOptions
 from openghg_inversions.models.priors import prior_records
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
@@ -59,8 +59,7 @@ def test_sector_mapping_order_does_not_change_preparation_weighting(tmp_path, mo
         preparations.append(multisector.prepare_multisector(
             merged, basis_inputs=resolve_basis_inputs(data),
             **data.select("domain", "start_date", "flux_sources", "averaging_error", "filters",
-                          "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
-                          "min_error", "min_error_options"),
+                          "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc"),
         ))
     xr.testing.assert_equal(preparations[0].basis_functions.flat_basis(),
                             preparations[1].basis_functions.flat_basis())
@@ -124,8 +123,7 @@ def test_full_and_prepared_execution_need_no_checkpoint_machinery_and_retain_sci
     prepared = multisector.prepare_multisector(
         merged, basis_inputs=resolve_basis_inputs(config.data),
         **config.data.select("domain", "start_date", "flux_sources", "averaging_error", "filters",
-                             "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
-                             "min_error", "min_error_options"),
+                             "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc"),
     )
     diagnostic = da.from_array(np.arange(prepared.inv_inputs.sizes["nmeasure"]), chunks=2)
     prepared = replace(prepared, inv_inputs=prepared.inv_inputs.assign(diagnostic=("nmeasure", diagnostic)))
@@ -134,7 +132,7 @@ def test_full_and_prepared_execution_need_no_checkpoint_machinery_and_retain_sci
     def forbidden(*args, **kwargs):
         pytest.fail("in-memory execution entered checkpoint machinery")
 
-    monkeypatch.setattr(RhimePreparedInputs, "save", forbidden)
+    monkeypatch.setattr(PreparedInputs, "save", forbidden)
     monkeypatch.setattr(RhimeModelSpec, "to_record", forbidden)
     monkeypatch.setattr(stages, "start_checkpoint", forbidden)
     monkeypatch.setattr(stages, "prepare", forbidden)
@@ -291,20 +289,18 @@ def test_signed_source_preparation_and_saved_replay_preserve_native_sector_and_t
     assert bool((products.flux_biosphere_posterior < 0).all())
 
 
-@pytest.mark.parametrize("incompatibility", ["minimum-error", "boundary-policy", "source-layout", "source-claim"])
+@pytest.mark.parametrize("incompatibility", ["minimum-error-operands", "source-layout", "source-claim"])
 def test_genuine_preparation_incompatibilities_fail_without_inference(tmp_path, monkeypatch, incompatibility):
     merged, options, *_ = synthetic_inputs(tmp_path)
     manifest = stages.prepare(DataConfig.from_params(options, multisector=True), merged_data=merged,
                               output_dir=tmp_path / "original")
     prepared, data, _ = stages.load_preparation(manifest)
     model = model_options(.2)
-    if incompatibility == "minimum-error":
-        prepared = replace(prepared, inv_inputs=prepared.inv_inputs.drop_vars("min_error"))
+    if incompatibility == "minimum-error-operands":
+        assert "min_error" not in prepared.inv_inputs
         model["mismatch_model"] = "pollution_event"
-        match = "min_error"
-    elif incompatibility == "boundary-policy":
-        model["bc_freq"] = "monthly"
-        match = "conflicts with data"
+        model["min_error"] = "residual"
+        match = "mf_mod"
     elif incompatibility == "source-layout":
         match = "source|Source"
     else:
@@ -349,7 +345,7 @@ multisector.build_multisector_model = forbidden
 multisector.materialize_multisector_inputs = forbidden
 stages.build_multisector_model = forbidden
 stages.materialize_multisector_inputs = forbidden
-stages.RhimeMergedData.from_options = forbidden
+stages.MergedData.from_options = forbidden
 stages.sample_rhime_model = forbidden
 stages.resolve_sampler = forbidden
 RhimeSampler.sample = forbidden
@@ -414,3 +410,22 @@ def test_sector_priors_and_model_arrays_share_materialization_and_skip_disabled_
             np.testing.assert_allclose(built.model[f"x_{suffix}_prior_mu"].get_value(),
                                        sensitivity.sum(("source", "nmeasure")))
             assert records[f"x_{suffix}"]["sigma"] == float(sensitivity.sum() + 1.)
+
+
+def test_one_saved_preparation_supports_different_model_floor_choices(tmp_path):
+    merged, options, *_ = synthetic_inputs(tmp_path)
+    manifest = stages.prepare(DataConfig.from_params(options, multisector=True), merged_data=merged,
+                              output_dir=tmp_path / "prepared")
+    prepared, data, generation = stages.load_preparation(manifest)
+    assert "min_error" not in prepared.inv_inputs
+    for floor, frequency in ((0.2, None), (0.6, "monthly")):
+        choices = {**model_options(.2), "mismatch_model": "pollution_event",
+                   "min_error": floor, "bc_freq": frequency}
+        model = resolve_model_options(choices, data_config=data)
+        inputs, priors = multisector.materialize_multisector_inputs(prepared, model)
+        np.testing.assert_allclose(inputs.min_error, floor)
+        built = multisector.build_multisector_model(inputs, model, priors=priors)
+        np.testing.assert_allclose(built.model["min_error"].get_value(), floor)
+        assert model.bc_freq == frequency
+    assert "min_error" not in prepared.inv_inputs
+    assert stages.load_preparation(manifest)[2] == generation

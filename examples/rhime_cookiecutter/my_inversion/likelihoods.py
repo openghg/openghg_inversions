@@ -6,7 +6,6 @@ import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.observation_error import (
-    AggregationError,
     validate_observation_error_arrays,
 )
 
@@ -15,7 +14,6 @@ def likelihood_builder(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
     mean: TensorVariable,
     output_dim: str,
     degrees_of_freedom: float = 4.0,
@@ -25,7 +23,6 @@ def likelihood_builder(
     Args:
         observations: Observed mole fractions.
         observation_error: Reported observation-error standard deviations.
-        aggregation_error: Validated fixed aggregation-error representation.
         mean: Completed forward-model concentration.
         output_dim: Observation dimension used by named PyMC variables.
         degrees_of_freedom: Positive Student-t degrees of freedom supplied as
@@ -35,10 +32,8 @@ def likelihood_builder(
         The observed Student-t variable, named ``y``.
 
     Raises:
-        ValueError: If aggregation error requires a multivariate likelihood.
+        ValueError: If degrees of freedom are not positive.
     """
-    if aggregation_error.mode not in {"none", "diagonal"}:
-        raise ValueError("This Student-t model assumes independent observations.")
     if degrees_of_freedom <= 0:
         raise ValueError("Student-t degrees of freedom must be positive.")
 
@@ -54,16 +49,7 @@ def likelihood_builder(
         pm.floatX(observation_error.transpose(output_dim).compute().values),
         dims=output_dim,
     )
-    aggregation_variance = pm.Data(
-        "aggregation_error_marginal_variance",
-        pm.floatX(aggregation_error.marginal_variance),
-        dims=output_dim,
-    )
-    epsilon = pm.Deterministic(
-        "epsilon",
-        pt.sqrt(reported_error**2 + aggregation_variance),
-        dims=output_dim,
-    )
+    epsilon = pm.Deterministic("epsilon", pt.abs(reported_error), dims=output_dim)
     observed = pm.StudentT(
         "y",
         nu=degrees_of_freedom,

@@ -198,9 +198,22 @@ def _centered_prepared():
 @pytest.mark.parametrize("predictions", [False, True])
 def test_prepared_single_save_reopen_and_tiny_runner(tmp_path, predictions):
     prepared = _centered_prepared()
-    path = tmp_path / "co2.nc"
-    prepared.save(path)
-    restored = Co2PreparedInputs.load(path)
+    from openghg_inversions.rhime.co2 import handoffs
+    from openghg_inversions.rhime.co2.co2_affine_output import (
+        produce_bucket_affine_flux_map, prepared_inputs_content_id,
+    )
+
+    _, native_mean = _prepared()
+    affine = produce_bucket_affine_flux_map(prepared, native_mean, prepared_inputs_id="before-save")
+    manifest = handoffs.save_preparation(
+        prepared, affine_artifact=affine, output_dir=tmp_path / "prepared",
+        start_date="2019-12-01", end_date="2020-02-01", domain="EUROPE",
+    )
+    preparation = handoffs.load_preparation(manifest)
+    restored = preparation.prepared
+    bound = handoffs.load_and_bind_affine_flux_map(preparation.affine_payload, preparation.payload)
+    assert bound.artifact.prepared_inputs_id == prepared_inputs_content_id(preparation.payload)
+    assert bound.artifact.prepared_inputs_id != "before-save"
     xr.testing.assert_allclose(restored.inv_inputs.H_bc_mass, prepared.inv_inputs.H_bc_mass)
     options = dict(use_bc=True, no_model_error=True, bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.01})
     inputs, priors = materialize_co2_inputs(prepared_inputs=restored, **options)
@@ -241,6 +254,16 @@ def test_prepared_single_save_reopen_and_tiny_runner(tmp_path, predictions):
     reopened = load_trace(trace_path)
     annotate_co2_trace(reopened, built, concentration_units="ppm")
     xr.testing.assert_identical(reopened[group].y, trace[group].y)
+    samples = handoffs.save_samples(
+        manifest, trace, actual_inference=sampler.describe(),
+        preparation_generation=preparation.generation, output_dir=tmp_path / "samples",
+    )
+    replayed = handoffs.load_samples(samples)
+    xr.testing.assert_identical(replayed.idata[group].y, trace[group].y)
+    xr.testing.assert_allclose(replayed.idata.observed_data.y, prepared.inv_inputs.mf)
+    restore_absolute_predictives(replayed.idata)
+    xr.testing.assert_identical(replayed.idata[group].y, trace[group].y)
+    assert replayed.bound.artifact.prepared_inputs_id == prepared_inputs_content_id(preparation.payload)
 
 
 def test_centered_prepared_with_absolute_diagnostic_save_reopen_build(tmp_path):
@@ -506,12 +529,14 @@ def test_default_boundary_prior_support_and_error_arrays_are_unchanged():
         np.testing.assert_array_equal(absolute[name].get_value(), centered[name].get_value())
 
 
-def test_linked_period_override_rejects_active_absolute_channel_at_direct_binding():
+def test_linked_period_override_rejects_baked_absolute_channel_at_direct_binding():
     prepared = _linked()
     co2 = prepared.co2_sensitivity.isel({str(prepared.co2_sensitivity.dims[-1]): 0}, drop=True)
-    absolute = prepared.o2_sensitivity.rename({str(prepared.o2_sensitivity.dims[-1]): "bc_region"})
+    absolute = prepared.o2_sensitivity.rename({str(prepared.o2_sensitivity.dims[-1]): "bc_region"}).assign_attrs(
+        boundary_sensitivity_preparation="sampled-period-expansion"
+    )
     prepared = replace(prepared, boundary_operands={"co2": _operands(co2)}, boundary_sensitivity={"o2": absolute})
-    with pytest.raises(ValueError, match="every active boundary channel"):
+    with pytest.raises(ValueError, match="raw spatial sensitivity"):
         build_rhime_co2_o2(
             prepared_inputs=prepared, independent_error_sd=xr.full_like(prepared.observations, 0.3), bc_freq="1D"
         )
@@ -583,3 +608,22 @@ def test_linked_composes_replaced_boundary_scientific_fields(monkeypatch):
         restore_absolute_predictives(trace)
     for group, variable in (("prior", "modelled_concentration"), ("prior_predictive", "y")):
         np.testing.assert_allclose(original_trace[group][variable], alternative_trace[group][variable], rtol=1e-12)
+
+
+def test_linked_cached_runner_allows_disabled_centered_channel(monkeypatch):
+    from openghg_inversions.rhime.co2 import co2_o2_cached_sigma_runner as runner
+
+    prepared = _linked()
+    operands = _operands(prepared.co2_sensitivity.isel({prepared.retained_prior.state_dim: 0}))
+    prepared = replace(prepared, boundary_operands={"co2": operands})
+
+    def reached_materialization(prepared, errors, boundaries):
+        assert "co2" not in boundaries
+        raise RuntimeError("enabled component selection complete")
+
+    monkeypatch.setattr(runner, "_materialize_co2_o2_replay_inputs", reached_materialization)
+    with pytest.raises(RuntimeError, match="enabled component selection complete"):
+        runner.run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
+            prepared_inputs=prepared, use_bc={"co2": False}, tau_hours=2.,
+            site_amplitude_prior={"pdf": "halfnormal", "sigma": .1},
+        )

@@ -8,6 +8,7 @@ import warnings
 
 import numpy as np
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytensor
 import pytensor.tensor as pt
 import pytest
@@ -74,7 +75,7 @@ def _step_context(
     with pm.Model() as model:
         state = pm.Normal("state", shape=1)
         sigma = pm.HalfNormal(
-            "sigma_site", sigma=0.75, shape=2, initval=pm.floatX([0.4, 0.4])
+            "sigma_site", sigma=0.75, shape=2, initval=floatX([0.4, 0.4])
         )
         initial_cache = target.refresh(np.array([0.4, 0.4]))
         shared = PytensorMarginalQuadraticCache(initial_cache)
@@ -154,6 +155,7 @@ def test_observed_graph_requires_explicit_cached_expression():
         make_cached_sigma_compound_step(**arguments)
 
 
+@pytest.mark.compiled_backend
 def test_amplitude_backend_preserves_state_and_runtime_configuration():
     configuration = (pytensor.config.mode, pytensor.config.linker, pytensor.config.floatX)
     *_, quadratic, arguments = _observed_context()
@@ -168,6 +170,7 @@ def test_amplitude_backend_preserves_state_and_runtime_configuration():
     assert configuration == (pytensor.config.mode, pytensor.config.linker, pytensor.config.floatX)
 
 
+@pytest.mark.compiled_backend
 def test_supplied_state_function_matches_public_density_without_covariance_work(monkeypatch):
     target, shared, model, point, quadratic, arguments = _observed_context()
     compound = make_cached_sigma_compound_step(**arguments, cached_state_logp=quadratic)
@@ -214,6 +217,7 @@ def _sample_observed_spawn_chains(*, observed=True):
     return target, shared, model, point, trace
 
 
+@pytest.mark.compiled_backend
 def test_observed_spawn_chains_preserve_shared_cache_and_generic_joint_density():
     target, shared, model, point, first = _sample_observed_spawn_chains()
     *_, second = _sample_observed_spawn_chains()
@@ -389,6 +393,7 @@ def test_sigma_step_refreshes_once_only_when_the_returned_value_changes(
 
 
 @pytest.mark.parametrize("dtype", ["float32", "float64"])
+@pytest.mark.compiled_backend
 def test_shared_quadratic_uses_active_pytensor_dtype(dtype: str) -> None:
     target = _target()
     cache = target.refresh(np.array([0.4, 0.4]))
@@ -487,7 +492,7 @@ def _sample_two_spawn_chains(seed: int):
     with pm.Model() as model:
         state = pm.Normal("state", shape=1)
         sigma = pm.HalfNormal(
-            "sigma_site", sigma=0.75, shape=2, initval=pm.floatX([0.4, 0.4])
+            "sigma_site", sigma=0.75, shape=2, initval=floatX([0.4, 0.4])
         )
         initial_cache = target.refresh(np.array([0.4, 0.4]))
         shared = PytensorMarginalQuadraticCache(initial_cache)
@@ -548,6 +553,7 @@ def test_two_spawn_chains_are_reproducible_and_emit_cached_diagnostics() -> None
 @pytest.mark.parametrize("family", ["halfnormal", "gamma", "uniform"])
 def test_compound_sampler_matches_independent_dense_posterior_moments(family) -> None:
     """The composed amplitude/state transition targets the intended posterior."""
+    import arviz as az
     from scipy.integrate import trapezoid
     from scipy import stats
 
@@ -620,7 +626,7 @@ def test_compound_sampler_matches_independent_dense_posterior_moments(family) ->
             "gamma": {"pdf": "gamma", "alpha": 2.0, "beta": 2.5},
             "uniform": {"pdf": "uniform", "lower": 0.1, "upper": 1.5},
         }[family]
-        amplitude = parse_prior("site_amplitude", prior, shape=1, initval=pm.floatX([0.4]))
+        amplitude = parse_prior("site_amplitude", prior, shape=1, initval=floatX([0.4]))
         pm.Potential("cached_likelihood", shared.log_likelihood(state))
         modelled_mean = pm.Deterministic(
             "modelled_mean",
@@ -639,7 +645,8 @@ def test_compound_sampler_matches_independent_dense_posterior_moments(family) ->
             rng=np.random.default_rng(710),
         )
         idata = pm.sample(
-            draws=800,
+            # The posterior means need enough effective samples to resolve 0.05.
+            draws=3200,
             tune=800,
             chains=2,
             cores=1,
@@ -649,14 +656,13 @@ def test_compound_sampler_matches_independent_dense_posterior_moments(family) ->
             compute_convergence_checks=False,
         )
 
-    assert np.asarray(idata.posterior["state"]).mean() == pytest.approx(
-        expected_state,
-        abs=0.05,
-    )
-    assert np.asarray(idata.posterior["site_amplitude"]).mean() == pytest.approx(
-        expected_amplitude,
-        abs=0.05,
-    )
+    for name, expected in [("state", expected_state), ("site_amplitude", expected_amplitude)]:
+        mcse = float(az.mcse(idata, var_names=[name])[name].item())
+        assert np.isfinite(mcse) and mcse <= 0.0125, (name, mcse)
+        assert float(az.rhat(idata, var_names=[name])[name].item()) < 1.01
+        error = abs(float(idata.posterior[name].mean()) - expected)
+        # Finer, expanded quadrature changes these oracle means by < 0.0002.
+        assert error <= min(0.05, 4.0 * mcse + 0.0002), (name, error, mcse)
     assert int(np.asarray(idata.sample_stats["diverging"]).sum()) == 0
 
 
@@ -750,7 +756,7 @@ def test_prior_cache_uses_inverse_transform(monkeypatch, graph_precision, bounde
     with pm.Model() as model:
         state = pm.Normal("state", shape=1)
         amplitude = (pm.Uniform("sigma_site", lower=0.1, upper=1.5, shape=2) if bounded else
-                     pm.HalfNormal("sigma_site", sigma=0.75, shape=2, initval=pm.floatX([0.8, 0.8])))
+                     pm.HalfNormal("sigma_site", sigma=0.75, shape=2, initval=floatX([0.8, 0.8])))
         mean = target.fixed_contribution + target.design @ state
     point = model.initial_point()
     step = PymcCachedSigmaNutsStep(

@@ -10,31 +10,26 @@ continue to use their existing owners.
 Dependency and precision
 ------------------------
 
-Centered boundary arithmetic is implemented privately in OGI. Observation
-alignment and integrated/time-resolved flux convolution use OpenGHG helpers.
-The normal dependency currently pins the merged OpenGHG revision
-``8d3d7b128591824256c10421839f37caaa637705``, which includes the fix for monthly
-residual fluxes in windows beginning mid-month. Install it with:
+Accurate boundary normalization and anomaly/mass arithmetic are owned by OGI.
+Observation alignment and flux convolution reuse OpenGHG helpers. The normal
+installation temporarily pins OpenGHG devel commit
+``b9a9d1f21f22d2f8dcca714283eb936c22338c57``, which includes the Numba
+``fp_x_flux`` algorithm. Both pip and uv installs receive that revision; VG
+callers need no separate dependency override. Replace this pin with a suitable
+released minimum before publishing OGI to PyPI. The local curtain kernel does
+not depend on an unmerged upstream change:
 
 .. code-block:: bash
 
    uv sync --locked
 
-The pin is temporary while that fix awaits an OpenGHG release. Before publishing
-OGI to PyPI, replace the Git dependency with a released minimum version containing
-the fix and regenerate the lockfile. Both the normal test environments and the
-``py312-surfacePilot`` environment require the capability. A missing fix fails
-the tests; only an explicit ``--surface-provider=unsupported`` comparison run
-omits resolved tests. OGI also probes the monthly behavior using small synthetic
-data before resolved preparation; this does not compute user data.
+The required surface tests exercise the installed provider. Missing required
+operations fail explicitly. Private provider imports may migrate to public
+operations later; that transition does not block this workflow.
 
-OpenGHG still supplies alignment and convolution through private helpers; those
-imports can migrate to public operations in a subsequent release. The local
-boundary operation computes anomaly and mass operands directly from the curtains,
-without using rounded legacy BC products.
-
-Boundary provenance records ``boundary_operator_owner="openghg_inversions"``;
-``boundary_provider_policy_revision`` retains the arithmetic policy identifier.
+Boundary provenance records ``boundary_operator_owner="openghg_inversions"``.
+The operation uses native boundary/transport inputs, never rounded absolute
+sensitivities, and records its arithmetic policy revision.
 
 OGI normalizes all four stable boundary curtains together, using an
 explicit tolerance for their total raw mass versus unity. Choose that tolerance
@@ -62,11 +57,18 @@ With existing OpenGHG data wrappers or xarray datasets:
        species="co2",
        transport={"biosphere": "time_resolved", "fossil": "integrated"},
        boundary_data=boundary_curtains,
+       boundary_representation="centered",
        boundary_reference=400.0,
        boundary_reference_units="ppm",
        boundary_mass_tolerance=justified_mass_tolerance,
        output_units="ppm",
    )
+
+Ordinary preparation is the default. Omit ``boundary_representation`` and the
+reference arguments to obtain absolute ``bc_n/e/s/w`` contributions. Supply
+``boundary_representation="centered"`` plus the reference to retain accurate
+anomaly/mass operands instead. A reference alone never selects centered inference;
+both representations require a justified mass tolerance.
 
 Each source is convolved independently. ``time_resolved`` includes both its
 resolved history and its monthly residual; adding an integrated response for
@@ -106,7 +108,8 @@ Retrieval and retained native flux
        start_date="2020-01-01", end_date="2020-02-01",
        site_options=selectors, flux_sources=["biosphere", "fossil"],
        surface_transport={"biosphere": "time_resolved", "fossil": "integrated"},
-       use_bc=True, reference=400.0, reference_units="ppm",
+       use_bc=True, boundary_representation="centered",
+       reference=400.0, reference_units="ppm",
        mass_tolerance=justified_mass_tolerance,
    )
 
@@ -132,8 +135,9 @@ ordinary CO₂ coherent reduction automatically; see :doc:`coherent_reduction` a
 Centering through preparation and inference
 -------------------------------------------
 
-Derive observation errors before filtering, using the existing
-``prepare_observation_errors`` owner. Project the native ``bc_anomaly_*`` and
+Apply supported observation selection first, then derive missing observation
+errors with ``prepare_observation_errors`` on the retained population. Explicit
+existing errors remain unchanged. Project the native ``bc_anomaly_*`` and
 ``bc_mass_*`` arrays through the same chosen BC basis using ``bc_sensitivity`` or
 ``build_sensitivities``. Their outputs are ``H_bc_anomaly`` (A), ``H_bc_mass`` (M)
 and scalar ``bc_reference`` (c). They retain spatial BC labels through gathering
@@ -147,10 +151,13 @@ flux basis for separate fields):
 
    from openghg_inversions.basis._helpers import bc_sensitivity
    from openghg_inversions.inversion_data import prepare_rhime_inputs_from_xarray
-   from openghg_inversions.rhime.preparation import prepare_observation_errors
+   from openghg_inversions.rhime.preparation import filter_observations, prepare_observation_errors
    from openghg_inversions.rhime.co2 import prepare_co2_inputs
 
-   with_errors = prepare_observation_errors({"MHD": site}, averaging_error=True)
+   selected, retained_selectors = filter_observations(
+       {"MHD": site}, selectors, filters=["daytime9to5"],
+   )
+   with_errors = prepare_observation_errors(selected, averaging_error=True)
    projected = bc_sensitivity(with_errors, chosen_boundary_basis)
    canonical = prepare_rhime_inputs_from_xarray(
        {name: data.drop_vars("fp_x_flux_sectoral") for name, data in projected.items()},
@@ -160,11 +167,13 @@ flux basis for separate fields):
    prepared = prepare_co2_inputs(canonical, coherent_reduction)
    prepared.save("centered-co2.nc")
 
-Selection filters preserve the operands. ``six_hr_mean`` uses common valid science
-rows; missing optional diagnostics do not choose those rows. ``daily_median`` is
-rejected for centered data. Absolute historical prepared files remain readable;
-centered files use schema version 2 and reject incomplete or already period-expanded
-operands. Old ``H_bc`` alone cannot be converted into accurate centered operands.
+Selection filters preserve aligned operands and scalar references. Preparation
+owns spatial ``bc_basis_algorithm="NESW"`` or explicit ``bc_basis_paths``;
+frequency and anchor belong to the model. Both representations are written in
+generic format version 3 with an explicit representation field. Known ordinary
+raw-v2 files remain readable; retired baked-v1 and ambiguous centered-v2 files
+must be regenerated. See :doc:`prepared_format_support` for the exact map.
+Old rounded ``H_bc`` alone cannot recover accurate centered operands.
 
 The ordinary CO₂ model and ordinary linked CO₂/O₂ model bind the raw operands to
 BC periods at model construction. Direct builders accept ``boundary_operands``
@@ -179,8 +188,10 @@ configuration, for example:
    frequency = "1D"
    anchor_time = "2020-01-01"
 
-Period choices apply to raw centered operands; already-expanded absolute
-sensitivities cannot be reinterpreted this way. Linked channels use one shared
+Period choices apply to both raw ordinary sensitivities and centered operands,
+using the same selection and period masks. A saved raw preparation can be reused
+with different supported periods. Already-expanded sensitivities cannot be
+reinterpreted with a period override. Linked channels use one shared
 period/anchor choice and must agree when both specify it. Their tables are
 ``channels.co2.boundary`` and ``channels.o2.boundary``. Anchors apply to fixed
 durations and must be omitted for calendar-month periods.

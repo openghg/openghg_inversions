@@ -307,10 +307,6 @@ def build_rhime_co2_o2(
     prepared = prepared_inputs
     boundaries = dict(getattr(prepared, "boundary_sensitivity", {}))
     operands = dict(getattr(prepared, "boundary_operands", {}))
-    if operands:
-        if tau_hours is not None:
-            raise ValueError("Centered boundaries do not support fixed-OU likelihoods.")
-        require_centered_precision()
     if use_bc is not None:
         if (
             not isinstance(use_bc, Mapping)
@@ -324,6 +320,10 @@ def build_rhime_co2_o2(
             if not enabled:
                 boundaries.pop(channel, None)
                 operands.pop(channel, None)
+    if operands:
+        if tau_hours is not None:
+            raise ValueError("Centered boundaries do not support fixed-OU likelihoods.")
+        require_centered_precision()
     _validate_channel_baseline_options(boundaries, bc_prior, bc_state_activity, offset_prior, offset_args, operands)
     materialized, boundaries, operands = _materialize_co2_o2_replay_inputs(
         prepared, independent_error_sd, boundaries, operands
@@ -442,8 +442,8 @@ def run_rhime_co2_o2_from_prepared_inputs(
         bc_prior: Channel-keyed independent boundary-scale priors; the CO2
             default is used for each enabled channel when omitted.
         bc_state_activity: Channel-keyed labelled fixed/active boundary policies.
-        bc_freq: Optional model-owned frequency for centered boundary periods.
-        bc_anchor_time: Optional timestamp anchoring centered boundary periods.
+        bc_freq: Optional model-owned frequency for raw boundary periods.
+        bc_anchor_time: Optional timestamp anchoring raw boundary periods.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
             with the same meanings as the CO2 offset component. Baseline terms

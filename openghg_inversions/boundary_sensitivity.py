@@ -70,41 +70,101 @@ class BoundaryAlignment:
 
         """
         observation_dim = "time" if "time" in sensitivity.dims else "nmeasure"
-        sensitivity = sensitivity.transpose("bc_region", observation_dim)
-        if observation_labels is not None:
-            labels = observation_labels.transpose(observation_dim)
-            sensitivity = sensitivity.sel({observation_dim: labels})
+        raw = sensitivity.rename("H_bc").to_dataset()
+        return cls(_expand_boundary_periods(
+            raw, observation_dim=observation_dim, frequency=frequency,
+            anchor_time=anchor_time, observation_labels=observation_labels,
+        ).H_bc)
 
-        time = sensitivity["time"].transpose(observation_dim)
-        if frequency is not None:
-            # Dummy construction below is eager, so materialize a lazy auxiliary
-            # time coordinate once rather than executing its graph for each lookup.
-            if hasattr(time.data, "__dask_graph__"):
-                time = time.compute()
-                sensitivity = sensitivity.assign_coords(time=(observation_dim, time.data))
-            period = make_freq_indicator(time, frequency, anchor_time=anchor_time)
-        else:
-            period = xr.zeros_like(time, dtype=int)
-        period = period.rename("bc_period")
-        mask = get_xr_dummies(period, return_sparse=False, cat_dim="bc_period")
-        expanded = (sensitivity.rename(bc_region="bc_curtain") * mask).stack(
-            bc_region=("bc_curtain", "bc_period")
+
+def _expand_boundary_periods(
+    raw: xr.Dataset,
+    *,
+    observation_dim: str,
+    frequency: str | None,
+    anchor_time: DatetimeLike | None,
+    observation_labels: xr.DataArray | None,
+) -> xr.Dataset:
+    """Select scientific rows and apply one period mask to all boundary operands."""
+    normalise_frequency(frequency)
+    if observation_labels is not None:
+        raw = raw.sel({observation_dim: observation_labels.transpose(observation_dim)})
+    if frequency is None:
+        period = xr.zeros_like(raw[observation_dim], dtype=int)
+    else:
+        if "time" not in raw.coords or raw.time.dims != (observation_dim,) or raw.time.dtype.kind != "M":
+            raise ValueError("Frequency-based boundary expansion requires a datetime time coordinate along observations.")
+        time = raw.time
+        if hasattr(time.data, "__dask_graph__"):
+            time = time.compute()
+            raw = raw.assign_coords(time=(observation_dim, time.data))
+        period = make_freq_indicator(time, frequency, anchor_time=anchor_time)
+    mask = get_xr_dummies(period.rename("bc_period"), return_sparse=False, cat_dim="bc_period")
+    result = (raw.rename(bc_region="bc_curtain") * mask).stack(
+        bc_region=("bc_curtain", "bc_period")
+    ).transpose("bc_region", observation_dim)
+    result.attrs = dict(raw.attrs)
+    for name in raw.data_vars:
+        result[name].attrs = dict(raw[name].attrs)
+        result[name].attrs.update(
+            boundary_sensitivity_preparation="sampled-period-expansion",
+            bc_frequency=frequency or "none",
+            bc_anchor_time=(
+                str(np.datetime64(anchor_time) if anchor_time is not None else time.values.min())
+                if frequency not in (None, "monthly") else "not-applicable"
+            ),
         )
-        data = expanded.transpose("bc_region", observation_dim).rename("H_bc")
-        data.attrs = dict(sensitivity.attrs)
-        effective_anchor = (
-            str(np.datetime64(anchor_time) if anchor_time is not None else time.values.min())
-            if frequency not in (None, "monthly")
-            else "not-applicable"
-        )
-        data.attrs.update(
-            {
-                "boundary_sensitivity_preparation": "sampled-period-expansion",
-                "bc_frequency": frequency or "none",
-                "bc_anchor_time": effective_anchor,
-            }
-        )
-        return cls(data)
+    return result
+
+
+def bind_boundary_sensitivity(
+    sensitivity: xr.DataArray,
+    observations: xr.DataArray,
+    *,
+    frequency: str | None = None,
+    anchor_time: DatetimeLike | None = None,
+) -> xr.DataArray:
+    """Select an ordinary boundary and expand raw spatial states at model binding.
+
+    Observation labels own the row order. Raw sensitivities can be reused with
+    different frequencies; already expanded sensitivities may be consumed only
+    without a period override. Direct callers may supply an independently named
+    state axis, which is retained when no temporal expansion is requested;
+    expansion produces the canonical ``bc_region`` curtain/period index.
+    Payloads stay borrowed and lazy until the model's explicit materialization
+    boundary.
+    """
+    validate_centered_boundary_periods(frequency, anchor_time)
+    native_dim = str(observations.dims[0])
+    raw_dim = native_dim if native_dim in sensitivity.dims else next(
+        str(dim) for dim in sensitivity.dims if dim in ("nmeasure", "time")
+    )
+    state_dim = next(str(dim) for dim in sensitivity.dims if dim != raw_dim)
+    labels = xr.DataArray(observations[native_dim].data, dims=raw_dim)
+    expanded = (
+        sensitivity.attrs.get("boundary_sensitivity_preparation") == "sampled-period-expansion"
+        or "bc_period" in sensitivity.coords
+        or isinstance(sensitivity.indexes.get(state_dim), pd.MultiIndex)
+    )
+    if expanded:
+        if frequency is not None or anchor_time is not None:
+            raise ValueError("Boundary period overrides require raw spatial sensitivity; regenerate baked inputs.")
+        aligned = sensitivity.sel({raw_dim: labels})
+    elif state_dim != "bc_region" and frequency is None and anchor_time is None:
+        # Direct scientific callers retain their independently named state axes
+        # when requesting no temporal expansion.
+        aligned = sensitivity.sel({raw_dim: labels})
+    else:
+        if state_dim != "bc_region":
+            sensitivity = sensitivity.rename({state_dim: "bc_region"})
+            state_dim = "bc_region"
+        aligned = _expand_boundary_periods(
+            sensitivity.rename("H_bc").to_dataset(), observation_dim=raw_dim,
+            frequency=frequency, anchor_time=anchor_time, observation_labels=labels,
+        ).H_bc
+    if raw_dim != native_dim:
+        aligned = aligned.rename({raw_dim: native_dim})
+    return aligned.transpose(native_dim, state_dim)
 
 
 def validate_boundary_operands(operands: xr.Dataset) -> bool:
@@ -218,35 +278,10 @@ def align_boundary_operands(
     if not validate_boundary_operands(operands):
         raise ValueError("Expected centered boundary operands.")
     observation_dim = "time" if "time" in operands.H_bc_anomaly.dims else "nmeasure"
-    raw = operands[["H_bc_anomaly", "H_bc_mass"]]
-    if observation_labels is not None:
-        raw = raw.sel({observation_dim: observation_labels.transpose(observation_dim)})
-    if frequency is None:
-        period = xr.zeros_like(raw[observation_dim], dtype=int)
-    else:
-        if "time" not in raw.coords or raw.time.dims != (observation_dim,) or raw.time.dtype.kind != "M":
-            raise ValueError("Frequency-based boundary expansion requires a datetime time coordinate along observations.")
-        time = raw.time
-        if hasattr(time.data, "__dask_graph__"):
-            time = time.compute()
-            raw = raw.assign_coords(time=(observation_dim, time.data))
-        period = make_freq_indicator(time, frequency, anchor_time=anchor_time)
-    period = period.rename("bc_period")
-    mask = get_xr_dummies(period, return_sparse=False, cat_dim="bc_period")
-    result = (raw.rename(bc_region="bc_curtain") * mask).stack(
-        bc_region=("bc_curtain", "bc_period")
-    ).transpose("bc_region", observation_dim)
-    result.attrs = dict(operands.attrs)
-    for name in raw.data_vars:
-        result[name].attrs = dict(operands[name].attrs)
-        result[name].attrs.update(
-            boundary_sensitivity_preparation="sampled-period-expansion",
-            bc_frequency=frequency or "none",
-            bc_anchor_time=(
-                str(np.datetime64(anchor_time) if anchor_time is not None else time.values.min())
-                if frequency not in (None, "monthly") else "not-applicable"
-            ),
-        )
+    result = _expand_boundary_periods(
+        operands[["H_bc_anomaly", "H_bc_mass"]], observation_dim=observation_dim,
+        frequency=frequency, anchor_time=anchor_time, observation_labels=observation_labels,
+    )
     result["bc_reference"] = operands.bc_reference
     return result
 

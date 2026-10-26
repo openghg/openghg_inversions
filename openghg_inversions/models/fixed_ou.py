@@ -10,6 +10,7 @@ from typing import Any, cast
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytensor.tensor as pt
 import xarray as xr
 from pytensor.gradient import DisconnectedType, grad_not_implemented
@@ -110,11 +111,14 @@ def _evaluate_whitened_fallback(
     Orthogonal projections still have absolute roundoff at the input scale;
     arbitrarily small solved components do not have guaranteed relative accuracy.
     """
-    basis, _ = np.linalg.qr(np.column_stack((factor, residual)), mode="complete")
+    joint = np.column_stack((factor, residual))
+    basis, _ = np.linalg.qr(joint, mode="complete")
     retained = min(factor.shape[0], factor.shape[1] + 1)
     joint_basis = basis[:, :retained]
-    factor_coordinates = joint_basis.T @ factor
-    residual_coordinates = joint_basis.T @ residual
+    # Preserve shared rounding for aligned factor and residual columns.
+    coordinates = joint_basis.T @ joint
+    factor_coordinates = coordinates[:, :-1]
+    residual_coordinates = coordinates[:, -1]
     left_vectors, singular_values, _ = np.linalg.svd(factor_coordinates, full_matrices=True)
     rotated_residual = left_vectors.T @ residual_coordinates
     inverse_scales = np.ones(retained, dtype=np.float64)
@@ -500,8 +504,8 @@ class FixedOuLowRank:
         amplitude = pt.atleast_1d(site_amplitude)
         site_index = pt.as_tensor_variable(self.site_index)
         return (
-            pm.floatX(self.diagonal_variance)
-            + pm.floatX(np.square(self.factor).sum(axis=1))
+            floatX(self.diagonal_variance)
+            + floatX(np.square(self.factor).sum(axis=1))
             + pt.square(amplitude[site_index])
         )
 

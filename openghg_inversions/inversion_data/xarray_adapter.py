@@ -4,7 +4,7 @@ The public :func:`prepare_rhime_inputs_from_xarray` adapter starts after data
 acquisition. It accepts site data already held in xarray objects, applies a
 retained :class:`~openghg_inversions.basis.basis_functions.BasisFunctions`
 object when only footprint-times-flux caches are available, and returns the
-same :class:`~openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs`
+same :class:`~openghg_inversions.inversion_data.prepared_inputs.PreparedInputs`
 contract used by the OpenGHG-backed preparation path.
 
 Each site-local input dataset must contain a ``time`` dimension and the
@@ -52,9 +52,9 @@ be nonempty, unique Python or NumPy strings in their intended order, and
 non-string labels are not coerced. Repeated source values inside a gathered
 ``(source, region_in_source)`` state MultiIndex are valid.
 
-Use :meth:`RhimePreparedInputs.save
-<openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.save>` and
-:meth:`~openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.load`
+Use :meth:`PreparedInputs.save
+<openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.save>` and
+:meth:`~openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.load`
 for durable canonical artifacts. Serialized or otherwise pre-stacked
 ``nmeasure`` data should not be passed back through this adapter.
 """
@@ -68,9 +68,13 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from openghg_inversions.basis.basis_functions import BasisFunctions
-from openghg_inversions.inversion_data.prepared_inputs import RhimePreparedInputs
-from openghg_inversions.inversion_inputs import DatetimeLike, make_inv_inputs
+from openghg_inversions.basis.basis_functions import (
+    BASIS_ARTIFACT_PATH_ATTR,
+    BASIS_ARTIFACT_SOURCE_ATTR,
+    BasisFunctions,
+)
+from openghg_inversions.inversion_data.prepared_inputs import PreparedInputs, _make_site_metadata
+from openghg_inversions.inversion_inputs import make_inv_inputs
 
 _CACHE_VARIABLES = ("fp_x_flux", "fp_x_flux_sectoral")
 _REQUIRED_OBSERVATION_VARIABLES = ("mf", "mf_error", "mf_repeatability", "mf_variability")
@@ -388,13 +392,13 @@ def _reject_unsupported_site_layout(data: xr.Dataset, *, context: str) -> None:
         raise ValueError(
             f"{context} contains a 'site' dimension. Dense Dataset(site, time) inputs are "
             "unsupported; supply an ordered mapping/DataTree of site-local Datasets or load "
-            "an established artifact with RhimePreparedInputs.load."
+            "an established artifact with PreparedInputs.load."
         )
     if "nmeasure" in data.dims:
         raise ValueError(
             f"{context} contains an 'nmeasure' dimension. Pre-stacked inputs are unsupported; "
             "supply an ordered mapping/DataTree of site-local time-indexed Datasets or load "
-            "an established artifact with RhimePreparedInputs.load."
+            "an established artifact with PreparedInputs.load."
         )
 
 
@@ -874,11 +878,7 @@ def prepare_rhime_inputs_from_xarray(
     basis_functions: BasisFunctions,
     sites: Sequence[str] | None = None,
     averaging_period: str | Sequence[str | None] | Mapping[str, str | None] | None = None,
-    bc_freq: str | None = None,
-    min_error: str | dict[str, float] | float = 0.0,
-    min_error_per_site: bool = False,
-    start_date: DatetimeLike | None = None,
-) -> RhimePreparedInputs:
+) -> PreparedInputs:
     """Create canonical RHIME inputs from source-neutral xarray site data.
 
     Input must be an ordered mapping or a DataTree with one direct child
@@ -906,10 +906,10 @@ def prepare_rhime_inputs_from_xarray(
     gathered source-specific state MultiIndex remain valid.
 
     Persist and reopen canonical artifacts with
-    :meth:`RhimePreparedInputs.save
-    <openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.save>`
+    :meth:`PreparedInputs.save
+    <openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.save>`
     and
-    :meth:`~openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.load`;
+    :meth:`~openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.load`;
     do not pass serialized ``nmeasure`` data back to this adapter.
     The reserved ``fixed_baseline`` input is rejected until a reusable
     semantic Baseline component is available; use sampled ``H_bc`` or omit it.
@@ -923,12 +923,6 @@ def prepare_rhime_inputs_from_xarray(
         sites: Optional site selection and order.
         averaging_period: One common period, a site-aligned sequence or
             mapping, or ``None``.
-        bc_freq: Frequency used to expand sampled ``H_bc`` contributions.
-        min_error: Minimum model error accepted by ``make_inv_inputs``.
-        min_error_per_site: Whether calculated minimum errors vary by site.
-            Defaults to ``False``, matching the OpenGHG-backed RHIME
-            preparation route.
-        start_date: Optional frequency anchor passed to ``make_inv_inputs``.
 
     Returns:
         Canonical prepared inputs accepted by
@@ -956,21 +950,23 @@ def prepare_rhime_inputs_from_xarray(
     inv_inputs = make_inv_inputs(
         prepared_sites,
         sites=site_order,
-        bc_freq=bc_freq,
-        min_error=min_error,
-        min_error_per_site=min_error_per_site,
-        start_date=start_date,
         missing_data_vars="error",
     )
     _validate_retained_site_order(inv_inputs, site_order)
 
-    return RhimePreparedInputs.from_legacy_inputs(
+    metadata = dict(basis_functions.metadata)
+    metadata[BASIS_ARTIFACT_SOURCE_ATTR] = basis_functions.basis_artifact_source or "supplied"
+    if basis_functions.basis_artifact_path is not None:
+        metadata[BASIS_ARTIFACT_PATH_ATTR] = basis_functions.basis_artifact_path
+    if metadata != basis_functions.metadata:
+        basis_functions = basis_functions.with_metadata(metadata)
+    return PreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=basis_functions,
-        sites=tuple(site_order),
-        averaging_period=_normalise_averaging_period(averaging_period, site_order),
-        basis_artifact_source=basis_functions.basis_artifact_source or "supplied",
-        basis_artifact_path=basis_functions.basis_artifact_path,
+        site_metadata=_make_site_metadata(
+            sites=site_order,
+            averaging_period=_normalise_averaging_period(averaging_period, site_order),
+        ),
     )
 
 

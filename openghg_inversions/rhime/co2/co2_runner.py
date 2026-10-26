@@ -352,8 +352,8 @@ def materialize_co2_inputs(
         use_bc: Include prepared boundary sensitivity.
         bc_prior: Optional boundary-scale prior, enabled only with ``use_bc``.
         bc_state_activity: Optional boundary active/fixed-state policy.
-        bc_freq: Optional model-owned frequency for centered boundary periods.
-        bc_anchor_time: Optional timestamp anchoring centered boundary periods.
+        bc_freq: Optional model-owned frequency for raw boundary periods.
+        bc_anchor_time: Optional timestamp anchoring raw boundary periods.
         offset_prior: Optional prior enabling concentration offsets.
         offset_args: Offset frequency, ``per_site`` and ``drop_first`` settings.
 
@@ -384,7 +384,7 @@ def materialize_co2_inputs(
             "pass its options in likelihood_kwargs."
         )
     prepared = prepared_inputs
-    if "H_bc_anomaly" in prepared.inv_inputs:
+    if use_bc and "H_bc_anomaly" in prepared.inv_inputs:
         if likelihood_builder is not None:
             raise ValueError("Centered boundaries do not support custom or fixed-OU likelihoods.")
         require_centered_precision()
@@ -454,8 +454,8 @@ def build_co2_from_materialized(
         model_inputs: Selected scientific arrays already materialized together.
         prepared_inputs: Preparation supplying aggregation mode and provenance.
         priors: Materialized prior parameters under their concrete graph names.
-        bc_freq: Optional model-owned frequency for centered boundary periods.
-        bc_anchor_time: Optional timestamp anchoring centered boundary periods.
+        bc_freq: Optional model-owned frequency for raw boundary periods.
+        bc_anchor_time: Optional timestamp anchoring raw boundary periods.
 
     Returns:
         Constructed model with scientific variable roles and bounded metadata.
@@ -465,7 +465,7 @@ def build_co2_from_materialized(
             scientific components reject the supplied choices.
     """
     prepared = prepared_inputs
-    if "H_bc_anomaly" in prepared.inv_inputs:
+    if use_bc and "H_bc_anomaly" in prepared.inv_inputs:
         if likelihood_builder is not None:
             raise ValueError("Centered boundaries do not support custom or fixed-OU likelihoods.")
         require_centered_precision()

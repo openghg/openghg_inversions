@@ -22,12 +22,12 @@ def test_offline_scientific_chain_and_absolute_saved_replay(tmp_path, request, m
     assert json.loads(retained.attrs["surface_transport"]) == {
         "biosphere": "time_resolved" if mixed_transport else "integrated", "fossil": "integrated",
     }
-    np.testing.assert_allclose(retained.mf_mod_sectoral.sel(source="biosphere"), [.3, .4, .3])
-    np.testing.assert_allclose(retained.mf_mod_sectoral.sel(source="fossil"), [4.5, 6., 4.5])
+    np.testing.assert_allclose(retained.mf_mod_sectoral.sel(source="biosphere"), [-.2, 0., .6], atol=1e-12)
+    np.testing.assert_allclose(retained.mf_mod_sectoral.sel(source="fossil"), [5., 4., 5.])
     np.testing.assert_allclose(retained.bc_mod, 400.05, rtol=0, atol=1e-12)
-    np.testing.assert_allclose(canonical.inv_inputs.mf, [402.5, 402.5, 403.])
-    # Mean of the individually derived errors, not quadrature after averaging.
-    np.testing.assert_allclose(canonical.inv_inputs.mf_error, [.75, .75, (.5 + np.sqrt(.05)) / 2])
+    np.testing.assert_allclose(canonical.inv_inputs.mf, [404., 402.5, 403.5])
+    # Errors are derived on the selected population, with original rows retained.
+    np.testing.assert_allclose(canonical.inv_inputs.mf_error, [.5, .5, np.sqrt(.05)])
     np.testing.assert_allclose(canonical.inv_inputs.H_bc_mass, .5)
     absolute_bc = canonical.inv_inputs.H_bc_anomaly + 400 * canonical.inv_inputs.H_bc_mass
     np.testing.assert_allclose(absolute_bc.transpose("bc_region", "nmeasure"), [[199.975] * 3, [200.075] * 3])
@@ -35,7 +35,7 @@ def test_offline_scientific_chain_and_absolute_saved_replay(tmp_path, request, m
 
     # Independent two-cell dense Gaussian oracle. A shared bucket and symmetric
     # covariance give Pi=(1/2,1/2); the omitted contrast retains nonzero variance.
-    h = np.array([[1.2, 3.6], [1.6, 4.8], [1.2, 3.6]])
+    h = np.array([[2.4, 2.4], [1.6, 2.4], [.8, 4.8]])
     b = .04 * np.array([[1., np.exp(-1.)], [np.exp(-1.), 1.]])
     pi = np.array([[.5, .5]])
     c_alpha = pi @ b @ pi.T
@@ -46,7 +46,9 @@ def test_offline_scientific_chain_and_absolute_saved_replay(tmp_path, request, m
     np.testing.assert_allclose(reduction.effective_observation_operator, effective)
     np.testing.assert_allclose(reduction.observation_intercept, h @ [.9, 1.1] - effective[:, 0])
     np.testing.assert_allclose(reduction.unresolved_observation_covariance, residual, atol=1e-14)
-    assert np.diag(residual).min() > 0
+    # Equal first-row cell sensitivities leave no unresolved spatial contrast.
+    assert np.diag(residual)[0] == pytest.approx(0.0, abs=1e-14)
+    assert (np.diag(residual)[1:] > 0).all()
     xr.testing.assert_allclose(prepared.inv_inputs.H_bc_mass, canonical.inv_inputs.H_bc_mass)
 
     # Arbitrary sampled BC factors preserve the original multiplicative model.
@@ -88,7 +90,7 @@ def test_mocked_fresh_getters_match_supplied_scientific_preparation(monkeypatch)
         species="co2", site_options=SiteOptions.from_inputs(sites=["TOY"], averaging_period="3h"),
         domain="EUROPE", start_date="2020-01-16", end_date="2020-01-17", flux_sources=list(fluxes),
         use_bc=True, surface_transport={source: "integrated" for source in fluxes},
-        reference=400., reference_units="ppm", mass_tolerance=1e-6,
+        boundary_representation="centered", reference=400., reference_units="ppm", mass_tolerance=1e-6,
     )
     assert requests[0]["allow_older_flux"] is False
     for name in ("fp_x_flux_sectoral", "mf_mod", "bc_anomaly_n", "bc_mass_n", "bc_reference", "bc_mod"):
@@ -110,12 +112,10 @@ def test_required_provider_missing_capability_fails_end_to_end_gate(tmp_path):
 
     (tmp_path / "conftest.py").write_text(
         "import pytest\n"
-        "from openghg_inversions.inversion_data import surface\n"
+        "import openghg.analyse._modelled_obs as provider\n"
         "@pytest.fixture(autouse=True)\n"
         "def broken_provider(monkeypatch):\n"
-        "    def missing():\n"
-        "        raise RuntimeError('injected missing residual capability')\n"
-        "    monkeypatch.setattr(surface, '_require_residual_month_support', missing)\n"
+        "    monkeypatch.delattr(provider, 'fp_x_flux_time_resolved')\n"
     )
     (tmp_path / "test_gate.py").write_text(
         "from tests.test_surface_centered_integration import "
@@ -124,12 +124,12 @@ def test_required_provider_missing_capability_fails_end_to_end_gate(tmp_path):
     repo = Path(__file__).resolve().parents[1]
     result = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "tests.surface_provider",
-         "--confcutdir", str(tmp_path), "--surface-provider=required",
+         "--confcutdir", str(tmp_path),
          str(tmp_path / "test_gate.py") + "::test_offline_scientific_chain_and_absolute_saved_replay[True]"],
         cwd=repo, env={**os.environ, "PYTHONPATH": str(repo)},
         capture_output=True, text=True, timeout=120,
     )
     assert result.returncode == 1, result.stdout + result.stderr
-    assert "injected missing residual capability" in result.stdout
+    assert "convolution helpers" in result.stdout
     assert "1 failed" in result.stdout
     assert "skipped" not in result.stdout

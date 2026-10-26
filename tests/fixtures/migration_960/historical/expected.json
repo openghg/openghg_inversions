@@ -1,0 +1,239 @@
+{
+  "source_ref": "0e5d6ef76eb724da8cee1b780633578bdc05f2b4",
+  "evidence": "Hand-transcribed from named released source bodies; runner verifies selected values without acquisition or sampling.",
+  "routes": {
+    "python_rhime": {
+      "draws": 1000,
+      "burn": 0,
+      "tune": 1000,
+      "chains": 4,
+      "output_format": "inv_out",
+      "save_trace": false,
+      "save_inversion_output": true,
+      "filename_convention": "rhime",
+      "sigma_prior": null
+    },
+    "installed_cli_dispatch": {
+      "draws": 1000,
+      "burn": 0,
+      "tune": 1000,
+      "chains": 4,
+      "output_format": "inv_out",
+      "save_trace": false,
+      "save_inversion_output": true,
+      "filename_convention": "rhime",
+      "sigma_prior": null
+    },
+    "ordinary_wrapper": {
+      "draws": 1000,
+      "burn": 0,
+      "tune": 1000,
+      "chains": 4,
+      "output_format": "legacy",
+      "save_trace": false,
+      "save_inversion_output": false,
+      "filename_convention": "legacy",
+      "sigma_prior": null
+    },
+    "explicit_wrapper": {
+      "draws": 7,
+      "burn": 2,
+      "tune": 3,
+      "chains": 2,
+      "output_format": "legacy",
+      "save_trace": false,
+      "save_inversion_output": false,
+      "filename_convention": "legacy",
+      "sigma_prior": {
+        "pdf": "uniform",
+        "lower": 0.2,
+        "upper": 0.4
+      }
+    },
+    "true_legacy_fixedbasis": {
+      "nit": 250000,
+      "burn": 50000,
+      "tune": 125000,
+      "nchain": 2,
+      "output_format": "legacy_fixedbasis",
+      "save_trace": false,
+      "save_inversion_output": false,
+      "xprior": {
+        "pdf": "truncatednormal",
+        "mu": 1.0,
+        "sigma": 1.0,
+        "lower": 0.0
+      },
+      "bcprior": {
+        "pdf": "truncatednormal",
+        "mu": 1.0,
+        "sigma": 0.1,
+        "lower": 0.0
+      },
+      "sigprior": {
+        "pdf": "uniform",
+        "lower": 0.1,
+        "upper": 3
+      }
+    }
+  },
+  "observed_mock_sampling": {
+    "nit": 7,
+    "draws_passed_to_pymc": 7,
+    "burn": 2,
+    "tune_passed_separately": 3,
+    "retained_draws_per_chain": 5,
+    "retained_draw_coordinates": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "reason": "inferpymc passes draws=nit (source inspection); RhimeSampler burn slicing executed with pm.sample replaced by a synthetic trace. Tune is not part of nit. No sampling executed."
+  },
+  "scientific_cases": {
+    "chain_summary": {
+      "input_chains": [
+        [
+          1,
+          3
+        ],
+        [
+          9,
+          11
+        ]
+      ],
+      "released_chain0_mean": 2,
+      "modern_all_chain_mean": 6,
+      "reason": "Released convert_idata_to_dataset selects chain=0; current merge_trace_groups retains chain and stats reduces chain/draw. Arithmetic witness, not an inversion."
+    },
+    "pollution_from_obs_with_bc_and_offset": {
+      "observation": 20,
+      "bc": 10,
+      "offset": 3,
+      "legacy_pollution_event": 10,
+      "modern_pollution_event": 7,
+      "reason": "Legacy preserve_legacy_likelihood passes boundary_mean only; modern baseline includes offset. Scientific change, not a spelling rewrite."
+    },
+    "pollution_from_obs_no_bc_with_offset": {
+      "observation": 20,
+      "offset": 3,
+      "legacy_pollution_event": 20.00002,
+      "modern_pollution_event": 17,
+      "reason": "Legacy baseline=None uses abs(Y)+1e-6*mean(Y); modern baseline includes offset."
+    },
+    "no_model_error": {
+      "observations": [
+        20,
+        20
+      ],
+      "observation_error": [
+        0,
+        2
+      ],
+      "minimum_error": [
+        5,
+        5
+      ],
+      "released_epsilon": [
+        2e-11,
+        2
+      ],
+      "released_disconnected_sigma": true,
+      "reason": "Legacy no_model_error uses max(abs(error),1e-12*nanmean(Y)) and retains unused sigma. Modern fixed_error removes sigma and ignores minimum_error; additive compatibility floor is a separate route."
+    },
+    "additive_no_model_error": {
+      "observation_error": 2,
+      "minimum_error": 5,
+      "released_epsilon": 5,
+      "modern_fixed_error_epsilon": 2,
+      "reason": "Wrapper additive/no_model_error selects the compatibility minimum-error floor. Mechanical conversion to fixed_error alone changes science."
+    }
+  },
+  "effective_defaults_source_inspection": {
+    "rhime_and_ordinary_wrapper": {
+      "x_prior": {
+        "pdf": "lognormal",
+        "mean": 1.0,
+        "stdev": 1.0,
+        "reparameterise": true
+      },
+      "bc_prior": {
+        "pdf": "truncatednormal",
+        "mu": 1.0,
+        "sigma": 0.05,
+        "lower": 0.0
+      },
+      "sigma_prior": {
+        "pdf": "uniform",
+        "lower": 0.0,
+        "upper": 0.1
+      },
+      "offset_prior": {
+        "pdf": "normal",
+        "mu": 0,
+        "sigma": 1
+      },
+      "use_bc": true,
+      "add_offset": false,
+      "sigma_per_site": true,
+      "sigma_freq": null,
+      "sigma_freq_anchor": "2019-01-01",
+      "pollution_events_from_obs": false,
+      "power": 1.99,
+      "min_error": 0.0,
+      "reason": "params.make_rhime_runner_setup, specs.DEFAULT_* priors and _model_building fallback; RHIME fixture explicitly chooses pollution_event, wrapper chooses it itself."
+    },
+    "direct_inferpymc_not_fixedbasisMCMC": {
+      "nit": 20000,
+      "burn": 10000,
+      "tune": 10000,
+      "nchain": 4,
+      "xprior": {
+        "pdf": "lognormal",
+        "mean": 1.0,
+        "stdev": 1.0,
+        "reparameterise": true
+      },
+      "bcprior": {
+        "pdf": "truncatednormal",
+        "mu": 1.0,
+        "sigma": 0.05,
+        "lower": 0.0
+      },
+      "sigprior": {
+        "pdf": "uniform",
+        "lower": 0.1,
+        "upper": 3.0
+      },
+      "offsetprior": {
+        "pdf": "normal",
+        "mu": 0,
+        "sigma": 1
+      },
+      "reason": "inferpymc signature and _prepare_builder_priors, not defaults for wrapper or fixedbasisMCMC"
+    }
+  },
+  "observed_errors": {
+    "python_omits_mismatch_model": "A standard RHIME run requires a built-in or custom likelihood.",
+    "true_legacy_rejects_modern_draws": "--legacy-fixedbasis does not support parameter(s): draws. Use legacy fixedbasis/inferpymc option names; RHIME-only options are not translated in this mode."
+  },
+  "path_rules_source_inspection": {
+    "source": "rhime/params.py params_from_config; basis/_functions.py basis and basis_boundary_conditions; rhime/outputs.py _resolve_output_path",
+    "invocation_directory": "/example/run",
+    "ini_directory": "/example/config",
+    "original": {
+      "outputpath": "out",
+      "basis_directory": "basis",
+      "bc_basis_directory": "bc",
+      "domain": "EUROPE"
+    },
+    "effective": {
+      "output_directory": "/example/run/out",
+      "basis_domain_directory": "/example/run/basis/EUROPE",
+      "bc_domain_directory": "/example/run/bc/EUROPE"
+    },
+    "status": "Source inspection only for released paths; current invocation-relative behavior is executed by resources/invocation.ini."
+  }
+}

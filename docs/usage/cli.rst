@@ -60,8 +60,7 @@ scientific inputs:
 
 The configured model, sampler and output choices govern execution and requested
 products. Original requested dates and domain must be supplied explicitly or
-retained in preparation provenance. ``rhime run-co2`` remains an alias for this
-configured route. See :doc:`co2_model_family` for its scientific prerequisites.
+retained in preparation provenance. See :doc:`co2_model_family` for its scientific prerequisites.
 
 Saved standard and multisector phases
 --------------------------------------
@@ -73,6 +72,41 @@ choices. Sampling and postprocessing do not require a full configuration file.
 Select ``--model multisector`` for the same one-manifest command forms with
 sector-labelled inputs. See :doc:`staged_workflow` for the complete
 preparation/two-model/two-output sequence and the separate CO2 interface.
+
+.. _rhime-cli-command-retirement:
+
+Removed CLI commands
+--------------------
+
+Modern development uses the following finite command-name migration. The old
+executable and full-run aliases are unavailable. Update existing scripts to the
+canonical routes.
+
+.. list-table:: Accepted command replacements
+   :header-rows: 1
+
+   * - Retire
+     - Canonical replacement
+   * - ``openghg-inversions`` executable
+     - The same subcommands under ``rhime``
+   * - ``run-rhime`` under either executable
+     - ``rhime run --model standard`` or ``rhime run``
+   * - ``run-rhime-multisector`` under either executable
+     - ``rhime run --model multisector``
+   * - ``run-rhime-nested`` under either executable
+     - ``rhime run --model nested``
+   * - ``run-co2`` under either executable
+     - ``rhime run --model co2``
+
+The package has one installed executable, ``rhime``. Positional dates,
+``--kwargs``, effective configuration, date/output overrides, scientific
+execution, outputs and artifact contracts retain their meanings. No replacement
+argument syntax is agreed: positional dates and ``--kwargs`` remain open for
+discussion and possible revision in a separate argument-design change. Their
+current preservation applies to this command-name migration, not a final syntax
+decision. The Python package, distribution and installation
+names do not change. See :doc:`legacy_and_migration` for the evidence gate;
+broader Python symbols/imports require their own explicit replacement maps.
 
 Python model selection and compatibility
 ----------------------------------------
@@ -96,15 +130,49 @@ OpenGHG acquisition or native-reduction preparation route. The
 their existing ``prepared_inputs`` interfaces and trace returns. Linked recipes are not choices for the configuration-driven ``rhime run`` command.
 See :doc:`co2_model_family` for the TOML configuration and handoff commands.
 
-``openghg-inversions`` and its ``run-rhime``, ``run-rhime-multisector`` and
-``run-rhime-nested`` subcommands remain supported through the 0.9 compatibility
-cycle. Both executables expose the same command set. The existing runner imports and
-shared handoff/assembly names listed here remain aliases to their implementations: ``run_standard`` is
-``run_standard``, ``run_rhime_multisector`` is ``run_multisector``, and
-``run_rhime_nested`` is ``run_nested``. No argument conversion or warning is
-added to these aliases. Shared ``MergedData`` and ``PreparedInputs`` retain the
-``RhimeMergedData`` and ``RhimePreparedInputs`` aliases and unchanged serialized
-schemas. ``assemble_inputs`` retains its former ``assemble_rhime_inputs`` import.
+The finite CLI names listed above are absent from the interface under the
+:doc:`agreed development boundary <legacy_and_migration>`. The separately
+approved five-name Python map below defines the required alias removals;
+broader Python naming/types/module moves need separately agreed maps.
+
+.. _rhime-python-alias-retirement:
+
+Removed Python aliases
+~~~~~~~~~~~~~~~~~~~~~~
+
+Use the canonical names in new Python calls and imports. These five aliases
+are unavailable, including naming-only forwarding aliases. Their canonical
+replacements remain supported.
+
+.. list-table:: Accepted Python alias replacements
+   :header-rows: 1
+
+   * - Retire
+     - Canonical name
+   * - ``run_rhime_multisector``
+     - ``run_multisector``
+   * - ``run_rhime_nested``
+     - ``run_nested``
+   * - ``RhimeMergedData``
+     - ``MergedData``
+   * - ``RhimePreparedInputs``
+     - ``PreparedInputs``
+   * - ``assemble_rhime_inputs``
+     - ``assemble_inputs``
+
+The canonical callable/class objects, constructors, argument/default meanings,
+result contents, scientific behavior and borrowed/lazy execution guarantees are
+preserved. Import-name retirement must not silently reinterpret persisted
+scientific contents or incidentally rename scientific variables and coordinates.
+Supported artifact formats/versions and explicit conversion or rejection of
+unsupported inputs are specified independently; this naming change promises no
+automatic compatibility with 0.7 artifacts. Broader public names remain outside
+this finite map. The separate existing ``run_rhime``, ``RhimeRunSpec`` and ``RhimeResult``
+migrations retain their own contracts; there is no blanket result-wrapper exemption.
+The separately approved
+:ref:`prepared-input factory removal <prepared-input-factory-retirement>` has its
+own canonical-constructor replacement; it is not a sixth alias.
+
 The obsolete ``with_prepared_sites`` and ``with_prepared_rhime_sites`` run-spec
 helpers are removed; use the retained sites on the prepared handoff directly.
 
@@ -212,12 +280,11 @@ For a multisector batch run, only the config and subcommand need to change:
        --config "$INI_FILE" \
        --output-path "$OUTPUT_DIR"
 
-The historical ``run_hbmcmc.py`` entry point remains a compatibility wrapper
-for supported older fixedbasis-style INI files. It does not turn such a file
-into a multisector configuration. For new batch jobs, start from the RHIME
-template, use ``flux_sources`` for standard runs, and configure the sector
-sources described in :doc:`rhime` before selecting
-``run-rhime-multisector``.
+The historical ``run_hbmcmc.py`` entry point is removed. Convert fixedbasis-style
+settings explicitly or retain matching older software. For modern batch jobs,
+start from the RHIME template, use ``flux_sources`` for standard runs, and
+configure the sector sources described in :doc:`rhime` before selecting
+``rhime run --model multisector``.
 
 Merging PARIS outputs
 ---------------------
@@ -228,7 +295,7 @@ templates from their schema:
 
 .. code-block:: console
 
-   $ openghg-inversions merge-paris-outputs \
+   $ rhime merge-paris-outputs \
        SF6_EUROPE_PARIS_flux_2019-01-01.nc \
        SF6_EUROPE_PARIS_flux_2020-01-01.nc \
        --output SF6_EUROPE_PARIS_flux_2019-2020.nc

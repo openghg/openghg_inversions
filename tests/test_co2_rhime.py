@@ -12,6 +12,7 @@ import dask.array as da
 from dask import delayed
 import pandas as pd
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytest
 from scipy.stats import multivariate_normal
 import xarray as xr
@@ -860,7 +861,7 @@ def test_co2_operations_resolves_scalar_sigma_cache_before_model(
     assert {"modelled_concentration", "sigma_global", "epsilon", "y"} <= set(
         model.named_vars
     )
-    assert model["y"].dtype == str(pm.floatX(0.0).dtype)
+    assert model["y"].dtype == str(floatX(0.0).dtype)
     point = model.initial_point()
     point["sigma_global_log__"] = np.asarray(np.log(0.5))
     mean, _ = _initial_mean_and_observed_logp(model)

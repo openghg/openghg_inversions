@@ -7,6 +7,9 @@ and coordinates the compound sampler for site amplitudes and model states.
 
 from __future__ import annotations
 
+from openghg_inversions.boundary_sensitivity import bind_boundary_sensitivity
+from openghg_inversions.inversion_inputs import DatetimeLike
+
 from collections.abc import Mapping, Sequence
 import copy
 import json
@@ -224,6 +227,8 @@ def build_rhime_co2_cached_sigma(
     site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     use_bc: bool = False,
+    bc_freq: str | None = None,
+    bc_anchor_time: DatetimeLike | None = None,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
     offset_prior: PriorArgs | None = None,
@@ -241,6 +246,8 @@ def build_rhime_co2_cached_sigma(
         initial_site_amplitudes: Positive scalar or site mapping in the same
             units; defaults to the prior support point.
         use_bc: Include prepared boundary sensitivity ``H_bc``.
+        bc_freq: Optional model-owned period for raw ordinary boundaries.
+        bc_anchor_time: Optional origin for fixed-duration boundary periods.
         bc_prior: Optional boundary-scaling prior.
         bc_state_activity: Optional active/fixed boundary-state policy.
         offset_prior: Optional offset prior; omit to disable the component.
@@ -254,7 +261,7 @@ def build_rhime_co2_cached_sigma(
         ValueError: If component options contradict one another, prepared
             arrays are invalid, or fixed OU mappings or parameters are invalid.
     """
-    if "H_bc_anomaly" in prepared_inputs.inv_inputs:
+    if use_bc and "H_bc_anomaly" in prepared_inputs.inv_inputs:
         raise ValueError("Centered boundaries do not support cached likelihoods.")
     if not use_bc and (bc_prior is not None or bc_state_activity is not None):
         raise ValueError("bc_prior and bc_state_activity require use_bc=True.")
@@ -277,6 +284,13 @@ def build_rhime_co2_cached_sigma(
         prior_covariance,
         covariance_dim=str(prior_covariance.dims[-1]),
     )
+    boundary = None
+    if use_bc:
+        boundary = bind_boundary_sensitivity(
+            model_inputs["H_bc"], model_inputs["mf"], frequency=bc_freq, anchor_time=bc_anchor_time,
+        )
+    elif bc_freq is not None or bc_anchor_time is not None:
+        raise ValueError("Boundary period choices require use_bc=True.")
     cached_model = build_co2_cached_sigma_model(
         model_inputs["H"],
         retained_prior=retained_prior,
@@ -288,7 +302,7 @@ def build_rhime_co2_cached_sigma(
         site_amplitude_prior=site_amplitude_prior,
         initial_site_amplitudes=initial_site_amplitudes,
         state_activity=cast(StateActivity | None, _state_activity_from_inputs(model_inputs)),
-        boundary_sensitivity=model_inputs.get("H_bc") if use_bc else None,
+        boundary_sensitivity=boundary,
         bc_prior=bc_prior,
         bc_state_activity=bc_state_activity,
         offset_prior=offset_prior,

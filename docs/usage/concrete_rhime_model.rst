@@ -2,7 +2,7 @@ Standard and multisector RHIME models
 =====================================
 
 This page makes the model graph behind :func:`run_standard` and
-:func:`run_rhime_multisector` explicit. The advanced CO₂-only and linked
+:func:`run_multisector` explicit. The advanced CO₂-only and linked
 CO₂/O₂ graphs have their canonical home in :doc:`co2_models`. This page has two
 purposes:
 
@@ -30,7 +30,7 @@ The current builders
 
 Each recipe directly composes one readable concrete graph. The standard graph
 lives beside :func:`run_standard` in ``openghg_inversions.rhime.standard``; the
-multisector graph lives beside :func:`run_rhime_multisector` in
+multisector graph lives beside :func:`run_multisector` in
 ``openghg_inversions.rhime.multisector``:
 
 .. code-block:: text
@@ -44,10 +44,36 @@ multisector graph lives beside :func:`run_rhime_multisector` in
 
 The standard builder is ``build_standard_model(model_inputs, model_spec,
 priors=...)`` and returns the concrete model plus its output contract. It accepts
-already materialized numerical arrays and prior parameters. Call
-``materialize_standard_inputs(prepared, model_spec)`` explicitly when these may
-be lazy; the helper computes selected inputs and enabled priors together. Builder
-construction does not execute a borrowed lazy graph or consume output choices.
+already materialized model operands and prior parameters. Call
+``materialize_standard_inputs(prepared, model_spec)`` for raw prepared inputs,
+including when their arrays are already eager. The helper computes selected
+inputs and enabled priors together, then resolves BC periods and any selected
+minimum-error floor. Multisector uses ``materialize_multisector_inputs``.
+The generic ``materialize_pymc_inputs`` only materializes arrays and does not
+perform these recipe-specific calculations. Direct eager builders reject raw
+boundary operands; construction does not execute a borrowed lazy graph or
+consume output choices.
+
+The resolved Dataset is backend-neutral but specific to the selected model:
+``H_bc`` contains fitted boundary periods, and ``min_error`` contains the floor
+selected by the likelihood. ``resolve_model_inputs(eager_inputs, model_spec)``
+performs these scientific calculations without building a PyMC graph, so an
+analytic inversion can use the same boundary alignment. Its selected operands
+must already be eager; the family materializers arrange their joint execution
+with enabled priors before calling it.
+
+``mf_error`` is the prepared observation-error standard deviation and is carried
+through unchanged. Selection and observation-error imputation happen in
+scientific preparation; the selected likelihood separately prepares its minimum
+total-error floor. The resolver composes that likelihood-input operation with
+BC resolution.
+
+Pass the resolved Dataset to a builder with the same BC and consumed floor
+settings. Changing their frequency, anchor or floor policy requires resolving
+the raw preparation again; builders reject conflicting producer-recorded
+settings. Sigma periods remain a graph-time choice. Independently supplied final
+arrays without resolution provenance remain authoritative for direct builders;
+they do not request new temporal expansion or floor estimation.
 
 .. _rhime-builder-stability:
 
@@ -98,8 +124,7 @@ mean of the observed distribution is therefore
 where omitted components are left out of the sum.
 
 The configuration template explicitly selects
-``mismatch_model="pollution_event"``. This preserves the fractional-error
-equation used by ``run_hbmcmc.py`` for users who start from that template.
+``mismatch_model="pollution_event"`` for the documented fractional-error model.
 Direct runner calls must make a likelihood selection explicitly. The concrete
 model recipe has no mismatch default: parameter resolution converts the
 selector to ``PollutionEventSettings`` in the serializable model specification
@@ -107,8 +132,9 @@ before construction. Select
 ``mismatch_model="additive_sigma"`` for an absolute concentration-scale
 mismatch instead; this is a resolved model option and does not use the custom
 ``likelihood_builder`` extension point. Additive sigma does not select the
-prepared ``min_error`` input unless ``use_minimum_error_floor=True`` is also
-set. Aggregation error is disabled by default. Let
+model-owned ``min_error`` floor unless ``use_minimum_error_floor=True`` is also
+set. Named minimum-error estimates use observations retained after unusable rows
+are dropped. Let
 :math:`P` be the pollution event and let ``sigma`` be the observation-aligned
 fractional model-error parameter. With the default
 ``pollution_events_from_obs=False``,
@@ -128,39 +154,13 @@ including any boundary and offset contributions. Thus
 :math:`P=|Y-(\mu_{bc}+\mathrm{offset})|` when a baseline exists; without one,
 it uses :math:`P=|Y|+10^{-6}\operatorname{mean}(Y)`.
 
-The ``run_hbmcmc.py`` compatibility path retains its historical boundary-only
-variant: :math:`P=|Y-\mu_{bc}|`, even when an offset is also included in
-:math:`\mu_{\mathrm{obs}}`. That exception preserves existing configurations;
-it is not the scientific default for new RHIME recipes.
+Historical boundary-only variants require matching older software; modern
+construction uses the full baseline above.
 
 Select ``mismatch_model="fixed_error"`` to omit inferred mismatch error. Its
 likelihood scale uses the reported observation error and does not select
 ``min_error``.
-``run_hbmcmc.py`` privately preserves the different historical floor and
-unused-variable details of its two ``no_model_error`` routes.
-
-Aggregation covariance is an explicit advanced opt-in. If a caller selects a
-prepared covariance :math:`C_{agg}` with marginal variance
-:math:`v_{agg}=\operatorname{diag}(C_{agg})`, the marginal floor and observed
-distribution become
-
-.. math::
-
-   v_{raw} &= \mathrm{error}^2 + (P\sigma)^{\mathrm{power}}, \\
-   v_{ind} &= v_{raw} + \max\left(
-     \mathrm{min\_error}^2-v_{raw}-v_{agg}, 0
-   \right), \\
-   \epsilon &= \sqrt{v_{ind}+v_{agg}}, \\
-   y &\sim \mathcal{N}\left(
-     \mu_{\mathrm{obs}}, \operatorname{diag}(v_{ind})+C_{agg}
-   \right).
-
-Selecting aggregation error says only that this fixed covariance should enter
-the likelihood. It does not perform, imply, or verify a coherent prior and
-forward-model transformation. Covariance obtained by marginalising native
-states must therefore be supplied together with the matching transformed
-prior and forward operator. Merely finding an aggregation-error array in
-prepared inputs does not opt a run into this model.
+Historical fixed-error floors and disconnected sigma variables are not restored.
 
 The default priors are:
 
@@ -233,7 +233,9 @@ Equivalent construction from public helpers
 The default production builder constructs the graph in the same direct style
 shown below. A researcher does not need to construct a private plan to write an
 equivalent concrete single-flux model. The following uses public component
-helpers:
+helpers. Here ``inv_inputs`` contains the selected raw inputs already
+materialized at an explicit boundary; the floor and fitted BC periods are model
+choices:
 
 .. code-block:: python
 
@@ -243,6 +245,8 @@ helpers:
        registered_model,
    )
    from openghg_inversions.models.pollution_event import add_pollution_event_likelihood
+   from openghg_inversions.boundary_sensitivity import BoundaryAlignment
+   from openghg_inversions.model_error import MinimumError
    from openghg_inversions.observation_error import resolve_aggregation_error
    from openghg_inversions.sigma import SigmaAlignment
 
@@ -266,7 +270,11 @@ helpers:
        per_site=True,
    )
    flux_sensitivity = prepare_linear_sensitivity(inv_inputs["H"])
-   boundary_sensitivity = prepare_linear_sensitivity(inv_inputs["H_bc"])
+   boundary = BoundaryAlignment.prepare(
+       inv_inputs["H_bc"], frequency="monthly", anchor_time="2021-01-01",
+   )
+   boundary_sensitivity = prepare_linear_sensitivity(boundary.data)
+   minimum_error = MinimumError.from_observations(inv_inputs, 0.0)
 
    with registered_model() as model:
        flux = add_linear_component(
@@ -293,7 +301,7 @@ helpers:
        add_pollution_event_likelihood(
            observations=inv_inputs["mf"],
            observation_error=inv_inputs["mf_error"],
-           minimum_error=inv_inputs["min_error"],
+           minimum_error=minimum_error.values,
            aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
            mean=modelled_mean,
            pollution_mean=pollution_mean,
@@ -404,8 +412,8 @@ forward terms before the shared built-in dispatcher is invoked. The runner
 stores one typed settings value on ``RhimeModelSpec``; the dispatcher calls the
 ordinary built-in equation with only that likelihood's inputs. A custom caller
 instead supplies a mean-only callable. Every likelihood receives the completed
-concentration, prepared observations and reported observation error, a
-validated ``AggregationError``, and output dimension. Built-in pollution-event
+concentration, prepared observations and reported observation error, and
+output dimension. Built-in pollution-event
 scaling additionally receives the named pollution and baseline terms.
 ``likelihood_kwargs`` is reserved for custom callables.
 The builder adds and returns the canonical observed variable ``y`` and also
@@ -430,8 +438,7 @@ ordinary runner:
        likelihood_builder=likelihood_builder,
    )
 
-This example supports independent fixed aggregation-error representations. A
-custom likelihood with additional options declares them in its own signature,
+A custom likelihood with additional options declares them in its own signature,
 and the runner supplies only those values through ``likelihood_kwargs``.
 
 Pass ``add_offset=True`` and ``offset_args={"per_site": False}`` as Python or

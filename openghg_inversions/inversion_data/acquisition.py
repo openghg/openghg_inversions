@@ -1,7 +1,7 @@
 """Retrieve RHIME observations, transport, flux and boundary data.
 
 Acquisition owns store access and consumes the complete site-aligned
-selection record. It returns a borrowed ``RhimeMergedData`` handoff for subsequent
+selection record. It returns a borrowed ``MergedData`` handoff for subsequent
 scientific filtering, basis construction and sensitivity preparation.
 """
 
@@ -12,7 +12,7 @@ import logging
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
-from typing import Any, cast
+from typing import Any, Literal
 
 import pandas as pd
 import xarray as xr
@@ -20,7 +20,6 @@ from openghg.dataobjects import FluxData
 from openghg.retrieve import get_bc
 from openghg.types import SearchError
 
-from openghg_inversions._flux_options import UNSET, _Unset, resolve_deprecated_keyword
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data import _site_options
 from openghg_inversions.inversion_data._provenance import (
@@ -102,7 +101,7 @@ class MergedData:
         if self.boundary_data is not None:
             datasets.append(self.boundary_data)
         if any(not isinstance(data, xr.Dataset) for data in datasets):
-            raise TypeError("RhimeMergedData accepts xarray datasets, not OpenGHG wrappers.")
+            raise TypeError("MergedData accepts xarray datasets, not OpenGHG wrappers.")
         if any(not isinstance(source, str) for source in self.flux_data):
             raise TypeError("Flux source labels must be strings.")
         if (
@@ -198,7 +197,7 @@ class MergedData:
         site_data: Mapping[str, xr.Dataset],
         *,
         context: str = "Merged-data selection",
-    ) -> RhimeMergedData:
+    ) -> MergedData:
         """Replace retained site datasets with their selectors and provenance.
 
         Mapping order determines retained-site order. All sites must already
@@ -210,7 +209,7 @@ class MergedData:
             ValueError: If retained sites are invalid.
         """
         site_options = self.site_options.retain_sites(tuple(site_data), context=context)
-        return RhimeMergedData(
+        return MergedData(
             site_data=dict(site_data),
             flux_data=dict(self.flux_data),
             boundary_data=self.boundary_data,
@@ -234,10 +233,8 @@ class MergedData:
         bc_store: str = "user",
         obs_store: str = "user",
         footprint_store: str = "user",
-        flux_store: str | None | _Unset = UNSET,
-        flux_domain: str | None | _Unset = UNSET,
-        emissions_store: str | None | _Unset = UNSET,
-        emissions_domain: str | None | _Unset = UNSET,
+        flux_store: str | None = "user",
+        flux_domain: str | None = None,
         fp_model: str | None = None,
         fp_species: str | None = None,
         calibration_scale: str | None = None,
@@ -245,10 +242,11 @@ class MergedData:
         bc_input: str | None = None,
         flux_non_finite_check: FluxNonFiniteCheck = "lazy",
         surface_transport: Mapping[str, str] | None = None,
+        boundary_representation: Literal["ordinary", "centered"] = "ordinary",
         reference: float | None = None,
         reference_units: str | None = None,
         mass_tolerance: float | None = None,
-    ) -> RhimeMergedData:
+    ) -> MergedData:
         """Acquire fresh merged data using complete aligned selectors.
 
         Reads OpenGHG stores and retains all selector fields together when sites
@@ -257,23 +255,15 @@ class MergedData:
         selector and merge errors propagate. ``flux_store`` defaults to ``"user"``;
         ``flux_domain`` selects the source flux dataset domain, defaulting to
         the footprint ``domain``. It does not imply a nested inner domain.
-        Deprecated ``emissions_store``/``emissions_domain`` are removed in 0.9.
-        Supplying an old and new spelling together raises ``ValueError``, even
-        when their values are equal or ``None``.
-
         ``surface_transport`` explicitly selects independent per-source surface
-        CO2/O2 convolution, bypassing ModelScenario. Boundaries then require
-        ``reference``, ``reference_units`` and ``mass_tolerance``. Resolved
+        CO2/O2 convolution, bypassing ModelScenario. Boundaries require explicit
+        ``mass_tolerance``. Ordinary absolute boundaries are the default;
+        ``boundary_representation="centered"`` additionally requires ``reference``
+        and ``reference_units``. Reference values alone do not select centering. Resolved
         transport requires time-resolved selectors and complete flux history
         and residual months. Mixed native source axes are rejected until native
         reporting can represent them; supplied-input preparation supports them.
         """
-        flux_store = cast(str | None, resolve_deprecated_keyword(
-            "emissions_store", "flux_store", emissions_store, flux_store, default="user"
-        ))
-        flux_domain = cast(str | None, resolve_deprecated_keyword(
-            "emissions_domain", "flux_domain", emissions_domain, flux_domain
-        ))
         merged_sites: dict[str, xr.Dataset] = {}
         observation_provenance = {}
         footprint_provenance = {}
@@ -282,6 +272,11 @@ class MergedData:
         # Get flux data
         if flux_sources is None:
             raise ValueError("`flux_sources` must be specified")
+
+        if boundary_representation not in {"ordinary", "centered"}:
+            raise ValueError("boundary_representation must be ordinary or centered.")
+        if boundary_representation == "centered" and (surface_transport is None or not use_bc):
+            raise ValueError("Centered acquisition requires surface_transport and use_bc=True.")
 
         flux_start, flux_end = start_date, end_date
         if surface_transport is not None:
@@ -302,8 +297,10 @@ class MergedData:
                     {"surface", "insitu", "in-situ", "continuous", "tower"}
                 ):
                     raise ValueError("Surface acquisition supports only continuous surface platforms.")
-            if use_bc and any(value is None for value in (reference, reference_units, mass_tolerance)):
-                raise ValueError("Surface boundaries require reference, reference_units and mass_tolerance.")
+            if use_bc and mass_tolerance is None:
+                raise ValueError("Surface boundaries require mass_tolerance.")
+            if use_bc and boundary_representation == "centered" and (reference is None or reference_units is None):
+                raise ValueError("Centered surface boundaries require reference and reference_units.")
             if "time_resolved" in surface_transport.values():
                 if not all(site_options.time_resolved):
                     raise ValueError("Time-resolved transport requires time_resolved=True site selectors.")
@@ -444,7 +441,8 @@ class MergedData:
                     scenario_combined = prepare_surface_site(
                         site_data, footprint_data, scenario_flux_dict,
                         species=species, transport=surface_transport,
-                        boundary_data=bc_data, boundary_reference=reference,
+                        boundary_data=bc_data, boundary_representation=boundary_representation,
+                        boundary_reference=reference,
                         boundary_reference_units=reference_units,
                         boundary_mass_tolerance=mass_tolerance,
                         output_units=output_units,
@@ -560,7 +558,3 @@ def interpolate_flux_to_footprint_grid(
             metadata=dict(flux_data.metadata),
         )
     return interpolated
-
-
-# Established public import retained through the 0.9 compatibility cycle.
-RhimeMergedData = MergedData

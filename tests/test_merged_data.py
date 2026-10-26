@@ -9,12 +9,8 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from openghg_inversions.inversion_data import AcquisitionFacts, InputProvenance, MergedDataProvenance, RhimeMergedData, SiteOptions
+from openghg_inversions.inversion_data import AcquisitionFacts, InputProvenance, MergedDataProvenance, MergedData, SiteOptions
 from openghg_inversions.inversion_data._provenance import selected_provenance
-from openghg_inversions.hbmcmc.legacy_data import (
-    from_legacy_fp_all,
-    to_legacy_fp_all,
-)
 
 
 def merged_data():
@@ -47,7 +43,7 @@ def merged_data():
     bc = xr.Dataset(
         {f"vmr_{direction}": ("time", [1.0, 2.0]) for direction in "nesw"}, coords={"time": site.time}
     )
-    return RhimeMergedData(
+    return MergedData(
         site_data={"TAC": site, "GOSAT": site.assign_attrs(platform="satellite")},
         flux_data={"a/b": flux, "b": flux * 2},
         boundary_data=bc,
@@ -57,17 +53,17 @@ def merged_data():
     )
 
 
-def test_dataset_boundary_borrows_arrays_and_explicit_adapter_isolated():
+def test_dataset_boundary_borrows_arrays_without_computation():
     original = merged_data()
-    calls = []
-    with Callback(pretask=lambda *args: calls.append(args)):
-        legacy = to_legacy_fp_all(original)
-        restored = from_legacy_fp_all(legacy, original.site_options)
-    assert not calls
+    with Callback(pretask=lambda *args: pytest.fail("construction computed borrowed arrays")):
+        restored = MergedData(
+            site_data=original.site_data, flux_data=original.flux_data,
+            boundary_data=original.boundary_data, site_options=original.site_options,
+            split_by_sectors=original.split_by_sectors,
+        )
     assert restored.site_data["TAC"] is original.site_data["TAC"]
-    assert set(original.flux_data["a/b"].flux.data.dask) <= set(legacy[".flux"]["a/b"].data.flux.data.dask)
-    legacy[".flux"]["a/b"].data["flux"] = legacy[".flux"]["a/b"].data.flux * 5
-    np.testing.assert_array_equal(original.flux_data["a/b"].flux.compute(), [3.0, 4.0])
+    assert restored.flux_data["a/b"].flux.data is original.flux_data["a/b"].flux.data
+    assert restored.boundary_data is original.boundary_data
 
 
 def test_selected_input_provenance_discards_arbitrary_metadata():
@@ -88,23 +84,6 @@ def test_provenance_owns_input_mappings():
     provenance = MergedDataProvenance(observations=inputs)
     inputs["TAC"] = InputProvenance(uuid="changed")
     assert provenance.observations["TAC"].uuid == "selected"
-
-
-def test_legacy_projection_retains_selected_flux_and_boundary_identities():
-    original = merged_data()
-    original.provenance = replace(
-        original.provenance,
-        flux={"a/b": InputProvenance("archive", "flux-one", "v3"), "b": InputProvenance()},
-        boundary=InputProvenance("boundary-store", "boundary-one", "v2"),
-    )
-    legacy = to_legacy_fp_all(original)
-    assert legacy[".flux"]["a/b"].metadata == {
-        "data_type": "flux", "store": "archive", "uuid": "flux-one", "dataversion": "v3",
-    }
-    restored = from_legacy_fp_all(legacy, original.site_options)
-    assert restored.provenance.flux == original.provenance.flux
-    assert restored.provenance.boundary == original.provenance.boundary
-    assert restored.provenance.openghg_version == "unknown"
 
 
 def test_available_openghg_revision_is_recorded(monkeypatch):
@@ -148,7 +127,7 @@ def test_fresh_acquisition_records_each_input_identity(monkeypatch):
     monkeypatch.setattr(get_data, "get_flux_data", lambda **kw: {"inventory": wrapper("flux")})
     monkeypatch.setattr(get_data, "get_bc", lambda **kw: wrapper("boundary"))
     monkeypatch.setattr(get_data, "merged_scenario_data", lambda *args, **kw: scenario)
-    acquired = RhimeMergedData.from_options(
+    acquired = MergedData.from_options(
         site_options=options,
         species="ch4",
         domain="EUROPE",
@@ -353,7 +332,6 @@ def test_partial_provenance_defaults_missing_inputs_and_preserves_supplied_ident
     with Callback(pretask=lambda *args: pytest.fail("provenance defaulting computed borrowed arrays")):
         merged = replace(original, provenance=supplied)
         selected = merged.with_site_data({"TAC": original.site_data["TAC"]})
-        legacy = to_legacy_fp_all(selected)
     assert merged.provenance.openghg_version == version
     assert merged.provenance.observations == {"TAC": observation, "GOSAT": InputProvenance()}
     assert merged.provenance.footprints == {site: InputProvenance() for site in original.sites}
@@ -363,7 +341,7 @@ def test_partial_provenance_defaults_missing_inputs_and_preserves_supplied_ident
     assert merged.provenance.flux["a/b"] is flux
     assert merged.site_data["TAC"] is original.site_data["TAC"]
     assert selected.provenance.observations == {"TAC": observation}
-    assert legacy[".flux"]["a/b"].metadata["store"] == "archive"
+    assert selected.provenance.flux["a/b"].store == "archive"
     assert supplied.footprints == {}
     assert supplied.observations == {"TAC": observation}
 
@@ -404,3 +382,31 @@ def test_provenance_rejects_unexpected_inputs_even_when_identities_are_unknown(k
 ])
 def test_input_provenance_truthiness_uses_known_identifiers(uuid, known):
     assert bool(InputProvenance(uuid=uuid)) is known
+
+
+@pytest.mark.parametrize("annual_value", [1.0, np.nan])
+def test_canonical_merged_data_preserves_source_times_periods_and_lazy_nan_slices(annual_value):
+    """Independent sources retain their native time axes without outer-join padding."""
+    annual = xr.Dataset(
+        {"flux": ("time", da.from_array([annual_value], chunks=1), {"time_period": "1 year"})},
+        coords={"time": np.array(["2019-01-01"], dtype="datetime64[ns]")},
+    )
+    monthly = xr.Dataset(
+        {"flux": ("time", da.from_array([2.0, 3.0], chunks=1), {"time_period": "monthly"})},
+        coords={"time": np.array(["2019-06-01", "2019-07-01"], dtype="datetime64[ns]")},
+    )
+    site = xr.Dataset({"mf": ("time", [4.0])}, coords={"time": monthly.time[:1]})
+    with Callback(pretask=lambda *args: pytest.fail("construction materialized borrowed flux")):
+        merged = MergedData(
+            site_data={"TAC": site}, flux_data={"a/b": annual, "monthly": monthly},
+            site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"),
+        )
+    assert list(merged.flux_data) == ["a/b", "monthly"]
+    assert merged.flux_data["a/b"] is annual
+    assert merged.flux_data["monthly"] is monthly
+    assert merged.flux_data["a/b"].flux.chunks is not None
+    assert merged.flux_data["a/b"].flux.attrs["time_period"] == "1 year"
+    assert merged.flux_data["monthly"].flux.attrs["time_period"] == "monthly"
+    np.testing.assert_array_equal(merged.flux_data["a/b"].time, annual.time)
+    np.testing.assert_array_equal(merged.flux_data["monthly"].time, monthly.time)
+    np.testing.assert_equal(merged.flux_data["a/b"].flux.compute().values, [annual_value])

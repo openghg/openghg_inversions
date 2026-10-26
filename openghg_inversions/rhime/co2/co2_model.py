@@ -40,6 +40,8 @@ from openghg_inversions.rhime.builders import RhimeLikelihoodBuilder
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
 from openghg_inversions.models.coords import add_model_data
+from openghg_inversions.boundary_sensitivity import bind_boundary_sensitivity
+
 from .centered_boundary import bind_boundary_operands, add_centered_boundary
 
 
@@ -171,8 +173,8 @@ def build_co2_model(
         state_activity: Optional labelled activity policy for retained flux
             states.
         boundary_sensitivity: Optional atmospheric boundary-condition
-            sensitivity already resolved for the model, for example
-            :attr:`~openghg_inversions.boundary_sensitivity.BoundaryAlignment.data`.
+            sensitivity on spatial states. Raw states are expanded using the
+            model's periods; already expanded states cannot accept overrides.
         boundary_operands: Raw centered-v1 H_bc_anomaly/H_bc_mass and scalar
             bc_reference, retained until model binding. Mutually exclusive with
             absolute boundary_sensitivity for the same channel.
@@ -196,8 +198,12 @@ def build_co2_model(
             coordinate alignment fails, or if ``sigma_prior`` is supplied
             without ``sigma_alignment``.
     """
-    if boundary_operands is None and (bc_freq is not None or bc_anchor_time is not None):
-        raise ValueError("Boundary period choices require raw centered operands, not absolute sensitivity.")
+    if boundary_sensitivity is not None:
+        boundary_sensitivity = bind_boundary_sensitivity(
+            boundary_sensitivity, observations, frequency=bc_freq, anchor_time=bc_anchor_time,
+        )
+    elif boundary_operands is None and (bc_freq is not None or bc_anchor_time is not None):
+        raise ValueError("Boundary period choices require boundary inputs.")
     if boundary_operands is not None:
         if boundary_sensitivity is not None:
             raise ValueError("Supply boundary_operands or boundary_sensitivity, not both.")

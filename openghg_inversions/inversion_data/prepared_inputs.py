@@ -21,11 +21,7 @@ import pandas as pd
 import xarray as xr
 from typing import Self
 
-from openghg_inversions.basis.basis_functions import (
-    BASIS_ARTIFACT_PATH_ATTR,
-    BASIS_ARTIFACT_SOURCE_ATTR,
-    BasisFunctions,
-)
+from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.serialization import (
     decode_cf_multiindexes,
     encode_cf_multiindexes,
@@ -33,18 +29,15 @@ from openghg_inversions.serialization import (
     save_datatree,
 )
 
-RHIME_PREPARED_INPUTS_SCHEMA = "openghg_inversions.rhime_prepared_inputs"
-RHIME_PREPARED_INPUTS_SCHEMA_VERSION = 1
-RHIME_CENTERED_PREPARED_INPUTS_SCHEMA_VERSION = 2
+PREPARED_INPUTS_SCHEMA = "openghg_inversions.rhime_prepared_inputs"
+PREPARED_INPUTS_SCHEMA_VERSION = 3
 _SITE_AVERAGING_PERIOD = "averaging_period"
 _SITE_STRING_ENCODING = "_rhime_nullable_string_encoding"
 
 __all__ = [
     "PreparedInputs",
-    "RHIME_PREPARED_INPUTS_SCHEMA",
-    "RHIME_PREPARED_INPUTS_SCHEMA_VERSION",
-    "RHIME_CENTERED_PREPARED_INPUTS_SCHEMA_VERSION",
-    "RhimePreparedInputs",
+    "PREPARED_INPUTS_SCHEMA",
+    "PREPARED_INPUTS_SCHEMA_VERSION",
 ]
 
 
@@ -57,8 +50,8 @@ class PreparedInputs:
     project-schema positions into its ``site`` coordinate; they are distinct
     from CF compression-by-gathering indexes. The invariant is
     ``site_metadata.site[site_indicator] == nmeasure.site``.
-    ``site_names`` remains available in memory for existing model code, but is
-    regenerated from ``site_metadata`` rather than serialized.
+    ``site_indicator`` and ``site_names`` remain available in memory but are
+    regenerated from measurement labels and ``site_metadata`` rather than serialized.
 
     Args:
         inv_inputs: Canonical inversion inputs consumed by RHIME model
@@ -111,74 +104,6 @@ class PreparedInputs:
         object.__setattr__(self, "inv_inputs", normalized_inv_inputs)
         object.__setattr__(self, "basis_functions", basis_functions)
         object.__setattr__(self, "site_metadata", normalized_site_metadata)
-
-    @classmethod
-    def from_legacy_inputs(
-        cls: type[Self],
-        inv_inputs: xr.Dataset,
-        basis_functions: BasisFunctions,
-        sites: Sequence[str],
-        averaging_period: Sequence[str | None],
-        basis_artifact_source: str | None = None,
-        basis_artifact_path: str | None = None,
-        site_lats: Sequence[float] | None = None,
-        site_lons: Sequence[float] | None = None,
-    ) -> Self:
-        """Adapt the former positional fields to the labeled-data contract.
-
-        Args:
-            inv_inputs: Canonical inversion inputs.
-            basis_functions: Retained basis object.
-            sites: Site labels in indicator-decoding order.
-            averaging_period: Observation periods aligned to ``sites``.
-            basis_artifact_source: Optional basis provenance value.
-            basis_artifact_path: Optional basis provenance path.
-            site_lats: Optional legacy release latitudes, one per site.
-            site_lons: Optional legacy release longitudes, one per site.
-
-        Returns:
-            Prepared inputs using labeled site metadata.
-        """
-        existing_metadata = basis_functions.metadata
-        metadata = dict(existing_metadata)
-        if basis_artifact_source is not None:
-            metadata[BASIS_ARTIFACT_SOURCE_ATTR] = basis_artifact_source
-        if basis_artifact_path is not None:
-            metadata[BASIS_ARTIFACT_PATH_ATTR] = basis_artifact_path
-        if metadata != existing_metadata:
-            basis_functions = basis_functions.with_metadata(metadata)
-        if (site_lats is None) != (site_lons is None):
-            raise ValueError("Legacy site_lats and site_lons must be supplied together.")
-        if site_lats is not None and site_lons is not None:
-            if len(site_lats) != len(sites) or len(site_lons) != len(sites):
-                raise ValueError("Legacy release coordinates must have one value per site.")
-            has_release_lat = "release_lat" in inv_inputs
-            has_release_lon = "release_lon" in inv_inputs
-            if has_release_lat != has_release_lon:
-                raise ValueError("Observation-aligned release_lat and release_lon must be supplied together.")
-            if not has_release_lat:
-                site_lookup = {str(site): index for index, site in enumerate(sites)}
-                measurement_sites = tuple(str(site) for site in inv_inputs["site"].values)
-                missing_sites = sorted(set(measurement_sites) - set(site_lookup))
-                if missing_sites:
-                    raise ValueError(f"Legacy release coordinates are missing site(s): {missing_sites!r}.")
-                inv_inputs = inv_inputs.assign_coords(
-                    release_lat=(
-                        "nmeasure",
-                        [site_lats[site_lookup[site]] for site in measurement_sites],
-                    ),
-                    release_lon=(
-                        "nmeasure",
-                        [site_lons[site_lookup[site]] for site in measurement_sites],
-                    ),
-                )
-                inv_inputs["release_lat"].attrs["units"] = "degrees_north"
-                inv_inputs["release_lon"].attrs["units"] = "degrees_east"
-        return cls(
-            inv_inputs=inv_inputs,
-            basis_functions=basis_functions,
-            site_metadata=_make_site_metadata(sites=sites, averaging_period=averaging_period),
-        )
 
     @property
     def sites(self) -> tuple[str, ...]:
@@ -235,14 +160,14 @@ class PreparedInputs:
         """
         prepared = self.validated()
         site_metadata = prepared.site_metadata
-        inv_inputs = prepared.inv_inputs.drop_vars("site_names", errors="ignore")
+        inv_inputs = prepared.inv_inputs.drop_vars(("site_indicator", "site_names"), errors="ignore")
         multiindex_dims = tuple(
             dim
             for dim in inv_inputs.dims
             if isinstance(dim, str) and isinstance(inv_inputs.indexes.get(dim), pd.MultiIndex)
         )
         if "nmeasure" not in multiindex_dims:
-            raise ValueError("RhimePreparedInputs inv_inputs requires the nmeasure MultiIndex.")
+            raise ValueError("PreparedInputs inv_inputs requires the nmeasure MultiIndex.")
         dt = xr.DataTree.from_dict(
             {
                 "inv_inputs": xr.DataTree(encode_cf_multiindexes(inv_inputs, multiindex_dims)),
@@ -251,17 +176,20 @@ class PreparedInputs:
             }
         )
         dt.attrs = {
-            "schema": RHIME_PREPARED_INPUTS_SCHEMA,
-            "schema_version": (
-                RHIME_CENTERED_PREPARED_INPUTS_SCHEMA_VERSION
-                if "H_bc_anomaly" in inv_inputs else RHIME_PREPARED_INPUTS_SCHEMA_VERSION
-            ),
+            "schema": PREPARED_INPUTS_SCHEMA,
+            "schema_version": PREPARED_INPUTS_SCHEMA_VERSION,
+            "representation": "centered" if "H_bc_anomaly" in inv_inputs else "ordinary",
         }
         return dt
 
     @classmethod
     def from_datatree(cls: type[Self], dt: xr.DataTree) -> Self:
-        """Construct prepared inputs from absolute (v1) or centered (v2) data.
+        """Restore current inputs or validated ordinary raw version-2 inputs.
+
+        Version 3 declares ``representation`` as ``ordinary`` or ``centered``.
+        Version 2 is accepted only for the ordinary raw format from the reusable
+        input lifecycle. Older baked and ambiguous centered artifacts require
+        regeneration with their original acquisition and preparation choices.
 
         Args:
             dt: DataTree using the ``openghg_inversions.rhime_prepared_inputs``
@@ -278,22 +206,26 @@ class PreparedInputs:
             KeyError: If a required child node is missing.
         """
         schema = dt.attrs.get("schema")
-        if schema != RHIME_PREPARED_INPUTS_SCHEMA:
+        if schema != PREPARED_INPUTS_SCHEMA:
             raise ValueError(
-                f"Expected RhimePreparedInputs schema {RHIME_PREPARED_INPUTS_SCHEMA!r}, got {schema!r}."
+                f"Expected PreparedInputs schema {PREPARED_INPUTS_SCHEMA!r}, got {schema!r}."
             )
 
         version = dt.attrs.get("schema_version")
-        if isinstance(version, bool) or not isinstance(version, Integral) or version not in (1, 2):
+        if (isinstance(version, bool) or not isinstance(version, Integral)
+                or version not in (2, PREPARED_INPUTS_SCHEMA_VERSION)):
             raise ValueError(
-                f"Expected RhimePreparedInputs schema_version 1 or 2, got {version!r}."
+                f"Expected PreparedInputs schema_version "
+                f"2 (ordinary raw) or {PREPARED_INPUTS_SCHEMA_VERSION}, got {version!r}. "
+                "Older preparations may contain baked model policies; use their matching "
+                "software version or regenerate the prepared inputs."
             )
 
         missing_nodes = [
             name for name in ("inv_inputs", "basis_functions", "site_metadata") if name not in dt.children
         ]
         if missing_nodes:
-            raise KeyError(f"Missing required RhimePreparedInputs node(s): {missing_nodes!r}.")
+            raise KeyError(f"Missing required PreparedInputs node(s): {missing_nodes!r}.")
 
         encoded_inv_inputs = cast(xr.DataTree, dt["inv_inputs"]).to_dataset()
         compressed_indexes = tuple(
@@ -303,15 +235,34 @@ class PreparedInputs:
         )
         if "nmeasure" not in compressed_indexes:
             raise ValueError(
-                "RhimePreparedInputs inv_inputs CF gathered coordinate 'nmeasure' "
+                "PreparedInputs inv_inputs CF gathered coordinate 'nmeasure' "
                 "is missing its 'compress' metadata."
             )
         inv_inputs = decode_cf_multiindexes(encoded_inv_inputs, compressed_indexes)
         from openghg_inversions.boundary_sensitivity import validate_boundary_operands
 
-        centered = validate_boundary_operands(inv_inputs)
-        if centered != (version == 2):
-            raise ValueError("Prepared schema version must match absolute (1) or centered (2) boundaries.")
+        if version == 2:
+            centered_names = {"H_bc_anomaly", "H_bc_mass", "bc_reference"}
+            if (centered_names.intersection(inv_inputs.variables)
+                    or "boundary_representation" in inv_inputs.attrs
+                    or "representation" in dt.attrs):
+                raise ValueError(
+                    "Ambiguous version-2 prepared artifact; only known ordinary raw inputs are supported. "
+                    "Regenerate centered inputs using the current format."
+                )
+            _validate_ordinary_raw_v2(inv_inputs)
+        try:
+            centered = validate_boundary_operands(inv_inputs)
+        except ValueError as error:
+            raise ValueError(f"{error} Regenerate incomplete or incompatible prepared inputs.") from error
+        if version == PREPARED_INPUTS_SCHEMA_VERSION:
+            representation = dt.attrs.get("representation")
+            expected = "centered" if centered else "ordinary"
+            if representation != expected:
+                raise ValueError(
+                    f"Prepared representation must be {expected!r} for its operands, got {representation!r}. "
+                    "Regenerate incomplete or mismatched prepared inputs."
+                )
         basis_functions_dt = cast(xr.DataTree, dt["basis_functions"])
         basis_functions = BasisFunctions.from_datatree(basis_functions_dt)
         return cls(
@@ -366,7 +317,7 @@ def _make_site_metadata(
     sites: Sequence[str],
     averaging_period: Sequence[str | None],
 ) -> xr.Dataset:
-    """Construct labeled site metadata from compatibility inputs.
+    """Construct labeled site metadata in authoritative site order.
 
     Args:
         sites: Authoritative labels in site-indicator decoding order.
@@ -404,16 +355,16 @@ def _normalize_site_metadata(ds: xr.Dataset) -> xr.Dataset:
             variables are incomplete.
     """
     if "site" not in ds.coords or ds["site"].dims != ("site",):
-        raise ValueError("RhimePreparedInputs site_metadata requires a one-dimensional 'site' coordinate.")
+        raise ValueError("PreparedInputs site_metadata requires a one-dimensional 'site' coordinate.")
     sites = tuple(str(site) for site in ds["site"].values)
     if len(set(sites)) != len(sites):
-        raise ValueError("RhimePreparedInputs site_metadata 'site' labels must be unique.")
+        raise ValueError("PreparedInputs site_metadata 'site' labels must be unique.")
     if _SITE_AVERAGING_PERIOD not in ds:
-        raise ValueError("RhimePreparedInputs site_metadata is missing 'averaging_period'.")
+        raise ValueError("PreparedInputs site_metadata is missing 'averaging_period'.")
     invalid_variables = [name for name, variable in ds.data_vars.items() if variable.dims != ("site",)]
     if invalid_variables:
         raise ValueError(
-            "RhimePreparedInputs site_metadata variables must each have only dimension 'site'; "
+            "PreparedInputs site_metadata variables must each have only dimension 'site'; "
             f"invalid variables: {invalid_variables!r}."
         )
     invalid_coordinates = [
@@ -423,7 +374,7 @@ def _normalize_site_metadata(ds: xr.Dataset) -> xr.Dataset:
     ]
     if invalid_coordinates:
         raise ValueError(
-            "RhimePreparedInputs site_metadata auxiliary coordinates must be scalar or "
+            "PreparedInputs site_metadata auxiliary coordinates must be scalar or "
             "site-aligned; "
             f"invalid coordinates: {invalid_coordinates!r}."
         )
@@ -437,7 +388,7 @@ def _normalize_site_metadata(ds: xr.Dataset) -> xr.Dataset:
             periods.append(period or None)
         else:
             raise ValueError(
-                "RhimePreparedInputs site_metadata 'averaging_period' values must be strings or missing."
+                "PreparedInputs site_metadata 'averaging_period' values must be strings or missing."
             )
 
     result = ds.copy()
@@ -529,22 +480,22 @@ def _canonicalize_rhime_inv_inputs(
     nmeasure_index = ds.indexes.get("nmeasure")
     if not isinstance(nmeasure_index, pd.MultiIndex):
         raise ValueError(  # noqa: TRY004 - malformed artifact schema, not an argument type error
-            "RhimePreparedInputs inv_inputs must have a 'nmeasure' MultiIndex with levels ('site', 'time')."
+            "PreparedInputs inv_inputs must have a 'nmeasure' MultiIndex with levels ('site', 'time')."
         )
     if tuple(nmeasure_index.names) != ("site", "time"):
         raise ValueError(
-            "RhimePreparedInputs inv_inputs 'nmeasure' MultiIndex must have levels "
+            "PreparedInputs inv_inputs 'nmeasure' MultiIndex must have levels "
             f"('site', 'time'), got {tuple(nmeasure_index.names)!r}."
         )
     measurement_sites_raw = tuple(nmeasure_index.get_level_values("site"))
     if not all(isinstance(site, str) for site in measurement_sites_raw):
-        raise ValueError("RhimePreparedInputs nmeasure site labels must all be strings.")
+        raise ValueError("PreparedInputs nmeasure site labels must all be strings.")
     observed_sites = tuple(dict.fromkeys(measurement_sites_raw))
     metadata_sites = tuple(site_metadata["site"].values.tolist())
     missing_sites = [site for site in observed_sites if site not in metadata_sites]
     if missing_sites:
         raise ValueError(
-            f"RhimePreparedInputs site_metadata is missing observed site labels: {missing_sites!r}."
+            f"PreparedInputs site_metadata is missing observed site labels: {missing_sites!r}."
         )
     site_metadata = site_metadata.sel(site=list(observed_sites))
     site_lookup = {site: index for index, site in enumerate(observed_sites)}
@@ -570,15 +521,15 @@ def _canonicalize_rhime_inv_inputs(
     if expected_sources is None:
         return result, site_metadata
     if len(set(expected_sources)) != len(expected_sources):
-        raise ValueError("RhimePreparedInputs multi-source basis labels must be unique.")
+        raise ValueError("PreparedInputs multi-source basis labels must be unique.")
     if "H" not in result:
-        raise ValueError("RhimePreparedInputs inv_inputs must contain H for a multi-source basis.")
+        raise ValueError("PreparedInputs inv_inputs must contain H for a multi-source basis.")
     sensitivity = result["H"]
     state_dim: str | None = None
     if "source" in sensitivity.dims:
         actual_sources = tuple(str(source) for source in sensitivity["source"].values)
         if len(set(actual_sources)) != len(actual_sources):
-            raise ValueError("RhimePreparedInputs inv_inputs H source labels must be unique.")
+            raise ValueError("PreparedInputs inv_inputs H source labels must be unique.")
     else:
         gathered_dims = [
             str(dim)
@@ -588,14 +539,14 @@ def _canonicalize_rhime_inv_inputs(
         ]
         if len(gathered_dims) != 1:
             raise ValueError(
-                "RhimePreparedInputs inv_inputs H must have either a source dimension or "
+                "PreparedInputs inv_inputs H must have either a source dimension or "
                 "one gathered state MultiIndex containing a 'source' level for a multi-source basis."
             )
         state_dim = gathered_dims[0]
         state_index = sensitivity.indexes[state_dim]
         source_values = state_index.get_level_values("source").to_numpy()
         if not all(isinstance(source, str | np.str_) for source in source_values):
-            raise ValueError("RhimePreparedInputs gathered H source labels must all be strings.")
+            raise ValueError("PreparedInputs gathered H source labels must all be strings.")
         source_labels = tuple(str(source) for source in source_values)
         _, first_indices = np.unique(source_values, return_index=True)
         actual_sources = tuple(str(source_values[index]) for index in np.sort(first_indices))
@@ -603,7 +554,7 @@ def _canonicalize_rhime_inv_inputs(
         missing = sorted(set(expected_sources) - set(actual_sources))
         unexpected = sorted(set(actual_sources) - set(expected_sources))
         raise ValueError(
-            "RhimePreparedInputs inv_inputs H source labels do not match the basis operator: "
+            "PreparedInputs inv_inputs H source labels do not match the basis operator: "
             f"missing={missing!r}, unexpected={unexpected!r}."
         )
     if state_dim is not None:
@@ -618,7 +569,7 @@ def _canonicalize_rhime_inv_inputs(
         if covariance_dim in result.dims:
             if result.sizes[covariance_dim] != len(state_order):
                 raise ValueError(
-                    f"RhimePreparedInputs {covariance_dim} must match the gathered state length."
+                    f"PreparedInputs {covariance_dim} must match the gathered state length."
                 )
             state_indexers[covariance_dim] = state_order
         return result.isel(state_indexers), site_metadata
@@ -626,5 +577,17 @@ def _canonicalize_rhime_inv_inputs(
     return result.sel(source=list(expected_sources)), site_metadata
 
 
-# Established public import retained through the 0.9 compatibility cycle.
-RhimePreparedInputs = PreparedInputs
+def _validate_ordinary_raw_v2(inputs: xr.Dataset) -> None:
+    """Accept only the known ordinary spatial boundary layout of version 2."""
+    if "H_bc" not in inputs:
+        return
+    boundary = inputs["H_bc"]
+    if (set(boundary.dims) != {"bc_region", "nmeasure"}
+            or isinstance(boundary.indexes.get("bc_region"), pd.MultiIndex)
+            or "bc_period" in boundary.coords
+            or boundary.attrs.get("boundary_sensitivity_preparation") != "raw-spatial"
+            or "bc_frequency" in boundary.attrs or "bc_anchor_time" in boundary.attrs):
+        raise ValueError(
+            "Version-2 prepared inputs require ordinary raw spatial H_bc; baked or unknown "
+            "boundary layouts are unsupported. Regenerate inputs with the current preparation API."
+        )

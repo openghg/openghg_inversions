@@ -23,13 +23,16 @@ NOT rebase or restrict that separate export.
 
 For independently deprecated standalone basis adapters, historical case/glob
 discovery, filename construction, legacy schema adaptation and explicit legacy
-writing SHALL remain in `basis.compatibility`. Historical run-resource selection
-SHALL instead remain self-contained in HBMCMC under the
-[isolation contract](../hbmcmc-isolation-retirement/spec.md). For devel/0.8,
-saved bases SHALL default to modern retained artifacts; legacy output SHALL remain
-explicit opt-in through that adapter. Its 0.9 deprecation SHALL NOT imply automatic
-removal in 0.9. Canonical scientific operations SHALL receive exact paths or
+writing SHALL remain independently supported through `basis.compatibility`.
+Modern run-resource selection SHALL use explicit canonical inputs without
+HBMCMC or historical discovery. Saved bases SHALL default to modern retained
+artifacts; legacy output SHALL remain explicit opt-in through that adapter. Its independent deprecation SHALL NOT imply
+automatic removal. Canonical scientific operations SHALL receive exact paths or
 labelled arrays without depending on historical discovery or naming policy.
+HBMCMC retirement under its isolation contract SHALL NOT authorize deletion of
+these independent basis capabilities or imply their automatic removal date.
+Exact destinations and useful labelled
+partition inputs SHALL remain independently supported.
 
 #### Scenario: Arbitrary retained artifact destination
 
@@ -105,22 +108,16 @@ infer resource filenames from the domain or create resource directories.
 Modern requests SHALL select exact BC basis paths; explicitly selected multiple
 files SHALL retain the existing time combination and alignment semantics.
 
-The built-in NESW calculation SHALL use the acquired directional BC contributions
-without reading any BC basis file. Supported historical case/directory requests
-SHALL be translated once at the legacy entry boundary owned by the
-[HBMCMC isolation contract](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md),
-after winning overrides and before scientific work. For NESW, a supplied legacy
-`bc_basis_directory` SHALL produce an unused/deprecated-option warning and SHALL
-NOT cause file discovery or a missing-directory error. Disabled BCs SHALL NOT
-trigger basis-resource loading. File-backed selections SHALL fail early for
-missing or unreadable selected files rather than silently dropping them.
+The built-in NESW calculation SHALL use acquired directional BC contributions
+without reading any BC basis file. Disabled BCs SHALL NOT trigger basis-resource
+loading. File-backed selections SHALL fail early for missing or unreadable
+selected files rather than silently dropping them.
 
 #### Scenario: NESW does not select a file
 
-- **WHEN** a legacy entry-point request uses NESW and includes a historical `bc_basis_directory`
-- **THEN** the input adapter explains that the directory is unused and deprecated
-- **AND** the runner performs no BC basis-file lookup, even if that directory is absent
-- **AND** sensitivities use the acquired directional BC contributions
+- **WHEN** a canonical modern request selects the built-in NESW calculation
+- **THEN** no BC basis-file lookup is performed
+- **AND** sensitivities use acquired directional BC contributions
 
 #### Scenario: Explicit time-dependent BC basis
 
@@ -141,9 +138,8 @@ SHALL NOT require its default. Scientific preparation SHALL receive labelled map
 
 `country_file` SHALL remain the explicit reporting country definition, independent
 of these preparation defaults; the domain name SHALL NOT infer a reporting map.
-`country_directory` SHALL be removed from run configuration in 0.8. Entry adapters
-SHALL reject it before scientific work with guidance to use `country_file`,
-`landsea_path` or `outer_regions_path` according to the intended operation.
+Reporting SHALL use `country_file`; preparation SHALL use `landsea_path` or
+`outer_regions_path` according to the selected operation.
 
 #### Scenario: Packaged preparation with explicit reporting
 
@@ -151,12 +147,6 @@ SHALL reject it before scientific work with guidance to use `country_file`,
 - **THEN** the runner selects available EUROPE packaged preparation defaults for omitted support paths
 - **AND** the reporting country definition remains the explicitly selected file
 - **AND** an explicit preparation path overrides only its corresponding packaged default
-
-#### Scenario: Removed country directory
-
-- **WHEN** a 0.8 run request supplies `country_directory`
-- **THEN** its entry adapter rejects the option with the operation-specific replacements before acquisition
-- **AND** no downstream compatibility branch interprets that directory
 
 ### Requirement: Explicit partition collections have deterministic ordering
 

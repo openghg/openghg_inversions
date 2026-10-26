@@ -126,12 +126,32 @@ def test_new_configured_path_rejects_inferred_ou_explicitly(likelihood):
         Co2O2ModelConfig.from_params({**_config(), "likelihood": likelihood}).bind(_prepared())
 
 
-@pytest.mark.parametrize("units", [["ppm", "ppm", "per meg", "per meg", "per meg"], ["bananas"] * 5, ["permeg"] * 5])
+@pytest.mark.parametrize("units", [
+    ["ppm", "ppm", "per meg", "per meg", "per meg"],
+    ["bananas"] * 5,
+    ["permeg"] * 5,
+    ["ppm", "ppm", None, None, None],
+])
 def test_actual_artifact_units_are_validated_without_model_settings(units):
     prepared = _prepared()
     prepared = replace(prepared, observations=prepared.observations.assign_coords(observation_units=("observation", units)))
     with pytest.raises(ValueError, match="identical|mol/mol|OPE-86"):
         validate_co2_o2_units(prepared)
+
+
+def test_model_binds_variable_width_species_and_unit_strings():
+    """Loaded Zarr strings preserve species-specific error choices."""
+    prepared = _prepared()
+    observations = prepared.observations.reset_index("observation").assign_coords({
+        name: ("observation", np.asarray(prepared.observations[name].values, dtype=np.dtypes.StringDType()))
+        for name in ("species", "observation_units")
+    })
+    prepared = replace(prepared, observations=observations)
+
+    arguments = Co2O2ModelConfig.from_params(_config()).bind(prepared)
+
+    np.testing.assert_allclose(arguments["independent_error_sd"], [0.2, 0.2, 0.3, 0.3, 0.3])
+    assert validate_co2_o2_units(prepared) == "ppm"
 
 
 def test_model_rejects_configured_units_that_differ_from_artifact():

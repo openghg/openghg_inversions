@@ -109,9 +109,9 @@ scientist acceptance is tracked in `OPE-79
 the TOML configuration boundary and prepared-input scientific operations.
 
 The CO2-only handoff is intentionally separate from both the generic
-``RhimePreparedInputs`` boundary and the linked CO2/O2 preparation contract.
+``PreparedInputs`` boundary and the linked CO2/O2 preparation contract.
 It does not add coherent-reduction or aggregation-error options to the
-standard and multisector runners or to ``run_hbmcmc.py``.
+standard and multisector runners.
 
 .. toctree::
    :maxdepth: 1
@@ -199,7 +199,7 @@ Inferred-OU tuning belongs to ``sampling.sigma_target_accept`` and
 ``sampling.state_target_accept``. Saved Python sampling takes the same
 ``sampling`` mapping as the full configuration.
 
-``rhime run-co2`` remains an alias. This configured CLI route uses
+The configured ``rhime run --model co2`` CLI route uses
 ``run_co2`` and writes requested products. Python
 ``rhime.run(model="co2", config_file="co2.toml")`` selects the same configured
 runner and returns ``Co2Output``. Acquisition and construction of the defining

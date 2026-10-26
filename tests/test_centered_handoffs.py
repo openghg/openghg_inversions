@@ -1,4 +1,4 @@
-"""Configured saved handoffs bind raw centered boundaries to model periods."""
+"""Saved handoffs bind raw ordinary and centered boundaries to model periods."""
 
 from dataclasses import replace
 import json
@@ -44,6 +44,28 @@ def _joint():
     return replace(prepared, boundary_operands=operands, independent_error_sd=_independent_error(prepared))
 
 
+
+def _raw_ordinary(linked):
+    prepared = _joint() if linked else _ordinary()
+    if linked:
+        boundaries = {
+            channel: (operands.H_bc_anomaly + operands.bc_reference * operands.H_bc_mass).rename(
+                nmeasure=str((prepared.co2_sensitivity if channel == "co2" else prepared.o2_sensitivity).dims[0])
+            ).transpose(..., "bc_region").assign_attrs(
+                units="ppm", boundary_sensitivity_preparation="raw-spatial"
+            )
+            for channel, operands in prepared.boundary_operands.items()
+        }
+        return replace(prepared, boundary_operands={}, boundary_sensitivity=boundaries)
+    inputs = prepared.inv_inputs
+    absolute = (inputs.H_bc_anomaly + inputs.bc_reference * inputs.H_bc_mass).assign_attrs(
+        units="ppm", boundary_sensitivity_preparation="raw-spatial"
+    )
+    inputs = inputs.drop_vars(["H_bc_anomaly", "H_bc_mass", "bc_reference"]).assign(H_bc=absolute)
+    inputs.attrs.pop("boundary_representation", None)
+    return replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
+
+
 def _config(linked, **periods):
     boundary = {"enabled": True, "prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.01}, **periods}
     if linked:
@@ -52,9 +74,10 @@ def _config(linked, **periods):
 
 
 @pytest.mark.parametrize("linked", [False, True])
-def test_saved_centered_periods_prior_predictive_save_reopen(tmp_path, linked):
+@pytest.mark.parametrize("centered", [False, True])
+def test_saved_raw_periods_prior_predictive_save_reopen(tmp_path, linked, centered):
     module = co2_o2_handoffs if linked else handoffs
-    prepared = _joint() if linked else _ordinary()
+    prepared = (_joint() if linked else _ordinary()) if centered else _raw_ordinary(linked)
     anchor = "1970-01-01T12:00:00" if linked else "2020-01-01T12:00:00"
     config = _config(linked, frequency="2D", anchor_time=anchor)
     manifest = module.save_preparation(
@@ -65,16 +88,17 @@ def test_saved_centered_periods_prior_predictive_save_reopen(tmp_path, linked):
     assert result["status"] == "pass"
     trace = load_trace(tmp_path / "prior" / "prior-predictive.nc")
     metadata = json.loads(trace.attrs["rhime_model_metadata"])
-    assert metadata["bc_frequency"] == "2D"
-    assert metadata["bc_anchor_time"] == anchor
+    if centered:
+        assert metadata["bc_frequency"] == "2D"
+        assert metadata["bc_anchor_time"] == anchor
     observed = prepared.observations if linked else prepared.inv_inputs.mf
     xr.testing.assert_allclose(trace.observed_data.y, observed)
-    assert trace.prior_predictive.y.attrs["concentration_representation"] == "absolute-v1"
+    if centered:
+        assert trace.prior_predictive.y.attrs["concentration_representation"] == "absolute-v1"
     # Prediction noise is small on the absolute concentration scale, even when q is hundreds of ppm.
     np.testing.assert_allclose(trace.prior_predictive.y, trace.prior.modelled_concentration, atol=5, rtol=0)
     channels = ("co2", "o2") if linked else (None,)
     for channel in channels:
-        operands = prepared.boundary_operands[channel] if linked else prepared.inv_inputs
         prefix = f"{channel}_" if linked else ""
         scale = trace.prior[f"{prefix}bc"]
         dim = str(scale.dims[-1])
@@ -82,7 +106,12 @@ def test_saved_centered_periods_prior_predictive_save_reopen(tmp_path, linked):
         assert scale[f"{prefix}bc_period"].values.tolist() == [0, 1, 0, 1]
         assert scale[f"{prefix}bc_curtain"].values.tolist() == ["north", "north", "south", "south"]
         # Midnight samples straddle the noon anchor: first period, then second.
-        absolute = (operands.H_bc_anomaly + operands.bc_reference * operands.H_bc_mass).values
+        if centered:
+            operands = prepared.boundary_operands[channel] if linked else prepared.inv_inputs
+            absolute = (operands.H_bc_anomaly + operands.bc_reference * operands.H_bc_mass).values
+        else:
+            raw = prepared.boundary_sensitivity[channel] if linked else prepared.inv_inputs.H_bc
+            absolute = raw.transpose("bc_region", ...).values
         periods = np.array([0, 1, 1])[:absolute.shape[-1]]
         selected_scales = scale.values.reshape(*scale.shape[:-1], 2, 2)[..., periods]
         expected = (selected_scales * absolute).sum(axis=-2)
@@ -94,23 +123,29 @@ def test_saved_centered_periods_prior_predictive_save_reopen(tmp_path, linked):
         else:
             np.testing.assert_allclose(actual, expected)
 
+    # Reuse the same saved preparation with a single model-owned period.
+    # This constructs another graph without multiplying posterior sampling.
+    reopened = module.load_preparation(manifest).prepared
+    owner = Co2O2ModelConfig if linked else Co2ModelConfig
+    options = owner.from_params(_config(linked)).bind(reopened)
+    if linked:
+        from openghg_inversions.rhime.co2.co2_o2_runner import build_rhime_co2_o2
+        rebuilt = build_rhime_co2_o2(prepared_inputs=reopened, **options)
+    else:
+        from openghg_inversions.rhime.co2.co2_runner import materialize_co2_inputs, build_co2_from_materialized
+        inputs, priors = materialize_co2_inputs(prepared_inputs=reopened, **options)
+        rebuilt = build_co2_from_materialized(inputs, prepared_inputs=reopened, priors=priors, **options)
+    point = rebuilt.model.initial_point()
+    for name in (("co2_bc", "o2_bc") if linked else ("bc",)):
+        assert point[name].size == 2
+
 
 @pytest.mark.parametrize("linked", [False, True])
-def test_absolute_boundary_defaults_compatible_but_period_override_rejected(linked):
-    if linked:
-        prepared = _linked(("co2", "o2"))
-        prepared = replace(prepared, independent_error_sd=_independent_error(prepared))
-        owner = Co2O2ModelConfig
-    else:
-        prepared = _ordinary()
-        inputs = prepared.inv_inputs.drop_vars(["H_bc_anomaly", "H_bc_mass", "bc_reference"])
-        inputs["H_bc"] = prepared.inv_inputs.H_bc_anomaly.variable
-        inputs.attrs.pop("boundary_representation", None)
-        prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
-        owner = Co2ModelConfig
+def test_raw_ordinary_boundary_period_options_bind(linked):
+    prepared = _raw_ordinary(linked)
+    owner = Co2O2ModelConfig if linked else Co2ModelConfig
     assert "bc_freq" not in owner.from_params(_config(linked)).bind(prepared)
-    with pytest.raises(ValueError, match="legacy absolute H_bc"):
-        owner.from_params(_config(linked, frequency="2D")).bind(prepared)
+    assert owner.from_params(_config(linked, frequency="2D")).bind(prepared)["bc_freq"] == "2D"
 
 
 @pytest.mark.parametrize("linked", [False, True])
@@ -180,15 +215,21 @@ def test_periods_require_enabled_boundary(linked):
         owner.from_params(config)
 
 
-def test_linked_period_override_rejects_active_absolute_channel():
+def test_linked_period_override_supports_mixed_raw_channel_representations(tmp_path):
     prepared = _joint()
-    absolute = _linked(("o2",)).boundary_sensitivity
-    prepared = replace(prepared, boundary_operands={"co2": prepared.boundary_operands["co2"]}, boundary_sensitivity=absolute)
-    config = _config(True, frequency="2D")
-    with pytest.raises(ValueError, match="legacy absolute H_bc"):
-        Co2O2ModelConfig.from_params(config).bind(prepared)
-    config["channels"]["o2"]["boundary"] = {"enabled": False}
+    ordinary = _raw_ordinary(True)
+    prepared = replace(prepared, boundary_operands={"co2": prepared.boundary_operands["co2"]},
+                       boundary_sensitivity={"o2": ordinary.boundary_sensitivity["o2"]})
+    config = _config(True, frequency="2D", anchor_time="1970-01-01T12:00:00")
     assert Co2O2ModelConfig.from_params(config).bind(prepared)["bc_freq"] == "2D"
+    manifest = co2_o2_handoffs.save_preparation(
+        prepared, output_dir=tmp_path / "prepared", domain="EUROPE",
+        start_date="1969-12-01", end_date="1970-02-01",
+    )
+    result = co2_o2_handoffs.prior_predictive(
+        manifest, model=config, output_dir=tmp_path / "prior", draws=2, random_seed=13,
+    )
+    assert result["status"] == "pass"
 
 
 @pytest.mark.parametrize("linked,cached", [(False, False), (False, True), (True, False)])

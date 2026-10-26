@@ -162,6 +162,25 @@ def test_merge_trace_groups_uses_exact_direct_names_and_retains_chains() -> None
     assert result["x_prior"].dims == ("chain", "draw")
 
 
+@pytest.mark.parametrize("new_combine_defaults", [False, True])
+def test_merge_trace_groups_preserves_complementary_values_and_rejects_conflicts(
+    new_combine_defaults: bool,
+) -> None:
+    """Unsuffixed groups may fill gaps, but cannot replace conflicting samples."""
+    prior = xr.Dataset({"x": ("draw", [1.0, np.nan])}, coords={"draw": [0, 1]})
+    posterior = xr.Dataset({"x": ("draw", [2.0, 3.0])}, coords={"draw": [1, 2]})
+    with xr.set_options(use_new_combine_kwarg_defaults=new_combine_defaults):
+        result = merge_trace_groups(make_trace(prior=prior, posterior=posterior), add_suffix=False)
+        xr.testing.assert_identical(
+            result, xr.Dataset({"x": ("draw", [1.0, 2.0, 3.0])}, coords={"draw": [0, 1, 2]})
+        )
+        with pytest.raises(xr.MergeError, match="conflicting values"):
+            merge_trace_groups(
+                make_trace(prior=prior, posterior=posterior.assign_coords(draw=[0, 2])),
+                add_suffix=False,
+            )
+
+
 def test_convert_idata_to_dataset_preserves_substring_group_filters() -> None:
     """The legacy conversion wrapper selects groups containing each filter."""
     trace = make_trace(
