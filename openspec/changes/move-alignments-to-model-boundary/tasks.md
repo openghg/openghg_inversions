@@ -119,7 +119,7 @@ They do not establish validation of this restack after PR #974 and updated #971.
 
 - [x] 8.1 Preserve canonical construction/provenance and BC basis setup from #974, generic supported-filter validation from #971, and pinned Git references to earlier #960 evidence while porting #964's retained-population and model-input behavior.
 - [x] 8.2 Retain strict ordinary raw prepared schema 2; record the provisional retired-v1/ordinary-v2/optional-centered-v3 map without centered implementation. Future #965 must preserve ordinary BCs; #976 review remains open.
-- [ ] 8.3 Complete focused restack tests, Ruff, strict OpenSpec validation and independent review.
+- [x] 8.3 Complete focused restack tests, Ruff, strict OpenSpec validation and independent review.
 - [ ] 8.4 Record fresh final Python 3.12/3.13 and documentation validation for the restacked revision.
 
 The latest maintainer direction removes historical aggregation fixtures and their
@@ -146,5 +146,8 @@ record; current tests cover supported behavior and generic invalid names only.
   `tests/test_standard_handoffs.py`, `tests/test_multisector_handoffs.py`,
   `tests/test_standard_handoff_parity.py`, `tests/test_multisector_handoff_parity.py`
   and `tests/test_nested_preparation_contracts.py`. Counts overlap other runs.
-- Independent review and final CI-equivalent validation remain pending. Earlier
-  complete-matrix records do not establish acceptance of this restacked revision.
+- Independent higher-effort review found no scoped findings; its 119 selected
+  tests, Ruff checks and 13 source assertions passed. These counts overlap the
+  local checks and must not be added together.
+- Final CI-equivalent validation remains pending. Earlier complete-matrix records
+  do not establish acceptance of this restacked revision.
