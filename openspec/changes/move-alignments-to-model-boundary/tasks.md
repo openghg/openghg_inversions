@@ -2,7 +2,7 @@
 
 The checklist records delivered 26 October restack acceptance before the review
 cleanup below. Scientific decisions and ownership remain in
-[proposal.md](proposal.md) and [design.md](design.md). Earlier checks apply only
+[proposal.md](https://github.com/openghg/openghg_inversions/blob/a44d724a8d087348300fda87808e8b796db78473/openspec/changes/move-alignments-to-model-boundary/proposal.md) and [design.md](https://github.com/openghg/openghg_inversions/blob/a44d724a8d087348300fda87808e8b796db78473/openspec/changes/move-alignments-to-model-boundary/design.md). Earlier checks apply only
 to their named revisions; overlapping counts must not be added together.
 
 ## 1. Current restack acceptance
@@ -17,7 +17,7 @@ to their named revisions; overlapping counts must not be added together.
 
 ## 2. Review cleanup, 26 October 2026
 
-- [ ] 2.1 Remove the orphan residual-error helper and stale documentation, consolidate this acceptance/evidence record and deduplicate the named-input scenario; verify retained pollution-event and MinimumError behavior, affected tests/lint/documentation, strict main/delta validation and whitespace before marking complete.
+- [x] 2.1 Remove the orphan residual-error helper and stale documentation, consolidate this acceptance/evidence record and deduplicate the named-input scenario; verify retained pollution-event and MinimumError behavior, affected tests/lint/documentation, strict main/delta validation and whitespace before marking complete.
 
 ## 3. Revision and validation evidence
 
@@ -31,6 +31,7 @@ to their named revisions; overlapping counts must not be added together.
 | Boundary retry, array `19728007`, element `0`, merged #971 `53f6b4b2` | Exactly the same two modules: 23 passed, two warnings in each of the three environments above; exit status `0:0`. | Focused retry, not a fresh full-suite pass. |
 | Boundary retry, array `19728007`, element `1`, corrected #964 `d0133911` | Exactly the same two modules: 30 passed, four warnings in each of the three environments above; exit status `0:0`. | Focused retry, not a fresh full-suite pass. |
 | Retry preflights | Python 3.12.11 for both Python 3.12 environments and Python 3.13.7 for Python 3.13; selected Ruff passed for both elements. Logs: `slurm-971-964-boundary-retry-19728007_0.out` and `slurm-971-964-boundary-retry-19728007_1.out`. | Complements the original matrix and its auxiliary checks. |
+| Review cleanup, `2d805c17`, job `19728899` | Focused input/model-alignment/Ramsden coverage: 73 passed, one deselected; independent AST comparison confirms only the orphan helper was removed. Lint and `docs-full` passed, job `COMPLETED 0:0`. Strict specs and 52 source-heading targets passed; 445 rendered HTML links valid. Removed helper absent from HTML, inventory and search objects; MinimumError and percentile APIs retained. | No full scientific matrix repeat. This incremental documentation invocation reported four existing warnings: one SiteOptions duplicate, one PreparedInputs ambiguity and two DataConfig ambiguities; no warning-backlog fix is claimed. |
 
 The namespace failures came from ignored retired-package directories containing
 only generated CPython bytecode files. Inspection
