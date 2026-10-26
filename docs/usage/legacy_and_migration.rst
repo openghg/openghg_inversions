@@ -612,6 +612,13 @@ executor's exact trace or all its historical attributes.
 Removed Python helper APIs
 --------------------------
 
+The public ``openghg_inversions.model_error.residual_error_method`` helper,
+including its robust median-absolute-deviation path, is removed. Continue
+workflows requiring that helper on the 0.7.x release line; there is no mandatory
+replacement API. Current ``min_error="residual"`` configuration and
+``MinimumError.from_observations(..., value="residual")`` remain available,
+using the non-robust residual standard deviation.
+
 Code that imported fixed-basis preparation or model helpers should move to
 the retained RHIME abstractions:
 

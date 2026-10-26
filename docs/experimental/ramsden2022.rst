@@ -72,7 +72,7 @@ Prepared inputs
 
 Each channel dataset must use the canonical names below. The two observation
 axes can differ, but every coupled sector must use exactly matching labelled
-state coordinates. Raw ``RhimePreparedInputs.inv_inputs`` datasets can be
+state coordinates. Raw ``PreparedInputs.inv_inputs`` datasets can be
 passed directly: floor choices and sigma site positions belong to the
 likelihood, so preparation need not supply ``min_error`` or ``site_indicator``.
 

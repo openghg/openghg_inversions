@@ -74,12 +74,6 @@ selection and error derivation SHALL NOT require errors from excluded sites.
 - **AND** output metadata retains the applied footprint rectangle; externally
   pre-masked inputs with no supplied extent retain an unknown mask extent
 
-#### Scenario: Direct scientific stages use named inputs
-
-- **WHEN** a caller supplies acquired data and named required scientific choices
-- **THEN** each stage can execute without a `RhimeConfig` or raw parameter mapping
-- **AND** omitting a required keyword is rejected at the function-call boundary
-
 ### Requirement: Model-owned boundary temporal operands
 
 Compatible raw spatial BC sensitivities SHALL support separate valid constant,

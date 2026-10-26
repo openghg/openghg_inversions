@@ -46,14 +46,13 @@ in the migration guide and evidence ledger. See :doc:`/usage/legacy_and_migratio
 retained capabilities, evidence gate and remaining owners.
 
 The #876 amendment separates configuration choices, numerical input behavior
-and saved handoff guarantees below. The prior implementation at revision
-``1487ccf9`` passed the checks recorded in Slurm array ``19651924``. Those results
-are historical evidence; they do not validate the 26 October restack onto the
-canonical interfaces and aggregation-filter retirement. Fresh CI acceptance of
-this revision remains pending. The :download:`alignment change tasks
-<../../openspec/changes/move-alignments-to-model-boundary/tasks.md>` record
-revision-specific evidence and limits. The broader handoff change remains active
-with its separate programme acceptance still open.
+and saved handoff guarantees below. The restacked implementation and its scoped
+review and validation are complete. The :download:`alignment change tasks
+<../../openspec/changes/move-alignments-to-model-boundary/tasks.md>` record the
+26 October full-suite diagnostics and successful bounded correction retry,
+including exact tested revisions and limits; the retry is not a fresh full-suite
+pass. PR 964 remains draft for maintainer review. The broader handoff change
+remains active with its separate programme acceptance still open.
 
 .. list-table:: Behavioral ownership and delivery status
    :header-rows: 1
@@ -106,9 +105,8 @@ with its separate programme acceptance still open.
      - Owns canonical scientific construction, values/units, labelled metadata,
        coordinates, provenance and borrowed/lazy arrays, together with observation
        selection/error preparation, retained alignment, raw spatial BC inputs,
-       model-time BC periods and consumed minimum-error operands. Fresh acceptance
-       of the #876 restack remains pending.
-       Review and delivery evidence stays in the
+       model-time BC periods and consumed minimum-error operands. The #876
+       restack is implemented; review and delivery evidence stays in the
        :download:`alignment change tasks
        <../../openspec/changes/move-alignments-to-model-boundary/tasks.md>`.
        Current explanations: :doc:`observation_uncertainty`,
@@ -159,14 +157,14 @@ with its separate programme acceptance still open.
      - Owns prepared formats, authoritative saved facts, raw-input reuse and
        incompatible baked-preparation rejection. Standard/multisector routes
        are implemented; CO2 retains coherent prior-dependent reuse constraints.
-       The #876 restack awaits fresh acceptance; the capability remains active.
+       The #876 restack is implemented; the capability remains active.
    * - Saved inference and fitted-operand replay
      - :download:`Sampled recipe handoff
        <../../openspec/changes/replace-recipe-workflow-with-reusable-handoffs/specs/sampled-recipe-handoff/spec.md>`
      - Owns sample formats, exact fitted BC/floor persistence and graph-free
        replay without recalculation. Standard/multisector replay is implemented;
        CO2 handoffs were adopted in PRs 886 and 900 with later fixed-OU work.
-       The #876 restack awaits fresh acceptance; broader acceptance remains open.
+       The #876 restack is implemented; broader programme acceptance remains open.
        Current routes: :doc:`/usage/staged_workflow` and the family pages.
 
 The older :download:`workflow configuration proposal
@@ -215,8 +213,9 @@ uncertainty propagation, not an observation-selection filter.
 compatibility handling. #971 supplies aggregation-filter retirement and generic
 registry validation. This #964 restack builds on both prerequisites and implements
 selection-first imputation, retained-row floors and model-time BC alignment.
-Fresh revision-specific validation remains pending. None of #964's scientific
-delivery, #971's implementation or M2 tooling is a prerequisite for #719.
+Scoped implementation, review and validation are complete, with revision-specific
+evidence and limits in the alignment change tasks linked above. None of #964's
+scientific delivery, #971's implementation or M2 tooling is a prerequisite for #719.
 
 Planning records
 -----------------
