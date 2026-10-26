@@ -138,5 +138,13 @@ record; current tests cover supported behavior and generic invalid names only.
   mask and modern legacy-output coverage: 117 passed.
 - Ruff passes for all production Python, tests and examples. Diff whitespace and
   strict validation pass for both active changes and the two affected main specs.
-- Broader runner/Ramsden/assembly/handoff/nested coverage, independent review and
-  final CI-equivalent validation are recorded separately when complete.
+- Broader runner/Ramsden/raw-assembly/custom-basis/handoff/nested coverage passed
+  539 tests with one deselected, including the corrected canonical-schema test.
+  Its ten paths were `tests/test_prepared_inputs_serialisation.py::test_data_contracts_preserve_canonical_imports_and_prepared_schema`,
+  `tests/test_rhime.py`, `tests/experimental/test_ramsden2022.py`,
+  `tests/test_inversion_inputs.py`, `tests/integration/test_custom_basis_rhime_runner.py`,
+  `tests/test_standard_handoffs.py`, `tests/test_multisector_handoffs.py`,
+  `tests/test_standard_handoff_parity.py`, `tests/test_multisector_handoff_parity.py`
+  and `tests/test_nested_preparation_contracts.py`. Counts overlap other runs.
+- Independent review and final CI-equivalent validation remain pending. Earlier
+  complete-matrix records do not establish acceptance of this restacked revision.
