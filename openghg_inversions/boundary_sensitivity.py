@@ -197,6 +197,10 @@ def bind_boundary_sensitivity(
             frequency=frequency, anchor_time=anchor_time, observation_labels=None,
         ).H_bc
     if raw_dim != native_dim:
+        # Native time has already determined periods; the restored dimension
+        # index owns those same labels, so its auxiliary copy is redundant.
+        if native_dim == "time" and "time" in aligned.coords:
+            aligned = aligned.drop_vars("time")
         aligned = aligned.rename({raw_dim: native_dim})
     return aligned.transpose(native_dim, state_dim)
 

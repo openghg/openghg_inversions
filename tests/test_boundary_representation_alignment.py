@@ -126,3 +126,85 @@ def test_indexed_boundary_time_conflict_is_rejected_without_computing_payload(ce
             )
         else:
             bind_boundary_sensitivity(payload, observations, frequency="monthly")
+
+
+@pytest.mark.parametrize("centered", [False, True])
+@pytest.mark.parametrize("frequency", [None, "monthly"])
+def test_public_linked_native_time_axis_builds_with_raw_boundary_operands(centered, frequency):
+    """A native time axis can consume centered operands indexed by nmeasure."""
+    import numpy as np
+    import pytensor
+
+    from openghg_inversions.rhime.co2 import prepare_co2_o2_inputs
+    from openghg_inversions.rhime.co2.co2_o2_runner import build_rhime_co2_o2
+    from test_centered_co2_boundaries import _operands
+    from test_rhime_co2_o2 import _inputs, _independent_error
+
+    inputs = _inputs()
+    inputs["o2_units"] = "ppm"
+    times = np.array(["2020-01-01", "2020-02-01"], dtype="datetime64[D]")
+    for name, value in inputs.items():
+        if not isinstance(value, xr.DataArray):
+            continue
+        for old_dim, new_dim in (("co2_measure", "time"), ("co2_measure_cov", "time_cov")):
+            if old_dim in value.dims:
+                value = value.assign_coords({old_dim: times}).rename({old_dim: new_dim})
+        inputs[name] = value
+    operands = _operands(inputs["co2_observations"])
+    assert "time" not in operands.coords
+    if centered:
+        inputs["boundary_operands"] = {"co2": operands}
+    else:
+        inputs["boundary_sensitivity"] = {
+            "co2": (operands.H_bc_anomaly + operands.bc_reference * operands.H_bc_mass)
+            .rename(nmeasure="time").transpose("time", "bc_region")
+            .assign_attrs(units="ppm", boundary_sensitivity_preparation="raw-spatial"),
+        }
+    prepared = prepare_co2_o2_inputs(**inputs)
+    original = operands.copy(deep=True)
+    with pytensor.config.change_flags(floatX="float64"):
+        built = build_rhime_co2_o2(
+            prepared_inputs=prepared, independent_error_sd=_independent_error(prepared), bc_freq=frequency,
+            bc_prior={"co2": {"pdf": "normal", "mu": 1., "sigma": .1}},
+        )
+        assert built.model.initial_point()["co2_bc"].size == (2 if frequency is None else 4)
+    xr.testing.assert_identical(operands, original)
+
+
+@pytest.mark.parametrize("centered", [False, True])
+@pytest.mark.parametrize("frequency", [None, "monthly"])
+@pytest.mark.parametrize("raw_dim", ["nmeasure", "time"])
+@pytest.mark.parametrize("native_dim", ["nmeasure", "time"])
+def test_native_datetime_dimension_restoration_preserves_rows_and_periods(centered, frequency, raw_dim, native_dim):
+    import numpy as np
+    import pytensor
+
+    from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands
+
+    labels = np.array(["2020-01-01", "2020-02-01"], dtype="datetime64[D]")
+    anomaly = xr.DataArray(da.from_array([[1., 2.]], chunks=(1, 1)), dims=("bc_region", raw_dim),
+                           coords={"bc_region": ["north"], raw_dim: labels}, attrs={"units": "ppm"})
+    if raw_dim != "time":
+        anomaly = anomaly.assign_coords(time=(raw_dim, np.array(["2020-01-01", "2020-01-02"], dtype="datetime64[D]")))
+    operands = xr.Dataset({
+        "H_bc_anomaly": anomaly, "H_bc_mass": xr.ones_like(anomaly).assign_attrs(units="1"),
+        "bc_reference": xr.DataArray(400., attrs={"units": "ppm"}),
+    }, attrs={"boundary_representation": "centered-v1"}).isel({raw_dim: [1, 0]})
+    observations = xr.DataArray([3., 4.], dims=native_dim, coords={native_dim: labels}, attrs={"units": "ppm"})
+    if native_dim != "time":
+        observations = observations.assign_coords(time=(native_dim, labels))
+    original = operands.copy(deep=True)
+    with pytensor.config.change_flags(floatX="float64"), Callback(posttask=lambda *args: pytest.fail("Boundary payload computed during binding")):
+        if centered:
+            aligned = bind_boundary_operands(operands, observations, frequency=frequency)
+            result = aligned.H_bc_anomaly + aligned.bc_reference * aligned.H_bc_mass
+        else:
+            raw = (operands.H_bc_anomaly + operands.bc_reference * operands.H_bc_mass).assign_attrs(
+                units="ppm", boundary_sensitivity_preparation="raw-spatial",
+            )
+            result = bind_boundary_sensitivity(raw, observations, frequency=frequency)
+    assert hasattr(result.data, "__dask_graph__")
+    np.testing.assert_array_equal(result[native_dim], observations[native_dim])
+    assert result.sizes["bc_region"] == (1 if frequency is None else 2)
+    np.testing.assert_allclose(result.sum("bc_region"), [401., 402.])
+    xr.testing.assert_identical(operands, original)

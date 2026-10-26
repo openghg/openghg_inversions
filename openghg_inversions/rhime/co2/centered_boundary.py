@@ -76,6 +76,10 @@ def bind_boundary_operands(
     if units is not None and aligned.bc_reference.attrs.get("units") != units:
         raise ValueError("Centered boundary reference units must match observation units.")
     if raw_dim != native_dim:
+        # Native time has already determined periods; the restored dimension
+        # index owns those same labels, so its auxiliary copy is redundant.
+        if native_dim == "time" and "time" in aligned.coords:
+            aligned = aligned.drop_vars("time")
         aligned = aligned.rename({raw_dim: native_dim})
     return aligned
 
