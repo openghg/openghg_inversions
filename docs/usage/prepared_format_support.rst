@@ -78,7 +78,7 @@ reconstruction association; editing an artifact's version metadata does not
 migrate its scientific contents.
 
 Regeneration and migration
--------------------------
+--------------------------
 
 Generic version 1 contains retired baked model policies and is rejected.
 Historical centered version 2 conflicts with ordinary raw version 2 and is also
