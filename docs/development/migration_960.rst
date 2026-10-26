@@ -10,6 +10,39 @@ It records source behavior, not a new configuration contract or a promise of
 numerical reproduction. Production code and behavioral specifications are
 unchanged by this evidence PR.
 
+Archived retirement records
+----------------------------
+
+The five dated #719 retirement records are historical review evidence, not
+inputs consumed by pytest. They were removed from the current test tree on
+26 October 2026; their original contents remain available at the full Git
+revision ``6a1d22d10c07442514dd610e2ec62b7a2719e297``:
+
+* `Initial runtime removal comparisons
+  <https://github.com/openghg/openghg_inversions/blob/6a1d22d10c07442514dd610e2ec62b7a2719e297/tests/fixtures/migration_960/retirements/runtime_719_2026_10_23.json>`_.
+* `Supplementary historical codec witnesses
+  <https://github.com/openghg/openghg_inversions/blob/6a1d22d10c07442514dd610e2ec62b7a2719e297/tests/fixtures/migration_960/retirements/legacy_codec_witnesses_2026_10_23.json>`_.
+* `23 October review and rebase comparisons
+  <https://github.com/openghg/openghg_inversions/blob/6a1d22d10c07442514dd610e2ec62b7a2719e297/tests/fixtures/migration_960/retirements/review_974_2026_10_23.json>`_.
+* `Prepared factory and cleanup comparisons
+  <https://github.com/openghg/openghg_inversions/blob/6a1d22d10c07442514dd610e2ec62b7a2719e297/tests/fixtures/migration_960/retirements/factory_and_cleanup_2026_10_24.json>`_.
+* `26 October BC, schema-name and contract-owner comparisons
+  <https://github.com/openghg/openghg_inversions/blob/6a1d22d10c07442514dd610e2ec62b7a2719e297/tests/fixtures/migration_960/retirements/review_974_2026_10_26.json>`_.
+
+These records preserve source revisions/hashes, original cases, dispositions and
+follow-up owners for review and future explicit migration work. They are not
+current expected behavior or proof of an executed scientific check. Dated paths
+in the ledger below refer to this archive. Actual validation remains attributed
+to its implementation revision in the task and PR records.
+
+The original #960 plain inputs and expectations remain in
+``tests/fixtures/migration_960/``. Current tests consume the applicable cases;
+the historical cases also remain available for later explicit converter checks.
+The retirement-record cleanup does not remove or rewrite those original files.
+
+Original evidence scope and fixtures
+-------------------------------------
+
 Read the ledger together with the plain inputs and expected observations in
 ``tests/fixtures/migration_960/``. Those files do not import HBMCMC and remain
 available after its deletion. Runtime characterization tests deliberately call
