@@ -97,7 +97,7 @@ def filtering(
         dict in same format as datasets_in, with filters applied
 
     """
-    if not filters:
+    if filters is None or filters == [] or filters == {}:
         return datasets_in
 
     # Get list of sites

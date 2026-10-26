@@ -1,5 +1,5 @@
 Migration evidence before compatibility removal
-========================================
+===============================================
 
 This is the bounded M1 evidence archive for `issue #960
 <https://github.com/openghg/openghg_inversions/issues/960>`_, part of
@@ -708,7 +708,7 @@ migration expectations above.
 
 
 Aggregation-filter validation disposition, 26 October 2026
----------------------------------------------------------
+----------------------------------------------------------
 
 The maintainer's PR #971 review supersedes the named runtime rejection described
 in the 23 October comparison above. Both aggregation functions and registry
