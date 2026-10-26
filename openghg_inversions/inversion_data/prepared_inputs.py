@@ -30,7 +30,7 @@ from openghg_inversions.serialization import (
 )
 
 PREPARED_INPUTS_SCHEMA = "openghg_inversions.rhime_prepared_inputs"
-PREPARED_INPUTS_SCHEMA_VERSION = 1
+PREPARED_INPUTS_SCHEMA_VERSION = 2
 _SITE_AVERAGING_PERIOD = "averaging_period"
 _SITE_STRING_ENCODING = "_rhime_nullable_string_encoding"
 
@@ -50,8 +50,8 @@ class PreparedInputs:
     project-schema positions into its ``site`` coordinate; they are distinct
     from CF compression-by-gathering indexes. The invariant is
     ``site_metadata.site[site_indicator] == nmeasure.site``.
-    ``site_names`` remains available in memory for existing model code, but is
-    regenerated from ``site_metadata`` rather than serialized.
+    ``site_indicator`` and ``site_names`` remain available in memory but are
+    regenerated from measurement labels and ``site_metadata`` rather than serialized.
 
     Args:
         inv_inputs: Canonical inversion inputs consumed by RHIME model
@@ -160,7 +160,7 @@ class PreparedInputs:
         """
         prepared = self.validated()
         site_metadata = prepared.site_metadata
-        inv_inputs = prepared.inv_inputs.drop_vars("site_names", errors="ignore")
+        inv_inputs = prepared.inv_inputs.drop_vars(("site_indicator", "site_names"), errors="ignore")
         multiindex_dims = tuple(
             dim
             for dim in inv_inputs.dims
@@ -183,7 +183,7 @@ class PreparedInputs:
 
     @classmethod
     def from_datatree(cls: type[Self], dt: xr.DataTree) -> Self:
-        """Construct prepared RHIME inputs from a version-1 DataTree.
+        """Construct prepared RHIME inputs from the current raw-input DataTree.
 
         Args:
             dt: DataTree using the ``openghg_inversions.rhime_prepared_inputs``
@@ -206,10 +206,13 @@ class PreparedInputs:
             )
 
         version = dt.attrs.get("schema_version")
-        if isinstance(version, bool) or not isinstance(version, Integral) or version != 1:
+        if (isinstance(version, bool) or not isinstance(version, Integral)
+                or version != PREPARED_INPUTS_SCHEMA_VERSION):
             raise ValueError(
                 f"Expected PreparedInputs schema_version "
-                f"{PREPARED_INPUTS_SCHEMA_VERSION}, got {version!r}."
+                f"{PREPARED_INPUTS_SCHEMA_VERSION}, got {version!r}. "
+                "Older preparations may contain baked model policies; use their matching "
+                "software version or prepare the inputs again."
             )
 
         missing_nodes = [

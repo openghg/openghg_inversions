@@ -11,18 +11,14 @@ defaults; scientific callable signatures do not define the external schema.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import MISSING, dataclass, field, fields
+from dataclasses import MISSING, dataclass, fields
 from pathlib import Path
 from typing import Any, get_args, get_type_hints
-
-import pandas as pd
 
 from openghg_inversions.rhime._resources import resolve_resource_paths
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._site_options import SiteOptions
-from openghg_inversions.model_error import MinErrorConfig
-from openghg_inversions.inversion_inputs import normalise_frequency
-from openghg_inversions.model_error import normalise_min_error, normalise_min_error_options
+from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models._flux import safe_pymc_name
 from openghg_inversions.observation_error import AggregationErrorMode
 from openghg_inversions.inference.sampling import RhimeSampler
@@ -80,10 +76,7 @@ class DataConfig:
     filters: str | list[str | None] | dict[str, str | None | list[str | None]] | None = None
     fix_basis_outer_regions: bool = False
     averaging_error: bool = True
-    bc_freq: str | None = None
     basis_output_path: Path | None = None
-    min_error: MinErrorConfig = 0.0
-    min_error_options: dict[str, bool] = field(default_factory=lambda: normalise_min_error_options(None))
     flux_non_finite_check: FluxNonFiniteCheck = "lazy"
 
 
@@ -153,14 +146,11 @@ class DataConfig:
         if (remaining.get("use_bc", cls.use_bc) and remaining.get("bc_basis_paths") is None
                 and (not isinstance(bc_algorithm, str) or bc_algorithm != "NESW")):
             raise ValueError(f"`bc_basis_algorithm` must be 'NESW' without selected files; got {bc_algorithm!r}.")
-        _bc_frequency_policy(remaining.get("bc_freq", cls.bc_freq))
         remaining["sites"] = as_list(remaining["sites"])
         site_options = SiteOptions.from_inputs(**{
             f.name: remaining.pop(f.name) for f in fields(SiteOptions) if f.name in remaining
         })
         remaining["filters"] = _copy_option_containers(remaining.get("filters", cls.filters))
-        remaining["min_error"] = normalise_min_error(remaining.get("min_error", cls.min_error))
-        remaining["min_error_options"] = normalise_min_error_options(remaining.get("min_error_options"))
         remaining["split_by_sectors"] = multisector
         return cls(site_options=site_options, flux_sources=tuple(flux_sources), **remaining)
 
@@ -232,7 +222,7 @@ class RhimeConfig:
 
 # Data facts a model request may repeat; each must agree with the data configuration.
 REQUEST_CLAIM_NAMES = (
-    "species", "domain", "flux_sources", "start_date", "end_date", "split_by_sectors", "bc_freq", "use_bc",
+    "species", "domain", "flux_sources", "start_date", "end_date", "split_by_sectors", "use_bc",
 )
 
 
@@ -308,19 +298,12 @@ def resolve_sampler_options(params: Mapping[str, Any]) -> RhimeSampler:
     return RhimeSampler(**remaining)
 
 
-def _bc_frequency_policy(value: str | None) -> str | pd.Timedelta | None:
-    """Report the configuration key when the shared frequency policy is invalid."""
-    try:
-        return normalise_frequency(value)
-    except ValueError as exc:
-        raise ValueError(f"Invalid `bc_freq`: {value!r}.") from exc
-
-
 def resolve_model_options(params: Mapping[str, Any], *, data_config: DataConfig) -> RhimeModelSpec:
     """Bind raw model choices to authoritative acquisition and preparation choices.
 
     Omitted BC use inherits the data configuration. Explicit BC use requires prepared BC
-    inputs; repeated temporal or source facts must agree with the data configuration.
+    inputs; repeated source facts must agree with the data configuration. BC
+    periods and likelihood floors remain independently selectable model choices.
 
     Args:
         params: External model options and any repeated data facts.
@@ -346,15 +329,13 @@ def resolve_model_options(params: Mapping[str, Any], *, data_config: DataConfig)
             if name == "flux_sources":
                 claim = tuple(as_list(claim) or ())
             expected = getattr(data_config, name)
-            matches = (
-                _bc_frequency_policy(claim) == _bc_frequency_policy(expected)
-                if name == "bc_freq" else claim == expected
-            )
-            if not matches:
+            if claim != expected:
                 raise ValueError(f"`{name}` conflicts with data: claimed {claimed!r}, expected {expected!r}.")
     use_bc = remaining.pop("use_bc", data_config.use_bc)
     if use_bc and not data_config.use_bc:
         raise ValueError("Model `use_bc=True` requires data configured with BC inputs.")
+    bc_freq = remaining.pop("bc_freq", None)
+    bc_freq_anchor = remaining.pop("bc_freq_anchor", data_config.start_date)
     flux_sources = list(data_config.flux_sources)
     sector_sources = normalise_sector_sources(remaining.pop("sector_sources", None))
     if sector_sources is not None:
@@ -386,6 +367,7 @@ def resolve_model_options(params: Mapping[str, Any], *, data_config: DataConfig)
         x_prior=x_prior, sector_priors=sector_priors, sector_sources=sector_sources,
         bc_prior=bc_prior, offset_prior=offset_prior, use_bc=use_bc, likelihood=likelihood,
         add_offset=add_offset, offset_args=offset_args, aggregation_error_mode=aggregation,
+        bc_freq=bc_freq, bc_freq_anchor=bc_freq_anchor,
     )
 
 
@@ -508,9 +490,6 @@ def validate_rhime_param_types(params: Mapping[str, Any]) -> None:
     for mapping_name in mapping_names:
         _validate_mapping_option(params, mapping_name)
 
-    if "min_error_options" in params:
-        normalise_min_error_options(params["min_error_options"])
-
     if "power" in params and params["power"] is not None:
         power = params["power"]
         if not isinstance(power, Mapping | int | float):
@@ -609,6 +588,8 @@ def _make_model_spec(
     bc_prior: dict[str, Any] | None,
     offset_prior: dict[str, Any] | None,
     use_bc: bool,
+    bc_freq: str | None,
+    bc_freq_anchor: DatetimeLike | None,
     likelihood: LikelihoodSettings | None,
     add_offset: bool,
     offset_args: dict[str, Any] | None,
@@ -656,6 +637,8 @@ def _make_model_spec(
         domain=domain,
         sectors=tuple(sectors),
         use_bc=use_bc,
+        bc_freq=bc_freq,
+        bc_freq_anchor=bc_freq_anchor,
         likelihood=likelihood,
         add_offset=add_offset,
         bc_prior=bc_prior,

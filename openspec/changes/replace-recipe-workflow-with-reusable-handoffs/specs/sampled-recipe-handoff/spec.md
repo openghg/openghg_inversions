@@ -92,9 +92,16 @@ revalidate the same scientific trace. Necessary external-input validation SHALL
 remain at its owning loading or construction boundary. General
 deterministic reconstruction and compact-storage policy remain with the issues
 indexed by [#850](https://github.com/openghg/openghg_inversions/issues/850).
-One `load_samples`/`save_samples` owner SHALL decode/encode the referenced
-scientific result core, including the preparation generation. Replay orchestration
-SHALL consume that decoder rather than reconstruct domain records inline.
+The saved scientific result core SHALL retain its preparation generation and
+remain available to replay through its owning numerical codec.
+
+Standard/multisector samples SHALL retain the exact fitted BC operands when BCs
+are enabled and minimum-error values when consumed by their completed inference,
+including their scientific labels and alignment meaning. Replay SHALL use those recorded operands
+without recalculating BC alignment or minimum error from raw preparation, current
+choices or newer defaults. Their numerical construction belongs to the
+[scientific-inputs contract](../../../../specs/rhime-scientific-inputs/spec.md);
+this handoff owns their persistence and reuse for that completed inference.
 The record SHALL NOT require a separate output-binding
 sidecar or persistence of live models, samplers or steps. Ordinary saves,
 manifest-last completion and dependencies SHALL follow the prepared-recipe-handoff
@@ -133,6 +140,13 @@ transitive authentication or rehashing dependencies before and after inference.
 
 ### Requirement: Replay uses existing scientific validation
 
+Older standard/multisector sample formats whose baked numerical policies are
+incompatible with the raw-preparation and fitted-operand contract SHALL fail
+explicitly with guidance to use matching software or prepare and sample again.
+Readers SHALL NOT silently reinterpret baked values or reconstruct missing fitted
+operands. This restriction SHALL NOT remove support from independent modern
+`InversionOutput` numerical codecs or change CO2's separate coherent replay rules.
+
 Replay SHALL read the current supported record and output-contract formats and
 report missing required files or unsupported formats clearly. Existing scientific
 loaders SHALL perform their necessary external-input checks on roles, labels,
@@ -143,6 +157,18 @@ rather than repeat their checks at every stage. It SHALL NOT require artifact
 digests, tamper detection, schema-downgrade handling or 0.7 compatibility paths.
 Missing required scientific context SHALL fail clearly without graph recovery or
 implicit preparation.
+
+#### Scenario: Replay uses the fitted BC and floor operands
+
+- **WHEN** standard or multisector inference selected BC periods or minimum-error values and a later process replays its saved samples
+- **THEN** replay uses that inference's recorded fitted operands and labels without model construction, alignment or floor recalculation
+- **AND** changed defaults or another model's choices cannot redefine the completed inference
+
+#### Scenario: Reject an incompatible baked sample record
+
+- **WHEN** a caller loads an older standard/multisector sample format incompatible with the raw-preparation and fitted-operand contract
+- **THEN** loading fails with migration guidance before product writes
+- **AND** it neither recalculates fitted operands nor disables independent modern output codecs
 
 #### Scenario: A saved numerical dependency is missing
 - **WHEN** a required dependency cannot be read
@@ -185,8 +211,8 @@ Replay SHALL NOT import or execute recorded construction or likelihood callables
 Sampler provenance SHALL be a small description of completed sampling consumed
 by the shared output owner. It SHALL NOT be a scientific acceptance gate or be
 replaced by fresh sampler defaults. Missing descriptive fields SHALL remain
-unavailable rather than be invented. A shared pure metadata operation SHALL
-normalize available `draws`, `burn`, `tune`, `chains` and `nuts_sampler` values
+unavailable rather than be invented. Replay SHALL normalize available
+`draws`, `burn`, `tune`, `chains` and `nuts_sampler` values
 without constructing a `RhimeSampler`. Missing or invalid descriptions SHALL
 become `{}`, while valid partial descriptions SHALL remain partial. No separate
 sampler settings type or metadata strict flag SHALL be required. Replay results

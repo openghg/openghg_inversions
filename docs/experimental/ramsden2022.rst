@@ -52,17 +52,31 @@ For channel :math:`g`, the observation standard deviation is
            \epsilon_{\min,g}
        \right).
 
-Set ``min_error`` to zero for the paper-shaped likelihood. A positive value
-retains the modern RHIME numerical floor intentionally.
+Each ``RamsdenChannelSpec`` owns its ``min_error`` choice independently, in
+that gas's observation units. The default ``None`` preserves an explicitly
+supplied dataset ``min_error``; when none is supplied it uses zero, giving the
+paper-shaped absolute-error likelihood. Set the channel choice to ``0.0`` to
+explicitly select zero even when a dataset floor is present. A positive scalar,
+a mapping from site labels to values, ``"residual"``, or ``"percentile"`` selects
+a floor through the shared ``MinimumError.from_observations`` calculation.
+``min_error_options={"by_site": True}`` estimates residual floors separately by
+site; the default is a pooled residual estimate. Named methods use retained
+observations after preparation has removed invalid rows. Residual estimation
+requires ``mf_mod`` and optionally uses ``bc_mod``, converting their declared
+units to observation units through the shared estimator; percentile estimation uses
+observation times. Materialize these estimator operands explicitly before
+building when they are Dask-backed.
 
 Prepared inputs
 ---------------
 
 Each channel dataset must use the canonical names below. The two observation
 axes can differ, but every coupled sector must use exactly matching labelled
-state coordinates.
+state coordinates. Raw ``RhimePreparedInputs.inv_inputs`` datasets can be
+passed directly: floor choices and sigma site positions belong to the
+likelihood, so preparation need not supply ``min_error`` or ``site_indicator``.
 
-.. list-table:: Required channel variables
+.. list-table:: Channel variables and coordinates
    :header-rows: 1
    :widths: 20 25 55
 
@@ -80,11 +94,14 @@ state coordinates.
      - Measurement contribution to likelihood uncertainty.
    * - ``min_error``
      - observation
-     - Optional positive floor applied after combining measurement and model
-       uncertainty.
-   * - ``site_indicator``
+     - Optional previously supplied floor, used when the channel's
+       ``min_error`` choice is ``None``.
+   * - ``site`` coordinate
      - observation
-     - Integer site index used to align site-level model error.
+     - Site labels used to derive site-level model-error positions.
+   * - ``time`` coordinate
+     - observation
+     - Required for sigma periods or percentile minimum-error estimation.
    * - ``H_bc``
      - observation, boundary state
      - Boundary sensitivity; required when the channel enables boundary scaling.
@@ -121,10 +138,12 @@ declarations to prevent applying a ratio twice or omitting it.
 Units
 -----
 
-The builder validates supported unit declarations by mole-fraction scale but
-does not convert numeric values. Observations, measurement errors, minimum
-errors, forward sensitivities, and model-error prior values must already share
-each channel's declared scale.
+The builder validates supported unit declarations by mole-fraction scale.
+Supplied observations, measurement errors, minimum errors, forward
+sensitivities, and model-error prior values must already share each channel's
+declared scale; these values are not converted. The residual-floor estimator
+converts ``mf_mod`` and optional ``bc_mod`` from their declared units to that
+channel's observation units before calculating residuals.
 
 For the retained Ramsden case, methane values are numeric ``ppb`` and ethane
 values numeric ``ppt``. The paper prints the ethane model-error bounds as ppb,

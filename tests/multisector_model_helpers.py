@@ -28,7 +28,7 @@ def build_multisector_graph(
         for name, params in _multisector_prior_parameters(model_spec).items()
     }
     inputs, priors = compute(
-        model_inputs[list(_multisector_input_names(model_inputs, model_spec))].map(to_dense),
+        model_inputs[list(_multisector_input_names(model_inputs, model_spec, materialized=True))].map(to_dense),
         selected_priors,
     )
     return build_multisector_model(

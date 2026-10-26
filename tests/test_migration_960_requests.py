@@ -39,7 +39,11 @@ def test_recorded_modern_defaults_before_any_scientific_work(tmp_path, monkeypat
     monkeypatch.chdir(tmp_path)
     config = RhimeConfig.from_params(load_params(config_file=FIXTURES / "modern.ini"), multisector=False)
     _assert_fields(config.sampler, EXPECTED["default_sampler"])
-    _assert_fields(config.data, EXPECTED["default_data"])
+    archived_data = EXPECTED["default_data"]
+    _assert_fields(config.data, {name: value for name, value in archived_data.items()
+                                if name not in {"bc_freq", "min_error"}})
+    assert config.model.bc_freq == archived_data["bc_freq"]
+    assert config.model.likelihood.min_error == archived_data["min_error"]
     _assert_fields(config.output, EXPECTED["modern_output"])
     science = EXPECTED["default_science"]
     assert config.model.sectors[0].x_prior == science["x_prior"]
@@ -66,7 +70,7 @@ def test_explicit_archived_scientific_settings_on_canonical_inputs():
     _assert_fields(config.model.likelihood, {name: expected[name] for name in (
         "sigma_prior", "sigma_freq", "sigma_per_site", "sigma_freq_anchor", "pollution_events_from_obs", "power",
     )})
-    assert config.data.min_error == expected["min_error"]
+    assert config.model.likelihood.min_error == expected["min_error"]
 
 
 def test_draws_are_post_tuning_then_burn_is_removed_per_chain(monkeypatch):

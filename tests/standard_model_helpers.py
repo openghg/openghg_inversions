@@ -42,7 +42,7 @@ def build_standard_graph(
         for name, params in _standard_prior_parameters(spec).items()
     }
     model_inputs, priors = compute(
-        inputs[list(_standard_input_names(inputs, spec))].map(to_dense), selected_priors,
+        inputs[list(_standard_input_names(inputs, spec, materialized=True))].map(to_dense), selected_priors,
     )
     return build_standard_model(
         model_inputs, spec, priors=priors, likelihood_builder=likelihood_builder,

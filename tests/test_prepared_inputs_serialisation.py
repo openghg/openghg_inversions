@@ -59,7 +59,9 @@ def test_data_contracts_preserve_canonical_imports_and_prepared_schema() -> None
     prepared = _prepared_inputs()
     artifact = prepared.to_datatree()
     assert artifact.attrs["schema"] == prepared_contract.PREPARED_INPUTS_SCHEMA
-    assert artifact.attrs["schema_version"] == prepared_contract.PREPARED_INPUTS_SCHEMA_VERSION == 1
+    assert artifact.attrs["schema_version"] == prepared_contract.PREPARED_INPUTS_SCHEMA_VERSION == 2
+    assert "site_indicator" not in artifact["inv_inputs"].data_vars
+    assert "site_names" not in artifact["inv_inputs"].data_vars
 
     restored = prepared_contract.PreparedInputs.from_datatree(artifact)
     xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)
@@ -612,7 +614,9 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
     serialized = prepared.to_datatree()
     encoded_inputs = serialized["inv_inputs"].to_dataset()
     assert encoded_inputs["nmeasure"].attrs["compress"] == "site time"
-    assert encoded_inputs["bc_region"].attrs["compress"] == "bc_curtain bc_period"
+    assert "compress" not in encoded_inputs["bc_region"].attrs
+    assert encoded_inputs["H_bc"].attrs["boundary_sensitivity_preparation"] == "raw-spatial"
+    assert "min_error" not in encoded_inputs
     assert prepared.inv_inputs.release_lat.dims == ("nmeasure",)
     assert prepared.inv_inputs.release_lon.dims == ("nmeasure",)
 
@@ -625,8 +629,8 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
     assert isinstance(loaded_index, pd.MultiIndex)
     assert loaded_index.names == ["site", "time"]
     loaded_bc_index = loaded.inv_inputs.indexes["bc_region"]
-    assert isinstance(loaded_bc_index, pd.MultiIndex)
-    assert loaded_bc_index.names == ["bc_curtain", "bc_period"]
+    assert not isinstance(loaded_bc_index, pd.MultiIndex)
+    assert loaded_bc_index.equals(prepared.inv_inputs.indexes["bc_region"])
 
     model_spec = RhimeModelSpec(
         species="ch4",
@@ -1009,7 +1013,7 @@ def test_prepared_inputs_zarr_save_overwrites_existing_artifact(tmp_path: Path) 
         ("schema", None),
         ("schema", "not-the-prepared-input-schema"),
         ("schema_version", None),
-        ("schema_version", 2),
+        ("schema_version", 1),
         ("schema_version", "1"),
     ],
 )
