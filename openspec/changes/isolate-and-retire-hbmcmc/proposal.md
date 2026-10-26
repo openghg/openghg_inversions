@@ -22,7 +22,8 @@ phase applicability; resource I/O owns selected BC resources. Existing
 prepared/sample handoff and codec contracts retain saved formats/version/replay.
 Historical inventories and replacement maps live in migration evidence/guidance.
 The active delta now contains only the newly approved BC selection amendment;
-its acceptance/promotion and final archive remain pending. No #964 scientific
+its fresh acceptance is recorded in tasks at `8b602b6e`. Promotion and final
+archive remain pending review/merge. No #964 scientific
 amendment or unfinished handoff programme is promoted by this reconciliation.
 The dated sections below preserve earlier approvals and delivery history.
 

@@ -4,8 +4,8 @@ The current #719 branch implements namespace/adapters and the approved finite
 API/command retirements, including the separately approved prepared factory.
 Completed revision-specific checks are recorded below. The 26 October follow-up
 adds explicit BC selection and reconciles positive owners; its fresh acceptance
-remains pending. Delivered construction contracts are synchronized, while the
-new BC delta and final archive remain open. Dated sections preserve prior
+passed at `8b602b6e`, as recorded below. Delivered construction contracts are
+synchronized, while the new BC delta and final archive remain open. Dated sections preserve prior
 implementation, approval and validation history rather than current task status.
 
 ## Development-boundary amendment — 23 October 2026
@@ -193,7 +193,7 @@ does not finalize CLI positional-date/`--kwargs` syntax or complete a delivery t
   import/duplicate-validation paths and stale template/doc text, reconcile the
   narrowly approved contract and run fresh implementation checks.
 
-- [ ] 2.5 Deliver the 26 October approved explicit `bc_basis_algorithm="NESW"`
+- [x] 2.5 Deliver the 26 October approved explicit `bc_basis_algorithm="NESW"`
   selection with exact-file precedence and disabled-BC I/O bypass; reconcile
   positive contract owners, current status prose and Python-only prepared schema
   constants. Preserve pre-change evidence and obtain fresh focused/full/package/
@@ -208,8 +208,8 @@ does not finalize CLI positional-date/`--kwargs` syntax or complete a delivery t
   configuration requirements. Rebase the remaining active delta to retain the
   pending 0.9 removal. Verify the durable alias contract and resource-I/O links
   express the accepted boundary without claiming deletion is delivered.
-- [ ] 3.2 After fresh BC amendment acceptance, sync the remaining BC delta and
-  archive this change. Verify durable owners, delivery status, links and absence
+- [ ] 3.2 After review/merge and fresh BC amendment acceptance, sync the remaining
+  BC delta and archive this change. Verify durable owners, delivery status, links and absence
   of duplicate delivered `ADDED` requirements; preserve all dated evidence.
   The 26 October owner reconciliation does not complete archival.
 
@@ -575,3 +575,64 @@ task 2.5 is intentionally unchecked. The existing green GitHub runs
 `40069509661` (tests) and `40069509766` (docs) are the `1c15954c` baseline,
 not validation of this amendment. Task 3.2 remains pending acceptance and
 subsequent BC contract promotion/archive.
+
+
+### BC and owner reconciliation acceptance — 26 October 2026
+
+Immutable revision `8b602b6e322fb8e640d5cb630449638ec8c7a11f`, based on
+`b288ac2530ad93ae8f67c5f1d47ee8ee7b666000`, passes fresh complete acceptance
+for the approved BC interface, positive contract owners and Python-only schema
+constant names in Slurm array `19726700`:
+
+| Environment | Executed result |
+| --- | --- |
+| Locked Python 3.12.11 | 4,212 passed; 8 skipped; 4 deselected |
+| Locked Python 3.13.7 | 4,212 passed; 8 skipped; 4 deselected |
+| Moving OpenGHG devel, Python 3.12.11 | 4,212 passed; 8 skipped; 4 deselected |
+| Lint / borrowed types / docs-full | Pass / 4 passed / pass |
+
+All three primary jobs and registered `afterany` callback `19726701` completed
+with exit `0:0`. Ticket `sw-20261026T103056Z-74f955eb78cb` delivered the terminal
+wakeup; current accounting confirms every terminal result. Each primary job used
+2 CPUs, 8 GiB, two Dask workers and one numerical thread. Maximum reported RSS
+was 7,793,500 KiB. Logs are `slurm-719-oct26-19726700_{0,1,2}.out`.
+
+All three environments executed explicit BC-selection/resource coverage,
+standard/multisector full/prepared/saved parity, nested preparation contracts,
+and CO2 installed/saved-output workflows. The eight skips are optional real
+country-file backend smoke checks without `OPENGHG_COUNTRY_FILE_SMOKE_DIR`;
+four deselections follow the configured slow-test exclusion. No affected BC or
+workflow regression was skipped. Dependency deprecations and expected
+numerical/fixture warnings remain; no scientific test failed.
+
+GitHub Actions independently pass on the same revision:
+[tests 40307449709](https://github.com/openghg/openghg_inversions/actions/runs/40307449709)
+and [docs 40307449807](https://github.com/openghg/openghg_inversions/actions/runs/40307449807).
+Full documentation retains ten existing duplicate/ambiguous API-reference
+warnings; no warning-free full build is claimed. The bounded nine-page
+warning-as-error render remains separately recorded above.
+
+Fresh wheel/sdist content and isolated installed-wheel smoke checks at
+`8b602b6e` pass: no HBMCMC namespace, root flux helper, five retired aliases,
+compatibility factory or migration import hook; canonical APIs/model routes,
+explicit NESW default and sole `rhime` executable remain. New Python schema
+constant names are present without old-name aliases; the exact stored identifier,
+version and layout remain unchanged in this implementation. Persisted migration
+is separately owned by #976, with selected VG integration under OPE-233/OPE-145.
+No VG artifacts, environments or campaign references were modified.
+
+Strict OpenSpec 11/11, Ruff, links/anchors, source-hash/original-fixture and
+whitespace checks pass as recorded above. Two independent subagents audited the
+terminal logs and snapshot: all production, test, configuration and specification
+files match the validated revision. Four generated API-reference stubs differ
+only in heading underlines or final newlines. The original eighteen fixtures
+remain byte-identical and all 54 new captured source records match Git hashes.
+
+These results complete task 2.5. The acceptance-record follow-up changes only
+this task file and the proposal's current delivery status; runtime, tests,
+templates, scientific defaults, dependencies and package metadata remain
+identical to validated `8b602b6e`. Historical observations, expectations and
+failed/successful checks retain their original dates/revisions. PR #974 remains
+draft and #719 open pending review/merge. Task 3.2 stays unchecked for subsequent
+BC contract promotion/archive after review/merge. No archival, merge,
+publication, release number or release-readiness claim is made.
