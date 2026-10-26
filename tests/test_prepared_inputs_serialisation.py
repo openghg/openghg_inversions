@@ -53,10 +53,13 @@ def test_data_contracts_preserve_canonical_imports_and_prepared_schema() -> None
     assert PreparedInputs is prepared_contract.PreparedInputs
     assert MergedData is acquisition.MergedData
     assert not hasattr(PreparedInputs, "from_legacy_inputs")
+    assert not hasattr(prepared_contract, "RHIME_PREPARED_INPUTS_SCHEMA")
+    assert not hasattr(prepared_contract, "RHIME_PREPARED_INPUTS_SCHEMA_VERSION")
+    assert prepared_contract.PREPARED_INPUTS_SCHEMA == "openghg_inversions.rhime_prepared_inputs"
     prepared = _prepared_inputs()
     artifact = prepared.to_datatree()
-    assert artifact.attrs["schema"] == prepared_contract.RHIME_PREPARED_INPUTS_SCHEMA
-    assert artifact.attrs["schema_version"] == prepared_contract.RHIME_PREPARED_INPUTS_SCHEMA_VERSION == 1
+    assert artifact.attrs["schema"] == prepared_contract.PREPARED_INPUTS_SCHEMA
+    assert artifact.attrs["schema_version"] == prepared_contract.PREPARED_INPUTS_SCHEMA_VERSION == 1
 
     restored = prepared_contract.PreparedInputs.from_datatree(artifact)
     xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)

@@ -29,15 +29,15 @@ from openghg_inversions.serialization import (
     save_datatree,
 )
 
-RHIME_PREPARED_INPUTS_SCHEMA = "openghg_inversions.rhime_prepared_inputs"
-RHIME_PREPARED_INPUTS_SCHEMA_VERSION = 1
+PREPARED_INPUTS_SCHEMA = "openghg_inversions.rhime_prepared_inputs"
+PREPARED_INPUTS_SCHEMA_VERSION = 1
 _SITE_AVERAGING_PERIOD = "averaging_period"
 _SITE_STRING_ENCODING = "_rhime_nullable_string_encoding"
 
 __all__ = [
     "PreparedInputs",
-    "RHIME_PREPARED_INPUTS_SCHEMA",
-    "RHIME_PREPARED_INPUTS_SCHEMA_VERSION",
+    "PREPARED_INPUTS_SCHEMA",
+    "PREPARED_INPUTS_SCHEMA_VERSION",
 ]
 
 
@@ -176,8 +176,8 @@ class PreparedInputs:
             }
         )
         dt.attrs = {
-            "schema": RHIME_PREPARED_INPUTS_SCHEMA,
-            "schema_version": RHIME_PREPARED_INPUTS_SCHEMA_VERSION,
+            "schema": PREPARED_INPUTS_SCHEMA,
+            "schema_version": PREPARED_INPUTS_SCHEMA_VERSION,
         }
         return dt
 
@@ -200,16 +200,16 @@ class PreparedInputs:
             KeyError: If a required child node is missing.
         """
         schema = dt.attrs.get("schema")
-        if schema != RHIME_PREPARED_INPUTS_SCHEMA:
+        if schema != PREPARED_INPUTS_SCHEMA:
             raise ValueError(
-                f"Expected PreparedInputs schema {RHIME_PREPARED_INPUTS_SCHEMA!r}, got {schema!r}."
+                f"Expected PreparedInputs schema {PREPARED_INPUTS_SCHEMA!r}, got {schema!r}."
             )
 
         version = dt.attrs.get("schema_version")
         if isinstance(version, bool) or not isinstance(version, Integral) or version != 1:
             raise ValueError(
                 f"Expected PreparedInputs schema_version "
-                f"{RHIME_PREPARED_INPUTS_SCHEMA_VERSION}, got {version!r}."
+                f"{PREPARED_INPUTS_SCHEMA_VERSION}, got {version!r}."
             )
 
         missing_nodes = [
