@@ -480,8 +480,6 @@ def _get_site_inputs(
             print(f"No obs. found, continuing model run without {site}.\n")
             continue
 
-        # Own selected identity metadata before any later provider operation.
-        site_data = _with_selected_provenance(site_data, selected_provenance(site_data, obs_store))
         # Get footprints data
         footprint_data = get_footprint_data(
             site=site,
@@ -505,9 +503,6 @@ def _get_site_inputs(
             )
             continue  # skip this site
 
-        footprint_data = _with_selected_provenance(
-            footprint_data, selected_provenance(footprint_data, footprint_store, requested_version="latest")
-        )
         yield i, site_data, footprint_data
 
 
@@ -573,12 +568,22 @@ def acquire_surface_data(
     if "time_resolved" in transport.values() and not all(site_options.time_resolved):
         raise ValueError("Time-resolved transport requires time_resolved=True site selectors.")
 
-    retained_inputs = list(_get_site_inputs(
-        species=species, site_options=site_options, domain=domain,
-        start_date=start_date, end_date=end_date, obs_store=obs_store,
-        footprint_store=footprint_store, fp_model=fp_model, fp_species=fp_species,
-        calibration_scale=calibration_scale,
-    ))
+    # Capture surface identities in owned metadata before planning or preparation.
+    retained_inputs = [
+        (
+            i,
+            _with_selected_provenance(observations, selected_provenance(observations, obs_store)),
+            _with_selected_provenance(
+                footprint, selected_provenance(footprint, footprint_store, requested_version="latest")
+            ),
+        )
+        for i, observations, footprint in _get_site_inputs(
+            species=species, site_options=site_options, domain=domain,
+            start_date=start_date, end_date=end_date, obs_store=obs_store,
+            footprint_store=footprint_store, fp_model=fp_model, fp_species=fp_species,
+            calibration_scale=calibration_scale,
+        )
+    ]
     if not retained_inputs:
         raise SearchError("No site data found. Exiting process.")
     align, _, _ = _surface_operations()
