@@ -107,4 +107,3 @@ axis or an affine flux companion. Supply an independently justified native
 representation before using such products. This pilot does not construct the
 ordinary CO₂ coherent reduction automatically; see :doc:`coherent_reduction` and
 :doc:`co2_model_family`.
-

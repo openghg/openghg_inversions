@@ -393,6 +393,10 @@ def prepare_surface_site(
         else:
             if "fp_HiTRes" in aligned_fp:
                 resolved_fp = aligned_fp.fp_HiTRes
+                if not resolved_fp.attrs.get("units") and "fp" in aligned_fp:
+                    inherited_units = aligned_fp.fp.attrs.get("units")
+                    if inherited_units:
+                        resolved_fp = resolved_fp.assign_attrs(units=inherited_units)
             else:
                 if not {"fp_time_resolved", "fp_residual"} <= set(aligned_fp):
                     raise ValueError("Time-resolved transport requires resolved and residual footprint fields.")

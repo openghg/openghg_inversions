@@ -278,6 +278,32 @@ def test_resolved_provider_borrows_lazy_flux(inputs, compatible_provider):
     np.testing.assert_allclose(result.mf_mod.compute(scheduler="synchronous"), 14.)
     xr.testing.assert_identical(flux, before)
 
+@pytest.mark.parametrize("legacy_units", [None, "", "explicit"])
+@pytest.mark.parametrize("lazy", [False, True])
+def test_legacy_resolved_units_inherit_without_mutating_inputs(inputs, compatible_provider, legacy_units, lazy):
+    obs, fp, flux = resolved_inputs(inputs, "legacy")
+    if legacy_units == "explicit":
+        # The resolved field's own units take precedence over integrated metadata.
+        fp.fp.attrs["units"] = "m"
+    elif legacy_units is None:
+        fp.fp_HiTRes.attrs.pop("units")
+    else:
+        fp.fp_HiTRes.attrs["units"] = legacy_units
+    if lazy:
+        fp, flux = fp.chunk({"time": 2}), flux.chunk({"time": 744})
+    borrowed = fp.fp_HiTRes.data
+    metadata = dict(fp.fp_HiTRes.attrs)
+    with Callback(pretask=lambda *args: pytest.fail("preparation computed borrowed payload")):
+        result = prepare_surface_site(
+            obs, fp, {"a": flux}, species="co2", transport={"a": "time_resolved"}
+        )
+    assert fp.fp_HiTRes.data is borrowed
+    assert fp.fp_HiTRes.attrs == metadata
+    if lazy:
+        assert isinstance(result.mf_mod.data, da.Array)
+    np.testing.assert_allclose(result.mf_mod.compute(scheduler="synchronous"), [14., 14., 14.])
+
+
 def test_resolved_rejects_missing_history_and_incomplete_residual_month(inputs, compatible_provider):
     obs, fp, flux = resolved_inputs(inputs)
     for sliced in [flux.sel(time=slice("2020-01-01", None)), flux.sel(time=slice(None, "2020-01-02"))]:
