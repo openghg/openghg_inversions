@@ -426,6 +426,7 @@ def prepare_multisector(
     runtime_flux = resolve_runtime_flux(
         merged_data.flux_data,
         split_by_sectors=merged_data.split_by_sectors,
+        explicit_surface=any("surface_transport" in data.attrs for data in merged_data.site_data.values()),
     )
     with timed("rhime.prepare_inputs.basis_build", basis_algorithm=basis_algorithm):
         basis_functions = prepare_basis(

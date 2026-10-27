@@ -38,7 +38,8 @@ dependencies = [
     "pandas<3.0",
     "matplotlib",
     "scipy",
-    "openghg",
+    # Temporary until a release includes the Numba fp_x_flux algorithm.
+    "openghg @ git+https://github.com/openghg/openghg.git@b9a9d1f21f22d2f8dcca714283eb936c22338c57",
     "openghg-defs!=0.0.13",
     "cf_xarray>=0.10.6",
     "sparse",
