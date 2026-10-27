@@ -9917,7 +9917,7 @@ packages:
   - pandas<3.0
   - matplotlib
   - scipy
-  - openghg
+  - openghg>=0.9.0
   - cf-xarray>=0.10.6
   - sparse
   - flox
