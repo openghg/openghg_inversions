@@ -479,7 +479,8 @@ def test_centered_cached_and_fixed_ou_rejected_before_materialization(monkeypatc
     prepared = replace(prepared, boundary_operands={"co2": operands})
     with pytest.raises(ValueError, match="fixed-OU"):
         build_rhime_co2_o2(prepared_inputs=prepared, tau_hours=2.0)
-    with pytest.raises(ValueError, match="cached"):
+    monkeypatch.setattr(co2_cached_sigma_runner, "materialize_pymc_inputs", unexpected)
+    with pytensor.config.change_flags(floatX="float32"), pytest.raises(ValueError, match="float64"):
         co2_cached_sigma_runner.build_rhime_co2_cached_sigma(
             prepared_inputs=_centered_prepared(),
             tau_hours=2.0,

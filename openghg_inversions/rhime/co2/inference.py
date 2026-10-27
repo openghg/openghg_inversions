@@ -46,7 +46,9 @@ def build_co2_inference(
         options.pop("likelihood_builder")
         likelihood = dict(options.pop("likelihood_kwargs"))
         cached = build_rhime_co2_cached_sigma(prepared_inputs=prepared, **options, **likelihood)
-        return co2_cached_sigma_build_result(cached, prepared), cached
+        return co2_cached_sigma_build_result(
+            cached, prepared, bc_freq=options.get("bc_freq"), bc_anchor_time=options.get("bc_anchor_time"),
+        ), cached
     inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, **model)
     return build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, **model), None
 

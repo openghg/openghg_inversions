@@ -230,17 +230,68 @@ def test_linked_period_override_supports_mixed_raw_channel_representations():
         assert point[f"{channel}_bc"].size == 4
 
 
-@pytest.mark.parametrize("linked,cached", [(False, False), (False, True)])
-def test_saved_centered_periods_reject_fixed_ou(tmp_path, linked, cached):
-    module = co2_o2_handoffs if linked else handoffs
-    prepared = _joint() if linked else _ordinary()
-    config = _config(linked, frequency="2D")
-    amplitude = {"site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.1}} if cached else {"fixed_site_amplitudes": 0.1}
-    config["likelihood"] = {"kind": "fixed_ou", "tau_hours": 2.0, **amplitude}
-    manifest = module.save_preparation(
+def test_saved_centered_periods_reject_fixed_ou(tmp_path):
+    prepared = _ordinary()
+    config = _config(False, frequency="2D")
+    config["likelihood"] = {"kind": "fixed_ou", "tau_hours": 2.0, "fixed_site_amplitudes": 0.1}
+    manifest = handoffs.save_preparation(
         prepared, output_dir=tmp_path / "prepared", domain="EUROPE",
         start_date="1969-12-01", end_date="2020-02-01",
     )
     with pytest.raises(ValueError, match="fixed-OU"):
-        module.prior_predictive(manifest, model=config, output_dir=tmp_path / "prior", draws=2)
+        handoffs.prior_predictive(manifest, model=config, output_dir=tmp_path / "prior", draws=2)
     assert not (tmp_path / "prior").exists()
+
+
+def test_saved_centered_cached_ou_prior_predictions_remain_absolute(tmp_path):
+    from openghg_inversions.rhime.co2.centered_boundary import restore_absolute_predictives
+    from openghg_inversions.serialization import save_trace
+
+    prepared = _ordinary()
+    config = _config(False, frequency="2D", anchor_time="2020-01-01T12:00:00")
+    config["likelihood"] = {
+        "kind": "fixed_ou", "tau_hours": 2.0,
+        "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.1},
+    }
+    manifest = handoffs.save_preparation(
+        prepared, output_dir=tmp_path / "prepared", domain="EUROPE",
+        start_date="2019-12-01", end_date="2020-02-01",
+    )
+    result = handoffs.prior_predictive(
+        manifest, model=config, output_dir=tmp_path / "prior", draws=3, random_seed=13,
+    )
+    assert result["status"] == "pass"
+    trace = load_trace(tmp_path / "prior" / "prior-predictive.nc")
+    metadata = json.loads(trace.attrs["rhime_model_metadata"])
+    assert metadata["boundary_representation"] == "centered-v1"
+    assert metadata["bc_frequency"] == "2D"
+    assert metadata["bc_anchor_time"] == "2020-01-01T12:00:00"
+    roles = json.loads(trace.attrs["rhime_variable_roles"])
+    assert roles["observation"] == "y"
+    assert roles["boundary_concentration"] == "mu_bc"
+    assert roles["boundary_anomaly"] == "H_bc_anomaly"
+    assert roles["boundary_mass"] == "H_bc_mass"
+    assert "boundary_sensitivity" not in roles
+    xr.testing.assert_allclose(trace.observed_data.y, prepared.inv_inputs.mf)
+    assert trace.prior_predictive.y.attrs["concentration_representation"] == "absolute-v1"
+    assert trace.prior.bc.shape[-1] == 4
+    output_dim = str(trace.prior.mu_bc.dims[-1])
+    absolute_design = (
+        trace.constant_data.H_bc_anomaly + trace.constant_data.bc_reference * trace.constant_data.H_bc_mass
+    ).transpose(output_dim, ...).values
+    expected_boundary = np.einsum("...j,ij->...i", trace.prior.bc.values, absolute_design)
+    np.testing.assert_allclose(trace.prior.mu_bc, expected_boundary)
+    np.testing.assert_allclose(
+        trace.prior_predictive.y, trace.prior.modelled_concentration, atol=5, rtol=0,
+    )
+    observed = trace.observed_data.y.copy(deep=True)
+    predictions = trace.prior_predictive.y.copy(deep=True)
+    restore_absolute_predictives(trace)
+    xr.testing.assert_identical(trace.observed_data.y, observed)
+    xr.testing.assert_identical(trace.prior_predictive.y, predictions)
+    path = tmp_path / "reopened.nc"
+    save_trace(trace, path)
+    reopened = load_trace(path)
+    restore_absolute_predictives(reopened)
+    xr.testing.assert_identical(reopened.observed_data.y, observed)
+    xr.testing.assert_identical(reopened.prior_predictive.y, predictions)

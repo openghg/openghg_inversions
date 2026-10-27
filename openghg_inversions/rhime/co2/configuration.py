@@ -564,8 +564,6 @@ class Co2ModelConfig:
 
     def bind(self, prepared: Co2PreparedInputs) -> dict[str, Any]:
         """Bind model choices; raw ordinary and centered boundaries own no periods."""
-        if self.use_bc is not False and "H_bc_anomaly" in prepared.inv_inputs and uses_cached_ou(self.model_arguments()):
-            raise ValueError("Centered boundaries do not support cached fixed-OU likelihoods.")
         return self.model_arguments()
 
 
