@@ -1193,3 +1193,42 @@ def test_cached_uniform_prior_materializes_bounds_together_once(storage):
     assert executions == ([1] if storage == "lazy" else [])
     assert prior["lower"] is lower and prior["upper"] is upper
     assert isinstance(lower, sparse.COO if storage == "sparse" else da.Array)
+
+
+@pytest.mark.parametrize("frequency,expected_states", [(None, 2), ("monthly", 4)])
+def test_cached_runner_reuses_raw_boundary_periods(monkeypatch, frequency, expected_states):
+    inputs = _boundary_inputs().drop_dims("bc_region")
+    inputs["H_bc"] = xr.DataArray(
+        np.ones((4, 2)), dims=("nmeasure", "bc_region"),
+        coords={"nmeasure": inputs.nmeasure, "bc_region": ["north", "south"]},
+        attrs={"units": "ppm", "boundary_sensitivity_preparation": "raw-spatial"},
+    )
+
+    class PreparedInputsStub:
+        inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
+
+    monkeypatch.setattr(co2_cached_sigma_runner, "materialize_pymc_inputs", lambda *a, **k: inputs)
+    result = co2_cached_sigma_runner.build_rhime_co2_cached_sigma(
+        prepared_inputs=cast(Any, PreparedInputsStub()), use_bc=True, bc_freq=frequency,
+        tau_hours=3., site_amplitude_prior={"pdf": "halfnormal", "sigma": .75},
+    )
+    assert result.model["bc"].eval().size == expected_states
+    assert inputs.H_bc.shape == (4, 2)
+
+
+def test_cached_runner_ignores_disabled_centered_boundary(monkeypatch):
+    inputs = _inputs().assign(H_bc_anomaly=xr.DataArray(0.))
+
+    class PreparedInputsStub:
+        inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
+
+    monkeypatch.setattr(co2_cached_sigma_runner, "materialize_pymc_inputs", lambda *a, **k: inputs)
+    result = co2_cached_sigma_runner.build_rhime_co2_cached_sigma(
+        prepared_inputs=cast(Any, PreparedInputsStub()), use_bc=False,
+        tau_hours=3., site_amplitude_prior={"pdf": "halfnormal", "sigma": .75},
+    )
+    assert "bc" not in result.model

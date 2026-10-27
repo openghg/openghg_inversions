@@ -228,6 +228,7 @@ flux basis for separate fields):
 
    from openghg_inversions.basis._helpers import bc_sensitivity
    from openghg_inversions.inversion_data import prepare_rhime_inputs_from_xarray
+   from openghg_inversions.rhime.co2 import prepare_co2_inputs
    from openghg_inversions.rhime.preparation import filter_observations, prepare_observation_errors
 
    selected, retained_selectors = filter_observations(
@@ -239,18 +240,73 @@ flux basis for separate fields):
        {name: data.drop_vars("fp_x_flux_sectoral") for name, data in projected.items()},
        basis_functions=chosen_flux_basis, averaging_period="1h",
    )
+   # The reduction must describe these same observations, states and sources.
+   prepared = prepare_co2_inputs(canonical, coherent_reduction)
+   prepared.save("centered-co2.nc")
 
 Selection filters preserve aligned operands and scalar references. Preparation
 owns spatial ``bc_basis_algorithm="NESW"`` or explicit ``bc_basis_paths``;
 frequency and anchor belong to the model.
 Old rounded ``H_bc`` alone cannot recover accurate centered operands.
 
-These preparation operands are the handoff for centered CO₂ model integration.
-Centered likelihood binding and absolute prediction replay are delivered in the
-following inference change.
-
 Linked CO₂/O₂ preparation can retain centered operands in memory. Its dedicated
 prepared-input serialization does not yet support those operands; ``to_datatree``
 and ``save`` reject them explicitly. Persistence belongs to the later centered
 output integration. Standalone CO₂ prepared inputs retain the raw
 operands through their existing input-dataset serialization.
+
+The ordinary CO₂ model and ordinary linked CO₂/O₂ model bind the raw operands to
+BC periods at model construction. Direct builders accept ``boundary_operands``
+(in linked models, a mapping keyed by tracer), ``bc_freq`` and ``bc_anchor_time``.
+Configured ordinary and saved routes select the same choices in their boundary
+configuration, for example:
+
+.. code-block:: toml
+
+   [model.boundary]
+   enabled = true
+   frequency = "1D"
+   anchor_time = "2020-01-01"
+
+Period choices apply to both raw ordinary sensitivities and centered operands,
+using the same selection and period masks. A saved raw preparation can be reused
+with different supported periods. Already-expanded sensitivities cannot be
+reinterpreted with a period override. Linked channels use one shared
+period/anchor choice and must agree when both specify it. Their tables are
+``channels.co2.boundary`` and ``channels.o2.boundary``. Anchors apply to fixed
+durations and must be omitted for calendar-month periods.
+
+Native observation labels select boundary rows. When observations carry a
+``time`` coordinate, it determines period membership and replaces auxiliary
+boundary timestamps. Boundary times that also serve as indexed row labels must
+agree with the observation timestamps; conflicting values raise an error.
+
+Use the ordinary additive-Gaussian recipe. Cached, fixed-OU and custom likelihood
+routes reject centered inputs until separately validated. Standard and multisector
+model builders also reject centered inputs; their preparation operations can
+still produce the reusable canonical handoff shown above.
+
+For the original BC coefficients b, the centered likelihood uses
+``q = c * M @ ones``, ``y_centered = y - q`` and
+``mu_centered = flux + A @ b + c * M @ (b - ones) + offset``.
+This preserves the original coefficients, priors, fixed states, errors and
+covariance, including constant curtains and bases that do not partition unity.
+BC and total concentration deterministics stay absolute. The recipe's trace
+annotation restores observed and predictive ``y`` to absolute concentrations
+once, using retained reference shifts; replay does not need to rebuild the model.
+Ordinary recipe runners perform this annotation automatically. Callers composing
+PyMC operations directly must restore sample coordinates, then call
+:func:`~openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives`
+before serialization or postprocessing.
+
+A small offline example creates its own inputs, performs a coherent reduction,
+saves/reopens preparation and restores absolute prior predictions:
+
+.. code-block:: bash
+
+   python -m examples.surface_centered_pilot /tmp/surface-pilot
+
+The pilot is tracked in `issue 957
+<https://github.com/openghg/openghg_inversions/issues/957>`_. Wider adoption,
+automatic coherent preparation, public provider APIs, alternative O₂ observables
+and native mixed-cadence reporting remain separate work.

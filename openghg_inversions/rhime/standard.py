@@ -13,7 +13,7 @@ from openghg_inversions.basis import prepare_basis
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.rhime.preparation import acquire_merged_data, resolve_basis_inputs
 
-from collections.abc import Mapping
+from collections.abc import Hashable, Mapping
 from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
@@ -126,6 +126,8 @@ def _standard_input_names(
     model_inputs: xr.Dataset, model_spec: RhimeModelSpec, *, materialized: bool = False,
 ) -> tuple[str, ...]:
     """Own selected standard component names and single-sector layout checks."""
+    if model_spec.use_bc and {"H_bc_anomaly", "H_bc_mass", "bc_reference"} & set(model_inputs):
+        raise ValueError("Centered boundary operands require the supported CO2-family pilot model binding.")
     if len(model_spec.sectors) != 1:
         raise ValueError("Standard model specs must include exactly one sector.")
     _require_component_inputs(
@@ -290,7 +292,7 @@ def _build_independent_rhime_model(
     source_sensitivity = model_inputs["H"]
     flux_sensitivity = source_sensitivity
     if multisector:
-        coordinate_names = set()
+        coordinate_names: set[Hashable] = set()
         for name, array in model_inputs.data_vars.items():
             if name == "H":
                 continue

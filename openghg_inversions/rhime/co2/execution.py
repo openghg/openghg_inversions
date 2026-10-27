@@ -94,7 +94,8 @@ def run_co2(
     if output_path is not None:
         options["outputs"] = {**options.get("outputs", {}), "output_path": Path(output_path).expanduser().resolve()}
     preparation = Co2PreparationConfig.from_params(options)
-    model = Co2ModelConfig.from_params(options).model_arguments()
+    model_config = Co2ModelConfig.from_params(options)
+    model = model_config.model_arguments()
     sampling = _resolve_co2_sampling(options, model=model)
     sampler = sampling.sampler
     output_choices = resolve_co2_output(options)
@@ -112,6 +113,7 @@ def run_co2(
         if source is None:
             raise ValueError("Pass prepared inputs or configure prepared_inputs.path.")
         prepared = Co2PreparedInputs.load(source)
+    model = model_config.bind(prepared)
     facts = requested_co2_facts(
         prepared, start_date=start_date, end_date=end_date,
         recorded_facts={name: getattr(preparation, name) for name in ("start_date", "end_date", "domain")},

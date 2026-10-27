@@ -287,6 +287,8 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.parse_prior
    openghg_inversions.models.add_model_data
    openghg_inversions.models.add_linear_component
+   openghg_inversions.rhime.co2.centered_boundary.CenteredBoundaryResult
+   openghg_inversions.rhime.co2.centered_boundary.add_centered_boundary
    openghg_inversions.models.add_linked_linear_component
    openghg_inversions.models.add_correlated_lognormal_state
    openghg_inversions.models.add_offset_component
