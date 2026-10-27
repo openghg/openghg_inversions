@@ -713,7 +713,12 @@ def test_packaged_inner_outer_fields_run_through_core_on_one_physical_grid(domai
     with xr.open_dataset(basis_directory / f"outer_region_definition_{domain}.nc") as dataset:
         outer_regions = dataset["region"].load()
     with xr.open_dataset(basis_directory / "algorithms" / land_sea_name) as dataset:
-        inner_classes = xr.where(dataset["country"].load() > 0, "land", "sea")
+        country = dataset["country"].load()
+        inner_classes = xr.where(country > 0, "land", "sea").assign_coords(country.coords)
+
+    assert inner_classes.attrs == {}
+    assert inner_classes.lat.attrs.get("units") == country.lat.attrs.get("units")
+    assert inner_classes.lon.attrs.get("units") == country.lon.attrs.get("units")
 
     inner_mask = outer_regions == outer_regions.max()
     classes = combine_inner_outer_region_classes(inner_mask, inner_classes, outer_regions)

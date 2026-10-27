@@ -23,7 +23,7 @@ from openghg.standardise import (
     standardise_column,
 )
 import xarray as xr
-import zarr
+from zarr.storage import ZipStore
 
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_SOURCE_ATTR, BasisFunctions
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
@@ -72,10 +72,10 @@ def merged_data_dir(writable_data_path, merged_data_file_name):
 
     if not (merged_data_dir / (merged_data_file_name + ".zarr.zip")).exists():
         with xr.open_dataset(_raw_data_path / (merged_data_file_name + ".nc")) as ds:
-            with zarr.ZipStore(merged_data_dir / (merged_data_file_name + ".zarr.zip"), mode="w") as store:
-                ds.to_zarr(store)
+            with ZipStore(merged_data_dir / (merged_data_file_name + ".zarr.zip"), mode="w") as store:
+                ds.to_zarr(store, zarr_format=2)
 
-            ds.to_zarr(merged_data_dir / (merged_data_file_name + "no_zip" + ".zarr"))
+            ds.to_zarr(merged_data_dir / (merged_data_file_name + "no_zip" + ".zarr"), zarr_format=2)
 
     return merged_data_dir
 

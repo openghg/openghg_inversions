@@ -35,7 +35,8 @@ dependencies = [
     "pandas<3.0",
     "matplotlib",
     "scipy",
-    "openghg",
+    # OpenGHG 0.9.0 added combination of surface records selected by an inlet slice.
+    "openghg>=0.9.0",
     "cf_xarray>=0.10.6",
     "sparse",
     "flox",
@@ -107,8 +108,8 @@ scipy = "*"
 sparse = "*"
 flox = "*"
 opt_einsum = "*"
-zarr = "==2.18.3"
-numcodecs = "<0.16"
+zarr = ">=2.18.3,<4"
+numcodecs = "<0.17"
 hdf5 = "*"
 h5netcdf = ">=1.0.0,<=1.8.1"
 h5py = "<3.15"

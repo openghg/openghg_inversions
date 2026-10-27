@@ -583,8 +583,10 @@ def test_merged_scenario_forwards_requested_output_units(
     assert merge_kwargs["output_units"] == "ppb"
 
 
+@pytest.mark.parametrize("footprint_max_level", [None, 17])
 def test_merged_scenario_preserves_footprint_max_level_provenance(
     monkeypatch: pytest.MonkeyPatch,
+    footprint_max_level: int | None,
 ) -> None:
     """Footprint extent survives an OpenGHG merge that replaces ``max_level``."""
     expected = xr.Dataset(attrs={"max_level": 3})
@@ -603,7 +605,7 @@ def test_merged_scenario_preserves_footprint_max_level_provenance(
     footprint = SimpleNamespace(
         data=xr.Dataset(
             attrs={
-                "max_level": 17,
+                "max_level": footprint_max_level,
                 "model": "NAME",
                 "transport_model_version": "FLEXPART IFS (version 9.1_Empa)",
             }
@@ -619,7 +621,10 @@ def test_merged_scenario_preserves_footprint_max_level_provenance(
     )
 
     assert result.attrs["max_level"] == 3
-    assert result.attrs["footprint_max_level"] == 17
+    if footprint_max_level is None:
+        assert "footprint_max_level" not in result.attrs
+    else:
+        assert result.attrs["footprint_max_level"] == footprint_max_level
     assert result.attrs["footprint_transport_model"] == "NAME"
     assert result.attrs["footprint_transport_model_version"] == "FLEXPART IFS (version 9.1_Empa)"
     assert result.attrs["footprint_met_model"] == "ECMWF IFS HRES"
