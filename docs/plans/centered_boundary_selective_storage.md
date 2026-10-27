@@ -144,12 +144,85 @@ Compared options:
 Covariance precision remains separate: changing C requires logdet/solve/gradient,
 conditioning and full delta-log-density checks; the fixed-C identity is insufficient.
 
+## Controlled MHD posterior experiment, 27 October 2026
+
+Four float64 baseline chains completed on SLURM array `19761123`, with 1,000
+tuning iterations and 1,000 saved draws each, using revision `e51f0a7e` plus an
+isolated research runner. All 4,000 draws were evaluated against the once-rounded
+active-B32 target. This is a controlled technical benchmark with real transport
+operands and synthetic observations, not an accepted campaign configuration.
+
+The corrected July MHD inputs have 129 rows per tracer, 304 retained flux states,
+four NESW boundary coefficients per tracer and one boundary period. The original
+correlated flux prior and full joint aggregation covariance were retained,
+including cross-channel covariance. Boundary coefficients have independent
+Normal(1, 1/reference) priors (approximately 1 ppm per pure curtain), with
+references 420 ppm CO2 and 209300 ppm O2. Independent error SD is 0.2 ppm per
+tracer; OU time scale is five hours and amplitude priors are HalfNormal(0.75 ppm).
+Controlled observations use unit flux/boundary coefficients, OU amplitude
+0.5 ppm and one joint Gaussian noise draw (seed 20261027). Sampling seeds are
+20261027 through 20261030. These choices do not establish scientific policy.
+
+The corrected O2 boundary closes against the independent scalar preparation to
+`2.91e-11 ppm`. The stored legacy CO2 native enhancement differs from the accurate
+model contraction by up to `5.60e-6 ppm`; controlled observations use the matching
+model contraction and preserve the legacy enhancement separately. This difference
+is not attributed to selective boundary storage.
+
+Both research targets retain physical states, fixed contributions, shifts,
+covariance and numerical caches in float64. The float64 research recipe agrees
+with the unpatched baseline to `7.11e-15 ppm` in mean and `1.14e-13` in log
+likelihood in preflight checks. Save/reopen and chain provenance checks passed.
+Post-run likelihood reconstruction at 200 draws agrees to `2.28e-13`.
+
+| Measurement | Result |
+| --- | ---: |
+| Maximum R-hat, including whitened latent states | 1.00565 |
+| Minimum bulk / tail MCMC effective sample size | 3464 / 2050 |
+| Divergences / tree-depth limit hits, both update steps | 0 / 0 |
+| Maximum per-draw concentration mean error | 5.55e-8 ppm |
+| Maximum full-covariance D | 5.45e-13 |
+| Delta total log likelihood range | -1.264e-6 to 8.172e-7 |
+| Raw importance effective sample size | approximately 4000 of 4000 |
+| Maximum posterior concentration mean change, CO2 / O2 | 5.96e-8 / 5.37e-8 ppm |
+| Maximum daily concentration mean change, CO2 / O2 | 5.69e-8 / 4.98e-8 ppm |
+
+Reweighting uses the full global covariance at each draw's amplitudes, with
+unchanged priors. Candidate concentration summaries include both reweighting and
+the direct change in model output. Stable paired mean estimates avoid subtracting
+absolute O2 means. A circular moving-block bootstrap within each chain used 500
+replicates at block lengths 25, 50 and 100. At length 50, the largest absolute
+endpoint of the componentwise 95% mean-change intervals is `8.19e-8 ppm` for CO2
+and `8.20e-8 ppm` for O2. These are descriptive maxima of pointwise intervals,
+not simultaneous coverage or general model-error bounds. Posterior SD and 95%
+interval endpoint changes are also recorded, as point estimates only. Importance
+ESS assesses overlap separately from MCMC ESS; no separate candidate chains were
+needed to resolve overlap in this experiment.
+
+This evidence supports continued selective-storage development; it supplies no
+numerical reason to reject the candidate in this setup. Scientific acceptance
+budgets and a verified 304-state inner-PARIS GPP/TER/net-biosphere functional map
+remain missing. Broader priors, multiple periods, candidate sampler dynamics and
+covariance32 have not been assessed here. Each baseline task took 3:09--3:22 with
+467--488 MiB maximum RSS. The two shared boundary designs save only 8,256 bytes
+when stored in float32 in this case; there is no measured process-memory saving.
+
+Run scripts, frozen inputs, checksums, traces and analysis remain on BP1 under
+`build/pr986-inversions/` in worktree
+`/group/chem/acrg/brendan_for_codex/.codex-worktrees/d4f4/openghg_inversions`.
+They are local research artifacts, not files distributed by this PR. The evidence
+entry point is `results/analysis/report.md`, alongside `analysis-summary.json`,
+`paired_mean_changes.csv` and the executable `analyse_precision.py`.
+Input fingerprint: `0289e5bd091f076ce3a48abf8b6109418a3c5b72513e526e8586eb8db973e9e7`;
+configuration SHA256: `f491a0a87b864e98fd05796e8c3434dfb324f8cdb96662049d6496abcff3baba`.
+
 ## Remaining draft work
 
 - [x] Isolated once-rounded B32 prototype with compiled/dense/cache checks.
-- [ ] Corrected real-input mean screens and frozen provenance.
+- [x] Corrected real-input mean screens and frozen provenance.
+- [x] Controlled matching float64 posterior and paired concentration/BC/OU comparison.
 - [ ] Agreed scientific target, priors, errors and acceptance budgets.
-- [ ] Matching float64 posterior and paired scientific comparison.
+- [ ] Campaign-approved posterior and paired scientific flux-functional comparison.
 - [ ] Representative compiled/multiple-chain memory comparison, including blocked64.
 - [ ] Local production integration, full sampler/product/handoff coverage and CI.
 
