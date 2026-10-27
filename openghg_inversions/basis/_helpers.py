@@ -68,6 +68,11 @@ def _project_boundaries(
             ["lat", "lon", "height"], skipna=False if centered else None,
         ).to_dataarray(dim="bc_region")
     if centered:
+        if basis.sizes.get("time", 0) > 1:
+            try:
+                basis = basis.sel(time=ds.time)
+            except KeyError as exc:
+                raise ValueError("Centered boundary basis must cover every retained site timestamp.") from exc
         ds, basis = xr.align(ds, basis, join="exact", copy=False)
     return (
         (ds * basis).sum(["lat", "lon", "height"], skipna=False if centered else None)
