@@ -162,7 +162,7 @@ def _fixed_ou_site_alignment(
         )
     alignment = SigmaAlignment.from_observations(observations)
     site_index = alignment.site_index.rename(OU_SITE_INDEX)
-    site_coord = alignment.site_labels.rename({"nsigma_site": OU_SITE_DIM}).rename(
+    site_coord = xr.DataArray(alignment.site_labels).rename({"nsigma_site": OU_SITE_DIM}).rename(
         OU_SITE_DIM
     )
     return site_coord, site_index
@@ -210,7 +210,7 @@ def _add_cached_likelihood(
             if active_terms else np.empty((observations.size, 0))
         ),
     )
-    add_coords({OU_SITE_DIM: site_coord})
+    add_coords(site_coord.coords)
     amplitude_prior = dict(site_amplitude_prior)
     amplitude_prior["pdf"] = str(amplitude_prior.get("pdf", "")).casefold().replace("-", "")
     if amplitude_prior["pdf"] == "lognormal":
@@ -634,7 +634,7 @@ def build_co2_cached_sigma_model(
         )
         likelihood_mean = modelled_mean
         likelihood_observations = observations
-        if centered_boundary is not None:
+        if centered_boundary is not None and reference_shift is not None:
             # Compose the residual directly: subtracting a large absolute mean loses anomalies.
             likelihood_mean = terms[0].output + centered_boundary
             if offset_prior is not None:

@@ -329,9 +329,18 @@ def test_copied_sigma_likelihood_keeps_mode_residual_chain_local(clone) -> None:
         np.testing.assert_array_equal(gradient, expected.gradient_site_amplitude)
 
 
-def test_sigma_step_reinstalls_modes_when_conditioning_state_changes(monkeypatch) -> None:
-    target, _, _, _, _, _, point, step = _step_context()
-    sigma = np.exp(point[step.sigma_value_name])
+def test_sigma_step_reinstalls_modes_when_conditioning_state_changes(monkeypatch, graph_precision) -> None:
+    target, _, _, model, _, _, point, step = _step_context()
+    # The conditional residual belongs to the actual graph mean. In float32,
+    # exp(state) rounds before the float64 design product; a NumPy float64
+    # reconstruction represents a different conditioning state.
+    graph_mean = model.compile_fn(
+        model.replace_rvs_by_values([model["modelled_mean"]])[0],
+        inputs=model.value_vars,
+        on_unused_input="ignore",
+    )
+    sigma = np.asarray(np.exp(point[step.sigma_value_name]), dtype=np.float64)
+    covariance = _dense_covariance(target, sigma)
     recorded = []
 
     def unchanged_transition(conditional_point):
@@ -342,9 +351,13 @@ def test_sigma_step_reinstalls_modes_when_conditioning_state_changes(monkeypatch
 
     monkeypatch.setattr(step.nuts_step, "step", unchanged_transition)
     for state in (0.3, -0.4):
-        point = {**point, "state": np.array([state])}
+        point = {**point, "state": np.array([state], dtype=graph_precision)}
         _, stats = step.step(point)
-        expected = target.log_likelihood(np.exp([state]), sigma)
+        expected = multivariate_normal.logpdf(
+            target.observations,
+            mean=graph_mean(point),
+            cov=covariance,
+        )
         assert recorded[-1] == pytest.approx(expected, rel=1e-14, abs=1e-14)
         assert stats[0]["cache_refreshes"] == 0
     assert recorded[0] != recorded[1]
