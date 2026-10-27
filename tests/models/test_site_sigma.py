@@ -83,7 +83,7 @@ def _aggregation_error(
                 coords={"nmeasure": np.arange(nmeasure)},
             ),
         )
-    return AggregationError(mode="none", marginal_variance=np.zeros(nmeasure))
+    raise ValueError(f"Unsupported test covariance mode: {mode}")
 
 
 def _build_model(
@@ -97,7 +97,6 @@ def _build_model(
     """Build the core likelihood around a fixed mean for direct logp tests."""
     observations = _observations() if observations is None else observations
     observation_error = np.array([0.3, 0.4, 0.2]) if observation_error is None else observation_error
-    aggregation_error = _aggregation_error("none") if aggregation_error is None else aggregation_error
     error = xr.DataArray(
         observation_error,
         dims="nmeasure",
@@ -262,7 +261,6 @@ def test_stock_pymc_samples_state_and_site_sigma_together() -> None:
         add_site_sigma_gaussian_likelihood(
             observations=observations,
             observation_error=error,
-            aggregation_error=_aggregation_error("none"),
             mean=mean,
             site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
         )
@@ -337,26 +335,13 @@ def test_standard_recipe_accepts_site_sigma_through_public_likelihood_seam() -> 
         coords={"nmeasure": observations.nmeasure, "region": ["r1"]},
     )
 
-    def site_sigma_likelihood(
-        *, observations, observation_error, mean, output_dim, fixed_site_amplitudes,
-    ):
-        """Bind the independent standard-recipe inputs to the reusable component."""
-        return add_site_sigma_gaussian_likelihood(
-            observations=observations,
-            observation_error=observation_error,
-            aggregation_error=AggregationError("none", np.zeros(observations.sizes[output_dim])),
-            mean=mean,
-            output_dim=output_dim,
-            fixed_site_amplitudes=fixed_site_amplitudes,
-        )
-
     model = build_standard_graph(
         design,
         observations=data["mf"],
         observation_error=data["mf_error"],
         use_bc=False,
         x_prior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
-        likelihood_builder=site_sigma_likelihood,
+        likelihood_builder=add_site_sigma_gaussian_likelihood,
         likelihood_kwargs={"fixed_site_amplitudes": FIXED_SITE_SIGMA},
     )
 

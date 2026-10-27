@@ -179,7 +179,6 @@ def add_configured_pollution_event_likelihood(
             anchor_time=settings.sigma_freq_anchor,
         )
     return add_pollution_event_likelihood(
-        aggregation_error=AggregationError("none", np.zeros(observations.sizes[output_dim])),
         observations=observations,
         observation_error=observation_error,
         minimum_error=minimum_error,
@@ -222,7 +221,6 @@ def add_configured_additive_sigma_likelihood(
         sigma_freq_anchor=settings.sigma_freq_anchor,
     )
     return add_additive_sigma_likelihood(
-        aggregation_error=AggregationError("none", np.zeros(observations.sizes[output_dim])),
         observations=observations,
         observation_error=observation_error,
         mean=mean,
@@ -242,7 +240,6 @@ def add_configured_fixed_error_likelihood(
 ) -> TensorVariable:
     """Resolve fixed-error settings into the direct Gaussian component."""
     return add_fixed_error_likelihood(
-        aggregation_error=AggregationError("none", np.zeros(observations.sizes[output_dim])),
         observations=observations,
         observation_error=observation_error,
         mean=forward.total,

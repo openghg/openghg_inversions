@@ -145,6 +145,9 @@ def test_linked_stock_cached_covariance_logp_and_gradients_match_dense(interleav
         **kwargs, tau_hours=tau, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8}
     )
     covariance = _dense(kwargs, sigma, tau)
+    species = kwargs["observations"].species.values
+    aggregation = kwargs["aggregation_error"].covariance.values
+    assert np.any(aggregation[np.ix_(species == "co2", species == "o2")] != 0.0)
     state = np.array([0.9, 1.1, 0.8, 1.2, 1.05])
     mean = cached.target.fixed_contribution + cached.target.design @ state
     residual = kwargs["observations"].values - mean
