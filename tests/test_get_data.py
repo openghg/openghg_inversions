@@ -175,7 +175,7 @@ def test_get_footprint_to_match_preserves_original_observation_positions(
 
 
 def test_mixed_platforms_keep_surface_calibration_scale_per_site(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Mixed surface and satellite data use each site's platform for scales."""
     observed_platforms: list[tuple[str, str | None, int | None]] = []
@@ -236,6 +236,7 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
     assert result.site_data["GOSAT-BRAZIL"].attrs["openghg_inversions_time_resolved"] == "true"
     assert result.site_data["TAC"].attrs["scale"] == "surface-scale"
     assert result.sites == ("TAC", "GOSAT-BRAZIL")
+    assert "Not all sites using the same calibration scale" not in caplog.text
 
 
 @pytest.mark.parametrize("time_resolved", [False, True, None])
@@ -920,7 +921,7 @@ def test_get_flux_data_preserves_variable_period_over_dataset_period(
         metadata={},
         data=xr.Dataset({"flux": flux}, attrs={"time_period": "1 year"}),
     )
-    monkeypatch.setattr(getters_module, "adjust_flux_start_date", lambda *args, **kwargs: pd.Timestamp("2019-06-01"))
+    monkeypatch.setattr(getters_module, "_flux_periods", lambda *args, **kwargs: set())
     monkeypatch.setattr(getters_module, "get_flux", lambda **kwargs: flux_data)
 
     result = get_flux_data(
@@ -955,7 +956,7 @@ def test_get_flux_data_uses_dataset_period_when_variable_period_is_missing(
         metadata={},
         data=xr.Dataset({"flux": flux}, attrs={"time_period": "monthly"}),
     )
-    monkeypatch.setattr(getters_module, "adjust_flux_start_date", lambda *args, **kwargs: pd.Timestamp("2019-01-01"))
+    monkeypatch.setattr(getters_module, "_flux_periods", lambda *args, **kwargs: set())
     monkeypatch.setattr(getters_module, "get_flux", lambda **kwargs: flux_data)
 
     result = get_flux_data(
@@ -978,7 +979,7 @@ def test_get_flux_data_count_mode_audits_original_values(monkeypatch: pytest.Mon
         name="flux",
     )
     flux_data = SimpleNamespace(metadata={}, data=xr.Dataset({"flux": flux}, attrs={"time_period": "1 year"}))
-    monkeypatch.setattr(getters_module, "adjust_flux_start_date", lambda *args, **kwargs: np.datetime64("2019-01-01"))
+    monkeypatch.setattr(getters_module, "_flux_periods", lambda *args, **kwargs: set())
     monkeypatch.setattr(getters_module, "get_flux", lambda **kwargs: flux_data)
 
     with pytest.warns(NonFiniteFluxWarning, match="contains 2 non-finite values"):

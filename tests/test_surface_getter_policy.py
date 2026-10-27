@@ -12,7 +12,7 @@ from openghg_inversions.inversion_data import getters
 
 @pytest.mark.parametrize("empty", [False, True])
 def test_explicit_surface_getter_does_not_relabel_older_flux(monkeypatch, empty):
-    monkeypatch.setattr(getters, "adjust_flux_start_date", lambda *args, **kwargs: pd.Timestamp("2024-01-01"))
+    monkeypatch.setattr(getters, "_flux_periods", lambda *args, **kwargs: set())
     retrieve = Mock()
     if empty:
         retrieve.return_value = Mock(data=xr.Dataset(coords={"time": pd.DatetimeIndex([])}))
@@ -60,6 +60,11 @@ def test_ordinary_acquisition_does_not_require_centered_arithmetic_options(monke
     obs = xr.Dataset({"co2": ("time", [400., 401., 402.], {"units": "ppm"})}, coords={"time": time})
     fp = xr.Dataset({"fp": (("lat", "lon", "time"), np.ones((1, 1, 3)))},
                     coords={"lat": [0.], "lon": [0.], "time": time})
+    # Raw transport is validated before forcing retrieval, including ordinary BC inputs.
+    for direction in "nesw":
+        axis = "lon" if direction in "ns" else "lat"
+        fp[f"particle_locations_{direction}"] = (("height", axis, "time"), np.ones((1, 1, 3)))
+    fp = fp.assign_coords(height=[100.])
     monkeypatch.setattr(acquisition, "get_obs_data", lambda **kw: SimpleNamespace(data=obs, metadata={}))
     monkeypatch.setattr(acquisition, "get_footprint_data", lambda **kw: SimpleNamespace(data=fp, metadata={}))
     retrieve = Mock(side_effect=RuntimeError("reached flux retrieval"))
@@ -142,7 +147,6 @@ def test_explicit_calendar_lookup_rejects_expired_singleton_without_relabelling(
 
 
 def test_ordinary_missing_catalog_preserves_search_error_and_legacy_lookup(monkeypatch):
-    monkeypatch.setattr(getters.logging.Logger, "disabled", False)
     monkeypatch.setattr(getters, "search_flux", lambda **kw: Mock(results=pd.DataFrame()))
 
     def missing(**kwargs):

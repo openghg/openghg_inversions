@@ -1,8 +1,8 @@
 """Explicit continuous-surface CO2/O2 preparation beside ModelScenario.
 
-This pilot temporarily consumes OpenGHG private scientific helpers. A provider
-without the named operations fails explicitly; no legacy scientific fallback is
-used. Promote these imports when OpenGHG supplies equivalent public operations.
+This pilot uses OpenGHG's public integrated convolution and private alignment
+and resolved convolution helpers. Missing named operations fail explicitly;
+private imports can migrate when equivalent public operations become available.
 """
 
 from __future__ import annotations
@@ -10,7 +10,6 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from functools import partial
-from inspect import signature
 import json
 from typing import Literal, Protocol, cast
 
@@ -22,6 +21,7 @@ import xarray as xr
 from ._surface_support import _time_index, validate_flux_coverage as _coverage
 from ._provenance import footprint_metadata, selected_provenance
 from ._units import mole_fraction_unit_scale
+from ._site_options import is_surface_platform
 
 
 TransportMode = Literal["integrated", "time_resolved"]
@@ -30,6 +30,8 @@ SurfaceInput = xr.Dataset | ObsData | FootprintData | FluxData | BoundaryConditi
 
 
 class _AlignObservations(Protocol):
+    """Provider callable for paired observation/transport resampling."""
+
     def __call__(
         self, obs: xr.Dataset, other: xr.Dataset, *, resample_to: str
     ) -> tuple[xr.Dataset, xr.Dataset]: ...
@@ -43,31 +45,37 @@ def _surface_operations() -> tuple[
     """Small dependency seam for provider-owned alignment and convolution."""
     try:
         from openghg.analyse._alignment import resample_obs_and_other
-        from openghg.analyse._modelled_obs import (
-            fp_x_flux_integrated,
-            fp_x_flux_time_resolved,
-        )
+        from openghg.analyse import fp_x_flux_integrated
+        from openghg.analyse._modelled_obs import fp_x_flux_time_resolved
     except ImportError as exc:
         raise RuntimeError(
             "Surface preparation requires OpenGHG alignment and integrated/time-resolved "
             "convolution helpers. Install a compatible OpenGHG development revision."
         ) from exc
-    # Released OpenGHG uses timestamp-only filling. Newer providers also offer
-    # climatological year reuse; the explicit surface validity contract forbids it.
-    integrated: Callable[..., xr.DataArray] = fp_x_flux_integrated
-    if "allow_climatology" in signature(integrated).parameters:
-        integrated = partial(integrated, allow_climatology=False)
-    return resample_obs_and_other, integrated, fp_x_flux_time_resolved
+    return resample_obs_and_other, partial(fp_x_flux_integrated, allow_climatology=False), fp_x_flux_time_resolved
+
+
+def _regular_footprint_times(footprint: xr.Dataset) -> pd.DatetimeIndex:
+    """Require indexed, regular native footprint releases without gaps."""
+    times = _time_index(footprint, "Footprint")
+    if len(times) < 2 or (len(times) >= 3 and pd.infer_freq(times) is None):
+        raise ValueError(
+            "Surface footprints require a regular cadence with at least two timestamps and no gaps."
+        )
+    return times
 
 
 def _align_footprint(
     obs: xr.Dataset, fp: xr.Dataset, align: _AlignObservations
 ) -> tuple[xr.Dataset, xr.Dataset]:
-    times = _time_index(fp, "Footprint")
-    if len(times) < 2 or (len(times) >= 3 and pd.infer_freq(times) is None):
-        raise ValueError(
-            "Surface footprints require a regular cadence with at least two timestamps and no gaps."
-        )
+    """Choose coarsest observation bins and aligned site transport.
+
+    The provider averages observations/transport to their coarsest cadence.
+    Repair its retained cadence metadata, check observed coverage, then fill
+    site transport onto those bins. Native source releases remain separate for
+    forming products before observation averaging. Inputs borrow array storage.
+    """
+    times = _regular_footprint_times(fp)
     aligned_obs, aligned_fp = align(obs.copy(deep=False), fp, resample_to="coarsest")
     obs_times = _time_index(aligned_obs, "Aligned observations")
     fp_times = _time_index(aligned_fp, "Aligned footprint")
@@ -99,6 +107,7 @@ def _transport_provenance(value: FootprintInput) -> dict[str, object]:
 
 
 def _dataset(value: SurfaceInput) -> xr.Dataset:
+    """Own shallow metadata containers, borrow arrays, and import wrapper validity metadata."""
     dataset = value if isinstance(value, xr.Dataset) else value.data
     if not isinstance(dataset, xr.Dataset):
         raise TypeError("Surface inputs must be xarray Datasets or OpenGHG data wrappers.")
@@ -116,13 +125,7 @@ def _validate_platform(value: xr.Dataset | ObsData) -> None:
     )
     if platform is None:
         platform = getattr(value, "metadata", {}).get("platform")
-    if platform is not None and str(platform).lower() not in {
-        "surface",
-        "insitu",
-        "in-situ",
-        "continuous",
-        "tower",
-    }:
+    if platform is not None and not is_surface_platform(platform):
         raise ValueError(
             f"Surface preparation supports continuous surface observations, got platform {platform!r}."
         )
@@ -167,6 +170,44 @@ def _convert(array: xr.DataArray, units: str) -> xr.DataArray:
     return array.pint.quantify().pint.to(units).pint.dequantify()
 
 
+def _resolve_surface_observations(
+    obs: xr.Dataset, site_footprint_view: xr.Dataset, *, roles: Mapping[str, str],
+    output_units: str | None,
+) -> tuple[xr.Dataset, xr.Dataset, xr.Dataset]:
+    """Convert validated observation roles before averaging, then retain native releases.
+
+    Returns aligned observations, site transport on those observation bins,
+    and native site releases within the bins. These borrowed payloads can be
+    reused for retrieval support and the subsequent scientific calculation.
+    """
+    obs = obs.rename({name: role for name, role in roles.items() if name != role})
+    observation_units = obs.mf.attrs.get("units")
+    units = output_units or observation_units
+    if not isinstance(units, str) or not isinstance(observation_units, str):
+        raise ValueError("Surface observations require explicit mole-fraction units.")
+    mole_fraction_unit_scale(units, context="surface observations")
+    for name in obs.data_vars:
+        if str(name) in {"mf", "mf_repeatability", "mf_variability", "mf_error"}:
+            if "units" not in obs[name].attrs:
+                obs[name].attrs["units"] = observation_units
+            obs[name] = _convert(obs[name], units)
+    align, _, _ = _surface_operations()
+    aligned_obs, site_fp = _align_footprint(obs, site_footprint_view, align)
+    return aligned_obs, site_fp, _native_releases(site_footprint_view, aligned_obs)
+
+
+def _select_native_footprint(footprint: xr.Dataset, aligned_obs: xr.Dataset, *, source: str) -> xr.Dataset:
+    """Validate a distinct source cadence and retain releases in observation bins."""
+    times = _regular_footprint_times(footprint)
+    period = pd.Timedelta(seconds=float(aligned_obs.attrs.get("averaged_period", aligned_obs.attrs["sampling_period"])))
+    if times[1] - times[0] > period:
+        raise ValueError(
+            f"Footprint source {source!r} requires matching spatial and observed timestamps; "
+            "its cadence must not be coarser than the explicit site observation axis."
+        )
+    return _native_releases(footprint, aligned_obs)
+
+
 def prepare_surface_site(
     obs_data: xr.Dataset | ObsData,
     footprint_data: FootprintInput | Mapping[str, FootprintInput],
@@ -179,7 +220,7 @@ def prepare_surface_site(
     output_units: str | None = None,
     observation_variable: str | None = None,
 ) -> xr.Dataset:
-    """Prepare continuous CO2/O2 observations and per-source surface responses.
+    """Prepare supplied CO2/O2 observations and per-source responses for one site.
 
     Args:
         obs_data: Borrowed observations with indexed ``time``, ``mf`` or species-
@@ -214,12 +255,13 @@ def prepare_surface_site(
 
     Returns:
         Dataset with aligned ``mf``, available errors/filter fields,
-        ``fp_x_flux_sectoral(source, lat, lon, time)`` and source sum
-        ``fp_x_flux``; spatial sums ``mf_mod_sectoral(source, time)`` and
+        ``fp_x_flux_sectoral`` with dimensions ``source``, ``lat``, ``lon``,
+        ``time`` and source sum ``fp_x_flux``; spatial sums ``mf_mod_sectoral(source, time)`` and
         ``mf_mod(time)``; transport/provenance attributes. With boundaries,
         ordinary output contains ``bc_n/e/s/w`` on native curtain axes.
-        ``bc_mod(time)`` is the absolute unit-factor contribution. Concentrations use
-        output units. Payloads stay lazy where supported; inputs are never mutated.
+        ``bc_mod(time)`` is the absolute unit-factor contribution. Concentrations
+        use output units. Non-time spatial axis order follows labelled inputs;
+        ``time`` is last. Payloads stay lazy where supported; inputs are never mutated.
 
     Raises:
         ValueError: Unsupported platform/species/transport, incompatible labelled
@@ -255,34 +297,44 @@ def prepare_surface_site(
         raise ValueError("Mapped source footprints require explicit site_footprint_data.")
     obs = _dataset(obs_data)
     site_footprint_view = _dataset(site_footprint)
-    source_footprint_views = {source: _dataset(value) for source, value in source_footprints.items()}
+    source_footprint_views = {
+        source: site_footprint_view if value is site_footprint else _dataset(value)
+        for source, value in source_footprints.items()
+    }
     flux_views = {source: _dataset(value) for source, value in flux_data.items()}
     boundary_view = _dataset(boundary_data) if boundary_data is not None else None
     _time_index(obs, "Observations")
     species = species.lower()
     roles = _observation_roles(obs, species=species, observation_variable=observation_variable)
-    obs = obs.rename({name: role for name, role in roles.items() if name != role})
-    observation_units = obs.mf.attrs.get("units")
-    units = output_units or observation_units
-    if not isinstance(units, str) or not isinstance(observation_units, str):
-        raise ValueError("Surface observations require explicit mole-fraction units.")
-    mole_fraction_unit_scale(units, context="surface observations")
-    for name in obs.data_vars:
-        if str(name) in {"mf", "mf_repeatability", "mf_variability", "mf_error"}:
-            if "units" not in obs[name].attrs:
-                obs[name].attrs["units"] = observation_units
-            obs[name] = _convert(obs[name], units)
+    aligned_obs, site_fp, native_site_fp = _resolve_surface_observations(
+        obs, site_footprint_view, roles=roles, output_units=output_units,
+    )
+    native_footprints = {
+        source: native_site_fp if value is site_footprint_view else _select_native_footprint(value, aligned_obs, source=source)
+        for source, value in source_footprint_views.items()
+    }
+    site = _surface_site_responses(
+        aligned_obs, site_fp, native_site_fp, native_footprints, flux_views,
+        species=species, transport=transport, boundary_view=boundary_view,
+    )
+    return _attach_surface_provenance(
+        site, site_footprint=site_footprint, source_footprints=source_footprints,
+        flux_data=flux_data, boundary_data=boundary_data, transport=transport,
+        site_footprint_selection="explicit" if site_footprint_data is not None else "shared",
+    )
+
+
+def _surface_site_responses(
+    aligned_obs: xr.Dataset, site_fp: xr.Dataset, native_site_fp: xr.Dataset,
+    native_footprints: Mapping[str, xr.Dataset], flux_views: Mapping[str, xr.Dataset],
+    *, species: str, transport: Mapping[str, TransportMode], boundary_view: xr.Dataset | None,
+) -> xr.Dataset:
+    """Form native source products and boundary operands before observation averaging."""
     align, integrated, resolved = _surface_operations()
-    aligned_obs, site_fp = _align_footprint(obs, site_footprint_view, align)
+    units = aligned_obs.mf.attrs["units"]
     obs_times = _time_index(aligned_obs, "Aligned observations")
     site = xr.merge([site_fp, aligned_obs], join="exact", compat="no_conflicts")
     site.attrs = {**site_fp.attrs, **aligned_obs.attrs, "resample_to": "coarsest"}
-    for name, value in footprint_metadata(site_footprint).items():
-        site.attrs[f"footprint_{name}"] = value
-
-    observation_period = pd.Timedelta(
-        seconds=float(aligned_obs.attrs.get("averaged_period", aligned_obs.attrs["sampling_period"]))
-    )
     def observation_means(values: xr.Dataset) -> xr.Dataset:
         # Form products on native releases before provider observation averaging.
         if "time" not in values.dims or values.indexes["time"].equals(obs_times):
@@ -293,20 +345,10 @@ def prepare_surface_site(
                              "contributions must preserve the explicit site footprint observation axis.")
         return averaged.reindex(time=obs_times, method="ffill")
 
+    # Each source product is formed on native releases, then averaged to the bins.
     responses = []
-    for source in sorted(flux_data):
-        aligned_fp = source_footprint_views[source]
-        times = _time_index(aligned_fp, "Footprint")
-        if len(times) < 2 or (len(times) >= 3 and pd.infer_freq(times) is None):
-            raise ValueError(
-                "Surface footprints require a regular cadence with at least two timestamps and no gaps."
-            )
-        if times[1] - times[0] > observation_period:
-            raise ValueError(
-                f"Footprint source {source!r} requires matching spatial and observed timestamps; "
-                "its cadence must not be coarser than the explicit site observation axis."
-            )
-        aligned_fp = _native_releases(aligned_fp, aligned_obs)
+    for source in sorted(flux_views):
+        aligned_fp = native_footprints[source]
         flux = flux_views[source]
         _coverage(flux, aligned_fp, source=source, mode=transport[source])
         if transport[source] == "integrated":
@@ -337,38 +379,13 @@ def prepare_surface_site(
                 "Surface source responses require matching spatial and observed timestamps."
             ) from exc
         responses.append(response)
-    sectoral = xr.concat(responses, dim=xr.IndexVariable("source", sorted(flux_data)), join="exact")
+    sectoral = xr.concat(responses, dim=xr.IndexVariable("source", sorted(flux_views)), join="exact")
     site["fp_x_flux_sectoral"] = sectoral
     site["fp_x_flux"] = sectoral.sum("source", skipna=False, keep_attrs=True)
     site["mf_mod_sectoral"] = sectoral.sum(["lat", "lon"], skipna=False, keep_attrs=True)
     site["mf_mod"] = site.fp_x_flux.sum(["lat", "lon"], skipna=False, keep_attrs=True)
-    import openghg
-
-    site.attrs["surface_transport"] = json.dumps(dict(transport), sort_keys=True)
-    site.attrs["surface_policy_revision"] = "957-source-wise-v1"
-    site.attrs["surface_provider_version"] = str(getattr(openghg, "__version__", None) or "unknown")
-    site.attrs["surface_provider_revision"] = str(getattr(openghg, "__revisionid__", None) or "unknown")
-    site.attrs["surface_transport_provenance"] = json.dumps(
-        {
-            "site_footprint": _transport_provenance(site_footprint),
-            "site_footprint_selection": "explicit" if site_footprint_data is not None else "shared",
-            "boundary": asdict(selected_provenance(boundary_data)) if boundary_data is not None else None,
-            "sources": {
-                source: {
-                    "mode": transport[source],
-                    "footprint": _transport_provenance(source_footprints[source]),
-                    "flux": asdict(selected_provenance(flux_data[source])),
-                }
-                for source in sorted(flux_data)
-            },
-        },
-        sort_keys=True,
-    )
-    if "time_resolved" in transport.values():
-        site.attrs["surface_provider_policy_revision"] = "openghg-time-resolved-v1"
-
     if boundary_view is not None:
-        native_site_fp = _native_releases(site_footprint_view, aligned_obs)
+        # Boundary operands use the same retained native releases as source products.
         from openghg.analyse._modelled_baseline import baseline_sensitivities
 
         absolute_operands = baseline_sensitivities(
@@ -385,5 +402,43 @@ def prepare_surface_site(
             for value in absolute.values()
         ]
         site["bc_mod"] = sum(directional_totals[1:], start=directional_totals[0]).assign_attrs(units=units)
-        return site.transpose(..., "time")
     return site.transpose(..., "time")
+
+
+def _attach_surface_provenance(
+    site: xr.Dataset, *, site_footprint: FootprintInput,
+    source_footprints: Mapping[str, FootprintInput], flux_data: Mapping[str, xr.Dataset | FluxData],
+    boundary_data: xr.Dataset | BoundaryConditionsData | None, transport: Mapping[str, TransportMode],
+    site_footprint_selection: str,
+) -> xr.Dataset:
+    """Attach selected input identities and scientific preparation policy once."""
+    for name, value in footprint_metadata(site_footprint).items():
+        site.attrs[f"footprint_{name}"] = value
+    import openghg
+
+    site.attrs["surface_transport"] = json.dumps(dict(transport), sort_keys=True)
+    # Scientific policy: independent source products on native releases, then observation means.
+    # This provenance marker is separate from persisted artifact/manifest format versions.
+    site.attrs["surface_policy_revision"] = "957-source-wise-v1"
+    site.attrs["surface_provider_version"] = str(getattr(openghg, "__version__", None) or "unknown")
+    site.attrs["surface_provider_revision"] = str(getattr(openghg, "__revisionid__", None) or "unknown")
+    site.attrs["surface_transport_provenance"] = json.dumps(
+        {
+            "site_footprint": _transport_provenance(site_footprint),
+            "site_footprint_selection": site_footprint_selection,
+            "boundary": asdict(selected_provenance(boundary_data)) if boundary_data is not None else None,
+            "sources": {
+                source: {
+                    "mode": transport[source],
+                    "footprint": _transport_provenance(source_footprints[source]),
+                    "flux": asdict(selected_provenance(flux_data[source])),
+                }
+                for source in sorted(flux_data)
+            },
+        },
+        sort_keys=True,
+    )
+    if "time_resolved" in transport.values():
+        site.attrs["surface_provider_policy_revision"] = "openghg-time-resolved-v1"
+
+    return site

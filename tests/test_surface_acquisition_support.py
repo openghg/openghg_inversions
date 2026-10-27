@@ -301,3 +301,42 @@ def test_calendar_flux_lookup_keeps_governing_off_anchor_label_for_both_routes(m
     )
     assert result.flux_data["a"].indexes["time"].equals(pd.DatetimeIndex(["2020-12-01"]))
     np.testing.assert_allclose(result.flux_data["a"].flux, np.float32(2e-6))
+
+
+def test_fresh_sites_resolve_coarsest_alignment_once_and_warn_on_native_scales(
+    monkeypatch, compatible_provider, caplog,
+):
+    """Support planning reuses the converted bins used by the physical response."""
+    from openghg_inversions.inversion_data import surface
+
+    obs, fp, flux = native_inputs("2020-03-01", 24)
+    native_times = obs.time
+    obs = obs.isel(time=[0, 2]).assign_attrs(sampling_period=7200)
+    other_obs = obs.copy(deep=False).assign_attrs(scale="OTHER")
+    install_store(
+        monkeypatch,
+        {"MHD": ObsData(data=obs, metadata={}, sort=False),
+         "TAC": ObsData(data=other_obs, metadata={}, sort=False)},
+        {site: FootprintData(data=fp, metadata={}, sort=False) for site in ("MHD", "TAC")}, flux,
+    )
+    align, integrated, resolved = surface._surface_operations()
+    coarsest_calls = []
+
+    def record_alignment(*args, **kwargs):
+        if kwargs.get("resample_to") == "coarsest":
+            coarsest_calls.append(args[0].attrs["scale"])
+        return align(*args, **kwargs)
+
+    monkeypatch.setattr(surface, "_surface_operations", lambda: (record_alignment, integrated, resolved))
+    result = acquire(["MHD", "TAC"])
+    assert coarsest_calls == ["WMO", "OTHER"]
+    assert "Not all sites using the same calibration scale: 2 scales found" in caplog.text
+    values = flux.flux * 1e6
+    monthly = values.sel(time=slice("2020-03-01", "2020-03-31")).mean("time")
+    native_response = xr.concat([
+        values.sel(time=native_times - pd.Timedelta(hours=h)).assign_coords(time=native_times)
+        for h in range(24)
+    ], dim="lag").sum("lag") + 3 * monthly
+    expected = native_response.resample(time="2h").mean().squeeze(["lat", "lon"])
+    np.testing.assert_allclose(result.site_data["MHD"].mf_mod, expected, rtol=1e-14, atol=0)
+    np.testing.assert_allclose(result.site_data["TAC"].mf_mod, expected, rtol=1e-14, atol=0)

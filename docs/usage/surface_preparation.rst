@@ -67,7 +67,10 @@ independently. ``time_resolved`` includes both its
 resolved history and its monthly residual; adding an integrated response for
 that same physical contribution would double count it. Modes describe distinct
 physical contributions, not inference state groups. ``fp_x_flux_sectoral`` retains
-source and grid labels; ``fp_x_flux`` is its explicit source sum. Signed fluxes
+source and grid labels; ``fp_x_flux`` is its explicit source sum. Explicit surface
+source labels are sorted. Response concentrations use observation units or the
+explicit ``output_units``. Spatial axis order follows labelled inputs, with
+``time`` placed last. Signed fluxes
 are retained. Fluxes need regular declared validity, complete backward history
 and complete calendar months containing the releases used by the resolved residual.
 Resolved lag coordinates must be regular, nonnegative whole hours, with spacing
@@ -118,8 +121,9 @@ averaging, calibration, inlet/height selection, missing-site handling, explicit
 total observation errors and flux sanitation.
 
 Acquisition retrieves retained observations and footprints before flux. It uses
-the same observation alignment and selected native release bins as preparation,
-then combines the actual backward history and complete release-month residual
+one observation-role resolution, unit conversion and coarsest alignment per
+retained site, reusing those arrays and native release bins for preparation.
+It then combines the actual backward history and complete release-month residual
 support across retained sites and sources. A 24-hour history is the usual case;
 120-hour histories also use their actual lag coordinates. No fixed history cap
 or preceding-month assumption is imposed. Legacy ``fp_HiTRes`` excludes its final
@@ -133,14 +137,21 @@ preceding declared intervals, including calendar labels offset from month or yea
 starts. The getter resolves one common effective span for all sources; when
 period metadata are absent, a returned cadence can trigger one bounded common
 earlier request without applying source padding again.
-The full retrieved native flux support is retained. Older-inventory relabelling
-and climatological year reuse are disabled.
+The full retrieved native flux support is retained. Explicit surface native
+prior-flux reporting sorts source labels and converts to the first sorted
+source's flux units. Default acquisition retains source insertion order.
+Older-inventory relabelling and climatological year reuse are disabled.
 
 Selected identities are captured at retrieval in owned wrapper metadata while
 borrowing the datasets. Preparation combines those facts with transport metadata
 and serializes provenance once. Combined observation versions remain unknown
 when retrieval did not preserve them; combined footprint identifiers retain their
 order.
+
+The surface preparation policy revision records the scientific ordering: form
+native source products before averaging onto observation bins. It is independent
+of prepared-input schema versions and manifest format versions, which describe
+serialized artifacts.
 
 Fresh acquisition requires compatible native source axes for retained-flux
 reporting. Standard/multisector scientific preparation of a supplied surface

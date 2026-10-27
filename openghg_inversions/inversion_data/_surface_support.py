@@ -111,6 +111,10 @@ def validate_flux_coverage(
             or flux_steps[0] < 1
         ):
             raise ValueError("Time-resolved transport requires regular whole-hour flux and release intervals.")
+        # The provider grid is the GCD of release cadence and lag spacing.
+        # Its window includes zero hours, so max(H_back)+1 must fit that grid,
+        # as must every selected lag: 2h releases with [0,2] cannot tile a 3h
+        # window; [0,3] instead uses a 1h grid and a compatible 4h window.
         grid_hours = gcd(int(release_steps[0]), int(hours[1] - hours[0]))
         history_hours = int(hours[-1]) + 1
         if history_hours % grid_hours or (hours % grid_hours != 0).any():
