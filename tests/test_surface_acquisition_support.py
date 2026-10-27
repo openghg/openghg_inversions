@@ -57,7 +57,8 @@ def install_store(monkeypatch, observations, footprints, flux):
         assert kwargs["allow_older_flux"] is False
         assert kwargs["start_date"] is not None
         start, end = pd.Timestamp(kwargs["start_date"]), pd.Timestamp(kwargs["end_date"])
-        sliced = flux.sel(time=(flux.time >= start) & (flux.time < end))
+        sliced = flux.sel(time=(flux.time >= start - pd.Timedelta(seconds=1)) &
+                              (flux.time <= end - pd.Timedelta(seconds=1)))
         return {source: FluxData(data=sliced, metadata={"uuid": "flux-id", "dataversion": "v3"}, sort=False)
                 for source in kwargs["sources"]}
 
@@ -90,7 +91,7 @@ def test_fresh_native_history_and_monthly_residual_match_independent_result(
     result = acquire(["MHD"])
     first = pd.Timestamp(release)
     assert pd.Timestamp(requests[0]["start_date"]) == first - pd.Timedelta(hours=history)
-    assert pd.Timestamp(requests[0]["end_date"]) == (first.to_period("M") + 1).start_time
+    assert pd.Timestamp(requests[0]["end_date"]) - pd.Timedelta(seconds=1) + pd.Timedelta("1ns") == (first.to_period("M") + 1).start_time
     assert len(requests) == 1
     index = flux.indexes["time"]
     values = flux.flux.values.ravel() * 1e6
@@ -104,26 +105,6 @@ def test_fresh_native_history_and_monthly_residual_match_independent_result(
     supplied = prepare_surface_site(obs, fp, {"a": flux}, species="co2", transport={"a": "time_resolved"})
     xr.testing.assert_identical(result.site_data["MHD"].mf_error, supplied.mf_error)
 
-
-@pytest.mark.parametrize("legacy", [False, True])
-def test_shifted_coarse_flux_retrieves_preceding_interval_and_preserves_native_support(
-    monkeypatch, compatible_provider, legacy
-):
-    obs, fp, flux = native_inputs("2020-03-01", 24, legacy=legacy, flux_phase=30, cadence=2)
-    requests, _ = install_store(
-        monkeypatch, {"MHD": ObsData(data=obs, metadata={}, sort=False)},
-        {"MHD": FootprintData(data=fp, metadata={}, sort=False)}, flux,
-    )
-    result = acquire(["MHD"])
-    assert len(requests) == 2
-    assert pd.Timestamp(requests[1]["start_date"]) == pd.Timestamp(requests[0]["start_date"]) - pd.Timedelta(hours=2)
-    times = flux.indexes["time"]
-    values = flux.flux.values.ravel() * 1e6
-    monthly = values[times.month == 3].mean()
-    expected = [values[times.get_indexer(pd.date_range(t - pd.Timedelta(hours=23), t, freq="h"), method="ffill")].sum()
-                + 3 * monthly for t in obs.indexes["time"]]
-    np.testing.assert_allclose(result.site_data["MHD"].mf_mod, expected, rtol=1e-14, atol=0)
-    assert result.flux_data["a"].time.values[0] < np.datetime64("2020-02-29")
 
 
 def test_retained_sites_union_excludes_missing_and_unused_releases(monkeypatch, compatible_provider):
@@ -142,7 +123,7 @@ def test_retained_sites_union_excludes_missing_and_unused_releases(monkeypatch, 
     assert result.sites == ("MHD", "TAC")
     assert result.site_options.averaging_period == ("1h", "1h")
     assert pd.Timestamp(requests[0]["start_date"]) == pd.Timestamp("2020-02-27")
-    assert pd.Timestamp(requests[0]["end_date"]) == pd.Timestamp("2020-04-01")
+    assert pd.Timestamp(requests[0]["end_date"]) - pd.Timedelta(seconds=1) + pd.Timedelta("1ns") == pd.Timestamp("2020-04-01")
 
 
 def test_selected_identities_own_metadata_borrow_payloads_and_preserve_subclass(monkeypatch, compatible_provider):
@@ -184,8 +165,7 @@ def test_mixed_modes_retrieve_common_native_support(monkeypatch, compatible_prov
         flux_sources=["resolved", "integrated"],
         surface_transport={"resolved": "time_resolved", "integrated": "integrated"}, use_bc=False,
     )
-    assert requests[0]["start_date"] == requests[1]["start_date"]
-    assert requests[0]["end_date"] == requests[1]["end_date"]
+    assert requests[0]["sources"] == ["resolved", "integrated"]
     xr.testing.assert_identical(result.flux_data["resolved"], result.flux_data["integrated"])
     expected_integrated = flux.flux.sel(time=obs.time).sum(["lat", "lon"]) * 1e6
     np.testing.assert_allclose(result.site_data["MHD"].mf_mod_sectoral.sel(source="integrated"),
@@ -193,14 +173,16 @@ def test_mixed_modes_retrieve_common_native_support(monkeypatch, compatible_prov
 
 
 @pytest.mark.parametrize("resolved", [False, True])
+@pytest.mark.parametrize("release_shift_ms", [0, 500])
 def test_fresh_real_getter_preserves_final_release_and_shifted_declared_intervals(
-    monkeypatch, compatible_provider, resolved
+    monkeypatch, compatible_provider, resolved, release_shift_ms
 ):
     from types import SimpleNamespace
     from openghg_inversions.inversion_data import getters
 
     cadence = 2 if resolved else 1
-    obs, fp, flux = native_inputs("2020-03-01", 24, flux_phase=30 if resolved else 0, cadence=cadence)
+    obs, fp, flux = native_inputs(pd.Timestamp("2020-03-01") + pd.Timedelta(milliseconds=release_shift_ms),
+                                  24, flux_phase=30 if resolved else 0, cadence=cadence)
     if not resolved:
         fp = fp.drop_dims("H_back").drop_vars("fp_residual")
     monkeypatch.setattr(acquisition, "get_obs_data", lambda **kw: ObsData(data=obs, metadata={}, sort=False))
@@ -209,7 +191,8 @@ def test_fresh_real_getter_preserves_final_release_and_shifted_declared_interval
 
     def provider_flux(**kwargs):
         # Match OpenGHG _BaseData's exclusive-end conversion at actual retrieval.
-        sliced = flux.sel(time=slice(pd.Timestamp(kwargs["start_date"]), pd.Timestamp(kwargs["end_date"]) - pd.Timedelta(seconds=1)))
+        sliced = flux.sel(time=slice(pd.Timestamp(kwargs["start_date"]) - pd.Timedelta(seconds=1),
+                                     pd.Timestamp(kwargs["end_date"]) - pd.Timedelta(seconds=1)))
         return FluxData(data=sliced, metadata={"time_period": f"{cadence}h"}, sort=False)
 
     monkeypatch.setattr(getters, "get_flux", provider_flux)
@@ -235,3 +218,86 @@ def test_fresh_real_getter_preserves_final_release_and_shifted_declared_interval
         assert retained.indexes["time"][-1] == obs.indexes["time"][-1]
         expected = retained.flux.sel(time=obs.time).values.ravel().astype(float) * 1e6
     np.testing.assert_allclose(result.site_data["MHD"].mf_mod, expected, rtol=1e-14, atol=0)
+
+
+@pytest.mark.parametrize("source_order", [("declared", "inferred"), ("inferred", "declared")])
+@pytest.mark.parametrize("legacy", [False, True])
+@pytest.mark.parametrize("cadence,phase,declared_period", [(1, 0, "1h"), (2, 30, None)])
+def test_real_getter_sources_share_effective_support_after_padding_or_retry(
+    monkeypatch, compatible_provider, source_order, cadence, phase, declared_period, legacy
+):
+    from types import SimpleNamespace
+    from openghg_inversions.inversion_data import getters
+
+    obs, fp, flux = native_inputs("2020-03-01", 24, cadence=cadence, flux_phase=phase, legacy=legacy)
+    # Binary-exact varying inputs keep the interval oracle independent of sum-order roundoff.
+    values = np.ldexp((1 + np.arange(flux.sizes["time"]) % 8).astype(float), -20)
+    flux["flux"] = flux.flux.copy(data=values.reshape(1, 1, -1))
+    monkeypatch.setattr(acquisition, "get_obs_data", lambda **kw: ObsData(data=obs, metadata={}, sort=False))
+    monkeypatch.setattr(acquisition, "get_footprint_data", lambda **kw: FootprintData(data=fp, metadata={}, sort=False))
+    monkeypatch.setattr(getters, "search_flux", lambda **kw: SimpleNamespace(results=pd.DataFrame({
+        "time_period": [declared_period if kw["source"] == "declared" else None]
+    })))
+
+    def provider_flux(**kwargs):
+        sliced = flux.sel(time=slice(pd.Timestamp(kwargs["start_date"]) - pd.Timedelta(seconds=1),
+                                     pd.Timestamp(kwargs["end_date"]) - pd.Timedelta(seconds=1)))
+        metadata = {"uuid": kwargs["source"]}
+        if kwargs["source"] == "declared" and declared_period is not None:
+            metadata["time_period"] = declared_period
+        return FluxData(data=sliced, metadata=metadata, sort=False)
+
+    monkeypatch.setattr(getters, "get_flux", provider_flux)
+    monkeypatch.setattr(acquisition, "get_flux_data", getters.get_flux_data)
+    result = MergedData.from_options(
+        species="co2", site_options=SiteOptions.from_inputs(sites=["MHD"], averaging_period="1h", time_resolved=True),
+        domain="EUROPE", start_date="2020-03-01", end_date="2020-03-02",
+        flux_sources=source_order, surface_transport={source: "time_resolved" for source in source_order}, use_bc=False,
+    )
+    first, second = (result.flux_data[source] for source in source_order)
+    assert first.indexes["time"].equals(second.indexes["time"])
+    assert first.indexes["time"][0] <= pd.Timestamp("2020-02-29")
+    assert first.indexes["time"][-1] < pd.Timestamp("2020-04-01")
+    raw = first.flux.values.ravel()
+    times = first.indexes["time"]
+    monthly = float(raw[times.month == 3].mean(dtype=np.float32)) * 1e6
+    expected = [raw[times.get_indexer(pd.date_range(t - pd.Timedelta(hours=23), t, freq="h"),
+                                     method="ffill")].astype(float).sum() * 1e6 + 3 * monthly
+                for t in obs.indexes["time"]]
+    for source in source_order:
+        np.testing.assert_allclose(result.site_data["MHD"].mf_mod_sectoral.sel(source=source), expected,
+                                   rtol=1e-14, atol=0)
+    np.testing.assert_allclose(result.site_data["MHD"].mf_mod, 2 * np.asarray(expected), rtol=1e-14, atol=0)
+
+
+@pytest.mark.parametrize("surface_mode", [False, True])
+def test_calendar_flux_lookup_keeps_governing_off_anchor_label_for_both_routes(monkeypatch, surface_mode):
+    from types import SimpleNamespace
+    from openghg_inversions.inversion_data import getters
+
+    obs, fp, _ = native_inputs("2021-01-01", 24)
+    fp = fp.drop_dims("H_back").drop_vars("fp_residual")
+    times = pd.to_datetime(["2019-12-01", "2020-12-01", "2021-12-01"])
+    flux = xr.Dataset({"flux": (("lat", "lon", "time"), np.array([1., 2., 3.]).reshape(1, 1, -1) * 1e-6,
+                                {"units": "mol/m2/s", "time_period": "yearly"})},
+                      coords={"lat": [0.], "lon": [0.], "time": times})
+    monkeypatch.setattr(acquisition, "get_obs_data", lambda **kw: ObsData(data=obs, metadata={}, sort=False))
+    monkeypatch.setattr(acquisition, "get_footprint_data", lambda **kw: FootprintData(data=fp, metadata={}, sort=False))
+    monkeypatch.setattr(getters, "search_flux", lambda **kw: SimpleNamespace(results=pd.DataFrame({"time_period": ["yearly"]})))
+
+    def provider_flux(**kwargs):
+        assert kwargs["start_date"] is not None, "calendar lookup must be bounded"
+        sliced = flux.sel(time=slice(pd.Timestamp(kwargs["start_date"]) - pd.Timedelta(seconds=1),
+                                     pd.Timestamp(kwargs["end_date"]) - pd.Timedelta(seconds=1)))
+        return FluxData(data=sliced, metadata={"time_period": "yearly"}, sort=False)
+
+    monkeypatch.setattr(getters, "get_flux", provider_flux)
+    monkeypatch.setattr(acquisition, "get_flux_data", getters.get_flux_data)
+    monkeypatch.setattr(acquisition, "merged_scenario_data", lambda obs, fp, flux, bc, **kw: obs.data.rename(co2="mf"))
+    result = MergedData.from_options(
+        species="co2", site_options=SiteOptions.from_inputs(sites=["MHD"], averaging_period="1h"),
+        domain="EUROPE", start_date="2021-01-01", end_date="2021-01-02",
+        flux_sources=["a"], surface_transport={"a": "integrated"} if surface_mode else None, use_bc=False,
+    )
+    assert result.flux_data["a"].indexes["time"].equals(pd.DatetimeIndex(["2020-12-01"]))
+    np.testing.assert_allclose(result.flux_data["a"].flux, np.float32(2e-6))

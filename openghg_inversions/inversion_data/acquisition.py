@@ -605,33 +605,19 @@ def acquire_surface_data(
     # so mixed modes do not create artificial differences in retained time axes.
     flux_first = min(first for first, _ in support.values())
     flux_last = max(last for _, last in support.values())
-    flux_dict: dict[str, FluxData] = {}
-    flux_provenance: dict[str, InputProvenance] = {}
-    for source in flux_sources:
-        first, last = flux_first, flux_last
-        # OpenGHG's date slicing subtracts one second from the exclusive end.
-        query_end = last.ceil("s")
-        retrieved = get_flux_data(
-            sources=[source], species=species, domain=domain,
-            start_date=str(first), end_date=str(query_end), store=flux_store,
-            flux_non_finite_check=flux_non_finite_check,
-            allow_older_flux=False, include_previous_interval=True,
-        )[source]
-        times = retrieved.data.indexes.get("time")
-        # Some catalogs omit the source period. One bounded retry includes the
-        # preceding label when the returned cadence reveals a shifted interval.
-        if isinstance(times, pd.DatetimeIndex) and len(times) > 1 and times[0] > first:
-            cadence = times[1] - times[0]
-            if cadence > pd.Timedelta(0):
-                retrieved = get_flux_data(
-                    sources=[source], species=species, domain=domain,
-                    start_date=str(first - cadence), end_date=str(query_end), store=flux_store,
-                    flux_non_finite_check=flux_non_finite_check,
-                    allow_older_flux=False, include_previous_interval=True,
-                )[source]
-        identity = selected_provenance(retrieved, flux_store)
-        flux_provenance[source] = identity
-        flux_dict[source] = _with_selected_provenance(retrieved, identity)
+    # OpenGHG subtracts one second and then slices inclusively at the end.
+    query_end = flux_last + pd.Timedelta(seconds=1) - pd.Timedelta("1ns")
+    retrieved_flux = get_flux_data(
+        sources=list(flux_sources), species=species, domain=domain,
+        start_date=str(flux_first), end_date=str(query_end), store=flux_store,
+        flux_non_finite_check=flux_non_finite_check,
+        allow_older_flux=False, include_previous_interval=True,
+    )
+    flux_provenance = {source: selected_provenance(value, flux_store) for source, value in retrieved_flux.items()}
+    flux_dict = {
+        source: _with_selected_provenance(value, flux_provenance[source])
+        for source, value in retrieved_flux.items()
+    }
     if len(flux_dict) > 1:
         try:
             xr.align(*(value.data.flux for value in flux_dict.values()), join="exact", copy=False)

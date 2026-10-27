@@ -3,8 +3,8 @@
 These functions customise the behavior of `get_flux`, `get_footprint`, etc.
 
 - `get_flux_data` calls `get_flux` after adjusting the start date to begin at the
-  start of a year or month; if nothing is found, then the start date restriction
-  is dropped and the most recent result found is used.
+  start of a year or month, with bounded recovery of governing calendar labels;
+  the legacy older-inventory fallback remains available when explicitly allowed.
 
 TODO: add more docs (and add more detailed docstrings)
 """
@@ -39,6 +39,20 @@ logger = logging.getLogger(__name__)
 
 
 # Flux
+def _calendar_flux_offset(periods: Iterable[object]) -> pd.DateOffset | None:
+    """Return the longest declared calendar validity interval, if present."""
+    normalized = {utils._normalize_flux_period(period) for period in periods}
+    if "yearly" in normalized:
+        return pd.DateOffset(years=1)
+    if "monthly" in normalized:
+        return pd.DateOffset(months=1)
+    return None
+
+
+def _calendar_flux_covers_start(flux: FluxData, start: pd.Timestamp, offset: pd.DateOffset) -> bool:
+    return any(label <= start < label + offset for label in flux.data.indexes["time"])
+
+
 def adjust_flux_start_date(
     start_date: str, species: str, source: str, domain: str, store: str | None = None,
     *, include_previous_interval: bool = False,
@@ -59,8 +73,9 @@ def adjust_flux_start_date(
             interval labels can cover the requested start in explicit surface mode.
 
     Returns:
-        The requested start date, rewound to the start of its year or month
-        when the source metadata identifies an annual or monthly period.
+        The requested start date aligned to declared calendar periods. With
+        ``include_previous_interval``, rewind by a complete declared interval
+        to include governing labels whose phase differs from calendar starts.
 
     Raises:
         SearchError: If no matching flux data is found.
@@ -82,12 +97,10 @@ def adjust_flux_start_date(
         start_date_flux = start_date_flux - pd.offsets.MonthBegin()
 
     if include_previous_interval:
-        if "yearly" in flux_periods:
-            start_date_flux = min(start_date_flux, pd.Timestamp(start_date).to_period("Y").start_time)
-        if "monthly" in flux_periods:
-            start_date_flux = min(start_date_flux, pd.Timestamp(start_date).to_period("M").start_time)
-        # Calendar alignment above handles declared calendar intervals. Fixed
-        # intervals may have an arbitrary phase, so include their preceding label.
+        calendar_offset = _calendar_flux_offset(flux_periods)
+        if calendar_offset is not None:
+            start_date_flux = min(start_date_flux, pd.Timestamp(start_date) - calendar_offset)
+        # Include preceding fixed labels even when their phase is unknown.
         for period in flux_search.results["time_period"]:
             aliases = {"hourly": "1h", "daily": "1d"}
             normalized = utils._normalize_flux_period(aliases.get(str(period).lower(), period))
@@ -123,25 +136,32 @@ def get_flux_data(
         allow_older_flux: Allow the historical fallback which relabels the last
             available inventory slice to the requested start. False rejects
             missing requested data without substituting an older inventory.
-        include_previous_interval: Include the preceding declared fixed flux interval
-            when explicit surface transport needs a potentially shifted label.
+        include_previous_interval: Use a common source span including preceding
+            declared intervals, with one bounded common cadence lookup when
+            period metadata are missing. No source padding is repeated on retry.
 
     Returns:
         Retrieved flux objects keyed by source. Each ``flux`` variable is cast
-        to ``float32`` and has the non-finite policy applied.
+        to ``float32`` and has the non-finite policy applied. Calendar lookups
+        preserve governing interval labels before any permitted older-data fallback.
 
     Raises:
         SearchError: If no flux data can be found before the requested end date.
     """
     flux_dict = {}
+    common_start = None
+    if include_previous_interval and sources:
+        common_start = min(
+            adjust_flux_start_date(start_date, species, source, domain, store, include_previous_interval=True)
+            for source in sources
+        )
 
     for source in sources:
         logging.Logger.disabled = True  # suppress confusing OpenGHG warnings
 
         try:
-            start_date_flux = adjust_flux_start_date(
+            start_date_flux = common_start if common_start is not None else adjust_flux_start_date(
                 start_date, species, source, domain, store,
-                include_previous_interval=include_previous_interval,
             )
 
             flux_data = get_flux(
@@ -156,55 +176,102 @@ def get_flux_data(
             # fix to prevent empty time coordinate:
             if len(flux_data.data.time) == 0:
                 raise SearchError
+            period = next((period for period in (
+                flux_data.data.flux.attrs.get("time_period"), flux_data.data.attrs.get("time_period"),
+                flux_data.metadata.get("time_period"),
+            ) if not utils._flux_period_is_missing(period)), None)
+            calendar_offset = _calendar_flux_offset([period])
+            if calendar_offset is not None and not _calendar_flux_covers_start(
+                flux_data, pd.Timestamp(start_date), calendar_offset
+            ):
+                raise SearchError
 
         except SearchError as exc:
-            if not allow_older_flux:
+            calendar_data = None
+            if allow_older_flux and not include_previous_interval:
+                try:
+                    catalog = search_flux(species=species, source=source, domain=domain, store=store)
+                    calendar_offset = (
+                        _calendar_flux_offset(catalog.results["time_period"])
+                        if not catalog.results.empty else None
+                    )
+                    if calendar_offset is not None:
+                        candidate = get_flux(
+                            species=species, domain=domain, source=source,
+                            start_date=pd.Timestamp(start_date) - calendar_offset,
+                            end_date=end_date, store=store,
+                        )
+                        if _calendar_flux_covers_start(candidate, pd.Timestamp(start_date), calendar_offset):
+                            calendar_data = candidate
+                except SearchError:
+                    pass
+            if calendar_data is not None:
+                flux_data = calendar_data
+            elif not allow_older_flux:
                 logging.Logger.disabled = False
                 raise SearchError(
                     f"No requested flux data for source {source!r} between {start_date} and {end_date}; "
                     "older-inventory fallback is disabled for explicit surface preparation."
                 ) from exc
-            print(f"No flux data found between {start_date} and {end_date}.")
-            print(f"Searching for flux data from before {start_date}.")
-
-            # re-try without start date
-            try:
-                flux_data = get_flux(
-                    species=species,
-                    domain=domain,
-                    source=source,
-                    start_date=None,
-                    end_date=end_date,
-                    store=store,
-                )
-            except SearchError as e:
-                raise SearchError(f"No flux data found before {start_date}") from e
             else:
-                flux_data.data = flux_data.data.isel(time=[-1])  # select the last time step
-                print(f"Using flux data from {str(flux_data.data.time.values[0]).split(':')[0]}.")
-                flux_data.data = flux_data.data.assign_coords(
-                    time=[pd.to_datetime(start_date)]
-                )  # set time to start_date
+                print(f"No flux data found between {start_date} and {end_date}.")
+                print(f"Searching for flux data from before {start_date}.")
+
+                # re-try without start date
+                try:
+                    flux_data = get_flux(
+                        species=species,
+                        domain=domain,
+                        source=source,
+                        start_date=None,
+                        end_date=end_date,
+                        store=store,
+                    )
+                except SearchError as e:
+                    raise SearchError(f"No flux data found before {start_date}") from e
+                else:
+                    flux_data.data = flux_data.data.isel(time=[-1])  # select the last time step
+                    print(f"Using flux data from {str(flux_data.data.time.values[0]).split(':')[0]}.")
+                    flux_data.data = flux_data.data.assign_coords(
+                        time=[pd.to_datetime(start_date)]
+                    )  # set time to start_date
 
         logging.Logger.disabled = False  # resume confusing OpenGHG warnings
 
+        flux_dict[source] = flux_data
+
+    if common_start is not None:
+        retry_start = common_start
+        for value in flux_dict.values():
+            times = value.data.indexes["time"]
+            if len(times) > 1 and times[0] > pd.Timestamp(start_date):
+                cadence = times[1] - times[0]
+                if cadence > pd.Timedelta(0):
+                    retry_start = min(retry_start, pd.Timestamp(start_date) - cadence)
+        if retry_start < common_start:
+            # Reuse the resolved common span; do not apply source padding again.
+            for source in sources:
+                flux_dict[source] = get_flux(
+                    species=species, domain=domain, source=source,
+                    start_date=retry_start, end_date=end_date, store=store,
+                )
+                if len(flux_dict[source].data.time) == 0:
+                    raise SearchError(f"No requested flux data for source {source!r} after bounded interval lookup.")
+
+    # cast to float32 to avoid up-casting H matrix
+    for source, v in flux_dict.items():
         # OpenGHG's public retrieval selects latest, but its typed rewrap loses _version.
-        flux_data.metadata = {
-            **flux_data.metadata,
-            "dataversion": selected_provenance(flux_data, requested_version="latest").dataversion,
+        v.metadata = {
+            **v.metadata,
+            "dataversion": selected_provenance(v, requested_version="latest").dataversion,
         }
 
         # Preserve source period metadata for downstream post-processing.
         # Variable metadata is more specific and must not be overwritten.
-        variable_period = flux_data.data.flux.attrs.get("time_period")
-        if utils._flux_period_is_missing(variable_period) and "time_period" in flux_data.data.attrs:
-            flux_data.data.flux.attrs["time_period"] = flux_data.data.attrs["time_period"]
+        variable_period = v.data.flux.attrs.get("time_period")
+        if utils._flux_period_is_missing(variable_period) and "time_period" in v.data.attrs:
+            v.data.flux.attrs["time_period"] = v.data.attrs["time_period"]
 
-        # add flux data to result dict
-        flux_dict[source] = flux_data
-
-    # cast to float32 to avoid up-casting H matrix
-    for source, v in flux_dict.items():
         if v.data.flux.dtype != "float32":
             v.data["flux"] = v.data.flux.astype("float32")
         v.data["flux"] = sanitize_flux_nonfinite(

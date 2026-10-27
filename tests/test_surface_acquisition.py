@@ -462,7 +462,7 @@ def test_resolved_acquisition_requests_history_and_complete_months(inputs, monke
     )
     assert requests[0]["allow_older_flux"] is False
     assert pd.Timestamp(requests[0]["start_date"]) == pd.Timestamp("2019-12-31 22:00")
-    assert pd.Timestamp(requests[0]["end_date"]) == pd.Timestamp("2020-02-01")
+    assert pd.Timestamp(requests[0]["end_date"]) - pd.Timedelta(seconds=1) + pd.Timedelta("1ns") == pd.Timestamp("2020-02-01")
     assert result.flux_data["a"] is flux
 
 

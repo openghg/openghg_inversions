@@ -80,7 +80,7 @@ def test_ordinary_acquisition_does_not_require_centered_arithmetic_options(monke
 
 @pytest.mark.parametrize("period,expected", [
     ("2h", "2024-01-01 22:00"), ("hourly", "2024-01-01 23:00"),
-    ("daily", "2024-01-01"), ("monthly", "2024-01-01"),
+    ("daily", "2024-01-01"), ("monthly", "2023-12-02"),
 ])
 def test_surface_flux_start_includes_declared_preceding_interval(monkeypatch, period, expected):
     monkeypatch.setattr(getters, "search_flux", lambda **kw: Mock(results=pd.DataFrame({"time_period": [period]})))
@@ -90,8 +90,65 @@ def test_surface_flux_start_includes_declared_preceding_interval(monkeypatch, pe
     assert actual == pd.Timestamp(expected)
 
 
-def test_surface_calendar_start_aligns_midnight_on_first_day(monkeypatch):
+def test_surface_calendar_start_includes_off_anchor_preceding_interval(monkeypatch):
     monkeypatch.setattr(getters, "search_flux", lambda **kw: Mock(results=pd.DataFrame({"time_period": ["monthly"]})))
     assert getters.adjust_flux_start_date(
         "2024-01-01 01:00", "co2", "a", "EUROPE", include_previous_interval=True
-    ) == pd.Timestamp("2024-01-01")
+    ) == pd.Timestamp("2023-12-01 01:00")
+
+
+@pytest.mark.parametrize("allow_older", [False, True])
+@pytest.mark.parametrize("period,labels,start,governing", [
+    ("yearly", ["2019-12-01", "2020-12-01"], "2021-01-01", "2020-12-01"),
+    ("monthly", ["2020-12-15", "2021-01-15"], "2021-02-01", "2021-01-15"),
+    ("monthly", ["2021-01-15", "2021-02-15"], "2021-02-01", "2021-01-15"),
+    ("yearly", ["2020-01-01", "2021-01-01"], "2021-01-01", "2021-01-01"),
+])
+def test_calendar_lookup_preserves_valid_native_interval_before_older_fallback(
+    monkeypatch, allow_older, period, labels, start, governing
+):
+    from openghg.dataobjects import FluxData
+
+    native = xr.Dataset({"flux": ("time", [1., 2.])}, coords={"time": pd.to_datetime(labels)})
+    monkeypatch.setattr(getters, "search_flux", lambda **kw: Mock(results=pd.DataFrame({"time_period": [period]})))
+
+    def retrieve(**kwargs):
+        assert kwargs["start_date"] is not None, "governing calendar lookup must remain bounded"
+        data = native.sel(time=slice(pd.Timestamp(kwargs["start_date"]) - pd.Timedelta(seconds=1),
+                                     pd.Timestamp(kwargs["end_date"]) - pd.Timedelta(seconds=1)))
+        return FluxData(data=data, metadata={"time_period": period}, sort=False)
+
+    monkeypatch.setattr(getters, "get_flux", retrieve)
+    result = getters.get_flux_data(
+        ["a"], "co2", "EUROPE", start, str(pd.Timestamp(start) + pd.DateOffset(months=1)),
+        allow_older_flux=allow_older, include_previous_interval=not allow_older,
+    )["a"]
+    assert pd.Timestamp(governing) in result.data.indexes["time"]
+    assert result.data.indexes["time"].isin(native.indexes["time"]).all()
+    assert native.indexes["time"].equals(pd.DatetimeIndex(labels))
+
+
+def test_explicit_calendar_lookup_rejects_expired_singleton_without_relabelling(monkeypatch):
+    from openghg.dataobjects import FluxData
+
+    native = xr.Dataset({"flux": ("time", [1.])}, coords={"time": pd.to_datetime(["2019-12-01"])})
+    monkeypatch.setattr(getters, "search_flux", lambda **kw: Mock(results=pd.DataFrame({"time_period": ["yearly"]})))
+    # OpenGHG can return an unsliced singleton; its declared validity still governs.
+    monkeypatch.setattr(getters, "get_flux", lambda **kw: FluxData(data=native, metadata={"time_period": "yearly"}, sort=False))
+    with pytest.raises(SearchError, match="older-inventory fallback is disabled"):
+        getters.get_flux_data(["a"], "co2", "EUROPE", "2021-01-01", "2021-01-02",
+                              allow_older_flux=False, include_previous_interval=True)
+    assert native.indexes["time"].equals(pd.DatetimeIndex(["2019-12-01"]))
+
+
+def test_ordinary_missing_catalog_preserves_search_error_and_legacy_lookup(monkeypatch):
+    monkeypatch.setattr(getters.logging.Logger, "disabled", False)
+    monkeypatch.setattr(getters, "search_flux", lambda **kw: Mock(results=pd.DataFrame()))
+
+    def missing(**kwargs):
+        assert kwargs["start_date"] is None
+        raise SearchError("No older data either")
+
+    monkeypatch.setattr(getters, "get_flux", missing)
+    with pytest.raises(SearchError, match="No flux data found before 2024-01-01"):
+        getters.get_flux_data(["a"], "co2", "EUROPE", "2024-01-01", "2024-01-02")

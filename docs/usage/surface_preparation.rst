@@ -129,8 +129,10 @@ actual preceding hours, rather than the full preceding month.
 
 All sources are queried over the common required span so mixed integrated and
 resolved modes can retain compatible native axes. Retrieval includes the
-preceding declared fixed interval for shifted flux labels; when period metadata
-are absent, a returned cadence can trigger one bounded earlier request.
+preceding declared intervals, including calendar labels offset from month or year
+starts. The getter resolves one common effective span for all sources; when
+period metadata are absent, a returned cadence can trigger one bounded common
+earlier request without applying source padding again.
 The full retrieved native flux support is retained. Older-inventory relabelling
 and climatological year reuse are disabled.
 
