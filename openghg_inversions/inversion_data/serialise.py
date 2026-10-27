@@ -15,15 +15,18 @@ import pickle
 import warnings
 from collections import defaultdict
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Literal, cast
+from zipfile import ZipFile
 
 import numpy as np
 import xarray as xr
-import zarr
 from numcodecs import Blosc
 from openghg.dataobjects import BoundaryConditionsData, FluxData
 from openghg.dataobjects._basedata import _BaseData
 from openghg.util import timestamp_now
+from zarr import __version__ as zarr_version
+from zarr.storage import ZipStore
 
 from openghg_inversions.utils import _flux_period_is_missing, datatree_ncdf_encoding
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
@@ -67,6 +70,10 @@ def _save_merged_data(
     The output can be saved to a pickle file, but this isn't
     recommended because data can only be unpickled reliably with the exact same environment that created
     the pickle.
+
+    Zarr outputs use format 2. ZIP output stages the store in a temporary
+    directory alongside the destination, requiring space for both until the
+    archive is complete.
 
     Args:
         fp_all: dictionary of merged data to save
@@ -121,10 +128,17 @@ def _save_merged_data(
             encoding = datatree_compression_encoding(dt, comp)
 
             if output_format == "zarr":
-                dt.to_zarr(merged_data_dir / (merged_data_name + ".zarr"), mode="w-", encoding=encoding)
+                dt.to_zarr(
+                    merged_data_dir / (merged_data_name + ".zarr"), mode="w-", encoding=encoding, zarr_format=2
+                )
             else:
-                with zarr.ZipStore(merged_data_dir / (merged_data_name + ".zarr.zip"), mode="w") as store:
-                    dt.to_zarr(store, mode="w-", encoding=encoding)
+                # Dask tokenization can unpickle a writable ZipStore and truncate its archive.
+                with TemporaryDirectory(dir=merged_data_dir) as temporary:
+                    dt.to_zarr(temporary, mode="w-", encoding=encoding, zarr_format=2)
+                    with ZipFile(merged_data_dir / (merged_data_name + ".zarr.zip"), mode="w") as archive:
+                        for path in Path(temporary).rglob("*"):
+                            if path.is_file():
+                                archive.write(path, path.relative_to(temporary))
         else:
             # OpenGHG can attach None when a coordinate's units are unknown.
             # Omit that absent metadata, without inventing a physical unit.
@@ -213,7 +227,7 @@ def load_merged_data(
         with open(merged_data_file, "rb") as f:
             return pickle.load(f)
     elif merged_data_file.suffixes == [".zarr", ".zip"]:
-        with zarr.ZipStore(merged_data_file, mode="r") as store:
+        with ZipStore(merged_data_file, mode="r") as store:
             with xr.open_datatree(store, engine="zarr") as dt:  # type: ignore[arg-type, unused-ignore]
                 if dt.is_leaf:
                     return fp_all_from_dataset(dt.to_dataset().load())
@@ -603,14 +617,18 @@ def datatree_to_fp_all(dt: xr.DataTree) -> dict:
 
 
 def datatree_compression_encoding(dt: xr.DataTree, compressor: Blosc) -> dict:
-    """Creating encoding dictionary for saving DataTree to zarr."""
+    """Return per-group compression settings for the installed Zarr backend."""
     encoding = defaultdict(dict)
+    options = (
+        {"compressors": (compressor,)}
+        if int(zarr_version.split(".")[0]) >= 3
+        else {"compressor": compressor}
+    )
 
     for g in dt.groups:
         if not dt[g].data_vars:
             continue
-        for dv in dt[g].data_vars:
-            encoding[g][dv] = {"compressor": compressor, "compressors": (compressor,)}
+        encoding[g] = {name: options.copy() for name in dt[g].data_vars}
 
     return encoding
 

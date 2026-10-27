@@ -1,5 +1,8 @@
 """Stable-line regressions for merged-data NetCDF metadata."""
 
+from zipfile import ZipFile
+
+import dask.array as da
 import numpy as np
 import pytest
 import xarray as xr
@@ -46,3 +49,19 @@ def test_existing_dotted_marker_remains_supported(flag):
     tree.attrs[".split_by_sectors"] = flag
 
     assert datatree_to_fp_all(tree)[".split_by_sectors"] is flag
+
+
+@pytest.mark.parametrize("filename", ["merged.zarr", "merged.zarr.zip"])
+def test_merged_zarr_roundtrip_preserves_lazy_data_and_zip_integrity(tmp_path, filename):
+    """Directory and ZIP stores retain lazy payloads through format 2 writes."""
+    scenario = xr.Dataset({"mf": ("time", da.arange(4, chunks=2))})
+
+    _save_merged_data({"TAC": scenario}, tmp_path, merged_data_name=filename)
+
+    if filename.endswith(".zip"):
+        with ZipFile(tmp_path / filename) as archive:
+            assert archive.testzip() is None
+            assert ".zgroup" in archive.namelist()
+    restored = load_merged_data(tmp_path, merged_data_name=filename)
+    xr.testing.assert_equal(restored["TAC"].compute(), scenario.compute())
+    assert isinstance(scenario.mf.data, da.Array)

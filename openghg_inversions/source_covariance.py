@@ -393,7 +393,7 @@ class IndependentSourceCovariance:
                 f"class_blocked flag for source {label!r}",
             )
             encoded = dataset["class_label_encoded"].sel({source_dim: label}, drop=True)
-            encoded_values = np.asarray(encoded.values, dtype=str)
+            encoded_values = encoded.values
             has_encoded_labels = bool(np.any(encoded_values != ""))
             if blocked != has_encoded_labels:
                 raise ValueError(
