@@ -22,6 +22,7 @@ from ._surface_support import _time_index, validate_flux_coverage as _coverage
 from ._provenance import footprint_metadata, selected_provenance
 from ._units import mole_fraction_unit_scale
 from ._site_options import is_surface_platform
+from ._surface_schema import validate_surface_inputs
 
 
 TransportMode = Literal["integrated", "time_resolved"]
@@ -306,6 +307,17 @@ def prepare_surface_site(
     _time_index(obs, "Observations")
     species = species.lower()
     roles = _observation_roles(obs, species=species, observation_variable=observation_variable)
+    primary = next(name for name, role in roles.items() if role == "mf")
+    validate_surface_inputs(
+        obs,
+        site_footprint_view,
+        source_footprint_views,
+        flux_views,
+        transport=transport,
+        species=species,
+        boundary_data=boundary_view,
+        observation_variable=primary,
+    )
     aligned_obs, site_fp, native_site_fp = _resolve_surface_observations(
         obs, site_footprint_view, roles=roles, output_units=output_units,
     )
@@ -352,8 +364,6 @@ def _surface_site_responses(
         flux = flux_views[source]
         _coverage(flux, aligned_fp, source=source, mode=transport[source])
         if transport[source] == "integrated":
-            if "fp" not in aligned_fp:
-                raise ValueError(f"Integrated source {source!r} requires an integrated 'fp'.")
             response = integrated(aligned_fp, flux)
         else:
             if "fp_HiTRes" in aligned_fp:
@@ -363,8 +373,6 @@ def _surface_site_responses(
                     if inherited_units:
                         resolved_fp = resolved_fp.assign_attrs(units=inherited_units)
             else:
-                if not {"fp_time_resolved", "fp_residual"} <= set(aligned_fp):
-                    raise ValueError("Time-resolved transport requires resolved and residual footprint fields.")
                 resolved_fp = aligned_fp[["fp_time_resolved", "fp_residual"]]
             response = resolved(resolved_fp, flux)
         response = observation_means(_convert(response, units).rename("response").to_dataset()).response

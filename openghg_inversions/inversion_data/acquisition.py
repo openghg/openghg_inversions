@@ -35,6 +35,7 @@ from openghg_inversions.inversion_data.surface import (
     TransportMode, _attach_surface_provenance, _dataset, _observation_roles,
     _resolve_surface_observations, _surface_site_responses, _validate_platform,
 )
+from openghg_inversions.inversion_data._surface_schema import _validate_surface_forcing, _validate_surface_transport
 from openghg_inversions.inversion_data._surface_support import _time_index, required_flux_support
 
 logger = logging.getLogger(__name__)
@@ -617,6 +618,12 @@ def acquire_surface_data(
             obs_view, footprint_view = _dataset(observations), _dataset(footprint)
             _time_index(obs_view, "Observations")
             roles = _observation_roles(obs_view, species=species.lower(), observation_variable=None)
+            primary = next(name for name, role in roles.items() if role == "mf")
+            _validate_surface_transport(
+                obs_view, footprint_view, {source: footprint_view for source in transport},
+                species=species.lower(), transport=transport, particle_locations=use_bc,
+                observation_variable=primary,
+            )
             resolved_sites[i] = _resolve_surface_observations(
                 obs_view, footprint_view, roles=roles, output_units=output_units,
             )
@@ -672,6 +679,7 @@ def acquire_surface_data(
 
     flux_views = {source: _dataset(value) for source, value in flux_dict.items()}
     boundary_view = _dataset(bc_data) if bc_data is not None else None
+    _validate_surface_forcing(flux_views, boundary_data=boundary_view)
 
     # Calculate with the already-resolved bins/native releases, then attach identities once.
     merged_sites: dict[str, xr.Dataset] = {}
