@@ -44,7 +44,7 @@ from openghg_inversions.serialization import (
 
 
 CO2_O2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_o2_prepared_inputs"
-CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION = 1
+CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -120,15 +120,18 @@ class Co2O2PreparedInputs:
             A versioned DataTree retaining borrowed lazy array payloads.
 
         Raises:
-            ValueError: If centered boundary operands are present, dense
-                aggregation covariance is absent, boundary channels are
-                unsupported, or metadata cannot be serialized.
+            ValueError: If dense aggregation covariance is absent, boundary
+                channels or operands are invalid, or metadata cannot be serialized.
         """
-        if self.boundary_operands:
-            raise ValueError("Centered CO2/O2 boundary operand serialization is not yet available.")
         covariance = self.aggregation_error.covariance
         if self.aggregation_error.mode != "dense" or covariance is None:
             raise ValueError("CO2/O2 prepared inputs require dense aggregation error.")
+        if set(self.boundary_operands) - {"co2", "o2"} or set(self.boundary_operands) & set(self.boundary_sensitivity):
+            raise ValueError("boundary_operands requires distinct co2/o2 channels from boundary_sensitivity.")
+        from openghg_inversions.boundary_sensitivity import validate_boundary_operands
+        for operands in self.boundary_operands.values():
+            if not validate_boundary_operands(operands):
+                raise ValueError("Expected centered boundary operands.")
         if set(self.boundary_sensitivity) - {"co2", "o2"}:
             raise ValueError("boundary_sensitivity must be keyed only by co2 and o2.")
         arrays = {
@@ -150,6 +153,8 @@ class Co2O2PreparedInputs:
             arrays["independent_error"] = {"independent_error_sd": self.independent_error_sd}
         for channel, boundary in self.boundary_sensitivity.items():
             arrays[f"{channel}_boundary"] = {"boundary_sensitivity": boundary}
+        for channel, operands in self.boundary_operands.items():
+            arrays[f"{channel}_boundary_operands"] = dict(operands.data_vars)
         datasets: dict[str, xr.Dataset] = {}
         for name, variables in arrays.items():
             dataset = xr.Dataset(variables)
@@ -158,6 +163,8 @@ class Co2O2PreparedInputs:
             ]
             if indexes:
                 dataset = encode_cf_multiindexes(dataset, indexes)
+            if name.endswith("_boundary_operands"):
+                dataset = dataset.assign_attrs(self.boundary_operands[name.removesuffix("_boundary_operands")].attrs)
             datasets[name] = dataset.assign_attrs(
                 multiindex_dims_json=json.dumps(indexes),
                 array_names_json=json.dumps({variable: array.name for variable, array in variables.items()}),
@@ -168,7 +175,7 @@ class Co2O2PreparedInputs:
         tree = xr.DataTree.from_dict(datasets)
         tree.attrs = {
             "schema": CO2_O2_PREPARED_INPUTS_SCHEMA,
-            "schema_version": CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION,
+            "schema_version": CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION if self.boundary_operands else 1,
             "provenance_json": json.dumps(dict(self.provenance), sort_keys=True, allow_nan=False),
             "o2_co2_flux_ratio_unavailable_reason": self.o2_co2_flux_ratio_unavailable_reason or "",
         }
@@ -176,10 +183,12 @@ class Co2O2PreparedInputs:
 
     @classmethod
     def from_datatree(cls, tree: xr.DataTree) -> Self:
-        """Restore and validate a version-1 artifact, preserving its saved intercept.
+        """Restore version-1 or version-2 inputs and their saved intercept.
 
         Args:
             tree: Tree using the dedicated CO2/O2 prepared-input schema.
+                Version 1 supports absolute boundaries; version 2 additionally
+                supports centered boundary operands.
 
         Returns:
             Validated scientific inputs. Observations, fixed intercept, dense
@@ -194,12 +203,14 @@ class Co2O2PreparedInputs:
         if tree.attrs.get("schema") != CO2_O2_PREPARED_INPUTS_SCHEMA:
             raise ValueError(f"Expected Co2O2PreparedInputs schema {CO2_O2_PREPARED_INPUTS_SCHEMA!r}.")
         version = tree.attrs.get("schema_version")
-        if isinstance(version, bool) or not isinstance(version, Integral) or version != 1:
-            raise ValueError(f"Expected Co2O2PreparedInputs schema_version 1; got {version!r}.")
+        if isinstance(version, bool) or not isinstance(version, Integral) or version not in (1, 2):
+            raise ValueError(f"Expected Co2O2PreparedInputs schema_version 1 or 2; got {version!r}.")
+        if version == 1 and any(name.endswith("_boundary_operands") for name in tree.children):
+            raise ValueError("Centered boundary operands require CO2/O2 prepared schema version 2.")
         unexpected_boundaries = {
             name
             for name in tree.children
-            if name.endswith("_boundary") and name not in {"co2_boundary", "o2_boundary"}
+            if ("boundary" in name and name not in {"co2_boundary", "o2_boundary", "co2_boundary_operands", "o2_boundary_operands"})
         }
         if unexpected_boundaries:
             raise ValueError(f"Unsupported serialized boundary nodes: {sorted(unexpected_boundaries)!r}.")
@@ -259,6 +270,10 @@ class Co2O2PreparedInputs:
                 channel: _stored_array(datasets[f"{channel}_boundary"], "boundary_sensitivity")
                 for channel in ("co2", "o2")
                 if f"{channel}_boundary" in datasets
+            },
+            boundary_operands={
+                channel: datasets[f"{channel}_boundary_operands"]
+                for channel in ("co2", "o2") if f"{channel}_boundary_operands" in datasets
             },
             independent_error_sd=(
                 _stored_array(datasets["independent_error"], "independent_error_sd")

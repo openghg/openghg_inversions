@@ -250,7 +250,7 @@ def save_samples(
         "sample",
         {
             "schema": "openghg_inversions.multisector.sample",
-            "schema_version": 2,
+            "schema_version": 3,
             "producer": "openghg_inversions",
             "stage": "sample",
             "preparation": os.path.relpath(preparation_path, destination),
@@ -333,7 +333,9 @@ def load_samples(sample_manifest: str | Path) -> InversionOutput:
     """Decode a completed sample checkpoint into its existing scientific output view.
 
     Args:
-        sample_manifest: Sample record and manifest-relative artifact references.
+        sample_manifest: Version-3 sample record and manifest-relative artifact
+            references. Older sample manifests require their original software
+            or repeating sampling from a supported preparation.
 
     Returns:
         Scientific inputs, posterior, model roles and recorded inference metadata,
@@ -356,7 +358,7 @@ def load_samples(sample_manifest: str | Path) -> InversionOutput:
             "actual_inference",
             "provenance",
         ),
-        schema_version=2,
+        schema_version=3,
     )
     preparation_path = reference(path, record["preparation"])
     if not isinstance(record["preparation_generation"], str) or not record["preparation_generation"]:

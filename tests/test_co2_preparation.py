@@ -580,3 +580,34 @@ def test_standard_runner_materializes_aggregation_payload_once(
         )
 
     assert executions == 1
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_centered_co2_envelope_embeds_current_generic_representation(tmp_path: Path, suffix: str) -> None:
+    """The CO2 envelope has independent versions and validates its generic child."""
+    canonical = _canonical_inputs()
+    inputs = canonical.inv_inputs.copy(deep=False)
+    inputs["H_bc_anomaly"] = xr.DataArray(
+        [[1., 2., 3.]], dims=("bc_region", "nmeasure"),
+        coords={"bc_region": ["north"], "nmeasure": inputs.nmeasure}, attrs={"units": "ppm"},
+    )
+    inputs["H_bc_mass"] = xr.ones_like(inputs.H_bc_anomaly).assign_attrs(units="1")
+    inputs["bc_reference"] = xr.DataArray(400., attrs={"units": "ppm"})
+    inputs.attrs["boundary_representation"] = "centered-v1"
+    canonical = PreparedInputs(inputs, canonical.basis_functions, canonical.site_metadata)
+    prepared = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=None)
+    tree = prepared.to_datatree()
+    assert tree.attrs["schema_version"] == 2
+    assert tree["rhime_inputs"].attrs["schema_version"] == 3
+    assert tree["rhime_inputs"].attrs["representation"] == "centered"
+    path = tmp_path / f"centered-co2{suffix}"
+    prepared.save(path)
+    restored = Co2PreparedInputs.load(path)
+    xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)
+    tree["rhime_inputs"].attrs["representation"] = "ordinary"
+    with pytest.raises(ValueError, match="representation"):
+        Co2PreparedInputs.from_datatree(tree)
+    tree["rhime_inputs"].attrs["schema_version"] = 2
+    del tree["rhime_inputs"].attrs["representation"]
+    with pytest.raises(ValueError, match="[Rr]egenerate"):
+        Co2PreparedInputs.from_datatree(tree)
