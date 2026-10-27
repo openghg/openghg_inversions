@@ -589,8 +589,9 @@ def test_linked_cached_runner_allows_disabled_centered_channel(monkeypatch):
     operands = _operands(prepared.co2_sensitivity.isel({prepared.retained_prior.state_dim: 0}))
     prepared = replace(prepared, boundary_operands={"co2": operands})
 
-    def reached_materialization(prepared, errors, boundaries):
+    def reached_materialization(prepared, errors, boundaries, operands):
         assert "co2" not in boundaries
+        assert not operands
         raise RuntimeError("enabled component selection complete")
 
     monkeypatch.setattr(runner, "_materialize_co2_o2_replay_inputs", reached_materialization)

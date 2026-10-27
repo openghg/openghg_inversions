@@ -189,7 +189,7 @@ class _ChannelBaselineComponent:
 
     ``component.output`` is always absolute. ``likelihood_contribution`` is
     centered only when ``reference_shift`` is present. Centered boundaries have
-    no single design suitable for the cached affine likelihood.
+    full operands retained separately for the cached affine likelihood.
     """
 
     channel: str
@@ -197,6 +197,7 @@ class _ChannelBaselineComponent:
     design: xr.DataArray | None
     likelihood_contribution: TensorVariable
     reference_shift: xr.DataArray | None = None
+    boundary_operands: xr.Dataset | None = None
 
 
 def _add_co2_o2_baseline_components(
@@ -215,7 +216,7 @@ def _add_co2_o2_baseline_components(
 
     Returned records retain the channel, ordinary CO2 component result, and
     full joint design so the fixed-OU recipe can use the same affine terms.
-    Centered boundaries omit that design; the fixed-OU recipe rejects them.
+    Centered boundaries retain their full padded anomaly and mass operands.
     """
     _validate_channel_baseline_options(
         boundary_sensitivity,
@@ -248,7 +249,7 @@ def _add_co2_o2_baseline_components(
             )
             components.append(_ChannelBaselineComponent(
                 channel, centered_result.component, None,
-                centered_result.likelihood_contribution, centered_result.reference_shift,
+                centered_result.likelihood_contribution, centered_result.reference_shift, padded,
             ))
             boundaries.append(centered_result.component.output)
         native = (boundary_sensitivity or {}).get(channel)
