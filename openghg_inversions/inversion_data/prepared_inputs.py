@@ -444,6 +444,9 @@ def _canonicalize_rhime_inv_inputs(
         ValueError: If measurement indexes, site labels, or source labels do
             not satisfy the semantic prepared-input contract.
     """
+    from openghg_inversions.boundary_sensitivity import validate_boundary_operands
+
+    validate_boundary_operands(ds)
     nmeasure_index = ds.indexes.get("nmeasure")
     if not isinstance(nmeasure_index, pd.MultiIndex):
         raise ValueError(  # noqa: TRY004 - malformed artifact schema, not an argument type error

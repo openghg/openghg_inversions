@@ -11,12 +11,14 @@ Dependency and precision
 ------------------------
 
 Ordinary boundary sensitivities, observation alignment and flux convolution reuse
-OpenGHG helpers. The normal
+OpenGHG helpers. Accurate centered boundary normalization and anomaly/mass
+arithmetic are owned by OGI. The normal
 installation temporarily pins OpenGHG devel commit
 ``b9a9d1f21f22d2f8dcca714283eb936c22338c57``. This pilot calls its xarray
 integrated and time-resolved convolution operations. Both pip and uv installs receive that revision; VG
 callers need no separate dependency override. Replace this pin with a suitable
-released minimum before publishing OGI to PyPI. Install the pinned provider with:
+released minimum before publishing OGI to PyPI. The local curtain kernel does
+not depend on an unmerged upstream change:
 
 .. code-block:: bash
 
@@ -25,6 +27,18 @@ released minimum before publishing OGI to PyPI. Install the pinned provider with
 The required surface tests exercise the installed provider. Missing required
 operations fail explicitly. Private provider imports may migrate to public
 operations later; that transition does not block this workflow.
+
+Centered boundary provenance records
+``boundary_operator_owner="openghg_inversions"``.
+The operation uses native boundary/transport inputs, never rounded absolute
+sensitivities, and records its arithmetic policy revision.
+
+For centered preparation, OGI normalizes all four stable boundary curtains together, using an
+explicit tolerance for their total raw mass versus unity. Choose that tolerance
+from the footprint's justified numerical error. Nonfinite or negative weights,
+zero mass, and mass outside the tolerance fail validation. Boundary coverage must
+be declared by ``time_period`` interval starts. Concentrations and references are
+converted to common units before subtraction. Centered preparation arithmetic uses float64; this cannot recover precision already lost in stored input.
 
 Input validation
 ----------------
@@ -72,11 +86,19 @@ With existing OpenGHG data wrappers or xarray datasets:
        species="co2",
        transport={"biosphere": "time_resolved", "fossil": "integrated"},
        boundary_data=boundary_curtains,
+       boundary_representation="centered",
+       boundary_reference=400.0,
+       boundary_reference_units="ppm",
+       boundary_mass_tolerance=justified_mass_tolerance,
        output_units="ppm",
    )
 
-Boundary preparation produces ordinary absolute ``bc_n/e/s/w`` contributions
-using OpenGHG baseline sensitivities with climatology disabled.
+Ordinary preparation is the default. Omit ``boundary_representation`` and the
+reference arguments to obtain absolute ``bc_n/e/s/w`` contributions. Supply
+``boundary_representation="centered"`` plus the reference to retain accurate
+anomaly/mass operands instead. A reference alone never selects centered preparation;
+Centered preparation requires a justified mass tolerance; ordinary preparation
+uses OpenGHG’s existing baseline arithmetic without joint mass normalization.
 
 Each source and boundary contribution is calculated at native footprint release
 times, then averaged to the chosen observation cadence. Each source is convolved
@@ -128,7 +150,9 @@ Retrieval and retained native flux
        start_date="2020-01-01", end_date="2020-02-01",
        site_options=selectors, flux_sources=["biosphere", "fossil"],
        surface_transport={"biosphere": "time_resolved", "fossil": "integrated"},
-       use_bc=True,
+       use_bc=True, boundary_representation="centered",
+       reference=400.0, reference_units="ppm",
+       mass_tolerance=justified_mass_tolerance,
    )
 
 Pass the appropriate store and dataset selectors for your installation. This
@@ -182,3 +206,51 @@ axis or an affine flux companion. Supply an independently justified native
 representation before using such products. This pilot does not construct the
 ordinary CO₂ coherent reduction automatically; see :doc:`coherent_reduction` and
 :doc:`co2_model_family`.
+
+.. _surface-centered-boundary-contract:
+
+Centered preparation handoff
+----------------------------
+
+Apply supported observation selection first, then derive missing observation
+errors with ``prepare_observation_errors`` on the retained population. Explicit
+existing errors remain unchanged. Project the native ``bc_anomaly_*`` and
+``bc_mass_*`` arrays through the same chosen BC basis using ``bc_sensitivity`` or
+``build_sensitivities``. Their outputs are ``H_bc_anomaly`` (A), ``H_bc_mass`` (M)
+and scalar ``bc_reference`` (c). They retain spatial BC labels through gathering.
+The reference must agree across sites within a tracer.
+
+The source-neutral adapter accepts these projected operands (choose the summed
+response for a shared source-scaling field, or a compatible source-resolved
+flux basis for separate fields):
+
+.. code-block:: python
+
+   from openghg_inversions.basis._helpers import bc_sensitivity
+   from openghg_inversions.inversion_data import prepare_rhime_inputs_from_xarray
+   from openghg_inversions.rhime.preparation import filter_observations, prepare_observation_errors
+
+   selected, retained_selectors = filter_observations(
+       {"MHD": site}, selectors, filters=["daytime9to5"],
+   )
+   with_errors = prepare_observation_errors(selected, averaging_error=True)
+   projected = bc_sensitivity(with_errors, chosen_boundary_basis)
+   canonical = prepare_rhime_inputs_from_xarray(
+       {name: data.drop_vars("fp_x_flux_sectoral") for name, data in projected.items()},
+       basis_functions=chosen_flux_basis, averaging_period="1h",
+   )
+
+Selection filters preserve aligned operands and scalar references. Preparation
+owns spatial ``bc_basis_algorithm="NESW"`` or explicit ``bc_basis_paths``;
+frequency and anchor belong to the model.
+Old rounded ``H_bc`` alone cannot recover accurate centered operands.
+
+These preparation operands are the handoff for centered CO₂ model integration.
+Centered likelihood binding and absolute prediction replay are delivered in the
+following inference change.
+
+Linked CO₂/O₂ preparation can retain centered operands in memory. Its dedicated
+prepared-input serialization does not yet support those operands; ``to_datatree``
+and ``save`` reject them explicitly. Persistence belongs to the later centered
+output integration. Standalone CO₂ prepared inputs retain the raw
+operands through their existing input-dataset serialization.

@@ -89,6 +89,9 @@ class Co2O2PreparedInputs:
         provenance: JSON-serializable preparation and data provenance.
         boundary_sensitivity: Optional mapping keyed by co2 and o2, containing
             native-channel H_bc arrays (observation, boundary state).
+        boundary_operands: Raw centered-v1 H_bc_anomaly/H_bc_mass and scalar
+            bc_reference, retained until model binding. Mutually exclusive with
+            absolute boundary_sensitivity for the same channel.
         independent_error_sd: Optional positive independent-error standard
             deviations on the joint observation axis, with matching row units.
             The borrowed payload may remain lazy.
@@ -105,6 +108,7 @@ class Co2O2PreparedInputs:
     provenance: Mapping[str, Any] = field(default_factory=dict)
     boundary_sensitivity: Mapping[str, xr.DataArray] = field(default_factory=dict)
     independent_error_sd: xr.DataArray | None = None
+    boundary_operands: Mapping[str, xr.Dataset] = field(default_factory=dict)
 
     def to_datatree(self) -> xr.DataTree:
         """Build a versioned tree without writing or materializing payloads.
@@ -116,9 +120,12 @@ class Co2O2PreparedInputs:
             A versioned DataTree retaining borrowed lazy array payloads.
 
         Raises:
-            ValueError: If dense aggregation covariance is absent, boundary
-                channels are unsupported, or metadata cannot be serialized.
+            ValueError: If centered boundary operands are present, dense
+                aggregation covariance is absent, boundary channels are
+                unsupported, or metadata cannot be serialized.
         """
+        if self.boundary_operands:
+            raise ValueError("Centered CO2/O2 boundary operand serialization is not yet available.")
         covariance = self.aggregation_error.covariance
         if self.aggregation_error.mode != "dense" or covariance is None:
             raise ValueError("CO2/O2 prepared inputs require dense aggregation error.")
@@ -502,6 +509,7 @@ def _validate_prepared_inputs(prepared: Co2O2PreparedInputs) -> None:
         raise ValueError(
             "Aggregation covariance observation_units_cov must match prepared observation units."
         )
+    _validate_centered_channels(prepared.boundary_operands, prepared.boundary_sensitivity, prepared.co2_sensitivity, prepared.o2_sensitivity, channel_units["co2"], channel_units["o2"])
     if set(prepared.boundary_sensitivity) - {"co2", "o2"}:
         raise ValueError("boundary_sensitivity must be keyed only by co2 and o2.")
     if prepared.boundary_sensitivity and channel_units["co2"] != channel_units["o2"]:
@@ -772,6 +780,7 @@ def prepare_co2_o2_inputs(
     o2_units: str,
     provenance: Mapping[str, Any] | None = None,
     boundary_sensitivity: Mapping[str, xr.DataArray] | None = None,
+    boundary_operands: Mapping[str, xr.Dataset] | None = None,
     independent_error_sd: xr.DataArray | None = None,
 ) -> Co2O2PreparedInputs:
     """Validate coherent-reduction channel products and form one joint likelihood.
@@ -826,6 +835,9 @@ def prepare_co2_o2_inputs(
         boundary_sensitivity: Optional co2/o2 mapping of labelled H_bc arrays
             on native observation rows and one unique boundary-state axis.
             Channels must currently have identical units. Payloads remain borrowed.
+        boundary_operands: Optional co2/o2 mapping of raw centered-v1 operands
+            on independent native channel labels. The spatial BC states remain
+            unexpanded until model binding; channels require identical units.
         independent_error_sd: Optional finite positive independent-error standard
             deviations on the gathered observation axis, with matching labels
             and observation_units. Eager values are checked here; lazy payloads
@@ -852,6 +864,8 @@ def prepare_co2_o2_inputs(
     prepared_provenance = _copy_json_mapping(provenance or {}, "CO2/O2 provenance")
 
     boundary_sensitivity = dict(boundary_sensitivity or {})
+    boundary_operands = dict(boundary_operands or {})
+    _validate_centered_channels(boundary_operands, boundary_sensitivity, co2_observations, o2_observations, co2_units, o2_units)
     if set(boundary_sensitivity) - {"co2", "o2"}:
         raise ValueError("boundary_sensitivity must be keyed only by co2 and o2.")
     if boundary_sensitivity and co2_units != o2_units:
@@ -1011,5 +1025,35 @@ def prepare_co2_o2_inputs(
         retained_prior=retained_prior,
         provenance=prepared_provenance,
         boundary_sensitivity=boundary_sensitivity,
+        boundary_operands=boundary_operands,
         independent_error_sd=independent_error_sd,
     )
+
+
+def _validate_centered_channels(
+    operands: Mapping[str, xr.Dataset],
+    absolute: Mapping[str, xr.DataArray],
+    co2: xr.DataArray,
+    o2: xr.DataArray,
+    co2_units: str,
+    o2_units: str,
+) -> None:
+    """Validate raw channel operands without expanding their reusable spatial states."""
+    from openghg_inversions.boundary_sensitivity import validate_boundary_operands
+
+    if set(operands) - {"co2", "o2"}:
+        raise ValueError("boundary_operands must be keyed only by co2 and o2.")
+    if set(operands) & set(absolute):
+        raise ValueError("Supply boundary_operands or boundary_sensitivity per channel, not both.")
+    if operands and co2_units != o2_units:
+        raise ValueError("Linked centered boundaries currently require identical channel units.")
+    for channel, values in operands.items():
+        if not validate_boundary_operands(values):
+            raise ValueError("Expected centered boundary operands.")
+        native = co2 if channel == "co2" else o2
+        raw_dim = "time" if "time" in values.H_bc_anomaly.dims else "nmeasure"
+        if not values.indexes[raw_dim].equals(native.indexes[native.dims[0]]):
+            raise ValueError(f"{channel} boundary operands must match native observation labels.")
+        for name in ("H_bc_anomaly", "bc_reference"):
+            if values[name].attrs.get("units") != co2_units:
+                raise ValueError(f"{channel} {name} units must match channel units.")

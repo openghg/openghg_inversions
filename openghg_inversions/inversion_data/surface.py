@@ -23,6 +23,7 @@ from ._provenance import footprint_metadata, selected_provenance
 from ._units import mole_fraction_unit_scale
 from ._site_options import is_surface_platform
 from ._surface_schema import validate_surface_inputs
+from ._boundary import baseline_reference_sensitivities as _reference_sensitivities
 
 
 TransportMode = Literal["integrated", "time_resolved"]
@@ -218,6 +219,10 @@ def prepare_surface_site(
     transport: Mapping[str, TransportMode],
     site_footprint_data: FootprintInput | None = None,
     boundary_data: xr.Dataset | BoundaryConditionsData | None = None,
+    boundary_representation: Literal["ordinary", "centered"] = "ordinary",
+    boundary_reference: float | None = None,
+    boundary_reference_units: str | None = None,
+    boundary_mass_tolerance: float | None = None,
     output_units: str | None = None,
     observation_variable: str | None = None,
 ) -> xr.Dataset:
@@ -249,6 +254,16 @@ def prepare_surface_site(
             (north/south) or ``lat`` (east/west), interval-start ``time``, with
             ``time_period`` metadata and mole-fraction units. Requires matching
             ``particle_locations_n/e/s/w`` in site transport.
+        boundary_representation: Ordinary absolute contributions by default.
+            Explicit ``centered`` retains anomaly/mass/reference operands for
+            centered inference; supplying a reference alone does not select it.
+        boundary_reference: Scalar reference required only for centered output.
+            Applied only to centered output.
+        boundary_reference_units: Reference mole-fraction units, required when
+            a reference is supplied; converted before subtraction.
+        boundary_mass_tolerance: Required with centered boundary data; allowed absolute
+            deviation of total nonnegative curtain mass from one before joint
+            normalization.
         output_units: Concentration output units; defaults to observation units.
         observation_variable: Explicit primary mole-fraction variable for supplied
             observations. Error/count aliases still use ``mf`` or the species prefix.
@@ -260,19 +275,29 @@ def prepare_surface_site(
         ``time`` and source sum ``fp_x_flux``; spatial sums ``mf_mod_sectoral(source, time)`` and
         ``mf_mod(time)``; transport/provenance attributes. With boundaries,
         ordinary output contains ``bc_n/e/s/w`` on native curtain axes.
-        ``bc_mod(time)`` is the absolute unit-factor contribution. Concentrations
-        use output units. Non-time spatial axis order follows labelled inputs;
-        ``time`` is last. Payloads stay lazy where supported; inputs are never mutated.
+        Explicit centered output instead contains ``bc_anomaly_n/e/s/w``,
+        dimensionless ``bc_mass_n/e/s/w`` and scalar ``bc_reference``.
+        ``bc_mod(time)`` is the absolute unit-factor contribution in both cases. Concentrations use output
+        units. Non-time spatial axis order follows labelled inputs; ``time`` is
+        last. Payloads stay lazy where supported; inputs are never mutated.
 
     Raises:
         ValueError: Unsupported platform/species/transport, incompatible labelled
             coordinates, missing coverage, unsupported resolved cadence, or
-            invalid boundary units. Pint reports incompatible units.
+            invalid boundary units/mass. Pint reports incompatible units.
         RuntimeError: Required OpenGHG alignment or convolution capability is missing.
 
+    Select observations first, then derive missing observation errors on that
+    population and project native boundary operands before gathering.
+    See :ref:`surface-centered-boundary-contract` for projection and the
+    prepared-input handoff and supported centered model routes.
     """
     if species.lower() not in {"co2", "o2"}:
         raise ValueError("Surface preparation currently supports only CO2 and O2.")
+    if boundary_representation not in {"ordinary", "centered"}:
+        raise ValueError("boundary_representation must be 'ordinary' or 'centered'.")
+    if boundary_representation == "centered" and boundary_data is None:
+        raise ValueError("Centered preparation requires boundary_data.")
     _validate_platform(obs_data)
     if not flux_data or set(flux_data) != set(transport):
         raise ValueError("transport must specify exactly one mode per flux source.")
@@ -328,6 +353,8 @@ def prepare_surface_site(
     site = _surface_site_responses(
         aligned_obs, site_fp, native_site_fp, native_footprints, flux_views,
         species=species, transport=transport, boundary_view=boundary_view,
+        boundary_representation=boundary_representation, boundary_reference=boundary_reference,
+        boundary_reference_units=boundary_reference_units, boundary_mass_tolerance=boundary_mass_tolerance,
     )
     return _attach_surface_provenance(
         site, site_footprint=site_footprint, source_footprints=source_footprints,
@@ -340,6 +367,8 @@ def _surface_site_responses(
     aligned_obs: xr.Dataset, site_fp: xr.Dataset, native_site_fp: xr.Dataset,
     native_footprints: Mapping[str, xr.Dataset], flux_views: Mapping[str, xr.Dataset],
     *, species: str, transport: Mapping[str, TransportMode], boundary_view: xr.Dataset | None,
+    boundary_representation: Literal["ordinary", "centered"], boundary_reference: float | None,
+    boundary_reference_units: str | None, boundary_mass_tolerance: float | None,
 ) -> xr.Dataset:
     """Form native source products and boundary operands before observation averaging."""
     align, integrated, resolved = _surface_operations()
@@ -394,17 +423,46 @@ def _surface_site_responses(
     site["mf_mod"] = site.fp_x_flux.sum(["lat", "lon"], skipna=False, keep_attrs=True)
     if boundary_view is not None:
         # Boundary operands use the same retained native releases as source products.
-        from openghg.analyse._modelled_baseline import baseline_sensitivities
+        if boundary_representation == "ordinary":
+            from openghg.analyse._modelled_baseline import baseline_sensitivities
 
-        absolute_operands = baseline_sensitivities(
-            boundary_view, native_site_fp, species=species, allow_climatology=False
-        )
-        absolute = {
-            str(name): value for name, value in observation_means(
-                xr.Dataset({name: _convert(value, units) for name, value in absolute_operands.data_vars.items()})
-            ).data_vars.items()
-        }
-        site = site.assign(absolute)
+            absolute_operands = baseline_sensitivities(
+                boundary_view, native_site_fp, species=species, allow_climatology=False
+            )
+            absolute = {
+                str(name): value for name, value in observation_means(
+                    xr.Dataset({name: _convert(value, units) for name, value in absolute_operands.data_vars.items()})
+                ).data_vars.items()
+            }
+            site = site.assign(absolute)
+        else:
+            if boundary_mass_tolerance is None:
+                raise ValueError("Centered surface boundaries require mass_tolerance.")
+            if boundary_reference is None or boundary_reference_units is None:
+                raise ValueError("Centered surface boundaries require reference and reference_units.")
+            site.attrs["boundary_mass_tolerance"] = boundary_mass_tolerance
+            site.attrs["boundary_normalization_policy"] = "joint-curtain-unit-mass-v1"
+            site.attrs["boundary_provider_policy_revision"] = "957-reference-sensitivities-v1"
+            site.attrs["boundary_operator_owner"] = "openghg_inversions"
+            operands = _reference_sensitivities(
+                boundary_view, native_site_fp, species=species,
+                reference=boundary_reference, reference_units=boundary_reference_units,
+                mass_tolerance=boundary_mass_tolerance,
+            )
+            reference = operands.bc_reference
+            operands = observation_means(operands.drop_vars("bc_reference")).assign(bc_reference=reference)
+            operands = xr.Dataset({
+                name: value if str(name).startswith("bc_mass_") else _convert(value, units)
+                for name, value in operands.data_vars.items()
+            })
+            absolute = {
+                f"bc_{direction}": (
+                    operands[f"bc_anomaly_{direction}"] + operands.bc_reference * operands[f"bc_mass_{direction}"]
+                ).assign_attrs(units=units)
+                for direction in "nesw"
+            }
+            site.attrs["boundary_representation"] = "centered-v1"
+            site = site.assign(operands)
         directional_totals = [
             value.sum([dim for dim in value.dims if dim != "time"], skipna=False)
             for value in absolute.values()

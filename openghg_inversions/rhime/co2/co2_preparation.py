@@ -169,6 +169,9 @@ def _require_equivalent_units(actual: Any, expected: str, *, name: str) -> None:
 
 def _validate_co2_dataset(inputs: xr.Dataset) -> None:
     """Validate the scientific layout owned by the CO2 artifact."""
+    from openghg_inversions.boundary_sensitivity import validate_boundary_operands
+
+    validate_boundary_operands(inputs)
     required = (
         "H",
         "alpha_prior_mean",
