@@ -40,7 +40,8 @@ logger = logging.getLogger(__name__)
 
 # Flux
 def adjust_flux_start_date(
-    start_date: str, species: str, source: str, domain: str, store: str | None = None
+    start_date: str, species: str, source: str, domain: str, store: str | None = None,
+    *, include_previous_interval: bool = False,
 ) -> pd.Timestamp:
     """Align a flux retrieval start date with the source period.
 
@@ -54,6 +55,8 @@ def adjust_flux_start_date(
         source: OpenGHG flux source name.
         domain: Model domain.
         store: Optional OpenGHG object-store name.
+        include_previous_interval: Include a preceding source interval so shifted
+            interval labels can cover the requested start in explicit surface mode.
 
     Returns:
         The requested start date, rewound to the start of its year or month
@@ -78,6 +81,18 @@ def adjust_flux_start_date(
     elif "monthly" in flux_periods and not start_date_flux.is_month_start:
         start_date_flux = start_date_flux - pd.offsets.MonthBegin()
 
+    if include_previous_interval:
+        if "yearly" in flux_periods:
+            start_date_flux = min(start_date_flux, pd.Timestamp(start_date).to_period("Y").start_time)
+        if "monthly" in flux_periods:
+            start_date_flux = min(start_date_flux, pd.Timestamp(start_date).to_period("M").start_time)
+        # Calendar alignment above handles declared calendar intervals. Fixed
+        # intervals may have an arbitrary phase, so include their preceding label.
+        for period in flux_search.results["time_period"]:
+            aliases = {"hourly": "1h", "daily": "1d"}
+            normalized = utils._normalize_flux_period(aliases.get(str(period).lower(), period))
+            if normalized is not None and normalized not in {"monthly", "yearly"}:
+                start_date_flux = min(start_date_flux, pd.Timestamp(start_date) - pd.Timedelta(normalized))
     return start_date_flux
 
 
@@ -91,6 +106,7 @@ def get_flux_data(
     flux_non_finite_check: FluxNonFiniteCheck = "lazy",
     *,
     allow_older_flux: bool = True,
+    include_previous_interval: bool = False,
 ) -> dict[str, FluxData]:
     """Retrieve, normalize, and sanitize flux data for an inversion.
 
@@ -107,6 +123,8 @@ def get_flux_data(
         allow_older_flux: Allow the historical fallback which relabels the last
             available inventory slice to the requested start. False rejects
             missing requested data without substituting an older inventory.
+        include_previous_interval: Include the preceding declared fixed flux interval
+            when explicit surface transport needs a potentially shifted label.
 
     Returns:
         Retrieved flux objects keyed by source. Each ``flux`` variable is cast
@@ -121,7 +139,10 @@ def get_flux_data(
         logging.Logger.disabled = True  # suppress confusing OpenGHG warnings
 
         try:
-            start_date_flux = adjust_flux_start_date(start_date, species, source, domain, store)
+            start_date_flux = adjust_flux_start_date(
+                start_date, species, source, domain, store,
+                include_previous_interval=include_previous_interval,
+            )
 
             flux_data = get_flux(
                 species=species,

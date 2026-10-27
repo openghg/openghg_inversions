@@ -1,4 +1,4 @@
-"""Explicit ordinary continuous-surface CO2/O2 acquisition beside ModelScenario.
+"""Explicit continuous-surface CO2/O2 preparation beside ModelScenario.
 
 This pilot temporarily consumes OpenGHG private scientific helpers. A provider
 without the named operations fails explicitly; no legacy scientific fallback is
@@ -12,15 +12,14 @@ from dataclasses import asdict
 from functools import partial
 from inspect import signature
 import json
-from math import gcd
 from typing import Literal, Protocol, cast
 
 from openghg.dataobjects import BoundaryConditionsData, FluxData, FootprintData, ObsData
 
-import numpy as np
 import pandas as pd
 import xarray as xr
 
+from ._surface_support import _time_index, validate_flux_coverage as _coverage
 from ._provenance import footprint_metadata, selected_provenance
 from ._units import mole_fraction_unit_scale
 
@@ -62,9 +61,8 @@ def _surface_operations() -> tuple[
 
 
 def _align_footprint(
-    obs: xr.Dataset, value: FootprintInput, align: _AlignObservations
+    obs: xr.Dataset, fp: xr.Dataset, align: _AlignObservations
 ) -> tuple[xr.Dataset, xr.Dataset]:
-    fp = _dataset(value)
     times = _time_index(fp, "Footprint")
     if len(times) < 2 or (len(times) >= 3 and pd.infer_freq(times) is None):
         raise ValueError(
@@ -130,110 +128,39 @@ def _validate_platform(value: xr.Dataset | ObsData) -> None:
         )
 
 
-def _time_index(dataset: xr.Dataset, name: str) -> pd.DatetimeIndex:
-    times = dataset.indexes.get("time")
-    if (
-        not isinstance(times, pd.DatetimeIndex)
-        or times.empty
-        or not times.is_monotonic_increasing
-        or times.has_duplicates
-    ):
-        raise ValueError(f"{name} requires a nonempty, increasing, unique datetime time coordinate.")
-    return times
+def _observation_roles(
+    observations: xr.Dataset, *, species: str, observation_variable: str | None
+) -> dict[str, str]:
+    """Resolve each supported observation role independently before renaming."""
+    roles = {}
+    for suffix in ("", "_error", "_repeatability", "_variability", "_number_of_observations"):
+        candidates = {"mf" + suffix, species + suffix}
+        if not suffix and observation_variable is not None:
+            if observation_variable not in observations:
+                raise ValueError(f"Observation primary variable {observation_variable!r} is missing.")
+            candidates.add(observation_variable)
+        present = sorted(candidates.intersection(observations.data_vars))
+        role = "primary mole fraction" if not suffix else suffix[1:]
+        if len(present) > 1:
+            raise ValueError(f"Observation role {role!r} has duplicate aliases: {', '.join(present)}.")
+        if present:
+            if present[0] in roles:
+                raise ValueError(f"Observation variable {present[0]!r} is selected for both the primary "
+                                 f"mole fraction and {role!r} roles.")
+            roles[present[0]] = "mf" + suffix
+        elif not suffix:
+            raise ValueError("Observation role 'primary mole fraction' requires 'mf', the species name, "
+                             "or observation_variable.")
+    return roles
 
 
-def _coverage(flux: xr.Dataset, fp: xr.Dataset, *, source: str, mode: TransportMode) -> None:
-    """Validate declared intervals and history before provider forward filling."""
-    times = _time_index(flux, f"Flux source {source!r}")
-    releases = _time_index(fp, "Aligned footprint")
-    period = flux.flux.attrs.get("time_period", flux.attrs.get("time_period"))
-    offsets: dict[str, pd.offsets.BaseOffset | pd.Timedelta] = {
-        "yearly": pd.DateOffset(years=1),
-        "monthly": pd.DateOffset(months=1),
-        "daily": pd.Timedelta(days=1),
-        "hourly": pd.Timedelta(hours=1),
-    }
-    offset = offsets.get(str(period).lower())
-    if offset is None and period is not None:
-        from openghg.util import relative_time_offset
-
-        try:
-            offset = relative_time_offset(period=str(period))
-        except (ValueError, TypeError) as exc:
-            raise ValueError(f"Flux source {source!r} has an invalid time_period {period!r}.") from exc
-    if offset is None and len(times) > 1:
-        frequency = pd.infer_freq(times) if len(times) >= 3 else None
-        if frequency:
-            offset = pd.tseries.frequencies.to_offset(frequency)
-        elif len(times) == 2:
-            offset = times[1] - times[0]
-    if offset is None:
-        raise ValueError(
-            f"Flux source {source!r} has no regular cadence or declared time_period; coverage is unknown."
-        )
-    if len(times) > 1 and any(a + offset != b for a, b in zip(times[:-1], times[1:], strict=True)):
-        raise ValueError(
-            f"Flux source {source!r} has gaps; surface transport cannot extrapolate missing support."
-        )
-    start, end = releases[0], releases[-1]
-    if mode == "time_resolved":
-        if "H_back" not in fp.coords or fp.sizes["H_back"] < 2 or len(releases) < 2 or len(times) < 2:
-            raise ValueError("Time-resolved transport requires at least two flux/release/H_back coordinates.")
-        h_back = fp.H_back
-        if "fp_HiTRes" in fp:
-            # The legacy final H_back entry is residual mass, not resolved history.
-            h_back = h_back.where(h_back != h_back.max(), drop=True)
-        if h_back.size < 2:
-            raise ValueError("Time-resolved transport requires at least two resolved H_back coordinates.")
-        hours = np.asarray(h_back.values)
-        hour = pd.Timedelta(hours=1)
-        release_steps = (releases[1:] - releases[:-1]) / hour
-        flux_steps = (times[1:] - times[:-1]) / hour
-        if (
-            not np.isfinite(hours).all()
-            or (hours < 0).any()
-            or (hours != np.floor(hours)).any()
-            or not (np.diff(hours) > 0).all()
-            or not (np.diff(hours) == np.diff(hours)[0]).all()
-            or not (release_steps == release_steps[0]).all()
-            or (release_steps != np.floor(release_steps)).any()
-            or (flux_steps != np.floor(flux_steps)).any()
-            or release_steps[0] < 1
-            or flux_steps[0] < 1
-        ):
-            raise ValueError("Time-resolved transport requires regular whole-hour flux, releases and H_back histories.")
-        spacing = int(hours[1] - hours[0])
-        if spacing > 24 or 24 % spacing:
-            raise ValueError("Time-resolved H_back spacing must divide 24 hours exactly.")
-        grid_hours = gcd(int(release_steps[0]), spacing)
-        cadence_hours = int(flux_steps[0])
-        # The provider slices before upsampling and can lose the preceding flux
-        # interval. Bound this pilot to exact downsampling on its transport grid.
-        if cadence_hours > grid_hours:
-            raise ValueError(
-                f"Time-resolved source {source!r} has flux cadence coarser than the "
-                f"resolved transport grid GCD ({grid_hours}h). Supply finer flux or "
-                "explicitly select integrated transport."
-            )
-        history_hours = int(hours[-1]) + 1
-        padded_start = start - pd.Timedelta(hours=history_hours)
-        # Provider rolling windows use max(H_back)+1 hours and exact grid labels.
-        if (
-            grid_hours % cadence_hours
-            or history_hours % grid_hours
-            or (hours % grid_hours != 0).any()
-            or (releases != releases.floor("h")).any()
-            or (times != times.floor("h")).any()
-            or (padded_start - times[0]) % pd.Timedelta(hours=cadence_hours)
-        ):
-            raise ValueError("Time-resolved flux/history phases must align exactly with the provider transport grid.")
-        start = padded_start.to_period("M").start_time
-        end = end.to_period("M").end_time
-    if times[0] > start or times[-1] + offset <= end:
-        raise ValueError(
-            f"Inadequate flux coverage for source {source!r} ({mode}): required "
-            f"{start} through {end}, including backward history and full residual months."
-        )
+def _native_releases(footprint: xr.Dataset, observations: xr.Dataset) -> xr.Dataset:
+    """Retain native releases in the selected, aligned observation intervals."""
+    times = _time_index(observations, "Aligned observations")
+    period = pd.Timedelta(seconds=float(
+        observations.attrs.get("averaged_period", observations.attrs["sampling_period"])
+    ))
+    return footprint.sel(time=slice(times[0], times[-1] + period - pd.Timedelta("1ns")))
 
 
 def _convert(array: xr.DataArray, units: str) -> xr.DataArray:
@@ -250,6 +177,7 @@ def prepare_surface_site(
     site_footprint_data: FootprintInput | None = None,
     boundary_data: xr.Dataset | BoundaryConditionsData | None = None,
     output_units: str | None = None,
+    observation_variable: str | None = None,
 ) -> xr.Dataset:
     """Prepare continuous CO2/O2 observations and per-source surface responses.
 
@@ -269,8 +197,8 @@ def prepare_surface_site(
         species: ``co2`` or ``o2`` mole fractions; per-meg/APO is unsupported.
         transport: Exactly one ``integrated`` or ``time_resolved`` per source.
             Resolved transport includes its monthly residual once; requires full
-            residual months/backward history, regular whole-hour coordinates,
-            exact grid alignment and flux no coarser than the transport grid.
+            residual months/backward history, whole-hour coordinate intervals,
+            compatible rolling windows and flux cadence within the history window.
         site_footprint_data: Required for mapped footprints; otherwise defaults
             to the shared footprint. Owns coarsest-cadence observation alignment,
             filter fields and boundary transport. Source responses must preserve
@@ -280,6 +208,9 @@ def prepare_surface_site(
             ``time_period`` metadata and mole-fraction units. Requires matching
             ``particle_locations_n/e/s/w`` in site transport.
         output_units: Concentration output units; defaults to observation units.
+        observation_variable: Explicit primary mole-fraction variable for supplied
+            observations. Error/count aliases still use ``mf`` or the species prefix.
+            Duplicate aliases for any role are rejected; unrelated fields are preserved.
 
     Returns:
         Dataset with aligned ``mf``, available errors/filter fields,
@@ -287,7 +218,8 @@ def prepare_surface_site(
         ``fp_x_flux``; spatial sums ``mf_mod_sectoral(source, time)`` and
         ``mf_mod(time)``; transport/provenance attributes. With boundaries,
         ordinary output contains ``bc_n/e/s/w`` on native curtain axes.
-        ``bc_mod(time)`` is the absolute unit-factor contribution. Concentrations use output units. Payloads stay lazy where supported; inputs are never mutated.
+        ``bc_mod(time)`` is the absolute unit-factor contribution. Concentrations use
+        output units. Payloads stay lazy where supported; inputs are never mutated.
 
     Raises:
         ValueError: Unsupported platform/species/transport, incompatible labelled
@@ -322,17 +254,14 @@ def prepare_surface_site(
     else:
         raise ValueError("Mapped source footprints require explicit site_footprint_data.")
     obs = _dataset(obs_data)
+    site_footprint_view = _dataset(site_footprint)
+    source_footprint_views = {source: _dataset(value) for source, value in source_footprints.items()}
+    flux_views = {source: _dataset(value) for source, value in flux_data.items()}
+    boundary_view = _dataset(boundary_data) if boundary_data is not None else None
     _time_index(obs, "Observations")
     species = species.lower()
-    obs = obs.rename(
-        {
-            name: "mf" + str(name)[len(species) :]
-            for name in obs.data_vars
-            if name == species or str(name).startswith(species + "_")
-        }
-    )
-    if "mf" not in obs:
-        raise ValueError(f"Surface observations require mf or {species!r} mole fractions.")
+    roles = _observation_roles(obs, species=species, observation_variable=observation_variable)
+    obs = obs.rename({name: role for name, role in roles.items() if name != role})
     observation_units = obs.mf.attrs.get("units")
     units = output_units or observation_units
     if not isinstance(units, str) or not isinstance(observation_units, str):
@@ -344,7 +273,7 @@ def prepare_surface_site(
                 obs[name].attrs["units"] = observation_units
             obs[name] = _convert(obs[name], units)
     align, integrated, resolved = _surface_operations()
-    aligned_obs, site_fp = _align_footprint(obs, site_footprint, align)
+    aligned_obs, site_fp = _align_footprint(obs, site_footprint_view, align)
     obs_times = _time_index(aligned_obs, "Aligned observations")
     site = xr.merge([site_fp, aligned_obs], join="exact", compat="no_conflicts")
     site.attrs = {**site_fp.attrs, **aligned_obs.attrs, "resample_to": "coarsest"}
@@ -354,12 +283,6 @@ def prepare_surface_site(
     observation_period = pd.Timedelta(
         seconds=float(aligned_obs.attrs.get("averaged_period", aligned_obs.attrs["sampling_period"]))
     )
-    interval_end = obs_times[-1] + observation_period
-
-    def native_releases(footprint: xr.Dataset) -> xr.Dataset:
-        # Keep every release in the selected observation bins before products.
-        return footprint.sel(time=slice(obs_times[0], interval_end - pd.Timedelta("1ns")))
-
     def observation_means(values: xr.Dataset) -> xr.Dataset:
         # Form products on native releases before provider observation averaging.
         if "time" not in values.dims or values.indexes["time"].equals(obs_times):
@@ -372,7 +295,7 @@ def prepare_surface_site(
 
     responses = []
     for source in sorted(flux_data):
-        aligned_fp = _dataset(source_footprints[source])
+        aligned_fp = source_footprint_views[source]
         times = _time_index(aligned_fp, "Footprint")
         if len(times) < 2 or (len(times) >= 3 and pd.infer_freq(times) is None):
             raise ValueError(
@@ -383,8 +306,8 @@ def prepare_surface_site(
                 f"Footprint source {source!r} requires matching spatial and observed timestamps; "
                 "its cadence must not be coarser than the explicit site observation axis."
             )
-        aligned_fp = native_releases(aligned_fp)
-        flux = _dataset(flux_data[source])
+        aligned_fp = _native_releases(aligned_fp, aligned_obs)
+        flux = flux_views[source]
         _coverage(flux, aligned_fp, source=source, mode=transport[source])
         if transport[source] == "integrated":
             if "fp" not in aligned_fp:
@@ -444,12 +367,12 @@ def prepare_surface_site(
     if "time_resolved" in transport.values():
         site.attrs["surface_provider_policy_revision"] = "openghg-time-resolved-v1"
 
-    if boundary_data is not None:
-        native_site_fp = native_releases(_dataset(site_footprint))
+    if boundary_view is not None:
+        native_site_fp = _native_releases(site_footprint_view, aligned_obs)
         from openghg.analyse._modelled_baseline import baseline_sensitivities
 
         absolute_operands = baseline_sensitivities(
-            _dataset(boundary_data), native_site_fp, species=species, allow_climatology=False
+            boundary_view, native_site_fp, species=species, allow_climatology=False
         )
         absolute = {
             str(name): value for name, value in observation_means(
@@ -462,5 +385,5 @@ def prepare_surface_site(
             for value in absolute.values()
         ]
         site["bc_mod"] = sum(directional_totals[1:], start=directional_totals[0]).assign_attrs(units=units)
-
+        return site.transpose(..., "time")
     return site.transpose(..., "time")

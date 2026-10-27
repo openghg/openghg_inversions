@@ -380,11 +380,13 @@ def test_opt_in_reuses_getters_retention_and_provenance(inputs, monkeypatch):
 
 
 def test_fresh_rejects_mixed_native_axes(inputs, monkeypatch):
-    _, _, flux = inputs
+    obs, fp, flux = inputs
+    monkeypatch.setattr(acquisition, "get_obs_data", lambda **kw: SimpleNamespace(data=obs, metadata={}))
+    monkeypatch.setattr(acquisition, "get_footprint_data", lambda **kw: SimpleNamespace(data=fp, metadata={}))
     monkeypatch.setattr(
         acquisition,
         "get_flux_data",
-        lambda **kw: {"a": SimpleNamespace(data=flux), "b": SimpleNamespace(data=flux.isel(time=[0]))},
+        lambda **kw: {"a": SimpleNamespace(data=flux, metadata={}), "b": SimpleNamespace(data=flux.isel(time=[0]), metadata={})},
     )
     with pytest.raises(ValueError, match="mixed native source axes"):
         MergedData.from_options(
@@ -459,7 +461,7 @@ def test_resolved_acquisition_requests_history_and_complete_months(inputs, monke
         surface_transport={"a": "time_resolved"},
     )
     assert requests[0]["allow_older_flux"] is False
-    assert pd.Timestamp(requests[0]["start_date"]) == pd.Timestamp("2019-12-01")
+    assert pd.Timestamp(requests[0]["start_date"]) == pd.Timestamp("2019-12-31 22:00")
     assert pd.Timestamp(requests[0]["end_date"]) == pd.Timestamp("2020-02-01")
     assert result.flux_data["a"] is flux
 
@@ -475,7 +477,7 @@ def test_actual_midmonth_kernel_matches_independent_history_and_residual(inputs,
     indices = flux.indexes["time"].get_indexer(obs.time.values)
     january = flux.time.dt.month.values == 1
     expected = values[indices] + values[indices - 1] + 5 * values[january].mean()
-    np.testing.assert_allclose(result.mf_mod, expected, rtol=1e-14)
+    np.testing.assert_allclose(result.mf_mod, expected, rtol=1e-14, atol=0)
 
 
 def test_mapped_footprints_require_identical_observation_timestamps(inputs):
@@ -587,66 +589,47 @@ def test_resolved_requires_provider_convolution_operation(inputs, monkeypatch):
 
 
 @pytest.mark.parametrize("representation", ["split", "legacy"])
-@pytest.mark.parametrize("cadence_hours", [1, 2, 3, 24])
-def test_resolved_cadence_bounded_by_transport_grid(
-    inputs, compatible_provider, cadence_hours, representation
+@pytest.mark.parametrize("phase", [0, 30, 90])
+@pytest.mark.parametrize("flux_phase", [0, 30])
+@pytest.mark.parametrize("cadence_hours", [1, 2])
+def test_resolved_coarse_flux_and_shifted_releases_match_interval_history(
+    inputs, compatible_provider, cadence_hours, representation, phase, flux_phase
 ):
     obs, fp, flux = resolved_inputs(inputs, representation)
+    obs = obs.assign_coords(time=obs.time + np.timedelta64(phase, "m"))
+    fp = fp.assign_coords(time=obs.time)
     flux = flux.isel(time=slice(None, None, cadence_hours))
-    if cadence_hours > 1:
-        with pytest.raises(ValueError, match="coarser than the resolved transport grid GCD"):
-            prepare_surface_site(obs, fp, {"a": flux}, species="co2", transport={"a": "time_resolved"})
-    else:
-        result = prepare_surface_site(obs, fp, {"a": flux}, species="co2", transport={"a": "time_resolved"})
-        # The legacy H_back=24 sentinel is residual mass, never a 25th history hour.
-        np.testing.assert_allclose(result.mf_mod, 14.0)
+    flux = flux.assign_coords(time=flux.time + np.timedelta64(flux_phase, "m"))
+    values = 1 + np.arange(flux.sizes["time"]) * .01
+    flux["flux"] = flux.flux.copy(data=values.reshape(1, 1, -1) * 1e-6)
+    result = prepare_surface_site(obs, fp, {"a": flux}, species="co2", transport={"a": "time_resolved"})
+    times = flux.indexes["time"]
+    releases = pd.DatetimeIndex(obs.time.values)
+    current = times.get_indexer(releases, method="ffill")
+    previous = times.get_indexer(releases - pd.Timedelta(hours=1), method="ffill")
+    january = times.month == 1
+    expected = values[current] + values[previous] + 5 * values[january].mean()
+    np.testing.assert_allclose(result.mf_mod, expected, rtol=1e-14, atol=0)
 
 
-@pytest.mark.parametrize("phase", [0, 1, 2])
-def test_three_hour_flux_rejected_before_provider_contraction(inputs, compatible_provider, monkeypatch, phase):
-    obs, fp, flux = resolved_inputs(inputs)
-    obs = obs.assign_coords(time=obs.time + np.timedelta64(phase, "h"))
-    fp = fp.drop_dims("H_back").assign_coords(time=obs.time, H_back=[0, 1, 2, 3])
-    fp["fp_time_resolved"] = xr.DataArray(
-        np.ones((1, 1, 3, 4)), dims=("lat", "lon", "time", "H_back"), attrs=fp.fp.attrs
-    )
-    supported = prepare_surface_site(
-        obs, fp, {"a": flux}, species="co2", transport={"a": "time_resolved"}
-    )
-    np.testing.assert_allclose(supported.mf_mod, 18.)
-    operations = surface._surface_operations()
-    monkeypatch.setattr(
-        surface, "_surface_operations",
-        lambda: (*operations[:2], lambda *args: pytest.fail("unsupported cadence reached provider")),
-    )
-    # Constant flux 2 times (four resolved weights + residual 5) must be 18.
-    # At phase 2 the inherited provider returns [16, 18, 18]; reject all phases.
-    with pytest.raises(ValueError, match="coarser than the resolved transport grid GCD"):
-        prepare_surface_site(
-            obs, fp, {"a": flux.isel(time=slice(None, None, 3))},
-            species="co2", transport={"a": "time_resolved"},
-        )
-
-
-@pytest.mark.parametrize("change", ["fractional_history", "irregular_history", "release_phase", "flux_phase", "grid_window"])
-def test_resolved_rejects_unsupported_history_and_phases(inputs, compatible_provider, change):
+@pytest.mark.parametrize("change", ["fractional_history", "irregular_history", "grid_window", "history_spacing", "monthly_fallback"])
+def test_resolved_rejects_unsupported_history_and_provider_fallback(inputs, compatible_provider, change):
     obs, fp, flux = resolved_inputs(inputs)
     message = "whole-hour"
     if change == "fractional_history":
         fp = fp.assign_coords(H_back=[0, 0.5])
     elif change == "irregular_history":
         fp = fp.reindex(H_back=[0, 1, 3], fill_value=1)
-    elif change == "release_phase":
-        obs = obs.assign_coords(time=obs.time + np.timedelta64(30, "m"))
-        fp = fp.assign_coords(time=obs.time)
-        message = "phases must align exactly"
-    elif change == "flux_phase":
-        flux = flux.assign_coords(time=flux.time + np.timedelta64(30, "m"))
-        message = "phases must align exactly"
-    else:
+    elif change == "grid_window":
         obs = obs.assign_coords(time=pd.date_range("2020-01-01", periods=3, freq="2h"))
         fp = fp.assign_coords(time=obs.time, H_back=[0, 2])
-        message = "phases must align exactly"
+        message = "rolling window and transport grid"
+    elif change == "history_spacing":
+        fp = fp.assign_coords(H_back=[0, 5])
+        message = "divide 24 hours"
+    else:
+        flux = flux.isel(time=slice(None, None, 24))
+        message = "provider would substitute monthly flux"
     with pytest.raises(ValueError, match=message):
         prepare_surface_site(obs, fp, {"a": flux}, species="co2", transport={"a": "time_resolved"})
 
@@ -681,18 +664,16 @@ def test_resolved_grid_uses_release_and_history_gcd(inputs, compatible_provider)
     fp = fp.assign_coords(time=releases, H_back=[0, 3])
     values = 1 + np.arange(flux.sizes["time"]) * .01
     flux["flux"] = flux.flux.copy(data=values.reshape(1, 1, -1) * 1e-6)
-    # gcd(2h releases, 3h history) is 1h: hourly flux is supported even though
-    # the applicable histories are not contiguous. Three-hour flux is rejected.
-    result = prepare_surface_site(obs, fp, {"a": flux}, species="co2", transport={"a": "time_resolved"})
-    indices = flux.indexes["time"].get_indexer(releases)
-    january = flux.time.dt.month.values == 1
-    expected = values[indices] + values[indices - 3] + 5 * values[january].mean()
-    np.testing.assert_allclose(result.mf_mod, expected, rtol=1e-14)
-    with pytest.raises(ValueError, match=r"transport grid GCD \(1h\)"):
-        prepare_surface_site(
-            obs, fp, {"a": flux.isel(time=slice(None, None, 3))},
-            species="co2", transport={"a": "time_resolved"},
-        )
+    # gcd(2h releases, 3h history) is 1h; flux may be coarser than that grid.
+    for cadence in (1, 3):
+        sampled = flux.isel(time=slice(None, None, cadence))
+        sampled_values = values[::cadence]
+        result = prepare_surface_site(obs, fp, {"a": sampled}, species="co2", transport={"a": "time_resolved"})
+        index = sampled.indexes["time"]
+        current = index.get_indexer(releases, method="ffill")
+        previous = index.get_indexer(releases - pd.Timedelta(hours=3), method="ffill")
+        expected = sampled_values[current] + sampled_values[previous] + 5 * sampled_values[index.month == 1].mean()
+        np.testing.assert_allclose(result.mf_mod, expected, rtol=1e-14, atol=0)
 
 
 def test_integrated_declared_year_validity_never_reuses_climatological_year(inputs):

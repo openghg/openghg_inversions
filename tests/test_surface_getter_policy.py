@@ -12,7 +12,7 @@ from openghg_inversions.inversion_data import getters
 
 @pytest.mark.parametrize("empty", [False, True])
 def test_explicit_surface_getter_does_not_relabel_older_flux(monkeypatch, empty):
-    monkeypatch.setattr(getters, "adjust_flux_start_date", lambda *args: pd.Timestamp("2024-01-01"))
+    monkeypatch.setattr(getters, "adjust_flux_start_date", lambda *args, **kwargs: pd.Timestamp("2024-01-01"))
     retrieve = Mock()
     if empty:
         retrieve.return_value = Mock(data=xr.Dataset(coords={"time": pd.DatetimeIndex([])}))
@@ -54,6 +54,14 @@ def test_ordinary_acquisition_does_not_require_centered_arithmetic_options(monke
     from openghg_inversions.inversion_data import acquisition
     from openghg_inversions.inversion_data._site_options import SiteOptions
 
+    from types import SimpleNamespace
+    import numpy as np
+    time = pd.date_range("2020-01-01", periods=3, freq="h")
+    obs = xr.Dataset({"co2": ("time", [400., 401., 402.], {"units": "ppm"})}, coords={"time": time})
+    fp = xr.Dataset({"fp": (("lat", "lon", "time"), np.ones((1, 1, 3)))},
+                    coords={"lat": [0.], "lon": [0.], "time": time})
+    monkeypatch.setattr(acquisition, "get_obs_data", lambda **kw: SimpleNamespace(data=obs, metadata={}))
+    monkeypatch.setattr(acquisition, "get_footprint_data", lambda **kw: SimpleNamespace(data=fp, metadata={}))
     retrieve = Mock(side_effect=RuntimeError("reached flux retrieval"))
     monkeypatch.setattr(acquisition, "get_flux_data", retrieve)
     with pytest.raises(RuntimeError, match="reached flux retrieval"):
@@ -68,3 +76,22 @@ def test_ordinary_acquisition_does_not_require_centered_arithmetic_options(monke
             use_bc=True,
         )
     retrieve.assert_called_once()
+
+
+@pytest.mark.parametrize("period,expected", [
+    ("2h", "2024-01-01 22:00"), ("hourly", "2024-01-01 23:00"),
+    ("daily", "2024-01-01"), ("monthly", "2024-01-01"),
+])
+def test_surface_flux_start_includes_declared_preceding_interval(monkeypatch, period, expected):
+    monkeypatch.setattr(getters, "search_flux", lambda **kw: Mock(results=pd.DataFrame({"time_period": [period]})))
+    actual = getters.adjust_flux_start_date(
+        "2024-01-02", "co2", "a", "EUROPE", include_previous_interval=True
+    )
+    assert actual == pd.Timestamp(expected)
+
+
+def test_surface_calendar_start_aligns_midnight_on_first_day(monkeypatch):
+    monkeypatch.setattr(getters, "search_flux", lambda **kw: Mock(results=pd.DataFrame({"time_period": ["monthly"]})))
+    assert getters.adjust_flux_start_date(
+        "2024-01-01 01:00", "co2", "a", "EUROPE", include_previous_interval=True
+    ) == pd.Timestamp("2024-01-01")

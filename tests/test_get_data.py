@@ -920,7 +920,7 @@ def test_get_flux_data_preserves_variable_period_over_dataset_period(
         metadata={},
         data=xr.Dataset({"flux": flux}, attrs={"time_period": "1 year"}),
     )
-    monkeypatch.setattr(getters_module, "adjust_flux_start_date", lambda *args: pd.Timestamp("2019-06-01"))
+    monkeypatch.setattr(getters_module, "adjust_flux_start_date", lambda *args, **kwargs: pd.Timestamp("2019-06-01"))
     monkeypatch.setattr(getters_module, "get_flux", lambda **kwargs: flux_data)
 
     result = get_flux_data(
@@ -955,7 +955,7 @@ def test_get_flux_data_uses_dataset_period_when_variable_period_is_missing(
         metadata={},
         data=xr.Dataset({"flux": flux}, attrs={"time_period": "monthly"}),
     )
-    monkeypatch.setattr(getters_module, "adjust_flux_start_date", lambda *args: pd.Timestamp("2019-01-01"))
+    monkeypatch.setattr(getters_module, "adjust_flux_start_date", lambda *args, **kwargs: pd.Timestamp("2019-01-01"))
     monkeypatch.setattr(getters_module, "get_flux", lambda **kwargs: flux_data)
 
     result = get_flux_data(
@@ -978,7 +978,7 @@ def test_get_flux_data_count_mode_audits_original_values(monkeypatch: pytest.Mon
         name="flux",
     )
     flux_data = SimpleNamespace(metadata={}, data=xr.Dataset({"flux": flux}, attrs={"time_period": "1 year"}))
-    monkeypatch.setattr(getters_module, "adjust_flux_start_date", lambda *args: np.datetime64("2019-01-01"))
+    monkeypatch.setattr(getters_module, "adjust_flux_start_date", lambda *args, **kwargs: np.datetime64("2019-01-01"))
     monkeypatch.setattr(getters_module, "get_flux", lambda **kwargs: flux_data)
 
     with pytest.warns(NonFiniteFluxWarning, match="contains 2 non-finite values"):
