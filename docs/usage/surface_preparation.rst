@@ -255,11 +255,12 @@ and ``save`` reject them explicitly. Persistence belongs to the later centered
 output integration. Standalone CO₂ prepared inputs retain the raw
 operands through their existing input-dataset serialization.
 
-The ordinary CO₂ model and ordinary linked CO₂/O₂ model bind the raw operands to
-BC periods at model construction. Direct builders accept ``boundary_operands``
-(in linked models, a mapping keyed by tracer), ``bc_freq`` and ``bc_anchor_time``.
-Configured ordinary and saved routes select the same choices in their boundary
-configuration, for example:
+The additive-Gaussian and cached fixed-OU CO₂ and linked CO₂/O₂ routes bind raw
+operands to BC periods at model construction. Their model-facing runners and
+direct builders accept ``bc_freq`` and ``bc_anchor_time``. Direct builders
+consume raw ``boundary_operands`` (in linked models, a mapping keyed by tracer).
+Configured and supported saved routes select the same choices in their
+boundary configuration, for example:
 
 .. code-block:: toml
 
@@ -281,10 +282,13 @@ Native observation labels select boundary rows. When observations carry a
 boundary timestamps. Boundary times that also serve as indexed row labels must
 agree with the observation timestamps; conflicting values raise an error.
 
-Use the ordinary additive-Gaussian recipe. Cached, fixed-OU and custom likelihood
-routes reject centered inputs until separately validated. Standard and multisector
-model builders also reject centered inputs; their preparation operations can
-still produce the reusable canonical handoff shown above.
+Centered inference supports the additive-Gaussian recipe and fixed-OU recipes
+with inferred amplitudes using the matched cached sampler. Configure PyTensor
+``floatX=float64`` before model construction; these routes reject an explicit
+float32 choice. Fixed-amplitude OU and custom likelihood routes still reject
+centered inputs. Standard and multisector model builders also reject them;
+their preparation operations can still produce the reusable canonical handoff
+shown above.
 
 For the original BC coefficients b, the centered likelihood uses
 ``q = c * M @ ones``, ``y_centered = y - q`` and
@@ -294,10 +298,19 @@ covariance, including constant curtains and bases that do not partition unity.
 BC and total concentration deterministics stay absolute. The recipe's trace
 annotation restores observed and predictive ``y`` to absolute concentrations
 once, using retained reference shifts; replay does not need to rebuild the model.
-Ordinary recipe runners perform this annotation automatically. Callers composing
+The supported recipe runners perform this annotation automatically. Callers composing
 PyMC operations directly must restore sample coordinates, then call
 :func:`~openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives`
 before serialization or postprocessing.
+
+The cached sampler preserves the physical BC variables and their priors. Only
+its private quadratic uses active coefficients ``b_active - 1`` and design
+``(A + c * M)[:, active]``. Its fixed BC term is
+``A @ b_star + c * M @ (b_star - ones)``, where ``b_star`` is one for active
+states and the physical fixed value otherwise. This term uses the full operands
+before removing zero design columns. Sampled flux and offset designs retain
+their usual coefficients. Both amplitude and state updates use the centered
+residual; the OU and aggregation covariance are unchanged.
 
 A small offline example creates its own inputs, performs a coherent reduction,
 saves/reopens preparation and restores absolute prior predictions:
