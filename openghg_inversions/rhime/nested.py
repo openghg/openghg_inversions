@@ -41,10 +41,6 @@ from openghg_inversions.models.components import add_linear_component, add_offse
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity, prepare_linear_sensitivity
-from openghg_inversions.observation_error import (
-    aggregation_error_input_names,
-    resolve_aggregation_error,
-)
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 
 from ._model_building import ForwardModelTerms, add_rhime_likelihood
@@ -1093,7 +1089,6 @@ def build_nested_rhime_model(
     names.extend(likelihood_input_names(model_inputs, model_spec.likelihood, materialized=True))
     if model_spec.use_bc:
         names.append("H_bc")
-    names.extend(aggregation_error_input_names(model_inputs, model_spec.aggregation_error_mode))
     validate_model_inputs(model_inputs, model_spec, materializer="materialize_nested_inputs")
     required = (_standard_prior_parameters(model_spec).keys() - {"x"}) | {"x_outer", "x_inner"}
     missing = required - priors.keys()
@@ -1113,7 +1108,6 @@ def build_nested_rhime_model(
     )
     observations = model_inputs["mf"]
     observation_error = model_inputs["mf_error"]
-    aggregation_error = resolve_aggregation_error(model_inputs, model_spec.aggregation_error_mode)
     minimum_error = model_inputs.get("min_error")
     boundary_sensitivity = model_inputs.get("H_bc")
     use_bc, add_offset = model_spec.use_bc, model_spec.add_offset
@@ -1205,7 +1199,6 @@ def build_nested_rhime_model(
             ),
             observations=observations,
             observation_error=observation_error,
-            aggregation_error=aggregation_error,
             minimum_error=minimum_error,
             output_dim="nmeasure",
             prior_parameters=priors,
