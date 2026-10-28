@@ -6,6 +6,7 @@ The four variants use the same collapsed research recipe, not production APIs.
 
 import argparse
 from contextlib import contextmanager
+from dataclasses import fields, is_dataclass
 import gc
 import json
 import os
@@ -198,12 +199,13 @@ class MemoryMonitor:
 
 def inventory(roots):
     """Enumerate actual arrays and deduplicate their retained NumPy backing storage."""
-    arrays, owners, visited = [], {}, set()
+    arrays, owners, visited, held = [], {}, set(), []
 
     def walk(value, path, depth=0):
         if id(value) in visited or depth > 12:
             return
         visited.add(id(value))
+        held.append(value)  # Keep transient xarray wrappers alive while IDs identify aliases.
         if isinstance(value, np.ndarray):
             base = value
             while isinstance(base.base, np.ndarray):
@@ -242,6 +244,9 @@ def inventory(roots):
         elif isinstance(value, (list, tuple)):
             for index, item in enumerate(value):
                 walk(item, f"{path}[{index}]", depth + 1)
+        elif is_dataclass(value) and not isinstance(value, type):
+            for field in fields(value):
+                walk(getattr(value, field.name), path + "." + field.name, depth + 1)
         elif type(value).__module__.startswith(
             ("openghg_inversions", "pymc", "pytensor", "scipy.sparse")
         ) and hasattr(value, "__dict__"):

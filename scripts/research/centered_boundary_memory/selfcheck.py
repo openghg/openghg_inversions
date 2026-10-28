@@ -1,5 +1,6 @@
 """Small constructor/instrumentation checks; no sampling or campaign data reads."""
 
+from dataclasses import dataclass
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -30,6 +31,14 @@ def main():
     report = inventory({"first": array, "view": array[:1]})
     assert report["retained_unique_backing_bytes"] == array.nbytes
     assert len(report["arrays"]) == 2
+
+    @dataclass(slots=True)
+    class Borrowed:
+        array: np.ndarray
+
+    slotted = inventory({"prepared": Borrowed(array)})
+    assert slotted["retained_unique_backing_bytes"] == array.nbytes
+    assert slotted["arrays"][0]["path"] == "prepared.array"
     assert process_tree()[0]["pss_bytes"] > 0
     with TemporaryDirectory() as directory:
         path = Path(directory) / "samples.jsonl"
