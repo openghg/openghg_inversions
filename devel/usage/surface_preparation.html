@@ -474,18 +474,30 @@ continue to use their existing owners.</p>
 <section id="dependency-and-precision">
 <h2>Dependency and precision<a class="headerlink" href="#dependency-and-precision" title="Link to this heading">#</a></h2>
 <p>Ordinary boundary sensitivities, observation alignment and flux convolution reuse
-OpenGHG helpers. The normal
+OpenGHG helpers. Accurate centered boundary normalization and anomaly/mass
+arithmetic are owned by OGI. The normal
 installation temporarily pins OpenGHG devel commit
 <code class="docutils literal notranslate"><span class="pre">b9a9d1f21f22d2f8dcca714283eb936c22338c57</span></code>. This pilot calls its xarray
 integrated and time-resolved convolution operations. Both pip and uv installs receive that revision; VG
 callers need no separate dependency override. Replace this pin with a suitable
-released minimum before publishing OGI to PyPI. Install the pinned provider with:</p>
+released minimum before publishing OGI to PyPI. The local curtain kernel does
+not depend on an unmerged upstream change:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>sync<span class="w"> </span>--locked
 </pre></div>
 </div>
 <p>The required surface tests exercise the installed provider. Missing required
 operations fail explicitly. Private provider imports may migrate to public
 operations later; that transition does not block this workflow.</p>
+<p>Centered boundary provenance records
+<code class="docutils literal notranslate"><span class="pre">boundary_operator_owner=&quot;openghg_inversions&quot;</span></code>.
+The operation uses native boundary/transport inputs, never rounded absolute
+sensitivities, and records its arithmetic policy revision.</p>
+<p>For centered preparation, OGI normalizes all four stable boundary curtains together, using an
+explicit tolerance for their total raw mass versus unity. Choose that tolerance
+from the footprint’s justified numerical error. Nonfinite or negative weights,
+zero mass, and mass outside the tolerance fail validation. Boundary coverage must
+be declared by <code class="docutils literal notranslate"><span class="pre">time_period</span></code> interval starts. Concentrations and references are
+converted to common units before subtraction. Centered preparation arithmetic uses float64; this cannot recover precision already lost in stored input.</p>
 </section>
 <section id="input-validation">
 <h2>Input validation<a class="headerlink" href="#input-validation" title="Link to this heading">#</a></h2>
@@ -526,12 +538,20 @@ renames the primary for the provider schema; prepared concentration fields use
     <span class="n">species</span><span class="o">=</span><span class="s2">"co2"</span><span class="p">,</span>
     <span class="n">transport</span><span class="o">=</span><span class="p">{</span><span class="s2">"biosphere"</span><span class="p">:</span> <span class="s2">"time_resolved"</span><span class="p">,</span> <span class="s2">"fossil"</span><span class="p">:</span> <span class="s2">"integrated"</span><span class="p">},</span>
     <span class="n">boundary_data</span><span class="o">=</span><span class="n">boundary_curtains</span><span class="p">,</span>
+    <span class="n">boundary_representation</span><span class="o">=</span><span class="s2">"centered"</span><span class="p">,</span>
+    <span class="n">boundary_reference</span><span class="o">=</span><span class="mf">400.0</span><span class="p">,</span>
+    <span class="n">boundary_reference_units</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">,</span>
+    <span class="n">boundary_mass_tolerance</span><span class="o">=</span><span class="n">justified_mass_tolerance</span><span class="p">,</span>
     <span class="n">output_units</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">,</span>
 <span class="p">)</span>
 </pre></div>
 </div>
-<p>Boundary preparation produces ordinary absolute <code class="docutils literal notranslate"><span class="pre">bc_n/e/s/w</span></code> contributions
-using OpenGHG baseline sensitivities with climatology disabled.</p>
+<p>Ordinary preparation is the default. Omit <code class="docutils literal notranslate"><span class="pre">boundary_representation</span></code> and the
+reference arguments to obtain absolute <code class="docutils literal notranslate"><span class="pre">bc_n/e/s/w</span></code> contributions. Supply
+<code class="docutils literal notranslate"><span class="pre">boundary_representation=&quot;centered&quot;</span></code> plus the reference to retain accurate
+anomaly/mass operands instead. A reference alone never selects centered preparation;
+Centered preparation requires a justified mass tolerance; ordinary preparation
+uses OpenGHG’s existing baseline arithmetic without joint mass normalization.</p>
 <p>Each source and boundary contribution is calculated at native footprint release
 times, then averaged to the chosen observation cadence. Each source is convolved
 independently. <code class="docutils literal notranslate"><span class="pre">time_resolved</span></code> includes both its
@@ -576,7 +596,9 @@ Preparation and model materialization remain explicit execution boundaries.</p>
     <span class="n">start_date</span><span class="o">=</span><span class="s2">"2020-01-01"</span><span class="p">,</span> <span class="n">end_date</span><span class="o">=</span><span class="s2">"2020-02-01"</span><span class="p">,</span>
     <span class="n">site_options</span><span class="o">=</span><span class="n">selectors</span><span class="p">,</span> <span class="n">flux_sources</span><span class="o">=</span><span class="p">[</span><span class="s2">"biosphere"</span><span class="p">,</span> <span class="s2">"fossil"</span><span class="p">],</span>
     <span class="n">surface_transport</span><span class="o">=</span><span class="p">{</span><span class="s2">"biosphere"</span><span class="p">:</span> <span class="s2">"time_resolved"</span><span class="p">,</span> <span class="s2">"fossil"</span><span class="p">:</span> <span class="s2">"integrated"</span><span class="p">},</span>
-    <span class="n">use_bc</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">use_bc</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">boundary_representation</span><span class="o">=</span><span class="s2">"centered"</span><span class="p">,</span>
+    <span class="n">reference</span><span class="o">=</span><span class="mf">400.0</span><span class="p">,</span> <span class="n">reference_units</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">,</span>
+    <span class="n">mass_tolerance</span><span class="o">=</span><span class="n">justified_mass_tolerance</span><span class="p">,</span>
 <span class="p">)</span>
 </pre></div>
 </div>
@@ -625,6 +647,46 @@ axis or an affine flux companion. Supply an independently justified native
 representation before using such products. This pilot does not construct the
 ordinary CO₂ coherent reduction automatically; see <a class="reference internal" href="coherent_reduction.html"><span class="doc">Coherent Gaussian Reduction</span></a> and
 <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a>.</p>
+</section>
+<section id="centered-preparation-handoff">
+<span id="surface-centered-boundary-contract"></span><h2>Centered preparation handoff<a class="headerlink" href="#centered-preparation-handoff" title="Link to this heading">#</a></h2>
+<p>Apply supported observation selection first, then derive missing observation
+errors with <code class="docutils literal notranslate"><span class="pre">prepare_observation_errors</span></code> on the retained population. Explicit
+existing errors remain unchanged. Project the native <code class="docutils literal notranslate"><span class="pre">bc_anomaly_*</span></code> and
+<code class="docutils literal notranslate"><span class="pre">bc_mass_*</span></code> arrays through the same chosen BC basis using <code class="docutils literal notranslate"><span class="pre">bc_sensitivity</span></code> or
+<code class="docutils literal notranslate"><span class="pre">build_sensitivities</span></code>. Their outputs are <code class="docutils literal notranslate"><span class="pre">H_bc_anomaly</span></code> (A), <code class="docutils literal notranslate"><span class="pre">H_bc_mass</span></code> (M)
+and scalar <code class="docutils literal notranslate"><span class="pre">bc_reference</span></code> (c). They retain spatial BC labels through gathering.
+The reference must agree across sites within a tracer.</p>
+<p>The source-neutral adapter accepts these projected operands (choose the summed
+response for a shared source-scaling field, or a compatible source-resolved
+flux basis for separate fields):</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.basis._helpers</span><span class="w"> </span><span class="kn">import</span> <span class="n">bc_sensitivity</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_rhime_inputs_from_xarray</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.preparation</span><span class="w"> </span><span class="kn">import</span> <span class="n">filter_observations</span><span class="p">,</span> <span class="n">prepare_observation_errors</span>
+
+<span class="n">selected</span><span class="p">,</span> <span class="n">retained_selectors</span> <span class="o">=</span> <span class="n">filter_observations</span><span class="p">(</span>
+    <span class="p">{</span><span class="s2">"MHD"</span><span class="p">:</span> <span class="n">site</span><span class="p">},</span> <span class="n">selectors</span><span class="p">,</span> <span class="n">filters</span><span class="o">=</span><span class="p">[</span><span class="s2">"daytime9to5"</span><span class="p">],</span>
+<span class="p">)</span>
+<span class="n">with_errors</span> <span class="o">=</span> <span class="n">prepare_observation_errors</span><span class="p">(</span><span class="n">selected</span><span class="p">,</span> <span class="n">averaging_error</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">projected</span> <span class="o">=</span> <span class="n">bc_sensitivity</span><span class="p">(</span><span class="n">with_errors</span><span class="p">,</span> <span class="n">chosen_boundary_basis</span><span class="p">)</span>
+<span class="n">canonical</span> <span class="o">=</span> <span class="n">prepare_rhime_inputs_from_xarray</span><span class="p">(</span>
+    <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">data</span><span class="o">.</span><span class="n">drop_vars</span><span class="p">(</span><span class="s2">"fp_x_flux_sectoral"</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">data</span> <span class="ow">in</span> <span class="n">projected</span><span class="o">.</span><span class="n">items</span><span class="p">()},</span>
+    <span class="n">basis_functions</span><span class="o">=</span><span class="n">chosen_flux_basis</span><span class="p">,</span> <span class="n">averaging_period</span><span class="o">=</span><span class="s2">"1h"</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Selection filters preserve aligned operands and scalar references. Preparation
+owns spatial <code class="docutils literal notranslate"><span class="pre">bc_basis_algorithm=&quot;NESW&quot;</span></code> or explicit <code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code>;
+frequency and anchor belong to the model.
+Old rounded <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> alone cannot recover accurate centered operands.</p>
+<p>These preparation operands are the handoff for centered CO₂ model integration.
+Centered likelihood binding and absolute prediction replay are delivered in the
+following inference change.</p>
+<p>Linked CO₂/O₂ preparation can retain centered operands in memory. Its dedicated
+prepared-input serialization does not yet support those operands; <code class="docutils literal notranslate"><span class="pre">to_datatree</span></code>
+and <code class="docutils literal notranslate"><span class="pre">save</span></code> reject them explicitly. Persistence belongs to the later centered
+output integration. Standalone CO₂ prepared inputs retain the raw
+operands through their existing input-dataset serialization.</p>
 </section>
 </section>
 
@@ -679,6 +741,7 @@ ordinary CO₂ coherent reduction automatically; see <a class="reference interna
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#input-validation">Input validation</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#explicit-source-responses">Explicit source responses</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#retrieval-and-retained-native-flux">Retrieval and retained native flux</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#centered-preparation-handoff">Centered preparation handoff</a></li>
 </ul>
   </nav></div>
 

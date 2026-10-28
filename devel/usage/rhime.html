@@ -910,8 +910,10 @@ plugin interface for alternative RHIME models or likelihood components.</p>
 before ragged sites are gathered and are not copied into canonical inputs.
 Other time-aligned extension variables are retained. Non-time-dependent data
 variables are removed at this boundary rather than copied into every
-observation. The retained operator and prior/reference flux are carried into
-postprocessing; artifact provenance may be added to the returned basis value.</p>
+observation, except the scalar centered <code class="docutils literal notranslate"><span class="pre">bc_reference</span></code> retained with its
+projected boundary operands. The retained operator and prior/reference flux
+are carried into postprocessing; artifact provenance may be added to the
+returned basis value.</p>
 <p>The adapter treats every supplied row as an active observation. Each site
 therefore needs a nonempty, explicit, unique <code class="docutils literal notranslate"><span class="pre">datetime64</span></code> <code class="docutils literal notranslate"><span class="pre">time</span></code> coordinate
 with no <code class="docutils literal notranslate"><span class="pre">NaT</span></code> values. Valid non-monotonic input ordering is retained.
@@ -951,10 +953,16 @@ supplies release coordinates, every retained site must supply its pair.</p>
 labels are intentionally deferred generalizations. They should be added only
 with a concrete consumer and explicit semantics rather than inferred by this
 adapter.</p>
-<p>Include <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> for the existing sampled boundary-condition contribution. A
-deterministic observation-aligned <code class="docutils literal notranslate"><span class="pre">fixed_baseline</span></code> is deliberately rejected
-until a reusable semantic Baseline component defines common likelihood and
-output behavior; this follow-up is tracked in <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/550">issue #550</a>. New prepared-input
+<p>Include <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> for the absolute sampled boundary-condition contribution.
+Alternatively, supply <code class="docutils literal notranslate"><span class="pre">H_bc_anomaly</span></code> and <code class="docutils literal notranslate"><span class="pre">H_bc_mass</span></code> on <code class="docutils literal notranslate"><span class="pre">(bc_region,</span> <span class="pre">time)</span></code>
+in either dimension order, scalar <code class="docutils literal notranslate"><span class="pre">bc_reference</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">boundary_representation=&quot;centered-v1&quot;</span></code>. The anomaly and reference use the
+exact observation unit string; mass uses <code class="docutils literal notranslate"><span class="pre">&quot;1&quot;</span></code>. These centered operands
+remain spatial until model construction selects boundary periods. See the
+<a class="reference internal" href="surface_preparation.html#surface-centered-boundary-contract"><span class="std std-ref">centered boundary contract</span></a> for
+preparation and filtering. A deterministic
+observation-aligned <code class="docutils literal notranslate"><span class="pre">fixed_baseline</span></code> is deliberately rejected until a reusable
+semantic Baseline component defines common likelihood and output behavior; this follow-up is tracked in <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/550">issue #550</a>. New prepared-input
 features do not establish historical artifact compatibility.</p>
 </section>
 <section id="config-files">

@@ -587,7 +587,11 @@ observation variables required by
 also contain either canonical <code class="docutils literal notranslate"><span class="pre">H</span></code> or one of <code class="docutils literal notranslate"><span class="pre">fp_x_flux</span></code> and
 <code class="docutils literal notranslate"><span class="pre">fp_x_flux_sectoral</span></code>. When both cache variables are present, the explicitly
 sector-resolved <code class="docutils literal notranslate"><span class="pre">fp_x_flux_sectoral</span></code> is used. Optional <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> retains the
-existing sampled boundary-condition contribution.</p>
+existing sampled boundary-condition contribution. Centered boundaries instead
+provide <code class="docutils literal notranslate"><span class="pre">H_bc_anomaly</span></code> and <code class="docutils literal notranslate"><span class="pre">H_bc_mass</span></code> on <code class="docutils literal notranslate"><span class="pre">(bc_region,</span> <span class="pre">time)</span></code>, scalar
+<code class="docutils literal notranslate"><span class="pre">bc_reference</span></code>, and <code class="docutils literal notranslate"><span class="pre">boundary_representation=&quot;centered-v1&quot;</span></code>. Anomaly and
+reference use the observation concentration units; mass uses <code class="docutils literal notranslate"><span class="pre">&quot;1&quot;</span></code>. These
+operands remain spatial until the model selects its fitted boundary periods.</p>
 <p>Site data must be supplied as an ordered site-to-Dataset mapping or a root
 DataTree with one direct child node per site, each holding a site-local Dataset
 and no nested children. Direct Dataset, dense
@@ -603,7 +607,7 @@ order. The adapter rejects broadcasting one total prior flux across multiple
 sectors because that would corrupt flux reconstruction.</p>
 <p>The adapter is pure: it never mutates the supplied xarray objects or retained
 basis functions. Known footprint-times-flux caches and non-time-dependent data
-variables are excluded from the returned canonical inputs; other
+variables except the centered scalar reference are excluded from the returned canonical inputs; other
 observation-aligned extension variables are retained. The reserved
 <code class="docutils literal notranslate"><span class="pre">fixed_baseline</span></code> extension is rejected until a reusable semantic Baseline
 component defines its likelihood and output behavior.</p>

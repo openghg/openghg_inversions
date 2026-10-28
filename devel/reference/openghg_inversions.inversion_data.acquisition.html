@@ -755,6 +755,10 @@ numerical arrays remain borrowed, including any backing open files.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_input</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">flux_non_finite_check</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'lazy'</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">surface_transport</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">boundary_representation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'ordinary'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">reference</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">reference_units</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">mass_tolerance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.acquisition.MergedData.from_options" title="Link to this definition">#</a></dt>
@@ -768,7 +772,9 @@ the footprint <code class="docutils literal notranslate"><span class="pre">domai
 <code class="docutils literal notranslate"><span class="pre">surface_transport</span></code> explicitly selects independent per-source surface
 CO2/O2 convolution, bypassing ModelScenario. Ordinary boundaries use
 OpenGHG baseline sensitivities with climatology disabled.
-Resolved transport requires time-resolved selectors and complete flux history
+<code class="docutils literal notranslate"><span class="pre">boundary_representation=&quot;centered&quot;</span></code> requires explicit <code class="docutils literal notranslate"><span class="pre">mass_tolerance</span></code>,
+<code class="docutils literal notranslate"><span class="pre">reference</span></code> and <code class="docutils literal notranslate"><span class="pre">reference_units</span></code>. Reference values alone do not select centering. Resolved
+transport requires time-resolved selectors and complete flux history
 and residual months. Mixed native source axes are rejected until native
 reporting can represent them; supplied-input preparation supports them.</p>
 <dl class="field-list simple">
@@ -805,14 +811,18 @@ reporting can represent them; supplied-input preparation supports them.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_input</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">flux_non_finite_check</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'lazy'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">boundary_representation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'ordinary'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">reference</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">reference_units</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">mass_tolerance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.acquisition.acquire_surface_data" title="Link to this definition">#</a></dt>
 <dd><p>Acquire surface inputs using retained native releases to plan flux support.</p>
 <p>Shared selectors follow <a class="reference internal" href="#openghg_inversions.inversion_data.acquisition.MergedData.from_options" title="openghg_inversions.inversion_data.acquisition.MergedData.from_options"><code class="xref py py-meth docutils literal notranslate"><span class="pre">MergedData.from_options()</span></code></a>. <code class="docutils literal notranslate"><span class="pre">transport</span></code> must
 specify exactly one integrated or time-resolved mode per flux source, for
-continuous surface CO2/O2 mole fractions. Ordinary boundary sensitivities use
-the provider baseline operation with climatology disabled.</p>
+continuous surface CO2/O2 mole fractions. Boundaries are ordinary by default;
+explicit centered boundaries require reference, reference units and mass tolerance.</p>
 <p>Retrieve observation/footprint pairs first, then the union of backward
 histories and complete residual months. Missing sites are dropped together
 with their selectors. The returned <a class="reference internal" href="#openghg_inversions.inversion_data.acquisition.MergedData" title="openghg_inversions.inversion_data.acquisition.MergedData"><code class="xref py py-class docutils literal notranslate"><span class="pre">MergedData</span></code></a> retains full retrieved

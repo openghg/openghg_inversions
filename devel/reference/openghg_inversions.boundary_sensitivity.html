@@ -623,6 +623,36 @@ values are selected and reordered to these exact labels.</p></li>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.boundary_sensitivity.validate_boundary_operands">
+<span class="sig-name descname"><span class="pre">validate_boundary_operands</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">operands</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.boundary_sensitivity.validate_boundary_operands" title="Link to this definition">#</a></dt>
+<dd><p>Validate raw spatial centered operands before model-period expansion.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>operands</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Borrowed dataset with <code class="docutils literal notranslate"><span class="pre">boundary_representation='centered-v1'</span></code>,
+<code class="docutils literal notranslate"><span class="pre">H_bc_anomaly</span></code> and <code class="docutils literal notranslate"><span class="pre">H_bc_mass</span></code> on unique indexed <code class="docutils literal notranslate"><span class="pre">bc_region</span></code>
+and <code class="docutils literal notranslate"><span class="pre">time</span></code> or <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> dimensions, and scalar <code class="docutils literal notranslate"><span class="pre">bc_reference</span></code>.
+Anomaly and reference share the exact concentration unit string;
+mass has units <code class="docutils literal notranslate"><span class="pre">'1'</span></code>. Optional <code class="docutils literal notranslate"><span class="pre">mf</span></code> has matching units. An
+absolute <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> diagnostic must be marked <code class="docutils literal notranslate"><span class="pre">unexpanded</span></code>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Whether centered operands are present. Accepted operands remain raw
+for period expansion at model binding.
+Timestamps are not required for a single period. Finite payload values
+are checked at the shared materialization boundary; this validator does
+not compute or mutate borrowed numerical arrays.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If centered operands are incomplete, already expanded, or
+    have incompatible representation, dimensions, labels or units.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)">bool</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.boundary_sensitivity.scale_satellite_boundary_sensitivity_to_column_signal">
 <span class="sig-name descname"><span class="pre">scale_satellite_boundary_sensitivity_to_column_signal</span></span><span class="sig-paren">(</span>
 
@@ -715,6 +745,7 @@ transform provenance.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.boundary_sensitivity.BoundaryAlignment.prepare"><code class="docutils literal notranslate"><span class="pre">BoundaryAlignment.prepare()</span></code></a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.boundary_sensitivity.validate_boundary_operands"><code class="docutils literal notranslate"><span class="pre">validate_boundary_operands()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.boundary_sensitivity.scale_satellite_boundary_sensitivity_to_column_signal"><code class="docutils literal notranslate"><span class="pre">scale_satellite_boundary_sensitivity_to_column_signal()</span></code></a></li>
 </ul>
   </nav></div>
