@@ -27,6 +27,8 @@ def _footprint_schema_options(
     dataset: xr.Dataset, *, mode: str, particle_locations: bool
 ) -> dict[str, object]:
     resolved = mode == "time_resolved"
+    # PARIS selects the provider's fp_time_resolved/fp_residual structural
+    # schema, independently of which producer supplied the footprint.
     return {
         "particle_locations": particle_locations,
         "time_resolved": resolved,

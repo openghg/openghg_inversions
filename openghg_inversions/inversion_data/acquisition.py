@@ -17,8 +17,9 @@ from typing import Any
 import pandas as pd
 import xarray as xr
 from openghg.dataobjects import BoundaryConditionsData, FluxData, FootprintData, ObsData
-from openghg.retrieve import get_bc
+from openghg.retrieve import get_bc, search_bc
 from openghg.types import SearchError
+from openghg.util import relative_time_offset
 
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data import _site_options
@@ -427,13 +428,25 @@ def _get_boundary_data(
     *, use_bc: bool, species: str, domain: str, bc_input: str | None,
     start_date: str, end_date: str, store: str,
 ) -> tuple[BoundaryConditionsData | None, InputProvenance | None]:
-    """Retrieve optional curtains and capture the selected latest identity immediately."""
+    """Retrieve optional curtains, retaining the interval governing the requested start."""
     if not use_bc:
         return None, None
     try:
-        boundary = get_bc(
+        catalog = search_bc(
             species=species, domain=domain, bc_input=bc_input,
             start_date=start_date, end_date=end_date, store=store,
+        )
+        query_start = pd.Timestamp(start_date)
+        # Label slicing otherwise drops the governing interval, including off-anchor labels.
+        for period in catalog.results.get("time_period", pd.Series(dtype=object)).dropna().unique():
+            query_start = min(query_start, pd.Timestamp(start_date) - relative_time_offset(period=period))
+        selected_uuids = catalog.results.get("uuid", pd.Series(dtype=object)).dropna().tolist()
+        selection_kwargs: dict[str, Any] = {"uuid": selected_uuids} if selected_uuids else {}
+        boundary = get_bc(
+            species=species, domain=domain, bc_input=bc_input,
+            start_date=query_start, end_date=end_date, store=store,
+            # Widen label support without selecting an older, distinct product.
+            **selection_kwargs,
         )
     except SearchError as exc:
         raise SearchError("Could not find matching boundary conditions.") from exc

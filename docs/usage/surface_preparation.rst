@@ -159,6 +159,9 @@ prior-flux reporting sorts source labels and converts to the first sorted
 source's flux units. Default acquisition retains source insertion order.
 Older-inventory relabelling and climatological year reuse are disabled.
 
+When a boundary period is declared, both acquisition routes include the interval
+governing a mid-period start and preserve its native timestamp.
+
 Selected identities are captured at retrieval in owned wrapper metadata while
 borrowing the datasets. Preparation combines those facts with transport metadata
 and serializes provenance once. Combined observation versions remain unknown
