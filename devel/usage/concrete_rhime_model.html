@@ -570,7 +570,7 @@ mismatch instead; this is a resolved model option and does not use the custom
 <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> extension point. Additive sigma does not select the
 model-owned <code class="docutils literal notranslate"><span class="pre">min_error</span></code> floor unless <code class="docutils literal notranslate"><span class="pre">use_minimum_error_floor=True</span></code> is also
 set. Named minimum-error estimates use observations retained after unusable rows
-are dropped. Aggregation error is disabled by default. Let
+are dropped. Let
 <span class="math notranslate nohighlight">\(P\)</span> be the pollution event and let <code class="docutils literal notranslate"><span class="pre">sigma</span></code> be the observation-aligned
 fractional model-error parameter. With the default
 <code class="docutils literal notranslate"><span class="pre">pollution_events_from_obs=False</span></code>,</p>
@@ -592,25 +592,6 @@ construction uses the full baseline above.</p>
 likelihood scale uses the reported observation error and does not select
 <code class="docutils literal notranslate"><span class="pre">min_error</span></code>.
 Historical fixed-error floors and disconnected sigma variables are not restored.</p>
-<p>Aggregation covariance is an explicit advanced opt-in. If a caller selects a
-prepared covariance <span class="math notranslate nohighlight">\(C_{agg}\)</span> with marginal variance
-<span class="math notranslate nohighlight">\(v_{agg}=\operatorname{diag}(C_{agg})\)</span>, the marginal floor and observed
-distribution become</p>
-<div class="math notranslate nohighlight">
-\[\begin{split}v_{raw} &amp;= \mathrm{error}^2 + (P\sigma)^{\mathrm{power}}, \\
-v_{ind} &amp;= v_{raw} + \max\left(
-  \mathrm{min\_error}^2-v_{raw}-v_{agg}, 0
-\right), \\
-\epsilon &amp;= \sqrt{v_{ind}+v_{agg}}, \\
-y &amp;\sim \mathcal{N}\left(
-  \mu_{\mathrm{obs}}, \operatorname{diag}(v_{ind})+C_{agg}
-\right).\end{split}\]</div>
-<p>Selecting aggregation error says only that this fixed covariance should enter
-the likelihood. It does not perform, imply, or verify a coherent prior and
-forward-model transformation. Covariance obtained by marginalising native
-states must therefore be supplied together with the matching transformed
-prior and forward operator. Merely finding an aggregation-error array in
-prepared inputs does not opt a run into this model.</p>
 <p>The default priors are:</p>
 <div class="pst-scrollable-table-container"><table class="table">
 <colgroup>
@@ -719,7 +700,6 @@ choices:</p>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models.pollution_event</span><span class="w"> </span><span class="kn">import</span> <span class="n">add_pollution_event_likelihood</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.boundary_sensitivity</span><span class="w"> </span><span class="kn">import</span> <span class="n">BoundaryAlignment</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.model_error</span><span class="w"> </span><span class="kn">import</span> <span class="n">MinimumError</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.observation_error</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve_aggregation_error</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.sigma</span><span class="w"> </span><span class="kn">import</span> <span class="n">SigmaAlignment</span>
 
 <span class="n">x_prior</span> <span class="o">=</span> <span class="p">{</span>
@@ -774,7 +754,6 @@ choices:</p>
         <span class="n">observations</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"mf"</span><span class="p">],</span>
         <span class="n">observation_error</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"mf_error"</span><span class="p">],</span>
         <span class="n">minimum_error</span><span class="o">=</span><span class="n">minimum_error</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
-        <span class="n">aggregation_error</span><span class="o">=</span><span class="n">resolve_aggregation_error</span><span class="p">(</span><span class="n">inv_inputs</span><span class="p">,</span> <span class="s2">"none"</span><span class="p">),</span>
         <span class="n">mean</span><span class="o">=</span><span class="n">modelled_mean</span><span class="p">,</span>
         <span class="n">pollution_mean</span><span class="o">=</span><span class="n">pollution_mean</span><span class="p">,</span>
         <span class="n">pollution_event_baseline</span><span class="o">=</span><span class="n">baseline_mean</span><span class="p">,</span>
@@ -871,8 +850,8 @@ forward terms before the shared built-in dispatcher is invoked. The runner
 stores one typed settings value on <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code>; the dispatcher calls the
 ordinary built-in equation with only that likelihood’s inputs. A custom caller
 instead supplies a mean-only callable. Every likelihood receives the completed
-concentration, prepared observations and reported observation error, a
-validated <code class="docutils literal notranslate"><span class="pre">AggregationError</span></code>, and output dimension. Built-in pollution-event
+concentration, prepared observations and reported observation error, and
+output dimension. Built-in pollution-event
 scaling additionally receives the named pollution and baseline terms.
 <code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code> is reserved for custom callables.
 The builder adds and returns the canonical observed variable <code class="docutils literal notranslate"><span class="pre">y</span></code> and also
@@ -893,8 +872,7 @@ ordinary runner:</p>
 <span class="p">)</span>
 </pre></div>
 </div>
-<p>This example supports independent fixed aggregation-error representations. A
-custom likelihood with additional options declares them in its own signature,
+<p>A custom likelihood with additional options declares them in its own signature,
 and the runner supplies only those values through <code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code>.</p>
 <p>Pass <code class="docutils literal notranslate"><span class="pre">add_offset=True</span></code> and <code class="docutils literal notranslate"><span class="pre">offset_args={&quot;per_site&quot;:</span> <span class="pre">False}</span></code> as Python or
 configuration options to combine it with one global scalar offset. The
@@ -917,13 +895,17 @@ per site:</p>
 <div class="math notranslate nohighlight">
 \[R = A + D_{obs}
     + \operatorname{diag}\left(\sigma_{site}[\operatorname{site}(i)]^2\right).\]</div>
-<p>Here <code class="docutils literal notranslate"><span class="pre">A</span></code> is the selected aggregation-error covariance and <code class="docutils literal notranslate"><span class="pre">D_obs</span></code> is the
-diagonal covariance from reported observation errors. Each is included once.
+<p>Here <code class="docutils literal notranslate"><span class="pre">A</span></code> is a fixed coherent-reduction covariance when the component is
+composed with CO2 inputs, and <code class="docutils literal notranslate"><span class="pre">D_obs</span></code> is the diagonal covariance from reported
+observation errors. Each is included once. The ordinary standard/multisector
+example below omits <code class="docutils literal notranslate"><span class="pre">aggregation_error</span></code>, giving <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">=</span> <span class="pre">0</span></code>.
 This likelihood does not apply <code class="docutils literal notranslate"><span class="pre">min_error</span></code> or <code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch</span></code> and
 does not add temporal correlation. In particular, it is an IID component, not
 the fixed-OU model.</p>
-<p>Select it through the existing Python-only likelihood seam. For inferred site
-amplitudes, pass an explicit positive prior:</p>
+<p>For standard or multisector execution, pass the component directly as the
+likelihood builder. Omitting <code class="docutils literal notranslate"><span class="pre">aggregation_error</span></code> or passing <code class="docutils literal notranslate"><span class="pre">None</span></code> adds no
+fixed aggregation covariance. For inferred site amplitudes, pass an explicit
+positive prior:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">add_site_sigma_gaussian_likelihood</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_standard</span>
 
@@ -940,9 +922,9 @@ amplitudes, pass an explicit positive prior:</p>
 <p>The <code class="docutils literal notranslate"><span class="pre">0.75</span></code> value above is an explicit scale in ppm because all prior
 parameters and fixed amplitudes are interpreted in the observations’
 concentration units; OpenGHG Inversions does not choose a universal default
-scale. To use known values instead, replace <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code> with
-<code class="docutils literal notranslate"><span class="pre">fixed_site_amplitudes</span></code>, a mapping covering every observed site label. Pass
-exactly one of these two options.</p>
+scale. To use known values instead, pass <code class="docutils literal notranslate"><span class="pre">fixed_site_amplitudes</span></code> instead of
+<code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code> in <code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code> as a mapping covering every
+observed site label. Pass exactly one of these two options.</p>
 <p>The graph names the labelled site vector <code class="docutils literal notranslate"><span class="pre">sigma_site</span></code> on
 <code class="docutils literal notranslate"><span class="pre">sigma_site_dim</span></code>, with <code class="docutils literal notranslate"><span class="pre">sigma_site_index</span></code> retaining the observation-to-site
 mapping. Fixed amplitudes are stored as model data and inferred amplitudes as

@@ -757,7 +757,7 @@ of tau values is accepted only with matching, ordered <code class="docutils lite
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">observations</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">observation_error</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">mean</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">tau_hours</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">fixed_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -768,9 +768,10 @@ of tau values is accepted only with matching, ordered <code class="docutils lite
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood" title="Link to this definition">#</a></dt>
 <dd><p>Add fixed-tau, within-site OU mismatch to a Gaussian observation model.</p>
-<p>The residual covariance is fixed aggregation error plus reported observation
-variance plus one labelled OU block per site. Inferred amplitudes require
-an explicit prior in the observations’ concentration units. A positive OU
+<p>Omitting <code class="docutils literal notranslate"><span class="pre">aggregation_error</span></code> or passing <code class="docutils literal notranslate"><span class="pre">None</span></code> adds no fixed aggregation
+covariance. The residual covariance is fixed aggregation error plus reported
+observation variance plus one labelled OU block per site. Inferred amplitudes
+require an explicit prior in the observations’ concentration units. A positive OU
 term may make a singular fixed base valid. Fixed amplitudes must produce
 strictly positive generalized base-plus-OU mode variances before the
 low-rank update. <code class="docutils literal notranslate"><span class="pre">sigma_alignment</span></code> may explicitly map a labelled joint

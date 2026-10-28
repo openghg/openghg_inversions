@@ -594,7 +594,7 @@ covariance representation and PyMC likelihood mechanics remain owned by
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">observations</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">observation_error</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">mean</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">fixed_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -618,9 +618,10 @@ dimension is <code class="docutils literal notranslate"><span class="pre">output
 <li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – One-dimensional, non-negative reported
 observation-error standard deviations in the same units and
 observation order as <code class="docutils literal notranslate"><span class="pre">observations</span></code>.</p></li>
-<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a>) – Validated fixed aggregation-error representation
+<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a><em> | </em><em>None</em>) – Validated fixed aggregation-error representation
 for the same observation order. Its diagonal, dense, or low-rank
-covariance is included exactly once.</p></li>
+covariance is included exactly once. Omit or pass <code class="docutils literal notranslate"><span class="pre">None</span></code> for
+no fixed aggregation covariance.</p></li>
 <li><p><strong>mean</strong> (<em>TensorVariable</em>) – Completed one-dimensional forward-model concentration tensor
 aligned with <code class="docutils literal notranslate"><span class="pre">output_dim</span></code> and <code class="docutils literal notranslate"><span class="pre">observations</span></code>.</p></li>
 <li><p><strong>fixed_site_amplitudes</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Fixed amplitudes keyed by site label, in the same

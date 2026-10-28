@@ -590,7 +590,7 @@ part of this model.</p>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">observations</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">observation_error</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">mean</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'nmeasure'</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">observation_error_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'error'</span></span></em>,</dd>
@@ -603,7 +603,8 @@ part of this model.</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Observed mole fractions.</p></li>
 <li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Reported observation-error standard deviations.</p></li>
-<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a>) – Validated fixed aggregation-error representation.</p></li>
+<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a><em> | </em><em>None</em>) – Validated fixed aggregation-error representation. Omit
+or pass <code class="docutils literal notranslate"><span class="pre">None</span></code> for no fixed aggregation covariance.</p></li>
 <li><p><strong>mean</strong> (<em>TensorVariable</em>) – Completed forward-model concentration aligned with
 <code class="docutils literal notranslate"><span class="pre">output_dim</span></code>.</p></li>
 <li><p><strong>output_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Observation dimension used for named PyMC variables.</p></li>

@@ -523,8 +523,7 @@ shared observation dimension:</p>
 scaling prior; pass <code class="docutils literal notranslate"><span class="pre">inner_x_prior</span></code> to choose it independently. Any enabled
 outer boundary-condition or offset contribution is added to this pollution sum
 when constructing the mean passed to the shared likelihood, which applies the
-configured observation error, aggregation error, and model-data mismatch
-treatment.</p>
+configured observation error and model-data mismatch treatment.</p>
 <p>Both state vectors are sampled jointly. Separating their posterior influence
 therefore depends on the outer and inner footprints producing sufficiently
 distinct observation-space sensitivities.</p>
