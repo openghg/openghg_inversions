@@ -164,11 +164,13 @@ def _drop_nan_and_compute(
         ds: Assembled observation-aligned inversion inputs.
         drop_nan_from: Variables whose NaNs remove an ``nmeasure`` row.
             Missing names are ignored. Present names are also materialized.
+            ``H_bc_anomaly`` and ``H_bc_mass`` are included when present.
+            Centered inputs remove rows with NaNs or infinities in this subset.
 
     Returns:
         A new dataset with core payloads materialized and invalid rows removed,
-        preserving retained labels/order. Centered inputs reject all nonfinite
-        core rows and require a finite scalar reference shared across sites.
+        preserving retained labels/order. Centered references are checked
+        separately for finite values and equality across sites.
     """
     drop_subset = [v for v in (*drop_nan_from, "H_bc_anomaly", "H_bc_mass") if v in ds]
     # Materialize before dropna: its row mask otherwise executes shared sources

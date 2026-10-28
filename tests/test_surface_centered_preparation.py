@@ -13,6 +13,23 @@ import xarray as xr
 from openghg_inversions.inversion_data import MergedData, SiteOptions, prepare_surface_site
 from openghg_inversions.inversion_data import acquisition, surface
 from tests.test_surface_acquisition import boundary_inputs, inputs as inputs, resolved_inputs
+from tests.test_boundary_getter_policy import boundary_provider as boundary_provider, acquire_monthly_boundary as acquire_monthly_boundary
+
+
+@pytest.mark.parametrize("start,end,expected", [
+    ("2020-01-16", "2020-01-17", [401.]),
+    ("2020-02-01", "2020-02-02", [402.]),
+    ("2020-01-31", "2020-02-02", [401., 402.]),
+])
+def test_fresh_centered_acquisition_retains_monthly_boundary(acquire_monthly_boundary, start, end, expected):
+    result = acquire_monthly_boundary(start, end, centered=True)
+    site = result.site_data["MHD"]
+    np.testing.assert_allclose(site.bc_mod.squeeze(), np.repeat(expected, 2))
+    np.testing.assert_allclose(site.bc_reference, 400.)
+    for direction in "nesw":
+        np.testing.assert_allclose(site[f"bc_mass_{direction}"], .25)
+    assert result.provenance.boundary.uuid == "boundary-id"
+    assert result.provenance.boundary.dataversion == "v3"
 
 def test_native_boundaries_forwarded_and_reconstructed_before_rounding(inputs, monkeypatch):
     obs, fp, flux = inputs

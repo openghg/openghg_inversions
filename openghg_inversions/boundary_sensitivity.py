@@ -118,8 +118,8 @@ def validate_boundary_operands(operands: xr.Dataset) -> bool:
             absolute ``H_bc`` diagnostic must be marked ``unexpanded``.
 
     Returns:
-        Whether centered operands are present. Accepted operands remain raw:
-        :func:`align_boundary_operands` expands them once at model binding.
+        Whether centered operands are present. Accepted operands remain raw
+        for period expansion at model binding.
         Timestamps are not required for a single period. Finite payload values
         are checked at the shared materialization boundary; this validator does
         not compute or mutate borrowed numerical arrays.
