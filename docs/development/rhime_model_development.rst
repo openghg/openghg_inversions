@@ -137,12 +137,13 @@ outputs, such as aligned observation channels or a coherent reduction. A
 shorter signature, speculative flexibility, or provenance alone does not
 justify a new domain object.
 
-The :doc:`affine components prototype <affine_components>` compares the
-centered boundary and coherent flux components through their values at a state
-reference and their responses to state deviations. The comparison distinguishes
-these state references from the observation shift used for boundary centering;
-ordinary absolute boundaries retain their direct calculation. It is a design
-experiment alongside these principles, rather than a general component interface.
+The :doc:`affine components prototype <affine_components>` describes the
+centered boundary and coherent flux as affine generalizations of the linear
+boundary and basis options. Each component returns an ``AffineTerm`` with its
+absolute output, likelihood contribution and optional observation shift, and
+recipes compose likelihoods from those terms with ``likelihood_representation``.
+It is a design experiment alongside these principles, rather than a general
+component interface.
 
 For a concrete likelihood, show the completed mean and how measurement error,
 fixed aggregation error, and inferred mismatch enter its probability model.

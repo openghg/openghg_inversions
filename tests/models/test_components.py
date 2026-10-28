@@ -4,7 +4,9 @@ import pymc as pm
 import pytest
 import xarray as xr
 
-from openghg_inversions.models import add_coherent_affine_component
+import pytensor.tensor as pt
+
+from openghg_inversions.models import AffineTerm, add_coherent_affine_component, likelihood_representation
 from openghg_inversions.models.components import (
     LinearComponentResult,
     add_linked_linear_component,
@@ -192,6 +194,32 @@ def test_add_coherent_affine_component_registers_fixed_data_and_output() -> None
     assert "fixed_prior_contribution" in model.named_vars
     np.testing.assert_allclose(output.eval(), [11.5, 18.0])
 
+
+
+def test_likelihood_representation_keeps_absolute_mean_without_shifts() -> None:
+    observations = xr.DataArray([400.0, 401.0], dims="nmeasure")
+    flux = pt.as_tensor_variable(np.array([1.0, 2.0]))
+    modelled = flux + 399.0
+    mean, translated, shift = likelihood_representation([AffineTerm.absolute(flux)], observations, modelled)
+    assert mean is modelled
+    assert translated is observations
+    assert shift is None
+
+
+def test_likelihood_representation_sums_centered_contributions_against_shifted_observations() -> None:
+    observations = xr.DataArray([209_301.0, 209_402.0], dims="nmeasure")
+    flux = pt.as_tensor_variable(np.array([1.0, 2.0]))
+    centered = pt.as_tensor_variable(np.array([1e-9, -2e-9]))
+    shift = xr.DataArray([209_300.0, 209_400.0], dims="nmeasure")
+    terms = [AffineTerm.absolute(flux), AffineTerm(centered + shift.values, centered, shift)]
+    modelled = flux + centered + shift.values
+
+    mean, translated, total = likelihood_representation(terms, observations, modelled)
+
+    # The small centered signal survives because the shift is never subtracted from the mean.
+    np.testing.assert_array_equal(mean.eval(), [1.0 + 1e-9, 2.0 - 2e-9])
+    xr.testing.assert_identical(translated, observations - shift)
+    xr.testing.assert_identical(total, shift)
 
 def test_resolve_model_variable_prefers_latent() -> None:
     """Check shared model-variable resolution prefers the reparameterised latent."""

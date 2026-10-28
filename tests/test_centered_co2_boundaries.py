@@ -561,9 +561,13 @@ def test_linked_composes_replaced_boundary_scientific_fields(monkeypatch):
         # Graph names describe local implementation; the returned fields own meaning.
         name = f"alternative_{len(replacements)}"
         absolute = pm.Deterministic(f"{name}_absolute", result.component.output)
-        centered = pm.Deterministic(f"{name}_centered", result.likelihood_contribution)
+        centered = pm.Deterministic(f"{name}_centered", result.term.likelihood_contribution)
         replacements.append(absolute)
-        return replace(result, component=replace(result.component, output=absolute), likelihood_contribution=centered)
+        return replace(
+            result,
+            component=replace(result.component, output=absolute),
+            term=replace(result.term, output=absolute, likelihood_contribution=centered),
+        )
 
     monkeypatch.setattr(co2_o2_model, "add_centered_boundary", replacement)
     alternative = build_rhime_co2_o2(**options).model

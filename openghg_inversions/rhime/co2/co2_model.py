@@ -21,11 +21,13 @@ from openghg_inversions.models.additive_sigma import (
     add_additive_sigma_likelihood,
 )
 from openghg_inversions.models.components import (
+    AffineTerm,
     add_coherent_affine_component,
     add_correlated_lognormal_state_with_activity,
     add_linear_component,
     add_offset_component,
     apply_linear_sensitivity,
+    likelihood_representation,
 )
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
@@ -251,19 +253,11 @@ def build_co2_model(
             scaled_flux_contribution,
             output_name="co2_flux_contribution",
         )
-        boundary_contribution = None
-        centered_boundary = None
-        reference_shift = None
+        terms = [AffineTerm.absolute(co2_flux_contribution)]
         if boundary_operands is not None:
-            centered_result = add_centered_boundary(
-                boundary_operands, prior=bc_prior, activity=bc_state_activity,
-            )
-            boundary_contribution = centered_result.component.output
-            centered_boundary = centered_result.likelihood_contribution
-            reference_shift = centered_result.reference_shift
-            add_model_data(reference_shift.rename("boundary_reference_shift"), "boundary_reference_shift")
+            terms.append(add_centered_boundary(boundary_operands, prior=bc_prior, activity=bc_state_activity).term)
         if boundary_sensitivity is not None:
-            boundary_contribution = add_linear_component(
+            terms.append(AffineTerm.absolute(add_linear_component(
                 prepare_linear_sensitivity(boundary_sensitivity),
                 data_name="hbc",
                 prior_args=bc_prior,
@@ -272,12 +266,10 @@ def build_co2_model(
                 output_dim="nmeasure",
                 compute_deterministic=True,
                 state_activity=bc_state_activity,
-            coordinate_owner="bc",
-            ).output
-
-        offset = None
+                coordinate_owner="bc",
+            ).output))
         if offset_prior is not None:
-            offset = add_offset_component(
+            terms.append(AffineTerm.absolute(add_offset_component(
                 observations,
                 prior_args=offset_prior,
                 offset_freq=offset_freq,
@@ -285,25 +277,18 @@ def build_co2_model(
                 output_dim="nmeasure",
                 drop_first=offset_drop_first,
                 per_site=offset_per_site,
-            )
+            )))
 
-        mean_expression = co2_flux_contribution
-        if boundary_contribution is not None:
-            mean_expression = mean_expression + boundary_contribution
-        if offset is not None:
-            mean_expression = mean_expression + offset
         modelled_mean = pm.Deterministic(
             "modelled_concentration",
-            mean_expression,
+            sum((term.output for term in terms[1:]), start=terms[0].output),
             dims="nmeasure",
         )
-        likelihood_mean = modelled_mean
-        likelihood_observations = observations
-        if centered_boundary is not None and reference_shift is not None:
-            likelihood_mean = co2_flux_contribution + centered_boundary
-            if offset is not None:
-                likelihood_mean = likelihood_mean + offset
-            likelihood_observations = observations - reference_shift
+        likelihood_mean, likelihood_observations, shift = likelihood_representation(
+            terms, observations, modelled_mean,
+        )
+        if shift is not None:
+            add_model_data(shift.rename("boundary_reference_shift"), "boundary_reference_shift")
         if likelihood_builder is None:
             add_additive_sigma_likelihood(
                 observations=likelihood_observations,
