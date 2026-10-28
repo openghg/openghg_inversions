@@ -84,6 +84,7 @@ def test_mocked_fresh_getters_match_supplied_scientific_preparation(monkeypatch)
     monkeypatch.setattr(acquisition, "get_flux_data", get_flux)
     monkeypatch.setattr(acquisition, "get_obs_data", lambda **kw: SimpleNamespace(data=obs, metadata={}))
     monkeypatch.setattr(acquisition, "get_footprint_data", lambda **kw: SimpleNamespace(data=fp, metadata={}))
+    monkeypatch.setattr(acquisition, "search_bc", lambda **kw: SimpleNamespace(results={}))
     monkeypatch.setattr(acquisition, "get_bc", lambda **kw: SimpleNamespace(data=bc, metadata={}))
     monkeypatch.setattr(acquisition, "merged_scenario_data", lambda *a, **kw: pytest.fail("ModelScenario used"))
     fresh = MergedData.from_options(
