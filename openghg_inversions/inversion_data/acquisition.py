@@ -17,8 +17,9 @@ from typing import Any
 import pandas as pd
 import xarray as xr
 from openghg.dataobjects import BoundaryConditionsData, FluxData, FootprintData, ObsData
-from openghg.retrieve import get_bc
+from openghg.retrieve import get_bc, search_bc
 from openghg.types import SearchError
+from openghg.util import relative_time_offset
 
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data import _site_options
@@ -35,6 +36,7 @@ from openghg_inversions.inversion_data.surface import (
     TransportMode, _attach_surface_provenance, _dataset, _observation_roles,
     _resolve_surface_observations, _surface_site_responses, _validate_platform,
 )
+from openghg_inversions.inversion_data._surface_schema import _validate_surface_forcing, _validate_surface_transport
 from openghg_inversions.inversion_data._surface_support import _time_index, required_flux_support
 
 logger = logging.getLogger(__name__)
@@ -426,13 +428,25 @@ def _get_boundary_data(
     *, use_bc: bool, species: str, domain: str, bc_input: str | None,
     start_date: str, end_date: str, store: str,
 ) -> tuple[BoundaryConditionsData | None, InputProvenance | None]:
-    """Retrieve optional curtains and capture the selected latest identity immediately."""
+    """Retrieve optional curtains, retaining the interval governing the requested start."""
     if not use_bc:
         return None, None
     try:
-        boundary = get_bc(
+        catalog = search_bc(
             species=species, domain=domain, bc_input=bc_input,
             start_date=start_date, end_date=end_date, store=store,
+        )
+        query_start = pd.Timestamp(start_date)
+        # Label slicing otherwise drops the governing interval, including off-anchor labels.
+        for period in catalog.results.get("time_period", pd.Series(dtype=object)).dropna().unique():
+            query_start = min(query_start, pd.Timestamp(start_date) - relative_time_offset(period=period))
+        selected_uuids = catalog.results.get("uuid", pd.Series(dtype=object)).dropna().tolist()
+        selection_kwargs: dict[str, Any] = {"uuid": selected_uuids} if selected_uuids else {}
+        boundary = get_bc(
+            species=species, domain=domain, bc_input=bc_input,
+            start_date=query_start, end_date=end_date, store=store,
+            # Widen label support without selecting an older, distinct product.
+            **selection_kwargs,
         )
     except SearchError as exc:
         raise SearchError("Could not find matching boundary conditions.") from exc
@@ -617,6 +631,12 @@ def acquire_surface_data(
             obs_view, footprint_view = _dataset(observations), _dataset(footprint)
             _time_index(obs_view, "Observations")
             roles = _observation_roles(obs_view, species=species.lower(), observation_variable=None)
+            primary = next(name for name, role in roles.items() if role == "mf")
+            _validate_surface_transport(
+                obs_view, footprint_view, {source: footprint_view for source in transport},
+                species=species.lower(), transport=transport, particle_locations=use_bc,
+                observation_variable=primary,
+            )
             resolved_sites[i] = _resolve_surface_observations(
                 obs_view, footprint_view, roles=roles, output_units=output_units,
             )
@@ -672,6 +692,7 @@ def acquire_surface_data(
 
     flux_views = {source: _dataset(value) for source, value in flux_dict.items()}
     boundary_view = _dataset(bc_data) if bc_data is not None else None
+    _validate_surface_forcing(flux_views, boundary_data=boundary_view)
 
     # Calculate with the already-resolved bins/native releases, then attach identities once.
     merged_sites: dict[str, xr.Dataset] = {}

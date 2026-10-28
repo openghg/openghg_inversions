@@ -81,6 +81,7 @@ def test_retrieval_builds_modern_record_without_legacy_adapters(monkeypatch):
         return SimpleNamespace(data=dataset, metadata={"uuid": uuid, "dataversion": "v2"})
 
     monkeypatch.setattr(get_data, "get_flux_data", lambda **kw: {"inventory": wrap(flux, "flux-id")})
+    monkeypatch.setattr(get_data, "search_bc", lambda **kw: SimpleNamespace(results={}))
     monkeypatch.setattr(get_data, "get_bc", lambda **kw: wrap(boundary, "boundary-id"))
     monkeypatch.setattr(
         get_data, "get_obs_data", lambda **kw: None if kw["site"] == "TAC" else wrap(site, "obs-id")

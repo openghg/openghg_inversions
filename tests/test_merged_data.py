@@ -125,6 +125,7 @@ def test_fresh_acquisition_records_each_input_identity(monkeypatch):
     monkeypatch.setattr(get_data, "get_obs_data", lambda **kw: wrapper("observations"))
     monkeypatch.setattr(get_data, "get_footprint_data", lambda **kw: wrapper("footprints"))
     monkeypatch.setattr(get_data, "get_flux_data", lambda **kw: {"inventory": wrapper("flux")})
+    monkeypatch.setattr(get_data, "search_bc", lambda **kw: SimpleNamespace(results={}))
     monkeypatch.setattr(get_data, "get_bc", lambda **kw: wrapper("boundary"))
     monkeypatch.setattr(get_data, "merged_scenario_data", lambda *args, **kw: scenario)
     acquired = MergedData.from_options(
