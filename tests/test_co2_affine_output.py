@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from dask import compute, delayed
+import dask.array as da
+from dask.callbacks import Callback
 import numpy as np
 import pandas as pd
 import pytest
@@ -17,6 +20,7 @@ from openghg_inversions.basis.operators import BucketBasisOperator, MultiSourceB
 from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.rhime.co2.co2_affine_output import (
     _bind_affine_flux_map,
+    coherent_forward_map,
     import_explicit_affine_flux_map,
     load_and_bind_affine_flux_map,
     prepared_inputs_content_id,
@@ -377,3 +381,105 @@ def test_in_memory_binding_preserves_saved_bucket_compatibility(multisource, mis
         affine_map = replace(artifact.affine_map, prolongation=operator)
     with pytest.raises(ValueError, match=f"bucket {mismatch}.*differ"):
         _bind_affine_flux_map(replace(artifact, affine_map=affine_map), prepared, prepared_inputs_id="fixture")
+
+
+@pytest.mark.parametrize("units,scale", [("1", 1.0), ("percent", 100.0)])
+def test_coherent_forward_map_matches_dense_concentration_and_signed_flux(units, scale):
+    prepared, native_mean = _prepared()
+    artifact = produce_bucket_affine_flux_map(prepared, native_mean, prepared_inputs_id="fixture")
+    bound = _bind_affine_flux_map(artifact, prepared, prepared_inputs_id="fixture")
+    forward = coherent_forward_map(prepared, bound)
+    values = np.asarray([[[0.9, 1.2], [0.3, 2.0]], [[0.4, 1.7], [1.0, 0.8]]])
+    state = xr.DataArray(
+        values * scale, dims=("chain", "draw", "region"),
+        coords={"chain": [7, 9], "draw": [12, 13], "region": prepared.inv_inputs.region},
+        attrs={"units": units},
+    )
+    concentration = forward.apply(state)
+    flux = forward.reconstruct(state)
+
+    # The forward mean uses the physical state, while reconstruction centres it
+    # on the non-unit retained reference [0.4, 1.7] before lifting to native cells.
+    expected_mean = 400.0 + np.einsum("nr,cdr->ncd", [[0.3, 0.7]], values)
+    native = np.asarray([[[[0.8]], [[1.4]]]]) + (values - [0.4, 1.7]).transpose(2, 0, 1)[None, ...]
+    expected_flux = np.asarray([[[[-2.0]], [[3.0]]]]) * native
+    assert concentration.dims == ("nmeasure", "chain", "draw")
+    np.testing.assert_allclose(concentration, expected_mean)
+    np.testing.assert_allclose(flux.transpose("lat", "lon", "chain", "draw"), expected_flux)
+    xr.testing.assert_identical(concentration.nmeasure, prepared.inv_inputs.mf.nmeasure)
+    xr.testing.assert_identical(concentration.chain, state.chain)
+    xr.testing.assert_identical(concentration.draw, state.draw)
+    xr.testing.assert_identical(flux, bound.state_to_flux(state))
+    assert concentration.attrs == {"units": "ppm", "uncertainty_scope": "retained_state_conditional"}
+    assert flux.attrs["units"] == "mol m-2 s-1"
+    assert forward.sensitivity.data is prepared.inv_inputs.H.data
+    assert forward.intercept.data is prepared.inv_inputs.fixed_prior_contribution.data
+
+
+@pytest.mark.parametrize("selection", [[1, 0], [0], [0, 0]])
+def test_coherent_forward_map_rejects_reordered_missing_and_duplicate_state_labels(selection):
+    prepared, native_mean = _prepared()
+    artifact = produce_bucket_affine_flux_map(prepared, native_mean, prepared_inputs_id="fixture")
+    bound = _bind_affine_flux_map(artifact, prepared, prepared_inputs_id="fixture")
+    forward = coherent_forward_map(prepared, bound)
+    state = prepared.inv_inputs.alpha_prior_mean.isel(region=selection)
+    for operation in (forward.apply, forward.reconstruct):
+        with pytest.raises(ValueError, match="labels|unique"):
+            operation(state)
+
+
+def test_coherent_forward_map_rejects_a_reconstruction_with_different_state_labels():
+    prepared, native_mean = _prepared()
+    artifact = produce_bucket_affine_flux_map(prepared, native_mean, prepared_inputs_id="fixture")
+    bound = _bind_affine_flux_map(artifact, prepared, prepared_inputs_id="fixture")
+    with pytest.raises(ValueError, match="join.*exact"):
+        coherent_forward_map(prepared, replace(bound, reference_state=bound.reference_state.isel(region=[1, 0])))
+
+
+def test_coherent_forward_map_keeps_sample_axes_independent_of_observation_rows():
+    prepared, native_mean = _prepared()
+    artifact = produce_bucket_affine_flux_map(prepared, native_mean, prepared_inputs_id="fixture")
+    bound = _bind_affine_flux_map(artifact, prepared, prepared_inputs_id="fixture")
+    state = xr.DataArray(
+        [[0.9, 1.2], [0.3, 2.0]], dims=("nmeasure", "region"),
+        coords={"nmeasure": ["sample-a", "sample-b"], "region": prepared.inv_inputs.region}, attrs={"units": "1"},
+    )
+    result = coherent_forward_map(prepared, bound).apply(state)
+    assert result.dims == ("nmeasure", "state_nmeasure")
+    assert result.state_nmeasure.values.tolist() == ["sample-a", "sample-b"]
+    np.testing.assert_allclose(result, [[401.11, 401.49]])
+
+
+def test_coherent_forward_map_preserves_shared_lazy_execution():
+    prepared, native_mean = _prepared()
+    artifact = produce_bucket_affine_flux_map(prepared, native_mean, prepared_inputs_id="fixture")
+    bound = _bind_affine_flux_map(artifact, prepared, prepared_inputs_id="fixture")
+    executions = []
+
+    @delayed
+    def shared_scalar():
+        executions.append(True)
+        return np.asarray(1.0)
+
+    scalar = da.from_delayed(shared_scalar(), shape=(), dtype=float)
+    inputs = prepared.inv_inputs.assign({
+        name: (prepared.inv_inputs[name] * scalar).assign_attrs(prepared.inv_inputs[name].attrs).variable
+        for name in ("H", "fixed_prior_contribution")
+    })
+    prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
+    lazy_mean = (native_mean * scalar).assign_attrs(native_mean.attrs)
+    bound = replace(bound, artifact=replace(artifact, affine_map=replace(artifact.affine_map, native_mean=lazy_mean)))
+    state = (prepared.inv_inputs.alpha_prior_mean * scalar).assign_attrs(units="1")
+    tasks = []
+    with Callback(pretask=lambda *args: tasks.append(args)):
+        forward = coherent_forward_map(prepared, bound)
+        concentration, flux = forward.apply(state), forward.reconstruct(state)
+    assert not tasks
+    assert forward.sensitivity.data is inputs.H.data
+    assert forward.intercept.data is inputs.fixed_prior_contribution.data
+    assert isinstance(concentration.data, da.Array)
+    assert isinstance(flux.data, da.Array)
+    concentration, flux = compute(concentration, flux)
+    assert executions == [True]
+    np.testing.assert_allclose(concentration, [401.31])
+    np.testing.assert_allclose(flux, [[-1.6, 4.2]])

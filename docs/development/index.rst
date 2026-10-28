@@ -10,6 +10,7 @@ See :doc:`specifications` for their ownership and delivery status.
    :maxdepth: 2
 
    rhime_model_development
+   affine_apply_reconstruct
    specifications
    architecture_principles
    numerical_array_ownership

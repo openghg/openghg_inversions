@@ -12,8 +12,8 @@ import numpy as np
 import xarray as xr
 from openghg.util import cf_ureg  # pyright: ignore[reportPrivateImportUsage]
 
-from openghg_inversions.array_ops import require_unique_index, same_index
-from openghg_inversions.basis.affine_flux_map import AffineFluxMap
+from openghg_inversions.array_ops import require_unique_index, same_index, sparse_xr_dot
+from openghg_inversions.basis.affine_flux_map import AffineFluxMap, _in_dimensionless_units
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load
 from openghg_inversions.basis.operators import BucketBasisOperator, MultiSourceBucketBasisOperator
 
@@ -80,6 +80,92 @@ class BoundCo2AffineFluxMap:
     def state_to_flux(self, state: xr.DataArray) -> xr.DataArray:
         """Evaluate the retained-state-conditional signed flux mean."""
         return self.affine_map.state_to_flux(state, reference_state=self.reference_state)
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class CoherentForwardMap:
+    """Apply coherent concentration and reconstruct conditional native flux.
+
+    Construct through :func:`coherent_forward_map` to check the shared labelled
+    axes. The record borrows its prepared sensitivity, affine intercept and
+    bound reconstruction. Construction does not materialize payloads;
+    evaluation preserves Dask laziness.
+
+    Attributes:
+        flux_map: Matched retained-state-conditional native flux reconstruction.
+        sensitivity: Prepared effective concentration sensitivity ``H_alpha``.
+        intercept: Prepared concentration ``H m - H_alpha alpha_ref``.
+    """
+
+    flux_map: BoundCo2AffineFluxMap
+    sensitivity: xr.DataArray
+    intercept: xr.DataArray
+
+    def apply(self, state: xr.DataArray) -> xr.DataArray:
+        """Evaluate ``intercept + H @ state`` on the prepared observation axis.
+
+        State labels must match exactly, in order. Compatible dimensionless
+        units, including percent, are converted without forcing Dask execution.
+        Other state dimensions
+        remain sample axes; an axis named ``nmeasure`` is renamed to
+        ``state_nmeasure`` (or a numbered variant) to keep it independent of
+        observations. The result uses the intercept's concentration units and
+        retains the reconstruction's conditional uncertainty scope.
+        """
+        state_dim = self.flux_map.affine_map.state_dim
+        _same_axis(state, state_dim, self.sensitivity, name="state")
+        output_dim = str(self.intercept.dims[0])
+        if output_dim in state.dims:
+            occupied = set(state.dims) | set(state.coords) | set(self.sensitivity.coords)
+            candidate = f"state_{output_dim}"
+            suffix = 2
+            while candidate in occupied:
+                candidate = f"state_{output_dim}_{suffix}"
+                suffix += 1
+            state = state.rename({output_dim: candidate})
+        state = _in_dimensionless_units(state, name="state")
+        return (self.intercept + sparse_xr_dot(self.sensitivity, state, dim=[state_dim])).rename(
+            "co2_flux_contribution"
+        ).assign_attrs(
+            units=self.intercept.attrs["units"],
+            uncertainty_scope=self.flux_map.affine_map.uncertainty_scope,
+        )
+
+    def reconstruct(self, state: xr.DataArray) -> xr.DataArray:
+        """Evaluate the bound retained-state-conditional signed native flux mean."""
+        return self.flux_map.state_to_flux(state)
+
+
+def coherent_forward_map(
+    prepared: Co2PreparedInputs, reconstruction: BoundCo2AffineFluxMap,
+) -> CoherentForwardMap:
+    """Join prepared coherent concentrations to an already bound reconstruction.
+
+    Borrow ``H`` and ``fixed_prior_contribution`` without materializing payloads.
+    The retained-state labels of both maps must agree exactly. The supplied
+    reconstruction retains its existing prepared-artifact binding; this
+    operation does not authenticate artifacts.
+
+    Args:
+        prepared: Coherent preparation owning the observation response and prior.
+        reconstruction: Already bound flux map for this same preparation.
+
+    Returns:
+        Concentration application and conditional flux reconstruction from one
+        retained state. Boundary and offset contributions are composed separately.
+    """
+    inputs = prepared.inv_inputs
+    state_dim = reconstruction.affine_map.state_dim
+    sensitivity = inputs["H"].transpose("nmeasure", state_dim)
+    intercept = inputs["fixed_prior_contribution"].transpose("nmeasure")
+    prolongation = reconstruction.affine_map.prolongation
+    retained = prolongation if isinstance(prolongation, xr.DataArray) else prolongation.basis_matrix
+    # Prepared inputs already own internal validation; join only the two maps here.
+    sensitivity, intercept, _, _ = xr.align(
+        sensitivity, intercept, reconstruction.reference_state, retained[state_dim],
+        join="exact", copy=False,
+    )
+    return CoherentForwardMap(reconstruction, sensitivity, intercept)
 
 
 def _bind_affine_flux_map(
@@ -285,6 +371,8 @@ def import_explicit_affine_flux_map(
 
 
 __all__ = [
+    "CoherentForwardMap",
+    "coherent_forward_map",
     "BoundCo2AffineFluxMap",
     "import_explicit_affine_flux_map",
     "load_and_bind_affine_flux_map",

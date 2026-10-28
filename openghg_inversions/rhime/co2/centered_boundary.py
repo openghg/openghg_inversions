@@ -1,4 +1,4 @@
-"""Concrete centered boundary arithmetic and absolute predictive replay."""
+"""Apply centered boundary means, reconstruct absolute means, and replay draws."""
 
 from __future__ import annotations
 
@@ -84,6 +84,42 @@ def bind_boundary_operands(
     return aligned
 
 
+@dataclass(frozen=True, slots=True, eq=False)
+class CenteredBoundaryMap:
+    """Two concentration representations of the same physical boundary state.
+
+    ``apply(b)`` supplies the centered likelihood contribution
+    ``A b + c M (b - 1)``; ``reconstruct(b)`` adds ``q = c M 1`` to produce
+    the absolute boundary contribution. Reconstruction is a second forward
+    operation on the state, not an inverse of likelihood application.
+
+    These are already registered PyTensor operands. Label alignment, eager
+    materialization, precision and state activity belong to the constructing
+    component. Keep ``A``, ``M`` and ``c`` separate: subtracting ``q`` from
+    a formed absolute contribution can lose small concentration anomalies.
+
+    Attributes:
+        anomaly: Anomaly design ``A`` on observation by boundary-state axes.
+        mass: Dimensionless mass design ``M`` on those same axes.
+        reference: Scalar reference concentration ``c``.
+        reference_shift: Observation-aligned concentration ``q = c M 1``.
+            Mass rows need not sum to one.
+    """
+
+    anomaly: TensorVariable
+    mass: TensorVariable
+    reference: TensorVariable
+    reference_shift: TensorVariable
+
+    def apply(self, state: TensorVariable) -> TensorVariable:
+        """Evaluate the centered contribution for physical BC scaling ``state``."""
+        return pt.dot(self.anomaly, state) + self.reference * pt.dot(self.mass, state - 1)
+
+    def reconstruct(self, state: TensorVariable) -> TensorVariable:
+        """Evaluate the absolute boundary concentration for the same state."""
+        return self.apply(state) + self.reference_shift
+
+
 @dataclass(frozen=True)
 class CenteredBoundaryResult:
     """Boundary graph with an absolute component and centered likelihood term.
@@ -157,10 +193,11 @@ def add_centered_boundary(
     a = add_model_data(component_coords(anomaly, owner, observation_dim=output_dim), f"{prefix}H_bc_anomaly")
     m = add_model_data(component_coords(mass, owner, observation_dim=output_dim), f"{prefix}H_bc_mass")
     c = add_model_data(reference, f"{prefix}bc_reference")
-    centered = pt.dot(a, vector.state) + c * pt.dot(m, vector.state - 1)
     shift = (reference * mass.sum("bc_region")).rename(f"{prefix}bc_reference_shift")
     shift_data = add_model_data(shift, shift.name)
-    absolute = pm.Deterministic(f"{prefix}mu_bc", centered + shift_data, dims=output_dim)
+    forward_map = CenteredBoundaryMap(a, m, c, shift_data)
+    centered = forward_map.apply(vector.state)
+    absolute = pm.Deterministic(f"{prefix}mu_bc", forward_map.reconstruct(vector.state), dims=output_dim)
     return CenteredBoundaryResult(
         LinearComponentResult(a, vector.latent, vector.state, absolute, resolved), centered, shift
     )

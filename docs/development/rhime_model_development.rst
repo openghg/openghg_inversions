@@ -137,6 +137,11 @@ outputs, such as aligned observation channels or a coherent reduction. A
 shorter signature, speculative flexibility, or provenance alone does not
 justify a new domain object.
 
+The :doc:`apply/reconstruct prototype <affine_apply_reconstruct>` demonstrates
+explicit likelihood and physical-output operations for centered boundaries and
+coherent flux reconstruction. It is a design experiment alongside these
+principles, rather than a general component interface.
+
 For a concrete likelihood, show the completed mean and how measurement error,
 fixed aggregation error, and inferred mismatch enter its probability model.
 These quantities have different scientific meanings; the supported covariance
