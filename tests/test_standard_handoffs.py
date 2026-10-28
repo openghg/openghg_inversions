@@ -820,3 +820,18 @@ def test_supplied_preparation_skips_resources_and_acquisition(monkeypatch):
     monkeypatch.setattr(standard, "materialize_standard_inputs", materialize)
     with pytest.raises(RuntimeError, match="materialization reached"):
         standard.run_standard(config=config, prepared=prepared)
+
+
+def test_sample_version_rejects_retired_model_record_before_payload_loading(tmp_path, monkeypatch):
+    preparation, sampled = _saved(tmp_path)
+    record = json.loads(sampled.read_text())
+    assert json.loads(preparation.read_text())["schema_version"] == 2
+    assert record["schema_version"] == 3
+    assert isinstance(stages.load_samples(sampled), InversionOutput)
+    record["schema_version"] = 2
+    record["model"]["aggregation_error_mode"] = "none"
+    sampled.write_text(json.dumps(record))
+    monkeypatch.setattr(stages, "_load_preparation", lambda *a, **k: pytest.fail("loaded obsolete sample payload"))
+
+    with pytest.raises(ValueError, match="version-3 manifest.*Use the software version that wrote it or prepare and sample again"):
+        stages.load_samples(sampled)

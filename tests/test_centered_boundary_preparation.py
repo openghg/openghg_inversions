@@ -140,8 +140,30 @@ def test_core_drops_common_nonfinite_rows():
 
 
 
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_adapter_and_centered_codec_round_trip(tmp_path, suffix):
+    prepared = prepare_rhime_inputs_from_xarray({"AAA": _site()}, basis_functions=_basis_functions())
+    assert prepared.inv_inputs.bc_reference.ndim == 0
+    tree = prepared.to_datatree()
+    assert tree.attrs["schema_version"] == 3
+    assert tree.attrs["representation"] == "centered"
+    restored = PreparedInputs.from_datatree(tree)
+    xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)
+    prepared.save(tmp_path / f"centered{suffix}")
+    restored = PreparedInputs.load(tmp_path / f"centered{suffix}")
+    xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)
+    tree.attrs["schema_version"] = 1
+    with pytest.raises(ValueError, match="version"):
+        PreparedInputs.from_datatree(tree)
 
 
+def test_ordinary_codec_uses_current_representation():
+    prepared = prepare_rhime_inputs_from_xarray(
+        {"AAA": _site_dataset("AAA", ["2020-01-01"], sampled_baseline=True)}, basis_functions=_basis_functions())
+    assert prepared.to_datatree().attrs["schema_version"] == 3
+    assert prepared.to_datatree().attrs["representation"] == "ordinary"
+    restored = PreparedInputs.from_datatree(prepared.to_datatree())
+    xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)
 
 
 def test_gathered_alignment_uses_requested_labels_and_keeps_zero_anomaly_states():
@@ -194,6 +216,17 @@ def test_prepared_boundary_rejects_already_expanded_operands():
 
 
 
+def test_unknown_representation_does_not_load_as_legacy_absolute():
+    from openghg_inversions.boundary_sensitivity import validate_boundary_operands
+
+    legacy = _site_dataset("AAA", ["2020-01-01"], sampled_baseline=True)
+    prepared = prepare_rhime_inputs_from_xarray({"AAA": legacy}, basis_functions=_basis_functions())
+    tree = prepared.to_datatree()
+    tree["inv_inputs"].attrs["boundary_representation"] = "centered-v2"
+    with pytest.raises(ValueError, match="Unsupported boundary_representation"):
+        PreparedInputs.from_datatree(tree)
+    with pytest.raises(ValueError, match="Unsupported boundary_representation"):
+        validate_boundary_operands(xr.Dataset(attrs={"boundary_representation": "centered-v2"}))
 
 
 def test_gather_preserves_site_specific_transport_and_normalization_provenance():
@@ -249,27 +282,73 @@ def test_sparse_centered_operands_select_dense_sensitivity_rows(lazy):
     xr.testing.assert_identical(ds, original)
 
 
-def test_linked_centered_preparation_rejects_serialization_before_losing_operands(tmp_path):
-    from openghg_inversions.rhime.co2 import prepare_co2_o2_inputs
-    from tests.test_rhime_co2_o2_preparation import _inputs
+@pytest.mark.parametrize("mutation", ["missing", "ordinary", "unknown", "partial", "units"])
+def test_centered_current_schema_rejects_malformed_representations(mutation):
+    prepared = prepare_rhime_inputs_from_xarray({"AAA": _site()}, basis_functions=_basis_functions())
+    tree = prepared.to_datatree()
+    if mutation == "missing":
+        del tree.attrs["representation"]
+    elif mutation in ("ordinary", "unknown"):
+        tree.attrs["representation"] = mutation
+    elif mutation == "partial":
+        tree["inv_inputs"] = tree["inv_inputs"].to_dataset().drop_vars("H_bc_mass")
+    else:
+        tree["inv_inputs"]["H_bc_mass"].attrs["units"] = "ppm"
+    with pytest.raises(ValueError):
+        PreparedInputs.from_datatree(tree)
 
-    inputs = _inputs()
-    inputs["o2_units"] = "ppm"
-    native = inputs["co2_observations"]
-    operands = xr.Dataset(
-        {
-            "H_bc_anomaly": (("bc_region", "nmeasure"), [[1., 2.]], {"units": "ppm"}),
-            "H_bc_mass": (("bc_region", "nmeasure"), [[.5, .5]], {"units": "1"}),
-            "bc_reference": xr.DataArray(400., attrs={"units": "ppm"}),
-        },
-        coords={"bc_region": ["north"], "nmeasure": native.indexes[native.dims[0]].to_numpy()},
-        attrs={"boundary_representation": "centered-v1"},
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_known_ordinary_v2_loads_and_rewrites_current(tmp_path, suffix):
+    from openghg_inversions.serialization import save_datatree
+
+    prepared = prepare_rhime_inputs_from_xarray(
+        {"AAA": _site_dataset("AAA", ["2020-01-01"], sampled_baseline=True)},
+        basis_functions=_basis_functions(),
     )
-    prepared = prepare_co2_o2_inputs(**inputs, boundary_operands={"co2": operands})
-    assert "co2" in prepared.boundary_operands
-    with pytest.raises(ValueError, match="Centered.*serialization is not yet available"):
-        prepared.to_datatree()
-    path = tmp_path / "centered.nc"
-    with pytest.raises(ValueError, match="Centered.*serialization is not yet available"):
-        prepared.save(path)
-    assert not path.exists()
+    tree = prepared.to_datatree()
+    tree.attrs["schema_version"] = 2
+    del tree.attrs["representation"]
+    path = tmp_path / f"ordinary-v2{suffix}"
+    save_datatree(tree, path)
+    loaded = PreparedInputs.load(path)
+    xr.testing.assert_identical(loaded.inv_inputs, prepared.inv_inputs)
+    assert loaded.to_datatree().attrs["schema_version"] == 3
+
+
+@pytest.mark.parametrize("mutation", ["centered", "partial", "representation", "baked"])
+def test_v2_rejects_ambiguous_or_baked_artifacts(mutation):
+    if mutation in ("centered", "partial"):
+        prepared = prepare_rhime_inputs_from_xarray({"AAA": _site()}, basis_functions=_basis_functions())
+    else:
+        prepared = prepare_rhime_inputs_from_xarray(
+            {"AAA": _site_dataset("AAA", ["2020-01-01"], sampled_baseline=True)},
+            basis_functions=_basis_functions(),
+        )
+    tree = prepared.to_datatree()
+    tree.attrs["schema_version"] = 2
+    del tree.attrs["representation"]
+    if mutation == "partial":
+        tree["inv_inputs"] = tree["inv_inputs"].to_dataset().drop_vars("H_bc_mass")
+    elif mutation == "representation":
+        tree.attrs["representation"] = "ordinary"
+    elif mutation == "baked":
+        tree["inv_inputs"]["H_bc"].attrs["boundary_sensitivity_preparation"] = "sampled-period-expansion"
+    with pytest.raises(ValueError, match="[Rr]egenerate"):
+        PreparedInputs.from_datatree(tree)
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_centered_absolute_diagnostic_marker_survives_adapter_and_codec(tmp_path, suffix):
+    site = _site()
+    site["H_bc"] = (site.H_bc_anomaly + site.bc_reference * site.H_bc_mass).assign_attrs(
+        units="ppm", boundary_sensitivity_preparation="unexpanded",
+    )
+    original = site.copy(deep=True)
+    prepared = prepare_rhime_inputs_from_xarray({"AAA": site}, basis_functions=_basis_functions())
+    assert prepared.inv_inputs.H_bc.attrs["boundary_sensitivity_preparation"] == "unexpanded"
+    path = tmp_path / f"centered-diagnostic{suffix}"
+    prepared.save(path)
+    restored = PreparedInputs.load(path)
+    xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)
+    xr.testing.assert_identical(site, original)

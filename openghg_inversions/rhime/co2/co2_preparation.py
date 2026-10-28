@@ -42,7 +42,7 @@ from .co2_o2_preparation import Co2O2PreparedInputs
 
 
 CO2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_prepared_inputs"
-CO2_PREPARED_INPUTS_SCHEMA_VERSION = 1
+CO2_PREPARED_INPUTS_SCHEMA_VERSION = 2
 Co2AggregationErrorMode = Literal["dense", "low_rank"]
 _AGGREGATION_PAYLOAD_NAMES = (
     AGGREGATION_ERROR_COVARIANCE,
@@ -387,7 +387,7 @@ class Co2PreparedInputs:
         tree = xr.DataTree.from_dict({"rhime_inputs": serializable.to_datatree()})
         tree.attrs = {
             "schema": CO2_PREPARED_INPUTS_SCHEMA,
-            "schema_version": CO2_PREPARED_INPUTS_SCHEMA_VERSION,
+            "schema_version": CO2_PREPARED_INPUTS_SCHEMA_VERSION if "H_bc_anomaly" in self.inv_inputs else 1,
             "aggregation_error_mode": self.aggregation_error_mode,
             "provenance_json": json.dumps(dict(self.provenance), sort_keys=True, allow_nan=False),
         }
@@ -395,7 +395,7 @@ class Co2PreparedInputs:
 
     @classmethod
     def from_datatree(cls, tree: xr.DataTree) -> Self:
-        """Restore CO2 inputs from the dedicated version-1 schema.
+        """Restore absolute or centered CO2 inputs from the dedicated schema.
 
         Args:
             tree: In-memory tree using the CO2 prepared-input schema.
@@ -414,10 +414,9 @@ class Co2PreparedInputs:
                 f"got {tree.attrs.get('schema')!r}."
             )
         version = tree.attrs.get("schema_version")
-        if isinstance(version, bool) or not isinstance(version, Integral) or version != 1:
+        if isinstance(version, bool) or not isinstance(version, Integral) or version not in (1, 2):
             raise ValueError(
-                f"Expected Co2PreparedInputs schema_version "
-                f"{CO2_PREPARED_INPUTS_SCHEMA_VERSION}, got {version!r}."
+                f"Expected Co2PreparedInputs schema_version 1 or 2, got {version!r}."
             )
         if "rhime_inputs" not in tree.children:
             raise KeyError("Missing required Co2PreparedInputs node 'rhime_inputs'.")
@@ -432,6 +431,8 @@ class Co2PreparedInputs:
             aggregation_error_mode=cast(Co2AggregationErrorMode, mode),
             provenance=provenance,
         )
+        if version == 1 and "H_bc_anomaly" in prepared.inv_inputs:
+            raise ValueError("Centered boundary operands require CO2 prepared schema version 2.")
         resolve_aggregation_error(prepared.inv_inputs, prepared.aggregation_error_mode)
         return prepared
 

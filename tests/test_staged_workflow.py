@@ -326,7 +326,7 @@ def test_diagnostics_accept_digest_free_sample_manifest(tmp_path: Path, model: s
     write_json(
         manifest_path,
         {
-            "schema_version": 1 if model == "co2" else 2,
+            "schema_version": 1 if model == "co2" else 3,
             "producer": "openghg_inversions",
             "stage": "sample",
             "schema": f"openghg_inversions.{model}.sample",
@@ -430,3 +430,18 @@ def test_diagnostics_count_any_nuts_divergence_and_strict_cli(
         assert caught.value.code == 1
     else:
         main(args)
+
+
+@pytest.mark.parametrize("model", ["standard", "multisector"])
+def test_diagnosis_rejects_old_sample_manifest_before_numerical_io(tmp_path, monkeypatch, model):
+    from openghg_inversions.rhime import _stage_checks
+    manifest = tmp_path / "sample-manifest.json"
+    manifest.write_text(json.dumps({
+        "schema": f"openghg_inversions.{model}.sample", "schema_version": 2,
+        "producer": "openghg_inversions", "stage": "sample",
+        "model": {"aggregation_error_mode": "none"}, "posterior": "missing.nc",
+    }))
+    monkeypatch.setattr(_stage_checks, "load_trace", lambda *a, **k: pytest.fail("loaded obsolete numerical payload"))
+    with pytest.raises(ValueError, match="unsupported schema_version.*Use the software version that wrote it or prepare and sample again"):
+        diagnose_rhime_stage(sample_manifest=manifest, output_dir=tmp_path / "diagnose")
+    assert not (tmp_path / "diagnose").exists()
