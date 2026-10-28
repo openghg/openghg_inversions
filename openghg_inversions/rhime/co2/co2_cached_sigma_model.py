@@ -144,6 +144,10 @@ def _centered_cached_projection(
     mass = np.asarray(operands.H_bc_mass.transpose(output_dim, "bc_region").values, dtype=np.float64)
     reference = float(operands.bc_reference.values)
     active = np.asarray(activity.active.values, dtype=bool)
+    # The baseline b0 is one for active states and the actual value for fixed states.
+    # fixed = A b0 + c M (b0 - 1); the active design multiplies physical b_active - 1.
+    # Form the fixed term before pruning: zero absolute sensitivity A + c M can
+    # still have a nonzero anomaly A that contributes at unit boundary scaling.
     baseline = np.where(active, 1.0, activity.fixed_value.values)
     fixed = anomaly @ baseline + reference * (mass @ (baseline - 1.0))
     return (anomaly + reference * mass)[:, active], fixed
@@ -375,7 +379,7 @@ def build_co2_cached_sigma_model(
             coefficients. Requires a selected boundary representation; when omitted for
             a selected boundary component, the default boundary prior is used.
         bc_state_activity: Optional labelled active/fixed policy for boundary
-            scalings. Requires ``boundary_sensitivity``.
+            scalings. Requires a selected boundary representation.
         offset_prior: Optional prior for additive offsets. Its location and
             scale parameters use the observations' concentration units. When
             omitted, no offset is added.

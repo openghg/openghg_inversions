@@ -376,8 +376,17 @@ HalfStudentT, Gamma, Exponential, Uniform with a non-negative lower bound, or
 LogNormal.
 
 Optional model components belong in their own tables. ``[model.boundary]``
-accepts boolean ``enabled`` (default true) and ``prior``; a disabled boundary
-cannot specify a prior. ``[model.offset]`` requires ``prior`` and optionally
+accepts boolean ``enabled`` (default true), ``prior``, ``frequency``, and
+``anchor_time``. A disabled boundary cannot specify a prior or period choices.
+For raw reusable inputs, omitting ``frequency`` selects one period;
+``"monthly"`` selects calendar months, and a positive fixed duration such as
+``"2D"`` selects fixed-duration periods. ``anchor_time`` is accepted only with
+a fixed duration, never with monthly or omitted frequency. Linked CO2/O2
+channels share one frequency and anchor choice. See the
+:ref:`raw versus expanded boundary rules <surface-centered-boundary-contract>`
+for preparation reuse and period overrides.
+
+``[model.offset]`` requires ``prior`` and optionally
 accepts ``frequency``, ``per_site`` (default true), and ``drop_first`` (default
 false). A global offset (``per_site = false``) cannot set a frequency or use
 ``drop_first = true``.

@@ -58,6 +58,12 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     construction. The runner constructs its sigma-then-state CompoundStep,
     refreshing the accepted amplitude cache before each affine-state update.
 
+    Selected centered boundary operands currently require PyTensor
+    ``floatX=float64``. This is a restriction of the current implementation.
+    Observations, predictions, and boundary contributions are restored to
+    absolute concentrations; see the
+    :ref:`centered boundary contract <surface-centered-boundary-contract>`.
+
     Args:
         prepared_inputs: Linked handoff containing joint labelled observations,
             native-channel sensitivities, affine contribution, retained prior,
@@ -115,7 +121,8 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         ValueError: If independent errors are missing, invalid, mislabelled,
             or conflict with saved errors; channel units or grouping
             coordinates are invalid; selected boundary/offset settings are
-            inconsistent; OU scales or amplitudes are invalid; or the sampler
+            inconsistent; selected centered boundaries use a floatX other
+            than float64; OU scales or amplitudes are invalid; or the sampler
             requests an unsupported backend, step, tuning control, or
             predictive keyword. Label, prior, covariance, and activity errors
             from model construction also propagate.
