@@ -1,4 +1,4 @@
-"""Independent numerical oracles for centered boundary application and reconstruction."""
+"""Independent numerical oracles for centered and absolute boundary concentrations."""
 
 from collections.abc import Iterator
 from decimal import Decimal, localcontext
@@ -29,10 +29,10 @@ def test_boundary_map_preserves_multiplicative_model_and_state_derivatives() -> 
         pt.constant(reference),
         pt.constant(shift),
     )
-    centered = boundary.apply(state)
+    centered = boundary.centered_concentration(state)
     evaluate = pytensor.function(
         [state],
-        [centered, boundary.reconstruct(state), pt.jacobian(centered, state)],
+        [centered, boundary.concentration(state), pt.jacobian(centered, state)],
     )
 
     # Physical coefficients can include fixed values different from one.
@@ -59,7 +59,7 @@ def test_boundary_map_keeps_small_centered_signal_at_large_reference(reference: 
         pt.constant(reference),
         pt.constant(shift),
     )
-    evaluate = pytensor.function([state], [boundary.apply(state), boundary.reconstruct(state)])
+    evaluate = pytensor.function([state], [boundary.centered_concentration(state), boundary.concentration(state)])
     centered, absolute = evaluate(coefficients)
 
     # Evaluate the original absolute multiplicative model at high precision,
@@ -82,7 +82,7 @@ def test_boundary_map_keeps_small_centered_signal_at_large_reference(reference: 
 
     np.testing.assert_allclose(centered, expected_centered, rtol=2e-13, atol=2e-14)
     np.testing.assert_allclose(absolute, expected_absolute, rtol=3 * np.finfo(float).eps)
-    # Reconstructing first and then subtracting the large shift cannot recover
-    # the same small signal; application must retain the factored arithmetic.
+    # Forming the absolute concentration and then subtracting the large shift
+    # cannot recover the same small signal; the factored arithmetic must stay.
     lost_signal = np.max(np.abs((absolute - shift) - expected_centered))
     assert lost_signal > (1e-6 if reference == 1e12 else 1e-12)

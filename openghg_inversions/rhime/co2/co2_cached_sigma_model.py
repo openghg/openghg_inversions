@@ -58,7 +58,7 @@ from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
 
 
-from .centered_boundary import add_centered_boundary, bind_boundary_operands, require_centered_precision
+from .centered_boundary import CenteredBoundaryMap, add_centered_boundary, bind_boundary_operands, require_centered_precision
 
 
 OU_SITE_DIM = "ou_site"
@@ -149,8 +149,8 @@ def _centered_cached_projection(
     # Form the fixed term before pruning: zero absolute sensitivity A + c M can
     # still have a nonzero anomaly A that contributes at unit boundary scaling.
     baseline = np.where(active, 1.0, activity.fixed_value.values)
-    fixed = anomaly @ baseline + reference * (mass @ (baseline - 1.0))
-    return (anomaly + reference * mass)[:, active], fixed
+    boundary_map = CenteredBoundaryMap(anomaly, mass, reference, reference * mass.sum(axis=1))
+    return (anomaly + reference * mass)[:, active], boundary_map.centered_concentration(baseline)
 
 
 def _fixed_ou_site_alignment(

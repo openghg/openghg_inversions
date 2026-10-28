@@ -1,9 +1,9 @@
-"""Compare component application and physical reconstruction on tiny arrays.
+"""Evaluate centered boundary and coherent flux components on tiny arrays.
 
-Run ``python -m examples.affine_apply_reconstruct``. No files, stores, sampling
-or network are used. The coherent example constructs mutually consistent
-synthetic operands directly; real preparations use ``coherent_forward_map``
-with their already bound reconstruction.
+Run ``python -m examples.affine_components``. No files, stores, sampling or
+network are used. Each component's absolute concentration is a fixed reference
+contribution plus a linear response to its state; the boundary moves that
+reference onto the observations, while the coherent flux keeps it in the mean.
 """
 
 import numpy as np
@@ -14,11 +14,11 @@ import xarray as xr
 from openghg_inversions.basis.affine_flux_map import AffineFluxMap
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact
 from openghg_inversions.rhime.co2.centered_boundary import CenteredBoundaryMap
-from openghg_inversions.rhime.co2.co2_affine_output import BoundCo2AffineFluxMap, CoherentForwardMap
+from openghg_inversions.rhime.co2.co2_affine_output import BoundCo2AffineFluxMap
 
 
 def boundary_example() -> None:
-    """Apply a small centered signal and reconstruct absolute concentration."""
+    """Evaluate a small centered signal beside its absolute concentration."""
     anomaly = np.array([[0.01, -0.02], [0.03, 0.004]])
     mass = np.array([[0.2, 0.1], [0.4, 0.25]])
     reference = 209300.0
@@ -32,11 +32,11 @@ def boundary_example() -> None:
         )
         evaluate = pytensor.function(
             [state],
-            [boundary_map.apply(state), boundary_map.reconstruct(state)],
+            [boundary_map.centered_concentration(state), boundary_map.concentration(state)],
         )
         centered, absolute = evaluate(np.array([1.0 + 1e-8, 1.0 - 2e-8]))
-    print("Boundary apply, centered concentration (ppm):", centered)
-    print("Boundary reconstruct, absolute concentration (ppm):", absolute)
+    print("Boundary centered concentration, against y - q (ppm):", centered)
+    print("Boundary absolute concentration (ppm):", absolute)
 
 
 def coherent_example() -> None:
@@ -67,20 +67,12 @@ def coherent_example() -> None:
         xr.DataArray([reference], dims="region", coords=state_coords, attrs={"units": "1"}),
     )
     observation_coords = {"nmeasure": ["first", "second"]}
-    coherent_map = CoherentForwardMap(
-        bound,
-        xr.DataArray(
-            response[:, None],
-            dims=("nmeasure", "region"),
-            coords={**observation_coords, **state_coords},
-            attrs={"units": "ppm"},
-        ),
-        xr.DataArray(
-            native_sensitivity @ mean - response * reference,
-            dims="nmeasure",
-            coords=observation_coords,
-            attrs={"units": "ppm"},
-        ),
+    sensitivity = xr.DataArray(
+        response[:, None], dims=("nmeasure", "region"), coords={**observation_coords, **state_coords},
+    )
+    # build_co2_model composes this same d + H_alpha alpha in its PyMC graph.
+    intercept = xr.DataArray(
+        native_sensitivity @ mean - response * reference, dims="nmeasure", coords=observation_coords,
     )
     state = xr.DataArray(
         [[0.8], [reference], [1.5]],
@@ -88,12 +80,12 @@ def coherent_example() -> None:
         coords={"draw": [0, 1, 2], **state_coords},
         attrs={"units": "1"},
     )
-    concentration = coherent_map.apply(state)
-    flux = coherent_map.reconstruct(state)
+    concentration = intercept + xr.dot(sensitivity, state, dim="region")
+    flux = bound.state_to_flux(state)
     native_mean = bound.state_to_native(state).transpose("cell", "draw")
     np.testing.assert_allclose(concentration, native_sensitivity @ native_mean.data)
-    print("Coherent apply, concentration contribution (ppm):", concentration.data)
-    print("Coherent reconstruct, conditional flux (mol m-2 s-1):", flux.data)
+    print("Coherent concentration contribution (ppm):", concentration.data)
+    print("Coherent conditional native flux (mol m-2 s-1):", flux.data)
 
 
 if __name__ == "__main__":

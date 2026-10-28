@@ -1,14 +1,15 @@
-"""Apply centered boundary means, reconstruct absolute means, and replay draws."""
+"""Concrete centered boundary arithmetic and absolute predictive replay."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Generic, TypeVar
 
 import numpy as np
 import pymc as pm
 import pytensor
-import pytensor.tensor as pt
 import xarray as xr
+from numpy.typing import NDArray
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.boundary_sensitivity import _select_native_boundary, align_boundary_operands
@@ -84,19 +85,26 @@ def bind_boundary_operands(
     return aligned
 
 
+ArrayT = TypeVar("ArrayT", TensorVariable, NDArray[np.float64])
+
+
 @dataclass(frozen=True, slots=True, eq=False)
-class CenteredBoundaryMap:
-    """Two concentration representations of the same physical boundary state.
+class CenteredBoundaryMap(Generic[ArrayT]):
+    """Absolute and centered concentrations of one physical boundary state.
 
-    ``apply(b)`` supplies the centered likelihood contribution
-    ``A b + c M (b - 1)``; ``reconstruct(b)`` adds ``q = c M 1`` to produce
-    the absolute boundary contribution. Reconstruction is a second forward
-    operation on the state, not an inverse of likelihood application.
+    The absolute contribution is affine in the boundary scaling ``b``:
+    ``concentration(b) = (A + c M) b``. The centered representation moves the
+    deterministic reference ``q = c M 1`` from the mean onto the observations,
+    so ``centered_concentration(b) = concentration(b) - q``. Both describe the
+    same state and the same physical model; only the likelihood representation
+    differs.
 
-    These are already registered PyTensor operands. Label alignment, eager
-    materialization, precision and state activity belong to the constructing
-    component. Keep ``A``, ``M`` and ``c`` separate: subtracting ``q`` from
-    a formed absolute contribution can lose small concentration anomalies.
+    Keep ``A``, ``M`` and ``c`` separate: subtracting ``q`` from a formed
+    absolute contribution loses small anomalies against a large reference,
+    such as O2 at about 209,300 ppm. The graph builder uses registered PyTensor
+    operands; the cached likelihood projection uses the same equations on
+    dense NumPy operands. Alignment, materialization, precision and state
+    activity belong to the caller.
 
     Attributes:
         anomaly: Anomaly design ``A`` on observation by boundary-state axes.
@@ -106,18 +114,18 @@ class CenteredBoundaryMap:
             Mass rows need not sum to one.
     """
 
-    anomaly: TensorVariable
-    mass: TensorVariable
-    reference: TensorVariable
-    reference_shift: TensorVariable
+    anomaly: ArrayT
+    mass: ArrayT
+    reference: ArrayT | float
+    reference_shift: ArrayT
 
-    def apply(self, state: TensorVariable) -> TensorVariable:
-        """Evaluate the centered contribution for physical BC scaling ``state``."""
-        return pt.dot(self.anomaly, state) + self.reference * pt.dot(self.mass, state - 1)
+    def centered_concentration(self, state: ArrayT) -> ArrayT:
+        """Evaluate ``A b + c M (b - 1)``, the likelihood contribution against ``y - q``."""
+        return self.anomaly @ state + self.reference * (self.mass @ (state - 1.0))
 
-    def reconstruct(self, state: TensorVariable) -> TensorVariable:
-        """Evaluate the absolute boundary concentration for the same state."""
-        return self.apply(state) + self.reference_shift
+    def concentration(self, state: ArrayT) -> ArrayT:
+        """Evaluate the absolute boundary concentration ``A b + c M b``."""
+        return self.centered_concentration(state) + self.reference_shift
 
 
 @dataclass(frozen=True)
@@ -195,9 +203,9 @@ def add_centered_boundary(
     c = add_model_data(reference, f"{prefix}bc_reference")
     shift = (reference * mass.sum("bc_region")).rename(f"{prefix}bc_reference_shift")
     shift_data = add_model_data(shift, shift.name)
-    forward_map = CenteredBoundaryMap(a, m, c, shift_data)
-    centered = forward_map.apply(vector.state)
-    absolute = pm.Deterministic(f"{prefix}mu_bc", forward_map.reconstruct(vector.state), dims=output_dim)
+    boundary_map = CenteredBoundaryMap(a, m, c, shift_data)
+    centered = boundary_map.centered_concentration(vector.state)
+    absolute = pm.Deterministic(f"{prefix}mu_bc", boundary_map.concentration(vector.state), dims=output_dim)
     return CenteredBoundaryResult(
         LinearComponentResult(a, vector.latent, vector.state, absolute, resolved), centered, shift
     )
