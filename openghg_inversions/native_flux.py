@@ -10,9 +10,10 @@ from openghg_inversions.flux_sanitization import sanitize_flux_nonfinite
 
 
 def resolve_runtime_flux(
-    flux_data: Mapping[str, xr.Dataset], *, split_by_sectors: bool = False
+    flux_data: Mapping[str, xr.Dataset], *, split_by_sectors: bool = False,
+    explicit_surface: bool = False,
 ) -> xr.DataArray:
-    """Combine or stack all borrowed runtime source fluxes in mapping order.
+    """Combine or stack borrowed native fluxes with route-specific source ordering.
 
     Native prior flux retains its inventory time axis, independently of
     observation-aligned footprint-times-flux responses. Borrowed inputs are
@@ -24,13 +25,18 @@ def resolve_runtime_flux(
             ``flux`` on the native spatial grid, optionally with ``time``.
             Sources must already use compatible flux units.
         split_by_sectors: If true, retain every source along ``source`` in
-            mapping insertion order. Sources must have identical dimensions
+            mapping insertion order in the default route. Sources must have identical dimensions
             and either all be timeless or share an explicit unique time index.
             Spatial coordinates are matched to the first source within
             :func:`~openghg_inversions.array_ops.force_align` tolerances.
             Otherwise combine sources using the OpenGHG ``ModelScenario``
             convention: sum timeless fields, or forward-fill timed fields onto
             a common time axis and sum them.
+        explicit_surface: Use the surface pilot's exact native-axis policy:
+            sort source labels, convert to the first sorted source's units,
+            require identical coordinates, and sum only after alignment.
+            Sorted labels also determine sector order. Mixed native cadences require an
+            explicit reporting policy and are currently rejected.
 
     Returns:
         Native prior flux containing all supplied sources, separately when
@@ -44,6 +50,26 @@ def resolve_runtime_flux(
     if not flux_data:
         raise ValueError("Cannot construct BasisFunctions object: runtime flux is missing or empty.")
     flux_arrays = {key: value["flux"] for key, value in flux_data.items()}
+    if explicit_surface:
+        flux_arrays = dict(sorted(flux_arrays.items()))
+        _require_matching_source_time_indexes(flux_arrays)
+        units = next(iter(flux_arrays.values())).attrs.get("units")
+        if units is None or any("units" not in value.attrs for value in flux_arrays.values()):
+            raise ValueError("Surface native flux reporting requires explicit flux units.")
+        converted = [value.pint.quantify().pint.to(units).pint.dequantify() for value in flux_arrays.values()]
+        if any(set(value.dims) != set(converted[0].dims) for value in converted):
+            raise ValueError("Surface native flux reporting requires identical source dimensions.")
+        try:
+            aligned = xr.align(*converted, join="exact", copy=False)
+        except ValueError as exc:
+            raise ValueError(
+                "Surface native flux reporting requires identical source axes; "
+                "mixed native cadences need an explicit reporting policy."
+            ) from exc
+        flux = xr.concat(aligned, dim=xr.IndexVariable("source", list(flux_arrays)), join="exact")
+        if not split_by_sectors:
+            flux = flux.sum("source", skipna=False, keep_attrs=True)
+        return sanitize_flux_nonfinite(flux, context="surface retained basis runtime flux")
     if split_by_sectors:
         flux = _stack_flux_sources_with_alignment(flux_arrays)
     else:

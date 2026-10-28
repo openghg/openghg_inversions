@@ -8,6 +8,7 @@ explicit empty selection is an error.
 """
 
 import datetime as dt
+import json
 from collections.abc import Iterable
 from typing import Any, Literal, TypeAlias
 
@@ -322,6 +323,22 @@ def make_inv_inputs(
             "Per-site inversion inputs must have identical indexes on every non-time dimension "
             "before gathering into nmeasure."
         ) from exc
+
+    # Source selection and normalization can differ between sites. Retain their
+    # individual facts instead of presenting the first site's attrs as universal.
+    surface_provenance = {
+        site: {
+            key: value for key, value in fp_data[site].attrs.items()
+            if key.startswith(("surface_", "boundary_")) and key != "boundary_representation"
+        }
+        for site in sites if "surface_transport" in fp_data[site].attrs
+    }
+    if surface_provenance:
+        ds.attrs = {
+            key: value for key, value in ds.attrs.items()
+            if not key.startswith(("surface_", "boundary_")) or key == "boundary_representation"
+        }
+        ds.attrs["surface_preparation_provenance"] = json.dumps(surface_provenance, sort_keys=True)
 
     # Check that we have variables for a standard RHIME inversion.
     # Note that mf_prior_factor and mf_prior_upper_level_factor are only needed
