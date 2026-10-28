@@ -58,7 +58,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Running and validating inversions" href="running_and_validating.html" />
+    <link rel="next" title="Prepared artifact format support" href="prepared_format_support.html" />
     <link rel="prev" title="CO₂ model recipes" href="co2_models.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -389,6 +389,7 @@
 </ul>
 </details></li>
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">Surface CO₂/O₂ preparation pilot</a></li>
+<li class="toctree-l1"><a class="reference internal" href="prepared_format_support.html">Prepared artifact format support</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
 <li class="toctree-l2"><a class="reference internal" href="multisector_handoffs.html">Reuse a multisector preparation</a></li>
@@ -681,13 +682,15 @@ flux basis for separate fields):</p>
 </div>
 <p>Selection filters preserve aligned operands and scalar references. Preparation
 owns spatial <code class="docutils literal notranslate"><span class="pre">bc_basis_algorithm=&quot;NESW&quot;</span></code> or explicit <code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code>;
-frequency and anchor belong to the model.
+frequency and anchor belong to the model. Both representations are written in
+generic format version 3 with an explicit representation field. Known ordinary
+raw-v2 files remain readable; retired baked-v1 and ambiguous centered-v2 files
+must be regenerated. See <a class="reference internal" href="prepared_format_support.html"><span class="doc">Prepared artifact format support</span></a> for the exact map.
 Old rounded <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> alone cannot recover accurate centered operands.</p>
-<p>Linked CO₂/O₂ preparation can retain centered operands in memory. Its dedicated
-prepared-input serialization does not yet support those operands; <code class="docutils literal notranslate"><span class="pre">to_datatree</span></code>
-and <code class="docutils literal notranslate"><span class="pre">save</span></code> reject them explicitly. Persistence belongs to the later centered
-output integration. Standalone CO₂ prepared inputs retain the raw
-operands through their existing input-dataset serialization.</p>
+<p>Standalone CO₂ and linked CO₂/O₂ prepared inputs support saving and reopening
+both ordinary boundaries and centered operands. Linked centered operands use the
+version-2 dedicated prepared-input schema; ordinary linked inputs retain
+version-1 compatibility. See <a class="reference internal" href="prepared_format_support.html"><span class="doc">Prepared artifact format support</span></a> for supported formats.</p>
 <p>The additive-Gaussian and cached fixed-OU CO₂ and linked CO₂/O₂ routes bind raw
 operands to BC periods at model construction. Their model-facing runners and
 direct builders accept <code class="docutils literal notranslate"><span class="pre">bc_freq</span></code> and <code class="docutils literal notranslate"><span class="pre">bc_anchor_time</span></code>. Direct builders
@@ -769,11 +772,11 @@ and native mixed-cadence reporting remain separate work.</p>
       </div>
     </a>
     <a class="right-next"
-       href="running_and_validating.html"
+       href="prepared_format_support.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Running and validating inversions</p>
+        <p class="prev-next-title">Prepared artifact format support</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

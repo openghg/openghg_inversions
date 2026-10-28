@@ -130,8 +130,13 @@ before a separate model run. The
 :doc:`RHIME terminology and prepared-input reference </usage/rhime>`
 documents the expected variables, dimensions, and coordinates. Acquisition
 mechanics live in ``inversion_data.acquisition``; the prepared
-value and its version-2 raw-input schema live in
-``inversion_data.prepared_inputs``. Import both values from ``openghg_inversions.inversion_data``.
+value and its versioned raw-input schema live in
+``inversion_data.prepared_inputs``. The current format supports ordinary and
+explicitly centered representations; see :doc:`the format support map </usage/prepared_format_support>`.
+Import both values from
+``openghg_inversions.inversion_data``. See the
+:ref:`centered boundary contract <surface-centered-boundary-contract>` for
+operands and supported model routes.
 
 .. autosummary::
    :nosignatures:

@@ -389,6 +389,7 @@
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="surface_preparation.html">Surface CO₂/O₂ preparation pilot</a></li>
+<li class="toctree-l1"><a class="reference internal" href="prepared_format_support.html">Prepared artifact format support</a></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">Staged RHIME workflows</a></li>
 <li class="toctree-l2"><a class="reference internal" href="multisector_handoffs.html">Reuse a multisector preparation</a></li>
@@ -509,10 +510,16 @@ BC periods or minimum-error policy reuses the former and repeats model-input
 resolution. A direct builder checks that producer-resolved BC and floor operands
 match its settings; it does not recalculate them. See
 <a class="reference internal" href="concrete_rhime_model.html"><span class="doc">Standard and multisector RHIME models</span></a> for the backend-neutral resolution interface.</p>
-<p>Standard and multisector preparation and sample manifests use version 2, and
-prepared numerical artifacts use schema version 2. Incompatible older artifacts
-are rejected with guidance to use the matching software or prepare again; baked
-policies are not silently reinterpreted. Independent <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> exports
+<p>Standard and multisector preparation manifests use version 2; sample manifests
+use version 3, whose model records omit retired aggregation-error options.
+Older sample manifests are rejected before loading scientific payloads: use the
+software version that wrote them, or repeat sampling from a supported preparation.
+Do not change a manifest’s version field to bypass this check. Generic prepared
+numerical artifacts use schema version 3 with an explicit
+ordinary or centered representation. A narrow reader also accepts known ordinary
+raw-spatial version-2 artifacts. Baked version-1 and ambiguous historical centered
+version-2 artifacts must be regenerated; baked policies are not silently
+reinterpreted. See <a class="reference internal" href="prepared_format_support.html"><span class="doc">Prepared artifact format support</span></a> for the format support map. Independent <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> exports
 and modern legacy-format products retain their own support. Saved replay reads
 the exact fitted BC, minimum-error and sigma-alignment operands from trace
 constants without recalculating them.</p>
