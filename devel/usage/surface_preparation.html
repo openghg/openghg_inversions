@@ -487,6 +487,20 @@ released minimum before publishing OGI to PyPI. Install the pinned provider with
 operations fail explicitly. Private provider imports may migrate to public
 operations later; that transition does not block this workflow.</p>
 </section>
+<section id="input-validation">
+<h2>Input validation<a class="headerlink" href="#input-validation" title="Link to this heading">#</a></h2>
+<p>Owned views of raw observations, site transport, each source footprint, fluxes
+and boundary conditions are checked against the corresponding OpenGHG structural
+schemas at the preparation boundary. Standalone <code class="docutils literal notranslate"><span class="pre">prepare_surface_site</span></code> checks
+all raw input roles before provider operations. Fresh acquisition checks raw
+observations and transport per retained site before resolving observation bins,
+then checks retrieved fluxes and boundaries once before calculating responses.
+A shared dataset can serve more than one of these roles. Schema selection follows
+the integrated, split resolved or legacy resolved fields being consumed. Valid
+integer spatial labels remain accepted. Validation preserves borrowed payloads,
+chunks and lazy auxiliary coordinates. Xarray and Pint own alignment and unit
+conversion; scientific steps own coverage and weight policies.</p>
+</section>
 <section id="explicit-source-responses">
 <h2>Explicit source responses<a class="headerlink" href="#explicit-source-responses" title="Link to this heading">#</a></h2>
 <p>Observations accept <code class="docutils literal notranslate"><span class="pre">mf</span></code> or the species name (<code class="docutils literal notranslate"><span class="pre">co2</span></code> or <code class="docutils literal notranslate"><span class="pre">o2</span></code>) as the primary
@@ -499,7 +513,9 @@ and variable names. Explicit errors remain available for subsequent preparation.
 <code class="docutils literal notranslate"><span class="pre">observation_variable=&quot;measured_concentration&quot;</span></code>. Ancillary aliases keep the
 same fixed names; a custom primary does not introduce custom error aliases.
 The selector must identify the only primary candidate. Unrelated extensions,
-such as <code class="docutils literal notranslate"><span class="pre">co2_quality_flag</span></code>, keep their names. Prepared concentration fields use <code class="docutils literal notranslate"><span class="pre">mf</span></code> and its documented ancillary names.</p>
+such as <code class="docutils literal notranslate"><span class="pre">co2_quality_flag</span></code>, keep their names. Only a temporary validation view
+renames the primary for the provider schema; prepared concentration fields use
+<code class="docutils literal notranslate"><span class="pre">mf</span></code> and its documented ancillary names.</p>
 <p>With existing OpenGHG data wrappers or xarray datasets:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_surface_site</span>
 
@@ -589,6 +605,8 @@ The full retrieved native flux support is retained. Explicit surface native
 prior-flux reporting sorts source labels and converts to the first sorted
 source’s flux units. Default acquisition retains source insertion order.
 Older-inventory relabelling and climatological year reuse are disabled.</p>
+<p>When a boundary period is declared, both acquisition routes include the interval
+governing a mid-period start and preserve its native timestamp.</p>
 <p>Selected identities are captured at retrieval in owned wrapper metadata while
 borrowing the datasets. Preparation combines those facts with transport metadata
 and serializes provenance once. Combined observation versions remain unknown
@@ -658,6 +676,7 @@ ordinary CO₂ coherent reduction automatically; see <a class="reference interna
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#dependency-and-precision">Dependency and precision</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#input-validation">Input validation</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#explicit-source-responses">Explicit source responses</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#retrieval-and-retained-native-flux">Retrieval and retained native flux</a></li>
 </ul>

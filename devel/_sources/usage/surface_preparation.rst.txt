@@ -26,6 +26,21 @@ The required surface tests exercise the installed provider. Missing required
 operations fail explicitly. Private provider imports may migrate to public
 operations later; that transition does not block this workflow.
 
+Input validation
+----------------
+
+Owned views of raw observations, site transport, each source footprint, fluxes
+and boundary conditions are checked against the corresponding OpenGHG structural
+schemas at the preparation boundary. Standalone ``prepare_surface_site`` checks
+all raw input roles before provider operations. Fresh acquisition checks raw
+observations and transport per retained site before resolving observation bins,
+then checks retrieved fluxes and boundaries once before calculating responses.
+A shared dataset can serve more than one of these roles. Schema selection follows
+the integrated, split resolved or legacy resolved fields being consumed. Valid
+integer spatial labels remain accepted. Validation preserves borrowed payloads,
+chunks and lazy auxiliary coordinates. Xarray and Pint own alignment and unit
+conversion; scientific steps own coverage and weight policies.
+
 Explicit source responses
 -------------------------
 
@@ -40,7 +55,9 @@ For supplied observations with another primary name, set
 ``observation_variable="measured_concentration"``. Ancillary aliases keep the
 same fixed names; a custom primary does not introduce custom error aliases.
 The selector must identify the only primary candidate. Unrelated extensions,
-such as ``co2_quality_flag``, keep their names. Prepared concentration fields use ``mf`` and its documented ancillary names.
+such as ``co2_quality_flag``, keep their names. Only a temporary validation view
+renames the primary for the provider schema; prepared concentration fields use
+``mf`` and its documented ancillary names.
 
 With existing OpenGHG data wrappers or xarray datasets:
 
@@ -141,6 +158,9 @@ The full retrieved native flux support is retained. Explicit surface native
 prior-flux reporting sorts source labels and converts to the first sorted
 source's flux units. Default acquisition retains source insertion order.
 Older-inventory relabelling and climatological year reuse are disabled.
+
+When a boundary period is declared, both acquisition routes include the interval
+governing a mid-period start and preserve its native timestamp.
 
 Selected identities are captured at retrieval in owned wrapper metadata while
 borrowing the datasets. Preparation combines those facts with transport metadata
