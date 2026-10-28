@@ -336,13 +336,27 @@ def likelihood_representation(
     directly, rather than subtracting a large shift from ``modelled_mean``,
     which would lose small centered anomalies.
 
+    Args:
+        terms: Complete ordered decomposition of ``modelled_mean``. Tensor
+            contributions must follow the observations' row order and use
+            their concentration units. Shifts must use the same observation
+            dimensions; indexed row labels are checked exactly here.
+        observations: Labelled observations in the contributions' common units.
+        modelled_mean: Prebuilt absolute mean from those same term outputs,
+            retaining the recipe's summation grouping and deterministic name.
+
     Returns:
         The likelihood mean, the translated observations and the total
         observation shift (``None`` when no term is shifted).
+
+    Raises:
+        ValueError: If indexed observation labels differ between observations
+            and any shift, or between shifts.
     """
     shifts = [term.observation_shift for term in terms if term.observation_shift is not None]
     if not shifts:
         return modelled_mean, observations, None
+    observations, *shifts = xr.align(observations, *shifts, join="exact", copy=False)
     shift = sum(shifts[1:], start=shifts[0])
     mean = sum((term.likelihood_contribution for term in terms[1:]), start=terms[0].likelihood_contribution)
     return mean, observations - shift, shift

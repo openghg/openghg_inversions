@@ -255,9 +255,10 @@ def build_co2_model(
         )
         terms = [AffineTerm.absolute(co2_flux_contribution)]
         if boundary_operands is not None:
-            terms.append(add_centered_boundary(boundary_operands, prior=bc_prior, activity=bc_state_activity).term)
+            centered_boundary = add_centered_boundary(boundary_operands, prior=bc_prior, activity=bc_state_activity)
+            terms.append(centered_boundary.term)
         if boundary_sensitivity is not None:
-            terms.append(AffineTerm.absolute(add_linear_component(
+            boundary = add_linear_component(
                 prepare_linear_sensitivity(boundary_sensitivity),
                 data_name="hbc",
                 prior_args=bc_prior,
@@ -267,9 +268,10 @@ def build_co2_model(
                 compute_deterministic=True,
                 state_activity=bc_state_activity,
                 coordinate_owner="bc",
-            ).output))
+            )
+            terms.append(AffineTerm.absolute(boundary.output))
         if offset_prior is not None:
-            terms.append(AffineTerm.absolute(add_offset_component(
+            offset = add_offset_component(
                 observations,
                 prior_args=offset_prior,
                 offset_freq=offset_freq,
@@ -277,7 +279,8 @@ def build_co2_model(
                 output_dim="nmeasure",
                 drop_first=offset_drop_first,
                 per_site=offset_per_site,
-            )))
+            )
+            terms.append(AffineTerm.absolute(offset))
 
         modelled_mean = pm.Deterministic(
             "modelled_concentration",

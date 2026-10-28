@@ -38,8 +38,8 @@ Affine terms in a recipe
 ------------------------
 
 Every concentration contribution is affine in its state: its value at a
-reference state plus a linear response to a deviation from that state. Each
-component returns an ``AffineTerm`` with three parts:
+reference state plus a linear response to a deviation from that state. Recipes
+represent component contributions as an ``AffineTerm`` with three parts:
 
 ``output``
    The absolute concentration contribution.
@@ -48,11 +48,13 @@ component returns an ``AffineTerm`` with three parts:
 ``observation_shift``
    A deterministic concentration subtracted from the observations, or ``None``.
 
-Ordinary linear terms, offsets and the coherent flux use ``AffineTerm.absolute``:
-their likelihood contribution is their output and they have no shift. A centered
-boundary contributes :math:`Ab + cM(b-\mathbf{1})` against observations
-:math:`y-q`, where :math:`q=cM\mathbf{1}`. Every recipe then composes its
-likelihood the same way:
+Ordinary linear, offset and coherent flux components retain their tensor or
+component-result return types. Recipes wrap their outputs with
+``AffineTerm.absolute``: their likelihood contribution is their output and they
+have no shift. ``add_centered_boundary`` instead supplies a term through
+``CenteredBoundaryResult.term``, contributing :math:`Ab + cM(b-\mathbf{1})`
+against observations :math:`y-q`, where :math:`q=cM\mathbf{1}`. Every recipe
+then composes its likelihood the same way:
 
 .. code-block:: python
 
@@ -71,6 +73,15 @@ contributions directly, because subtracting a large shift from the absolute
 mean would lose small centered anomalies. Subtracting the same deterministic
 shift from observations and mean changes neither the measurement-error nor
 model-error covariance, so both forms describe the same probability model.
+
+The term list must describe every contribution to ``modelled_mean`` in the
+same component order, using common concentration units and observation row
+order. The helper checks that observation shifts have exactly matching indexed
+rows before combining them; a mismatch raises ``ValueError`` instead of
+discarding observations through xarray's default arithmetic join. Recipes use
+``term.output`` for total absolute concentration composition and grouped
+boundary/baseline reports. Components retain their registered graph variables,
+state, activity and design information for lowering.
 
 Cached likelihoods lower each ``AffineTerm`` once more, to a dense fixed
 contribution plus an active design times coefficients. For a centered boundary
@@ -205,12 +216,14 @@ draw. Unresolved native covariance is not sampled or added to these draws.
 The CO2 recipe family
 ---------------------
 
-Neither component is specific to CO2. ``centered_boundary`` imports nothing
-from the CO2 recipes, and the coherent reduction and covariance products are
-species-neutral. Under ``rhime.co2``, only the linked CO2/O2 recipes depend on
-the species. The CO2 recipes are where the special preparation was first
-delivered; ``standard`` and ``multisector`` reject centered operands because
-that support has not been delivered there, not for a scientific reason.
+The centered boundary equations, coherent reduction and covariance products
+are species-neutral. Their current module locations do not establish support
+for other species in the delivered recipes and output adapters. Single-channel
+CO2 outputs retain CO2 species metadata and PARIS templates; the linked recipes
+additionally encode CO2/O2 relationships. Reuse for another gas needs suitable
+preparation and priors, together with corresponding recipe and output support.
+``standard`` and ``multisector`` currently reject centered operands because
+that support has not been delivered there.
 
 Scope of the experiment
 -----------------------

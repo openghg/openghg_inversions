@@ -188,8 +188,9 @@ def _pad_channel_design(
 class _ChannelBaselineComponent:
     """One channel baseline's graph, joint design and affine term.
 
-    ``component.output`` and ``term.output`` are always absolute. Centered
-    boundaries keep their complete result for the cached affine lowering.
+    ``term`` owns total concentration composition and grouped baseline reports.
+    ``component`` retains its registered graph, state, activity and design.
+    Centered boundaries keep their complete result for that lowering.
     """
 
     channel: str
@@ -249,7 +250,7 @@ def _add_co2_o2_baseline_components(
             components.append(_ChannelBaselineComponent(
                 channel, centered_result.component, None, centered_result.term, centered_result,
             ))
-            boundaries.append(centered_result.component.output)
+            boundaries.append(centered_result.term.output)
         native = (boundary_sensitivity or {}).get(channel)
         if native is not None:
             native_dim = str(sensitivity.dims[0])
@@ -491,7 +492,7 @@ def build_co2_o2_model(
             offset_prior=offset_prior,
             offset_args=offset_args,
         )
-        mean_signal = joint_signal + sum(term.component.output for term in baseline_components)
+        mean_signal = joint_signal + sum(baseline.term.output for baseline in baseline_components)
         fixed = add_model_data(fixed_prior_contribution)
         modelled = pm.Deterministic(
             "modelled_concentration", fixed + mean_signal, dims=output_dim,
