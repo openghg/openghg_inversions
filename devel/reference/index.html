@@ -403,6 +403,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.observation_errors.html">openghg_inversions.inversion_data.observation_errors</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.surface.html">openghg_inversions.inversion_data.surface</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.xarray_adapter.html">openghg_inversions.inversion_data.xarray_adapter</a></li>
 </ul>
 </details></li>
@@ -823,6 +824,12 @@ value and its version-2 raw-input schema live in
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray" title="openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray</span></code></a></p></td>
 <td><p>Create canonical RHIME inputs from source-neutral xarray site data.</p></td>
 </tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.prepare_surface_site" title="openghg_inversions.inversion_data.prepare_surface_site"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.prepare_surface_site</span></code></a></p></td>
+<td><p>Prepare supplied CO2/O2 observations and per-source responses for one site.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.acquire_surface_data" title="openghg_inversions.inversion_data.acquire_surface_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.acquire_surface_data</span></code></a></p></td>
+<td><p>Acquire surface inputs using retained native releases to plan flux support.</p></td>
+</tr>
 <tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.MergedData.from_options" title="openghg_inversions.inversion_data.MergedData.from_options"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.MergedData.from_options</span></code></a></p></td>
 <td><p>Acquire fresh merged data using complete aligned selectors.</p></td>
 </tr>
@@ -1013,7 +1020,7 @@ executed layout example and <a class="reference internal" href="../usage/affine_
 <td><p>Load and validate a NetCDF or Zarr affine reconstruction artifact.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.native_flux.html#openghg_inversions.native_flux.resolve_runtime_flux" title="openghg_inversions.native_flux.resolve_runtime_flux"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.native_flux.resolve_runtime_flux</span></code></a></p></td>
-<td><p>Combine or stack all borrowed runtime source fluxes in mapping order.</p></td>
+<td><p>Combine or stack borrowed native fluxes with route-specific source ordering.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.prepare_basis" title="openghg_inversions.basis.prepare_basis"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.prepare_basis</span></code></a></p></td>
 <td><p>Load or generate an operator and bind current flux without exporting it.</p></td>

@@ -403,6 +403,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.observation_errors.html">openghg_inversions.inversion_data.observation_errors</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.surface.html">openghg_inversions.inversion_data.surface</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.xarray_adapter.html">openghg_inversions.inversion_data.xarray_adapter</a></li>
 </ul>
 </details></li>
@@ -576,13 +577,25 @@
 <p>These functions customise the behavior of <cite>get_flux</cite>, <cite>get_footprint</cite>, etc.</p>
 <ul class="simple">
 <li><p><cite>get_flux_data</cite> calls <cite>get_flux</cite> after adjusting the start date to begin at the
-start of a year or month; if nothing is found, then the start date restriction
-is dropped and the most recent result found is used.</p></li>
+start of a year or month, with bounded recovery of governing calendar labels;
+the legacy older-inventory fallback remains available when explicitly allowed.</p></li>
 </ul>
 <p>TODO: add more docs (and add more detailed docstrings)</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.getters.adjust_flux_start_date">
-<span class="sig-name descname"><span class="pre">adjust_flux_start_date</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">start_date</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">species</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">domain</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.getters.adjust_flux_start_date" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">adjust_flux_start_date</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">start_date</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">species</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">source</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">include_previous_interval</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.getters.adjust_flux_start_date" title="Link to this definition">#</a></dt>
 <dd><p>Align a flux retrieval start date with the source period.</p>
 <p>When matching search rows contain different recognized periods, the
 longest period is used so that retrieval includes the governing flux
@@ -595,11 +608,14 @@ interval.</p>
 <li><p><strong>source</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – OpenGHG flux source name.</p></li>
 <li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Model domain.</p></li>
 <li><p><strong>store</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional OpenGHG object-store name.</p></li>
+<li><p><strong>include_previous_interval</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Include a preceding source interval so shifted
+interval labels can cover the requested start in explicit surface mode.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The requested start date, rewound to the start of its year or month
-when the source metadata identifies an annual or monthly period.</p>
+<dd class="field-even"><p>The requested start date aligned to declared calendar periods. With
+<code class="docutils literal notranslate"><span class="pre">include_previous_interval</span></code>, rewind by a complete declared interval
+to include governing labels whose phase differs from calendar starts.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>SearchError</strong> – If no matching flux data is found.</p>
@@ -622,6 +638,9 @@ when the source metadata identifies an annual or monthly period.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">end_date</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">flux_non_finite_check</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'lazy'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">allow_older_flux</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">include_previous_interval</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.getters.get_flux_data" title="Link to this definition">#</a></dt>
@@ -638,11 +657,18 @@ when the source metadata identifies an annual or monthly period.</p>
 <li><p><strong>flux_non_finite_check</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'lazy'</em><em>, </em><em>'count'</em><em>]</em>) – <code class="docutils literal notranslate"><span class="pre">&quot;lazy&quot;</span></code> to apply zero-fill without counting,
 or <code class="docutils literal notranslate"><span class="pre">&quot;count&quot;</span></code> to compute exact non-finite counts and warn when
 replacements are made.</p></li>
+<li><p><strong>allow_older_flux</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Allow the historical fallback which relabels the last
+available inventory slice to the requested start. False rejects
+missing requested data without substituting an older inventory.</p></li>
+<li><p><strong>include_previous_interval</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Use a common source span including preceding
+declared intervals, with one bounded common cadence lookup when
+period metadata are missing. No source padding is repeated on retry.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Retrieved flux objects keyed by source. Each <code class="docutils literal notranslate"><span class="pre">flux</span></code> variable is cast
-to <code class="docutils literal notranslate"><span class="pre">float32</span></code> and has the non-finite policy applied.</p>
+to <code class="docutils literal notranslate"><span class="pre">float32</span></code> and has the non-finite policy applied. Calendar lookups
+preserve governing interval labels before any permitted older-data fallback.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>SearchError</strong> – If no flux data can be found before the requested end date.</p>

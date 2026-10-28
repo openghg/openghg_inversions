@@ -403,6 +403,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.observation_errors.html">openghg_inversions.inversion_data.observation_errors</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.surface.html">openghg_inversions.inversion_data.surface</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.xarray_adapter.html">openghg_inversions.inversion_data.xarray_adapter</a></li>
 </ul>
 </details></li>
@@ -753,6 +754,7 @@ numerical arrays remain borrowed, including any backing open files.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_input</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">flux_non_finite_check</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'lazy'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">surface_transport</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.acquisition.MergedData.from_options" title="Link to this definition">#</a></dt>
@@ -762,7 +764,13 @@ are unavailable. Returned datasets may be lazy and remain borrowed by
 later preparation. <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> names OpenGHG sources. Store,
 selector and merge errors propagate. <code class="docutils literal notranslate"><span class="pre">flux_store</span></code> defaults to <code class="docutils literal notranslate"><span class="pre">&quot;user&quot;</span></code>;
 <code class="docutils literal notranslate"><span class="pre">flux_domain</span></code> selects the source flux dataset domain, defaulting to
-the footprint <code class="docutils literal notranslate"><span class="pre">domain</span></code>. It does not imply a nested inner domain.</p>
+the footprint <code class="docutils literal notranslate"><span class="pre">domain</span></code>. It does not imply a nested inner domain.
+<code class="docutils literal notranslate"><span class="pre">surface_transport</span></code> explicitly selects independent per-source surface
+CO2/O2 convolution, bypassing ModelScenario. Ordinary boundaries use
+OpenGHG baseline sensitivities with climatology disabled.
+Resolved transport requires time-resolved selectors and complete flux history
+and residual months. Mixed native source axes are rejected until native
+reporting can represent them; supplied-input preparation supports them.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.inversion_data.acquisition.MergedData" title="openghg_inversions.inversion_data.acquisition.MergedData"><em>MergedData</em></a></p>
@@ -770,6 +778,58 @@ the footprint <code class="docutils literal notranslate"><span class="pre">domai
 </dl>
 </dd></dl>
 
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.acquisition.acquire_surface_data">
+<span class="sig-name descname"><span class="pre">acquire_surface_data</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">species</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">site_options</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">start_date</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">end_date</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux_sources</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">transport</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">split_by_sectors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'user'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">obs_store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'user'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">footprint_store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'user'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux_store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'user'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux_domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">fp_model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">fp_species</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">calibration_scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_input</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux_non_finite_check</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'lazy'</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.acquisition.acquire_surface_data" title="Link to this definition">#</a></dt>
+<dd><p>Acquire surface inputs using retained native releases to plan flux support.</p>
+<p>Shared selectors follow <a class="reference internal" href="#openghg_inversions.inversion_data.acquisition.MergedData.from_options" title="openghg_inversions.inversion_data.acquisition.MergedData.from_options"><code class="xref py py-meth docutils literal notranslate"><span class="pre">MergedData.from_options()</span></code></a>. <code class="docutils literal notranslate"><span class="pre">transport</span></code> must
+specify exactly one integrated or time-resolved mode per flux source, for
+continuous surface CO2/O2 mole fractions. Ordinary boundary sensitivities use
+the provider baseline operation with climatology disabled.</p>
+<p>Retrieve observation/footprint pairs first, then the union of backward
+histories and complete residual months. Missing sites are dropped together
+with their selectors. The returned <a class="reference internal" href="#openghg_inversions.inversion_data.acquisition.MergedData" title="openghg_inversions.inversion_data.acquisition.MergedData"><code class="xref py py-class docutils literal notranslate"><span class="pre">MergedData</span></code></a> retains full retrieved
+native flux support and borrows datasets and lazy arrays; selected identities
+own wrapper metadata. Older inventories and climatological years are never substituted.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – Unsupported selectors, incompatible native source axes,
+    inadequate temporal support, or invalid surface/boundary inputs.</p></li>
+<li><p><strong>SearchError</strong> – No retained sites or requested flux/boundary data are available.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.inversion_data.acquisition.MergedData" title="openghg_inversions.inversion_data.acquisition.MergedData"><em>MergedData</em></a></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -1004,6 +1064,7 @@ against this record’s resolved uppercase site labels.</p></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.acquisition.MergedData.from_options"><code class="docutils literal notranslate"><span class="pre">MergedData.from_options()</span></code></a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.acquisition.acquire_surface_data"><code class="docutils literal notranslate"><span class="pre">acquire_surface_data()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.acquisition.interpolate_flux_to_footprint_grid"><code class="docutils literal notranslate"><span class="pre">interpolate_flux_to_footprint_grid()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.SiteOptions"><code class="docutils literal notranslate"><span class="pre">SiteOptions</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.SiteOptions.from_inputs"><code class="docutils literal notranslate"><span class="pre">SiteOptions.from_inputs()</span></code></a></li>

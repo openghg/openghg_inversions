@@ -403,6 +403,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.observation_errors.html">openghg_inversions.inversion_data.observation_errors</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.surface.html">openghg_inversions.inversion_data.surface</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.xarray_adapter.html">openghg_inversions.inversion_data.xarray_adapter</a></li>
 </ul>
 </details></li>
@@ -980,6 +981,7 @@ numerical arrays remain borrowed, including any backing open files.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_input</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">flux_non_finite_check</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'lazy'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">surface_transport</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.MergedData.from_options" title="Link to this definition">#</a></dt>
@@ -989,7 +991,13 @@ are unavailable. Returned datasets may be lazy and remain borrowed by
 later preparation. <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> names OpenGHG sources. Store,
 selector and merge errors propagate. <code class="docutils literal notranslate"><span class="pre">flux_store</span></code> defaults to <code class="docutils literal notranslate"><span class="pre">&quot;user&quot;</span></code>;
 <code class="docutils literal notranslate"><span class="pre">flux_domain</span></code> selects the source flux dataset domain, defaulting to
-the footprint <code class="docutils literal notranslate"><span class="pre">domain</span></code>. It does not imply a nested inner domain.</p>
+the footprint <code class="docutils literal notranslate"><span class="pre">domain</span></code>. It does not imply a nested inner domain.
+<code class="docutils literal notranslate"><span class="pre">surface_transport</span></code> explicitly selects independent per-source surface
+CO2/O2 convolution, bypassing ModelScenario. Ordinary boundaries use
+OpenGHG baseline sensitivities with climatology disabled.
+Resolved transport requires time-resolved selectors and complete flux history
+and residual months. Mixed native source axes are rejected until native
+reporting can represent them; supplied-input preparation supports them.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.MergedData" title="openghg_inversions.inversion_data.acquisition.MergedData"><em>MergedData</em></a></p>

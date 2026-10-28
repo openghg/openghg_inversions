@@ -403,6 +403,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.observation_errors.html">openghg_inversions.inversion_data.observation_errors</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.surface.html">openghg_inversions.inversion_data.surface</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.xarray_adapter.html">openghg_inversions.inversion_data.xarray_adapter</a></li>
 </ul>
 </details></li>
@@ -572,8 +573,8 @@
 <p>Resolve native prior flux separately from observation-aligned responses.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.native_flux.resolve_runtime_flux">
-<span class="sig-name descname"><span class="pre">resolve_runtime_flux</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">flux_data</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">split_by_sectors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.native_flux.resolve_runtime_flux" title="Link to this definition">#</a></dt>
-<dd><p>Combine or stack all borrowed runtime source fluxes in mapping order.</p>
+<span class="sig-name descname"><span class="pre">resolve_runtime_flux</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">flux_data</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">split_by_sectors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">explicit_surface</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.native_flux.resolve_runtime_flux" title="Link to this definition">#</a></dt>
+<dd><p>Combine or stack borrowed native fluxes with route-specific source ordering.</p>
 <p>Native prior flux retains its inventory time axis, independently of
 observation-aligned footprint-times-flux responses. Borrowed inputs are
 unchanged and Dask-backed payloads remain lazy. Non-finite values are
@@ -585,13 +586,18 @@ replaced with zero using the retained-basis sanitation policy.</p>
 <code class="docutils literal notranslate"><span class="pre">flux</span></code> on the native spatial grid, optionally with <code class="docutils literal notranslate"><span class="pre">time</span></code>.
 Sources must already use compatible flux units.</p></li>
 <li><p><strong>split_by_sectors</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – If true, retain every source along <code class="docutils literal notranslate"><span class="pre">source</span></code> in
-mapping insertion order. Sources must have identical dimensions
+mapping insertion order in the default route. Sources must have identical dimensions
 and either all be timeless or share an explicit unique time index.
 Spatial coordinates are matched to the first source within
 <a class="reference internal" href="openghg_inversions.array_ops.html#openghg_inversions.array_ops.force_align" title="openghg_inversions.array_ops.force_align"><code class="xref py py-func docutils literal notranslate"><span class="pre">force_align()</span></code></a> tolerances.
 Otherwise combine sources using the OpenGHG <code class="docutils literal notranslate"><span class="pre">ModelScenario</span></code>
 convention: sum timeless fields, or forward-fill timed fields onto
 a common time axis and sum them.</p></li>
+<li><p><strong>explicit_surface</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Use the surface pilot’s exact native-axis policy:
+sort source labels, convert to the first sorted source’s units,
+require identical coordinates, and sum only after alignment.
+Sorted labels also determine sector order. Mixed native cadences require an
+explicit reporting policy and are currently rejected.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
