@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from openghg_inversions.array_ops import get_xr_dummies
@@ -13,6 +14,7 @@ from openghg_inversions.inversion_inputs import DatetimeLike, make_freq_indicato
 
 __all__ = [
     "BoundaryAlignment",
+    "validate_boundary_operands",
     "scale_satellite_boundary_sensitivity_to_column_signal",
 ]
 
@@ -102,6 +104,67 @@ class BoundaryAlignment:
             }
         )
         return cls(data)
+
+
+def validate_boundary_operands(operands: xr.Dataset) -> bool:
+    """Validate raw spatial centered operands before model-period expansion.
+
+    Args:
+        operands: Borrowed dataset with ``boundary_representation='centered-v1'``,
+            ``H_bc_anomaly`` and ``H_bc_mass`` on unique indexed ``bc_region``
+            and ``time`` or ``nmeasure`` dimensions, and scalar ``bc_reference``.
+            Anomaly and reference share the exact concentration unit string;
+            mass has units ``'1'``. Optional ``mf`` has matching units. An
+            absolute ``H_bc`` diagnostic must be marked ``unexpanded``.
+
+    Returns:
+        Whether centered operands are present. Accepted operands remain raw
+        for period expansion at model binding.
+        Timestamps are not required for a single period. Finite payload values
+        are checked at the shared materialization boundary; this validator does
+        not compute or mutate borrowed numerical arrays.
+
+    Raises:
+        ValueError: If centered operands are incomplete, already expanded, or
+            have incompatible representation, dimensions, labels or units.
+    """
+    names = {"H_bc_anomaly", "H_bc_mass", "bc_reference"}
+    representation = operands.attrs.get("boundary_representation")
+    if representation is not None and representation != "centered-v1":
+        raise ValueError(f"Unsupported boundary_representation {representation!r}.")
+    centered = bool(names.intersection(operands.variables)) or operands.attrs.get(
+        "boundary_representation"
+    ) == "centered-v1"
+    if not centered:
+        return False
+    if not names <= set(operands.variables):
+        raise ValueError("Centered boundaries require H_bc_anomaly, H_bc_mass and bc_reference.")
+    if operands.attrs.get("boundary_representation") != "centered-v1":
+        raise ValueError("Centered boundaries require boundary_representation='centered-v1'.")
+    if "H_bc" in operands and operands.H_bc.attrs.get("boundary_sensitivity_preparation") != "unexpanded":
+        raise ValueError("Centered boundaries cannot include expanded or unmarked absolute H_bc.")
+    anomaly, mass, reference = (operands[name] for name in ("H_bc_anomaly", "H_bc_mass", "bc_reference"))
+    if any(
+        value.attrs.get("boundary_sensitivity_preparation") not in (None, "unexpanded")
+        or isinstance(value.indexes.get("bc_region"), pd.MultiIndex)
+        for value in (anomaly, mass)
+    ):
+        raise ValueError("Centered preparation requires unexpanded spatial operands; align only at model binding.")
+    observation_dim = "time" if "time" in anomaly.dims else "nmeasure"
+    anomaly = anomaly.transpose("bc_region", observation_dim)
+    mass = mass.transpose("bc_region", observation_dim)
+    xr.align(anomaly, mass, join="exact", copy=False)
+    for dim in ("bc_region", observation_dim):
+        if dim not in anomaly.indexes or not anomaly.indexes[dim].is_unique:
+            raise ValueError(f"Centered boundaries require unique indexed {dim} labels.")
+    if reference.ndim != 0:
+        raise ValueError("Centered bc_reference must be scalar.")
+    units = anomaly.attrs.get("units")
+    if not units or reference.attrs.get("units") != units or mass.attrs.get("units") != "1":
+        raise ValueError("Centered anomaly/reference must share concentration units; mass units must be '1'.")
+    if "mf" in operands and operands.mf.attrs.get("units") != units:
+        raise ValueError("Centered boundary concentration units must match mf units.")
+    return True
 
 
 def scale_satellite_boundary_sensitivity_to_column_signal(

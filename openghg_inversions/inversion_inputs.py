@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from openghg_inversions.array_ops import concat_gather_datasets
+from openghg_inversions.array_ops import concat_gather_datasets, to_dense
 
 DatetimeLike: TypeAlias = str | dt.datetime | np.datetime64 | pd.Timestamp
 
@@ -164,17 +164,24 @@ def _drop_nan_and_compute(
         ds: Assembled observation-aligned inversion inputs.
         drop_nan_from: Variables whose NaNs remove an ``nmeasure`` row.
             Missing names are ignored. Present names are also materialized.
+            ``H_bc_anomaly`` and ``H_bc_mass`` are included when present.
+            Centered inputs remove rows with NaNs or infinities in this subset.
 
     Returns:
-        A new dataset with core payloads materialized and rows containing NaNs
-        in the selected variables removed, preserving retained labels/order.
+        A new dataset with core payloads materialized and invalid rows removed,
+        preserving retained labels/order. Centered references are checked
+        separately for finite values and equality across sites.
     """
-    drop_subset = [v for v in drop_nan_from if v in ds]
+    drop_subset = [v for v in (*drop_nan_from, "H_bc_anomaly", "H_bc_mass") if v in ds]
     # Materialize before dropna: its row mask otherwise executes shared sources
     # separately from the payloads needed by the inversion.
     to_compute: list[str] = [
         "H",
         "H_bc",
+        "H_bc_anomaly",
+        "H_bc_mass",
+        "bc_reference",
+        "_bc_references",
         "mf",
         "mf_error",
         "mf_repeatability",
@@ -188,7 +195,24 @@ def _drop_nan_and_compute(
     # Variables exclude auxiliary coordinates, which need not become eager.
     computed = dask.compute(*(ds[v].variable for v in to_compute))
     ds = ds.assign(dict(zip(to_compute, computed)))
-    if drop_subset:
+    if "_bc_references" in ds:
+        references = ds["_bc_references"].to_numpy()
+        if not np.isfinite(references).all():
+            raise ValueError("Centered bc_reference must be finite.")
+        if not np.all(references == references[0]):
+            raise ValueError("Centered bc_reference must be identical across all sites in a tracer.")
+        ds = ds.drop_dims("_bc_reference_site")
+    if "bc_reference" in ds and not bool(np.isfinite(ds.bc_reference).all()):
+        raise ValueError("Centered bc_reference must be finite.")
+    # Centered science rows share one finite-value selection at this boundary.
+    if "H_bc_anomaly" in ds:
+        valid = xr.ones_like(ds.mf, dtype=bool)
+        for name in drop_subset:
+            finite = np.isfinite(ds[name])
+            other_dims = [dim for dim in finite.dims if dim != "nmeasure"]
+            valid = valid & (finite.all(other_dims) if other_dims else finite)
+        ds = ds.isel(nmeasure=to_dense(valid))
+    elif drop_subset:
         ds = ds.dropna(dim="nmeasure", how="any", subset=drop_subset)
 
     return ds
@@ -306,6 +330,18 @@ def make_inv_inputs(
         raise ValueError(f"`fp_data` is missing requested site(s): {missing_sites!r}.")
 
     site_data = {site: fp_data[site] for site in sites}
+    from openghg_inversions.boundary_sensitivity import validate_boundary_operands
+
+    centered_sites = [validate_boundary_operands(dataset) for dataset in site_data.values()]
+    if any(centered_sites) and not all(centered_sites):
+        raise ValueError("Cannot mix centered and absolute per-site boundary representations.")
+    reference = None
+    if all(centered_sites):
+        references = [dataset.bc_reference for dataset in site_data.values()]
+        reference = references[0]
+        if any(value.attrs["units"] != reference.attrs["units"] for value in references[1:]):
+            raise ValueError("Centered bc_reference units must match across sites.")
+        site_data = {site: dataset.drop_vars("bc_reference") for site, dataset in site_data.items()}
     site_data = _fill_missing_optional_observation_factors(site_data)
     _validate_per_site_dimension_names(site_data, ragged_dim="time")
 
@@ -323,6 +359,12 @@ def make_inv_inputs(
             "Per-site inversion inputs must have identical indexes on every non-time dimension "
             "before gathering into nmeasure."
         ) from exc
+
+    if reference is not None:
+        ds["bc_reference"] = reference
+        ds["_bc_references"] = xr.concat(references, dim="_bc_reference_site")
+        ds.attrs = dict(fp_data[sites[0]].attrs)
+        ds.attrs["boundary_representation"] = "centered-v1"
 
     # Source selection and normalization can differ between sites. Retain their
     # individual facts instead of presenting the first site's attrs as universal.
@@ -357,6 +399,8 @@ def make_inv_inputs(
         ):
             raise ValueError("Preparation requires raw spatial H_bc, without fitted boundary periods.")
         ds["H_bc"].attrs = dict(ds["H_bc"].attrs)
-        ds["H_bc"].attrs["boundary_sensitivity_preparation"] = "raw-spatial"
+        ds["H_bc"].attrs["boundary_sensitivity_preparation"] = (
+            "unexpanded" if reference is not None else "raw-spatial"
+        )
 
     return _drop_nan_and_compute(ds)
