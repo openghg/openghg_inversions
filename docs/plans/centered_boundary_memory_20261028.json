@@ -1,0 +1,6592 @@
+{
+  "scope": "controlled timing/memory experiment; no posterior or production acceptance",
+  "revision": "3dfc2b96886878535cb784f50616831175eb6311",
+  "array_job": "19775806",
+  "preflight_job": "19775696",
+  "run_root": "/group/chem/acrg/brendan_for_codex/.codex-worktrees/dbdf/openghg_inversions/build/pr979-review-20261028",
+  "sacct_sha256": "d931eea54922bd4e16cbce98e15f61d7e420a0d5e987871c252eb7e0bbc18ab8",
+  "cases": [
+    {
+      "workload": "mhd",
+      "variant": "float64",
+      "chains": 1,
+      "array_task": 0,
+      "slurm_job_id": "19775817",
+      "result_sha256": "017f9d911e2e5962229499618f72ea1bef0d235eae4c8d6d9c9d3262c30e4e56",
+      "telemetry_sha256": "45342e05520923215a227e1ad21d5ad365c535627f9d5e6e9dce3818092454c2",
+      "config_sha256": "fa4cf0d90f7605dc0f1fe5df1f6a71df80867cceadc3605d7dccbcdc946265da",
+      "input_sha256": "68906185b95224d37f7f3f31fef65a5483daf3cfa057e06a8a460e9a5129ad60",
+      "input_manifest_sha256": "c32edc3c7d9d8554d37083095d5db49328d49418972eeec5306570aee189c4ee",
+      "versions": {
+        "python": "3.13.7",
+        "numpy": "2.2.6",
+        "pymc": "6.3.2",
+        "pytensor": "3.3.2"
+      },
+      "rows": 258,
+      "cache_states": 312,
+      "sampled_wholeprocess_peak_pss_bytes": 640103424,
+      "phase_peak_pss_bytes": {
+        "prepare": 298908672,
+        "construction": 358226944,
+        "compile": 506835968,
+        "refresh": 440730624,
+        "sampling": 639083520,
+        "save": 640099328
+      },
+      "phase_seconds": {
+        "prepare_seconds": 1.4631421081721783,
+        "construction_seconds": 5.496441259980202,
+        "compile_seconds": 9.569271042943,
+        "five_refreshes_seconds": 0.044549111276865005,
+        "sampling_seconds": 45.339882872998714,
+        "save_reopen_seconds": 1.0721715465188026
+      },
+      "max_simultaneous_distinct_spawn_cmdlines": 0,
+      "max_simultaneous_spawn_pids": 0,
+      "observed_worker_identities": [],
+      "cgroup_path": "/sys/fs/cgroup/memory/slurm/uid_25805/job_19775817/step_batch/task_0",
+      "cgroup_cumulative_peak_bytes": 677994496,
+      "sacct_records": [
+        {
+          "JobIDRaw": "19775817",
+          "JobName": "pr986-memory",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:01:38",
+          "MaxRSS": "",
+          "AllocCPUS": "4",
+          "ReqMem": "8G"
+        },
+        {
+          "JobIDRaw": "19775817.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:01:38",
+          "MaxRSS": "665168K",
+          "AllocCPUS": "4",
+          "ReqMem": ""
+        }
+      ],
+      "inventory_unique_backing_bytes": {
+        "constructed": 5262276,
+        "compiled": 6063172,
+        "refreshed": 6063172,
+        "sampled": 6844452
+      },
+      "selected_arrays": [
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            258,
+            312
+          ],
+          "logical_bytes": 643968
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            258,
+            313
+          ],
+          "logical_bytes": 646032
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 8256
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 8256
+        }
+      ]
+    },
+    {
+      "workload": "mhd",
+      "variant": "float64",
+      "chains": 4,
+      "array_task": 1,
+      "slurm_job_id": "19775818",
+      "result_sha256": "05581bcad9915c2e7e211c428baa316ab5198576323aa15700f0de7b59418120",
+      "telemetry_sha256": "47d2655c3c8d8c1ccdb379fd5191f822d572656cb0f4a1d69c74bde4f326e7db",
+      "config_sha256": "fa4cf0d90f7605dc0f1fe5df1f6a71df80867cceadc3605d7dccbcdc946265da",
+      "input_sha256": "68906185b95224d37f7f3f31fef65a5483daf3cfa057e06a8a460e9a5129ad60",
+      "input_manifest_sha256": "c32edc3c7d9d8554d37083095d5db49328d49418972eeec5306570aee189c4ee",
+      "versions": {
+        "python": "3.13.7",
+        "numpy": "2.2.6",
+        "pymc": "6.3.2",
+        "pytensor": "3.3.2"
+      },
+      "rows": 258,
+      "cache_states": 312,
+      "sampled_wholeprocess_peak_pss_bytes": 2410217472,
+      "phase_peak_pss_bytes": {
+        "prepare": 296010752,
+        "construction": 358884352,
+        "compile": 500807680,
+        "refresh": 441736192,
+        "sampling": 2410217472,
+        "save": 681609216
+      },
+      "phase_seconds": {
+        "prepare_seconds": 1.4644160009920597,
+        "construction_seconds": 5.493123147636652,
+        "compile_seconds": 9.562336077913642,
+        "five_refreshes_seconds": 0.045247968286275864,
+        "sampling_seconds": 101.42697274498641,
+        "save_reopen_seconds": 1.0350857023149729
+      },
+      "max_simultaneous_distinct_spawn_cmdlines": 4,
+      "max_simultaneous_spawn_pids": 4,
+      "observed_worker_identities": [
+        [
+          3618659,
+          "862785384"
+        ],
+        [
+          3618662,
+          "862785720"
+        ],
+        [
+          3618677,
+          "862786056"
+        ],
+        [
+          3618713,
+          "862786398"
+        ]
+      ],
+      "cgroup_path": "/sys/fs/cgroup/memory/slurm/uid_25805/job_19775818/step_batch/task_0",
+      "cgroup_cumulative_peak_bytes": 2395783168,
+      "sacct_records": [
+        {
+          "JobIDRaw": "19775818",
+          "JobName": "pr986-memory",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:02:34",
+          "MaxRSS": "",
+          "AllocCPUS": "4",
+          "ReqMem": "8G"
+        },
+        {
+          "JobIDRaw": "19775818.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:02:34",
+          "MaxRSS": "2339632K",
+          "AllocCPUS": "4",
+          "ReqMem": ""
+        }
+      ],
+      "inventory_unique_backing_bytes": {
+        "constructed": 5262276,
+        "compiled": 6063172,
+        "refreshed": 6063172,
+        "sampled": 6063172
+      },
+      "selected_arrays": [
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            258,
+            312
+          ],
+          "logical_bytes": 643968
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            258,
+            313
+          ],
+          "logical_bytes": 646032
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 8256
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 8256
+        }
+      ]
+    },
+    {
+      "workload": "mhd",
+      "variant": "active_b32",
+      "chains": 1,
+      "array_task": 2,
+      "slurm_job_id": "19775819",
+      "result_sha256": "c077a004f08885b57eb5614c77242ed6ee2008fe3e700b837c18e9dc62190b12",
+      "telemetry_sha256": "d9174c577e1214c45bde74e8a9f2de00cdeb576b119dfccf5f29039871c88a27",
+      "config_sha256": "fa4cf0d90f7605dc0f1fe5df1f6a71df80867cceadc3605d7dccbcdc946265da",
+      "input_sha256": "68906185b95224d37f7f3f31fef65a5483daf3cfa057e06a8a460e9a5129ad60",
+      "input_manifest_sha256": "c32edc3c7d9d8554d37083095d5db49328d49418972eeec5306570aee189c4ee",
+      "versions": {
+        "python": "3.13.7",
+        "numpy": "2.2.6",
+        "pymc": "6.3.2",
+        "pytensor": "3.3.2"
+      },
+      "rows": 258,
+      "cache_states": 312,
+      "sampled_wholeprocess_peak_pss_bytes": 643135488,
+      "phase_peak_pss_bytes": {
+        "prepare": 295653376,
+        "construction": 359702528,
+        "compile": 498324480,
+        "refresh": 434518016,
+        "sampling": 642136064,
+        "save": 643131392
+      },
+      "phase_seconds": {
+        "prepare_seconds": 1.6354508846998215,
+        "construction_seconds": 5.298805594444275,
+        "compile_seconds": 8.560212887823582,
+        "five_refreshes_seconds": 0.04299619048833847,
+        "sampling_seconds": 43.94889751449227,
+        "save_reopen_seconds": 1.1802268419414759
+      },
+      "max_simultaneous_distinct_spawn_cmdlines": 0,
+      "max_simultaneous_spawn_pids": 0,
+      "observed_worker_identities": [],
+      "cgroup_path": "/sys/fs/cgroup/memory/slurm/uid_25805/job_19775819/step_batch/task_0",
+      "cgroup_cumulative_peak_bytes": 679776256,
+      "sacct_records": [
+        {
+          "JobIDRaw": "19775819",
+          "JobName": "pr986-memory",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:01:36",
+          "MaxRSS": "",
+          "AllocCPUS": "4",
+          "ReqMem": "8G"
+        },
+        {
+          "JobIDRaw": "19775819.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:01:36",
+          "MaxRSS": "664776K",
+          "AllocCPUS": "4",
+          "ReqMem": ""
+        }
+      ],
+      "inventory_unique_backing_bytes": {
+        "constructed": 5254020,
+        "compiled": 6054916,
+        "refreshed": 6054916,
+        "sampled": 6836196
+      },
+      "selected_arrays": [
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            258,
+            312
+          ],
+          "logical_bytes": 643968
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            258,
+            313
+          ],
+          "logical_bytes": 646032
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 4128
+        }
+      ]
+    },
+    {
+      "workload": "mhd",
+      "variant": "active_b32",
+      "chains": 4,
+      "array_task": 3,
+      "slurm_job_id": "19775820",
+      "result_sha256": "13b00fe0311148898cbe5dcc1d50d5427c8022a22e8f67a9d7012ae71008b399",
+      "telemetry_sha256": "73f8b35b664b3d703c865c287ace44d53f60c5d4884c5b1e599c40903e46f06e",
+      "config_sha256": "fa4cf0d90f7605dc0f1fe5df1f6a71df80867cceadc3605d7dccbcdc946265da",
+      "input_sha256": "68906185b95224d37f7f3f31fef65a5483daf3cfa057e06a8a460e9a5129ad60",
+      "input_manifest_sha256": "c32edc3c7d9d8554d37083095d5db49328d49418972eeec5306570aee189c4ee",
+      "versions": {
+        "python": "3.13.7",
+        "numpy": "2.2.6",
+        "pymc": "6.3.2",
+        "pytensor": "3.3.2"
+      },
+      "rows": 258,
+      "cache_states": 312,
+      "sampled_wholeprocess_peak_pss_bytes": 2439256064,
+      "phase_peak_pss_bytes": {
+        "prepare": 300925952,
+        "construction": 362587136,
+        "compile": 500512768,
+        "refresh": 437648384,
+        "sampling": 2439256064,
+        "save": 697196544
+      },
+      "phase_seconds": {
+        "prepare_seconds": 1.634831978008151,
+        "construction_seconds": 5.30020940490067,
+        "compile_seconds": 8.565724274143577,
+        "five_refreshes_seconds": 0.043180735781788826,
+        "sampling_seconds": 94.04480575025082,
+        "save_reopen_seconds": 0.9186969716101885
+      },
+      "max_simultaneous_distinct_spawn_cmdlines": 4,
+      "max_simultaneous_spawn_pids": 4,
+      "observed_worker_identities": [
+        [
+          3430164,
+          "862733931"
+        ],
+        [
+          3430167,
+          "862734312"
+        ],
+        [
+          3430184,
+          "862734601"
+        ],
+        [
+          3430199,
+          "862734911"
+        ]
+      ],
+      "cgroup_path": "/sys/fs/cgroup/memory/slurm/uid_25805/job_19775820/step_batch/task_0",
+      "cgroup_cumulative_peak_bytes": 2426359808,
+      "sacct_records": [
+        {
+          "JobIDRaw": "19775820",
+          "JobName": "pr986-memory",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:02:25",
+          "MaxRSS": "",
+          "AllocCPUS": "4",
+          "ReqMem": "8G"
+        },
+        {
+          "JobIDRaw": "19775820.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:02:25",
+          "MaxRSS": "2369492K",
+          "AllocCPUS": "4",
+          "ReqMem": ""
+        }
+      ],
+      "inventory_unique_backing_bytes": {
+        "constructed": 5254020,
+        "compiled": 6054916,
+        "refreshed": 6054916,
+        "sampled": 6054916
+      },
+      "selected_arrays": [
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            258,
+            312
+          ],
+          "logical_bytes": 643968
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            258,
+            313
+          ],
+          "logical_bytes": 646032
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 4128
+        }
+      ]
+    },
+    {
+      "workload": "mhd",
+      "variant": "blocked64",
+      "chains": 1,
+      "array_task": 4,
+      "slurm_job_id": "19775821",
+      "result_sha256": "a5390ede75a73d0c99c041f24522b837693bcf4f7c7cdb6ab96200ab9fb6dcac",
+      "telemetry_sha256": "5d180b44a2435985dde2d666824f53710605ffa2ebd35d12c70a992c009cca4b",
+      "config_sha256": "fa4cf0d90f7605dc0f1fe5df1f6a71df80867cceadc3605d7dccbcdc946265da",
+      "input_sha256": "68906185b95224d37f7f3f31fef65a5483daf3cfa057e06a8a460e9a5129ad60",
+      "input_manifest_sha256": "c32edc3c7d9d8554d37083095d5db49328d49418972eeec5306570aee189c4ee",
+      "versions": {
+        "python": "3.13.7",
+        "numpy": "2.2.6",
+        "pymc": "6.3.2",
+        "pytensor": "3.3.2"
+      },
+      "rows": 258,
+      "cache_states": 312,
+      "sampled_wholeprocess_peak_pss_bytes": 641067008,
+      "phase_peak_pss_bytes": {
+        "prepare": 295165952,
+        "construction": 358991872,
+        "compile": 516459520,
+        "refresh": 441702400,
+        "sampling": 640059392,
+        "save": 641062912
+      },
+      "phase_seconds": {
+        "prepare_seconds": 1.7112692035734653,
+        "construction_seconds": 5.247330097481608,
+        "compile_seconds": 9.678925665095448,
+        "five_refreshes_seconds": 0.04354457929730415,
+        "sampling_seconds": 44.56375993415713,
+        "save_reopen_seconds": 1.0421509258449078
+      },
+      "max_simultaneous_distinct_spawn_cmdlines": 0,
+      "max_simultaneous_spawn_pids": 0,
+      "observed_worker_identities": [],
+      "cgroup_path": "/sys/fs/cgroup/memory/slurm/uid_25805/job_19775821/step_batch/task_0",
+      "cgroup_cumulative_peak_bytes": 683094016,
+      "sacct_records": [
+        {
+          "JobIDRaw": "19775821",
+          "JobName": "pr986-memory",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:01:38",
+          "MaxRSS": "",
+          "AllocCPUS": "4",
+          "ReqMem": "8G"
+        },
+        {
+          "JobIDRaw": "19775821.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:01:38",
+          "MaxRSS": "667848K",
+          "AllocCPUS": "4",
+          "ReqMem": ""
+        }
+      ],
+      "inventory_unique_backing_bytes": {
+        "constructed": 5262276,
+        "compiled": 6063172,
+        "refreshed": 6063172,
+        "sampled": 6844452
+      },
+      "selected_arrays": [
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            258,
+            312
+          ],
+          "logical_bytes": 643968
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            258,
+            313
+          ],
+          "logical_bytes": 646032
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 8256
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 8256
+        }
+      ]
+    },
+    {
+      "workload": "mhd",
+      "variant": "blocked64",
+      "chains": 4,
+      "array_task": 5,
+      "slurm_job_id": "19775822",
+      "result_sha256": "1b3d7e265ece0cf2d7835f6d318fbe3683e00e61d9235621ab46dd296d62ae35",
+      "telemetry_sha256": "44be6527acf98af9ec778ce09513ad64738a1fcdc630939909d6e54abfe6ec35",
+      "config_sha256": "fa4cf0d90f7605dc0f1fe5df1f6a71df80867cceadc3605d7dccbcdc946265da",
+      "input_sha256": "68906185b95224d37f7f3f31fef65a5483daf3cfa057e06a8a460e9a5129ad60",
+      "input_manifest_sha256": "c32edc3c7d9d8554d37083095d5db49328d49418972eeec5306570aee189c4ee",
+      "versions": {
+        "python": "3.13.7",
+        "numpy": "2.2.6",
+        "pymc": "6.3.2",
+        "pytensor": "3.3.2"
+      },
+      "rows": 258,
+      "cache_states": 312,
+      "sampled_wholeprocess_peak_pss_bytes": 2427924480,
+      "phase_peak_pss_bytes": {
+        "prepare": 300650496,
+        "construction": 358983680,
+        "compile": 505337856,
+        "refresh": 441546752,
+        "sampling": 2427924480,
+        "save": 696728576
+      },
+      "phase_seconds": {
+        "prepare_seconds": 1.7112641762942076,
+        "construction_seconds": 5.24732268601656,
+        "compile_seconds": 9.673970766365528,
+        "five_refreshes_seconds": 0.04372468218207359,
+        "sampling_seconds": 97.94355349242687,
+        "save_reopen_seconds": 0.984662352129817
+      },
+      "max_simultaneous_distinct_spawn_cmdlines": 4,
+      "max_simultaneous_spawn_pids": 4,
+      "observed_worker_identities": [
+        [
+          3077176,
+          "862824754"
+        ],
+        [
+          3077179,
+          "862825082"
+        ],
+        [
+          3077196,
+          "862825411"
+        ],
+        [
+          3077211,
+          "862825730"
+        ]
+      ],
+      "cgroup_path": "/sys/fs/cgroup/memory/slurm/uid_25805/job_19775822/step_batch/task_0",
+      "cgroup_cumulative_peak_bytes": 2410283008,
+      "sacct_records": [
+        {
+          "JobIDRaw": "19775822",
+          "JobName": "pr986-memory",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:02:30",
+          "MaxRSS": "",
+          "AllocCPUS": "4",
+          "ReqMem": "8G"
+        },
+        {
+          "JobIDRaw": "19775822.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:02:30",
+          "MaxRSS": "2353792K",
+          "AllocCPUS": "4",
+          "ReqMem": ""
+        }
+      ],
+      "inventory_unique_backing_bytes": {
+        "constructed": 5262276,
+        "compiled": 6063172,
+        "refreshed": 6063172,
+        "sampled": 6063172
+      },
+      "selected_arrays": [
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            258,
+            312
+          ],
+          "logical_bytes": 643968
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            258,
+            313
+          ],
+          "logical_bytes": 646032
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 8256
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 8256
+        }
+      ]
+    },
+    {
+      "workload": "mhd",
+      "variant": "combined",
+      "chains": 1,
+      "array_task": 6,
+      "slurm_job_id": "19775823",
+      "result_sha256": "b4eb3669912654f6a7b11fcb328498bb9f4736352e26a376632b1e014f4f935a",
+      "telemetry_sha256": "53696774454579e6404806e4e46978ceb9112d1d9e5ba91ba3599090057911bd",
+      "config_sha256": "fa4cf0d90f7605dc0f1fe5df1f6a71df80867cceadc3605d7dccbcdc946265da",
+      "input_sha256": "68906185b95224d37f7f3f31fef65a5483daf3cfa057e06a8a460e9a5129ad60",
+      "input_manifest_sha256": "c32edc3c7d9d8554d37083095d5db49328d49418972eeec5306570aee189c4ee",
+      "versions": {
+        "python": "3.13.7",
+        "numpy": "2.2.6",
+        "pymc": "6.3.2",
+        "pytensor": "3.3.2"
+      },
+      "rows": 258,
+      "cache_states": 312,
+      "sampled_wholeprocess_peak_pss_bytes": 660488192,
+      "phase_peak_pss_bytes": {
+        "prepare": 296611840,
+        "construction": 362246144,
+        "compile": 511627264,
+        "refresh": 435091456,
+        "sampling": 655659008,
+        "save": 660482048
+      },
+      "phase_seconds": {
+        "prepare_seconds": 1.4480574280023575,
+        "construction_seconds": 5.4103386066854,
+        "compile_seconds": 8.368846932426095,
+        "five_refreshes_seconds": 0.039844514802098274,
+        "sampling_seconds": 39.29235000163317,
+        "save_reopen_seconds": 0.9091739375144243
+      },
+      "max_simultaneous_distinct_spawn_cmdlines": 0,
+      "max_simultaneous_spawn_pids": 0,
+      "observed_worker_identities": [],
+      "cgroup_path": "/sys/fs/cgroup/memory/slurm/uid_25805/job_19775823/step_batch/task_0",
+      "cgroup_cumulative_peak_bytes": 734408704,
+      "sacct_records": [
+        {
+          "JobIDRaw": "19775823",
+          "JobName": "pr986-memory",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:01:30",
+          "MaxRSS": "",
+          "AllocCPUS": "4",
+          "ReqMem": "8G"
+        },
+        {
+          "JobIDRaw": "19775823.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:01:30",
+          "MaxRSS": "718204K",
+          "AllocCPUS": "4",
+          "ReqMem": ""
+        }
+      ],
+      "inventory_unique_backing_bytes": {
+        "constructed": 5254020,
+        "compiled": 6054916,
+        "refreshed": 6054916,
+        "sampled": 6836196
+      },
+      "selected_arrays": [
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            258,
+            312
+          ],
+          "logical_bytes": 643968
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            258,
+            313
+          ],
+          "logical_bytes": 646032
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 4128
+        }
+      ]
+    },
+    {
+      "workload": "mhd",
+      "variant": "combined",
+      "chains": 4,
+      "array_task": 7,
+      "slurm_job_id": "19775824",
+      "result_sha256": "4fd38acb6e5209193418872cfe522ff903029fba87b8e443cedc457d207750aa",
+      "telemetry_sha256": "820b122a599a29701ca60f139f485f1cce1b46bfdfa0c26634df59ad1ef31d68",
+      "config_sha256": "fa4cf0d90f7605dc0f1fe5df1f6a71df80867cceadc3605d7dccbcdc946265da",
+      "input_sha256": "68906185b95224d37f7f3f31fef65a5483daf3cfa057e06a8a460e9a5129ad60",
+      "input_manifest_sha256": "c32edc3c7d9d8554d37083095d5db49328d49418972eeec5306570aee189c4ee",
+      "versions": {
+        "python": "3.13.7",
+        "numpy": "2.2.6",
+        "pymc": "6.3.2",
+        "pytensor": "3.3.2"
+      },
+      "rows": 258,
+      "cache_states": 312,
+      "sampled_wholeprocess_peak_pss_bytes": 2439465984,
+      "phase_peak_pss_bytes": {
+        "prepare": 295622656,
+        "construction": 360210432,
+        "compile": 512517120,
+        "refresh": 434788352,
+        "sampling": 2439465984,
+        "save": 694031360
+      },
+      "phase_seconds": {
+        "prepare_seconds": 1.4589917324483395,
+        "construction_seconds": 5.542618440464139,
+        "compile_seconds": 10.699091034010053,
+        "five_refreshes_seconds": 0.046913743019104004,
+        "sampling_seconds": 134.18786281906068,
+        "save_reopen_seconds": 1.2110921535640955
+      },
+      "max_simultaneous_distinct_spawn_cmdlines": 4,
+      "max_simultaneous_spawn_pids": 4,
+      "observed_worker_identities": [
+        [
+          682180,
+          "862721006"
+        ],
+        [
+          682200,
+          "862721404"
+        ],
+        [
+          682215,
+          "862721797"
+        ],
+        [
+          682230,
+          "862722179"
+        ]
+      ],
+      "cgroup_path": "/sys/fs/cgroup/memory/slurm/uid_25805/job_19775824/step_batch/task_0",
+      "cgroup_cumulative_peak_bytes": 2392018944,
+      "sacct_records": [
+        {
+          "JobIDRaw": "19775824",
+          "JobName": "pr986-memory",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:03:09",
+          "MaxRSS": "",
+          "AllocCPUS": "4",
+          "ReqMem": "8G"
+        },
+        {
+          "JobIDRaw": "19775824.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:03:09",
+          "MaxRSS": "2335956K",
+          "AllocCPUS": "4",
+          "ReqMem": ""
+        }
+      ],
+      "inventory_unique_backing_bytes": {
+        "constructed": 5254020,
+        "compiled": 6054916,
+        "refreshed": 6054916,
+        "sampled": 6054916
+      },
+      "selected_arrays": [
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            258,
+            312
+          ],
+          "logical_bytes": 643968
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            258,
+            313
+          ],
+          "logical_bytes": 646032
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 4128
+        }
+      ]
+    },
+    {
+      "workload": "four_site",
+      "variant": "float64",
+      "chains": 1,
+      "array_task": 8,
+      "slurm_job_id": "19775825",
+      "result_sha256": "5442218c34d6ed82178ccf625f2a10d66a980119fa25ac41310e964474c66046",
+      "telemetry_sha256": "51e6e3e3703150dd2e8d75566ff8133c34ddfe5f5978195d4b0622040e70b6fe",
+      "config_sha256": "24d8b2bc0f54bd3feca9aeb31ff5363896c61720ef21161f48feb8b3a6148904",
+      "input_sha256": "abca34a1d3e93b3685e47eca01d38269838c0134463b0cca8d2f25806ccb9a52",
+      "input_manifest_sha256": "7145e8caec540ae9f6f5221ecfb56b55a9e48fab72d8b077cf3d75b722e70967",
+      "versions": {
+        "python": "3.13.7",
+        "numpy": "2.2.6",
+        "pymc": "6.3.2",
+        "pytensor": "3.3.2"
+      },
+      "rows": 1236,
+      "cache_states": 312,
+      "sampled_wholeprocess_peak_pss_bytes": 1125577728,
+      "phase_peak_pss_bytes": {
+        "prepare": 334830592,
+        "construction": 463922176,
+        "compile": 568351744,
+        "refresh": 548228096,
+        "sampling": 1125577728,
+        "save": 1085244416
+      },
+      "phase_seconds": {
+        "prepare_seconds": 2.2628904189914465,
+        "construction_seconds": 5.09840277954936,
+        "compile_seconds": 9.161158584058285,
+        "five_refreshes_seconds": 0.7115287147462368,
+        "sampling_seconds": 839.4144034720957,
+        "save_reopen_seconds": 1.4816444516181946
+      },
+      "max_simultaneous_distinct_spawn_cmdlines": 0,
+      "max_simultaneous_spawn_pids": 0,
+      "observed_worker_identities": [],
+      "cgroup_path": "/sys/fs/cgroup/memory/slurm/uid_25805/job_19775825/step_batch/task_0",
+      "cgroup_cumulative_peak_bytes": 1188585472,
+      "sacct_records": [
+        {
+          "JobIDRaw": "19775825",
+          "JobName": "pr986-memory",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:14:57",
+          "MaxRSS": "",
+          "AllocCPUS": "4",
+          "ReqMem": "8G"
+        },
+        {
+          "JobIDRaw": "19775825.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:14:57",
+          "MaxRSS": "1160728K",
+          "AllocCPUS": "4",
+          "ReqMem": ""
+        }
+      ],
+      "inventory_unique_backing_bytes": {
+        "constructed": 39310268,
+        "compiled": 40174428,
+        "refreshed": 40174428,
+        "sampled": 40953372
+      },
+      "selected_arrays": [
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            312
+          ],
+          "logical_bytes": 3085056
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            313
+          ],
+          "logical_bytes": 3094944
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 39552
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 39552
+        }
+      ]
+    },
+    {
+      "workload": "four_site",
+      "variant": "float64",
+      "chains": 4,
+      "array_task": 9,
+      "slurm_job_id": "19775826",
+      "result_sha256": "e137d8c168f368e26f4b2cce7ddbf0e545c09f6cd231508d423f75cbf1fd2eec",
+      "telemetry_sha256": "80a0957afed3a062603ca8cebe0412c7ba6bbd155d9d3173f2a5b814574600b5",
+      "config_sha256": "24d8b2bc0f54bd3feca9aeb31ff5363896c61720ef21161f48feb8b3a6148904",
+      "input_sha256": "abca34a1d3e93b3685e47eca01d38269838c0134463b0cca8d2f25806ccb9a52",
+      "input_manifest_sha256": "7145e8caec540ae9f6f5221ecfb56b55a9e48fab72d8b077cf3d75b722e70967",
+      "versions": {
+        "python": "3.13.7",
+        "numpy": "2.2.6",
+        "pymc": "6.3.2",
+        "pytensor": "3.3.2"
+      },
+      "rows": 1236,
+      "cache_states": 312,
+      "sampled_wholeprocess_peak_pss_bytes": 3139526656,
+      "phase_peak_pss_bytes": {
+        "prepare": 334294016,
+        "construction": 480535552,
+        "compile": 567547904,
+        "refresh": 547924992,
+        "sampling": 3139526656,
+        "save": 1294270464
+      },
+      "phase_seconds": {
+        "prepare_seconds": 2.2630240749567747,
+        "construction_seconds": 5.095611931756139,
+        "compile_seconds": 9.16039913892746,
+        "five_refreshes_seconds": 0.7247736193239689,
+        "sampling_seconds": 1622.9334031827748,
+        "save_reopen_seconds": 1.0401844270527363
+      },
+      "max_simultaneous_distinct_spawn_cmdlines": 4,
+      "max_simultaneous_spawn_pids": 4,
+      "observed_worker_identities": [
+        [
+          3153113,
+          "862595998"
+        ],
+        [
+          3153116,
+          "862596673"
+        ],
+        [
+          3153131,
+          "862596996"
+        ],
+        [
+          3153148,
+          "862597337"
+        ]
+      ],
+      "cgroup_path": "/sys/fs/cgroup/memory/slurm/uid_25805/job_19775826/step_batch/task_0",
+      "cgroup_cumulative_peak_bytes": 3163295744,
+      "sacct_records": [
+        {
+          "JobIDRaw": "19775826",
+          "JobName": "pr986-memory",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:27:56",
+          "MaxRSS": "",
+          "AllocCPUS": "4",
+          "ReqMem": "8G"
+        },
+        {
+          "JobIDRaw": "19775826.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:27:56",
+          "MaxRSS": "3089156K",
+          "AllocCPUS": "4",
+          "ReqMem": ""
+        }
+      ],
+      "inventory_unique_backing_bytes": {
+        "constructed": 39310268,
+        "compiled": 40174428,
+        "refreshed": 40174428,
+        "sampled": 40174428
+      },
+      "selected_arrays": [
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            312
+          ],
+          "logical_bytes": 3085056
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            313
+          ],
+          "logical_bytes": 3094944
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 39552
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 39552
+        }
+      ]
+    },
+    {
+      "workload": "four_site",
+      "variant": "active_b32",
+      "chains": 1,
+      "array_task": 10,
+      "slurm_job_id": "19775827",
+      "result_sha256": "31efb3b7a80ef24da19ac0724a42d68e8923e2d49a8c7597e727c065fc3688fc",
+      "telemetry_sha256": "109eab7dd3306f675843b0576b32e3a200088ba5af66db1c3252908205cb9125",
+      "config_sha256": "24d8b2bc0f54bd3feca9aeb31ff5363896c61720ef21161f48feb8b3a6148904",
+      "input_sha256": "abca34a1d3e93b3685e47eca01d38269838c0134463b0cca8d2f25806ccb9a52",
+      "input_manifest_sha256": "7145e8caec540ae9f6f5221ecfb56b55a9e48fab72d8b077cf3d75b722e70967",
+      "versions": {
+        "python": "3.13.7",
+        "numpy": "2.2.6",
+        "pymc": "6.3.2",
+        "pytensor": "3.3.2"
+      },
+      "rows": 1236,
+      "cache_states": 312,
+      "sampled_wholeprocess_peak_pss_bytes": 1337835520,
+      "phase_peak_pss_bytes": {
+        "prepare": 379999232,
+        "construction": 516596736,
+        "compile": 607120384,
+        "refresh": 580751360,
+        "sampling": 1337835520,
+        "save": 1264416768
+      },
+      "phase_seconds": {
+        "prepare_seconds": 2.112923623993993,
+        "construction_seconds": 4.763822328299284,
+        "compile_seconds": 8.539319474250078,
+        "five_refreshes_seconds": 0.69506711140275,
+        "sampling_seconds": 810.6323675513268,
+        "save_reopen_seconds": 1.3034223653376102
+      },
+      "max_simultaneous_distinct_spawn_cmdlines": 0,
+      "max_simultaneous_spawn_pids": 0,
+      "observed_worker_identities": [],
+      "cgroup_path": "/sys/fs/cgroup/memory/slurm/uid_25805/job_19775827/step_batch/task_0",
+      "cgroup_cumulative_peak_bytes": 1369292800,
+      "sacct_records": [
+        {
+          "JobIDRaw": "19775827",
+          "JobName": "pr986-memory",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:14:26",
+          "MaxRSS": "",
+          "AllocCPUS": "4",
+          "ReqMem": "8G"
+        },
+        {
+          "JobIDRaw": "19775827.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:14:26",
+          "MaxRSS": "1337200K",
+          "AllocCPUS": "4",
+          "ReqMem": ""
+        }
+      ],
+      "inventory_unique_backing_bytes": {
+        "constructed": 39270716,
+        "compiled": 40134876,
+        "refreshed": 40134876,
+        "sampled": 40916252
+      },
+      "selected_arrays": [
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            312
+          ],
+          "logical_bytes": 3085056
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            313
+          ],
+          "logical_bytes": 3094944
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 19776
+        }
+      ]
+    },
+    {
+      "workload": "four_site",
+      "variant": "active_b32",
+      "chains": 4,
+      "array_task": 11,
+      "slurm_job_id": "19775828",
+      "result_sha256": "ba9e566b8b210e6ae784856b6a2d5fb5c032a808105c09551448b720e81c4efa",
+      "telemetry_sha256": "5197deae69ba900c5a89daed34f6ae14c7b02fe0b40b6256e45920d768af7692",
+      "config_sha256": "24d8b2bc0f54bd3feca9aeb31ff5363896c61720ef21161f48feb8b3a6148904",
+      "input_sha256": "abca34a1d3e93b3685e47eca01d38269838c0134463b0cca8d2f25806ccb9a52",
+      "input_manifest_sha256": "7145e8caec540ae9f6f5221ecfb56b55a9e48fab72d8b077cf3d75b722e70967",
+      "versions": {
+        "python": "3.13.7",
+        "numpy": "2.2.6",
+        "pymc": "6.3.2",
+        "pytensor": "3.3.2"
+      },
+      "rows": 1236,
+      "cache_states": 312,
+      "sampled_wholeprocess_peak_pss_bytes": 3169298432,
+      "phase_peak_pss_bytes": {
+        "prepare": 361485312,
+        "construction": 515740672,
+        "compile": 610606080,
+        "refresh": 585408512,
+        "sampling": 3169298432,
+        "save": 1262220288
+      },
+      "phase_seconds": {
+        "prepare_seconds": 2.0842035189270973,
+        "construction_seconds": 4.899468759074807,
+        "compile_seconds": 8.563074853271246,
+        "five_refreshes_seconds": 0.6689072493463755,
+        "sampling_seconds": 1531.8785028867424,
+        "save_reopen_seconds": 1.4940900169312954
+      },
+      "max_simultaneous_distinct_spawn_cmdlines": 4,
+      "max_simultaneous_spawn_pids": 4,
+      "observed_worker_identities": [
+        [
+          875083,
+          "862603296"
+        ],
+        [
+          875086,
+          "862603668"
+        ],
+        [
+          875101,
+          "862603969"
+        ],
+        [
+          875116,
+          "862604263"
+        ]
+      ],
+      "cgroup_path": "/sys/fs/cgroup/memory/slurm/uid_25805/job_19775828/step_batch/task_0",
+      "cgroup_cumulative_peak_bytes": 3287957504,
+      "sacct_records": [
+        {
+          "JobIDRaw": "19775828",
+          "JobName": "pr986-memory",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:26:24",
+          "MaxRSS": "",
+          "AllocCPUS": "4",
+          "ReqMem": "8G"
+        },
+        {
+          "JobIDRaw": "19775828.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:26:24",
+          "MaxRSS": "3210896K",
+          "AllocCPUS": "4",
+          "ReqMem": ""
+        }
+      ],
+      "inventory_unique_backing_bytes": {
+        "constructed": 39270716,
+        "compiled": 40134876,
+        "refreshed": 40134876,
+        "sampled": 40132444
+      },
+      "selected_arrays": [
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            312
+          ],
+          "logical_bytes": 3085056
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            313
+          ],
+          "logical_bytes": 3094944
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 19776
+        }
+      ]
+    },
+    {
+      "workload": "four_site",
+      "variant": "blocked64",
+      "chains": 1,
+      "array_task": 12,
+      "slurm_job_id": "19775829",
+      "result_sha256": "b21490c4bf63f8d35b5381430f19384d65bfa1d589d6ed93fa8392df146ac670",
+      "telemetry_sha256": "1df62a7a34ebf95b05e54b75a06fe8bb2fb1a5f6ec39bd0ba37c6b44c790e094",
+      "config_sha256": "24d8b2bc0f54bd3feca9aeb31ff5363896c61720ef21161f48feb8b3a6148904",
+      "input_sha256": "abca34a1d3e93b3685e47eca01d38269838c0134463b0cca8d2f25806ccb9a52",
+      "input_manifest_sha256": "7145e8caec540ae9f6f5221ecfb56b55a9e48fab72d8b077cf3d75b722e70967",
+      "versions": {
+        "python": "3.13.7",
+        "numpy": "2.2.6",
+        "pymc": "6.3.2",
+        "pytensor": "3.3.2"
+      },
+      "rows": 1236,
+      "cache_states": 312,
+      "sampled_wholeprocess_peak_pss_bytes": 1191141376,
+      "phase_peak_pss_bytes": {
+        "prepare": 358907904,
+        "construction": 519958528,
+        "compile": 615478272,
+        "refresh": 586293248,
+        "sampling": 1191141376,
+        "save": 1150939136
+      },
+      "phase_seconds": {
+        "prepare_seconds": 1.7395735681056976,
+        "construction_seconds": 5.261715654283762,
+        "compile_seconds": 9.502908989787102,
+        "five_refreshes_seconds": 0.7431487310677767,
+        "sampling_seconds": 887.8045695051551,
+        "save_reopen_seconds": 1.0410707090049982
+      },
+      "max_simultaneous_distinct_spawn_cmdlines": 0,
+      "max_simultaneous_spawn_pids": 0,
+      "observed_worker_identities": [],
+      "cgroup_path": "/sys/fs/cgroup/memory/slurm/uid_25805/job_19775829/step_batch/task_0",
+      "cgroup_cumulative_peak_bytes": 1242251264,
+      "sacct_records": [
+        {
+          "JobIDRaw": "19775829",
+          "JobName": "pr986-memory",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:15:42",
+          "MaxRSS": "",
+          "AllocCPUS": "4",
+          "ReqMem": "8G"
+        },
+        {
+          "JobIDRaw": "19775829.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:15:42",
+          "MaxRSS": "1213136K",
+          "AllocCPUS": "4",
+          "ReqMem": ""
+        }
+      ],
+      "inventory_unique_backing_bytes": {
+        "constructed": 39310268,
+        "compiled": 40171996,
+        "refreshed": 40174428,
+        "sampled": 40955804
+      },
+      "selected_arrays": [
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            312
+          ],
+          "logical_bytes": 3085056
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            313
+          ],
+          "logical_bytes": 3094944
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 39552
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 39552
+        }
+      ]
+    },
+    {
+      "workload": "four_site",
+      "variant": "blocked64",
+      "chains": 4,
+      "array_task": 13,
+      "slurm_job_id": "19775830",
+      "result_sha256": "9a1d1c81665a512dfd4fa3643aab1710bddbfbcaa52adfa55fe9b405f4cdcfbf",
+      "telemetry_sha256": "a05e465b7978f696193e036c0af792de2faf2be89260fc0596902608bf5aacf1",
+      "config_sha256": "24d8b2bc0f54bd3feca9aeb31ff5363896c61720ef21161f48feb8b3a6148904",
+      "input_sha256": "abca34a1d3e93b3685e47eca01d38269838c0134463b0cca8d2f25806ccb9a52",
+      "input_manifest_sha256": "7145e8caec540ae9f6f5221ecfb56b55a9e48fab72d8b077cf3d75b722e70967",
+      "versions": {
+        "python": "3.13.7",
+        "numpy": "2.2.6",
+        "pymc": "6.3.2",
+        "pytensor": "3.3.2"
+      },
+      "rows": 1236,
+      "cache_states": 312,
+      "sampled_wholeprocess_peak_pss_bytes": 3083329536,
+      "phase_peak_pss_bytes": {
+        "prepare": 332017664,
+        "construction": 464826368,
+        "compile": 557490176,
+        "refresh": 531996672,
+        "sampling": 3083329536,
+        "save": 1242271744
+      },
+      "phase_seconds": {
+        "prepare_seconds": 2.0204053223133087,
+        "construction_seconds": 5.452170066535473,
+        "compile_seconds": 9.29230104200542,
+        "five_refreshes_seconds": 0.7072999756783247,
+        "sampling_seconds": 1562.7404238395393,
+        "save_reopen_seconds": 1.1386667620390654
+      },
+      "max_simultaneous_distinct_spawn_cmdlines": 4,
+      "max_simultaneous_spawn_pids": 4,
+      "observed_worker_identities": [
+        [
+          3276868,
+          "862595834"
+        ],
+        [
+          3276873,
+          "862596477"
+        ],
+        [
+          3276915,
+          "862596823"
+        ],
+        [
+          3276945,
+          "862597156"
+        ]
+      ],
+      "cgroup_path": "/sys/fs/cgroup/memory/slurm/uid_25805/job_19775830/step_batch/task_0",
+      "cgroup_cumulative_peak_bytes": 3113357312,
+      "sacct_records": [
+        {
+          "JobIDRaw": "19775830",
+          "JobName": "pr986-memory",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:26:56",
+          "MaxRSS": "",
+          "AllocCPUS": "4",
+          "ReqMem": "8G"
+        },
+        {
+          "JobIDRaw": "19775830.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:26:56",
+          "MaxRSS": "3040388K",
+          "AllocCPUS": "4",
+          "ReqMem": ""
+        }
+      ],
+      "inventory_unique_backing_bytes": {
+        "constructed": 39310268,
+        "compiled": 40171996,
+        "refreshed": 40174428,
+        "sampled": 40171996
+      },
+      "selected_arrays": [
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            312
+          ],
+          "logical_bytes": 3085056
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            313
+          ],
+          "logical_bytes": 3094944
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 39552
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 39552
+        }
+      ]
+    },
+    {
+      "workload": "four_site",
+      "variant": "combined",
+      "chains": 1,
+      "array_task": 14,
+      "slurm_job_id": "19775831",
+      "result_sha256": "af2951f0bf422420300d12e7beeae795b3fb52a17a14167d851a3cfa11533c63",
+      "telemetry_sha256": "67003b4c67c7503cba49e1439b873ce81bee51a739a72bc9445078110f5fb4c9",
+      "config_sha256": "24d8b2bc0f54bd3feca9aeb31ff5363896c61720ef21161f48feb8b3a6148904",
+      "input_sha256": "abca34a1d3e93b3685e47eca01d38269838c0134463b0cca8d2f25806ccb9a52",
+      "input_manifest_sha256": "7145e8caec540ae9f6f5221ecfb56b55a9e48fab72d8b077cf3d75b722e70967",
+      "versions": {
+        "python": "3.13.7",
+        "numpy": "2.2.6",
+        "pymc": "6.3.2",
+        "pytensor": "3.3.2"
+      },
+      "rows": 1236,
+      "cache_states": 312,
+      "sampled_wholeprocess_peak_pss_bytes": 1260749824,
+      "phase_peak_pss_bytes": {
+        "prepare": 342942720,
+        "construction": 462533632,
+        "compile": 541095936,
+        "refresh": 525673472,
+        "sampling": 1260749824,
+        "save": 1187177472
+      },
+      "phase_seconds": {
+        "prepare_seconds": 2.022761419415474,
+        "construction_seconds": 5.451563473790884,
+        "compile_seconds": 8.834783274680376,
+        "five_refreshes_seconds": 0.6306905318051577,
+        "sampling_seconds": 803.9534931946546,
+        "save_reopen_seconds": 1.481184670701623
+      },
+      "max_simultaneous_distinct_spawn_cmdlines": 0,
+      "max_simultaneous_spawn_pids": 0,
+      "observed_worker_identities": [],
+      "cgroup_path": "/sys/fs/cgroup/memory/slurm/uid_25805/job_19775831/step_batch/task_0",
+      "cgroup_cumulative_peak_bytes": 1309061120,
+      "sacct_records": [
+        {
+          "JobIDRaw": "19775831",
+          "JobName": "pr986-memory",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:14:21",
+          "MaxRSS": "",
+          "AllocCPUS": "4",
+          "ReqMem": "8G"
+        },
+        {
+          "JobIDRaw": "19775831.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:14:21",
+          "MaxRSS": "1278380K",
+          "AllocCPUS": "4",
+          "ReqMem": ""
+        }
+      ],
+      "inventory_unique_backing_bytes": {
+        "constructed": 39270716,
+        "compiled": 40134876,
+        "refreshed": 40134876,
+        "sampled": 40913820
+      },
+      "selected_arrays": [
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            312
+          ],
+          "logical_bytes": 3085056
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            313
+          ],
+          "logical_bytes": 3094944
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 19776
+        }
+      ]
+    },
+    {
+      "workload": "four_site",
+      "variant": "combined",
+      "chains": 4,
+      "array_task": 15,
+      "slurm_job_id": "19775806",
+      "result_sha256": "5c56382262e5ff39272cb41f40b780558b64848f1c25e3c9b3249c7a511e92c1",
+      "telemetry_sha256": "2e037597c9eb281eb785be3c02913a264bd9f1f18a29beea41d363fba179957b",
+      "config_sha256": "24d8b2bc0f54bd3feca9aeb31ff5363896c61720ef21161f48feb8b3a6148904",
+      "input_sha256": "abca34a1d3e93b3685e47eca01d38269838c0134463b0cca8d2f25806ccb9a52",
+      "input_manifest_sha256": "7145e8caec540ae9f6f5221ecfb56b55a9e48fab72d8b077cf3d75b722e70967",
+      "versions": {
+        "python": "3.13.7",
+        "numpy": "2.2.6",
+        "pymc": "6.3.2",
+        "pytensor": "3.3.2"
+      },
+      "rows": 1236,
+      "cache_states": 312,
+      "sampled_wholeprocess_peak_pss_bytes": 3079074816,
+      "phase_peak_pss_bytes": {
+        "prepare": 326793216,
+        "construction": 460819456,
+        "compile": 542745600,
+        "refresh": 530671616,
+        "sampling": 3079074816,
+        "save": 1294807040
+      },
+      "phase_seconds": {
+        "prepare_seconds": 2.024822484701872,
+        "construction_seconds": 5.448949806392193,
+        "compile_seconds": 8.899292452260852,
+        "five_refreshes_seconds": 0.6360139902681112,
+        "sampling_seconds": 1601.8267932664603,
+        "save_reopen_seconds": 1.1154395807534456
+      },
+      "max_simultaneous_distinct_spawn_cmdlines": 4,
+      "max_simultaneous_spawn_pids": 5,
+      "observed_worker_identities": [
+        [
+          3276865,
+          "862595776"
+        ],
+        [
+          3276872,
+          "862596476"
+        ],
+        [
+          3276913,
+          "862596812"
+        ],
+        [
+          3276943,
+          "862597143"
+        ],
+        [
+          3277056,
+          "862597504"
+        ]
+      ],
+      "cgroup_path": "/sys/fs/cgroup/memory/slurm/uid_25805/job_19775806/step_batch/task_0",
+      "cgroup_cumulative_peak_bytes": 3125231616,
+      "sacct_records": [
+        {
+          "JobIDRaw": "19775806",
+          "JobName": "pr986-memory",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:27:35",
+          "MaxRSS": "",
+          "AllocCPUS": "4",
+          "ReqMem": "8G"
+        },
+        {
+          "JobIDRaw": "19775806.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:27:35",
+          "MaxRSS": "3051984K",
+          "AllocCPUS": "4",
+          "ReqMem": ""
+        }
+      ],
+      "inventory_unique_backing_bytes": {
+        "constructed": 39270716,
+        "compiled": 40134876,
+        "refreshed": 40134876,
+        "sampled": 40134876
+      },
+      "selected_arrays": [
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            312
+          ],
+          "logical_bytes": 3085056
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            313
+          ],
+          "logical_bytes": 3094944
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 19776
+        }
+      ]
+    }
+  ],
+  "audit_revision": "310ef7c7b5eae05a18d89918c7e3aac79eb7e00a",
+  "audit_job": "19777205",
+  "audit_sacct_sha256": "acef2024c3d364d0b16c4a9878b913a04c623d8ff8458719bfae6de2ecb5c988",
+  "supplementary_inventories": [
+    {
+      "workload": "mhd",
+      "variant": "float64",
+      "audit_sha256": "54eae692a01ef9a93ea414ee4d869f4baaab3f4ece39beea83db94f514d654fa",
+      "config_sha256": "fa4cf0d90f7605dc0f1fe5df1f6a71df80867cceadc3605d7dccbcdc946265da",
+      "input_sha256": "68906185b95224d37f7f3f31fef65a5483daf3cfa057e06a8a460e9a5129ad60",
+      "slurm_job_id": "19777215",
+      "sacct_records": [
+        {
+          "JobIDRaw": "19777215",
+          "JobName": "pr986-array-audit",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:01:21",
+          "MaxRSS": "",
+          "AllocCPUS": "2",
+          "ReqMem": "4G"
+        },
+        {
+          "JobIDRaw": "19777215.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:01:21",
+          "MaxRSS": "539060K",
+          "AllocCPUS": "2",
+          "ReqMem": ""
+        }
+      ],
+      "unique_backing_bytes": {
+        "constructed": 8824756,
+        "compiled": 9638532,
+        "refreshed": 9638532
+      },
+      "constructed_arrays": [
+        {
+          "path": "prepared_inputs.observations.data",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "prepared_inputs.fixed_prior_contribution.data",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "prepared_inputs.co2_sensitivity.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            304
+          ],
+          "logical_bytes": 313728
+        },
+        {
+          "path": "prepared_inputs.o2_sensitivity.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            304
+          ],
+          "logical_bytes": 313728
+        },
+        {
+          "path": "prepared_inputs.aggregation_error.marginal_variance",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "prepared_inputs.aggregation_error.covariance.data",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "prepared_inputs.retained_prior._mean.data",
+          "dtype": "float64",
+          "shape": [
+            304
+          ],
+          "logical_bytes": 2432
+        },
+        {
+          "path": "prepared_inputs.retained_prior._arithmetic_covariance.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_mean.data",
+          "dtype": "float64",
+          "shape": [
+            304
+          ],
+          "logical_bytes": 2432
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_covariance.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_cholesky.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.independent_error_sd.data",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.H_bc_anomaly.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.H_bc_mass.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.bc_reference.data",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.H_bc_anomaly.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.H_bc_mass.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.bc_reference.data",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.prepared.diagonal_variance",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.prepared.site_index",
+          "dtype": "int64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.prepared.tau_hours_by_site",
+          "dtype": "float64",
+          "shape": [
+            2
+          ],
+          "logical_bytes": 16
+        },
+        {
+          "path": "target.prepared.site_blocks[0].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            129
+          ],
+          "logical_bytes": 1032
+        },
+        {
+          "path": "target.prepared.site_blocks[0].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            129,
+            129
+          ],
+          "logical_bytes": 133128
+        },
+        {
+          "path": "target.prepared.site_blocks[1].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            129
+          ],
+          "logical_bytes": 1032
+        },
+        {
+          "path": "target.prepared.site_blocks[1].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            129,
+            129
+          ],
+          "logical_bytes": 133128
+        },
+        {
+          "path": "target.prepared.mode_eigenvalues",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.prepared.mode_site_index",
+          "dtype": "int64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.prepared.mode_transform.indptr",
+          "dtype": "int32",
+          "shape": [
+            259
+          ],
+          "logical_bytes": 1036
+        },
+        {
+          "path": "target.prepared.mode_transform.indices",
+          "dtype": "int32",
+          "shape": [
+            33282
+          ],
+          "logical_bytes": 133128
+        },
+        {
+          "path": "target.prepared.mode_transform.data",
+          "dtype": "float64",
+          "shape": [
+            33282
+          ],
+          "logical_bytes": 266256
+        },
+        {
+          "path": "target.observations",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.fixed_contribution",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            258,
+            312
+          ],
+          "logical_bytes": 643968
+        },
+        {
+          "path": "target._residual_at_zero",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            258,
+            313
+          ],
+          "logical_bytes": 646032
+        },
+        {
+          "path": "initial_cache.linear",
+          "dtype": "float64",
+          "shape": [
+            312
+          ],
+          "logical_bytes": 2496
+        },
+        {
+          "path": "initial_cache.precision",
+          "dtype": "float64",
+          "shape": [
+            312,
+            312
+          ],
+          "logical_bytes": 778752
+        },
+        {
+          "path": "initial_cache.sigma",
+          "dtype": "float64",
+          "shape": [
+            2
+          ],
+          "logical_bytes": 16
+        },
+        {
+          "path": "shared_cache.constant.shared",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "shared_cache.linear.shared",
+          "dtype": "float64",
+          "shape": [
+            312
+          ],
+          "logical_bytes": 2496
+        },
+        {
+          "path": "shared_cache.precision.shared",
+          "dtype": "float64",
+          "shape": [
+            312,
+            312
+          ],
+          "logical_bytes": 778752
+        },
+        {
+          "path": "model_shared.co2_o2_sensitivity.shared",
+          "dtype": "float64",
+          "shape": [
+            258,
+            304
+          ],
+          "logical_bytes": 627456
+        },
+        {
+          "path": "model_shared.fixed_prior_contribution.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 8256
+        },
+        {
+          "path": "model_shared.co2_research_fixed_intercept.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.co2_bc_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 8256
+        },
+        {
+          "path": "model_shared.o2_research_fixed_intercept.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.o2_bc_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.boundary_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.Y.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.error.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.ou_site_index.shared",
+          "dtype": "int32",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 1032
+        },
+        {
+          "path": "model_shared.ou_tau_hours.shared",
+          "dtype": "float64",
+          "shape": [
+            2
+          ],
+          "logical_bytes": 16
+        }
+      ]
+    },
+    {
+      "workload": "mhd",
+      "variant": "active_b32",
+      "audit_sha256": "e7eb20e5b5b3ed738bca619975a65e4ebc89584b58de4166c81a1ecd60b247a0",
+      "config_sha256": "fa4cf0d90f7605dc0f1fe5df1f6a71df80867cceadc3605d7dccbcdc946265da",
+      "input_sha256": "68906185b95224d37f7f3f31fef65a5483daf3cfa057e06a8a460e9a5129ad60",
+      "slurm_job_id": "19777216",
+      "sacct_records": [
+        {
+          "JobIDRaw": "19777216",
+          "JobName": "pr986-array-audit",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:00:56",
+          "MaxRSS": "",
+          "AllocCPUS": "2",
+          "ReqMem": "4G"
+        },
+        {
+          "JobIDRaw": "19777216.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:00:56",
+          "MaxRSS": "528932K",
+          "AllocCPUS": "2",
+          "ReqMem": ""
+        }
+      ],
+      "unique_backing_bytes": {
+        "constructed": 8816500,
+        "compiled": 9630276,
+        "refreshed": 9630276
+      },
+      "constructed_arrays": [
+        {
+          "path": "prepared_inputs.observations.data",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "prepared_inputs.fixed_prior_contribution.data",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "prepared_inputs.co2_sensitivity.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            304
+          ],
+          "logical_bytes": 313728
+        },
+        {
+          "path": "prepared_inputs.o2_sensitivity.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            304
+          ],
+          "logical_bytes": 313728
+        },
+        {
+          "path": "prepared_inputs.aggregation_error.marginal_variance",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "prepared_inputs.aggregation_error.covariance.data",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "prepared_inputs.retained_prior._mean.data",
+          "dtype": "float64",
+          "shape": [
+            304
+          ],
+          "logical_bytes": 2432
+        },
+        {
+          "path": "prepared_inputs.retained_prior._arithmetic_covariance.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_mean.data",
+          "dtype": "float64",
+          "shape": [
+            304
+          ],
+          "logical_bytes": 2432
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_covariance.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_cholesky.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.independent_error_sd.data",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.H_bc_anomaly.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.H_bc_mass.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.bc_reference.data",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.H_bc_anomaly.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.H_bc_mass.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.bc_reference.data",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.prepared.diagonal_variance",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.prepared.site_index",
+          "dtype": "int64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.prepared.tau_hours_by_site",
+          "dtype": "float64",
+          "shape": [
+            2
+          ],
+          "logical_bytes": 16
+        },
+        {
+          "path": "target.prepared.site_blocks[0].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            129
+          ],
+          "logical_bytes": 1032
+        },
+        {
+          "path": "target.prepared.site_blocks[0].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            129,
+            129
+          ],
+          "logical_bytes": 133128
+        },
+        {
+          "path": "target.prepared.site_blocks[1].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            129
+          ],
+          "logical_bytes": 1032
+        },
+        {
+          "path": "target.prepared.site_blocks[1].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            129,
+            129
+          ],
+          "logical_bytes": 133128
+        },
+        {
+          "path": "target.prepared.mode_eigenvalues",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.prepared.mode_site_index",
+          "dtype": "int64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.prepared.mode_transform.indptr",
+          "dtype": "int32",
+          "shape": [
+            259
+          ],
+          "logical_bytes": 1036
+        },
+        {
+          "path": "target.prepared.mode_transform.indices",
+          "dtype": "int32",
+          "shape": [
+            33282
+          ],
+          "logical_bytes": 133128
+        },
+        {
+          "path": "target.prepared.mode_transform.data",
+          "dtype": "float64",
+          "shape": [
+            33282
+          ],
+          "logical_bytes": 266256
+        },
+        {
+          "path": "target.observations",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.fixed_contribution",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            258,
+            312
+          ],
+          "logical_bytes": 643968
+        },
+        {
+          "path": "target._residual_at_zero",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            258,
+            313
+          ],
+          "logical_bytes": 646032
+        },
+        {
+          "path": "initial_cache.linear",
+          "dtype": "float64",
+          "shape": [
+            312
+          ],
+          "logical_bytes": 2496
+        },
+        {
+          "path": "initial_cache.precision",
+          "dtype": "float64",
+          "shape": [
+            312,
+            312
+          ],
+          "logical_bytes": 778752
+        },
+        {
+          "path": "initial_cache.sigma",
+          "dtype": "float64",
+          "shape": [
+            2
+          ],
+          "logical_bytes": 16
+        },
+        {
+          "path": "shared_cache.constant.shared",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "shared_cache.linear.shared",
+          "dtype": "float64",
+          "shape": [
+            312
+          ],
+          "logical_bytes": 2496
+        },
+        {
+          "path": "shared_cache.precision.shared",
+          "dtype": "float64",
+          "shape": [
+            312,
+            312
+          ],
+          "logical_bytes": 778752
+        },
+        {
+          "path": "model_shared.co2_o2_sensitivity.shared",
+          "dtype": "float64",
+          "shape": [
+            258,
+            304
+          ],
+          "logical_bytes": 627456
+        },
+        {
+          "path": "model_shared.fixed_prior_contribution.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "model_shared.co2_research_fixed_intercept.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.co2_bc_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "model_shared.o2_research_fixed_intercept.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.o2_bc_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.boundary_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.Y.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.error.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.ou_site_index.shared",
+          "dtype": "int32",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 1032
+        },
+        {
+          "path": "model_shared.ou_tau_hours.shared",
+          "dtype": "float64",
+          "shape": [
+            2
+          ],
+          "logical_bytes": 16
+        }
+      ]
+    },
+    {
+      "workload": "mhd",
+      "variant": "blocked64",
+      "audit_sha256": "6de68f9d5a565ff59709807f73072827e5d64b436943a07ce02c3f2a365a75df",
+      "config_sha256": "fa4cf0d90f7605dc0f1fe5df1f6a71df80867cceadc3605d7dccbcdc946265da",
+      "input_sha256": "68906185b95224d37f7f3f31fef65a5483daf3cfa057e06a8a460e9a5129ad60",
+      "slurm_job_id": "19777217",
+      "sacct_records": [
+        {
+          "JobIDRaw": "19777217",
+          "JobName": "pr986-array-audit",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:00:56",
+          "MaxRSS": "",
+          "AllocCPUS": "2",
+          "ReqMem": "4G"
+        },
+        {
+          "JobIDRaw": "19777217.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:00:56",
+          "MaxRSS": "534688K",
+          "AllocCPUS": "2",
+          "ReqMem": ""
+        }
+      ],
+      "unique_backing_bytes": {
+        "constructed": 8824756,
+        "compiled": 9638532,
+        "refreshed": 9638532
+      },
+      "constructed_arrays": [
+        {
+          "path": "prepared_inputs.observations.data",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "prepared_inputs.fixed_prior_contribution.data",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "prepared_inputs.co2_sensitivity.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            304
+          ],
+          "logical_bytes": 313728
+        },
+        {
+          "path": "prepared_inputs.o2_sensitivity.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            304
+          ],
+          "logical_bytes": 313728
+        },
+        {
+          "path": "prepared_inputs.aggregation_error.marginal_variance",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "prepared_inputs.aggregation_error.covariance.data",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "prepared_inputs.retained_prior._mean.data",
+          "dtype": "float64",
+          "shape": [
+            304
+          ],
+          "logical_bytes": 2432
+        },
+        {
+          "path": "prepared_inputs.retained_prior._arithmetic_covariance.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_mean.data",
+          "dtype": "float64",
+          "shape": [
+            304
+          ],
+          "logical_bytes": 2432
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_covariance.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_cholesky.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.independent_error_sd.data",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.H_bc_anomaly.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.H_bc_mass.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.bc_reference.data",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.H_bc_anomaly.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.H_bc_mass.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.bc_reference.data",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.prepared.diagonal_variance",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.prepared.site_index",
+          "dtype": "int64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.prepared.tau_hours_by_site",
+          "dtype": "float64",
+          "shape": [
+            2
+          ],
+          "logical_bytes": 16
+        },
+        {
+          "path": "target.prepared.site_blocks[0].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            129
+          ],
+          "logical_bytes": 1032
+        },
+        {
+          "path": "target.prepared.site_blocks[0].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            129,
+            129
+          ],
+          "logical_bytes": 133128
+        },
+        {
+          "path": "target.prepared.site_blocks[1].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            129
+          ],
+          "logical_bytes": 1032
+        },
+        {
+          "path": "target.prepared.site_blocks[1].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            129,
+            129
+          ],
+          "logical_bytes": 133128
+        },
+        {
+          "path": "target.prepared.mode_eigenvalues",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.prepared.mode_site_index",
+          "dtype": "int64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.prepared.mode_transform.indptr",
+          "dtype": "int32",
+          "shape": [
+            259
+          ],
+          "logical_bytes": 1036
+        },
+        {
+          "path": "target.prepared.mode_transform.indices",
+          "dtype": "int32",
+          "shape": [
+            33282
+          ],
+          "logical_bytes": 133128
+        },
+        {
+          "path": "target.prepared.mode_transform.data",
+          "dtype": "float64",
+          "shape": [
+            33282
+          ],
+          "logical_bytes": 266256
+        },
+        {
+          "path": "target.observations",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.fixed_contribution",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            258,
+            312
+          ],
+          "logical_bytes": 643968
+        },
+        {
+          "path": "target._residual_at_zero",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            258,
+            313
+          ],
+          "logical_bytes": 646032
+        },
+        {
+          "path": "initial_cache.linear",
+          "dtype": "float64",
+          "shape": [
+            312
+          ],
+          "logical_bytes": 2496
+        },
+        {
+          "path": "initial_cache.precision",
+          "dtype": "float64",
+          "shape": [
+            312,
+            312
+          ],
+          "logical_bytes": 778752
+        },
+        {
+          "path": "initial_cache.sigma",
+          "dtype": "float64",
+          "shape": [
+            2
+          ],
+          "logical_bytes": 16
+        },
+        {
+          "path": "shared_cache.constant.shared",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "shared_cache.linear.shared",
+          "dtype": "float64",
+          "shape": [
+            312
+          ],
+          "logical_bytes": 2496
+        },
+        {
+          "path": "shared_cache.precision.shared",
+          "dtype": "float64",
+          "shape": [
+            312,
+            312
+          ],
+          "logical_bytes": 778752
+        },
+        {
+          "path": "model_shared.co2_o2_sensitivity.shared",
+          "dtype": "float64",
+          "shape": [
+            258,
+            304
+          ],
+          "logical_bytes": 627456
+        },
+        {
+          "path": "model_shared.fixed_prior_contribution.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 8256
+        },
+        {
+          "path": "model_shared.co2_research_fixed_intercept.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.co2_bc_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 8256
+        },
+        {
+          "path": "model_shared.o2_research_fixed_intercept.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.o2_bc_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.boundary_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.Y.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.error.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.ou_site_index.shared",
+          "dtype": "int32",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 1032
+        },
+        {
+          "path": "model_shared.ou_tau_hours.shared",
+          "dtype": "float64",
+          "shape": [
+            2
+          ],
+          "logical_bytes": 16
+        }
+      ]
+    },
+    {
+      "workload": "mhd",
+      "variant": "combined",
+      "audit_sha256": "91782535d060fb5882b4bc767358cf037a02cc7aa6c3142ee6b9064b5b457e9b",
+      "config_sha256": "fa4cf0d90f7605dc0f1fe5df1f6a71df80867cceadc3605d7dccbcdc946265da",
+      "input_sha256": "68906185b95224d37f7f3f31fef65a5483daf3cfa057e06a8a460e9a5129ad60",
+      "slurm_job_id": "19777218",
+      "sacct_records": [
+        {
+          "JobIDRaw": "19777218",
+          "JobName": "pr986-array-audit",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:00:53",
+          "MaxRSS": "",
+          "AllocCPUS": "2",
+          "ReqMem": "4G"
+        },
+        {
+          "JobIDRaw": "19777218.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:00:53",
+          "MaxRSS": "529052K",
+          "AllocCPUS": "2",
+          "ReqMem": ""
+        }
+      ],
+      "unique_backing_bytes": {
+        "constructed": 8816500,
+        "compiled": 9630276,
+        "refreshed": 9630276
+      },
+      "constructed_arrays": [
+        {
+          "path": "prepared_inputs.observations.data",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "prepared_inputs.fixed_prior_contribution.data",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "prepared_inputs.co2_sensitivity.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            304
+          ],
+          "logical_bytes": 313728
+        },
+        {
+          "path": "prepared_inputs.o2_sensitivity.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            304
+          ],
+          "logical_bytes": 313728
+        },
+        {
+          "path": "prepared_inputs.aggregation_error.marginal_variance",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "prepared_inputs.aggregation_error.covariance.data",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "prepared_inputs.retained_prior._mean.data",
+          "dtype": "float64",
+          "shape": [
+            304
+          ],
+          "logical_bytes": 2432
+        },
+        {
+          "path": "prepared_inputs.retained_prior._arithmetic_covariance.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_mean.data",
+          "dtype": "float64",
+          "shape": [
+            304
+          ],
+          "logical_bytes": 2432
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_covariance.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_cholesky.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.independent_error_sd.data",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.H_bc_anomaly.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.H_bc_mass.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.bc_reference.data",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.H_bc_anomaly.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.H_bc_mass.data",
+          "dtype": "float64",
+          "shape": [
+            129,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.bc_reference.data",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.prepared.diagonal_variance",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.prepared.site_index",
+          "dtype": "int64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.prepared.tau_hours_by_site",
+          "dtype": "float64",
+          "shape": [
+            2
+          ],
+          "logical_bytes": 16
+        },
+        {
+          "path": "target.prepared.site_blocks[0].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            129
+          ],
+          "logical_bytes": 1032
+        },
+        {
+          "path": "target.prepared.site_blocks[0].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            129,
+            129
+          ],
+          "logical_bytes": 133128
+        },
+        {
+          "path": "target.prepared.site_blocks[1].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            129
+          ],
+          "logical_bytes": 1032
+        },
+        {
+          "path": "target.prepared.site_blocks[1].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            129,
+            129
+          ],
+          "logical_bytes": 133128
+        },
+        {
+          "path": "target.prepared.mode_eigenvalues",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.prepared.mode_site_index",
+          "dtype": "int64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            258,
+            258
+          ],
+          "logical_bytes": 532512
+        },
+        {
+          "path": "target.prepared.mode_transform.indptr",
+          "dtype": "int32",
+          "shape": [
+            259
+          ],
+          "logical_bytes": 1036
+        },
+        {
+          "path": "target.prepared.mode_transform.indices",
+          "dtype": "int32",
+          "shape": [
+            33282
+          ],
+          "logical_bytes": 133128
+        },
+        {
+          "path": "target.prepared.mode_transform.data",
+          "dtype": "float64",
+          "shape": [
+            33282
+          ],
+          "logical_bytes": 266256
+        },
+        {
+          "path": "target.observations",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.fixed_contribution",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            258,
+            312
+          ],
+          "logical_bytes": 643968
+        },
+        {
+          "path": "target._residual_at_zero",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            258,
+            313
+          ],
+          "logical_bytes": 646032
+        },
+        {
+          "path": "initial_cache.linear",
+          "dtype": "float64",
+          "shape": [
+            312
+          ],
+          "logical_bytes": 2496
+        },
+        {
+          "path": "initial_cache.precision",
+          "dtype": "float64",
+          "shape": [
+            312,
+            312
+          ],
+          "logical_bytes": 778752
+        },
+        {
+          "path": "initial_cache.sigma",
+          "dtype": "float64",
+          "shape": [
+            2
+          ],
+          "logical_bytes": 16
+        },
+        {
+          "path": "shared_cache.constant.shared",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "shared_cache.linear.shared",
+          "dtype": "float64",
+          "shape": [
+            312
+          ],
+          "logical_bytes": 2496
+        },
+        {
+          "path": "shared_cache.precision.shared",
+          "dtype": "float64",
+          "shape": [
+            312,
+            312
+          ],
+          "logical_bytes": 778752
+        },
+        {
+          "path": "model_shared.co2_o2_sensitivity.shared",
+          "dtype": "float64",
+          "shape": [
+            258,
+            304
+          ],
+          "logical_bytes": 627456
+        },
+        {
+          "path": "model_shared.fixed_prior_contribution.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "model_shared.co2_research_fixed_intercept.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.co2_bc_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            258,
+            4
+          ],
+          "logical_bytes": 4128
+        },
+        {
+          "path": "model_shared.o2_research_fixed_intercept.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.o2_bc_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.boundary_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.Y.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.error.shared",
+          "dtype": "float64",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 2064
+        },
+        {
+          "path": "model_shared.ou_site_index.shared",
+          "dtype": "int32",
+          "shape": [
+            258
+          ],
+          "logical_bytes": 1032
+        },
+        {
+          "path": "model_shared.ou_tau_hours.shared",
+          "dtype": "float64",
+          "shape": [
+            2
+          ],
+          "logical_bytes": 16
+        }
+      ]
+    },
+    {
+      "workload": "four_site",
+      "variant": "float64",
+      "audit_sha256": "1f93263321b73bc3387b243452377cb84ec7f23a2dc8df3609755c341a64d607",
+      "config_sha256": "24d8b2bc0f54bd3feca9aeb31ff5363896c61720ef21161f48feb8b3a6148904",
+      "input_sha256": "abca34a1d3e93b3685e47eca01d38269838c0134463b0cca8d2f25806ccb9a52",
+      "slurm_job_id": "19777219",
+      "sacct_records": [
+        {
+          "JobIDRaw": "19777219",
+          "JobName": "pr986-array-audit",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:00:26",
+          "MaxRSS": "",
+          "AllocCPUS": "2",
+          "ReqMem": "4G"
+        },
+        {
+          "JobIDRaw": "19777219.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:00:26",
+          "MaxRSS": "503332K",
+          "AllocCPUS": "2",
+          "ReqMem": ""
+        }
+      ],
+      "unique_backing_bytes": {
+        "constructed": 57284556,
+        "compiled": 58200716,
+        "refreshed": 58200716
+      },
+      "constructed_arrays": [
+        {
+          "path": "prepared_inputs.observations.data",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "prepared_inputs.fixed_prior_contribution.data",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "prepared_inputs.co2_sensitivity.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            304
+          ],
+          "logical_bytes": 1502976
+        },
+        {
+          "path": "prepared_inputs.o2_sensitivity.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            304
+          ],
+          "logical_bytes": 1502976
+        },
+        {
+          "path": "prepared_inputs.aggregation_error.marginal_variance",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "prepared_inputs.aggregation_error.covariance.data",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "prepared_inputs.retained_prior._mean.data",
+          "dtype": "float64",
+          "shape": [
+            304
+          ],
+          "logical_bytes": 2432
+        },
+        {
+          "path": "prepared_inputs.retained_prior._arithmetic_covariance.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_mean.data",
+          "dtype": "float64",
+          "shape": [
+            304
+          ],
+          "logical_bytes": 2432
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_covariance.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_cholesky.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.independent_error_sd.data",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.H_bc_anomaly.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.H_bc_mass.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.bc_reference.data",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.H_bc_anomaly.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.H_bc_mass.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.bc_reference.data",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.prepared.diagonal_variance",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.prepared.site_index",
+          "dtype": "int64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.prepared.tau_hours_by_site",
+          "dtype": "float64",
+          "shape": [
+            8
+          ],
+          "logical_bytes": 64
+        },
+        {
+          "path": "target.prepared.site_blocks[0].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            129
+          ],
+          "logical_bytes": 1032
+        },
+        {
+          "path": "target.prepared.site_blocks[0].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            129,
+            129
+          ],
+          "logical_bytes": 133128
+        },
+        {
+          "path": "target.prepared.site_blocks[1].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            180
+          ],
+          "logical_bytes": 1440
+        },
+        {
+          "path": "target.prepared.site_blocks[1].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            180,
+            180
+          ],
+          "logical_bytes": 259200
+        },
+        {
+          "path": "target.prepared.site_blocks[2].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            155
+          ],
+          "logical_bytes": 1240
+        },
+        {
+          "path": "target.prepared.site_blocks[2].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            155,
+            155
+          ],
+          "logical_bytes": 192200
+        },
+        {
+          "path": "target.prepared.site_blocks[3].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            154
+          ],
+          "logical_bytes": 1232
+        },
+        {
+          "path": "target.prepared.site_blocks[3].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            154,
+            154
+          ],
+          "logical_bytes": 189728
+        },
+        {
+          "path": "target.prepared.site_blocks[4].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            129
+          ],
+          "logical_bytes": 1032
+        },
+        {
+          "path": "target.prepared.site_blocks[4].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            129,
+            129
+          ],
+          "logical_bytes": 133128
+        },
+        {
+          "path": "target.prepared.site_blocks[5].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            180
+          ],
+          "logical_bytes": 1440
+        },
+        {
+          "path": "target.prepared.site_blocks[5].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            180,
+            180
+          ],
+          "logical_bytes": 259200
+        },
+        {
+          "path": "target.prepared.site_blocks[6].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            155
+          ],
+          "logical_bytes": 1240
+        },
+        {
+          "path": "target.prepared.site_blocks[6].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            155,
+            155
+          ],
+          "logical_bytes": 192200
+        },
+        {
+          "path": "target.prepared.site_blocks[7].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            154
+          ],
+          "logical_bytes": 1232
+        },
+        {
+          "path": "target.prepared.site_blocks[7].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            154,
+            154
+          ],
+          "logical_bytes": 189728
+        },
+        {
+          "path": "target.prepared.mode_eigenvalues",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.prepared.mode_site_index",
+          "dtype": "int64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.prepared.mode_transform.indptr",
+          "dtype": "int32",
+          "shape": [
+            1237
+          ],
+          "logical_bytes": 4948
+        },
+        {
+          "path": "target.prepared.mode_transform.indices",
+          "dtype": "int32",
+          "shape": [
+            193564
+          ],
+          "logical_bytes": 774256
+        },
+        {
+          "path": "target.prepared.mode_transform.data",
+          "dtype": "float64",
+          "shape": [
+            193564
+          ],
+          "logical_bytes": 1548512
+        },
+        {
+          "path": "target.observations",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.fixed_contribution",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            312
+          ],
+          "logical_bytes": 3085056
+        },
+        {
+          "path": "target._residual_at_zero",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            313
+          ],
+          "logical_bytes": 3094944
+        },
+        {
+          "path": "initial_cache.linear",
+          "dtype": "float64",
+          "shape": [
+            312
+          ],
+          "logical_bytes": 2496
+        },
+        {
+          "path": "initial_cache.precision",
+          "dtype": "float64",
+          "shape": [
+            312,
+            312
+          ],
+          "logical_bytes": 778752
+        },
+        {
+          "path": "initial_cache.sigma",
+          "dtype": "float64",
+          "shape": [
+            8
+          ],
+          "logical_bytes": 64
+        },
+        {
+          "path": "shared_cache.constant.shared",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "shared_cache.linear.shared",
+          "dtype": "float64",
+          "shape": [
+            312
+          ],
+          "logical_bytes": 2496
+        },
+        {
+          "path": "shared_cache.precision.shared",
+          "dtype": "float64",
+          "shape": [
+            312,
+            312
+          ],
+          "logical_bytes": 778752
+        },
+        {
+          "path": "model_shared.co2_o2_sensitivity.shared",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            304
+          ],
+          "logical_bytes": 3005952
+        },
+        {
+          "path": "model_shared.fixed_prior_contribution.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 39552
+        },
+        {
+          "path": "model_shared.co2_research_fixed_intercept.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.co2_bc_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 39552
+        },
+        {
+          "path": "model_shared.o2_research_fixed_intercept.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.o2_bc_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.boundary_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.Y.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.error.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.ou_site_index.shared",
+          "dtype": "int32",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 4944
+        },
+        {
+          "path": "model_shared.ou_tau_hours.shared",
+          "dtype": "float64",
+          "shape": [
+            8
+          ],
+          "logical_bytes": 64
+        }
+      ]
+    },
+    {
+      "workload": "four_site",
+      "variant": "active_b32",
+      "audit_sha256": "5cc375ef325c16f868025105f9076c1fac9d401f6a3c2f2113bee88d52574121",
+      "config_sha256": "24d8b2bc0f54bd3feca9aeb31ff5363896c61720ef21161f48feb8b3a6148904",
+      "input_sha256": "abca34a1d3e93b3685e47eca01d38269838c0134463b0cca8d2f25806ccb9a52",
+      "slurm_job_id": "19777220",
+      "sacct_records": [
+        {
+          "JobIDRaw": "19777220",
+          "JobName": "pr986-array-audit",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:00:56",
+          "MaxRSS": "",
+          "AllocCPUS": "2",
+          "ReqMem": "4G"
+        },
+        {
+          "JobIDRaw": "19777220.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:00:56",
+          "MaxRSS": "529872K",
+          "AllocCPUS": "2",
+          "ReqMem": ""
+        }
+      ],
+      "unique_backing_bytes": {
+        "constructed": 57245004,
+        "compiled": 58161164,
+        "refreshed": 58161164
+      },
+      "constructed_arrays": [
+        {
+          "path": "prepared_inputs.observations.data",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "prepared_inputs.fixed_prior_contribution.data",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "prepared_inputs.co2_sensitivity.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            304
+          ],
+          "logical_bytes": 1502976
+        },
+        {
+          "path": "prepared_inputs.o2_sensitivity.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            304
+          ],
+          "logical_bytes": 1502976
+        },
+        {
+          "path": "prepared_inputs.aggregation_error.marginal_variance",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "prepared_inputs.aggregation_error.covariance.data",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "prepared_inputs.retained_prior._mean.data",
+          "dtype": "float64",
+          "shape": [
+            304
+          ],
+          "logical_bytes": 2432
+        },
+        {
+          "path": "prepared_inputs.retained_prior._arithmetic_covariance.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_mean.data",
+          "dtype": "float64",
+          "shape": [
+            304
+          ],
+          "logical_bytes": 2432
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_covariance.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_cholesky.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.independent_error_sd.data",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.H_bc_anomaly.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.H_bc_mass.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.bc_reference.data",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.H_bc_anomaly.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.H_bc_mass.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.bc_reference.data",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.prepared.diagonal_variance",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.prepared.site_index",
+          "dtype": "int64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.prepared.tau_hours_by_site",
+          "dtype": "float64",
+          "shape": [
+            8
+          ],
+          "logical_bytes": 64
+        },
+        {
+          "path": "target.prepared.site_blocks[0].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            129
+          ],
+          "logical_bytes": 1032
+        },
+        {
+          "path": "target.prepared.site_blocks[0].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            129,
+            129
+          ],
+          "logical_bytes": 133128
+        },
+        {
+          "path": "target.prepared.site_blocks[1].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            180
+          ],
+          "logical_bytes": 1440
+        },
+        {
+          "path": "target.prepared.site_blocks[1].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            180,
+            180
+          ],
+          "logical_bytes": 259200
+        },
+        {
+          "path": "target.prepared.site_blocks[2].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            155
+          ],
+          "logical_bytes": 1240
+        },
+        {
+          "path": "target.prepared.site_blocks[2].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            155,
+            155
+          ],
+          "logical_bytes": 192200
+        },
+        {
+          "path": "target.prepared.site_blocks[3].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            154
+          ],
+          "logical_bytes": 1232
+        },
+        {
+          "path": "target.prepared.site_blocks[3].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            154,
+            154
+          ],
+          "logical_bytes": 189728
+        },
+        {
+          "path": "target.prepared.site_blocks[4].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            129
+          ],
+          "logical_bytes": 1032
+        },
+        {
+          "path": "target.prepared.site_blocks[4].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            129,
+            129
+          ],
+          "logical_bytes": 133128
+        },
+        {
+          "path": "target.prepared.site_blocks[5].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            180
+          ],
+          "logical_bytes": 1440
+        },
+        {
+          "path": "target.prepared.site_blocks[5].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            180,
+            180
+          ],
+          "logical_bytes": 259200
+        },
+        {
+          "path": "target.prepared.site_blocks[6].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            155
+          ],
+          "logical_bytes": 1240
+        },
+        {
+          "path": "target.prepared.site_blocks[6].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            155,
+            155
+          ],
+          "logical_bytes": 192200
+        },
+        {
+          "path": "target.prepared.site_blocks[7].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            154
+          ],
+          "logical_bytes": 1232
+        },
+        {
+          "path": "target.prepared.site_blocks[7].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            154,
+            154
+          ],
+          "logical_bytes": 189728
+        },
+        {
+          "path": "target.prepared.mode_eigenvalues",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.prepared.mode_site_index",
+          "dtype": "int64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.prepared.mode_transform.indptr",
+          "dtype": "int32",
+          "shape": [
+            1237
+          ],
+          "logical_bytes": 4948
+        },
+        {
+          "path": "target.prepared.mode_transform.indices",
+          "dtype": "int32",
+          "shape": [
+            193564
+          ],
+          "logical_bytes": 774256
+        },
+        {
+          "path": "target.prepared.mode_transform.data",
+          "dtype": "float64",
+          "shape": [
+            193564
+          ],
+          "logical_bytes": 1548512
+        },
+        {
+          "path": "target.observations",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.fixed_contribution",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            312
+          ],
+          "logical_bytes": 3085056
+        },
+        {
+          "path": "target._residual_at_zero",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            313
+          ],
+          "logical_bytes": 3094944
+        },
+        {
+          "path": "initial_cache.linear",
+          "dtype": "float64",
+          "shape": [
+            312
+          ],
+          "logical_bytes": 2496
+        },
+        {
+          "path": "initial_cache.precision",
+          "dtype": "float64",
+          "shape": [
+            312,
+            312
+          ],
+          "logical_bytes": 778752
+        },
+        {
+          "path": "initial_cache.sigma",
+          "dtype": "float64",
+          "shape": [
+            8
+          ],
+          "logical_bytes": 64
+        },
+        {
+          "path": "shared_cache.constant.shared",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "shared_cache.linear.shared",
+          "dtype": "float64",
+          "shape": [
+            312
+          ],
+          "logical_bytes": 2496
+        },
+        {
+          "path": "shared_cache.precision.shared",
+          "dtype": "float64",
+          "shape": [
+            312,
+            312
+          ],
+          "logical_bytes": 778752
+        },
+        {
+          "path": "model_shared.co2_o2_sensitivity.shared",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            304
+          ],
+          "logical_bytes": 3005952
+        },
+        {
+          "path": "model_shared.fixed_prior_contribution.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "model_shared.co2_research_fixed_intercept.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.co2_bc_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "model_shared.o2_research_fixed_intercept.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.o2_bc_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.boundary_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.Y.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.error.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.ou_site_index.shared",
+          "dtype": "int32",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 4944
+        },
+        {
+          "path": "model_shared.ou_tau_hours.shared",
+          "dtype": "float64",
+          "shape": [
+            8
+          ],
+          "logical_bytes": 64
+        }
+      ]
+    },
+    {
+      "workload": "four_site",
+      "variant": "blocked64",
+      "audit_sha256": "4512d22fbaaa2090e359d0717ad8b1f6450e403a3892031c4b235ac2b5929508",
+      "config_sha256": "24d8b2bc0f54bd3feca9aeb31ff5363896c61720ef21161f48feb8b3a6148904",
+      "input_sha256": "abca34a1d3e93b3685e47eca01d38269838c0134463b0cca8d2f25806ccb9a52",
+      "slurm_job_id": "19777221",
+      "sacct_records": [
+        {
+          "JobIDRaw": "19777221",
+          "JobName": "pr986-array-audit",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:00:56",
+          "MaxRSS": "",
+          "AllocCPUS": "2",
+          "ReqMem": "4G"
+        },
+        {
+          "JobIDRaw": "19777221.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:00:56",
+          "MaxRSS": "530096K",
+          "AllocCPUS": "2",
+          "ReqMem": ""
+        }
+      ],
+      "unique_backing_bytes": {
+        "constructed": 57284556,
+        "compiled": 58200716,
+        "refreshed": 58200716
+      },
+      "constructed_arrays": [
+        {
+          "path": "prepared_inputs.observations.data",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "prepared_inputs.fixed_prior_contribution.data",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "prepared_inputs.co2_sensitivity.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            304
+          ],
+          "logical_bytes": 1502976
+        },
+        {
+          "path": "prepared_inputs.o2_sensitivity.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            304
+          ],
+          "logical_bytes": 1502976
+        },
+        {
+          "path": "prepared_inputs.aggregation_error.marginal_variance",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "prepared_inputs.aggregation_error.covariance.data",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "prepared_inputs.retained_prior._mean.data",
+          "dtype": "float64",
+          "shape": [
+            304
+          ],
+          "logical_bytes": 2432
+        },
+        {
+          "path": "prepared_inputs.retained_prior._arithmetic_covariance.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_mean.data",
+          "dtype": "float64",
+          "shape": [
+            304
+          ],
+          "logical_bytes": 2432
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_covariance.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_cholesky.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.independent_error_sd.data",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.H_bc_anomaly.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.H_bc_mass.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.bc_reference.data",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.H_bc_anomaly.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.H_bc_mass.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.bc_reference.data",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.prepared.diagonal_variance",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.prepared.site_index",
+          "dtype": "int64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.prepared.tau_hours_by_site",
+          "dtype": "float64",
+          "shape": [
+            8
+          ],
+          "logical_bytes": 64
+        },
+        {
+          "path": "target.prepared.site_blocks[0].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            129
+          ],
+          "logical_bytes": 1032
+        },
+        {
+          "path": "target.prepared.site_blocks[0].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            129,
+            129
+          ],
+          "logical_bytes": 133128
+        },
+        {
+          "path": "target.prepared.site_blocks[1].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            180
+          ],
+          "logical_bytes": 1440
+        },
+        {
+          "path": "target.prepared.site_blocks[1].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            180,
+            180
+          ],
+          "logical_bytes": 259200
+        },
+        {
+          "path": "target.prepared.site_blocks[2].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            155
+          ],
+          "logical_bytes": 1240
+        },
+        {
+          "path": "target.prepared.site_blocks[2].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            155,
+            155
+          ],
+          "logical_bytes": 192200
+        },
+        {
+          "path": "target.prepared.site_blocks[3].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            154
+          ],
+          "logical_bytes": 1232
+        },
+        {
+          "path": "target.prepared.site_blocks[3].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            154,
+            154
+          ],
+          "logical_bytes": 189728
+        },
+        {
+          "path": "target.prepared.site_blocks[4].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            129
+          ],
+          "logical_bytes": 1032
+        },
+        {
+          "path": "target.prepared.site_blocks[4].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            129,
+            129
+          ],
+          "logical_bytes": 133128
+        },
+        {
+          "path": "target.prepared.site_blocks[5].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            180
+          ],
+          "logical_bytes": 1440
+        },
+        {
+          "path": "target.prepared.site_blocks[5].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            180,
+            180
+          ],
+          "logical_bytes": 259200
+        },
+        {
+          "path": "target.prepared.site_blocks[6].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            155
+          ],
+          "logical_bytes": 1240
+        },
+        {
+          "path": "target.prepared.site_blocks[6].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            155,
+            155
+          ],
+          "logical_bytes": 192200
+        },
+        {
+          "path": "target.prepared.site_blocks[7].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            154
+          ],
+          "logical_bytes": 1232
+        },
+        {
+          "path": "target.prepared.site_blocks[7].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            154,
+            154
+          ],
+          "logical_bytes": 189728
+        },
+        {
+          "path": "target.prepared.mode_eigenvalues",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.prepared.mode_site_index",
+          "dtype": "int64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.prepared.mode_transform.indptr",
+          "dtype": "int32",
+          "shape": [
+            1237
+          ],
+          "logical_bytes": 4948
+        },
+        {
+          "path": "target.prepared.mode_transform.indices",
+          "dtype": "int32",
+          "shape": [
+            193564
+          ],
+          "logical_bytes": 774256
+        },
+        {
+          "path": "target.prepared.mode_transform.data",
+          "dtype": "float64",
+          "shape": [
+            193564
+          ],
+          "logical_bytes": 1548512
+        },
+        {
+          "path": "target.observations",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.fixed_contribution",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            312
+          ],
+          "logical_bytes": 3085056
+        },
+        {
+          "path": "target._residual_at_zero",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            313
+          ],
+          "logical_bytes": 3094944
+        },
+        {
+          "path": "initial_cache.linear",
+          "dtype": "float64",
+          "shape": [
+            312
+          ],
+          "logical_bytes": 2496
+        },
+        {
+          "path": "initial_cache.precision",
+          "dtype": "float64",
+          "shape": [
+            312,
+            312
+          ],
+          "logical_bytes": 778752
+        },
+        {
+          "path": "initial_cache.sigma",
+          "dtype": "float64",
+          "shape": [
+            8
+          ],
+          "logical_bytes": 64
+        },
+        {
+          "path": "shared_cache.constant.shared",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "shared_cache.linear.shared",
+          "dtype": "float64",
+          "shape": [
+            312
+          ],
+          "logical_bytes": 2496
+        },
+        {
+          "path": "shared_cache.precision.shared",
+          "dtype": "float64",
+          "shape": [
+            312,
+            312
+          ],
+          "logical_bytes": 778752
+        },
+        {
+          "path": "model_shared.co2_o2_sensitivity.shared",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            304
+          ],
+          "logical_bytes": 3005952
+        },
+        {
+          "path": "model_shared.fixed_prior_contribution.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 39552
+        },
+        {
+          "path": "model_shared.co2_research_fixed_intercept.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.co2_bc_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 39552
+        },
+        {
+          "path": "model_shared.o2_research_fixed_intercept.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.o2_bc_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.boundary_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.Y.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.error.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.ou_site_index.shared",
+          "dtype": "int32",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 4944
+        },
+        {
+          "path": "model_shared.ou_tau_hours.shared",
+          "dtype": "float64",
+          "shape": [
+            8
+          ],
+          "logical_bytes": 64
+        }
+      ]
+    },
+    {
+      "workload": "four_site",
+      "variant": "combined",
+      "audit_sha256": "68b30f92d370e4dbf1bce35adb69bc73efec4e4f87fec256c4ca3c309a197637",
+      "config_sha256": "24d8b2bc0f54bd3feca9aeb31ff5363896c61720ef21161f48feb8b3a6148904",
+      "input_sha256": "abca34a1d3e93b3685e47eca01d38269838c0134463b0cca8d2f25806ccb9a52",
+      "slurm_job_id": "19777205",
+      "sacct_records": [
+        {
+          "JobIDRaw": "19777205",
+          "JobName": "pr986-array-audit",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:00:56",
+          "MaxRSS": "",
+          "AllocCPUS": "2",
+          "ReqMem": "4G"
+        },
+        {
+          "JobIDRaw": "19777205.batch",
+          "JobName": "batch",
+          "State": "COMPLETED",
+          "ExitCode": "0:0",
+          "Elapsed": "00:00:56",
+          "MaxRSS": "534028K",
+          "AllocCPUS": "2",
+          "ReqMem": ""
+        }
+      ],
+      "unique_backing_bytes": {
+        "constructed": 57245004,
+        "compiled": 58161164,
+        "refreshed": 58161164
+      },
+      "constructed_arrays": [
+        {
+          "path": "prepared_inputs.observations.data",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "prepared_inputs.fixed_prior_contribution.data",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "prepared_inputs.co2_sensitivity.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            304
+          ],
+          "logical_bytes": 1502976
+        },
+        {
+          "path": "prepared_inputs.o2_sensitivity.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            304
+          ],
+          "logical_bytes": 1502976
+        },
+        {
+          "path": "prepared_inputs.aggregation_error.marginal_variance",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "prepared_inputs.aggregation_error.covariance.data",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "prepared_inputs.retained_prior._mean.data",
+          "dtype": "float64",
+          "shape": [
+            304
+          ],
+          "logical_bytes": 2432
+        },
+        {
+          "path": "prepared_inputs.retained_prior._arithmetic_covariance.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_mean.data",
+          "dtype": "float64",
+          "shape": [
+            304
+          ],
+          "logical_bytes": 2432
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_covariance.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.retained_prior._latent_cholesky.data",
+          "dtype": "float64",
+          "shape": [
+            304,
+            304
+          ],
+          "logical_bytes": 739328
+        },
+        {
+          "path": "prepared_inputs.independent_error_sd.data",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.H_bc_anomaly.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.H_bc_mass.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.co2.bc_reference.data",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.H_bc_anomaly.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.H_bc_mass.data",
+          "dtype": "float64",
+          "shape": [
+            618,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "prepared_inputs.boundary_operands.o2.bc_reference.data",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "target.prepared.factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.prepared.diagonal_variance",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.prepared.site_index",
+          "dtype": "int64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.prepared.tau_hours_by_site",
+          "dtype": "float64",
+          "shape": [
+            8
+          ],
+          "logical_bytes": 64
+        },
+        {
+          "path": "target.prepared.site_blocks[0].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            129
+          ],
+          "logical_bytes": 1032
+        },
+        {
+          "path": "target.prepared.site_blocks[0].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            129,
+            129
+          ],
+          "logical_bytes": 133128
+        },
+        {
+          "path": "target.prepared.site_blocks[1].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            180
+          ],
+          "logical_bytes": 1440
+        },
+        {
+          "path": "target.prepared.site_blocks[1].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            180,
+            180
+          ],
+          "logical_bytes": 259200
+        },
+        {
+          "path": "target.prepared.site_blocks[2].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            155
+          ],
+          "logical_bytes": 1240
+        },
+        {
+          "path": "target.prepared.site_blocks[2].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            155,
+            155
+          ],
+          "logical_bytes": 192200
+        },
+        {
+          "path": "target.prepared.site_blocks[3].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            154
+          ],
+          "logical_bytes": 1232
+        },
+        {
+          "path": "target.prepared.site_blocks[3].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            154,
+            154
+          ],
+          "logical_bytes": 189728
+        },
+        {
+          "path": "target.prepared.site_blocks[4].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            129
+          ],
+          "logical_bytes": 1032
+        },
+        {
+          "path": "target.prepared.site_blocks[4].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            129,
+            129
+          ],
+          "logical_bytes": 133128
+        },
+        {
+          "path": "target.prepared.site_blocks[5].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            180
+          ],
+          "logical_bytes": 1440
+        },
+        {
+          "path": "target.prepared.site_blocks[5].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            180,
+            180
+          ],
+          "logical_bytes": 259200
+        },
+        {
+          "path": "target.prepared.site_blocks[6].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            155
+          ],
+          "logical_bytes": 1240
+        },
+        {
+          "path": "target.prepared.site_blocks[6].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            155,
+            155
+          ],
+          "logical_bytes": 192200
+        },
+        {
+          "path": "target.prepared.site_blocks[7].observation_indices",
+          "dtype": "int64",
+          "shape": [
+            154
+          ],
+          "logical_bytes": 1232
+        },
+        {
+          "path": "target.prepared.site_blocks[7].correlation_cholesky",
+          "dtype": "float64",
+          "shape": [
+            154,
+            154
+          ],
+          "logical_bytes": 189728
+        },
+        {
+          "path": "target.prepared.mode_eigenvalues",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.prepared.mode_site_index",
+          "dtype": "int64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.prepared.transformed_factor",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            1236
+          ],
+          "logical_bytes": 12221568
+        },
+        {
+          "path": "target.prepared.mode_transform.indptr",
+          "dtype": "int32",
+          "shape": [
+            1237
+          ],
+          "logical_bytes": 4948
+        },
+        {
+          "path": "target.prepared.mode_transform.indices",
+          "dtype": "int32",
+          "shape": [
+            193564
+          ],
+          "logical_bytes": 774256
+        },
+        {
+          "path": "target.prepared.mode_transform.data",
+          "dtype": "float64",
+          "shape": [
+            193564
+          ],
+          "logical_bytes": 1548512
+        },
+        {
+          "path": "target.observations",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.fixed_contribution",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target.design",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            312
+          ],
+          "logical_bytes": 3085056
+        },
+        {
+          "path": "target._residual_at_zero",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "target._transformed_rhs",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            313
+          ],
+          "logical_bytes": 3094944
+        },
+        {
+          "path": "initial_cache.linear",
+          "dtype": "float64",
+          "shape": [
+            312
+          ],
+          "logical_bytes": 2496
+        },
+        {
+          "path": "initial_cache.precision",
+          "dtype": "float64",
+          "shape": [
+            312,
+            312
+          ],
+          "logical_bytes": 778752
+        },
+        {
+          "path": "initial_cache.sigma",
+          "dtype": "float64",
+          "shape": [
+            8
+          ],
+          "logical_bytes": 64
+        },
+        {
+          "path": "shared_cache.constant.shared",
+          "dtype": "float64",
+          "shape": [],
+          "logical_bytes": 8
+        },
+        {
+          "path": "shared_cache.linear.shared",
+          "dtype": "float64",
+          "shape": [
+            312
+          ],
+          "logical_bytes": 2496
+        },
+        {
+          "path": "shared_cache.precision.shared",
+          "dtype": "float64",
+          "shape": [
+            312,
+            312
+          ],
+          "logical_bytes": 778752
+        },
+        {
+          "path": "model_shared.co2_o2_sensitivity.shared",
+          "dtype": "float64",
+          "shape": [
+            1236,
+            304
+          ],
+          "logical_bytes": 3005952
+        },
+        {
+          "path": "model_shared.fixed_prior_contribution.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.co2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "model_shared.co2_research_fixed_intercept.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.co2_bc_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.o2_research_active_design.shared",
+          "dtype": "float32",
+          "shape": [
+            1236,
+            4
+          ],
+          "logical_bytes": 19776
+        },
+        {
+          "path": "model_shared.o2_research_fixed_intercept.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.o2_bc_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.boundary_reference_shift.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.Y.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.error.shared",
+          "dtype": "float64",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 9888
+        },
+        {
+          "path": "model_shared.ou_site_index.shared",
+          "dtype": "int32",
+          "shape": [
+            1236
+          ],
+          "logical_bytes": 4944
+        },
+        {
+          "path": "model_shared.ou_tau_hours.shared",
+          "dtype": "float64",
+          "shape": [
+            8
+          ],
+          "logical_bytes": 64
+        }
+      ]
+    }
+  ],
+  "measured_script_sha256": {
+    "prepare_inputs.py": "7d6550afafa5d7628fd66a3e48b5eacb3c608df42fb67f2f064431beb741e9b9",
+    "precision_probe.py": "307f0593de989136e4a64b99845784331ae60046a87903203d8ab7ace0dd360e",
+    "measure.py": "7f0df57a84ea2b20f20bf71c49b38c1a82a3d798a034299159b05966a4e27e9a",
+    "selfcheck.py": "1c00d5fc0f52952051eda0f268d1348ac593967adbb79a071bae06af52e603f2"
+  },
+  "audited_script_sha256": {
+    "prepare_inputs.py": "7d6550afafa5d7628fd66a3e48b5eacb3c608df42fb67f2f064431beb741e9b9",
+    "precision_probe.py": "307f0593de989136e4a64b99845784331ae60046a87903203d8ab7ace0dd360e",
+    "measure.py": "0aef7aa1ca307b53d921c12b5a46a5778905d112ab70b249e06ed8968bbc921d",
+    "audit.py": "9ea72efe9b65d8be646c0a5c973b9706cd0a3824c5abf84b8df33fd3d64cd96d",
+    "selfcheck.py": "dfde39afba8cd6150a411f64fd74d527e68ea1dc21f74f74459f651914263b70"
+  }
+}
