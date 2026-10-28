@@ -320,8 +320,6 @@ def materialize_co2_inputs(
     use_bc: bool = False,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
-    bc_freq: str | None = None,
-    bc_anchor_time: DatetimeLike | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> tuple[xr.Dataset, dict[str, PriorArgs]]:
@@ -352,8 +350,6 @@ def materialize_co2_inputs(
         use_bc: Include prepared boundary sensitivity.
         bc_prior: Optional boundary-scale prior, enabled only with ``use_bc``.
         bc_state_activity: Optional boundary active/fixed-state policy.
-        bc_freq: Optional model-owned frequency for raw boundary periods.
-        bc_anchor_time: Optional timestamp anchoring raw boundary periods.
         offset_prior: Optional prior enabling concentration offsets.
         offset_args: Offset frequency, ``per_site`` and ``drop_first`` settings.
 

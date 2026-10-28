@@ -523,7 +523,9 @@ def test_direct_centered_binding_rejects_nat_anchor(linked):
     else:
         prepared = _centered_prepared()
         options = dict(use_bc=True, no_model_error=True, bc_freq="1D", bc_anchor_time="NaT")
-        inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, **options)
+        inputs, priors = materialize_co2_inputs(
+            prepared_inputs=prepared, use_bc=True, no_model_error=True,
+        )
         with pytest.raises(ValueError, match="valid datetime"):
             build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, **options)
 

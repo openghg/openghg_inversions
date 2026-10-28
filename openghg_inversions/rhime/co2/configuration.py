@@ -21,7 +21,6 @@ from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import normalise_optional_mapping
 
 from .co2_cached_sigma_runner import validate_cached_co2_sampler
-from .co2_preparation import Co2PreparedInputs
 from .inference import uses_cached_ou
 
 
@@ -561,10 +560,6 @@ class Co2ModelConfig:
     def model_arguments(self) -> dict[str, Any]:
         """Bind these choices as keywords at the ordinary scientific boundary."""
         return {item.name: getattr(self, item.name) for item in fields(self) if getattr(self, item.name) is not None}
-
-    def bind(self, prepared: Co2PreparedInputs) -> dict[str, Any]:
-        """Bind model choices; raw ordinary and centered boundaries own no periods."""
-        return self.model_arguments()
 
 
 @dataclass(frozen=True)

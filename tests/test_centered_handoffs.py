@@ -126,7 +126,8 @@ def test_saved_raw_periods_prior_predictive_save_reopen(tmp_path, linked, center
     # This constructs another graph without multiplying posterior sampling.
     reopened = module.load_preparation(manifest).prepared
     owner = Co2O2ModelConfig if linked else Co2ModelConfig
-    options = owner.from_params(_config(linked)).bind(reopened)
+    choices = owner.from_params(_config(linked))
+    options = choices.bind(reopened) if linked else choices.model_arguments()
     if linked:
         from openghg_inversions.rhime.co2.co2_o2_runner import build_rhime_co2_o2
         rebuilt = build_rhime_co2_o2(prepared_inputs=reopened, **options)
@@ -143,8 +144,12 @@ def test_saved_raw_periods_prior_predictive_save_reopen(tmp_path, linked, center
 def test_raw_ordinary_boundary_period_options_bind(linked):
     prepared = _raw_ordinary(linked)
     owner = Co2O2ModelConfig if linked else Co2ModelConfig
-    assert "bc_freq" not in owner.from_params(_config(linked)).bind(prepared)
-    assert owner.from_params(_config(linked, frequency="2D")).bind(prepared)["bc_freq"] == "2D"
+    choices = owner.from_params(_config(linked))
+    options = choices.bind(prepared) if linked else choices.model_arguments()
+    assert "bc_freq" not in options
+    choices = owner.from_params(_config(linked, frequency="2D"))
+    options = choices.bind(prepared) if linked else choices.model_arguments()
+    assert options["bc_freq"] == "2D"
 
 
 @pytest.mark.parametrize("linked", [False, True])
@@ -295,3 +300,25 @@ def test_saved_centered_cached_ou_prior_predictions_remain_absolute(tmp_path):
     restore_absolute_predictives(reopened)
     xr.testing.assert_identical(reopened.observed_data.y, observed)
     xr.testing.assert_identical(reopened.prior_predictive.y, predictions)
+
+
+@pytest.mark.parametrize("centered", [False, True])
+@pytest.mark.parametrize("cached", [False, True])
+def test_inference_graph_consumes_boundary_periods(centered, cached):
+    from openghg_inversions.rhime.co2.inference import build_co2_inference
+
+    prepared = _ordinary() if centered else _raw_ordinary(False)
+    config = _config(False, frequency="2D", anchor_time="2020-01-01T12:00:00")
+    if cached:
+        config["likelihood"] = {
+            "kind": "fixed_ou", "tau_hours": 2.0,
+            "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.1},
+        }
+    built, cache = build_co2_inference(prepared, Co2ModelConfig.from_params(config).model_arguments())
+    assert (cache is not None) == cached
+    assert built.model.initial_point()["bc"].size == 4
+    # The borrowed raw preparation remains reusable with a different period choice.
+    single, _ = build_co2_inference(
+        prepared, Co2ModelConfig.from_params(_config(False)).model_arguments(),
+    )
+    assert single.model.initial_point()["bc"].size == 2

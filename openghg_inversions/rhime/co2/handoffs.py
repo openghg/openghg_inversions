@@ -241,7 +241,7 @@ def sample(
     model_options = model_config.model_arguments()
     choices = _resolve_co2_sampling({"sampling": sampling if sampling is not None else {}}, model=model_options)
     preparation = load_preparation(preparation_manifest)
-    model_options = model_config.bind(preparation.prepared)
+    model_options = model_config.model_arguments()
     check_checkpoint_targets(
         Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),
         referenced=(Path(preparation_manifest).resolve(), preparation.payload)
@@ -329,7 +329,7 @@ def prior_predictive(
     stage = _check_stage(stage)
     model_config = model if isinstance(model, Co2ModelConfig) else Co2ModelConfig.from_params(load_co2_params(params=model))
     preparation = load_preparation(preparation_manifest)
-    model_options = model_config.bind(preparation.prepared)
+    model_options = model_config.model_arguments()
     destination = Path(output_dir).resolve()
     report = _output_path(destination, check_output, "prior-predictive-readiness.json")
     check_checkpoint_targets(

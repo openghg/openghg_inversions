@@ -113,7 +113,7 @@ def run_co2(
         if source is None:
             raise ValueError("Pass prepared inputs or configure prepared_inputs.path.")
         prepared = Co2PreparedInputs.load(source)
-    model = model_config.bind(prepared)
+    model = model_config.model_arguments()
     facts = requested_co2_facts(
         prepared, start_date=start_date, end_date=end_date,
         recorded_facts={name: getattr(preparation, name) for name in ("start_date", "end_date", "domain")},
