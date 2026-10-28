@@ -837,8 +837,16 @@ uses ordered <code class="docutils literal notranslate"><span class="pre">lower<
 HalfStudentT, Gamma, Exponential, Uniform with a non-negative lower bound, or
 LogNormal.</p>
 <p>Optional model components belong in their own tables. <code class="docutils literal notranslate"><span class="pre">[model.boundary]</span></code>
-accepts boolean <code class="docutils literal notranslate"><span class="pre">enabled</span></code> (default true) and <code class="docutils literal notranslate"><span class="pre">prior</span></code>; a disabled boundary
-cannot specify a prior. <code class="docutils literal notranslate"><span class="pre">[model.offset]</span></code> requires <code class="docutils literal notranslate"><span class="pre">prior</span></code> and optionally
+accepts boolean <code class="docutils literal notranslate"><span class="pre">enabled</span></code> (default true), <code class="docutils literal notranslate"><span class="pre">prior</span></code>, <code class="docutils literal notranslate"><span class="pre">frequency</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">anchor_time</span></code>. A disabled boundary cannot specify a prior or period choices.
+For raw reusable inputs, omitting <code class="docutils literal notranslate"><span class="pre">frequency</span></code> selects one period;
+<code class="docutils literal notranslate"><span class="pre">&quot;monthly&quot;</span></code> selects calendar months, and a positive fixed duration such as
+<code class="docutils literal notranslate"><span class="pre">&quot;2D&quot;</span></code> selects fixed-duration periods. <code class="docutils literal notranslate"><span class="pre">anchor_time</span></code> is accepted only with
+a fixed duration, never with monthly or omitted frequency. Linked CO2/O2
+channels share one frequency and anchor choice. See the
+<a class="reference internal" href="surface_preparation.html#surface-centered-boundary-contract"><span class="std std-ref">raw versus expanded boundary rules</span></a>
+for preparation reuse and period overrides.</p>
+<p><code class="docutils literal notranslate"><span class="pre">[model.offset]</span></code> requires <code class="docutils literal notranslate"><span class="pre">prior</span></code> and optionally
 accepts <code class="docutils literal notranslate"><span class="pre">frequency</span></code>, <code class="docutils literal notranslate"><span class="pre">per_site</span></code> (default true), and <code class="docutils literal notranslate"><span class="pre">drop_first</span></code> (default
 false). A global offset (<code class="docutils literal notranslate"><span class="pre">per_site</span> <span class="pre">=</span> <span class="pre">false</span></code>) cannot set a frequency or use
 <code class="docutils literal notranslate"><span class="pre">drop_first</span> <span class="pre">=</span> <span class="pre">true</span></code>.</p>
@@ -1493,6 +1501,12 @@ Its location and scale parameters use the observations’ concentration units.
 These coefficients join the flux coefficients only inside the private cached
 likelihood calculation; their public scientific variables and contributions
 remain separate.</p>
+<p>Centered boundary operands are supported with the matched cached sampler for
+CO₂ and linked CO₂/O₂, with PyTensor <code class="docutils literal notranslate"><span class="pre">floatX=float64</span></code>. The likelihood and
+amplitude update use directly composed centered means, while public BC states,
+priors and concentration outputs retain their physical meaning. See the
+<a class="reference internal" href="surface_preparation.html#surface-centered-boundary-contract"><span class="std std-ref">centered boundary contract</span></a> for
+period alignment, fixed states, restoration and persistence limits.</p>
 <p><a class="reference internal" href="coherent_reduction.html"><span class="doc">Coherent Gaussian Reduction</span></a> describes the linked retained prior, effective
 operator, affine contribution, and unresolved covariance.
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_inputs()</span></code></a> assembles those

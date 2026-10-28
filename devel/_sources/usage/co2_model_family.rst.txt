@@ -6,6 +6,11 @@ recipes. O₂ is a tracer in the linked recipe, not a standalone supported model
 Both recipes begin from scientific arrays that have already been prepared; they
 are not alternative species settings for the complete standard runner.
 
+The experimental :doc:`surface preparation pilot <surface_preparation>` adds
+explicit source transport and centered stable-BC operands for additive-Gaussian
+recipes and the matched cached fixed-OU samplers. Centered construction requires
+PyTensor ``floatX=float64``. Coherent-reduction construction remains explicit.
+
 Current support
 ---------------
 

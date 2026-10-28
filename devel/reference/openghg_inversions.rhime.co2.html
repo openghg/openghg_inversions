@@ -58,7 +58,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.rhime.co2.co2_affine_output" href="openghg_inversions.rhime.co2.co2_affine_output.html" />
+    <link rel="next" title="openghg_inversions.rhime.co2.centered_boundary" href="openghg_inversions.rhime.co2.centered_boundary.html" />
     <link rel="prev" title="openghg_inversions.rhime" href="openghg_inversions.rhime.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -443,6 +443,7 @@
 </details></li>
 <li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l3 current active has-children"><a class="current reference internal" href="#">openghg_inversions.rhime.co2</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.centered_boundary.html">openghg_inversions.rhime.co2.centered_boundary</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html">openghg_inversions.rhime.co2.co2_affine_output</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html">openghg_inversions.rhime.co2.co2_cached_sigma_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html">openghg_inversions.rhime.co2.co2_cached_sigma_runner</a></li>
@@ -633,6 +634,8 @@ association of the preparation, independent of current output choices.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">fixed_model_mismatch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">likelihood_builder</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">likelihood_kwargs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_anchor_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.Co2ModelConfig" title="Link to this definition">#</a></dt>
@@ -640,7 +643,9 @@ association of the preparation, independent of current output choices.</p>
 <p>Scientific choices for ordinary CO2, independent of arrays and inference.</p>
 <p>Construction through <a class="reference internal" href="#openghg_inversions.rhime.co2.Co2ModelConfig.from_params" title="openghg_inversions.rhime.co2.Co2ModelConfig.from_params"><code class="xref py py-meth docutils literal notranslate"><span class="pre">from_params()</span></code></a> validates only model and likelihood
 sections. Ordinary containers are owned; opaque numerical values are borrowed.
-Defaults omitted here remain owned by the concrete scientific recipe.</p>
+Defaults omitted here remain owned by the concrete scientific recipe.
+Boundary frequency and anchor choices apply to raw ordinary or centered operands
+and bind when inference consumes the preparation.</p>
 <dl class="field-list simple">
 </dl>
 <dl class="py method">
@@ -713,6 +718,8 @@ Defaults omitted here remain owned by the concrete scientific recipe.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">tau_hours</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">fixed_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_anchor_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.Co2O2ModelConfig" title="Link to this definition">#</a></dt>
@@ -721,7 +728,9 @@ Defaults omitted here remain owned by the concrete scientific recipe.</p>
 <p>Both channels require identical mole-fraction units. Error overrides must
 be supplied for both channels or omitted for both to use saved errors.
 Fixed independent error and fixed-amplitude OU are supported; inferred OU
-and per-meg transformations remain separate work.</p>
+and per-meg transformations remain separate work.
+Boundary frequency and anchor choices apply to all enabled raw boundary
+channels; choices supplied under both channels must agree.</p>
 <dl class="field-list simple">
 </dl>
 <dl class="py method">
@@ -1193,7 +1202,9 @@ and does not check that it belongs to the prepared artifact.</p>
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.Co2CachedSigmaModel" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Observed graph, cached state expression, and scientific starting values.</p>
-<p><code class="docutils literal notranslate"><span class="pre">initial_values</span></code> contains untransformed sampling overrides or PyMC
+<p><code class="docutils literal notranslate"><span class="pre">modelled_mean</span></code> is the likelihood and amplitude-sampler mean, centered
+when boundary operands are centered; the named concentration output stays absolute.
+<code class="docutils literal notranslate"><span class="pre">initial_values</span></code> contains untransformed sampling overrides or PyMC
 initialization strategies, lifted from graph metadata. The matched runner
 resolves them separately for construction and each sampling chain.</p>
 <dl class="field-list simple">
@@ -1243,7 +1254,13 @@ belongs to this scientific view. Products remain accessible in
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.annotate_co2_trace" title="Link to this definition">#</a></dt>
-<dd><p>Persist CO2 scientific roles and units on prior or posterior output.</p>
+<dd><p>Restore absolute CO2 observations/predictions and persist roles and units.</p>
+<p>For centered models, updates numerical <code class="docutils literal notranslate"><span class="pre">y</span></code> values in <code class="docutils literal notranslate"><span class="pre">observed_data</span></code>,
+<code class="docutils literal notranslate"><span class="pre">prior_predictive</span></code>, <code class="docutils literal notranslate"><span class="pre">posterior_predictive</span></code> and <code class="docutils literal notranslate"><span class="pre">predictions</span></code> in place
+by adding the retained boundary reference shift. Values marked
+<code class="docutils literal notranslate"><span class="pre">concentration_representation=&quot;absolute-v1&quot;</span></code> are left unchanged, so
+repeated annotation does not add the shift twice. See
+<a class="reference internal" href="../usage/surface_preparation.html#surface-centered-boundary-contract"><span class="std std-ref">Centered preparation handoff</span></a>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -1269,6 +1286,12 @@ provenance, never executable replay instructions.</p></li>
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.annotate_co2_o2_trace">
 <span class="sig-name descname"><span class="pre">annotate_co2_o2_trace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trace</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">built</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.annotate_co2_o2_trace" title="Link to this definition">#</a></dt>
 <dd><p>Attach the built joint model’s scientific meaning after coordinate restoration.</p>
+<p>For centered models, updates numerical <code class="docutils literal notranslate"><span class="pre">y</span></code> values in <code class="docutils literal notranslate"><span class="pre">observed_data</span></code>,
+<code class="docutils literal notranslate"><span class="pre">prior_predictive</span></code>, <code class="docutils literal notranslate"><span class="pre">posterior_predictive</span></code> and <code class="docutils literal notranslate"><span class="pre">predictions</span></code> in place
+by adding the retained boundary reference shift. Values marked
+<code class="docutils literal notranslate"><span class="pre">concentration_representation=&quot;absolute-v1&quot;</span></code> are left unchanged, so
+repeated annotation does not add the shift twice. See
+<a class="reference internal" href="../usage/surface_preparation.html#surface-centered-boundary-contract"><span class="std std-ref">Centered preparation handoff</span></a>.</p>
 <p>Both posterior and native prior-predictive traces retain roles, units,
 preparation provenance and used priors. Fixed-OU traces additionally retain
 species/site grouping and joint likelihood/predictive scope. The trace is
@@ -1364,6 +1387,8 @@ parameters. The preparation and supplied parameter mappings are unchanged.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_anchor_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
@@ -1385,6 +1410,8 @@ before its likelihood is constructed.</p>
 <li><p><strong>model_inputs</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Selected scientific arrays already materialized together.</p></li>
 <li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs" title="openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs"><em>Co2PreparedInputs</em></a>) – Preparation supplying aggregation mode and provenance.</p></li>
 <li><p><strong>priors</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em><em>]</em>) – Materialized prior parameters under their concrete graph names.</p></li>
+<li><p><strong>bc_freq</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional model-owned frequency for raw boundary periods.</p></li>
+<li><p><strong>bc_anchor_time</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.15)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional timestamp anchoring raw boundary periods.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -1417,6 +1444,9 @@ before its likelihood is constructed.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">initial_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">boundary_sensitivity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">boundary_operands</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_anchor_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -1434,6 +1464,12 @@ terms are then added to form <code class="docutils literal notranslate"><span cl
 likelihood is one normalized observed joint Gaussian with exact density
 and random callbacks. A separate cached quadratic over the active flux,
 boundary, and offset coefficients supplies efficient state trajectories.
+Centered boundary operands require explicit PyTensor float64. Their raw
+spatial operands are aligned and period-expanded here, then materialized
+together with the selected arrays without modifying the inputs. Physical
+boundary priors and absolute concentration deterministics are preserved;
+the observed Gaussian and sampler use directly centered residuals. Raw
+predictive <code class="docutils literal notranslate"><span class="pre">y</span></code> requires <code class="docutils literal notranslate"><span class="pre">restore_absolute_predictives</span></code> for absolute output.
 These states remain separate scientific variables and sampler inputs.
 The matched runner supplies the returned scientific initial values through
 sampling inputs. Observations, designs, activity masks, and covariance are
@@ -1466,11 +1502,15 @@ states. Fixed values are dimensionless flux scalings.</p></li>
 <li><p><strong>boundary_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional atmospheric boundary-condition
 sensitivity, in concentration units per unit dimensionless
 boundary scaling.</p></li>
+<li><p><strong>boundary_operands</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a><em> | </em><em>None</em>) – Optional raw centered-v1 anomaly, mass and reference
+dataset; mutually exclusive with <code class="docutils literal notranslate"><span class="pre">boundary_sensitivity</span></code>.</p></li>
+<li><p><strong>bc_freq</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional model-owned period for raw boundary inputs.</p></li>
+<li><p><strong>bc_anchor_time</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.15)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional origin for fixed-duration boundary periods.</p></li>
 <li><p><strong>bc_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional prior for dimensionless boundary-scaling
-coefficients. Requires <code class="docutils literal notranslate"><span class="pre">boundary_sensitivity</span></code>; when omitted for
+coefficients. Requires a selected boundary representation; when omitted for
 a selected boundary component, the default boundary prior is used.</p></li>
 <li><p><strong>bc_state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional labelled active/fixed policy for boundary
-scalings. Requires <code class="docutils literal notranslate"><span class="pre">boundary_sensitivity</span></code>.</p></li>
+scalings. Requires a selected boundary representation.</p></li>
 <li><p><strong>offset_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional prior for additive offsets. Its location and
 scale parameters use the observations’ concentration units. When
 omitted, no offset is added.</p></li>
@@ -1487,12 +1527,13 @@ global offset and does not accept <code class="docutils literal notranslate"><sp
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>The registered model, fixed-OU target and caches, ordered sampler
-states, and completed concentration mean.</p>
+states, and completed likelihood mean. The latter is centered when
+boundary operands are supplied; <code class="docutils literal notranslate"><span class="pre">modelled_concentration</span></code> stays absolute.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If scientific arrays, coordinates, covariance inputs,
     priors, or activity policies are invalid; if boundary options are
-    supplied without <code class="docutils literal notranslate"><span class="pre">boundary_sensitivity</span></code>; or if non-default
+    supplied without a boundary representation; or if non-default
     offset options are supplied without <code class="docutils literal notranslate"><span class="pre">offset_prior</span></code>. Also raised
     for incompatible global-offset options.</p>
 </dd>
@@ -1521,6 +1562,9 @@ states, and completed concentration mean.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">fixed_model_mismatch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">boundary_sensitivity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">boundary_operands</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_anchor_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -1552,6 +1596,16 @@ distinct components named <code class="docutils literal notranslate"><span class
 <p>Direct custom callers are responsible for supplying scientifically
 coherent arrays from one preparation and for their positional semantics
 when labels are absent.</p>
+<p>With centered <code class="docutils literal notranslate"><span class="pre">boundary_operands</span></code>, raw PyMC observed and predictive
+<code class="docutils literal notranslate"><span class="pre">y</span></code> values are centered; BC and total concentration deterministics remain
+absolute.
+After restoring sample coordinates, direct callers must restore absolute
+<code class="docutils literal notranslate"><span class="pre">y</span></code> with
+<a class="reference internal" href="openghg_inversions.rhime.co2.centered_boundary.html#openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives" title="openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives"><code class="xref py py-func docutils literal notranslate"><span class="pre">restore_absolute_predictives()</span></code></a>
+before serialization or postprocessing. Ordinary recipe runners do this
+through
+<a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html#openghg_inversions.rhime.co2.co2_runner.annotate_co2_trace" title="openghg_inversions.rhime.co2.co2_runner.annotate_co2_trace"><code class="xref py py-func docutils literal notranslate"><span class="pre">annotate_co2_trace()</span></code></a>.
+See <a class="reference internal" href="../usage/surface_preparation.html#surface-centered-boundary-contract"><span class="std std-ref">Centered preparation handoff</span></a>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -1576,8 +1630,13 @@ standard deviation.</p></li>
 <li><p><strong>state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional labelled activity policy for retained flux
 states.</p></li>
 <li><p><strong>boundary_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional atmospheric boundary-condition
-sensitivity already resolved for the model, for example
-<code class="xref py py-attr docutils literal notranslate"><span class="pre">data</span></code>.</p></li>
+sensitivity on spatial states. Raw states are expanded using the
+model’s periods; already expanded states cannot accept overrides.</p></li>
+<li><p><strong>boundary_operands</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a><em> | </em><em>None</em>) – Raw centered-v1 H_bc_anomaly/H_bc_mass and scalar
+bc_reference, retained until model binding. Mutually exclusive with
+absolute boundary_sensitivity for the same channel.</p></li>
+<li><p><strong>bc_freq</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional model-owned boundary period frequency.</p></li>
+<li><p><strong>bc_anchor_time</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.15)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional anchor for boundary period alignment.</p></li>
 <li><p><strong>bc_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional prior arguments for boundary-condition scaling.</p></li>
 <li><p><strong>bc_state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional labelled activity policy for boundary
 states.</p></li>
@@ -1614,6 +1673,8 @@ and Gaussian likelihood.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">initial_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_anchor_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -1633,7 +1694,9 @@ mapping covering all observed sites.</p></li>
 observation concentration units.</p></li>
 <li><p><strong>initial_site_amplitudes</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Positive scalar or site mapping in the same
 units; defaults to the prior support point.</p></li>
-<li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Include prepared boundary sensitivity <code class="docutils literal notranslate"><span class="pre">H_bc</span></code>.</p></li>
+<li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Include prepared ordinary or centered boundary operands.</p></li>
+<li><p><strong>bc_freq</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional model-owned period for raw boundary inputs.</p></li>
+<li><p><strong>bc_anchor_time</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.15)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional origin for fixed-duration boundary periods.</p></li>
 <li><p><strong>bc_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional boundary-scaling prior.</p></li>
 <li><p><strong>bc_state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional active/fixed boundary-state policy.</p></li>
 <li><p><strong>offset_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional offset prior; omit to disable the component.</p></li>
@@ -1656,7 +1719,17 @@ units; defaults to the prior support point.</p></li>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_cached_sigma_build_result">
-<span class="sig-name descname"><span class="pre">co2_cached_sigma_build_result</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cached_model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_cached_sigma_build_result" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">co2_cached_sigma_build_result</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">cached_model</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_anchor_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_cached_sigma_build_result" title="Link to this definition">#</a></dt>
 <dd><p>Describe a built cached graph for sampling and stored output metadata.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1664,6 +1737,8 @@ units; defaults to the prior support point.</p></li>
 <li><p><strong>cached_model</strong> (<a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html#openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel" title="openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel"><em>Co2CachedSigmaModel</em></a>) – Graph returned by <a class="reference internal" href="#openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma" title="openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma"><code class="xref py py-func docutils literal notranslate"><span class="pre">build_rhime_co2_cached_sigma()</span></code></a>.</p></li>
 <li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs" title="openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs"><em>Co2PreparedInputs</em></a>) – Prepared inputs used to build the graph, providing
 basis provenance.</p></li>
+<li><p><strong>bc_freq</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Model-owned period used to build centered boundary states.</p></li>
+<li><p><strong>bc_anchor_time</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.15)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Origin used for fixed-duration centered periods.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -1690,6 +1765,9 @@ basis provenance.</p></li>
 <dd><em class="sig-param"><span class="n"><span class="pre">independent_error_sd</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">boundary_sensitivity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">boundary_operands</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_anchor_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -1720,6 +1798,16 @@ species/state ratio factor before constructing that joint sensitivity.</p>
 as finite and positive. Direct custom callers own that check, exact label
 alignment, row-unit consistency, coherent covariance provenance, and the
 embedded-ratio contract before calling this lower-level builder.</p>
+<p>With centered <code class="docutils literal notranslate"><span class="pre">boundary_operands</span></code>, raw PyMC observed and predictive
+<code class="docutils literal notranslate"><span class="pre">y</span></code> values are centered; BC and total concentration deterministics remain
+absolute.
+After restoring sample coordinates, direct callers must restore absolute
+<code class="docutils literal notranslate"><span class="pre">y</span></code> with
+<a class="reference internal" href="openghg_inversions.rhime.co2.centered_boundary.html#openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives" title="openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives"><code class="xref py py-func docutils literal notranslate"><span class="pre">restore_absolute_predictives()</span></code></a>
+before serialization or postprocessing. Ordinary recipe runners do this
+through
+<a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html#openghg_inversions.rhime.co2.co2_o2_runner.annotate_co2_o2_trace" title="openghg_inversions.rhime.co2.co2_o2_runner.annotate_co2_o2_trace"><code class="xref py py-func docutils literal notranslate"><span class="pre">annotate_co2_o2_trace()</span></code></a>.
+See <a class="reference internal" href="../usage/surface_preparation.html#surface-centered-boundary-contract"><span class="std std-ref">Centered preparation handoff</span></a>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -1742,6 +1830,11 @@ each observation row’s native units.</p></li>
 states.</p></li>
 <li><p><strong>boundary_sensitivity</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em>] </em><em>| </em><em>None</em>) – Optional co2/o2 mapping of H_bc on each
 native observation axis and one labelled boundary-state axis.</p></li>
+<li><p><strong>boundary_operands</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a><em>] </em><em>| </em><em>None</em>) – Raw centered-v1 H_bc_anomaly/H_bc_mass and scalar
+bc_reference, retained until model binding. Mutually exclusive with
+absolute boundary_sensitivity for the same channel.</p></li>
+<li><p><strong>bc_freq</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional model-owned boundary period frequency.</p></li>
+<li><p><strong>bc_anchor_time</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.15)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional anchor for boundary period alignment.</p></li>
 <li><p><strong>bc_prior</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em><em>] </em><em>| </em><em>None</em>) – Channel-keyed independent boundary-scale priors; the CO2
 default is used for each enabled channel when omitted.</p></li>
 <li><p><strong>bc_state_activity</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em>] </em><em>| </em><em>None</em>) – Channel-keyed labelled fixed/active boundary policies.</p></li>
@@ -1784,6 +1877,8 @@ linear signal, coherent affine intercept, and joint Gaussian likelihood.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_anchor_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">tau_hours</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -1830,6 +1925,9 @@ provenance, ready for native prior prediction or sampling.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">initial_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">boundary_sensitivity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">boundary_operands</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_anchor_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -1852,6 +1950,11 @@ CompoundStep and its explicit cached state function. The observed joint
 Gaussian remains exact independently of that cache. Scientific initial
 values are returned separately for sampling; observations, designs,
 activity masks, and covariance stay fixed after construction.</p>
+<p>Raw centered <code class="docutils literal notranslate"><span class="pre">boundary_operands</span></code> require explicit PyTensor float64 and
+are aligned and expanded by <code class="docutils literal notranslate"><span class="pre">bc_freq</span></code>/<code class="docutils literal notranslate"><span class="pre">bc_anchor_time</span></code> here. Channel
+boundary states retain their independent labels and physical priors. The
+likelihood and sampler use directly centered means; named concentration
+outputs remain absolute. Raw predictive <code class="docutils literal notranslate"><span class="pre">y</span></code> requires absolute restoration.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html#openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel" title="openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel"><em>Co2CachedSigmaModel</em></a></p>
@@ -2311,6 +2414,8 @@ requested conditional affine products, with configured files written.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_anchor_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'default'</span></span></em>,</dd>
@@ -2351,6 +2456,8 @@ sensitivities. Omitted entries include available channel boundaries.</p></li>
 <li><p><strong>bc_prior</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em><em>] </em><em>| </em><em>None</em>) – Channel-keyed independent boundary-scale priors; the CO2
 default is used for each enabled channel when omitted.</p></li>
 <li><p><strong>bc_state_activity</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em>] </em><em>| </em><em>None</em>) – Channel-keyed labelled fixed/active boundary policies.</p></li>
+<li><p><strong>bc_freq</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional model-owned frequency for raw boundary periods.</p></li>
+<li><p><strong>bc_anchor_time</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.15)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional timestamp anchoring raw boundary periods.</p></li>
 <li><p><strong>offset_prior</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em><em>] </em><em>| </em><em>None</em>) – Channel-keyed offset priors. Omitted channels have no offset.</p></li>
 <li><p><strong>offset_args</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em><em>] </em><em>| </em><em>None</em>) – Per-channel offset_freq, drop_first, and per_site options,
 with the same meanings as the CO2 offset component. Baseline terms
@@ -2403,6 +2510,8 @@ JSON model metadata.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_anchor_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'default'</span></span></em>,</dd>
@@ -2418,6 +2527,11 @@ and site. Both channels must use the same concentration units. Inputs
 remain borrowed; related payloads are materialized together before graph
 construction. The runner constructs its sigma-then-state CompoundStep,
 refreshing the accepted amplitude cache before each affine-state update.</p>
+<p>Selected centered boundary operands currently require PyTensor
+<code class="docutils literal notranslate"><span class="pre">floatX=float64</span></code>. This is a restriction of the current implementation.
+Observations, predictions, and boundary contributions are restored to
+absolute concentrations; see the
+<a class="reference internal" href="../usage/surface_preparation.html#surface-centered-boundary-contract"><span class="std std-ref">centered boundary contract</span></a>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -2448,6 +2562,8 @@ selecting a missing channel boundary fails.</p></li>
 channels use the ordinary CO2 boundary prior when omitted.</p></li>
 <li><p><strong>bc_state_activity</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em>] </em><em>| </em><em>None</em>) – Optional channel-keyed labelled active/fixed
 boundary-state policies. Requires the selected channel boundary.</p></li>
+<li><p><strong>bc_freq</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional period for raw ordinary or centered channel boundaries.</p></li>
+<li><p><strong>bc_anchor_time</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.15)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional origin for fixed-duration boundary periods.</p></li>
 <li><p><strong>offset_prior</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em><em>] </em><em>| </em><em>None</em>) – Channel-keyed offset priors in concentration units.
 Channels omitted from this mapping have no offset.</p></li>
 <li><p><strong>offset_args</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em><em>] </em><em>| </em><em>None</em>) – Per-channel per_site, offset_freq, and drop_first options
@@ -2477,7 +2593,8 @@ by the sampler. No artifact is written to disk.</p>
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If independent errors are missing, invalid, mislabelled,
     or conflict with saved errors; channel units or grouping
     coordinates are invalid; selected boundary/offset settings are
-    inconsistent; OU scales or amplitudes are invalid; or the sampler
+    inconsistent; selected centered boundaries use a floatX other
+    than float64; OU scales or amplitudes are invalid; or the sampler
     requests an unsupported backend, step, tuning control, or
     predictive keyword. Label, prior, covariance, and activity errors
     from model construction also propagate.</p></li>
@@ -2494,6 +2611,14 @@ by the sampler. No artifact is written to disk.</p>
 
 <div class="toctree-wrapper compound">
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.centered_boundary.html">openghg_inversions.rhime.co2.centered_boundary</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.centered_boundary.html#openghg_inversions.rhime.co2.centered_boundary.require_centered_precision"><code class="docutils literal notranslate"><span class="pre">require_centered_precision()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.centered_boundary.html#openghg_inversions.rhime.co2.centered_boundary.bind_boundary_operands"><code class="docutils literal notranslate"><span class="pre">bind_boundary_operands()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.centered_boundary.html#openghg_inversions.rhime.co2.centered_boundary.CenteredBoundaryResult"><code class="docutils literal notranslate"><span class="pre">CenteredBoundaryResult</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.centered_boundary.html#openghg_inversions.rhime.co2.centered_boundary.add_centered_boundary"><code class="docutils literal notranslate"><span class="pre">add_centered_boundary()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.centered_boundary.html#openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives"><code class="docutils literal notranslate"><span class="pre">restore_absolute_predictives()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html">openghg_inversions.rhime.co2.co2_affine_output</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap.affine_map"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap.affine_map</span></code></a></li>
@@ -2711,11 +2836,11 @@ by the sampler. No artifact is written to disk.</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.rhime.co2.co2_affine_output.html"
+       href="openghg_inversions.rhime.co2.centered_boundary.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.rhime.co2.co2_affine_output</p>
+        <p class="prev-next-title">openghg_inversions.rhime.co2.centered_boundary</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

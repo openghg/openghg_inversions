@@ -443,6 +443,7 @@
 </details></li>
 <li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l3 current active has-children"><a class="reference internal" href="openghg_inversions.rhime.co2.html">openghg_inversions.rhime.co2</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.centered_boundary.html">openghg_inversions.rhime.co2.centered_boundary</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html">openghg_inversions.rhime.co2.co2_affine_output</a></li>
 <li class="toctree-l4 current active"><a class="current reference internal" href="#">openghg_inversions.rhime.co2.co2_cached_sigma_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html">openghg_inversions.rhime.co2.co2_cached_sigma_runner</a></li>
@@ -596,7 +597,9 @@
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Observed graph, cached state expression, and scientific starting values.</p>
-<p><code class="docutils literal notranslate"><span class="pre">initial_values</span></code> contains untransformed sampling overrides or PyMC
+<p><code class="docutils literal notranslate"><span class="pre">modelled_mean</span></code> is the likelihood and amplitude-sampler mean, centered
+when boundary operands are centered; the named concentration output stays absolute.
+<code class="docutils literal notranslate"><span class="pre">initial_values</span></code> contains untransformed sampling overrides or PyMC
 initialization strategies, lifted from graph metadata. The matched runner
 resolves them separately for construction and each sampling chain.</p>
 <dl class="field-list simple">
@@ -620,6 +623,9 @@ resolves them separately for construction and each sampling chain.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">initial_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">boundary_sensitivity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">boundary_operands</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_anchor_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">offset_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -637,6 +643,12 @@ terms are then added to form <code class="docutils literal notranslate"><span cl
 likelihood is one normalized observed joint Gaussian with exact density
 and random callbacks. A separate cached quadratic over the active flux,
 boundary, and offset coefficients supplies efficient state trajectories.
+Centered boundary operands require explicit PyTensor float64. Their raw
+spatial operands are aligned and period-expanded here, then materialized
+together with the selected arrays without modifying the inputs. Physical
+boundary priors and absolute concentration deterministics are preserved;
+the observed Gaussian and sampler use directly centered residuals. Raw
+predictive <code class="docutils literal notranslate"><span class="pre">y</span></code> requires <code class="docutils literal notranslate"><span class="pre">restore_absolute_predictives</span></code> for absolute output.
 These states remain separate scientific variables and sampler inputs.
 The matched runner supplies the returned scientific initial values through
 sampling inputs. Observations, designs, activity masks, and covariance are
@@ -669,11 +681,15 @@ states. Fixed values are dimensionless flux scalings.</p></li>
 <li><p><strong>boundary_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional atmospheric boundary-condition
 sensitivity, in concentration units per unit dimensionless
 boundary scaling.</p></li>
+<li><p><strong>boundary_operands</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a><em> | </em><em>None</em>) – Optional raw centered-v1 anomaly, mass and reference
+dataset; mutually exclusive with <code class="docutils literal notranslate"><span class="pre">boundary_sensitivity</span></code>.</p></li>
+<li><p><strong>bc_freq</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional model-owned period for raw boundary inputs.</p></li>
+<li><p><strong>bc_anchor_time</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.15)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional origin for fixed-duration boundary periods.</p></li>
 <li><p><strong>bc_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional prior for dimensionless boundary-scaling
-coefficients. Requires <code class="docutils literal notranslate"><span class="pre">boundary_sensitivity</span></code>; when omitted for
+coefficients. Requires a selected boundary representation; when omitted for
 a selected boundary component, the default boundary prior is used.</p></li>
 <li><p><strong>bc_state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional labelled active/fixed policy for boundary
-scalings. Requires <code class="docutils literal notranslate"><span class="pre">boundary_sensitivity</span></code>.</p></li>
+scalings. Requires a selected boundary representation.</p></li>
 <li><p><strong>offset_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional prior for additive offsets. Its location and
 scale parameters use the observations’ concentration units. When
 omitted, no offset is added.</p></li>
@@ -690,12 +706,13 @@ global offset and does not accept <code class="docutils literal notranslate"><sp
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>The registered model, fixed-OU target and caches, ordered sampler
-states, and completed concentration mean.</p>
+states, and completed likelihood mean. The latter is centered when
+boundary operands are supplied; <code class="docutils literal notranslate"><span class="pre">modelled_concentration</span></code> stays absolute.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If scientific arrays, coordinates, covariance inputs,
     priors, or activity policies are invalid; if boundary options are
-    supplied without <code class="docutils literal notranslate"><span class="pre">boundary_sensitivity</span></code>; or if non-default
+    supplied without a boundary representation; or if non-default
     offset options are supplied without <code class="docutils literal notranslate"><span class="pre">offset_prior</span></code>. Also raised
     for incompatible global-offset options.</p>
 </dd>

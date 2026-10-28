@@ -662,6 +662,7 @@ response for a shared source-scaling field, or a compatible source-resolved
 flux basis for separate fields):</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.basis._helpers</span><span class="w"> </span><span class="kn">import</span> <span class="n">bc_sensitivity</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_rhime_inputs_from_xarray</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_co2_inputs</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.preparation</span><span class="w"> </span><span class="kn">import</span> <span class="n">filter_observations</span><span class="p">,</span> <span class="n">prepare_observation_errors</span>
 
 <span class="n">selected</span><span class="p">,</span> <span class="n">retained_selectors</span> <span class="o">=</span> <span class="n">filter_observations</span><span class="p">(</span>
@@ -673,20 +674,78 @@ flux basis for separate fields):</p>
     <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">data</span><span class="o">.</span><span class="n">drop_vars</span><span class="p">(</span><span class="s2">"fp_x_flux_sectoral"</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">data</span> <span class="ow">in</span> <span class="n">projected</span><span class="o">.</span><span class="n">items</span><span class="p">()},</span>
     <span class="n">basis_functions</span><span class="o">=</span><span class="n">chosen_flux_basis</span><span class="p">,</span> <span class="n">averaging_period</span><span class="o">=</span><span class="s2">"1h"</span><span class="p">,</span>
 <span class="p">)</span>
+<span class="c1"># The reduction must describe these same observations, states and sources.</span>
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_co2_inputs</span><span class="p">(</span><span class="n">canonical</span><span class="p">,</span> <span class="n">coherent_reduction</span><span class="p">)</span>
+<span class="n">prepared</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"centered-co2.nc"</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>Selection filters preserve aligned operands and scalar references. Preparation
 owns spatial <code class="docutils literal notranslate"><span class="pre">bc_basis_algorithm=&quot;NESW&quot;</span></code> or explicit <code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code>;
 frequency and anchor belong to the model.
 Old rounded <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> alone cannot recover accurate centered operands.</p>
-<p>These preparation operands are the handoff for centered CO₂ model integration.
-Centered likelihood binding and absolute prediction replay are delivered in the
-following inference change.</p>
 <p>Linked CO₂/O₂ preparation can retain centered operands in memory. Its dedicated
 prepared-input serialization does not yet support those operands; <code class="docutils literal notranslate"><span class="pre">to_datatree</span></code>
 and <code class="docutils literal notranslate"><span class="pre">save</span></code> reject them explicitly. Persistence belongs to the later centered
 output integration. Standalone CO₂ prepared inputs retain the raw
 operands through their existing input-dataset serialization.</p>
+<p>The additive-Gaussian and cached fixed-OU CO₂ and linked CO₂/O₂ routes bind raw
+operands to BC periods at model construction. Their model-facing runners and
+direct builders accept <code class="docutils literal notranslate"><span class="pre">bc_freq</span></code> and <code class="docutils literal notranslate"><span class="pre">bc_anchor_time</span></code>. Direct builders
+consume raw <code class="docutils literal notranslate"><span class="pre">boundary_operands</span></code> (in linked models, a mapping keyed by tracer).
+Configured and supported saved routes select the same choices in their
+boundary configuration, for example:</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[model.boundary]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">frequency</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"1D"</span>
+<span class="n">anchor_time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"2020-01-01"</span>
+</pre></div>
+</div>
+<p>Period choices apply to both raw ordinary sensitivities and centered operands,
+using the same selection and period masks. A saved raw preparation can be reused
+with different supported periods. Already-expanded sensitivities cannot be
+reinterpreted with a period override. Linked channels use one shared
+period/anchor choice and must agree when both specify it. Their tables are
+<code class="docutils literal notranslate"><span class="pre">channels.co2.boundary</span></code> and <code class="docutils literal notranslate"><span class="pre">channels.o2.boundary</span></code>. Anchors apply to fixed
+durations and must be omitted for calendar-month periods.</p>
+<p>Native observation labels select boundary rows. When observations carry a
+<code class="docutils literal notranslate"><span class="pre">time</span></code> coordinate, it determines period membership and replaces auxiliary
+boundary timestamps. Boundary times that also serve as indexed row labels must
+agree with the observation timestamps; conflicting values raise an error.</p>
+<p>Centered inference supports the additive-Gaussian recipe and fixed-OU recipes
+with inferred amplitudes using the matched cached sampler. Configure PyTensor
+<code class="docutils literal notranslate"><span class="pre">floatX=float64</span></code> before model construction; these routes reject an explicit
+float32 choice. Fixed-amplitude OU and custom likelihood routes still reject
+centered inputs. Standard and multisector model builders also reject them;
+their preparation operations can still produce the reusable canonical handoff
+shown above.</p>
+<p>For the original BC coefficients b, the centered likelihood uses
+<code class="docutils literal notranslate"><span class="pre">q</span> <span class="pre">=</span> <span class="pre">c</span> <span class="pre">*</span> <span class="pre">M</span> <span class="pre">&#64;</span> <span class="pre">ones</span></code>, <code class="docutils literal notranslate"><span class="pre">y_centered</span> <span class="pre">=</span> <span class="pre">y</span> <span class="pre">-</span> <span class="pre">q</span></code> and
+<code class="docutils literal notranslate"><span class="pre">mu_centered</span> <span class="pre">=</span> <span class="pre">flux</span> <span class="pre">+</span> <span class="pre">A</span> <span class="pre">&#64;</span> <span class="pre">b</span> <span class="pre">+</span> <span class="pre">c</span> <span class="pre">*</span> <span class="pre">M</span> <span class="pre">&#64;</span> <span class="pre">(b</span> <span class="pre">-</span> <span class="pre">ones)</span> <span class="pre">+</span> <span class="pre">offset</span></code>.
+This preserves the original coefficients, priors, fixed states, errors and
+covariance, including constant curtains and bases that do not partition unity.
+BC and total concentration deterministics stay absolute. The recipe’s trace
+annotation restores observed and predictive <code class="docutils literal notranslate"><span class="pre">y</span></code> to absolute concentrations
+once, using retained reference shifts; replay does not need to rebuild the model.
+The supported recipe runners perform this annotation automatically. Callers composing
+PyMC operations directly must restore sample coordinates, then call
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.centered_boundary.html#openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives" title="openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives"><code class="xref py py-func docutils literal notranslate"><span class="pre">restore_absolute_predictives()</span></code></a>
+before serialization or postprocessing.</p>
+<p>The cached sampler preserves the physical BC variables and their priors. Only
+its private quadratic uses active coefficients <code class="docutils literal notranslate"><span class="pre">b_active</span> <span class="pre">-</span> <span class="pre">1</span></code> and design
+<code class="docutils literal notranslate"><span class="pre">(A</span> <span class="pre">+</span> <span class="pre">c</span> <span class="pre">*</span> <span class="pre">M)[:,</span> <span class="pre">active]</span></code>. Its fixed BC term is
+<code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">&#64;</span> <span class="pre">b_star</span> <span class="pre">+</span> <span class="pre">c</span> <span class="pre">*</span> <span class="pre">M</span> <span class="pre">&#64;</span> <span class="pre">(b_star</span> <span class="pre">-</span> <span class="pre">ones)</span></code>, where <code class="docutils literal notranslate"><span class="pre">b_star</span></code> is one for active
+states and the physical fixed value otherwise. This term uses the full operands
+before removing zero design columns. Sampled flux and offset designs retain
+their usual coefficients. Both amplitude and state updates use the centered
+residual; the OU and aggregation covariance are unchanged.</p>
+<p>A small offline example creates its own inputs, performs a coherent reduction,
+saves/reopens preparation and restores absolute prior predictions:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>examples.surface_centered_pilot<span class="w"> </span>/tmp/surface-pilot
+</pre></div>
+</div>
+<p>The pilot is tracked in <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/957">issue 957</a>. Wider adoption,
+automatic coherent preparation, public provider APIs, alternative O₂ observables
+and native mixed-cadence reporting remain separate work.</p>
 </section>
 </section>
 
