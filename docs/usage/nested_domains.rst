@@ -67,8 +67,7 @@ When ``inner_x_prior`` is omitted, ``x_inner`` uses a copy of the outer
 scaling prior; pass ``inner_x_prior`` to choose it independently. Any enabled
 outer boundary-condition or offset contribution is added to this pollution sum
 when constructing the mean passed to the shared likelihood, which applies the
-configured observation error, aggregation error, and model-data mismatch
-treatment.
+configured observation error and model-data mismatch treatment.
 
 Both state vectors are sampled jointly. Separating their posterior influence
 therefore depends on the outer and inner footprints producing sufficiently

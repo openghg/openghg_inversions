@@ -20,7 +20,6 @@ from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._site_options import SiteOptions
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models._flux import safe_pymc_name
-from openghg_inversions.observation_error import AggregationErrorMode
 from openghg_inversions.inference.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import (
     DEFAULT_BC_PRIOR,
@@ -356,9 +355,6 @@ def resolve_model_options(params: Mapping[str, Any], *, data_config: DataConfig)
     if add_offset and offset_prior is None:
         offset_prior = dict(DEFAULT_OFFSET_PRIOR)
     offset_args = normalise_optional_mapping(remaining.pop("offset_args", None))
-    aggregation = remaining.pop("aggregation_error_mode", RhimeModelSpec.aggregation_error_mode)
-    if aggregation not in get_args(AggregationErrorMode):
-        raise ValueError(f"Invalid `aggregation_error_mode`: {aggregation!r}.")
     likelihood = _make_likelihood_settings(
         remaining, mismatch_model=remaining.pop("mismatch_model", None), start_date=data_config.start_date,
     )
@@ -366,7 +362,7 @@ def resolve_model_options(params: Mapping[str, Any], *, data_config: DataConfig)
         species=data_config.species, domain=data_config.domain, flux_sources=flux_sources,
         x_prior=x_prior, sector_priors=sector_priors, sector_sources=sector_sources,
         bc_prior=bc_prior, offset_prior=offset_prior, use_bc=use_bc, likelihood=likelihood,
-        add_offset=add_offset, offset_args=offset_args, aggregation_error_mode=aggregation,
+        add_offset=add_offset, offset_args=offset_args,
         bc_freq=bc_freq, bc_freq_anchor=bc_freq_anchor,
     )
 
@@ -593,7 +589,6 @@ def _make_model_spec(
     likelihood: LikelihoodSettings | None,
     add_offset: bool,
     offset_args: dict[str, Any] | None,
-    aggregation_error_mode: AggregationErrorMode,
 ) -> RhimeModelSpec:
     """Create a lightweight model spec from normalized run parameters."""
     default_x_prior = DEFAULT_X_PRIOR if x_prior is None else x_prior
@@ -644,5 +639,4 @@ def _make_model_spec(
         bc_prior=bc_prior,
         offset_prior=offset_prior,
         offset_args=offset_args,
-        aggregation_error_mode=aggregation_error_mode,
     )

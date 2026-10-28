@@ -242,7 +242,7 @@ The complete integration is one named argument:
 
 RHIME calls the function with explicit keyword arguments while constructing
 the PyMC model: the prepared observations, completed forward-model mean,
-reported observation error, selected aggregation error, and output dimension.
+reported observation error, and output dimension.
 Pollution-event-only terms remain inside the built-in pollution-event
 component. The function adds ``epsilon`` and the canonical observed variable
 ``y`` to the active model and returns ``y``. There is no framework context or
@@ -287,10 +287,6 @@ keep the source and environment used for an inversion. Ordinary likelihood
 builders retain the canonical ``y`` and ``epsilon`` names used by sampling and
 output code.
 
-The example rejects dense and low-rank aggregation covariance because it uses
-an independent Student-t distribution. Supporting those aggregation-error
-modes would require a multivariate likelihood.
-
 The package-supported scalar-sigma CO2 likelihood is a concrete CO2 model
 recipe rather than a Standard RHIME customization. See the :ref:`global
 scalar-sigma CO2 workflow
@@ -318,13 +314,17 @@ multisector recipe is called; the recipes themselves select no default.
 
 The model-owned
 ``models.fixed_ou.add_fixed_ou_gaussian_likelihood`` adds a fixed-timescale,
-within-site Ornstein--Uhlenbeck mismatch covariance. For example::
+within-site Ornstein--Uhlenbeck mismatch covariance. Standard and multisector
+callbacks receive the ordinary observation error. Pass the component directly
+as the likelihood builder; omitting ``aggregation_error`` or passing ``None``
+adds no fixed aggregation covariance. For example::
 
    from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
    from openghg_inversions.rhime import run_standard
 
    result = run_standard(
-       ...,
+       config_file="config.ini",
+       mismatch_model=None,
        likelihood_builder=add_fixed_ou_gaussian_likelihood,
        likelihood_kwargs={
            "tau_hours": 5.0,
@@ -332,23 +332,24 @@ within-site Ornstein--Uhlenbeck mismatch covariance. For example::
        },
    )
 
-The residual covariance is
-``R = F F^T + diag(d) + direct_sum_s(a_s^2 T_s(tau_s))``, where
+For this ordinary-recipe example the residual covariance is
+``R = diag(observation_error**2) + direct_sum_s(a_s^2 T_s(tau_s))``, where
 ``T_s[i, j] = exp(-abs(t_i - t_j) / tau_s)``. The direct sum gives zero
-cross-site OU covariance. ``F F^T + diag(d)`` is the selected fixed
-aggregation covariance plus reported observation-error variance; this
-component does not apply the historical ``min_error`` floor.
+cross-site OU covariance. This component does not apply the historical
+``min_error`` floor.
 
 ``tau_hours`` may instead be an exact mapping from retained site labels to
-fixed positive timescales. Pass ``fixed_site_amplitudes`` as a scalar or exact
-site mapping to use known amplitudes instead of the inferred prior. An inferred
+fixed positive timescales. To use known amplitudes, pass
+``fixed_site_amplitudes`` instead of ``site_amplitude_prior`` in
+``likelihood_kwargs``, supplying a scalar or exact site mapping. An inferred
 amplitude requires an explicit ``site_amplitude_prior`` in the same
 concentration units as the observations; no fixed default is assumed. Tau has
 units of hours. Observation rows may be interleaved or nonmonotonic in time;
 the component preserves their order and sets cross-site OU covariance exactly
 to zero.
 
-The component evaluates low-rank aggregation covariance with a fixed-OU
+When composed separately with coherent CO2 prepared inputs, the component
+evaluates low-rank aggregation covariance with a fixed-OU
 generalized-eigen and Woodbury method without forming a dense observation
 covariance. Dense aggregation input is a full-rank fallback. It currently
 requires every generalized base-plus-OU mode variance to be strictly positive.

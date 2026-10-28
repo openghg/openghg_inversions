@@ -30,7 +30,6 @@ from openghg_inversions.models import (
 )
 from openghg_inversions.models.components import add_linear_component, resolve_model_variable
 from openghg_inversions.models.components import add_state_vector
-from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.specs import FixedErrorSettings, PollutionEventSettings, RhimeModelSpec, SectorSpec
 from tests.multisector_model_helpers import build_multisector_graph
 from tests.standard_model_helpers import build_standard_graph as _build_standard_model
@@ -82,7 +81,6 @@ def build_rhime_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
         inputs["H"],
         observations=inputs["mf"],
         observation_error=inputs["mf_error"],
-        aggregation_error=resolve_aggregation_error(inputs, "none"),
         minimum_error=inputs.get("min_error"),
         boundary_sensitivity=inputs.get("H_bc"),
         **kwargs,

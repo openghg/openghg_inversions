@@ -39,10 +39,6 @@ from openghg_inversions.models.coords import component_coords, registered_model
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.models.state_activity import prepare_linear_sensitivity, resolve_state_activity
-from openghg_inversions.observation_error import (
-    aggregation_error_input_names,
-    resolve_aggregation_error,
-)
 from openghg_inversions.sigma import SigmaAlignment
 
 from ._model_building import (
@@ -121,8 +117,7 @@ def standard_model_input_names(
         Prepared variable names selected for coordinated materialization.
 
     Raises:
-        ValueError: If a selected component's required input is absent or its
-            aggregation-error representation is ambiguous.
+        ValueError: If a selected component's required input is absent.
     """
     return _standard_input_names(prepared.inv_inputs, model_spec)
 
@@ -170,19 +165,6 @@ def _standard_input_names(
             owner="Standard baseline component selected by `use_bc=True`",
         )
         names.extend(_BASELINE_INPUT_NAMES)
-    aggregation_names = aggregation_error_input_names(
-        model_inputs,
-        model_spec.aggregation_error_mode,
-    )
-    _require_component_inputs(
-        model_inputs,
-        aggregation_names,
-        owner=(
-            "Aggregation-error component selected by "
-            f"`aggregation_error_mode={model_spec.aggregation_error_mode!r}`"
-        ),
-    )
-    names.extend(aggregation_names)
     return tuple(names)
 
 
@@ -329,7 +311,6 @@ def _build_independent_rhime_model(
     observations = model_inputs["mf"]
     observation_error = model_inputs["mf_error"]
     minimum_error = model_inputs.get("min_error")
-    aggregation_error = resolve_aggregation_error(model_inputs, model_spec.aggregation_error_mode)
 
     use_bc = model_spec.use_bc
     add_offset = model_spec.add_offset
@@ -411,7 +392,6 @@ def _build_independent_rhime_model(
             forward=forward,
             observations=observations,
             observation_error=observation_error,
-            aggregation_error=aggregation_error,
             minimum_error=minimum_error,
             output_dim="nmeasure",
             sigma_alignment=sigma_alignment,

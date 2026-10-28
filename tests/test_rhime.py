@@ -55,7 +55,6 @@ from openghg_inversions.inversion_data import AcquisitionFacts, SiteOptions, Mer
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models._flux import safe_pymc_name
-from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.postprocessing._basis_products import (
     BASIS_ARTIFACT_PATH_OUTPUT_ATTR,
     BASIS_ARTIFACT_SOURCE_LOADED_DATATREE,
@@ -205,13 +204,11 @@ def multisector_model_spec(builder_args: dict[str, Any]) -> RhimeModelSpec:
 
 def build_rhime_model(inv_inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
     """Adapt concise dataset fixtures to the explicit production builder."""
-    aggregation_mode = kwargs.pop("aggregation_error_mode", "none")
     _select_test_likelihood(inv_inputs, kwargs)
     return _build_rhime_model(
         inv_inputs["H"],
         observations=inv_inputs["mf"],
         observation_error=inv_inputs["mf_error"],
-        aggregation_error=resolve_aggregation_error(inv_inputs, aggregation_mode),
         minimum_error=inv_inputs.get("min_error"),
         boundary_sensitivity=inv_inputs.get("H_bc"),
         **kwargs,
@@ -877,7 +874,6 @@ def test_build_rhime_model_contains_expected_variables(
     assert isinstance(model, pm.Model)
     assert set(model.named_vars) == {
         "Y",
-        "aggregation_error_marginal_variance",
         "bc",
         "epsilon",
         "error",
@@ -894,7 +890,6 @@ def test_build_rhime_model_contains_expected_variables(
     }
     assert model.named_vars_to_dims == {
         "Y": ("nmeasure",),
-        "aggregation_error_marginal_variance": ("nmeasure",),
         "bc": ("bc_region",),
         "epsilon": ("nmeasure",),
         "error": ("nmeasure",),
@@ -1061,7 +1056,6 @@ def test_recipe_passes_completed_forward_mean_to_custom_likelihood(
     assert set(call) == {
         "observations",
         "observation_error",
-        "aggregation_error",
         "mean",
         "output_dim",
     }
@@ -1272,39 +1266,6 @@ def test_recipe_expands_only_explicit_custom_likelihood_options(
     assert type(model["y"].owner.op).__name__ == "StudentTRV"
 
 
-@pytest.mark.parametrize("aggregation_error_mode", ["dense", "low_rank"])
-def test_editable_example_builder_rejects_correlated_aggregation_error(
-    aggregation_error_mode: str,
-) -> None:
-    """The independent Student-t example rejects correlated error representations."""
-    data = _minimal_output_inv_inputs()
-    data["min_error"] = xr.zeros_like(data["mf"])
-    if aggregation_error_mode == "dense":
-        data["aggregation_error_covariance"] = (
-            ("nmeasure", "nmeasure_cov"),
-            np.eye(data.sizes["nmeasure"]),
-        )
-    else:
-        data["low_rank_factor"] = (
-            ("nmeasure", "aggregation_rank"),
-            np.ones((data.sizes["nmeasure"], 1)),
-        )
-        data["diagonal_residual_variance"] = (
-            "nmeasure",
-            np.zeros(data.sizes["nmeasure"]),
-        )
-    with pm.Model(coords={"nmeasure": np.arange(data.sizes["nmeasure"])}) as model:
-        with pytest.raises(ValueError, match="assumes independent observations"):
-            example_likelihoods.likelihood_builder(
-                observations=data["mf"],
-                observation_error=data["mf_error"],
-                aggregation_error=resolve_aggregation_error(data, cast(Any, aggregation_error_mode)),
-                mean=pm.math.constant(np.zeros(data.sizes["nmeasure"])),
-                output_dim="nmeasure",
-            )
-    assert model.named_vars == {}
-
-
 @pytest.mark.rhime_contract
 def test_build_rhime_model_accepts_global_scalar_offset(
     rhime_inv_inputs: xr.Dataset,
@@ -1468,15 +1429,13 @@ def test_materialize_pymc_inputs_computes_copy_and_preserves_borrowed_dask() -> 
     assert prepared.inv_inputs["unrelated"].data is original_arrays["unrelated"]
 
 
-def test_materialize_pymc_inputs_computes_selected_error_form_and_retains_coordinates() -> None:
-    """Materialization skips dormant covariance and retains computed auxiliary coordinates."""
+def test_materialize_pymc_inputs_computes_selected_arrays_and_retains_coordinates() -> None:
+    """Materialization leaves unrelated extensions lazy and computes auxiliary coordinates."""
     inv_inputs = _minimal_output_inv_inputs()
     nmeasure = inv_inputs.sizes["nmeasure"]
     computed: list[str] = []
 
     def tracked(name: str, values: np.ndarray) -> da.Array:
-        """Return one delayed array that records real execution."""
-
         @delayed
         def record() -> np.ndarray:
             computed.append(name)
@@ -1484,19 +1443,12 @@ def test_materialize_pymc_inputs_computes_selected_error_form_and_retains_coordi
 
         return da.from_delayed(record(), shape=values.shape, dtype=values.dtype)
 
-    dormant_covariance = tracked("dormant-covariance", np.eye(nmeasure))
-    selected_factor = tracked("selected-factor", np.ones((nmeasure, 1)))
-    selected_diagonal = tracked("selected-diagonal", np.full(nmeasure, 0.25))
-    selected_sd = tracked("selected-sd", np.sqrt(np.full(nmeasure, 1.25)))
+    dormant = tracked("dormant", np.eye(nmeasure))
+    selected = tracked("selected", np.ones(nmeasure))
     lazy_coordinate = tracked("lazy-aux-coordinate", np.arange(nmeasure))
     inv_inputs = inv_inputs.assign(
-        aggregation_error_covariance=(
-            ("nmeasure", "nmeasure_cov"),
-            dormant_covariance,
-        ),
-        low_rank_factor=(("nmeasure", "aggregation_rank"), selected_factor),
-        diagonal_residual_variance=("nmeasure", selected_diagonal),
-        aggregation_error_sd=("nmeasure", selected_sd),
+        unrelated_matrix=(("nmeasure", "diagnostic_axis"), dormant),
+        selected_diagnostic=("nmeasure", selected),
     ).assign_coords(lazy_auxiliary=("nmeasure", lazy_coordinate))
     prepared = PreparedInputs(
         inv_inputs=inv_inputs,
@@ -1506,40 +1458,20 @@ def test_materialize_pymc_inputs_computes_selected_error_form_and_retains_coordi
     assert computed == []
     materialized = rhime_public.materialize_pymc_inputs(
         prepared,
-        variable_names=(
-            "H",
-            "mf",
-            "mf_error",
-            "min_error",
-            "site_indicator",
-            "low_rank_factor",
-            "diagonal_residual_variance",
-            "aggregation_error_sd",
-        ),
+        variable_names=("H", "mf", "mf_error", "min_error", "site_indicator", "selected_diagnostic"),
     )
 
-    assert set(computed) == {
-        "selected-factor",
-        "selected-diagonal",
-        "selected-sd",
-        "lazy-aux-coordinate",
-    }
-    assert materialized["aggregation_error_covariance"].data is dormant_covariance
+    assert set(computed) == {"selected", "lazy-aux-coordinate"}
+    assert materialized["unrelated_matrix"].data is dormant
     assert not isinstance(materialized.coords["lazy_auxiliary"].data, da.Array)
     assert prepared.inv_inputs.coords["lazy_auxiliary"].data is lazy_coordinate
-    assert not isinstance(materialized["low_rank_factor"].data, da.Array)
-    assert not isinstance(materialized["diagonal_residual_variance"].data, da.Array)
-    assert not isinstance(materialized["aggregation_error_sd"].data, da.Array)
+    assert not isinstance(materialized["selected_diagnostic"].data, da.Array)
 
 
 @pytest.mark.parametrize(
     ("model_update", "message"),
     [
         ({"use_bc": True}, "Standard baseline component.*H_bc"),
-        (
-            {"use_bc": False, "aggregation_error_mode": "dense"},
-            "Aggregation-error component.*aggregation_error_mode='dense'.*aggregation_error_covariance",
-        ),
     ],
 )
 def test_standard_input_declaration_names_missing_component_owner(
@@ -1936,57 +1868,6 @@ def test_assemble_inputs_preserves_borrowed_site_datasets(
     assert captured["TAC"]["mf"].data is lazy_mf
     assert prepared.site_metadata["transport_model"].sel(site="TAC").item() == "FLEXPART"
     assert prepared.site_metadata["transport_model_version"].sel(site="TAC").item() == ""
-
-
-def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Replay selects lazily, then executes a selected Dask covariance exactly once."""
-    model_spec, _, config = _minimal_output_specs(output_format="none")
-    model_spec = replace(model_spec, use_bc=False)
-    model_spec = replace(model_spec, aggregation_error_mode="dense")
-    config = replace(config, model=model_spec)
-    executions: list[str] = []
-
-    @delayed
-    def covariance() -> np.ndarray:
-        executions.append("covariance")
-        return np.eye(1)
-
-    covariance_array = da.from_delayed(covariance(), shape=(1, 1), dtype=float)
-    inv_inputs = _minimal_output_inv_inputs().assign(
-        aggregation_error_covariance=(("nmeasure", "nmeasure_cov"), covariance_array)
-    )
-    prepared = PreparedInputs(
-        inv_inputs=inv_inputs,
-        basis_functions=_fake_basis_functions(),
-        site_metadata=_prepared_site_metadata(),
-    )
-    build_result = RhimeModelBuildResult(
-        model=pm.Model(),
-        output_contract=OutputContract(
-            variable_roles={"concentration": "y"},
-        ),
-    )
-    expected = cast(InversionOutput, SimpleNamespace(route="dense-replay"))
-
-    def build(model_inputs, model_spec, **kwargs: Any) -> RhimeModelBuildResult:
-        """Assert the selected representation is eager at the built-in builder handoff."""
-        assert not isinstance(model_inputs["aggregation_error_covariance"].data, da.Array)
-        assert executions == ["covariance"]
-        return build_result
-
-    monkeypatch.setattr(rhime_standard, "build_standard_model", build)
-    monkeypatch.setattr(rhime_standard, "sample_rhime_model", lambda *args, **kwargs: _minimal_output_idata())
-    monkeypatch.setattr(rhime_standard, "make_model_output", lambda **kwargs: expected)
-    monkeypatch.setattr(rhime_standard, "postprocess_standard_outputs", lambda *args: None)
-    monkeypatch.setattr(rhime_standard, "save_inversion_output", lambda *args: {})
-
-    result = _run_prepared(prepared_inputs=prepared, config=config)
-
-    assert result is expected
-    assert executions == ["covariance"]
-    assert prepared.inv_inputs["aggregation_error_covariance"].data is covariance_array
 
 
 def test_configured_surface_excludes_internal_composed_values() -> None:
@@ -3341,13 +3222,13 @@ def test_custom_multisector_model_composes_directly_from_borrowed_inputs(
     executions: list[str] = []
 
     @delayed
-    def covariance():
-        executions.append("covariance")
+    def diagnostic():
+        executions.append("diagnostic")
         return np.ones((1, 1))
 
     inv_inputs = _minimal_output_inv_inputs().assign(
-        aggregation_error_covariance=(("nmeasure", "nmeasure_cov"),
-            da.from_delayed(covariance(), shape=(1, 1), dtype=float)),
+        diagnostic_matrix=(("nmeasure", "diagnostic_axis"),
+            da.from_delayed(diagnostic(), shape=(1, 1), dtype=float)),
     )
     prepared = PreparedInputs(
         inv_inputs=inv_inputs, basis_functions=_fake_basis_functions(),
@@ -3373,7 +3254,7 @@ def test_custom_multisector_model_composes_directly_from_borrowed_inputs(
     assert output.variable_name("concentration") == "custom_y"
     assert output.model_metadata["builder"]["package"] == "research-models"
     assert executions == []
-    assert output.inv_inputs["aggregation_error_covariance"].data is inv_inputs["aggregation_error_covariance"].data
+    assert output.inv_inputs["diagnostic_matrix"].data is inv_inputs["diagnostic_matrix"].data
 
 
 def test_modern_additive_mismatch_uses_model_spec_without_minimum_error(

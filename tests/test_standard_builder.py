@@ -110,29 +110,6 @@ def test_builder_requires_materialized_parameters_for_configured_likelihood_prio
                              priors={"x": model.sectors[0].x_prior})
 
 
-@pytest.mark.parametrize(("mode", "aggregation_names", "derived_supported"), [
-    ("none", ("aggregation_error_sd",), True),
-    ("auto", (), True),
-    ("auto", ("aggregation_error_sd",), False),
-    ("diagonal", ("aggregation_error_sd",), False),
-])
-def test_builtin_contract_owns_aggregation_output_capability(mode, aggregation_names, derived_supported):
-    """Every runner receives the same covariance reconstruction limitation."""
-    import pymc as pm
-
-    from openghg_inversions.rhime._model_building import builtin_model_build_result
-
-    built = builtin_model_build_result(
-        pm.Model(), model_spec=replace(_model(), aggregation_error_mode=mode),
-        multisector=False, input_names=("H", "mf", "mf_error", *aggregation_names),
-    )
-    assert ("basic" in built.output_contract.supported_output_formats) is derived_supported
-    built.output_contract.validate_requested_output("inv_out")
-    if not derived_supported:
-        with pytest.raises(ValueError, match="output_format='basic'"):
-            built.output_contract.validate_requested_output("basic")
-
-
 def test_standard_runner_rejects_conflicting_supplied_handoffs_before_resolution():
     from openghg_inversions.rhime.standard import run_standard
 

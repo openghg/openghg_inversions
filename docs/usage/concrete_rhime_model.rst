@@ -134,7 +134,7 @@ mismatch instead; this is a resolved model option and does not use the custom
 ``likelihood_builder`` extension point. Additive sigma does not select the
 model-owned ``min_error`` floor unless ``use_minimum_error_floor=True`` is also
 set. Named minimum-error estimates use observations retained after unusable rows
-are dropped. Aggregation error is disabled by default. Let
+are dropped. Let
 :math:`P` be the pollution event and let ``sigma`` be the observation-aligned
 fractional model-error parameter. With the default
 ``pollution_events_from_obs=False``,
@@ -161,29 +161,6 @@ Select ``mismatch_model="fixed_error"`` to omit inferred mismatch error. Its
 likelihood scale uses the reported observation error and does not select
 ``min_error``.
 Historical fixed-error floors and disconnected sigma variables are not restored.
-
-Aggregation covariance is an explicit advanced opt-in. If a caller selects a
-prepared covariance :math:`C_{agg}` with marginal variance
-:math:`v_{agg}=\operatorname{diag}(C_{agg})`, the marginal floor and observed
-distribution become
-
-.. math::
-
-   v_{raw} &= \mathrm{error}^2 + (P\sigma)^{\mathrm{power}}, \\
-   v_{ind} &= v_{raw} + \max\left(
-     \mathrm{min\_error}^2-v_{raw}-v_{agg}, 0
-   \right), \\
-   \epsilon &= \sqrt{v_{ind}+v_{agg}}, \\
-   y &\sim \mathcal{N}\left(
-     \mu_{\mathrm{obs}}, \operatorname{diag}(v_{ind})+C_{agg}
-   \right).
-
-Selecting aggregation error says only that this fixed covariance should enter
-the likelihood. It does not perform, imply, or verify a coherent prior and
-forward-model transformation. Covariance obtained by marginalising native
-states must therefore be supplied together with the matching transformed
-prior and forward operator. Merely finding an aggregation-error array in
-prepared inputs does not opt a run into this model.
 
 The default priors are:
 
@@ -270,7 +247,6 @@ choices:
    from openghg_inversions.models.pollution_event import add_pollution_event_likelihood
    from openghg_inversions.boundary_sensitivity import BoundaryAlignment
    from openghg_inversions.model_error import MinimumError
-   from openghg_inversions.observation_error import resolve_aggregation_error
    from openghg_inversions.sigma import SigmaAlignment
 
    x_prior = {
@@ -325,7 +301,6 @@ choices:
            observations=inv_inputs["mf"],
            observation_error=inv_inputs["mf_error"],
            minimum_error=minimum_error.values,
-           aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
            mean=modelled_mean,
            pollution_mean=pollution_mean,
            pollution_event_baseline=baseline_mean,
@@ -435,8 +410,8 @@ forward terms before the shared built-in dispatcher is invoked. The runner
 stores one typed settings value on ``RhimeModelSpec``; the dispatcher calls the
 ordinary built-in equation with only that likelihood's inputs. A custom caller
 instead supplies a mean-only callable. Every likelihood receives the completed
-concentration, prepared observations and reported observation error, a
-validated ``AggregationError``, and output dimension. Built-in pollution-event
+concentration, prepared observations and reported observation error, and
+output dimension. Built-in pollution-event
 scaling additionally receives the named pollution and baseline terms.
 ``likelihood_kwargs`` is reserved for custom callables.
 The builder adds and returns the canonical observed variable ``y`` and also
@@ -461,8 +436,7 @@ ordinary runner:
        likelihood_builder=likelihood_builder,
    )
 
-This example supports independent fixed aggregation-error representations. A
-custom likelihood with additional options declares them in its own signature,
+A custom likelihood with additional options declares them in its own signature,
 and the runner supplies only those values through ``likelihood_kwargs``.
 
 Pass ``add_offset=True`` and ``offset_args={"per_site": False}`` as Python or
@@ -493,14 +467,18 @@ per site:
    R = A + D_{obs}
        + \operatorname{diag}\left(\sigma_{site}[\operatorname{site}(i)]^2\right).
 
-Here ``A`` is the selected aggregation-error covariance and ``D_obs`` is the
-diagonal covariance from reported observation errors. Each is included once.
+Here ``A`` is a fixed coherent-reduction covariance when the component is
+composed with CO2 inputs, and ``D_obs`` is the diagonal covariance from reported
+observation errors. Each is included once. The ordinary standard/multisector
+example below omits ``aggregation_error``, giving ``A = 0``.
 This likelihood does not apply ``min_error`` or ``fixed_model_mismatch`` and
 does not add temporal correlation. In particular, it is an IID component, not
 the fixed-OU model.
 
-Select it through the existing Python-only likelihood seam. For inferred site
-amplitudes, pass an explicit positive prior:
+For standard or multisector execution, pass the component directly as the
+likelihood builder. Omitting ``aggregation_error`` or passing ``None`` adds no
+fixed aggregation covariance. For inferred site amplitudes, pass an explicit
+positive prior:
 
 .. code-block:: python
 
@@ -519,9 +497,9 @@ amplitudes, pass an explicit positive prior:
 The ``0.75`` value above is an explicit scale in ppm because all prior
 parameters and fixed amplitudes are interpreted in the observations'
 concentration units; OpenGHG Inversions does not choose a universal default
-scale. To use known values instead, replace ``site_amplitude_prior`` with
-``fixed_site_amplitudes``, a mapping covering every observed site label. Pass
-exactly one of these two options.
+scale. To use known values instead, pass ``fixed_site_amplitudes`` instead of
+``site_amplitude_prior`` in ``likelihood_kwargs`` as a mapping covering every
+observed site label. Pass exactly one of these two options.
 
 The graph names the labelled site vector ``sigma_site`` on
 ``sigma_site_dim``, with ``sigma_site_index`` retaining the observation-to-site

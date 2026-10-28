@@ -48,7 +48,7 @@ def test_recorded_modern_defaults_before_any_scientific_work(tmp_path, monkeypat
     science = EXPECTED["default_science"]
     assert config.model.sectors[0].x_prior == science["x_prior"]
     assert config.model.bc_prior == science["bc_prior"]
-    _assert_fields(config.model, {key: science[key] for key in ("add_offset", "aggregation_error_mode")})
+    _assert_fields(config.model, {key: science[key] for key in ("add_offset",)})
     _assert_fields(config.model.likelihood, {key: science[key] for key in (
         "sigma_prior", "sigma_freq", "sigma_per_site", "sigma_freq_anchor", "pollution_events_from_obs", "power",
     )})

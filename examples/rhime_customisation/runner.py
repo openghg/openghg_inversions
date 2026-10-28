@@ -61,8 +61,8 @@ def run_custom_rhime(
 
     Raises:
         TypeError: If the likelihood builder returns an invalid result type.
-        ValueError: If required options are missing, aggregation or output is
-            unsupported, or likelihood roles or metadata are invalid.
+        ValueError: If required options are missing, output is unsupported,
+            or likelihood roles or metadata are invalid.
 
     Notes:
         This workflow always acquires fresh data, materializes related model
