@@ -731,12 +731,25 @@ def test_cached_all_fixed_flux_uses_other_active_component(
     np.testing.assert_allclose(gradient, cached.model.compile_dlogp(vars=list(cached.states))(point), atol=1e-8)
 
 
-def test_cached_all_fixed_states_infer_amplitudes() -> None:
+@pytest.mark.parametrize("centered", [False, True])
+def test_cached_all_fixed_states_infer_amplitudes(centered) -> None:
     """A fixed mean still has an inferred covariance and exact amplitude transition."""
     inputs = _inputs()
     prior = CorrelatedLognormalPrior(
         inputs["alpha_prior_mean"], inputs["alpha_prior_covariance"], covariance_dim="region_cov",
     )
+    boundary_options = {}
+    shift = np.zeros(4)
+    if centered:
+        operands = xr.Dataset({
+            "H_bc_anomaly": xr.DataArray(np.full((4,1), .03), dims=("nmeasure", "bc_region"), attrs={"units": "ppm"}),
+            "H_bc_mass": xr.DataArray(np.full((4,1), .1), dims=("nmeasure", "bc_region"), attrs={"units": "1"}),
+            "bc_reference": xr.DataArray(400., attrs={"units": "ppm"}),
+        }, coords={"nmeasure": inputs.nmeasure, "bc_region": ["constant"]}, attrs={"boundary_representation": "centered-v1"})
+        shift[:] = 40.
+        inputs["mf"] = inputs.mf + shift
+        inputs.mf.attrs["units"] = "ppm"
+        boundary_options = dict(boundary_operands=operands, bc_state_activity=StateActivity(active=False, fixed_value=1.2))
     cached = build_co2_cached_sigma_model(
         inputs["H"], retained_prior=prior,
         fixed_prior_contribution=inputs["fixed_prior_contribution"], observations=inputs["mf"],
@@ -745,12 +758,13 @@ def test_cached_all_fixed_states_infer_amplitudes() -> None:
         site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
         initial_site_amplitudes={"AAA": 0.5, "BBB": 0.7, "DROPPED": 1.0},
         state_activity=StateActivity(active=False),
+        **boundary_options,
     )
     assert cached.states == ()
     assert cached.target.design.shape == (4, 0)
     amplitude = np.asarray([0.5, 0.7])
     expected = multivariate_normal.logpdf(
-        inputs["mf"].values, mean=cached.modelled_mean.eval(),
+        inputs["mf"].values-shift, mean=cached.modelled_mean.eval(),
         cov=_dense_fixed_ou_covariance(inputs, amplitude, {"AAA": 3.0, "BBB": 7.0}),
     )
     np.testing.assert_allclose(cached.target.refresh(amplitude).log_likelihood(np.empty(0)), expected)
@@ -1193,3 +1207,136 @@ def test_cached_uniform_prior_materializes_bounds_together_once(storage):
     assert executions == ([1] if storage == "lazy" else [])
     assert prior["lower"] is lower and prior["upper"] is upper
     assert isinstance(lower, sparse.COO if storage == "sparse" else da.Array)
+
+
+@pytest.mark.parametrize("frequency,expected_states", [(None, 2), ("monthly", 4)])
+@pytest.mark.parametrize("direct", [False, True])
+def test_cached_runner_reuses_raw_boundary_periods(monkeypatch, frequency, expected_states, direct):
+    inputs = _boundary_inputs().drop_dims("bc_region")
+    inputs["H_bc"] = xr.DataArray(
+        np.ones((4, 2)), dims=("nmeasure", "bc_region"),
+        coords={"nmeasure": inputs.nmeasure, "bc_region": ["north", "south"]},
+        attrs={"units": "ppm", "boundary_sensitivity_preparation": "raw-spatial"},
+    )
+
+    class PreparedInputsStub:
+        inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
+
+    monkeypatch.setattr(co2_cached_sigma_runner, "materialize_pymc_inputs", lambda *a, **k: inputs)
+    if direct:
+        result = _build(inputs=inputs, boundary_sensitivity=inputs.H_bc, bc_freq=frequency)
+    else:
+        result = co2_cached_sigma_runner.build_rhime_co2_cached_sigma(
+            prepared_inputs=cast(Any, PreparedInputsStub()), use_bc=True, bc_freq=frequency,
+            tau_hours=3., site_amplitude_prior={"pdf": "halfnormal", "sigma": .75},
+        )
+    assert result.model["bc"].eval().size == expected_states
+    assert inputs.H_bc.shape == (4, 2)
+
+
+def test_cached_runner_ignores_disabled_centered_boundary(monkeypatch):
+    inputs = _inputs().assign(H_bc_anomaly=xr.DataArray(0.))
+
+    class PreparedInputsStub:
+        inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
+
+    monkeypatch.setattr(co2_cached_sigma_runner, "materialize_pymc_inputs", lambda *a, **k: inputs)
+    result = co2_cached_sigma_runner.build_rhime_co2_cached_sigma(
+        prepared_inputs=cast(Any, PreparedInputsStub()), use_bc=False,
+        tau_hours=3., site_amplitude_prior={"pdf": "halfnormal", "sigma": .75},
+    )
+    assert "bc" not in result.model
+
+
+@pytest.mark.parametrize("all_fixed", [False, True])
+def test_centered_cache_full_operands_dense_density_and_gradients(all_fixed):
+    """Full operands survive zero-design pruning, physical fixed states and offsets."""
+    inputs = _inputs()
+    reference = 400.0
+    mass = np.asarray([[.2, .1, .05], [.3, .1, .05], [.4, .1, .05], [.2, .1, .05]])
+    anomaly = np.asarray([[.01, 0., -20.], [.03, 0., -20.], [-.02, 0., -20.], [.04, 0., -20.]])
+    operands = xr.Dataset({
+        "H_bc_anomaly": (("nmeasure", "bc_region"), anomaly),
+        "H_bc_mass": (("nmeasure", "bc_region"), mass),
+        "bc_reference": xr.DataArray(reference, attrs={"units": "ppm"}),
+    }, coords={"nmeasure": inputs.nmeasure, "bc_region": ["varying", "constant", "zero"]})
+    operands.attrs["boundary_representation"] = "centered-v1"
+    operands.H_bc_anomaly.attrs["units"] = "ppm"
+    operands.H_bc_mass.attrs["units"] = "1"
+    shift = reference * mass.sum(axis=1)
+    inputs["mf"] = inputs.mf + shift
+    inputs.mf.attrs["units"] = "ppm"
+    from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands
+    bound = bind_boundary_operands(operands, inputs.mf)
+    active = xr.DataArray([not all_fixed, not all_fixed, False], dims="bc_region", coords={"bc_region": bound.bc_region})
+    fixed = xr.DataArray([.9, 1.2, .7], dims="bc_region", coords=active.coords)
+    cached = _build(inputs=inputs, boundary_operands=operands,
+        bc_state_activity=StateActivity(active=active, fixed_value=fixed),
+        bc_prior={"pdf": "lognormal", "mu": 0., "sigma": .1},
+        offset_prior={"pdf": "normal", "mu": .2, "sigma": .1})
+    model = cached.model
+    expr = model.replace_rvs_by_values([cached.cached_state_logp, cached.modelled_mean, model["modelled_concentration"], model["bc"], model["co2_flux_contribution"], model["offset"]])
+    evaluate = model.compile_fn(expr, inputs=model.value_vars, on_unused_input="ignore")
+    cache_grad = model.compile_fn(pt.grad(expr[0], [model.rvs_to_values[rv] for rv in cached.states]),
+        inputs=model.value_vars, on_unused_input="ignore")
+    public_likelihood = model.compile_logp(vars=model.observed_RVs)
+    public_gradient = model.compile_dlogp()
+    prior_logp = model.compile_logp(vars=model.free_RVs)
+    point = _initial_point(cached)
+    max_errors = np.zeros(3)
+    for i, amplitude in enumerate(([.3, .4], [.6, .2], [.25, .8])):
+        point["ou_site_amplitude_log__"] = np.log(amplitude)
+        point["flux_scaling_latent"] = np.asarray([-.2 + i*.2, .1-i*.1])
+        if not all_fixed:
+            point["bc_active_log__"] = np.log([.95+i*.03, 1.1-i*.02])
+        point["offset_latent"] = np.asarray([.1+i*.01, -.1])
+        cached.shared_cache.update(cached.target.refresh(np.asarray(amplitude)))
+        cache_logp, centered, absolute, b, flux, offset = evaluate(point)
+        expected_mean = flux + offset + anomaly @ b + reference * (mass @ (b-1))
+        np.testing.assert_allclose(centered, expected_mean, atol=1e-12)
+        np.testing.assert_allclose(absolute, centered + shift, atol=1e-12)
+        dense = multivariate_normal.logpdf(inputs.mf.values-shift, mean=expected_mean,
+            cov=_dense_fixed_ou_covariance(inputs, np.asarray(amplitude), {"AAA": 3., "BBB": 7.}))
+        np.testing.assert_allclose(cache_logp, dense, atol=1e-9)
+        np.testing.assert_allclose(public_likelihood(point), dense, atol=1e-9)
+        max_errors[0] = max(max_errors[0], abs(cache_logp-dense), abs(public_likelihood(point)-dense))
+        # Independent dense finite differences include physical prior transforms/Jacobians.
+        def oracle(p, include_prior=True):
+            _, _, _, b0, flux0, offset0 = evaluate(p)
+            mean0 = flux0+offset0+anomaly@b0+reference*(mass@(b0-1))
+            a0 = np.exp(p["ou_site_amplitude_log__"])
+            likelihood0 = multivariate_normal.logpdf(inputs.mf.values-shift, mean=mean0,
+                cov=_dense_fixed_ou_covariance(inputs,a0,{"AAA":3.,"BBB":7.}))
+            return likelihood0 + prior_logp(p) if include_prior else likelihood0
+        numerical = []
+        for value in model.value_vars:
+            name = value.name
+            for ix in np.ndindex(point[name].shape):
+                plus={k:v.copy() for k,v in point.items()}
+                minus={k:v.copy() for k,v in point.items()}
+                plus[name][ix]+=1e-6
+                minus[name][ix]-=1e-6
+                numerical.append((oracle(plus)-oracle(minus))/2e-6)
+        np.testing.assert_allclose(public_gradient(point), numerical, rtol=3e-5, atol=3e-5)
+        max_errors[1] = max(max_errors[1], np.max(np.abs(public_gradient(point)-numerical)))
+        for rv, gradient in zip(cached.states, cache_grad(point), strict=True):
+            name = model.rvs_to_values[rv].name
+            numerical_state = np.empty_like(point[name])
+            for ix in np.ndindex(point[name].shape):
+                plus={k:v.copy() for k,v in point.items()}
+                minus={k:v.copy() for k,v in point.items()}
+                plus[name][ix]+=1e-6
+                minus[name][ix]-=1e-6
+                numerical_state[ix]=(oracle(plus,False)-oracle(minus,False))/2e-6
+            np.testing.assert_allclose(gradient, numerical_state, rtol=3e-5, atol=3e-5)
+            max_errors[2] = max(max_errors[2], np.max(np.abs(gradient-numerical_state)))
+    print(f"CO2 all_fixed_bc={all_fixed}: density max error={max_errors[0]:.3g}, full-gradient finite-difference error={max_errors[1]:.3g}, cache-state finite-difference error={max_errors[2]:.3g}")
+    if not all_fixed:
+        compound = _compound(cached)
+        np.testing.assert_allclose(compound.methods[0].modelled_mean_fn(point), evaluate(point)[1])
+        next_point, _ = compound.step(point)
+        assert all(np.isfinite(value).all() for value in next_point.values())

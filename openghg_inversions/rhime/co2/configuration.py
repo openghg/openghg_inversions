@@ -69,7 +69,7 @@ _PRIOR_OPTION_NAMES = frozenset({
     "pdf", "mu", "sigma", "lower", "upper", "nu", "alpha", "beta", "lam", "mean", "stdev", "reparameterise",
 })
 _MODEL_SECTION_OPTION_NAMES = {
-    "boundary": frozenset({"enabled", "prior"}),
+    "boundary": frozenset({"enabled", "prior", "frequency", "anchor_time"}),
     "boundary.prior": _PRIOR_OPTION_NAMES,
     "offset": frozenset({"prior", "frequency", "per_site", "drop_first"}),
     "offset.prior": _PRIOR_OPTION_NAMES,
@@ -347,12 +347,17 @@ def _model(value: object) -> dict[str, Any]:
         boundary = _table(options.pop("boundary"), "model.boundary")
         enabled = _bool(boundary.pop("enabled", True), "model.boundary.enabled")
         prior = _prior(boundary.pop("prior"), "model.boundary.prior") if "prior" in boundary else None
+        periods = {runner: boundary.pop(name) for name, runner in
+                   (("frequency", "bc_freq"), ("anchor_time", "bc_anchor_time")) if name in boundary}
         _reject_unknown(boundary, "model.boundary")
         if not enabled and prior is not None:
             raise ValueError("model.boundary.prior requires model.boundary.enabled=true.")
         result["use_bc"] = enabled
         if prior is not None:
             result["bc_prior"] = prior
+        if not enabled and any(value is not None for value in periods.values()):
+            raise ValueError("Boundary frequency and anchor_time require enabled=true.")
+        result.update(periods)
     if "offset" in options:
         offset = _table(options.pop("offset"), "model.offset")
         result["offset_prior"] = _prior(_take(offset, "prior", "model.offset"), "model.offset.prior")
@@ -498,6 +503,15 @@ def co2_config_templates() -> Mapping[str, Traversable]:
     )
 
 
+def _validate_boundary_periods(frequency: str | None, anchor_time: str | None) -> None:
+    """Validate model-owned period syntax without touching prepared arrays."""
+    from openghg_inversions.boundary_sensitivity import validate_centered_boundary_periods
+
+    if anchor_time is not None:
+        _string(anchor_time, "model.boundary.anchor_time")
+    validate_centered_boundary_periods(frequency, anchor_time)
+
+
 @dataclass(frozen=True)
 class Co2ModelConfig:
     """Scientific choices for ordinary CO2, independent of arrays and inference.
@@ -505,6 +519,8 @@ class Co2ModelConfig:
     Construction through :meth:`from_params` validates only model and likelihood
     sections. Ordinary containers are owned; opaque numerical values are borrowed.
     Defaults omitted here remain owned by the concrete scientific recipe.
+    Boundary frequency and anchor choices apply to raw ordinary or centered operands
+    and bind when inference consumes the preparation.
     """
 
     use_bc: bool | None = None
@@ -516,8 +532,13 @@ class Co2ModelConfig:
     fixed_model_mismatch: float | None = None
     likelihood_builder: Callable[..., Any] | None = None
     likelihood_kwargs: Mapping[str, Any] | None = None
+    bc_freq: str | None = None
+    bc_anchor_time: str | None = None
 
     def __post_init__(self) -> None:
+        _validate_boundary_periods(self.bc_freq, self.bc_anchor_time)
+        if self.use_bc is False and (self.bc_freq is not None or self.bc_anchor_time is not None):
+            raise ValueError("Boundary frequency and anchor_time require enabled=true.")
         for item in fields(self):
             value = getattr(self, item.name)
             if isinstance(value, Mapping):

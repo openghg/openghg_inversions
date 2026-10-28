@@ -129,6 +129,8 @@ def _multisector_input_names(
         ValueError: If selected inputs are absent, sector identities or source
             layouts conflict.
     """
+    if model_spec.use_bc and {"H_bc_anomaly", "H_bc_mass", "bc_reference"} & set(model_inputs):
+        raise ValueError("Centered boundary operands require the supported CO2-family pilot model binding.")
     _require_component_inputs(
         model_inputs,
         _MULTISECTOR_FLUX_INPUT_NAMES,

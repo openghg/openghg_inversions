@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 
 from openghg_inversions.models import StateActivity
+from openghg_inversions.inversion_inputs import normalise_frequency
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import normalise_optional_mapping
@@ -25,6 +26,7 @@ from .configuration import (
     _sampling,
     _string,
     _table,
+    _validate_boundary_periods,
     load_co2_family_config,
     resolve_co2_prior_seed,
 )
@@ -185,6 +187,8 @@ class Co2O2ModelConfig:
     be supplied for both channels or omitted for both to use saved errors.
     Fixed independent error and fixed-amplitude OU are supported; inferred OU
     and per-meg transformations remain separate work.
+    Boundary frequency and anchor choices apply to all enabled raw boundary
+    channels; choices supplied under both channels must agree.
     """
 
     co2_units: str
@@ -197,8 +201,11 @@ class Co2O2ModelConfig:
     offset_args: Mapping[str, Any] | None = None
     tau_hours: float | Mapping[str, float] | None = None
     fixed_site_amplitudes: float | Mapping[str, float] | None = None
+    bc_freq: str | None = None
+    bc_anchor_time: str | None = None
 
     def __post_init__(self) -> None:
+        _validate_boundary_periods(self.bc_freq, self.bc_anchor_time)
         for item in fields(self):
             value = getattr(self, item.name)
             if isinstance(value, Mapping):
@@ -211,7 +218,7 @@ class Co2O2ModelConfig:
         channels = _table(options.get("channels", {}), "channels")
         units: dict[str, str] = {}
         errors: dict[str, float] = {}
-        model: dict[str, dict[str, Any]] = {}
+        model: dict[str, Any] = {}
         for name in ("co2", "o2"):
             channel = _table(_take(channels, name, "channels"), f"channels.{name}")
             units[name] = _string(_take(channel, "units", f"channels.{name}"), f"channels.{name}.units")
@@ -231,7 +238,15 @@ class Co2O2ModelConfig:
                     model.setdefault("bc_state_activity", {})[name] = StateActivity(active=active, fixed_value=fixed)
                 selected["boundary"] = boundary
             for key, value in _model(selected).items():
-                model.setdefault(key, {})[name] = value
+                if key in {"bc_freq", "bc_anchor_time"}:
+                    previous = model.get(key)
+                    same = (normalise_frequency(previous) == normalise_frequency(value)
+                            if key == "bc_freq" else previous == value)
+                    if key in model and not same:
+                        raise ValueError("Linked boundary frequency and anchor_time must agree across channels.")
+                    model[key] = value
+                else:
+                    model.setdefault(key, {})[name] = value
             _reject_unknown(channel, f"channels.{name}")
         _reject_unknown(channels, "channels")
         if errors and len(errors) != 2:

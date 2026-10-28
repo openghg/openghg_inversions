@@ -17,6 +17,7 @@ import xarray as xr
 from dask.array import Array
 from dask.base import unpack_collections
 
+from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions._serialization_codecs import _json_value
 from openghg_inversions.postprocessing.contracts import OutputContract
 
@@ -49,6 +50,7 @@ from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.sigma import SigmaAlignment
 
 from .co2_model import _normalise_offset_args, build_co2_model
+from .centered_boundary import OPERAND_NAMES, require_centered_precision, restore_absolute_predictives
 from .co2_preparation import Co2PreparedInputs
 
 
@@ -70,7 +72,14 @@ def annotate_co2_trace(
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
 ) -> xr.DataTree:
-    """Persist CO2 scientific roles and units on prior or posterior output.
+    """Restore absolute CO2 observations/predictions and persist roles and units.
+
+    For centered models, updates numerical ``y`` values in ``observed_data``,
+    ``prior_predictive``, ``posterior_predictive`` and ``predictions`` in place
+    by adding the retained boundary reference shift. Values marked
+    ``concentration_representation="absolute-v1"`` are left unchanged, so
+    repeated annotation does not add the shift twice. See
+    :ref:`surface-centered-boundary-contract`.
 
     Args:
         trace: PyMC sample groups represented as a DataTree, annotated in place.
@@ -84,6 +93,7 @@ def annotate_co2_trace(
     Returns:
         The annotated trace.
     """
+    restore_absolute_predictives(trace)
     trace.attrs["rhime_priors"] = json.dumps(prior_records(built.model))
     roles = dict(built.output_contract.variable_roles)
     metadata = dict(built.output_contract.metadata)
@@ -122,6 +132,7 @@ def annotate_co2_trace(
         roles_by_variable[name].extend(scientific_roles)
 
     concentration_variables = {
+        "H_bc_anomaly", "bc_reference", "bc_reference_shift", "boundary_reference_shift",
         "error",
         "fixed_model_mismatch",
         "fixed_prior_contribution",
@@ -142,6 +153,7 @@ def annotate_co2_trace(
                 variable.attrs["rhime_scientific_roles"] = json.dumps(scientific_roles)
             if name in {
                 "bc",
+                "H_bc_mass",
                 "flux_scaling",
                 "flux_scaling_active",
             }:
@@ -188,7 +200,7 @@ def co2_model_input_names(
     inputs = prepared_inputs.inv_inputs
     names = list(_CO2_SCIENTIFIC_INPUT_NAMES)
     if use_bc:
-        names.append("H_bc")
+        names.extend(OPERAND_NAMES if "H_bc_anomaly" in inputs else ("H_bc",))
     names.extend(aggregation_error_input_names(inputs, prepared_inputs.aggregation_error_mode))
     if "state_is_active" in inputs:
         names.append("state_is_active")
@@ -368,6 +380,10 @@ def materialize_co2_inputs(
             "pass its options in likelihood_kwargs."
         )
     prepared = prepared_inputs
+    if use_bc and "H_bc_anomaly" in prepared.inv_inputs:
+        if likelihood_builder is not None:
+            raise ValueError("Centered boundaries do not support custom or fixed-OU likelihoods.")
+        require_centered_precision()
     names = co2_model_input_names(
         prepared,
         preserve_prepared_fixed_mismatch=(likelihood_builder is None and fixed_model_mismatch is None),
@@ -413,6 +429,8 @@ def build_co2_from_materialized(
     use_bc: bool = False,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
+    bc_freq: str | None = None,
+    bc_anchor_time: DatetimeLike | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> RhimeModelBuildResult:
@@ -432,6 +450,8 @@ def build_co2_from_materialized(
         model_inputs: Selected scientific arrays already materialized together.
         prepared_inputs: Preparation supplying aggregation mode and provenance.
         priors: Materialized prior parameters under their concrete graph names.
+        bc_freq: Optional model-owned frequency for raw boundary periods.
+        bc_anchor_time: Optional timestamp anchoring raw boundary periods.
 
     Returns:
         Constructed model with scientific variable roles and bounded metadata.
@@ -441,6 +461,10 @@ def build_co2_from_materialized(
             scientific components reject the supplied choices.
     """
     prepared = prepared_inputs
+    if use_bc and "H_bc_anomaly" in prepared.inv_inputs:
+        if likelihood_builder is not None:
+            raise ValueError("Centered boundaries do not support custom or fixed-OU likelihoods.")
+        require_centered_precision()
     names = co2_model_input_names(
         prepared, use_bc=use_bc,
         preserve_prepared_fixed_mismatch=likelihood_builder is None and fixed_model_mismatch is None,
@@ -481,6 +505,7 @@ def build_co2_from_materialized(
         prior_covariance,
         covariance_dim=str(prior_covariance.dims[-1]),
     )
+    boundary_operands = model_inputs[list(OPERAND_NAMES)] if use_bc and "H_bc_anomaly" in model_inputs else None
     model = build_co2_model(
         model_inputs["H"],
         retained_prior=retained_prior,
@@ -494,7 +519,10 @@ def build_co2_from_materialized(
         sigma_prior=priors["sigma"] if sigma_prior is not None else None,
         fixed_model_mismatch=prepared_mismatch,
         state_activity=_state_activity_from_inputs(model_inputs),
-        boundary_sensitivity=model_inputs.get("H_bc") if use_bc else None,
+        boundary_sensitivity=model_inputs.get("H_bc") if use_bc and boundary_operands is None else None,
+        boundary_operands=boundary_operands,
+        bc_freq=bc_freq,
+        bc_anchor_time=bc_anchor_time,
         bc_prior=priors["bc"] if use_bc and bc_prior is not None else None,
         bc_state_activity=bc_state_activity,
         offset_prior=priors["offset_latent"] if offset_prior is not None else None,
@@ -520,6 +548,9 @@ def build_co2_from_materialized(
                 "boundary_sensitivity": "hbc",
             }
         )
+    if use_bc and "H_bc_anomaly" in model_inputs:
+        variable_roles.pop("boundary_sensitivity", None)
+        variable_roles.update(boundary_anomaly="H_bc_anomaly", boundary_mass="H_bc_mass", boundary_reference="bc_reference")
     if offset_prior is not None:
         variable_roles["offset_concentration"] = "offset"
     for role, name in {
@@ -542,6 +573,11 @@ def build_co2_from_materialized(
                 "prior": "correlated arithmetic-moment lognormal",
                 "no_model_error": no_model_error,
                 "use_bc": use_bc,
+                **({
+                    "boundary_representation": "centered-v1",
+                    "bc_frequency": bc_freq,
+                    "bc_anchor_time": None if bc_anchor_time is None else str(bc_anchor_time),
+                } if boundary_operands is not None else {}),
                 "add_offset": offset_prior is not None,
                 "offset_args": resolved_offset_args,
                 "likelihood": (

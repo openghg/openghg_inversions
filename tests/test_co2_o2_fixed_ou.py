@@ -208,8 +208,24 @@ def test_linked_stock_cached_covariance_logp_and_gradients_match_dense(interleav
     )
 
 
-def test_linked_cache_accept_reject_order_and_chain_locality(monkeypatch):
+@pytest.fixture
+def centered_precision():
+    with pytensor.config.change_flags(floatX="float64"):
+        yield
+
+
+@pytest.mark.parametrize("centered", [False, True])
+def test_linked_cache_accept_reject_order_and_chain_locality(monkeypatch, centered, centered_precision):
     kwargs = _kwargs(_prepared())
+    if centered:
+        sensitivity = kwargs["co2_sensitivity"]
+        dim = str(sensitivity.dims[0])
+        operands = xr.Dataset({
+            "H_bc_anomaly": xr.DataArray(np.full((2,1),.01),dims=("nmeasure","bc_region"),attrs={"units":"ppm"}),
+            "H_bc_mass": xr.DataArray(np.full((2,1),.2),dims=("nmeasure","bc_region"),attrs={"units":"1"}),
+            "bc_reference": xr.DataArray(400.,attrs={"units":"ppm"}),
+        },coords={"nmeasure":sensitivity[dim].values,"bc_region":["north"]},attrs={"boundary_representation":"centered-v1"})
+        kwargs["boundary_operands"] = {"co2":operands}
     first = build_co2_o2_cached_sigma_model(**kwargs, tau_hours=6.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8})
     second = build_co2_o2_cached_sigma_model(**kwargs, tau_hours=6.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8})
     sampler = _sampler_for_cached_graph(
@@ -472,3 +488,141 @@ def test_linked_ou_rejects_missing_station_labels():
     obs = _prepared().observations.assign_coords(site=("observation", ["A", None, "A", "B", "A"]))
     with pytest.raises(ValueError, match="complete site labels"):
         linked_fixed_ou_alignment(obs)
+
+
+@pytest.mark.parametrize("mixed", [False, True])
+@pytest.mark.parametrize("o2_reference", [209300., 1e12])
+def test_centered_linked_cache_matches_independent_dense_gaussian(mixed, o2_reference):
+    """Direct centered arithmetic survives large O2 backgrounds and native labels."""
+    import pymc as pm
+    from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands
+    from openghg_inversions.array_ops import select_gathered_data_array
+
+    with pytensor.config.change_flags(floatX="float64"):
+        kwargs = _kwargs(_prepared(), interleaved=True)
+        observations = kwargs["observations"]
+        operands = {}
+        raw_padded = {}
+        policies = {}
+        shifts = np.zeros(observations.size)
+        for channel, labels, reference in (("co2", ["north", "constant"], 400.), ("o2", ["top", "fixed", "zero"], o2_reference)):
+            sensitivity = kwargs[f"{channel}_sensitivity"]
+            native_dim = str(sensitivity.dims[0])
+            native = select_gathered_data_array(observations, key=channel, key_dim="species",
+                ragged_dim="channel_observation", stack_dim="observation").rename({"observation": native_dim})
+            n = native.size
+            mass = np.full((n, len(labels)), .2)
+            anomaly = np.zeros_like(mass)
+            anomaly[:,0] = np.linspace(.01, .03, n)
+            if channel == "o2":
+                mass[:,-1] = 1./reference
+                anomaly[:,-1] = -1.
+            raw = xr.Dataset({
+                "H_bc_anomaly": xr.DataArray(anomaly, dims=("nmeasure","bc_region"), attrs={"units":"ppm"}),
+                "H_bc_mass": xr.DataArray(mass, dims=("nmeasure","bc_region"), attrs={"units":"1"}),
+                "bc_reference": xr.DataArray(reference, attrs={"units":"ppm"}),
+            },coords={"nmeasure":sensitivity[native_dim].values,"bc_region":labels},attrs={"boundary_representation":"centered-v1"})
+            aligned = bind_boundary_operands(raw, native)
+            active = [True, True] if channel == "co2" else [True, False, False]
+            fixed = [1.,1.] if channel == "co2" else [1.,1.+2e-13,.7]
+            policies[channel] = StateActivity(
+                active=xr.DataArray(active,dims="bc_region",coords={"bc_region":aligned.bc_region}),
+                fixed_value=xr.DataArray(fixed,dims="bc_region",coords={"bc_region":aligned.bc_region}),
+            )
+            rows = np.flatnonzero(observations.species.values == channel)
+            # Native labels can differ from joint row order: map each label explicitly.
+            joint_labels = observations.channel_observation.values[rows]
+            native_order = [int(np.flatnonzero(sensitivity[native_dim].values == label)[0]) for label in joint_labels]
+            padded_a = np.zeros((observations.size,len(labels)))
+            padded_m = np.zeros_like(padded_a)
+            padded_a[rows] = anomaly[native_order]
+            padded_m[rows] = mass[native_order]
+            raw_padded[channel] = (padded_a,padded_m,reference)
+            if mixed and channel == "co2":
+                kwargs["boundary_sensitivity"] = {"co2": (raw.H_bc_anomaly+reference*raw.H_bc_mass).rename({"nmeasure":native_dim}).transpose(native_dim,"bc_region")}
+                # Ordinary boundary policies use their unexpanded labels.
+                policies[channel] = StateActivity(active=True)
+            else:
+                operands[channel] = raw
+                shifts += reference*padded_m.sum(axis=1)
+        kwargs["observations"] = observations + xr.DataArray(shifts,dims="observation",coords={"observation":observations.observation})
+        tau = {"co2:A":6.,"o2:A":8.,"o2:B":2.}
+        cached = build_co2_o2_cached_sigma_model(**kwargs,boundary_operands=operands,
+            bc_state_activity=policies,bc_prior={channel:{"pdf":"normal","mu":1.,"sigma":.1} for channel in ("co2","o2")},
+            offset_prior={"co2":{"pdf":"normal","mu":0.,"sigma":.1}},
+            tau_hours=tau,site_amplitude_prior={"pdf":"halfnormal","sigma":.8})
+        model = cached.model
+        oracle_mean = model["co2_o2_affine_contribution"] + model["co2_offset"]
+        oracle_absolute = oracle_mean
+        for channel,(a,m,c) in raw_padded.items():
+            b = model[f"{channel}_bc"]
+            oracle_mean = oracle_mean + pt.dot(a,b) + c*pt.dot(m,b-1 if channel in operands else b)
+            oracle_absolute = oracle_absolute + pt.dot(a,b) + c*pt.dot(m,b)
+        amplitude = model["ou_site_amplitude"]
+        covariance = pt.as_tensor_variable(_dense(kwargs,np.zeros(3),tau))
+        alignment = linked_fixed_ou_alignment(observations)
+        hours = observations.time.values.astype("datetime64[m]").astype(float)/60
+        for i,label in enumerate(alignment.site_labels.values):
+            selected = alignment.site_index.values == i
+            kernel = np.exp(-np.abs(hours[:,None]-hours[None,:])/tau[label])*selected[:,None]*selected[None,:]
+            covariance = covariance + amplitude[i]**2*kernel
+        oracle = pm.logp(pm.MvNormal.dist(mu=oracle_mean,cov=covariance),kwargs["observations"].values-shifts)
+        public = model.logp(vars=model.observed_RVs)
+        expressions = model.replace_rvs_by_values([oracle,public,cached.cached_state_logp,oracle_mean,cached.modelled_mean,model["modelled_concentration"],oracle_absolute])
+        oracle_values,public_values,cache_values = expressions[:3]
+        state_values = [model.rvs_to_values[rv] for rv in cached.states]
+        evaluate = model.compile_fn([*expressions,pt.concatenate([g.ravel() for g in pt.grad(oracle_values,model.value_vars)]),pt.concatenate([g.ravel() for g in pt.grad(public_values,model.value_vars)]),
+            pt.concatenate([g.ravel() for g in pt.grad(oracle_values,state_values)]),pt.concatenate([g.ravel() for g in pt.grad(cache_values,state_values)])],inputs=model.value_vars,on_unused_input="ignore")
+        point = model.initial_point()
+        maxima = np.zeros(3)
+        relative_gradients = np.zeros(2)
+        cancellation = 0.
+        for i,sigma in enumerate(([.4,.6,.8],[.8,.3,.5],[.25,.9,.4])):
+            point["ou_site_amplitude_log__"] = np.log(sigma)
+            point["o2_bc_active"] = np.asarray([1.+(i+1)*1e-13])
+            point["co2_bc"] = np.asarray([.9+i*.05,1.1-i*.03])
+            point["co2_offset_latent"] = np.asarray([.03])
+            cached.shared_cache.update(cached.target.refresh(np.asarray(sigma)))
+            dense,observed,cache,oracle_mu,centered,absolute,absolute_oracle,dense_grad,public_grad,dense_state,cache_state = evaluate(point)
+            np.testing.assert_allclose([observed,cache],dense,atol=1e-9,rtol=1e-10)
+            np.testing.assert_allclose(centered,oracle_mu,atol=1e-12)
+            np.testing.assert_allclose(absolute,absolute_oracle,atol=1e-10,rtol=1e-15)
+            for actual,expected in zip(public_grad,dense_grad,strict=True):
+                np.testing.assert_allclose(actual,expected,atol=1e-5,rtol=1e-10)
+            for actual,expected in zip(cache_state,dense_state,strict=True):
+                np.testing.assert_allclose(actual,expected,atol=1e-5,rtol=1e-10)
+            maxima[0]=max(maxima[0],abs(cache-dense),abs(observed-dense))
+            maxima[1]=max(maxima[1],max(np.max(np.abs(a-b)) for a,b in zip(public_grad,dense_grad,strict=True)))
+            maxima[2]=max(maxima[2],max(np.max(np.abs(a-b)) for a,b in zip(cache_state,dense_state,strict=True)))
+            relative_gradients[0]=max(relative_gradients[0],np.max(np.abs(public_grad-dense_grad)/np.maximum(1.,np.abs(dense_grad))))
+            relative_gradients[1]=max(relative_gradients[1],np.max(np.abs(cache_state-dense_state)/np.maximum(1.,np.abs(dense_state))))
+            cancellation=max(cancellation,np.max(np.abs((absolute-shifts)-centered)))
+        print(f"centered linked O2={o2_reference:g} mixed={mixed}: density max error={maxima[0]:.3g}, full-gradient absolute error={maxima[1]:.3g}, cached-state absolute error={maxima[2]:.3g}; scaled full/cache gradient error={relative_gradients}; absolute subtraction loses {cancellation:.3g} ppm")
+        assert cancellation > (1e-6 if o2_reference == 1e12 else 1e-12)
+
+
+def test_centered_linked_all_fixed_boundary_cache(centered_precision):
+    """Independent fixed channel baselines add no cache columns or sampled states."""
+    kwargs = _kwargs(_prepared(), interleaved=True)
+    operands = {}
+    shift = np.zeros(5)
+    centered_fixed = np.zeros(5)
+    for channel, reference, fixed_value in (("co2",400.,1.2),("o2",209300.,.8)):
+        sensitivity = kwargs[f"{channel}_sensitivity"]
+        dim = str(sensitivity.dims[0])
+        n = sensitivity.sizes[dim]
+        operands[channel] = xr.Dataset({
+            "H_bc_anomaly": xr.DataArray(np.full((n,1),.02),dims=("nmeasure","bc_region"),attrs={"units":"ppm"}),
+            "H_bc_mass": xr.DataArray(np.full((n,1),.1),dims=("nmeasure","bc_region"),attrs={"units":"1"}),
+            "bc_reference": xr.DataArray(reference,attrs={"units":"ppm"}),
+        },coords={"nmeasure":sensitivity[dim].values,"bc_region":[f"{channel}_fixed"]},attrs={"boundary_representation":"centered-v1"})
+        rows = kwargs["observations"].species.values == channel
+        shift[rows] = .1*reference
+        centered_fixed[rows] = .02*fixed_value+.1*reference*(fixed_value-1.)
+    cached = build_co2_o2_cached_sigma_model(**kwargs,boundary_operands=operands,
+        bc_state_activity={"co2":StateActivity(active=False,fixed_value=1.2),"o2":StateActivity(active=False,fixed_value=.8)},
+        tau_hours=6.,site_amplitude_prior={"pdf":"halfnormal","sigma":.8})
+    np.testing.assert_allclose(cached.target.fixed_contribution,kwargs["fixed_prior_contribution"].values+centered_fixed)
+    assert len(cached.states) == 1
+    assert cached.target.design.shape[1] == kwargs["co2_sensitivity"].sizes[kwargs["co2_sensitivity"].dims[1]]
+    np.testing.assert_allclose(cached.target.observations,kwargs["observations"].values-shift)

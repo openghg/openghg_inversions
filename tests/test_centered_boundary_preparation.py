@@ -9,6 +9,9 @@ import sparse
 import xarray as xr
 
 from openghg_inversions.basis._helpers import bc_sensitivity
+from openghg_inversions.boundary_sensitivity import (
+    BoundaryAlignment, align_boundary_operands, validate_boundary_operands,
+)
 from openghg_inversions.filters import pblh_min
 from openghg_inversions.inversion_data import PreparedInputs, prepare_rhime_inputs_from_xarray
 from openghg_inversions.inversion_inputs import make_inv_inputs
@@ -53,10 +56,49 @@ def test_arbitrary_basis_projects_both_operands_lazily():
     xr.testing.assert_identical(ds, original)
 
 
+@pytest.mark.parametrize("frequency", [None, "6h", "monthly"])
+def test_reusable_alignment_identity(frequency):
+    ds = _site().chunk({"time": 1})
+    original = ds.copy(deep=True)
+    anchor = None if frequency in (None, "monthly") else "2020-01-01"
+    with Callback(posttask=lambda *args: pytest.fail("operand materialized during alignment")):
+        result = align_boundary_operands(ds, frequency=frequency, anchor_time=anchor)
+    absolute = ds.H_bc_anomaly + ds.bc_reference * ds.H_bc_mass
+    expected = BoundaryAlignment.prepare(absolute, frequency=frequency, anchor_time=anchor).data
+    xr.testing.assert_allclose(result.H_bc_anomaly + result.bc_reference * result.H_bc_mass, expected.rename(None))
+    assert result.bc_reference.ndim == 0
+    assert result.H_bc_mass.attrs["units"] == "1"
+    xr.testing.assert_identical(ds, original)
 
 
+def test_validated_no_time_operands_bind_one_period_without_computation():
+    raw = _site()[["H_bc_anomaly", "H_bc_mass", "bc_reference"]].rename(time="nmeasure")
+    raw = raw.assign_coords(nmeasure=["third", "first", "second"]).chunk({"nmeasure": 1})
+    original = raw.copy(deep=False)
+    labels = raw.nmeasure[[1, 0]]
+    with Callback(posttask=lambda *args: pytest.fail("borrowed payload was computed")):
+        assert validate_boundary_operands(raw)
+        result = align_boundary_operands(raw, observation_labels=labels)
+    assert "time" not in result.coords
+    assert result.indexes["bc_region"].names == ["bc_curtain", "bc_period"]
+    assert set(result.bc_period.values) == {0}
+    for name in ("H_bc_anomaly", "H_bc_mass"):
+        assert result[name].attrs["bc_frequency"] == "none"
+        assert result[name].attrs["bc_anchor_time"] == "not-applicable"
+        np.testing.assert_allclose(result[name], raw[name].sel(nmeasure=labels))
+    xr.testing.assert_identical(result.bc_reference, raw.bc_reference)
+    xr.testing.assert_identical(raw, original)
 
 
+@pytest.mark.parametrize("frequency", ["monthly", "6h"])
+@pytest.mark.parametrize("time_kind", ["absent", "numeric"])
+def test_period_expansion_requires_datetime_time(frequency, time_kind):
+    raw = _site()[["H_bc_anomaly", "H_bc_mass", "bc_reference"]].rename(time="nmeasure")
+    if time_kind == "numeric":
+        raw = raw.assign_coords(time=("nmeasure", [0, 1, 2]))
+    assert validate_boundary_operands(raw)
+    with pytest.raises(ValueError, match="requires a datetime time coordinate"):
+        align_boundary_operands(raw, frequency=frequency)
 
 
 def test_gather_keeps_raw_regions_and_scalar_reference():
@@ -102,6 +144,20 @@ def test_core_drops_common_nonfinite_rows():
 
 
 
+def test_gathered_alignment_uses_requested_labels_and_keeps_zero_anomaly_states():
+    ds = _site()
+    ds["H_bc_anomaly"] = xr.zeros_like(ds.H_bc_anomaly)
+    ds.H_bc_anomaly.attrs["units"] = "ppm"
+    gathered = make_inv_inputs({"AAA": ds})
+    assert gathered.sizes["bc_region"] == 2
+    labels = gathered.nmeasure[[2, 0]]
+    aligned = align_boundary_operands(gathered, frequency="6h", observation_labels=labels)
+    np.testing.assert_array_equal(aligned.nmeasure, labels)
+    expected = BoundaryAlignment.prepare(
+        gathered.H_bc_anomaly + gathered.bc_reference * gathered.H_bc_mass,
+        frequency="6h", observation_labels=labels,
+    ).data
+    xr.testing.assert_allclose(aligned.H_bc_anomaly + aligned.bc_reference * aligned.H_bc_mass, expected)
 
 
 
@@ -127,6 +183,14 @@ def test_core_materializes_shared_operands_once_without_mutating_inputs():
     xr.testing.assert_identical(ds, original)
 
 
+def test_prepared_boundary_rejects_already_expanded_operands():
+    from openghg_inversions.boundary_sensitivity import validate_boundary_operands
+
+    expanded = align_boundary_operands(_site(), frequency="6h")
+    with pytest.raises(ValueError, match="unexpanded spatial operands"):
+        validate_boundary_operands(expanded)
+    with pytest.raises(ValueError, match="unexpanded spatial operands"):
+        align_boundary_operands(expanded, frequency="1D")
 
 
 
@@ -147,6 +211,10 @@ def test_gather_preserves_site_specific_transport_and_normalization_provenance()
     assert "surface_transport_provenance" not in restored.inv_inputs.attrs
 
 
+@pytest.mark.parametrize("frequency,anchor", [("1D", "NaT"), (None, "invalid"), ("monthly", "2020-01-01")])
+def test_alignment_rejects_invalid_or_ignored_anchors(frequency, anchor):
+    with pytest.raises(ValueError, match="anchor_time"):
+        align_boundary_operands(_site(), frequency=frequency, anchor_time=anchor)
 
 
 def test_supported_selection_keeps_scalar_reference_and_shared_operand_rows():
