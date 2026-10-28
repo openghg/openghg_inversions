@@ -1,9 +1,10 @@
 """Evaluate centered boundary and coherent flux components on tiny arrays.
 
 Run ``python -m examples.affine_components``. No files, stores, sampling or
-network are used. Each component's absolute concentration is a fixed reference
-contribution plus a linear response to its state; the boundary moves that
-reference onto the observations, while the coherent flux keeps it in the mean.
+network are used. The shared algebraic structure is a concentration at a state
+reference plus a response to a state deviation. Centered boundaries also shift
+observations and the likelihood mean by the same concentration. Ordinary
+absolute boundary calculations retain their direct expression.
 """
 
 import numpy as np

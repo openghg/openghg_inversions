@@ -2,14 +2,21 @@ Prototype: affine concentration components
 ==========================================
 
 This design experiment shows a structure shared by the centered boundary and
-the coherent flux reduction. Each component's absolute concentration
-contribution is a fixed reference contribution plus a linear response to a
-physical state. Each also has a physical output in its own space. The
-components share this structure; they do not share an interface, protocol or
-base class. Recipes still compose flux, boundary and offset contributions
+the coherent flux reduction. Each concentration contribution can be described
+as its value at a reference state plus a linear response to a deviation from
+that state. Boundary centering additionally translates the observations. Each
+component also has a physical output in its own space. The components share
+this structure; they do not share an interface, protocol or base class.
+Recipes still compose flux, boundary and offset contributions
 explicitly. See :doc:`rhime_model_development` for the component and ownership
 principles, and :doc:`/usage/affine_flux_map` for the retained-state flux
 reconstruction contract.
+
+For the boundary comparison, let :math:`K=A+cM` be the complete design, where
+:math:`A` is the anomaly design, :math:`M` the dimensionless mass design and
+:math:`c` the scalar reference concentration. Unit boundary scaling
+:math:`\mathbf{1}` provides an algebraic state reference. The observation shift
+is :math:`q=cM\mathbf{1}`.
 
 .. list-table::
    :header-rows: 1
@@ -21,11 +28,20 @@ reconstruction contract.
      - Boundary scaling :math:`b`
      - Retained flux state :math:`\alpha`
    * - Absolute concentration
-     - :math:`(A + cM)\,b = q + A b + c M (b - \mathbf{1})`
+     - :math:`K b`
      - :math:`H m + H_\alpha(\alpha - \alpha_{\mathrm{ref}}) = d + H_\alpha \alpha`
-   * - Fixed contribution
-     - :math:`q = c M \mathbf{1}`, moved onto the observations
-     - :math:`d = H m - H_\alpha \alpha_{\mathrm{ref}}`, kept in the mean
+   * - State reference
+     - :math:`b=\mathbf{1}`
+     - :math:`\alpha=\alpha_{\mathrm{ref}}`
+   * - Absolute concentration at the state reference
+     - :math:`K\mathbf{1}=A\mathbf{1}+q`
+     - :math:`H m`
+   * - Response to a state deviation
+     - :math:`K(b-\mathbf{1})`
+     - :math:`H_\alpha(\alpha-\alpha_{\mathrm{ref}})`
+   * - Observation translation
+     - Subtract :math:`q` from observations and the likelihood mean
+     - None; the mean retains its intercept :math:`d`
    * - Physical output
      - Scaled boundary curtains (not reconstructed)
      - Signed native flux :math:`F[m + U_*(\alpha - \alpha_{\mathrm{ref}})]`
@@ -33,10 +49,25 @@ reconstruction contract.
      - ``CenteredBoundaryMap``
      - ``add_coherent_affine_component`` and ``BoundCo2AffineFluxMap``
 
-The two components differ in one choice: where the fixed contribution goes in
-the likelihood. The coherent flux likelihood compares :math:`y` with a mean
-containing :math:`d`. The centered boundary likelihood compares :math:`y - q`
-with a mean that excludes :math:`q`. Subtracting a deterministic reference
+The observation shift :math:`q` is different from the boundary concentration
+at unit scaling :math:`K\mathbf{1}`. Likewise,
+:math:`d=Hm-H_\alpha\alpha_{\mathrm{ref}}` is the coherent intercept at
+:math:`\alpha=0`, while :math:`Hm` is the concentration at its reference state.
+For the boundary, the reference-state identities are
+
+.. math::
+
+   Kb &= K\mathbf{1} + K(b-\mathbf{1}), \\
+   Kb-q &= A\mathbf{1} + K(b-\mathbf{1}).
+
+These identities explain the shared structure; they are not an evaluation
+strategy for ordinary boundaries. The ordinary absolute boundary calculation
+remains the direct :math:`H_{bc}b`. It acquires no additional shift or state
+parameterization. In centered mode, the likelihood uses the factored expression
+:math:`Ab+cM(b-\mathbf{1})` against observations :math:`y-q`, and absolute
+outputs restore :math:`q` to that centered contribution.
+
+Subtracting the same deterministic reference from observations and the mean
 changes neither the measurement-error nor model-error covariance. Centering is
 therefore a representation of the same boundary model, chosen because a large
 reference such as O2 (about 209,300 ppm) would otherwise swamp the small
@@ -53,9 +84,8 @@ Centered boundary component
 ---------------------------
 
 ``CenteredBoundaryMap`` in ``rhime.co2.centered_boundary`` owns the factored
-boundary equations after model-data registration. Let :math:`A` denote the
-anomaly sensitivity, :math:`M` the dimensionless mass sensitivity, :math:`c`
-the concentration reference, and :math:`b` the physical boundary coefficients:
+boundary equations for registered PyTensor operands and dense NumPy operands.
+Its physical boundary coefficients :math:`b` give
 
 .. math::
 
