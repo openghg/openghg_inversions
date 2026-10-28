@@ -64,3 +64,14 @@ config/script hashes, dependency versions, Git revision and thread/runtime
 settings. The noise and prior policy is explicit technical benchmark policy,
 not an approved campaign model. Results do not by themselves remove the float64
 production restriction.
+
+The completed 28 October result and its bounded interpretation are recorded in
+[the research plan](../../../docs/plans/centered_boundary_selective_storage.md#bounded-compiled-memory-and-runtime-experiment-28-october-2026).
+The original sixteen measurements used revision `3dfc2b96`. A separate eight-case
+`audit.py` run at `310ef7c7` fixes traversal of slotted prepared-input dataclasses
+and records parent retained-array inventories without resampling. It leaves the
+original process-memory and timing evidence untouched. `analyse.py` verifies both
+sets of frozen provenance, input/configuration hashes, worker telemetry and Slurm
+accounting, then reproduces the versioned numeric summary. Its exact command is
+in the result record. The measured process-level performance benefit remains
+unproven; the production float64 guard remains in place.
