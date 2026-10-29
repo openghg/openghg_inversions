@@ -238,7 +238,7 @@ def test_linked_period_override_supports_mixed_raw_channel_representations(tmp_p
 
 
 @pytest.mark.parametrize("linked", [False, True])
-def test_saved_centered_periods_reject_fixed_ou(tmp_path, linked):
+def test_saved_centered_periods_support_fixed_ou(tmp_path, linked):
     module = co2_o2_handoffs if linked else handoffs
     prepared = _joint() if linked else _ordinary()
     config = _config(linked, frequency="2D")
@@ -247,9 +247,19 @@ def test_saved_centered_periods_reject_fixed_ou(tmp_path, linked):
         prepared, output_dir=tmp_path / "prepared", domain="EUROPE",
         start_date="1969-12-01", end_date="2020-02-01",
     )
-    with pytest.raises(ValueError, match="fixed-OU"):
-        module.prior_predictive(manifest, model=config, output_dir=tmp_path / "prior", draws=2)
-    assert not (tmp_path / "prior").exists()
+    result = module.prior_predictive(
+        manifest, model=config, output_dir=tmp_path / "prior", draws=2, random_seed=13,
+    )
+    assert result["status"] == "pass"
+    trace = load_trace(tmp_path / "prior" / "prior-predictive.nc")
+    observed = prepared.observations if linked else prepared.inv_inputs.mf
+    xr.testing.assert_allclose(trace.observed_data.y, observed)
+    assert trace.prior_predictive.y.attrs["concentration_representation"] == "absolute-v1"
+    np.testing.assert_allclose(trace.prior_predictive.y, trace.prior.modelled_concentration, atol=5, rtol=0)
+    # Native linked channel calendars cover different numbers of 2-day periods.
+    expected_states = {"co2_": 2, "o2_": 4} if linked else {"": 4}
+    for prefix, count in expected_states.items():
+        assert trace.prior[f"{prefix}bc"].shape[-1] == count
 
 
 def test_saved_centered_cached_ou_prior_predictions_remain_absolute(tmp_path):

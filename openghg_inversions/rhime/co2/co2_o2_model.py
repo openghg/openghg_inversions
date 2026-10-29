@@ -655,11 +655,6 @@ def build_co2_o2_model(
                 anchor_time=bc_anchor_time,
             )
         boundary_sensitivity = aligned_boundaries
-    if tau_hours is not None and any(
-        (bc_mean_shift_prior_co2 if channel == "co2" else bc_mean_shift_prior_o2) is None
-        for channel in (boundary_operands or {})
-    ):
-        raise ValueError("Centered multiplicative boundaries do not support fixed-OU likelihoods.")
     if boundary_operands:
         _validate_channel_baseline_options(
             boundary_sensitivity, bc_prior, bc_state_activity, offset_prior, offset_args, boundary_operands

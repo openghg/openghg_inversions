@@ -1282,3 +1282,28 @@ def test_multiplicative_boundary_ignores_passive_correction_periods():
         boundary_correction_sensitivity=passive_correction)
     assert "bc" in model.named_vars
     assert "G_bc" not in model.named_vars
+
+
+def test_direct_centered_model_passes_centered_arrays_to_custom_likelihood():
+    inputs = _golden_inputs()
+    operands = xr.Dataset({
+        "H_bc_anomaly": (("nmeasure", "bc_region"), [[.1], [.2]], {"units": "ppm"}),
+        "H_bc_mass": (("nmeasure", "bc_region"), [[.7], [.9]], {"units": "1"}),
+        "bc_reference": ((), 400., {"units": "ppm"}),
+    }, coords={"nmeasure": inputs.nmeasure, "bc_region": ["north"]},
+        attrs={"boundary_representation": "centered-v1"})
+    received = {}
+
+    def likelihood(*, observations, mean, output_dim, **kwargs):
+        received["observations"] = observations
+        received["observation_error"] = kwargs["observation_error"]
+        received["aggregation_error"] = kwargs["aggregation_error"]
+        error = pm.Deterministic("epsilon", pm.math.ones_like(mean), dims=output_dim)
+        return pm.Normal("y", mu=mean, sigma=error, observed=observations, dims=output_dim)
+
+    model = _build_model(inputs, boundary_operands=operands, likelihood_builder=likelihood)
+    np.testing.assert_allclose(received["observations"], inputs.mf - [280., 360.])
+    xr.testing.assert_identical(received["observation_error"], inputs.mf_error)
+    xr.testing.assert_identical(received["aggregation_error"].covariance,
+        resolve_aggregation_error(inputs, "dense").covariance)
+    assert np.isfinite(model.compile_logp()(model.initial_point()))

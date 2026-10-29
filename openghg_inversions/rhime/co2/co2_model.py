@@ -27,7 +27,6 @@ from openghg_inversions.models.components import (
     add_offset_component,
     apply_linear_sensitivity,
 )
-from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import (
@@ -149,7 +148,8 @@ def build_co2_model(
 
     With centered ``boundary_operands``, raw PyMC observed and predictive
     ``y`` values are centered; BC and total concentration deterministics remain
-    absolute.
+    absolute. Custom likelihood components receive the centered observations
+    and mean with unchanged observation-error and aggregation-error operands.
     After restoring sample coordinates, direct callers must restore absolute
     ``y`` with
     :func:`~openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives`
@@ -231,10 +231,6 @@ def build_co2_model(
     if boundary_operands is not None:
         if boundary_sensitivity is not None:
             raise ValueError("Supply boundary_operands or boundary_sensitivity, not both.")
-        if likelihood_builder is not None and (
-            bc_mean_shift_prior is None or likelihood_builder is not add_fixed_ou_gaussian_likelihood
-        ):
-            raise ValueError("Centered boundaries do not support custom or fixed-OU likelihoods.")
         boundary_operands = bind_boundary_operands(
             boundary_operands, observations, frequency=bc_freq, anchor_time=bc_anchor_time,
         )

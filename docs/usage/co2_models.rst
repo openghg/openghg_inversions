@@ -1491,6 +1491,16 @@ same site have separate amplitudes and no cross-channel OU contribution.
 Both channels must already use the same concentration units. Heterogeneous
 covariance units are not supported by this option.
 
+Numerically centered boundary operands support the ordinary fixed-OU likelihood
+with either multiplicative scales or additive corrections. The linked model may
+combine centered multiplicative CO2 boundaries with centered additive O2
+corrections. Subtracting the same fixed reference contribution :math:`s` from
+the observations and model mean leaves the residual unchanged:
+:math:`y-\mu=(y-s)-(\mu-s)`. The covariance and the multiplicative boundary
+prior are unchanged. Public boundary and total concentration outputs remain
+absolute; trace annotation restores observed and predictive concentrations once.
+This composition is also supported by the cached fixed-OU route.
+
 Tau is fixed in hours. A scalar tau or fixed amplitude applies independently
 to every observed group. Mappings must cover labels such as ``co2:MHD`` and
 ``o2:MHD``. Amplitudes and their prior scales use the common concentration unit.

@@ -465,3 +465,135 @@ def test_linked_runners_do_not_compute_passive_additive_arrays(monkeypatch, cach
         assert "o2_bc_mean_shift" not in trace.prior
         assert "o2_G_bc" not in trace.constant_data
         assert "o2_bc_centering_weights" not in trace.constant_data
+
+
+def _mixed_centered_boundary_inputs():
+    kwargs = _additive_inputs(True)
+    kwargs.pop("bc_mean_shift_prior_co2")
+    kwargs.pop("bc_anomaly_scale_co2")
+    kwargs.pop("bc_centering_weights_co2")
+    kwargs["bc_prior"] = {"co2": {"pdf": "normal", "mu": 1.0, "sigma": 0.01}}
+    return kwargs
+
+
+def test_mixed_centered_boundary_ou_density_gradients_and_absolute_closure():
+    with pytensor.config.change_flags(floatX="float64"):
+        kwargs = _mixed_centered_boundary_inputs()
+        ou = {"tau_hours": 6.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.8}}
+        stock = build_co2_o2_model(**kwargs, **ou)
+        cached = build_co2_o2_cached_sigma_model(**kwargs, **ou)
+        absolute_kwargs = {**kwargs, "boundary_operands": {}, "boundary_sensitivity": {}}
+        for channel, operands in kwargs["boundary_operands"].items():
+            sensitivity = kwargs[f"{channel}_sensitivity"]
+            dim = str(sensitivity.dims[0])
+            observations = xr.DataArray(
+                np.zeros(sensitivity.sizes[dim]), dims=dim, coords={dim: sensitivity[dim]}
+            )
+            bound = bind_boundary_operands(operands, observations)
+            absolute_kwargs["boundary_sensitivity"][channel] = (
+                bound.H_bc_anomaly + bound.bc_reference * bound.H_bc_mass
+            )
+            if channel == "o2":
+                absolute_kwargs["boundary_correction_sensitivity_o2"] = bound.H_bc_mass
+        absolute = build_co2_o2_model(**absolute_kwargs, **ou)
+        point = cached.model.initial_point()
+        co2_rv = next(rv for rv in cached.model.free_RVs if rv.name.startswith("co2_bc"))
+        co2_value = cached.model.rvs_to_values[co2_rv].name
+        point[co2_value] = np.full_like(point[co2_value], 1.0001)
+        point["o2_bc_mean_shift"] = np.asarray(-0.027)
+        point["o2_bc_anomaly_latent"] = np.array([-0.03, 0.015])
+        sigma = np.array([0.3, 0.4, 0.5])
+        point["ou_site_amplitude_log__"] = np.log(sigma)
+        cached.shared_cache.update(cached.target.refresh(sigma))
+        expression = cached.model.replace_rvs_by_values(
+            [cached.cached_state_logp, cached.modelled_mean, cached.model["modelled_concentration"]]
+        )
+        cache_logp, centered_mean, absolute_mean = cached.model.compile_fn(
+            expression, inputs=cached.model.value_vars, on_unused_input="ignore"
+        )(point)
+        np.testing.assert_allclose(cache_logp, stock.compile_logp(vars=stock.observed_RVs)(point), atol=1e-8)
+        np.testing.assert_allclose(cached.model.compile_logp()(point), stock.compile_logp()(point), atol=1e-8)
+        np.testing.assert_allclose(
+            cached.model.compile_dlogp()(point), stock.compile_dlogp()(point), rtol=1e-8, atol=1e-8
+        )
+        state_values = [cached.model.rvs_to_values[rv] for rv in cached.states]
+        cache_gradient = cached.model.compile_fn(
+            pt.grad(expression[0], state_values), inputs=cached.model.value_vars, on_unused_input="ignore"
+        )(point)
+        observed_gradient = cached.model.compile_fn(
+            pt.grad(cached.model.logp(vars=cached.model.observed_RVs), state_values),
+            inputs=cached.model.value_vars,
+            on_unused_input="ignore",
+        )(point)
+        np.testing.assert_allclose(
+            np.concatenate([np.atleast_1d(value) for value in cache_gradient]),
+            np.concatenate([np.atleast_1d(value) for value in observed_gradient]),
+            atol=1e-8,
+        )
+        absolute_prediction = absolute.compile_fn(
+            absolute.replace_rvs_by_values([absolute["modelled_concentration"]]),
+            inputs=absolute.value_vars,
+            on_unused_input="ignore",
+        )(point)[0]
+        shift = np.array([400.0, 400.0, 200000.0, 200000.0, 200000.0])
+        np.testing.assert_allclose(absolute_mean, centered_mean + shift, atol=1e-10)
+        np.testing.assert_allclose(absolute_mean, absolute_prediction, atol=1e-10)
+        np.testing.assert_allclose(stock.compile_logp()(point), absolute.compile_logp()(point), atol=1e-8)
+        np.testing.assert_allclose(
+            stock.compile_dlogp()(point), absolute.compile_dlogp()(point), rtol=1e-7, atol=1e-7
+        )
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_public_linked_ou_restores_mixed_centered_boundary_predictions(monkeypatch, cached):
+    from openghg_inversions.rhime.co2 import co2_o2_runner, co2_o2_cached_sigma_runner
+    from openghg_inversions.rhime.sampling import RhimeSampler
+
+    with pytensor.config.change_flags(floatX="float64"):
+        kwargs = _mixed_centered_boundary_inputs()
+        prepared = replace(
+            _prepared(),
+            observations=kwargs["observations"],
+            boundary_operands=kwargs["boundary_operands"],
+            bc_centering_weights={"o2": kwargs["bc_centering_weights_o2"]},
+        )
+        options = {key: value for key, value in kwargs.items() if key.startswith(("bc_mean_", "bc_anomaly_"))}
+        options.update(
+            bc_prior=kwargs["bc_prior"],
+            tau_hours=6.0,
+            site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8},
+        )
+
+        def prior_sample(built, sampler):
+            with built.model:
+                trace = pm.sample_prior_predictive(draws=3, random_seed=93)
+            return restore_inferencedata_coords(trace, get_coord_registry(built.model))
+
+        module = co2_o2_cached_sigma_runner if cached else co2_o2_runner
+        monkeypatch.setattr(module, "sample_rhime_model", prior_sample)
+        if cached:
+            monkeypatch.setattr(module, "_sampler_for_cached_graph", lambda sampler, **_: sampler)
+        runner = (
+            module.run_rhime_co2_o2_cached_sigma_from_prepared_inputs
+            if cached
+            else module.run_rhime_co2_o2_from_prepared_inputs
+        )
+        trace = runner(
+            prepared_inputs=prepared,
+            independent_error_sd=kwargs["independent_error_sd"],
+            sampler=RhimeSampler(draws=3, tune=0, chains=1, burn=0, nuts_sampler="pymc"),
+            **options,
+        )
+        assert "co2_bc" in trace.prior and "co2_bc_mean_shift" not in trace.prior
+        assert "o2_bc_mean_shift" in trace.prior and "o2_bc" not in trace.prior
+        np.testing.assert_allclose(trace.observed_data.y, prepared.observations)
+        assert trace.prior_predictive.y.attrs["concentration_representation"] == "absolute-v1"
+        assert trace.prior_predictive.y.values[..., 2:].mean() > 199900.0
+        np.testing.assert_allclose(
+            trace.prior.modelled_concentration,
+            trace.prior.co2_o2_flux_contribution
+            + trace.constant_data.fixed_prior_contribution
+            + trace.prior.co2_mu_bc
+            + trace.prior.o2_mu_bc,
+            atol=1e-10,
+        )

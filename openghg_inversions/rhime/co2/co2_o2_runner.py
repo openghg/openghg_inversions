@@ -430,11 +430,6 @@ def build_rhime_co2_o2(
             correction_inputs[f"{channel}_correction"] = correction
         if weights is not None:
             correction_inputs[f"{channel}_weights"] = weights
-    if tau_hours is not None and any(
-        (bc_mean_shift_prior_co2 if channel == "co2" else bc_mean_shift_prior_o2) is None
-        for channel in (operands or {})
-    ):
-        raise ValueError("Centered multiplicative boundaries do not support fixed-OU likelihoods.")
     if operands:
         require_centered_precision()
     _validate_channel_baseline_options(
