@@ -171,53 +171,30 @@ concentration units.
 Common boundary mean and centred additive anomalies
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-See :doc:`centered_boundary_conditions` for the transport and basis definitions
-of :math:`H_{bc}`, :math:`A`, :math:`M` and :math:`G_{bc}`, and the distinction
-between numerical centering and the statistical constraint below.
+We define the transport operators and the
+:ref:`additive boundary formulation <boundary-additive-corrections>` in
+:doc:`centered_boundary_conditions`. Here we describe its supported CO2-family
+configuration and outputs.
 
-Use ``bc_mean_shift_prior`` with ``bc_anomaly_scale`` when a common bias in the
-supplied boundary concentration field is plausible. This selects an additive
-boundary model in the ordinary and cached fixed-OU CO2 recipes. Linked CO2/O2
-recipes use the channel-specific options described below. Each channel has one
-common correction plus regional and temporal anomalies whose weighted mean is exactly
-zero. The common correction is shared across the supplied inversion window.
-For a monthly inversion with sub-monthly boundary states it is a monthly
-correction; the model does not create separate means for calendar months in a
-longer input artifact. No observation site is fixed.
+Use ``bc_mean_shift_prior`` with ``bc_anomaly_scale`` to select a constant
+boundary-product correction :math:`\delta` plus regional and temporal
+anomalies :math:`u_j`, where :math:`j=(\text{region},\text{period})`.
+Both use the channel observations' concentration units, usually ppm. The
+ordinary and cached fixed-OU CO2 recipes use the same formulation; linked
+CO2/O2 recipes use the channel-specific options below.
 
-Let :math:`\ell` identify a native boundary sample, including its location,
-height and time, and let :math:`j` identify a fitted region--period state.
-For a partition basis, write :math:`j(\ell)` for the state containing sample
-:math:`\ell`. The corrected concentration at that sample is
+There is one :math:`\delta` over the entire inversion window and one weighted
+constraint,
 
 .. math::
 
-   C_\ell &= C^0_\ell + \delta + u_{j(\ell)}, \\
-   \sum_j w_ju_j &= 0, \qquad \sum_j w_j=1.
+   d_j=\delta+u_j,\qquad \sum_jw_ju_j=0,\qquad \sum_jw_j=1.
 
-The supplied concentration may vary within a state; its additive correction is
-shared. For a fractional basis :math:`B`, the native correction field is
-:math:`B(\delta\mathbf1+u)` instead of a single membership lookup.
-
-Here :math:`\delta` is ``bc_mean_shift`` and :math:`u` is ``bc_anomaly``.
-Both have the channel observations' concentration units, usually ppm. The caller
-supplies strictly positive centring weights :math:`w`; the model normalizes
-them to sum to one. Thus :math:`\delta` is the specified weighted mean state
-correction. A mean of the native boundary field requires weights consistent
-with the basis and the chosen spatial/temporal measure. Choose weights for the
-scientific average of interest, for example boundary area and period duration. They are not
-inferred from observation counts or prevailing winds. Equal north/east/south/west
-weights define an equal-direction mean, not a curtain-area mean. Physical
-curtain-area × duration weights require an explicitly declared geometry
-convention. An eastern boundary
-anomaly is a departure from this common mean, even if the observing network
-has little sensitivity to eastern inflow.
-
-The constraint removes the freedom to add a constant to :math:`\delta` and
-subtract it from every anomaly. The `Stan User's Guide discussion of centred
-vectors <https://mc-stan.org/docs/stan-users-guide/regression.html#parameterizing-centered-vectors>`_
-explains this use of a sum-to-zero constraint. Here the constraint applies to
-additive concentration corrections, rather than dimensionless BC scales.
+Individual periods can have nonzero mean anomalies. The constraint applies
+to the complete set of region--period states. The caller supplies positive
+weights; the model normalizes them to sum to one. Uniform weights specify an
+equal-state average. For a native-field average, choose weights using the
+:ref:`declared measure and basis <boundary-averaging-weights>`.
 
 Anomaly prior and uncertainty
 """""""""""""""""""""""""""""
@@ -252,43 +229,32 @@ of each anomaly. The variance consequence of a sum-to-zero constraint is also
 explained in `Stan's marginal-distribution discussion
 <https://mc-stan.org/docs/stan-users-guide/regression.html#marginal-distribution-of-sum-to-zero-components>`_.
 
-This is a substantive change from the independent multiplicative BC prior.
-It fixes the supplied reference field and replaces inferred scaling factors
-with additive corrections. It does not preserve the previous truncated-Normal
-scaling prior, its marginal uncertainty, or its positive support. Choose both
-prior scales in concentration units for the boundary data source. The additive
-mode rejects ``bc_prior`` and ``bc_state_activity``; omitting
-``bc_mean_shift_prior`` retains the existing multiplicative boundary model.
+This prior keeps the projected baseline :math:`H_{bc}\mathbf1` fixed and
+infers additive concentration corrections. It replaces the multiplicative
+scaling prior. Choose the common-mean prior and anomaly scale for uncertainty
+in the supplied boundary product. The additive mode rejects ``bc_prior`` and
+``bc_state_activity``; omitting ``bc_mean_shift_prior`` retains the
+multiplicative boundary model.
 
 Prepare and configure the boundary corrections
 """"""""""""""""""""""""""""""""""""""""""""""
 
-Preparation must supply :math:`G_{bc}`, the transport response to a unit
-additive correction in each boundary region--period state. Using the same
-:math:`H_{bc}` and :math:`\mu_{bc}` notation as the
-:doc:`concrete RHIME models <concrete_rhime_model>`, the observation contribution
-is
+We use the dimensionless correction response :math:`G_{bc}` defined in the
+:ref:`additive formulation <boundary-additive-corrections>` to transport the
+state corrections. Its observation contribution is
 
 .. math::
 
-   g &= G_{bc}\mathbf{1}, \\
-   \mu_{bc} &= H_{bc}\mathbf{1} + g\delta + G_{bc}u.
+   g &= G_{bc}\mathbf1, \\
+   \mu_{bc} &= H_{bc}\mathbf1+g\delta+G_{bc}u.
 
-The first term is the fixed, unscaled reference boundary contribution. The
-remaining terms transport the common mean and centred anomalies. Construct
-:math:`G_{bc}` from the boundary transport weights with the same boundary
-state partition, temporal averaging, observation selection and satellite
-column weighting as :math:`H_{bc}`. Do not renormalize incomplete boundary
-coverage to one. A unit correction passed through the boundary forward model
-for each state is an alternative way to obtain these responses. ``H_bc`` alone
-cannot recover them: dividing by a nominal CO2 or O2 concentration is not equivalent.
-For centered-v1 inputs, the explicitly supplied dimensionless ``H_bc_mass``
-already represents this unit response and is used when no separate ``G_bc``
-is passed. This statistical prior choice is independent of numerical centering
-of the boundary forward calculation; it does not change ``bc_reference`` or
-the stored concentration anomalies.
-A single response vector summed over states is also insufficient to represent
-the anomalies.
+Prepare the response using the same state labels, temporal averaging,
+observation selection and satellite column weighting as the boundary data.
+For centered-v1 inputs, the provided dimensionless ``H_bc_mass`` is used when
+no separate ``G_bc`` is passed. A separately supplied response retains its
+actual transport weights, including incomplete coverage; model construction
+does not normalize its rows. The statistical prior choice leaves
+``bc_reference`` and the prepared concentration anomalies unchanged.
 
 Pass ``boundary_correction_sensitivity`` to preparation with dimensions
 ``("nmeasure", "bc_region")`` and dimensionless units ``"1"``. Its observation
@@ -407,12 +373,15 @@ Guide on collinearity
 explains why redundant or nearly redundant prediction directions remain a
 problem for inference.
 
-With :math:`g=\mathbf{1}`, the common mean has the same observation-space
-direction as a global observation offset. Do not add both to explain the same
-discrepancy. Finer boundary periods allow temporal departures from the common
-mean; they do not themselves supply independent evidence for a data-source
-bias. Assess transport sensitivity, BC--flux confounding and prior sensitivity
-before interpreting the inferred mean as a bias in the boundary product.
+A constant observation offset describes persistent observation bias, while
+:math:`\delta` describes a constant correction to the supplied boundary
+product. If :math:`g=\mathbf1`, these distinct components have the same
+observation-space direction. The likelihood then identifies their sum;
+separate prior information or external constraints are needed to distinguish
+them. Finer boundary periods allow anomalies to vary over time while
+:math:`\delta` remains constant over the whole inversion. Assess transport
+sensitivity, BC--flux confounding and prior sensitivity when interpreting
+these corrections.
 
 Configure prepared-input execution from TOML
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
