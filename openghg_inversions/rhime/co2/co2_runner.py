@@ -122,6 +122,15 @@ def annotate_co2_trace(
         "hbc": ["boundary_sensitivity"],
         "bc": ["boundary_scale"],
         "mu_bc": ["boundary_concentration"],
+        "bc_mean_shift": ["boundary_mean_shift"],
+        "bc_anomaly_scale": ["boundary_anomaly_scale"],
+        "G_bc": ["boundary_correction_sensitivity"],
+        "bc_centering_weights": ["boundary_centering_weights"],
+        "bc_anomaly": ["boundary_anomaly"],
+        "bc_correction": ["boundary_correction"],
+        "mu_bc_anomaly": ["boundary_anomaly_concentration"],
+        "mu_bc_mean_shift": ["boundary_mean_shift_concentration"],
+        "mu_bc_reference": ["reference_boundary_concentration"],
         "offset_latent": ["offset_coefficient"],
         "offset": ["offset_concentration"],
         "sigma_global": ["global_iid_mismatch_standard_deviation"],
@@ -139,6 +148,15 @@ def annotate_co2_trace(
         "modelled_concentration",
         "co2_flux_contribution",
         "mu_bc",
+        "mu_bc_reference",
+        "mu_bc_anomaly",
+        "bc_anomaly",
+        "bc_correction",
+        "mu_bc_mean_shift",
+        "bc_mean_shift",
+        "bc_anomaly_scale",
+        "bc_anomaly_latent",
+        "mu_bc_centered",
         "offset_latent",
         "offset",
         "sigma_global",
@@ -154,6 +172,9 @@ def annotate_co2_trace(
             if name in {
                 "bc",
                 "H_bc_mass",
+                "G_bc",
+                "bc_centering_weights",
+                "bc_anomaly_basis",
                 "flux_scaling",
                 "flux_scaling_active",
             }:
@@ -181,6 +202,7 @@ def co2_model_input_names(
     *,
     preserve_prepared_fixed_mismatch: bool,
     use_bc: bool = False,
+    use_bc_mean_shift: bool = False,
 ) -> tuple[str, ...]:
     """Declare prepared arrays consumed by the selected CO2 components.
 
@@ -190,6 +212,9 @@ def co2_model_input_names(
         preserve_prepared_fixed_mismatch: Include a prepared fixed mismatch
             field when present.
         use_bc: Include the prepared boundary-condition sensitivity.
+        use_bc_mean_shift: Include the prepared dimensionless boundary correction
+            operator ``G_bc`` (or centered ``H_bc_mass``) and
+            ``bc_centering_weights``. Requires ``use_bc=True``.
 
     Returns:
         Names of the arrays to materialize for model construction.
@@ -201,6 +226,12 @@ def co2_model_input_names(
     names = list(_CO2_SCIENTIFIC_INPUT_NAMES)
     if use_bc:
         names.extend(OPERAND_NAMES if "H_bc_anomaly" in inputs else ("H_bc",))
+    if use_bc_mean_shift:
+        if not use_bc:
+            raise ValueError("A boundary mean shift requires use_bc=True.")
+        if "H_bc_anomaly" not in inputs or "G_bc" in inputs:
+            names.append("G_bc")
+        names.append("bc_centering_weights")
     names.extend(aggregation_error_input_names(inputs, prepared_inputs.aggregation_error_mode))
     if "state_is_active" in inputs:
         names.append("state_is_active")
@@ -320,6 +351,8 @@ def materialize_co2_inputs(
     use_bc: bool = False,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
+    bc_mean_shift_prior: PriorArgs | None = None,
+    bc_anomaly_scale: float | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> tuple[xr.Dataset, dict[str, PriorArgs]]:
@@ -350,6 +383,14 @@ def materialize_co2_inputs(
         use_bc: Include prepared boundary sensitivity.
         bc_prior: Optional boundary-scale prior, enabled only with ``use_bc``.
         bc_state_activity: Optional boundary active/fixed-state policy.
+        bc_mean_shift_prior: Prior for the global additive boundary mean
+            correction, in observation concentration units. Selects centred
+            additive corrections and requires ``use_bc=True``, ``G_bc`` or
+            centered ``H_bc_mass``, ``bc_centering_weights`` and
+            ``bc_anomaly_scale``. Cannot be
+            combined with multiplicative ``bc_prior`` or ``bc_state_activity``.
+        bc_anomaly_scale: Positive Gaussian standard deviation in observation
+            concentration units before subtracting the weighted boundary mean.
         offset_prior: Optional prior enabling concentration offsets.
         offset_args: Offset frequency, ``per_site`` and ``drop_first`` settings.
 
@@ -365,8 +406,15 @@ def materialize_co2_inputs(
         raise ValueError("`no_model_error=True` cannot be combined with `sigma_alignment` or `sigma_prior`.")
     if likelihood_builder is None and likelihood_kwargs:
         raise ValueError("likelihood_kwargs require likelihood_builder.")
-    if not use_bc and (bc_prior is not None or bc_state_activity is not None):
-        raise ValueError("bc_prior and bc_state_activity require use_bc=True.")
+    if not use_bc and (
+        bc_prior is not None or bc_state_activity is not None
+        or bc_mean_shift_prior is not None or bc_anomaly_scale is not None
+    ):
+        raise ValueError("Boundary prior and activity options require use_bc=True.")
+    if (bc_mean_shift_prior is None) != (bc_anomaly_scale is None):
+        raise ValueError("bc_mean_shift_prior and bc_anomaly_scale must be supplied together.")
+    if bc_mean_shift_prior is not None and (bc_prior is not None or bc_state_activity is not None):
+        raise ValueError("Centred boundary corrections cannot use bc_prior or bc_state_activity.")
     if offset_prior is None and offset_args:
         raise ValueError("offset_args require offset_prior.")
     if likelihood_builder is not None and (
@@ -381,13 +429,14 @@ def materialize_co2_inputs(
         )
     prepared = prepared_inputs
     if use_bc and "H_bc_anomaly" in prepared.inv_inputs:
-        if likelihood_builder is not None:
-            raise ValueError("Centered boundaries do not support custom or fixed-OU likelihoods.")
+        if likelihood_builder is not None and likelihood_builder is not add_fixed_ou_gaussian_likelihood:
+            raise ValueError("Centered boundaries do not support custom likelihoods.")
         require_centered_precision()
     names = co2_model_input_names(
         prepared,
         preserve_prepared_fixed_mismatch=(likelihood_builder is None and fixed_model_mismatch is None),
         use_bc=use_bc,
+        use_bc_mean_shift=bc_mean_shift_prior is not None,
     )
     backend_inputs = prepared.rhime_inputs
     if isinstance(fixed_model_mismatch, xr.DataArray):
@@ -401,6 +450,8 @@ def materialize_co2_inputs(
         priors["sigma"] = sigma_prior
     if use_bc and bc_prior is not None:
         priors["bc"] = bc_prior
+    if bc_mean_shift_prior is not None:
+        priors["bc_mean_shift"] = bc_mean_shift_prior
     if offset_prior is not None:
         priors["offset_latent"] = offset_prior
     likelihood_options = likelihood_kwargs or {}
@@ -431,6 +482,8 @@ def build_co2_from_materialized(
     bc_state_activity: StateActivity | None = None,
     bc_freq: str | None = None,
     bc_anchor_time: DatetimeLike | None = None,
+    bc_mean_shift_prior: PriorArgs | None = None,
+    bc_anomaly_scale: float | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> RhimeModelBuildResult:
@@ -462,8 +515,8 @@ def build_co2_from_materialized(
     """
     prepared = prepared_inputs
     if use_bc and "H_bc_anomaly" in prepared.inv_inputs:
-        if likelihood_builder is not None:
-            raise ValueError("Centered boundaries do not support custom or fixed-OU likelihoods.")
+        if likelihood_builder is not None and likelihood_builder is not add_fixed_ou_gaussian_likelihood:
+            raise ValueError("Centered boundaries do not support custom likelihoods.")
         require_centered_precision()
     names = co2_model_input_names(
         prepared, use_bc=use_bc,
@@ -525,6 +578,14 @@ def build_co2_from_materialized(
         bc_anchor_time=bc_anchor_time,
         bc_prior=priors["bc"] if use_bc and bc_prior is not None else None,
         bc_state_activity=bc_state_activity,
+        bc_mean_shift_prior=priors["bc_mean_shift"] if bc_mean_shift_prior is not None else None,
+        boundary_correction_sensitivity=(
+            model_inputs.get("G_bc") if bc_mean_shift_prior is not None else None
+        ),
+        bc_centering_weights=(
+            model_inputs["bc_centering_weights"] if bc_mean_shift_prior is not None else None
+        ),
+        bc_anomaly_scale=bc_anomaly_scale,
         offset_prior=priors["offset_latent"] if offset_prior is not None else None,
         offset_args=offset_args,
     )
@@ -544,13 +605,30 @@ def build_co2_from_materialized(
         variable_roles.update(
             {
                 "boundary_concentration": "mu_bc",
-                "boundary_scale": "bc",
                 "boundary_sensitivity": "hbc",
             }
         )
     if use_bc and "H_bc_anomaly" in model_inputs:
         variable_roles.pop("boundary_sensitivity", None)
         variable_roles.update(boundary_anomaly="H_bc_anomaly", boundary_mass="H_bc_mass", boundary_reference="bc_reference")
+    if use_bc and bc_mean_shift_prior is None:
+        variable_roles["boundary_scale"] = "bc"
+    if bc_mean_shift_prior is not None:
+        if boundary_operands is not None:
+            variable_roles["boundary_transport_anomaly"] = "H_bc_anomaly"
+        variable_roles.update(
+            {
+                "boundary_mean_shift": "bc_mean_shift",
+                "boundary_anomaly_scale": "bc_anomaly_scale",
+                "boundary_correction_sensitivity": "G_bc",
+                "boundary_centering_weights": "bc_centering_weights",
+                "boundary_anomaly": "bc_anomaly",
+                "boundary_correction": "bc_correction",
+                "boundary_anomaly_concentration": "mu_bc_anomaly",
+                "boundary_mean_shift_concentration": "mu_bc_mean_shift",
+                "reference_boundary_concentration": "mu_bc_reference",
+            }
+        )
     if offset_prior is not None:
         variable_roles["offset_concentration"] = "offset"
     for role, name in {
@@ -573,6 +651,7 @@ def build_co2_from_materialized(
                 "prior": "correlated arithmetic-moment lognormal",
                 "no_model_error": no_model_error,
                 "use_bc": use_bc,
+                "boundary_formulation": "additive" if bc_mean_shift_prior is not None else "multiplicative" if use_bc else None,
                 **({
                     "boundary_representation": "centered-v1",
                     "bc_frequency": bc_freq,

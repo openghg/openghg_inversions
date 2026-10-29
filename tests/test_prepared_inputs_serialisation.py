@@ -59,7 +59,7 @@ def test_data_contracts_preserve_canonical_imports_and_prepared_schema() -> None
     prepared = _prepared_inputs()
     artifact = prepared.to_datatree()
     assert artifact.attrs["schema"] == prepared_contract.PREPARED_INPUTS_SCHEMA
-    assert artifact.attrs["schema_version"] == prepared_contract.PREPARED_INPUTS_SCHEMA_VERSION == 2
+    assert artifact.attrs["schema_version"] == prepared_contract.PREPARED_INPUTS_SCHEMA_VERSION == 3
     assert "site_indicator" not in artifact["inv_inputs"].data_vars
     assert "site_names" not in artifact["inv_inputs"].data_vars
 

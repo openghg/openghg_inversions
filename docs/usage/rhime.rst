@@ -279,10 +279,15 @@ paths ending in ``.zarr``. Each artifact contains the canonical inversion
 inputs and the retained operator-backed basis, including its reference flux;
 ``basis_artifact_path`` is recorded only as provenance and is not needed to
 reload or run the prepared inputs. Prepared-input artifacts use a versioned
-schema, CF compression-by-gathering for MultiIndexes, and a labeled
-``site_metadata(site)`` dataset. Integer ``site_indicator`` values are derived
-from the ``nmeasure`` site level as zero-based positions into that separate
-site coordinate:
+schema. Writers use generic version 3 for both ordinary and explicitly centered
+representations. The reader also accepts validated ordinary raw version 2;
+retired baked-v1 and ambiguous centered-v2 artifacts require regeneration. See
+:doc:`prepared_format_support` for identifiers and enclosing versions. See the
+:ref:`centered boundary contract <surface-centered-boundary-contract>` for
+operands and supported models. The artifacts use CF compression-by-gathering
+for MultiIndexes and a labeled ``site_metadata(site)`` dataset. Integer
+``site_indicator`` values are derived from the ``nmeasure`` site level as
+zero-based positions into that separate site coordinate:
 ``site_metadata.site[site_indicator]`` must equal the ``site`` level of
 ``nmeasure``. The indicator itself is not the CF gathering coordinate, and
 callers do not need to keep a second positional decoder synchronized. Indicators

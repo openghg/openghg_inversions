@@ -194,7 +194,7 @@ def save_samples(
     )
     save_trace(posterior, destination / "posterior.nc")
     return finish_checkpoint(destination, "sample", {
-        "schema": "openghg_inversions.standard.sample", "schema_version": 2,
+        "schema": "openghg_inversions.standard.sample", "schema_version": 3,
         "producer": "openghg_inversions", "stage": "sample",
         "preparation": os.path.relpath(preparation_path, destination), "preparation_generation": preparation["generation"],
         "posterior": "posterior.nc", "output_contract": output_contract.to_dict(),
@@ -256,7 +256,9 @@ def load_samples(sample_manifest: str | Path) -> InversionOutput:
     """Decode a completed sample checkpoint into its existing scientific output view.
 
     Args:
-        sample_manifest: Sample record and manifest-relative artifact references.
+        sample_manifest: Version-3 sample record and manifest-relative artifact
+            references. Older sample manifests require their original software
+            or repeating sampling from a supported preparation.
 
     Returns:
         Scientific inputs, posterior, model roles and recorded inference metadata,
@@ -270,7 +272,7 @@ def load_samples(sample_manifest: str | Path) -> InversionOutput:
     path, record = read_manifest(sample_manifest, "openghg_inversions.standard.sample", (
         "preparation", "preparation_generation", "posterior", "output_contract", "model",
         "actual_inference", "provenance",
-    ), schema_version=2)
+    ), schema_version=3)
     preparation_path = reference(path, record["preparation"])
     if not isinstance(record["preparation_generation"], str) or not record["preparation_generation"]:
         raise ValueError(f"Sample manifest {path} requires a preparation generation.")

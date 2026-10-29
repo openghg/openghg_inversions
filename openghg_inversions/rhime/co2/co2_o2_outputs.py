@@ -240,8 +240,19 @@ def calculate_co2_o2_products(*, result: Co2O2Output, output: Co2O2OutputOptions
         "linked_preparation_provenance": json.dumps(dict(result.prepared.provenance), sort_keys=True),
         "linked_ratio_provenance": result.prepared.o2_sensitivity.attrs["oxidation_ratio_provenance"],
     }
+    roles = json.loads(result.idata.attrs["rhime_variable_roles"])
     products = {}
     for species, values in components.items():
+        rows = result.prepared.observations.species.values == species
+        for when in ("prior", "posterior"):
+            if when not in result.idata.children:
+                continue
+            for component in ("reference", "mean_shift", "anomaly"):
+                role = f"{species}_boundary_{component}_concentration"
+                if role in roles:
+                    component_draws = _role(result.idata, role, when).isel(observation=rows)
+                    component_draws, _ = xr.align(component_draws, values, join="exact", copy=False)
+                    values[f"boundary_{component}_{when}"] = component_draws.variable
         values.attrs.update(metadata)
         products[f"{species}_concentration_components"] = values
         products[f"{species}_basic"] = _summaries(values)

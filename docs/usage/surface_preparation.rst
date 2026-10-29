@@ -212,6 +212,10 @@ ordinary CO₂ coherent reduction automatically; see :doc:`coherent_reduction` a
 Centered preparation handoff
 ----------------------------
 
+See :doc:`centered_boundary_conditions` for definitions of the anomaly and
+mass operators, their mathematical relation to the absolute boundary response,
+and pseudocode for native curtain products, spatial projection and period masks.
+
 Apply supported observation selection first, then derive missing observation
 errors with ``prepare_observation_errors`` on the retained population. Explicit
 existing errors remain unchanged. Project the native ``bc_anomaly_*`` and
@@ -246,14 +250,16 @@ flux basis for separate fields):
 
 Selection filters preserve aligned operands and scalar references. Preparation
 owns spatial ``bc_basis_algorithm="NESW"`` or explicit ``bc_basis_paths``;
-frequency and anchor belong to the model.
+frequency and anchor belong to the model. Both representations are written in
+generic format version 3 with an explicit representation field. Known ordinary
+raw-v2 files remain readable; retired baked-v1 and ambiguous centered-v2 files
+must be regenerated. See :doc:`prepared_format_support` for the exact map.
 Old rounded ``H_bc`` alone cannot recover accurate centered operands.
 
-Linked CO₂/O₂ preparation can retain centered operands in memory. Its dedicated
-prepared-input serialization does not yet support those operands; ``to_datatree``
-and ``save`` reject them explicitly. Persistence belongs to the later centered
-output integration. Standalone CO₂ prepared inputs retain the raw
-operands through their existing input-dataset serialization.
+Standalone CO₂ and linked CO₂/O₂ prepared inputs support saving and reopening
+both ordinary boundaries and centered operands. Linked centered operands use the
+version-2 dedicated prepared-input schema; ordinary linked inputs retain
+version-1 compatibility. See :doc:`prepared_format_support` for supported formats.
 
 The additive-Gaussian and cached fixed-OU CO₂ and linked CO₂/O₂ routes bind raw
 operands to BC periods at model construction. Their model-facing runners and
@@ -282,13 +288,22 @@ Native observation labels select boundary rows. When observations carry a
 boundary timestamps. Boundary times that also serve as indexed row labels must
 agree with the observation timestamps; conflicting values raise an error.
 
-Centered inference supports the additive-Gaussian recipe and fixed-OU recipes
-with inferred amplitudes using the matched cached sampler. Configure PyTensor
+Centered inference supports the additive-Gaussian recipe, ordinary fixed-OU
+likelihoods with fixed or inferred amplitudes, and inferred-amplitude fixed OU
+using the matched cached sampler. Both multiplicative and additive BC priors
+can use numerical centering; a linked model can retain multiplicative CO2
+boundaries while fitting additive O2 corrections. Configure PyTensor
 ``floatX=float64`` before model construction; these routes reject an explicit
-float32 choice. Fixed-amplitude OU and custom likelihood routes still reject
-centered inputs. Standard and multisector model builders also reject them;
-their preparation operations can still produce the reusable canonical handoff
-shown above.
+float32 choice.
+
+The concrete CO2 builder passes centered observations and means to a custom
+likelihood callback with unchanged error operands. The prepared-input runner
+restricts centered replay to its supported built-in likelihoods because its
+fixed observed-variable roles and predictive-restoration contract have not been
+established for arbitrary callbacks. Direct custom-model callers own that
+contract. Standard and multisector model builders still reject centered inputs;
+their preparation operations can produce the reusable canonical handoff shown
+above.
 
 For the original BC coefficients b, the centered likelihood uses
 ``q = c * M @ ones``, ``y_centered = y - q`` and

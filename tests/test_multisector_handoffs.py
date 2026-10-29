@@ -419,3 +419,27 @@ def test_cli_leaves_malformed_schema_to_manifest_loader(tmp_path, schema):
     with pytest.raises(ValueError, match="version-2 manifest"):
         main(["sample", "--model", "multisector", "--preparation-manifest", str(manifest),
               "--output-dir", str(tmp_path / "sample")])
+
+
+def test_sample_version_rejects_retired_model_record_before_payload_loading(preparation, tmp_path, monkeypatch):
+    sampled = _save_sample(tmp_path, preparation)
+    record = json.loads(sampled.read_text())
+    assert json.loads(preparation[0].read_text())["schema_version"] == 2
+    assert record["schema_version"] == 3
+    assert stages.load_samples(sampled).trace["posterior"].sizes["draw"] == 3
+    record["schema_version"] = 2
+    record["model"]["aggregation_error_mode"] = "none"
+    sampled.write_text(json.dumps(record))
+    monkeypatch.setattr(stages, "_load_preparation", lambda *a, **k: pytest.fail("loaded obsolete sample payload"))
+
+    with pytest.raises(ValueError, match="version-3 manifest.*Use the software version that wrote it or prepare and sample again"):
+        stages.load_samples(sampled)
+
+
+def test_independent_diagnosis_accepts_current_sample_manifest(preparation, tmp_path, monkeypatch):
+    from openghg_inversions.rhime._stage_checks import diagnose_rhime_stage
+    sampled = _save_sample(tmp_path, preparation)
+    monkeypatch.setattr(stages, "build_multisector_model", lambda *a, **k: pytest.fail("graph construction"))
+    check = diagnose_rhime_stage(sample_manifest=sampled, output_dir=tmp_path / "diagnosis")
+    assert check["status"] in {"unknown", "fail"}
+    assert check["measured_values"]["draws_per_chain"] == 3

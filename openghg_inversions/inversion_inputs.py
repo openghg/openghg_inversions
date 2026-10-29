@@ -234,8 +234,9 @@ def _check_required_inv_input_vars(
     """
     missing_required = [var for var in required_vars if var not in ds]
 
-    if any("H_bc" in fp_data[site] for site in sites) and "H_bc" not in ds:
-        missing_required.append("H_bc")
+    for name in ("H_bc", "G_bc", "bc_centering_weights"):
+        if any(name in fp_data[site] for site in sites) and name not in ds:
+            missing_required.append(name)
 
     if missing_required:
         raise ValueError(
@@ -297,6 +298,10 @@ def make_inv_inputs(
     together before invalid observations are discarded; the full pre-selection
     core arrays must fit in memory. Other extension arrays may remain lazy.
 
+    Optional dimensionless ``G_bc`` retains the same raw spatial states as
+    ``H_bc``. Supply explicit ``bc_centering_weights`` on the resolved
+    boundary-state labels when preparing the additive model.
+
     Args:
         fp_data: Per-site merged observations and sensitivity data.
         sites: Sites to retain. ``None`` infers all non-metadata ``fp_data``
@@ -329,6 +334,14 @@ def make_inv_inputs(
     if missing_sites:
         raise ValueError(f"`fp_data` is missing requested site(s): {missing_sites!r}.")
 
+    if any("bc_centering_weights" in fp_data[site] for site in sites):
+        raise ValueError(
+            "Supply bc_centering_weights on resolved boundary states in prepare_co2_inputs, "
+            "after gathering and period expansion."
+        )
+    if any("G_bc" in fp_data[site] and "H_bc" not in fp_data[site] and "H_bc_mass" not in fp_data[site]
+           for site in sites):
+        raise ValueError("G_bc requires H_bc or centered H_bc_mass at every contributing site.")
     site_data = {site: fp_data[site] for site in sites}
     from openghg_inversions.boundary_sensitivity import validate_boundary_operands
 
@@ -402,5 +415,9 @@ def make_inv_inputs(
         ds["H_bc"].attrs["boundary_sensitivity_preparation"] = (
             "unexpanded" if reference is not None else "raw-spatial"
         )
+        if "G_bc" in ds:
+            ds["G_bc"] = ds.G_bc.assign_attrs(
+                boundary_sensitivity_preparation=ds.H_bc.attrs["boundary_sensitivity_preparation"]
+            )
 
     return _drop_nan_and_compute(ds)

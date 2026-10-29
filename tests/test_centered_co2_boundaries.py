@@ -12,7 +12,7 @@ from openghg_inversions.boundary_sensitivity import align_boundary_operands
 from openghg_inversions.models import StateActivity, get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.rhime.co2 import build_co2_model
+from openghg_inversions.rhime.co2 import build_co2_model, Co2PreparedInputs, Co2O2PreparedInputs
 from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands, restore_absolute_predictives
 from openghg_inversions.rhime.co2.co2_o2_runner import build_rhime_co2_o2, annotate_co2_o2_trace
 from openghg_inversions.rhime.co2.co2_runner import (
@@ -266,8 +266,27 @@ def test_prepared_single_save_reopen_and_tiny_runner(tmp_path, predictions):
     assert replayed.bound.artifact.prepared_inputs_id == prepared_inputs_content_id(preparation.payload)
 
 
+def test_centered_prepared_with_absolute_diagnostic_save_reopen_build(tmp_path):
+    prepared = _centered_prepared()
+    inputs = prepared.inv_inputs
+    diagnostic = (inputs.H_bc_anomaly + inputs.bc_reference * inputs.H_bc_mass).assign_attrs(
+        boundary_sensitivity_preparation="unexpanded", units="ppm"
+    )
+    prepared = replace(
+        prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs.assign(H_bc=diagnostic))
+    )
+    path = tmp_path / "diagnostic.nc"
+    prepared.save(path)
+    restored = Co2PreparedInputs.load(path)
+    options = dict(use_bc=True, no_model_error=True)
+    materialized, priors = materialize_co2_inputs(prepared_inputs=restored, **options)
+    assert "H_bc" in materialized
+    built = build_co2_from_materialized(materialized, prepared_inputs=restored, priors=priors, **options)
+    assert "H_bc_anomaly" in built.model.named_vars
+
+
 @pytest.mark.parametrize("predictions", [False, True])
-def test_linked_independent_axes_prior_prediction(tmp_path, predictions):
+def test_linked_independent_axes_codec_and_prior_prediction(tmp_path, predictions):
     prepared = _linked()
     from openghg_inversions.array_ops import select_gathered_data_array
 
@@ -282,7 +301,9 @@ def test_linked_independent_axes_prior_prediction(tmp_path, predictions):
         )
         operands[channel] = _operands(native)
     prepared = replace(prepared, boundary_operands=operands)
-    restored = prepared
+    path = tmp_path / "linked.nc"
+    prepared.save(path)
+    restored = Co2O2PreparedInputs.load(path)
     assert restored.boundary_operands["co2"].sizes["nmeasure"] == 2
     assert restored.boundary_operands["o2"].sizes["nmeasure"] == 3
     built = build_rhime_co2_o2(
@@ -350,7 +371,7 @@ def test_prediction_shift_selection_uses_labels_and_prediction_constants(tmp_pat
 
 def test_unsupported_likelihood_fails_before_materialization():
     prepared = _centered_prepared()
-    with pytest.raises(ValueError, match="custom or fixed-OU"):
+    with pytest.raises(ValueError, match="custom"):
         materialize_co2_inputs(
             prepared_inputs=prepared, likelihood_builder=lambda **kwargs: None, use_bc=True
         )
@@ -409,8 +430,7 @@ def test_public_linked_preparation_retains_raw_operands():
     operands = {channel: _operands(options[f"{channel}_observations"]) for channel in ("co2", "o2")}
     prepared = prepare_co2_o2_inputs(**options, boundary_operands=operands)
     assert prepared.boundary_operands["co2"] is operands["co2"]
-    with pytest.raises(ValueError, match="Centered.*serialization is not yet available"):
-        prepared.to_datatree()
+    assert prepared.to_datatree().attrs["schema_version"] == 2
     with pytest.raises(ValueError, match="not both"):
         prepare_co2_o2_inputs(
             **options,
@@ -467,18 +487,12 @@ def test_related_centered_arrays_materialize_one_shared_graph():
     assert isinstance(prepared.inv_inputs.H_bc_mass.data, da.Array)
 
 
-def test_centered_cached_and_fixed_ou_rejected_before_materialization(monkeypatch):
-    from openghg_inversions.rhime.co2 import co2_o2_runner, co2_cached_sigma_runner
+def test_centered_cached_rejects_float32_before_materialization(monkeypatch):
+    from openghg_inversions.rhime.co2 import co2_cached_sigma_runner
 
     def unexpected(*args, **kwargs):
         pytest.fail("materialized unsupported centered request")
 
-    monkeypatch.setattr(co2_o2_runner, "_materialize_co2_o2_replay_inputs", unexpected)
-    prepared = _linked()
-    operands = _operands(prepared.co2_sensitivity.isel({prepared.retained_prior.state_dim: 0}))
-    prepared = replace(prepared, boundary_operands={"co2": operands})
-    with pytest.raises(ValueError, match="fixed-OU"):
-        build_rhime_co2_o2(prepared_inputs=prepared, tau_hours=2.0)
     monkeypatch.setattr(co2_cached_sigma_runner, "materialize_pymc_inputs", unexpected)
     with pytensor.config.change_flags(floatX="float32"), pytest.raises(ValueError, match="float64"):
         co2_cached_sigma_runner.build_rhime_co2_cached_sigma(
@@ -487,6 +501,15 @@ def test_centered_cached_and_fixed_ou_rejected_before_materialization(monkeypatc
             site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.1},
             use_bc=True,
         )
+
+
+def test_linked_codec_rejects_missing_centered_marker():
+    prepared = _linked()
+    operands = _operands(prepared.co2_sensitivity.isel({prepared.retained_prior.state_dim: 0}))
+    tree = replace(prepared, boundary_operands={"co2": operands}).to_datatree()
+    tree["co2_boundary_operands"].attrs.pop("boundary_representation")
+    with pytest.raises(ValueError, match="centered-v1"):
+        Co2O2PreparedInputs.from_datatree(tree)
 
 
 def test_default_boundary_prior_support_and_error_arrays_are_unchanged():

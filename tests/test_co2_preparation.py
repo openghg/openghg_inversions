@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 import warnings
@@ -580,3 +581,146 @@ def test_standard_runner_materializes_aggregation_payload_once(
         )
 
     assert executions == 1
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_centered_co2_envelope_embeds_current_generic_representation(tmp_path: Path, suffix: str) -> None:
+    """The CO2 envelope has independent versions and validates its generic child."""
+    canonical = _canonical_inputs()
+    inputs = canonical.inv_inputs.copy(deep=False)
+    inputs["H_bc_anomaly"] = xr.DataArray(
+        [[1., 2., 3.]], dims=("bc_region", "nmeasure"),
+        coords={"bc_region": ["north"], "nmeasure": inputs.nmeasure}, attrs={"units": "ppm"},
+    )
+    inputs["H_bc_mass"] = xr.ones_like(inputs.H_bc_anomaly).assign_attrs(units="1")
+    inputs["bc_reference"] = xr.DataArray(400., attrs={"units": "ppm"})
+    inputs.attrs["boundary_representation"] = "centered-v1"
+    canonical = PreparedInputs(inputs, canonical.basis_functions, canonical.site_metadata)
+    prepared = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=None)
+    tree = prepared.to_datatree()
+    assert tree.attrs["schema_version"] == 2
+    assert tree["rhime_inputs"].attrs["schema_version"] == 3
+    assert tree["rhime_inputs"].attrs["representation"] == "centered"
+    path = tmp_path / f"centered-co2{suffix}"
+    prepared.save(path)
+    restored = Co2PreparedInputs.load(path)
+    xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)
+    tree["rhime_inputs"].attrs["representation"] = "ordinary"
+    with pytest.raises(ValueError, match="representation"):
+        Co2PreparedInputs.from_datatree(tree)
+    tree["rhime_inputs"].attrs["schema_version"] = 2
+    del tree["rhime_inputs"].attrs["representation"]
+    with pytest.raises(ValueError, match="[Rr]egenerate"):
+        Co2PreparedInputs.from_datatree(tree)
+
+
+def test_boundary_mean_shift_response_survives_preparation_and_round_trip(tmp_path: Path) -> None:
+    canonical = _canonical_inputs()
+    canonical.inv_inputs["H_bc"] = xr.DataArray(
+        np.ones((2, 3)), dims=("bc_region", "nmeasure"), coords={"bc_region": ["north", "east"]}
+    )
+    response = xr.DataArray(
+        da.from_array([[1.0, 0.3], [0.7, 0.2], [0.2, 0.6]], chunks=(2, 2)),
+        dims=("nmeasure", "bc_region"),
+        coords={**canonical.inv_inputs.mf.coords, "bc_region": ["north", "east"]},
+        attrs={"units": "1"},
+    )
+    weights = xr.DataArray(
+        [1.0, 2.0], dims="bc_region", coords={"bc_region": ["north", "east"]}, attrs={"units": "1"}
+    )
+    original = canonical.inv_inputs.copy(deep=True)
+    prepared = prepare_co2_inputs(
+        canonical, _reduction(canonical), aggregation_error_rank=None,
+        boundary_correction_sensitivity=response, bc_centering_weights=weights,
+    )
+    xr.testing.assert_identical(canonical.inv_inputs, original)
+    assert hasattr(prepared.inv_inputs.G_bc.data, "__dask_graph__")
+    path = tmp_path / "shift.nc"
+    prepared.save(path)
+    loaded = Co2PreparedInputs.load(path)
+    xr.testing.assert_identical(loaded.inv_inputs.G_bc, response.rename("G_bc").compute())
+    xr.testing.assert_identical(loaded.inv_inputs.bc_centering_weights, weights.rename({"bc_region": "bc_centering_state"}).rename("bc_centering_weights"))
+    for select in (co2_runner.co2_model_input_names, co2_cached_sigma_runner.co2_cached_sigma_input_names):
+        extra = (
+            {"preserve_prepared_fixed_mismatch": False} if select is co2_runner.co2_model_input_names else {}
+        )
+        assert "G_bc" not in select(loaded, use_bc=True, **extra)
+        names = select(loaded, use_bc=True, use_bc_mean_shift=True, **extra)
+        assert {"G_bc", "bc_centering_weights"} <= set(names)
+        with pytest.raises(ValueError, match="requires use_bc"):
+            select(loaded, use_bc_mean_shift=True, **extra)
+    for bad_response, bad_weights, message in (
+        (response.assign_attrs(units="ppm"), weights, "units"),
+        (response.isel(nmeasure=[2, 1, 0]), weights, "align|index|coordinate"),
+        (response.drop_indexes("bc_region"), weights, "labelled"),
+        (response, None, "together"),
+        (None, weights, "together"),
+    ):
+        with pytest.raises(ValueError, match=message):
+            prepare_co2_inputs(
+                canonical, _reduction(canonical),
+                boundary_correction_sensitivity=bad_response, bc_centering_weights=bad_weights,
+            )
+    canonical.inv_inputs["G_bc"] = (response.dims, response.data, response.attrs)
+    canonical.inv_inputs["bc_centering_weights"] = weights
+    retained = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=None)
+    xr.testing.assert_identical(retained.inv_inputs.G_bc, response.rename("G_bc"))
+    for missing in ("H_bc", "G_bc", "bc_centering_weights"):
+        broken = replace(canonical, inv_inputs=canonical.inv_inputs.drop_vars(missing))
+        with pytest.raises(ValueError, match="together with H_bc"):
+            prepare_co2_inputs(broken, _reduction(canonical), aggregation_error_rank=None)
+
+
+@pytest.mark.parametrize("shared_consumer", [None, "data_variable", "multidimensional_coordinate"])
+def test_centered_unit_response_and_resolved_weights_keep_independent_states(tmp_path, shared_consumer):
+    """Re-preparation replaces owned weights without changing shared inputs."""
+    from openghg_inversions.boundary_sensitivity import BoundaryAlignment
+
+    canonical = _canonical_inputs()
+    inputs = canonical.inv_inputs.copy(deep=False)
+    inputs["H_bc_anomaly"] = xr.DataArray(
+        np.tile([1., 0.], (3, 1)).T, dims=("bc_region", "nmeasure"),
+        coords={"bc_region": ["north", "east"], "nmeasure": inputs.nmeasure}, attrs={"units": "ppm"},
+    )
+    inputs["H_bc_mass"] = xr.DataArray(
+        da.from_array(np.tile([0.8, 0.0], (3, 1)).T, chunks=(2, 1)),
+        dims=inputs.H_bc_anomaly.dims, coords=inputs.H_bc_anomaly.coords, attrs={"units": "1"},
+    )
+    inputs["bc_reference"] = xr.DataArray(200_000., attrs={"units": "ppm"})
+    inputs.attrs["boundary_representation"] = "centered-v1"
+    canonical = replace(canonical, inv_inputs=inputs)
+    single_period = BoundaryAlignment.prepare(inputs.H_bc_mass).data
+    initial_weights = xr.ones_like(single_period.isel(nmeasure=0, drop=True)).assign_attrs(units="1")
+    initial = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=None,
+                                bc_centering_weights=initial_weights)
+    borrowed = initial.rhime_inputs
+    assert borrowed.inv_inputs.sizes["bc_centering_state"] == 2
+    if shared_consumer == "data_variable":
+        borrowed.inv_inputs["shared_weights_axis"] = xr.ones_like(borrowed.inv_inputs.bc_centering_weights)
+    elif shared_consumer == "multidimensional_coordinate":
+        borrowed.inv_inputs.coords["shared_weights_axis"] = (
+            ("bc_centering_state", "region"), np.ones((2, 2))
+        )
+    original = borrowed.inv_inputs.copy(deep=True)
+    resolved = BoundaryAlignment.prepare(inputs.H_bc_mass, frequency="1D").data
+    weights = xr.ones_like(resolved.isel(nmeasure=0, drop=True)).assign_attrs(units="1")
+    if shared_consumer is not None:
+        with pytest.raises(ValueError, match="bc_centering_state.*shared_weights_axis"):
+            prepare_co2_inputs(borrowed, _reduction(canonical), aggregation_error_rank=None,
+                               bc_centering_weights=weights)
+        xr.testing.assert_identical(borrowed.inv_inputs, original)
+        return
+    prepared = prepare_co2_inputs(borrowed, _reduction(canonical), aggregation_error_rank=None,
+                                 bc_centering_weights=weights)
+    xr.testing.assert_identical(borrowed.inv_inputs, original)
+    expected_labels = resolved.indexes["bc_region"].set_names(["bc_centering_curtain", "bc_centering_period"])
+    assert prepared.inv_inputs.indexes["bc_centering_state"].equals(expected_labels)
+    assert prepared.inv_inputs.sizes["bc_region"] == 2
+    assert prepared.inv_inputs.sizes["bc_centering_state"] == 6
+    assert isinstance(prepared.inv_inputs.G_bc.data, da.Array)
+    xr.testing.assert_equal(prepared.inv_inputs.G_bc, inputs.H_bc_mass.transpose("nmeasure", "bc_region").rename("G_bc"))
+    path = tmp_path / "resolved-weights.nc"
+    prepared.save(path)
+    loaded = Co2PreparedInputs.load(path)
+    assert loaded.inv_inputs.sizes["bc_region"] == 2
+    assert loaded.inv_inputs.sizes["bc_centering_state"] == 6

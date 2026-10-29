@@ -273,9 +273,18 @@ def reconstruct_co2_concentrations(trace: xr.DataTree, prepared: Co2PreparedInpu
         "flux_scale": "flux_scale",
         "active_flux_scale": "active_flux_scale",
         "boundary_scale": "boundary_scale",
+        "boundary_mean_shift": "boundary_mean_shift",
+        "boundary_anomaly": "boundary_anomaly",
+        "boundary_correction": "boundary_correction",
+        "boundary_reference": "reference_boundary_concentration",
+        "boundary_mean_contribution": "boundary_mean_shift_concentration",
+        "boundary_anomaly_contribution": "boundary_anomaly_concentration",
         "offset_coefficient": "offset_coefficient",
         "total_error": "model_error",
     }
+    # Legacy centered models use this role for a fixed transport operand.
+    if "boundary_correction" not in roles:
+        component_roles.pop("boundary_anomaly")
     for group in ("prior", "posterior"):
         if group not in trace.children:
             if group == "prior":
@@ -421,6 +430,8 @@ def _paris_products(components, native, country, countries, result, source_to_se
             or "pollution" in str(name)
         ]
     )
+    # Boundary diagnostics are distinct from the one coherent emission component.
+    concentration.attrs["source_components"] = json.dumps(["emissions"])
     concentration["total_error"] = concentration.total_error_posterior
     concentration = concentration.drop_vars(["total_error_prior", "total_error_posterior", "residual_prior"])
     domain = result.domain

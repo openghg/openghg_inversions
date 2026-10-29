@@ -931,3 +931,62 @@ def test_linked_save_passes_lazy_dense_chunks_to_writer(
     if suffix == ".zarr":
         with xr.open_datatree(path, engine="zarr", chunks={}) as tree:
             assert tree["co2_sensitivity"]["co2_effective_sensitivity"].data.chunks == payload.chunks
+
+
+def test_additive_boundary_responses_preserve_lazy_channels_and_round_trip(tmp_path):
+    inputs = _inputs()
+    inputs["o2_units"] = "ppm"
+    correction = {}
+    weights = {}
+    boundary = {}
+    for channel, size in (("co2", 2), ("o2", 3)):
+        dim = f"{channel}_measure"
+        correction[channel] = xr.DataArray(
+            da.from_array(np.tile([0.8, 0.0], (size, 1)), chunks=(1, 2)),
+            dims=(dim, "bc_region"),
+            coords={dim: inputs[f"{channel}_observations"][dim], "bc_region": ["north", "east"]},
+            attrs={"units": "1"},
+        )
+        boundary[channel] = (correction[channel] * (400 if channel == "co2" else 200_000)).assign_attrs(units="ppm")
+        weights[channel] = xr.DataArray([1., 2.], dims="bc_region", coords={"bc_region": ["north", "east"]}, attrs={"units": "1"})
+    prepared = prepare_co2_o2_inputs(**inputs, boundary_sensitivity=boundary,
+                                   boundary_correction_sensitivity=correction, bc_centering_weights=weights)
+    assert isinstance(prepared.boundary_correction_sensitivity["o2"].data, da.Array)
+    assert prepared.boundary_correction_sensitivity["o2"].data is correction["o2"].data
+    assert prepared.to_datatree().attrs["schema_version"] == 3
+    path = tmp_path / "additive.nc"
+    prepared.save(path)
+    loaded = Co2O2PreparedInputs.load(path)
+    for channel in correction:
+        xr.testing.assert_identical(loaded.boundary_correction_sensitivity[channel], correction[channel].compute())
+        xr.testing.assert_identical(loaded.bc_centering_weights[channel], weights[channel])
+    with pytest.raises(ValueError, match="matching co2/o2"):
+        prepare_co2_o2_inputs(**inputs, boundary_sensitivity=boundary,
+                             boundary_correction_sensitivity=correction, bc_centering_weights={"o2": weights["o2"]})
+    for values, message in (([[-1., 0.]] * 3, "non-negative"), ([[np.nan, 0.]] * 3, "finite"), ([[0., 0.]] * 3, "all zero")):
+        broken = {**correction, "o2": correction["o2"].copy(data=np.asarray(values))}
+        with pytest.raises(ValueError, match=message):
+            prepare_co2_o2_inputs(**inputs, boundary_sensitivity=boundary,
+                                 boundary_correction_sensitivity=broken, bc_centering_weights=weights)
+
+
+def test_centered_mass_is_an_explicit_unit_response_for_additive_preparation():
+    inputs = _inputs()
+    inputs["o2_units"] = "ppm"
+    observations = inputs["o2_observations"]
+    mass = xr.DataArray(
+        da.from_array([[0.8, 0.7, 0.6], [0., 0., 0.]], chunks=(2, 1)),
+        dims=("bc_region", "nmeasure"),
+        coords={"bc_region": ["north", "east"], "nmeasure": observations.o2_measure.values},
+        attrs={"units": "1"},
+    )
+    operands = xr.Dataset({"H_bc_anomaly": (mass * 2).assign_attrs(units="ppm"),
+                           "H_bc_mass": mass, "bc_reference": xr.DataArray(200_000., attrs={"units": "ppm"})},
+                          attrs={"boundary_representation": "centered-v1"})
+    weights = xr.DataArray([1., 2.], dims="bc_region", coords={"bc_region": ["north", "east"]}, attrs={"units": "1"})
+    prepared = prepare_co2_o2_inputs(**inputs, boundary_operands={"o2": operands},
+                                   bc_centering_weights={"o2": weights})
+    assert prepared.boundary_correction_sensitivity["o2"].data is mass.data
+    tree = prepared.to_datatree()
+    loaded = Co2O2PreparedInputs.from_datatree(tree)
+    xr.testing.assert_identical(loaded.boundary_correction_sensitivity["o2"], operands.H_bc_mass)

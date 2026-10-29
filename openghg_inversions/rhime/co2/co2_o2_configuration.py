@@ -197,6 +197,10 @@ class Co2O2ModelConfig:
     use_bc: Mapping[str, bool] | None = None
     bc_prior: Mapping[str, Any] | None = None
     bc_state_activity: Mapping[str, StateActivity] | None = None
+    bc_mean_shift_prior_co2: Mapping[str, Any] | None = None
+    bc_mean_shift_prior_o2: Mapping[str, Any] | None = None
+    bc_anomaly_scale_co2: float | None = None
+    bc_anomaly_scale_o2: float | None = None
     offset_prior: Mapping[str, Any] | None = None
     offset_args: Mapping[str, Any] | None = None
     tau_hours: float | Mapping[str, float] | None = None
@@ -245,6 +249,8 @@ class Co2O2ModelConfig:
                     if key in model and not same:
                         raise ValueError("Linked boundary frequency and anchor_time must agree across channels.")
                     model[key] = value
+                elif key in {"bc_mean_shift_prior", "bc_anomaly_scale"}:
+                    model[f"{key}_{name}"] = value
                 else:
                     model.setdefault(key, {})[name] = value
             _reject_unknown(channel, f"channels.{name}")

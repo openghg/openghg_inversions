@@ -30,7 +30,7 @@ from openghg_inversions.serialization import (
 )
 
 PREPARED_INPUTS_SCHEMA = "openghg_inversions.rhime_prepared_inputs"
-PREPARED_INPUTS_SCHEMA_VERSION = 2
+PREPARED_INPUTS_SCHEMA_VERSION = 3
 _SITE_AVERAGING_PERIOD = "averaging_period"
 _SITE_STRING_ENCODING = "_rhime_nullable_string_encoding"
 
@@ -178,12 +178,18 @@ class PreparedInputs:
         dt.attrs = {
             "schema": PREPARED_INPUTS_SCHEMA,
             "schema_version": PREPARED_INPUTS_SCHEMA_VERSION,
+            "representation": "centered" if "H_bc_anomaly" in inv_inputs else "ordinary",
         }
         return dt
 
     @classmethod
     def from_datatree(cls: type[Self], dt: xr.DataTree) -> Self:
-        """Construct prepared RHIME inputs from the current raw-input DataTree.
+        """Restore current inputs or validated ordinary raw version-2 inputs.
+
+        Version 3 declares ``representation`` as ``ordinary`` or ``centered``.
+        Version 2 is accepted only for the ordinary raw format from the reusable
+        input lifecycle. Older baked and ambiguous centered artifacts require
+        regeneration with their original acquisition and preparation choices.
 
         Args:
             dt: DataTree using the ``openghg_inversions.rhime_prepared_inputs``
@@ -207,12 +213,12 @@ class PreparedInputs:
 
         version = dt.attrs.get("schema_version")
         if (isinstance(version, bool) or not isinstance(version, Integral)
-                or version != PREPARED_INPUTS_SCHEMA_VERSION):
+                or version not in (2, PREPARED_INPUTS_SCHEMA_VERSION)):
             raise ValueError(
                 f"Expected PreparedInputs schema_version "
-                f"{PREPARED_INPUTS_SCHEMA_VERSION}, got {version!r}. "
+                f"2 (ordinary raw) or {PREPARED_INPUTS_SCHEMA_VERSION}, got {version!r}. "
                 "Older preparations may contain baked model policies; use their matching "
-                "software version or prepare the inputs again."
+                "software version or regenerate the prepared inputs."
             )
 
         missing_nodes = [
@@ -233,6 +239,30 @@ class PreparedInputs:
                 "is missing its 'compress' metadata."
             )
         inv_inputs = decode_cf_multiindexes(encoded_inv_inputs, compressed_indexes)
+        from openghg_inversions.boundary_sensitivity import validate_boundary_operands
+
+        if version == 2:
+            centered_names = {"H_bc_anomaly", "H_bc_mass", "bc_reference"}
+            if (centered_names.intersection(inv_inputs.variables)
+                    or "boundary_representation" in inv_inputs.attrs
+                    or "representation" in dt.attrs):
+                raise ValueError(
+                    "Ambiguous version-2 prepared artifact; only known ordinary raw inputs are supported. "
+                    "Regenerate centered inputs using the current format."
+                )
+            _validate_ordinary_raw_v2(inv_inputs)
+        try:
+            centered = validate_boundary_operands(inv_inputs)
+        except ValueError as error:
+            raise ValueError(f"{error} Regenerate incomplete or incompatible prepared inputs.") from error
+        if version == PREPARED_INPUTS_SCHEMA_VERSION:
+            representation = dt.attrs.get("representation")
+            expected = "centered" if centered else "ordinary"
+            if representation != expected:
+                raise ValueError(
+                    f"Prepared representation must be {expected!r} for its operands, got {representation!r}. "
+                    "Regenerate incomplete or mismatched prepared inputs."
+                )
         basis_functions_dt = cast(xr.DataTree, dt["basis_functions"])
         basis_functions = BasisFunctions.from_datatree(basis_functions_dt)
         return cls(
@@ -545,3 +575,19 @@ def _canonicalize_rhime_inv_inputs(
         return result.isel(state_indexers), site_metadata
     result = result.assign_coords(source=("source", list(actual_sources)))
     return result.sel(source=list(expected_sources)), site_metadata
+
+
+def _validate_ordinary_raw_v2(inputs: xr.Dataset) -> None:
+    """Accept only the known ordinary spatial boundary layout of version 2."""
+    if "H_bc" not in inputs:
+        return
+    boundary = inputs["H_bc"]
+    if (set(boundary.dims) != {"bc_region", "nmeasure"}
+            or isinstance(boundary.indexes.get("bc_region"), pd.MultiIndex)
+            or "bc_period" in boundary.coords
+            or boundary.attrs.get("boundary_sensitivity_preparation") != "raw-spatial"
+            or "bc_frequency" in boundary.attrs or "bc_anchor_time" in boundary.attrs):
+        raise ValueError(
+            "Version-2 prepared inputs require ordinary raw spatial H_bc; baked or unknown "
+            "boundary layouts are unsupported. Regenerate inputs with the current preparation API."
+        )

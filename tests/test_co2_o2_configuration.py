@@ -166,3 +166,22 @@ def test_direct_owner_binding_checks_both_configured_channel_units():
     model = Co2O2ModelConfig.from_params(_config())
     with pytest.raises(ValueError, match="do not match prepared"):
         replace(model, o2_units="ppb").bind(_prepared())
+
+
+def test_channel_additive_prior_scales_are_independent_and_replayable(tmp_path):
+    config = _config()
+    for channel, scale in (("co2", 0.5), ("o2", 2.0)):
+        config["channels"][channel]["boundary"] = {
+            "mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": scale},
+            "anomaly_scale": scale / 2,
+        }
+    path = tmp_path / "additive.json"
+    path.write_text(json.dumps(config))
+    choices = Co2O2ModelConfig.from_params(load_co2_o2_params(params_file=path)).bind(_prepared())
+    assert choices["bc_mean_shift_prior_co2"]["sigma"] == 0.5
+    assert choices["bc_mean_shift_prior_o2"]["sigma"] == 2.0
+    assert choices["bc_anomaly_scale_o2"] == 1.0
+    assert choices["use_bc"] == {"co2": True, "o2": True}
+    config["channels"]["o2"]["boundary"]["anomaly_scale"] = 0
+    with pytest.raises(ValueError, match="positive"):
+        Co2O2ModelConfig.from_params(config)

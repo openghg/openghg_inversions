@@ -42,7 +42,7 @@ from .co2_o2_preparation import Co2O2PreparedInputs
 
 
 CO2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_prepared_inputs"
-CO2_PREPARED_INPUTS_SCHEMA_VERSION = 1
+CO2_PREPARED_INPUTS_SCHEMA_VERSION = 2
 Co2AggregationErrorMode = Literal["dense", "low_rank"]
 _AGGREGATION_PAYLOAD_NAMES = (
     AGGREGATION_ERROR_COVARIANCE,
@@ -167,6 +167,17 @@ def _require_equivalent_units(actual: Any, expected: str, *, name: str) -> None:
         raise ValueError(f"{name} units {actual!r} do not have the same numeric scale as {expected!r}.")
 
 
+def _independent_boundary_weights(weights: xr.DataArray) -> xr.DataArray:
+    """Give resolved weights independent dimensions and MultiIndex level names."""
+    dim = str(weights.dims[0])
+    names = {dim: "bc_centering_state"} if dim != "bc_centering_state" else {}
+    index = weights.indexes.get(dim)
+    if isinstance(index, pd.MultiIndex):
+        names.update({str(name): f"bc_centering_{str(name).removeprefix('bc_')}"
+                      for name in index.names if not str(name).startswith("bc_centering_")})
+    return weights.rename(names) if names else weights
+
+
 def _validate_co2_dataset(inputs: xr.Dataset) -> None:
     """Validate the scientific layout owned by the CO2 artifact."""
     from openghg_inversions.boundary_sensitivity import validate_boundary_operands
@@ -224,6 +235,28 @@ def _validate_co2_dataset(inputs: xr.Dataset) -> None:
         )
     if mean.attrs.get("units") != "1" or covariance.attrs.get("units") != "1":
         raise ValueError("CO2 retained prior mean and covariance must be dimensionless.")
+
+    correction_names = {"G_bc", "bc_centering_weights"}
+    if correction_names & set(inputs):
+        reference = inputs.get("H_bc", inputs.get("H_bc_mass"))
+        if reference is None or "bc_centering_weights" not in inputs or ("G_bc" not in inputs and "H_bc_mass" not in inputs):
+            raise ValueError("G_bc and bc_centering_weights must be supplied together with H_bc or centered operands.")
+        correction = inputs.get("G_bc", inputs.get("H_bc_mass"))
+        assert correction is not None
+        correction = correction.transpose("nmeasure", "bc_region")
+        weights = inputs["bc_centering_weights"]
+        if weights.dims != ("bc_centering_state",):
+            raise ValueError("bc_centering_weights must use the independent bc_centering_state dimension.")
+        _require_axis(weights, "bc_centering_state", name="Boundary centering weights")
+        xr.align(correction, reference, observations, join="exact", copy=False)
+        for name, array in (("G_bc", correction), ("bc_centering_weights", weights)):
+            _require_equivalent_units(array.attrs.get("units"), "1", name=name)
+            if not hasattr(array.data, "__dask_graph__"):
+                values = array.data
+                if not np.isfinite(values).all() or (values < 0).any() or not (values > 0).any():
+                    raise ValueError(f"{name} must be finite, non-negative and not all zero.")
+                if name == "bc_centering_weights" and not (values > 0).all():
+                    raise ValueError("bc_centering_weights must be strictly positive.")
 
     squared_units = f"({concentration_units})**2"
     if AGGREGATION_ERROR_COVARIANCE in inputs:
@@ -387,7 +420,7 @@ class Co2PreparedInputs:
         tree = xr.DataTree.from_dict({"rhime_inputs": serializable.to_datatree()})
         tree.attrs = {
             "schema": CO2_PREPARED_INPUTS_SCHEMA,
-            "schema_version": CO2_PREPARED_INPUTS_SCHEMA_VERSION,
+            "schema_version": CO2_PREPARED_INPUTS_SCHEMA_VERSION if "H_bc_anomaly" in self.inv_inputs else 1,
             "aggregation_error_mode": self.aggregation_error_mode,
             "provenance_json": json.dumps(dict(self.provenance), sort_keys=True, allow_nan=False),
         }
@@ -395,7 +428,7 @@ class Co2PreparedInputs:
 
     @classmethod
     def from_datatree(cls, tree: xr.DataTree) -> Self:
-        """Restore CO2 inputs from the dedicated version-1 schema.
+        """Restore absolute or centered CO2 inputs from the dedicated schema.
 
         Args:
             tree: In-memory tree using the CO2 prepared-input schema.
@@ -414,10 +447,9 @@ class Co2PreparedInputs:
                 f"got {tree.attrs.get('schema')!r}."
             )
         version = tree.attrs.get("schema_version")
-        if isinstance(version, bool) or not isinstance(version, Integral) or version != 1:
+        if isinstance(version, bool) or not isinstance(version, Integral) or version not in (1, 2):
             raise ValueError(
-                f"Expected Co2PreparedInputs schema_version "
-                f"{CO2_PREPARED_INPUTS_SCHEMA_VERSION}, got {version!r}."
+                f"Expected Co2PreparedInputs schema_version 1 or 2, got {version!r}."
             )
         if "rhime_inputs" not in tree.children:
             raise KeyError("Missing required Co2PreparedInputs node 'rhime_inputs'.")
@@ -432,6 +464,8 @@ class Co2PreparedInputs:
             aggregation_error_mode=cast(Co2AggregationErrorMode, mode),
             provenance=provenance,
         )
+        if version == 1 and "H_bc_anomaly" in prepared.inv_inputs:
+            raise ValueError("Centered boundary operands require CO2 prepared schema version 2.")
         resolve_aggregation_error(prepared.inv_inputs, prepared.aggregation_error_mode)
         return prepared
 
@@ -517,6 +551,8 @@ def prepare_co2_inputs(
     reduction: CoherentGaussianReduction,
     *,
     aggregation_error_rank: int | None = 512,
+    boundary_correction_sensitivity: xr.DataArray | None = None,
+    bc_centering_weights: xr.DataArray | None = None,
     provenance: Mapping[str, Any] | None = None,
 ) -> Co2PreparedInputs:
     """Map one coherent Gaussian reduction into the CO2 replay contract.
@@ -549,6 +585,21 @@ def prepare_co2_inputs(
             larger than the observation count are capped at that count; the
             actual factor width is further limited by numerical positive rank.
             Pass ``None`` to store the exact dense covariance.
+        boundary_correction_sensitivity: Dimensionless response to a unit
+            additive concentration correction in each boundary state, with
+            dimensions ``(nmeasure, bc_region)`` and exactly the canonical
+            ``H_bc`` or centered ``H_bc_mass`` indexes. Stored as ``G_bc``. Supply transport and column
+            weighting consistent with ``H_bc``; values cannot be recovered
+            from concentration-weighted ``H_bc`` alone.
+        bc_centering_weights: Explicit positive dimensionless weights on
+            resolved ``bc_region`` or ``bc_centering_state`` defining the boundary
+            mean. Stored on the independent ``bc_centering_state`` dimension;
+            model construction normalizes them to sum to one. For centered
+            operands, explicitly supplied ``H_bc_mass`` supplies the unit response
+            when no correction response is passed. Existing canonical arrays
+            are retained when these arguments are omitted. Replacing weights
+            removes their previous independent axis; shared data variables or
+            multidimensional coordinate consumers prevent replacement.
         provenance: Optional JSON-serializable project or preparation
             provenance. The reduction strategy and LRPD diagnostics are added
             by this boundary.
@@ -692,6 +743,50 @@ def prepare_co2_inputs(
         ),
         "nmeasure",
     )
+
+    if boundary_correction_sensitivity is not None and bc_centering_weights is None:
+        raise ValueError("boundary_correction_sensitivity and bc_centering_weights must be supplied together.")
+    if bc_centering_weights is not None:
+        reference = inputs.get("H_bc", inputs.get("H_bc_mass"))
+        if reference is None:
+            raise ValueError("Boundary corrections require canonical H_bc or centered operands.")
+        correction = boundary_correction_sensitivity
+        if correction is None:
+            correction = inputs.get("H_bc_mass")
+            if correction is None:
+                raise ValueError("boundary_correction_sensitivity and bc_centering_weights must be supplied together.")
+        correction = correction.transpose("nmeasure", "bc_region")
+        weights = bc_centering_weights
+        weights = _independent_boundary_weights(weights).transpose("bc_centering_state")
+        for dim in ("nmeasure", "bc_region"):
+            _require_axis(correction, dim, name="Boundary correction sensitivity")
+        _require_axis(weights, "bc_centering_state", name="Boundary centering weights")
+        correction, _, _ = xr.align(correction, reference, observations, join="exact", copy=False)
+        correction = correction.assign_attrs(
+            **{"boundary_sensitivity_preparation": reference.attrs["boundary_sensitivity_preparation"]}
+        ) if "boundary_sensitivity_preparation" in reference.attrs else correction
+        mapped["G_bc"] = _borrow_without_axis_coordinates(correction, "nmeasure")
+        if "bc_centering_state" in mapped.dims:
+            consumers = [
+                name for name, array in mapped.variables.items()
+                if "bc_centering_state" in array.dims and name != "bc_centering_weights"
+                and (name not in mapped.coords or array.dims != ("bc_centering_state",))
+            ]
+            if consumers:
+                raise ValueError(
+                    "Boundary weight dimension 'bc_centering_state' is also used by "
+                    f"non-weight variable(s): {consumers!r}."
+                )
+            if "bc_centering_weights" not in mapped:
+                raise ValueError("Existing bc_centering_state dimension is not owned by boundary weights.")
+            mapped = mapped.drop_dims("bc_centering_state")
+        mapped = mapped.drop_vars("bc_centering_weights", errors="ignore")
+        mapped["bc_centering_weights"] = weights
+    elif "bc_centering_weights" in mapped and mapped.bc_centering_weights.dims == ("bc_region",):
+        # Keep resolved period-state weights independent of reusable spatial states.
+        weights = _independent_boundary_weights(mapped.bc_centering_weights)
+        mapped = mapped.drop_vars("bc_centering_weights")
+        mapped["bc_centering_weights"] = weights
 
     approximation = None
     if aggregation_error_rank is None:

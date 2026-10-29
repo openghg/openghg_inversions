@@ -29,6 +29,7 @@ from openghg_inversions.rhime.co2.inference import sample_co2_inference
 from openghg_inversions.rhime.co2 import (
     build_co2_cached_sigma_model,
 )
+from openghg_inversions.rhime.co2 import co2_runner
 from openghg_inversions.rhime.co2 import co2_cached_sigma_runner
 from openghg_inversions.rhime.co2 import co2_cached_sigma_model
 from openghg_inversions.rhime.sampling import RhimeSampler
@@ -947,12 +948,19 @@ def test_cached_sampler_preserves_prior_predictive_policy(
     assert type(configured.sample_prior_predictive) is type(prior_predictive)
 
 
+@pytest.mark.parametrize("mean_shift", [False, True])
 def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    mean_shift: bool,
 ) -> None:
     """The named runner samples the real graph and labels every cached output."""
     inputs = _boundary_inputs()
+    inputs["G_bc"] = xr.DataArray(np.where(inputs.H_bc.values > 0, 0.2, 0.0), dims=("nmeasure", "bc_region"), attrs={"units": "1"})
+    inputs["bc_centering_weights"] = xr.DataArray(np.arange(1, 9), dims="bc_region", attrs={"units": "1"})
+    from openghg_inversions.rhime.co2.co2_preparation import _independent_boundary_weights
+    weights = _independent_boundary_weights(inputs.bc_centering_weights)
+    inputs = inputs.drop_vars("bc_centering_weights").assign(bc_centering_weights=weights)
     step_settings: dict[str, float] = {}
     original_make_step = co2_cached_sigma_runner.make_cached_sigma_compound_step
 
@@ -1002,8 +1010,10 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
         cast(Any, PreparedInputsStub()),
         {
             "use_bc": True,
-            "bc_prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1},
-            "bc_state_activity": StateActivity(
+            "bc_prior": None if mean_shift else {"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+            "bc_mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.5} if mean_shift else None,
+            "bc_anomaly_scale": 0.2 if mean_shift else None,
+            "bc_state_activity": None if mean_shift else StateActivity(
                 active=np.asarray([True, False, False, False, False, False, False, False]),
                 fixed_value=1.0,
             ),
@@ -1028,7 +1038,8 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     assert len(selected) == 1
     assert selected[0].count("H_bc") == 1
     assert result.posterior["flux_scaling"].shape == (2, 2, 2)
-    assert result.posterior["bc"].shape == (2, 2, 8)
+    if not mean_shift:
+        assert result.posterior["bc"].shape == (2, 2, 8)
     assert result.posterior["offset"].shape == (2, 2, 4)
     assert result.posterior["offset_latent"].shape == (2, 2, 2)
     assert result.posterior["offset_latent"].dims == (
@@ -1048,11 +1059,13 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     roles = json.loads(result.attrs["rhime_variable_roles"])
     metadata = json.loads(result.attrs["rhime_model_metadata"])
     assert roles["boundary_concentration"] == "mu_bc"
-    assert roles["boundary_scale"] == "bc"
+    if not mean_shift:
+        assert roles["boundary_scale"] == "bc"
     assert roles["boundary_sensitivity"] == "hbc"
     assert "baseline_concentration" not in roles
     assert "baseline_scale" not in roles
-    assert json.loads(result.posterior["bc"].attrs["rhime_scientific_roles"]) == ["boundary_scale"]
+    if not mean_shift:
+        assert json.loads(result.posterior["bc"].attrs["rhime_scientific_roles"]) == ["boundary_scale"]
     assert json.loads(result.posterior["mu_bc"].attrs["rhime_scientific_roles"]) == ["boundary_concentration"]
     assert metadata["recipe"] == "co2"
     assert "sampler" not in metadata
@@ -1080,6 +1093,31 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     xr.testing.assert_identical(replay.prior.to_dataset(), result.prior.to_dataset())
     xr.testing.assert_identical(replay.prior_predictive.to_dataset(), result.prior_predictive.to_dataset())
     assert replay.posterior.sizes["draw"] == 2
+
+    if mean_shift:
+        assert selected[0].count("G_bc") == 1
+        assert result.posterior["bc_mean_shift"].dims == ("chain", "draw")
+        assert result.posterior["bc_mean_shift"].attrs["units"] == "ppm"
+        assert result.constant_data["G_bc"].attrs["units"] == "1"
+        np.testing.assert_allclose(
+            result.posterior["mu_bc_mean_shift"],
+            result.posterior["bc_mean_shift"] * inputs.G_bc.sum("bc_region"),
+        )
+        np.testing.assert_allclose(
+            result.posterior["mu_bc"],
+            result.posterior["mu_bc_reference"] + result.posterior["mu_bc_mean_shift"] + result.posterior["mu_bc_anomaly"],
+        )
+        assert roles["boundary_mean_shift"] == "bc_mean_shift"
+        assert "bc" not in result.posterior
+        assert "boundary_scale" not in roles
+        np.testing.assert_allclose(
+            (result.posterior["bc_anomaly"] * result.constant_data["bc_centering_weights"]).sum("bc_region"),
+            0.0, atol=1e-12,
+        )
+        assert result.posterior["bc_correction"].attrs["units"] == "ppm"
+    else:
+        assert "G_bc" not in selected[0]
+        assert "bc_mean_shift" not in result.posterior
 
 
 def test_cached_runner_rejects_generic_target_accept() -> None:
@@ -1340,3 +1378,110 @@ def test_centered_cache_full_operands_dense_density_and_gradients(all_fixed):
         np.testing.assert_allclose(compound.methods[0].modelled_mean_fn(point), evaluate(point)[1])
         next_point, _ = compound.step(point)
         assert all(np.isfinite(value).all() for value in next_point.values())
+
+
+@pytest.mark.parametrize("reference", [400.0, 200_000.0])
+@pytest.mark.parametrize("additive", [False, True])
+def test_centered_stock_and_cached_boundary_match_dense_likelihood(reference, additive, monkeypatch):
+    """Both BC priors compose with stock/cached OU on the same centered residual."""
+    inputs = _inputs()
+    anomaly = np.asarray([[.2, -.1], [.3, .05], [-.1, .2], [.15, -.05]])
+    mass = np.asarray([[.7, .2], [.1, .8], [.3, .6], [.5, .4]])
+    shift = reference * mass.sum(axis=1)
+    inputs["mf"] = inputs.mf + shift
+    inputs.mf.attrs["units"] = "ppm"
+    operands = xr.Dataset({
+        "H_bc_anomaly": (("nmeasure", "bc_region"), anomaly, {"units": "ppm"}),
+        "H_bc_mass": (("nmeasure", "bc_region"), mass, {"units": "1"}),
+        "bc_reference": ((), reference, {"units": "ppm"}),
+    }, coords={"nmeasure": inputs.nmeasure, "bc_region": ["north", "south"]}, attrs={"boundary_representation": "centered-v1"})
+    from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands
+    bound = bind_boundary_operands(operands, inputs.mf)
+    weights = xr.DataArray([1., 3.], dims="bc_region", coords={"bc_region": bound.bc_region}, attrs={"units": "1"})
+    boundary_parameters = (
+        {"bc_mean_shift_prior": {"pdf": "normal", "mu": .1, "sigma": .2}, "bc_anomaly_scale": .05}
+        if additive else {"bc_prior": {"pdf": "normal", "mu": 1., "sigma": .01}}
+    )
+    cached = _build(inputs=inputs, boundary_operands=operands,
+        boundary_correction_sensitivity=operands.H_bc_mass if additive else None,
+        bc_centering_weights=weights if additive else None, **boundary_parameters)
+    model = cached.model
+    # Build the stock OU route through both public materialization/build boundaries.
+    from openghg_inversions.rhime.co2.co2_preparation import _independent_boundary_weights
+    stock_inputs = inputs.assign(operands.data_vars).assign(
+        bc_centering_weights=_independent_boundary_weights(weights),
+    )
+    stock_inputs.attrs.update(boundary_representation="centered-v1")
+    class PreparedStub:
+        inv_inputs = stock_inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
+    prepared = cast(Any, PreparedStub())
+    monkeypatch.setattr(co2_runner, "_materialize_pymc_inputs_and_priors",
+        lambda _prepared, *, variable_names, prior_parameters: (stock_inputs, prior_parameters))
+    options = dict(use_bc=True, **boundary_parameters,
+        likelihood_builder=add_fixed_ou_gaussian_likelihood,
+        likelihood_kwargs={"tau_hours": {"AAA":3., "BBB":7.},
+            "site_amplitude_prior": {"pdf": "halfnormal", "sigma": .75}})
+    eager_inputs, priors = co2_runner.materialize_co2_inputs(prepared_inputs=prepared, **options)
+    stock = co2_runner.build_co2_from_materialized(eager_inputs,
+        prepared_inputs=prepared, priors=priors, **options).model
+    stock_likelihood = stock.compile_logp(vars=stock.observed_RVs)
+    names = sorted(value.name for value in model.value_vars)
+    assert names == sorted(value.name for value in stock.value_vars)
+    def full_gradient(graph):
+        values = {value.name: value for value in graph.value_vars}
+        return graph.compile_fn(pt.grad(graph.logp(), [values[name] for name in names]),
+            inputs=graph.value_vars, on_unused_input="ignore")
+    stock_gradient = full_gradient(stock)
+    cached_gradient = full_gradient(model)
+    boundary_states = [model["bc_mean_shift"], model["bc_anomaly"]] if additive else [model["bc"]]
+    expressions = model.replace_rvs_by_values([cached.cached_state_logp, cached.modelled_mean,
+        model["mu_bc"], model["co2_flux_contribution"], *boundary_states])
+    evaluate = model.compile_fn(expressions, inputs=model.value_vars, on_unused_input="ignore")
+    point = _initial_point(cached)
+    likelihood_logp = model.compile_logp(vars=model.observed_RVs)
+    state_names = ("bc_mean_shift", "bc_anomaly_latent") if additive else ("bc",)
+    value_variables = [model.rvs_to_values[model[name]] for name in state_names]
+    gradient = model.compile_fn(pt.grad(expressions[0], value_variables),
+        inputs=model.value_vars, on_unused_input="ignore")
+    covariance = _dense_fixed_ou_covariance(inputs, np.asarray([.3, .4]), {"AAA":3., "BBB":7.})
+    design = (np.column_stack((mass.sum(axis=1), mass @ model["bc_anomaly_basis"].eval()))
+        if additive else anomaly + reference * mass)
+    for mean_shift, contrast in ((.1, .0), (-.15, .08), (.25, -.04)):
+        if additive:
+            point["bc_mean_shift"] = np.asarray(mean_shift)
+            point["bc_anomaly_latent"] = np.asarray([contrast])
+        else:
+            point["bc"] = 1. + 1.e-6 * np.asarray([mean_shift, contrast])
+        logp, mean, absolute, flux, *states = evaluate(point)
+        if additive:
+            delta, deviations = states
+            centered_boundary = anomaly.sum(axis=1) + mass @ (delta + deviations)
+        else:
+            scaling = states[0]
+            centered_boundary = anomaly @ scaling + reference * (mass @ (scaling - 1.))
+        np.testing.assert_allclose(mean, flux + centered_boundary, atol=1e-12)
+        np.testing.assert_allclose(absolute, centered_boundary + shift, atol=1e-10)
+        dense = multivariate_normal.logpdf(inputs.mf.values-shift, mean=mean, cov=covariance)
+        np.testing.assert_allclose(logp, dense, atol=1e-9)
+        np.testing.assert_allclose(likelihood_logp(point), dense, atol=1e-9)
+        np.testing.assert_allclose(stock_likelihood(point), dense, atol=1e-9)
+        for ordinary, cached_derivative in zip(stock_gradient(point), cached_gradient(point), strict=True):
+            np.testing.assert_allclose(ordinary, cached_derivative, atol=1e-9)
+        expected_gradient = design.T @ np.linalg.solve(covariance, inputs.mf.values-shift-mean)
+        np.testing.assert_allclose(np.concatenate([np.atleast_1d(g) for g in gradient(point)]),
+            expected_gradient, atol=1e-10)
+    assert ("bc" not in model.named_vars) == additive
+
+
+def test_cached_multiplicative_boundary_ignores_passive_correction_periods():
+    inputs = _boundary_inputs()
+    boundary = xr.DataArray(np.full((4, 2), 200.), dims=("nmeasure", "bc_region"),
+        coords={"nmeasure": inputs.nmeasure, "bc_region": ["north", "south"]},
+        attrs={"units": "ppm", "boundary_sensitivity_preparation": "raw-spatial"})
+    passive_correction = xr.ones_like(inputs.H_bc).assign_attrs(units="1")
+    cached = _build(inputs=inputs, boundary_sensitivity=boundary, bc_freq="2h",
+        boundary_correction_sensitivity=passive_correction)
+    assert "bc" in cached.model.named_vars
+    assert "G_bc" not in cached.model.named_vars
