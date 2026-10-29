@@ -6,7 +6,7 @@ import xarray as xr
 
 import pytensor.tensor as pt
 
-from openghg_inversions.models import AffineTerm, add_coherent_affine_component, likelihood_representation
+from openghg_inversions.models import ConcentrationTerm, add_coherent_affine_component, likelihood_representation
 from openghg_inversions.models.components import (
     LinearComponentResult,
     add_linked_linear_component,
@@ -199,7 +199,7 @@ def test_likelihood_representation_keeps_absolute_mean_without_shifts() -> None:
     observations = xr.DataArray([400.0, 401.0], dims="nmeasure")
     flux = pt.as_tensor_variable(np.array([1.0, 2.0]))
     modelled = flux + 399.0
-    terms = [AffineTerm.absolute(flux), AffineTerm.absolute(pt.full_like(flux, 399.0))]
+    terms = [ConcentrationTerm.absolute(flux), ConcentrationTerm.absolute(pt.full_like(flux, 399.0))]
     mean, translated, shift = likelihood_representation(terms, observations, modelled)
     assert mean is modelled
     assert translated is observations
@@ -211,7 +211,7 @@ def test_likelihood_representation_sums_centered_contributions_against_shifted_o
     flux = pt.as_tensor_variable(np.array([1.0, 2.0]))
     centered = pt.as_tensor_variable(np.array([1e-9, -2e-9]))
     shift = xr.DataArray([209_300.0, 209_400.0], dims="nmeasure")
-    terms = [AffineTerm.absolute(flux), AffineTerm(centered + shift.values, centered, shift)]
+    terms = [ConcentrationTerm.absolute(flux), ConcentrationTerm(centered + shift.values, centered, shift)]
     modelled = flux + centered + shift.values
 
     mean, translated, total = likelihood_representation(terms, observations, modelled)
@@ -230,10 +230,10 @@ def test_likelihood_representation_rejects_mismatched_observation_labels(
     observations = xr.DataArray([401.0, 402.0], dims="nmeasure", coords={"nmeasure": ["a", "b"]})
     centered = pt.as_tensor_variable(np.array([1.0, 2.0]))
     shift = xr.DataArray([400.0, 400.0], dims="nmeasure", coords={"nmeasure": shift_labels})
-    terms = [AffineTerm(centered + shift.data, centered, shift)]
+    terms = [ConcentrationTerm(centered + shift.data, centered, shift)]
     if additional_shift:
         aligned_shift = xr.full_like(observations, 10.0)
-        terms.insert(0, AffineTerm(pt.as_tensor_variable(aligned_shift.data), pt.zeros_like(centered), aligned_shift))
+        terms.insert(0, ConcentrationTerm(pt.as_tensor_variable(aligned_shift.data), pt.zeros_like(centered), aligned_shift))
     modelled = sum(term.output for term in terms)
 
     with pytest.raises(ValueError, match="join.*exact"):

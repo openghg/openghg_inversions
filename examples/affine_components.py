@@ -14,7 +14,7 @@ import xarray as xr
 
 from openghg_inversions.basis.affine_flux_map import AffineFluxMap
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact
-from openghg_inversions.rhime.co2.centered_boundary import CenteredBoundaryMap
+from openghg_inversions.models.boundary import CenteredBoundaryMap
 from openghg_inversions.rhime.co2.co2_affine_output import BoundCo2AffineFluxMap
 
 

@@ -22,7 +22,7 @@ from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
 from .co2_o2_model import build_co2_o2_model, _validate_channel_baseline_options
-from .centered_boundary import OPERAND_NAMES, require_centered_precision, restore_absolute_predictives
+from openghg_inversions.models.boundary import OPERAND_NAMES, require_centered_precision, restore_absolute_predictives
 from .co2_o2_preparation import Co2O2PreparedInputs
 
 

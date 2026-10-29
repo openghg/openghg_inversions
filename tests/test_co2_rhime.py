@@ -1229,7 +1229,7 @@ def test_centered_additive_boundary_preserves_small_concentration_corrections(re
         "H_bc_mass": (("nmeasure", "bc_region"), mass, {"units": "1"}),
         "bc_reference": ((), reference, {"units": "ppm"}),
     }, coords={"nmeasure": inputs.nmeasure, "bc_region": ["north", "south"]}, attrs={"boundary_representation": "centered-v1"})
-    from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands
+    from openghg_inversions.models.boundary import bind_boundary_operands
     bound = bind_boundary_operands(operands, inputs.mf)
     weights = xr.DataArray([1., 3.], dims="bc_region", coords={"bc_region": bound.bc_region}, attrs={"units": "1"})
     model = _build_model(inputs, boundary_operands=operands,
@@ -1263,7 +1263,7 @@ def test_centered_additive_boundary_rejects_nonfinite_reference(operand, value):
         attrs={"boundary_representation": "centered-v1"})
     correction = xr.ones_like(operands.H_bc_mass)
     operands[operand] = xr.full_like(operands[operand], value)
-    from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands
+    from openghg_inversions.models.boundary import bind_boundary_operands
     bound = bind_boundary_operands(operands, inputs.mf)
     weights = xr.DataArray([1.], dims="bc_region", coords={"bc_region": bound.bc_region}, attrs={"units": "1"})
     with pytest.raises(ValueError, match="reference.*finite"):

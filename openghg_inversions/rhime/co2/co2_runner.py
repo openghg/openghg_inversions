@@ -50,7 +50,7 @@ from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.sigma import SigmaAlignment
 
 from .co2_model import _normalise_offset_args, build_co2_model
-from .centered_boundary import OPERAND_NAMES, require_centered_precision, restore_absolute_predictives
+from openghg_inversions.models.boundary import OPERAND_NAMES, require_centered_precision, restore_absolute_predictives
 from .co2_preparation import Co2PreparedInputs
 
 

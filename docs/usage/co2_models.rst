@@ -383,6 +383,16 @@ them. Finer boundary periods allow anomalies to vary over time while
 sensitivity, BC--flux confounding and prior sensitivity when interpreting
 these corrections.
 
+For complete normalized transport and the default NESW basis with
+:math:`G_{bc}=M`, :math:`g=\mathbf1` is guaranteed. The builders warn when
+additive boundaries are combined with unrestricted observation offsets.
+Offsets default to ``per_site=True, drop_first=False``. Setting
+``drop_first=True`` removes the first encountered site's offsets; it does not
+select a named calibration reference. This removes the duplicate constant
+direction, but does not guarantee separation from boundary anomalies or fluxes.
+Centered site offsets are not currently implemented. See
+:doc:`../development/boundary_offset_identifiability` for the investigation.
+
 Configure prepared-input execution from TOML
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

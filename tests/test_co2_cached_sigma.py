@@ -1308,7 +1308,7 @@ def test_centered_cache_full_operands_dense_density_and_gradients(all_fixed):
     shift = reference * mass.sum(axis=1)
     inputs["mf"] = inputs.mf + shift
     inputs.mf.attrs["units"] = "ppm"
-    from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands
+    from openghg_inversions.models.boundary import bind_boundary_operands
     bound = bind_boundary_operands(operands, inputs.mf)
     active = xr.DataArray([not all_fixed, not all_fixed, False], dims="bc_region", coords={"bc_region": bound.bc_region})
     fixed = xr.DataArray([.9, 1.2, .7], dims="bc_region", coords=active.coords)
@@ -1395,7 +1395,7 @@ def test_centered_stock_and_cached_boundary_match_dense_likelihood(reference, ad
         "H_bc_mass": (("nmeasure", "bc_region"), mass, {"units": "1"}),
         "bc_reference": ((), reference, {"units": "ppm"}),
     }, coords={"nmeasure": inputs.nmeasure, "bc_region": ["north", "south"]}, attrs={"boundary_representation": "centered-v1"})
-    from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands
+    from openghg_inversions.models.boundary import bind_boundary_operands
     bound = bind_boundary_operands(operands, inputs.mf)
     weights = xr.DataArray([1., 3.], dims="bc_region", coords={"bc_region": bound.bc_region}, attrs={"units": "1"})
     boundary_parameters = (

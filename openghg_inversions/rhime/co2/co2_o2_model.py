@@ -25,7 +25,7 @@ from openghg_inversions.models import (
 from openghg_inversions.models.additive_sigma import add_additive_sigma_likelihood
 from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.models.components import (
-    AffineTerm,
+    ConcentrationTerm,
     LinearComponentResult,
     OffsetComponentResult,
     _add_offset_component_result,
@@ -38,14 +38,15 @@ from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from .co2_model import _normalise_offset_args
 from openghg_inversions.boundary_sensitivity import bind_boundary_sensitivity
 
-from .centered_boundary import CenteredBoundaryResult, bind_boundary_operands, add_centered_boundary
+from openghg_inversions.models.boundary import CenteredBoundaryResult, bind_boundary_operands, add_centered_boundary
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 
 from .co2_o2_fixed_ou import linked_fixed_ou_alignment
-from .co2_boundary import (
+from openghg_inversions.models.additive_boundary import (
     AdditiveBoundaryResult,
     prepare_centered_boundary,
     add_centered_boundary as add_additive_boundary,
+    warn_boundary_offset_confounding,
 )
 
 
@@ -258,7 +259,7 @@ class _ChannelBaselineComponent:
     channel: str
     component: LinearComponentResult | OffsetComponentResult | AdditiveBoundaryResult
     design: xr.DataArray | None
-    term: AffineTerm
+    term: ConcentrationTerm
     centered: CenteredBoundaryResult | None = None
     additive: AdditiveBoundaryResult | None = None
     additive_design: np.ndarray | None = None
@@ -442,7 +443,7 @@ def _add_co2_o2_baseline_components(
             )
             components.append(
                 _ChannelBaselineComponent(
-                    channel, linear_result, design, AffineTerm.absolute(linear_result.output)
+                    channel, linear_result, design, ConcentrationTerm.absolute(linear_result.output)
                 )
             )
             boundaries.append(linear_result.output)
@@ -471,6 +472,11 @@ def _add_co2_o2_baseline_components(
                 per_site=per_site,
                 namespace=f"{channel}_",
             )
+            if additive:
+                channel_rows = observations.indexes[output_dim].get_level_values("species") == channel
+                warn_boundary_offset_confounding(
+                    prepared.design[channel_rows, 0], drop_first=drop_first, channel=channel,
+                )
             design = _pad_channel_design(offset_result.design, observations, channel)
             design_data = add_model_data(design, f"{channel}_offset_design")
             offset_result = replace(
@@ -484,7 +490,7 @@ def _add_co2_o2_baseline_components(
             )
             components.append(
                 _ChannelBaselineComponent(
-                    channel, offset_result, design, AffineTerm.absolute(offset_result.output)
+                    channel, offset_result, design, ConcentrationTerm.absolute(offset_result.output)
                 )
             )
             offsets.append(offset_result.output)
@@ -555,7 +561,7 @@ def build_co2_o2_model(
     absolute.
     After restoring sample coordinates, direct callers must restore absolute
     ``y`` with
-    :func:`~openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives`
+    :func:`~openghg_inversions.models.boundary.restore_absolute_predictives`
     before serialization or postprocessing. Ordinary recipe runners do this
     through
     :func:`~openghg_inversions.rhime.co2.co2_o2_runner.annotate_co2_o2_trace`.
@@ -748,7 +754,7 @@ def build_co2_o2_model(
         )
 
         likelihood_mean, likelihood_observations, shift = likelihood_representation(
-            [AffineTerm.absolute(fixed + joint_signal), *(term.term for term in baseline_components)],
+            [ConcentrationTerm.absolute(fixed + joint_signal), *(term.term for term in baseline_components)],
             observations,
             modelled,
         )

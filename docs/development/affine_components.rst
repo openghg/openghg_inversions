@@ -34,23 +34,28 @@ reconstruction, and the coherent reduction is the affine form of its
 sensitivity. The centered boundary has no corresponding object for its
 operands; they travel as a validated ``xr.Dataset``.
 
-Affine terms in a recipe
-------------------------
+Concentration terms in a recipe
+-------------------------------
 
-Every concentration contribution is affine in its state: its value at a
-reference state plus a linear response to a deviation from that state. Recipes
-represent component contributions as an ``AffineTerm`` with three parts:
+Recipes represent concentration contributions as a ``ConcentrationTerm``
+with three parts. This record describes their absolute and likelihood
+representations; it does not require affinity in the inferred parameters:
 
 ``output``
    The absolute concentration contribution.
 ``likelihood_contribution``
    What the term adds to the likelihood mean.
 ``observation_shift``
-   A deterministic concentration subtracted from the observations, or ``None``.
+   A fixed concentration subtracted from the observations, or ``None``.
+   It must be independent of inferred parameters. A sampled boundary mean or
+   observation bias remains in the likelihood contribution, even when it is
+   constant over the inversion window.
+
+The prototype name ``AffineTerm`` remains a compatibility alias.
 
 Ordinary linear, offset and coherent flux components retain their tensor or
 component-result return types. Recipes wrap their outputs with
-``AffineTerm.absolute``: their likelihood contribution is their output and they
+``ConcentrationTerm.absolute``: their likelihood contribution is their output and they
 have no shift. ``add_centered_boundary`` instead supplies a term through
 ``CenteredBoundaryResult.term``, contributing :math:`Ab + cM(b-\mathbf{1})`
 against observations :math:`y-q`, where :math:`q=cM\mathbf{1}`. Every recipe
@@ -58,7 +63,7 @@ then composes its likelihood the same way:
 
 .. code-block:: python
 
-   terms = [AffineTerm.absolute(co2_flux_contribution)]
+   terms = [ConcentrationTerm.absolute(co2_flux_contribution)]
    if boundary_operands is not None:
        terms.append(add_centered_boundary(boundary_operands, prior=bc_prior).term)
    ...
@@ -83,10 +88,12 @@ discarding observations through xarray's default arithmetic join. Recipes use
 boundary/baseline reports. Components retain their registered graph variables,
 state, activity and design information for lowering.
 
-Cached likelihoods lower each ``AffineTerm`` once more, to a dense fixed
-contribution plus an active design times coefficients. For a centered boundary
-the coefficients are :math:`b-\mathbf{1}`; for other terms they are the active
-states.
+Cached recipes separately express their supported scientific terms as a dense
+fixed contribution plus an active design times coefficients. This is the
+affine contract required by their sampler. Centered multiplicative boundaries
+use coefficients :math:`b-\mathbf1`; additive boundaries use the sampled
+common mean and anomaly coordinates. The concentration record alone does not
+provide or establish that affine decomposition.
 
 Handling beyond the linear options
 ----------------------------------
@@ -172,7 +179,7 @@ It needs no store, network or posterior sampling.
 Centered boundary component
 ---------------------------
 
-``CenteredBoundaryMap`` in ``rhime.co2.centered_boundary`` owns the factored
+``CenteredBoundaryMap`` in ``models.boundary`` owns the factored
 boundary equations for registered PyTensor operands and dense NumPy operands:
 
 .. math::
@@ -180,7 +187,7 @@ boundary equations for registered PyTensor operands and dense NumPy operands:
    \operatorname{centered\_concentration}(b) &= A b + c M (b - \mathbf{1}), \\
    \operatorname{concentration}(b) &= \operatorname{centered\_concentration}(b) + q.
 
-``add_centered_boundary`` returns the boundary state, its ``AffineTerm`` and
+``add_centered_boundary`` returns the boundary state, its ``ConcentrationTerm`` and
 the operands it was built from. The cached lowering evaluates the same
 ``centered_concentration`` on those operands, so one class owns the centered
 equation on both routes.
@@ -191,12 +198,20 @@ cancellation this representation avoids, for example against an O2 reference
 of about 209,300 ppm. The prior and fixed/active policy still describe the
 physical coefficients :math:`b`.
 
+The additive formulation lives separately in ``models.additive_boundary``.
+It evaluates :math:`A\mathbf1+G_{bc}(\delta\mathbf1+u)` against
+:math:`y-q` and returns the same concentration record. Its inferred
+concentration corrections remain independent of the numerical reference.
+Both modules are shared model components; the former CO2 module paths remain
+compatibility imports. Recipe support, priors and observation-offset choices
+remain explicit in the runners and concrete model builders.
+
 Coherent flux component
 -----------------------
 
 ``build_co2_model`` composes the concentration contribution
 :math:`d + H_\alpha\alpha` with ``apply_linear_sensitivity`` and
-``add_coherent_affine_component``, then wraps it with ``AffineTerm.absolute``.
+``add_coherent_affine_component``, then wraps it with ``ConcentrationTerm.absolute``.
 ``BoundCo2AffineFluxMap.state_to_flux`` evaluates the
 retained-state-conditional signed native flux mean
 
@@ -228,7 +243,7 @@ that support has not been delivered there.
 Scope of the experiment
 -----------------------
 
-``AffineTerm`` is a small result record, not a base class or protocol;
+``ConcentrationTerm`` is a small result record, not a base class or protocol;
 components still construct their own graphs. The centered ``floatX=float64``
 guard remains in place. Prepared and sampled artifact formats retain their
 existing owners and contents.

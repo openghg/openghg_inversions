@@ -140,7 +140,7 @@ justify a new domain object.
 The :doc:`affine components prototype <affine_components>` describes the
 centered boundary and coherent flux as affine generalizations of the linear
 boundary and basis options. Recipes represent component contributions as
-``AffineTerm`` values with an absolute output, likelihood contribution and
+``ConcentrationTerm`` values with an absolute output, likelihood contribution and
 optional observation shift, then compose likelihoods from those terms with
 ``likelihood_representation``. Ordinary component return types remain unchanged;
 the recipe wraps their outputs, while the centered boundary supplies a term.

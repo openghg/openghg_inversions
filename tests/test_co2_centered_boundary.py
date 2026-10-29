@@ -252,8 +252,8 @@ def test_centered_boundary_validates_scientific_inputs(invalid: str) -> None:
 
 
 def test_additive_term_keeps_sampled_boundary_and_observation_offsets_in_mean() -> None:
-    from openghg_inversions.models import AffineTerm, likelihood_representation, registered_model
-    from openghg_inversions.rhime.co2.co2_boundary import prepare_centered_boundary, add_centered_boundary
+    from openghg_inversions.models import ConcentrationTerm, likelihood_representation, registered_model
+    from openghg_inversions.models.additive_boundary import prepare_centered_boundary, add_centered_boundary
 
     inputs = _inputs()
     mass = inputs.bc_correction_sensitivity
@@ -283,7 +283,7 @@ def test_additive_term_keeps_sampled_boundary_and_observation_offsets_in_mean() 
         offset = pt.ones(inputs.sizes["nmeasure"]) * observation_offset
         absolute = result.output + offset
         mean, observations, shift = likelihood_representation(
-            [result.term, AffineTerm.absolute(offset)],
+            [result.term, ConcentrationTerm.absolute(offset)],
             inputs.mf,
             absolute,
         )
@@ -310,3 +310,35 @@ def test_additive_term_keeps_sampled_boundary_and_observation_offsets_in_mean() 
         np.testing.assert_allclose(centered_values, expected, atol=1e-12)
         np.testing.assert_allclose(absolute_values, centered_values + expected_shift, atol=1e-10)
         xr.testing.assert_allclose(shift, expected_shift)
+
+
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize("drop_first", [False, True])
+def test_public_additive_builders_warn_for_unanchored_observation_offsets(cached, drop_first):
+    import warnings
+
+    inputs = _inputs()
+    response = inputs.bc_correction_sensitivity.copy(data=np.tile([0.7, 0.3, 0.0], (4, 1)))
+    inputs["bc_correction_sensitivity"] = response
+    inputs["H_bc"] = (response * 400.0).assign_attrs(units="ppm")
+    inputs["mf"] = (response.sum("bc_region") * 400.0 + 1.0).assign_attrs(units="ppm")
+    kwargs = _kwargs(inputs)
+    kwargs["offset_prior"] = {"pdf": "normal", "mu": 0.0, "sigma": 0.1}
+    with warnings.catch_warnings(record=True) as recorded:
+        warnings.simplefilter("always")
+        if cached:
+            kwargs.update(
+                tau_hours=4.0,
+                site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.2},
+                offset_drop_first=drop_first,
+            )
+            model = build_co2_cached_sigma_model(inputs.H, **kwargs).model
+        else:
+            model = build_co2_model(inputs.H, **kwargs, offset_args={"drop_first": drop_first})
+    confounding = [
+        warning
+        for warning in recorded
+        if "boundary mean and unrestricted observation offsets" in str(warning.message)
+    ]
+    assert len(confounding) == (0 if drop_first else 1)
+    assert "bc_mean_shift" in model and "offset" in model

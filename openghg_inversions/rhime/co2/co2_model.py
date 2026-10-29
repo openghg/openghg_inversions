@@ -21,7 +21,7 @@ from openghg_inversions.models.additive_sigma import (
     add_additive_sigma_likelihood,
 )
 from openghg_inversions.models.components import (
-    AffineTerm,
+    ConcentrationTerm,
     add_coherent_affine_component,
     add_correlated_lognormal_state_with_activity,
     add_linear_component,
@@ -44,12 +44,16 @@ from openghg_inversions.sigma import SigmaAlignment
 from openghg_inversions.models.coords import add_model_data
 from openghg_inversions.boundary_sensitivity import bind_boundary_sensitivity
 
-from .centered_boundary import (
+from openghg_inversions.models.boundary import (
     bind_boundary_operands,
     add_centered_boundary as add_multiplicative_centered_boundary,
 )
 
-from .co2_boundary import add_centered_boundary, prepare_centered_boundary
+from openghg_inversions.models.additive_boundary import (
+    add_centered_boundary,
+    prepare_centered_boundary,
+    warn_boundary_offset_confounding,
+)
 
 
 def _fixed_mismatch_array(
@@ -157,7 +161,7 @@ def build_co2_model(
     and mean with unchanged observation-error and aggregation-error operands.
     After restoring sample coordinates, direct callers must restore absolute
     ``y`` with
-    :func:`~openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives`
+    :func:`~openghg_inversions.models.boundary.restore_absolute_predictives`
     before serialization or postprocessing. Ordinary recipe runners do this
     through
     :func:`~openghg_inversions.rhime.co2.co2_runner.annotate_co2_trace`.
@@ -318,7 +322,7 @@ def build_co2_model(
             scaled_flux_contribution,
             output_name="co2_flux_contribution",
         )
-        terms = [AffineTerm.absolute(co2_flux_contribution)]
+        terms = [ConcentrationTerm.absolute(co2_flux_contribution)]
         if additive_boundary is not None:
             assert bc_mean_shift_prior is not None and bc_anomaly_scale is not None
             boundary = add_centered_boundary(additive_boundary, bc_mean_shift_prior, bc_anomaly_scale)
@@ -345,7 +349,7 @@ def build_co2_model(
                 state_activity=bc_state_activity,
                 coordinate_owner="bc",
             )
-            terms.append(AffineTerm.absolute(linear_boundary.output))
+            terms.append(ConcentrationTerm.absolute(linear_boundary.output))
         if offset_prior is not None:
             offset = add_offset_component(
                 observations,
@@ -356,7 +360,11 @@ def build_co2_model(
                 drop_first=offset_drop_first,
                 per_site=offset_per_site,
             )
-            terms.append(AffineTerm.absolute(offset))
+            if additive_boundary is not None:
+                warn_boundary_offset_confounding(
+                    additive_boundary.design[:, 0], drop_first=offset_drop_first,
+                )
+            terms.append(ConcentrationTerm.absolute(offset))
 
         modelled_mean = pm.Deterministic(
             "modelled_concentration",

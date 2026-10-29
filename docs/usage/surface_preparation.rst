@@ -315,7 +315,7 @@ annotation restores observed and predictive ``y`` to absolute concentrations
 once, using retained reference shifts; replay does not need to rebuild the model.
 The supported recipe runners perform this annotation automatically. Callers composing
 PyMC operations directly must restore sample coordinates, then call
-:func:`~openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives`
+:func:`~openghg_inversions.models.boundary.restore_absolute_predictives`
 before serialization or postprocessing.
 
 The cached sampler preserves the physical BC variables and their priors. Only

@@ -298,14 +298,17 @@ def add_coherent_affine_component(
 
 
 @dataclass(frozen=True)
-class AffineTerm:
+class ConcentrationTerm:
     """One concentration contribution in its absolute and likelihood forms.
 
     Most terms enter the likelihood mean as their absolute ``output``. A
     centered term instead contributes a small ``likelihood_contribution``
-    against observations translated by its deterministic ``observation_shift``;
+    against observations translated by its fixed ``observation_shift``;
     adding the shift back gives ``output``. The translation changes no
-    covariance, so both forms describe the same probability model.
+    covariance, so both forms describe the same probability model. The shift
+    is independent of inferred parameters: sampled boundary means and site
+    biases remain in the likelihood contribution. This record does not
+    require the contribution to be affine in its parameters.
 
     Attributes:
         output: Absolute concentration contribution.
@@ -319,17 +322,21 @@ class AffineTerm:
     observation_shift: xr.DataArray | None = None
 
     @classmethod
-    def absolute(cls, output: TensorVariable) -> AffineTerm:
+    def absolute(cls, output: TensorVariable) -> ConcentrationTerm:
         """Describe a term whose likelihood contribution is its absolute output."""
         return cls(output, output)
 
 
+# Preserve the name exported by the stacked representation prototype.
+AffineTerm = ConcentrationTerm
+
+
 def likelihood_representation(
-    terms: Sequence[AffineTerm],
+    terms: Sequence[ConcentrationTerm],
     observations: xr.DataArray,
     modelled_mean: TensorVariable,
 ) -> tuple[TensorVariable, xr.DataArray, xr.DataArray | None]:
-    """Choose the likelihood mean and observations for ordered affine terms.
+    """Choose the likelihood mean and observations for concentration terms.
 
     Without observation shifts this returns ``modelled_mean`` and the
     observations unchanged. Otherwise it sums the likelihood contributions

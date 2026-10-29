@@ -19,7 +19,7 @@ from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 from .co2_cached_sigma_runner import (
     _sampler_for_cached_graph,
 )
-from .centered_boundary import require_centered_precision
+from openghg_inversions.models.boundary import require_centered_precision
 from .co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
 from .co2_o2_model import _validate_channel_baseline_options
 from .co2_o2_preparation import Co2O2PreparedInputs

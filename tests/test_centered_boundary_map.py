@@ -8,7 +8,7 @@ import pytensor
 import pytensor.tensor as pt
 import pytest
 
-from openghg_inversions.rhime.co2.centered_boundary import CenteredBoundaryMap
+from openghg_inversions.models.boundary import CenteredBoundaryMap
 
 
 @pytest.fixture(autouse=True)
