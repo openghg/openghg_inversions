@@ -128,7 +128,9 @@ def _materialize_co2_o2_replay_inputs(
             errors disagree.
     """
     operands = dict(operands or {})
-    operand_arrays = [(channel, name, value[name]) for channel, value in operands.items() for name in OPERAND_NAMES]
+    operand_arrays = [
+        (channel, name, value[name]) for channel, value in operands.items() for name in OPERAND_NAMES
+    ]
     saved_error = getattr(prepared, "independent_error_sd", None)
     if independent_error_sd is None:
         independent_error_sd = saved_error
@@ -160,9 +162,17 @@ def _materialize_co2_o2_replay_inputs(
         (*materialized[:4], dense_errors[0]),
         dict(zip(boundaries, materialized[4 + len(errors) : 4 + len(errors) + len(boundaries)], strict=True)),
         {
-            channel: xr.Dataset({
-                name: value for (key, name, _), value in zip(operand_arrays, materialized[4 + len(errors) + len(boundaries):], strict=True) if key == channel
-            }, attrs=dict(raw.attrs)) for channel, raw in operands.items()
+            channel: xr.Dataset(
+                {
+                    name: value
+                    for (key, name, _), value in zip(
+                        operand_arrays, materialized[4 + len(errors) + len(boundaries) :], strict=True
+                    )
+                    if key == channel
+                },
+                attrs=dict(raw.attrs),
+            )
+            for channel, raw in operands.items()
         },
     )
 
@@ -215,8 +225,10 @@ def _annotate_co2_o2_trace(
 
     concentration_variables = {
         "boundary_reference_shift",
-        "co2_H_bc_anomaly", "o2_H_bc_anomaly",
-        "co2_bc_reference_shift", "o2_bc_reference_shift",
+        "co2_H_bc_anomaly",
+        "o2_H_bc_anomaly",
+        "co2_bc_reference_shift",
+        "o2_bc_reference_shift",
         "y",
         "observed_concentration",
         "modelled_concentration",
@@ -226,7 +238,9 @@ def _annotate_co2_o2_trace(
         "epsilon",
     }
     concentration_variables.update(
-        variable for role, variable in built.output_contract.variable_roles.items() if role.endswith("concentration")
+        variable
+        for role, variable in built.output_contract.variable_roles.items()
+        if role.endswith("concentration")
     )
     state_variables = {
         "flux_scaling",
@@ -262,6 +276,26 @@ def _annotate_co2_o2_trace(
                     group[variable].attrs["tracer"] = channel
             if f"{channel}_hbc" in group:
                 group[f"{channel}_hbc"].attrs["units"] = "observation_units per dimensionless boundary scale"
+        additive_channels = built.output_contract.metadata.get("additive_boundary_channels", [])
+        for channel in additive_channels:
+            unit = built.output_contract.metadata["observation_units"][channel]
+            for suffix in (
+                "bc_mean_shift",
+                "bc_anomaly",
+                "bc_anomaly_latent",
+                "bc_anomaly_scale",
+                "bc_correction",
+                "mu_bc_reference",
+                "mu_bc_mean_shift",
+                "mu_bc_anomaly",
+                "mu_bc_centered",
+                "hbc",
+            ):
+                if (name := f"{channel}_{suffix}") in group:
+                    group[name].attrs.update(units=unit, tracer=channel)
+            for suffix in ("G_bc", "bc_centering_weights", "bc_anomaly_basis"):
+                if (name := f"{channel}_{suffix}") in group:
+                    group[name].attrs.update(units="1", tracer=channel)
         for channel in ("co2", "o2"):
             for variable in (f"{channel}_H_bc_mass",):
                 if variable in group:
@@ -273,12 +307,59 @@ def _annotate_co2_o2_trace(
     return trace
 
 
+def _add_additive_boundary_roles(
+    roles: dict[str, str],
+    metadata: dict[str, object],
+    *,
+    co2_prior: PriorArgs | None = None,
+    o2_prior: PriorArgs | None = None,
+) -> None:
+    """Declare additive boundary quantities using their concentration meanings."""
+    selected = []
+    for channel, prior in (("co2", co2_prior), ("o2", o2_prior)):
+        if prior is None:
+            continue
+        selected.append(channel)
+        for role in (
+            "boundary_scale",
+            "boundary_sensitivity",
+            "boundary_anomaly",
+            "boundary_mass",
+            "boundary_reference",
+        ):
+            roles.pop(f"{channel}_{role}", None)
+        roles.update(
+            {
+                f"{channel}_boundary_mean_shift": f"{channel}_bc_mean_shift",
+                f"{channel}_boundary_anomaly": f"{channel}_bc_anomaly",
+                f"{channel}_boundary_anomaly_scale": f"{channel}_bc_anomaly_scale",
+                f"{channel}_boundary_correction": f"{channel}_bc_correction",
+                f"{channel}_boundary_correction_sensitivity": f"{channel}_G_bc",
+                f"{channel}_boundary_centering_weights": f"{channel}_bc_centering_weights",
+                f"{channel}_boundary_reference_concentration": f"{channel}_mu_bc_reference",
+                f"{channel}_boundary_mean_shift_concentration": f"{channel}_mu_bc_mean_shift",
+                f"{channel}_boundary_anomaly_concentration": f"{channel}_mu_bc_anomaly",
+            }
+        )
+    if selected:
+        metadata["additive_boundary_channels"] = selected
+        metadata["boundary_prior"] = "common mean shift plus weighted-centered Gaussian anomalies"
+
+
 def build_rhime_co2_o2(
     *,
     prepared_inputs: Co2O2PreparedInputs,
     independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
     use_bc: Mapping[str, bool] | None = None,
+    bc_mean_shift_prior_co2: PriorArgs | None = None,
+    bc_mean_shift_prior_o2: PriorArgs | None = None,
+    bc_anomaly_scale_co2: float | None = None,
+    bc_anomaly_scale_o2: float | None = None,
+    boundary_correction_sensitivity_co2: xr.DataArray | None = None,
+    boundary_correction_sensitivity_o2: xr.DataArray | None = None,
+    bc_centering_weights_co2: xr.DataArray | None = None,
+    bc_centering_weights_o2: xr.DataArray | None = None,
     bc_prior: Mapping[str, PriorArgs] | None = None,
     bc_state_activity: Mapping[str, StateActivity] | None = None,
     bc_freq: str | None = None,
@@ -320,15 +401,53 @@ def build_rhime_co2_o2(
             if not enabled:
                 boundaries.pop(channel, None)
                 operands.pop(channel, None)
-    if operands:
-        if tau_hours is not None:
-            raise ValueError("Centered boundaries do not support fixed-OU likelihoods.")
-        require_centered_precision()
-    _validate_channel_baseline_options(boundaries, bc_prior, bc_state_activity, offset_prior, offset_args, operands)
-    materialized, boundaries, operands = _materialize_co2_o2_replay_inputs(
-        prepared, independent_error_sd, boundaries, operands
+    correction_inputs = {}
+    prepared_corrections = getattr(prepared, "boundary_correction_sensitivity", {})
+    prepared_weights = getattr(prepared, "bc_centering_weights", {})
+    for channel, explicit_correction, explicit_weights in (
+        ("co2", boundary_correction_sensitivity_co2, bc_centering_weights_co2),
+        ("o2", boundary_correction_sensitivity_o2, bc_centering_weights_o2),
+    ):
+        correction = (
+            explicit_correction if explicit_correction is not None else prepared_corrections.get(channel)
+        )
+        weights = explicit_weights if explicit_weights is not None else prepared_weights.get(channel)
+        if correction is not None:
+            correction_inputs[f"{channel}_correction"] = correction
+        if weights is not None:
+            correction_inputs[f"{channel}_weights"] = weights
+    _validate_channel_baseline_options(
+        boundaries,
+        bc_prior,
+        bc_state_activity,
+        offset_prior,
+        offset_args,
+        operands,
+        bc_mean_shift_prior_co2=bc_mean_shift_prior_co2,
+        bc_mean_shift_prior_o2=bc_mean_shift_prior_o2,
+        bc_anomaly_scale_co2=bc_anomaly_scale_co2,
+        bc_anomaly_scale_o2=bc_anomaly_scale_o2,
     )
-    observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd = materialized
+    if tau_hours is not None and any(
+        (bc_mean_shift_prior_co2 if channel == "co2" else bc_mean_shift_prior_o2) is None
+        for channel in (operands or {})
+    ):
+        raise ValueError("Centered multiplicative boundaries do not support fixed-OU likelihoods.")
+    if operands:
+        require_centered_precision()
+    _validate_channel_baseline_options(
+        boundaries, bc_prior, bc_state_activity, offset_prior, offset_args, operands
+    )
+    materialized, boundaries, operands = _materialize_co2_o2_replay_inputs(
+        prepared, independent_error_sd, {**boundaries, **correction_inputs}, operands
+    )
+    boundary_correction_sensitivity_co2 = boundaries.pop("co2_correction", None)
+    boundary_correction_sensitivity_o2 = boundaries.pop("o2_correction", None)
+    bc_centering_weights_co2 = boundaries.pop("co2_weights", None)
+    bc_centering_weights_o2 = boundaries.pop("o2_weights", None)
+    observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd = (
+        materialized
+    )
     model = build_co2_o2_model(
         observations=observations,
         fixed_prior_contribution=fixed_prior_contribution,
@@ -345,6 +464,14 @@ def build_rhime_co2_o2(
         boundary_operands=operands,
         bc_freq=bc_freq,
         bc_anchor_time=bc_anchor_time,
+        bc_mean_shift_prior_co2=bc_mean_shift_prior_co2,
+        bc_mean_shift_prior_o2=bc_mean_shift_prior_o2,
+        bc_anomaly_scale_co2=bc_anomaly_scale_co2,
+        bc_anomaly_scale_o2=bc_anomaly_scale_o2,
+        boundary_correction_sensitivity_co2=boundary_correction_sensitivity_co2,
+        boundary_correction_sensitivity_o2=boundary_correction_sensitivity_o2,
+        bc_centering_weights_co2=bc_centering_weights_co2,
+        bc_centering_weights_o2=bc_centering_weights_o2,
         bc_prior=bc_prior,
         bc_state_activity=bc_state_activity,
         offset_prior=offset_prior,
@@ -376,14 +503,26 @@ def build_rhime_co2_o2(
     metadata = _co2_o2_metadata(prepared, observations=observations)
     if operands:
         metadata.update(
-            boundary_representation="centered-v1", bc_frequency=bc_freq,
+            boundary_representation="centered-v1",
+            bc_frequency=bc_freq,
             bc_anchor_time=None if bc_anchor_time is None else str(bc_anchor_time),
         )
     if tau_hours is not None:
-        variable_roles.update({"independent_error": "error", "fixed_ou_site_amplitude": "ou_site_amplitude",
-                      "observation_to_fixed_ou_site_index": "ou_site_index",
-                      "fixed_ou_timescale": "ou_tau_hours"})
+        variable_roles.update(
+            {
+                "independent_error": "error",
+                "fixed_ou_site_amplitude": "ou_site_amplitude",
+                "observation_to_fixed_ou_site_index": "ou_site_index",
+                "fixed_ou_timescale": "ou_tau_hours",
+            }
+        )
         metadata["likelihood"] = "joint Gaussian with fixed OU blocks by (species, site)"
+    _add_additive_boundary_roles(
+        variable_roles,
+        metadata,
+        co2_prior=bc_mean_shift_prior_co2,
+        o2_prior=bc_mean_shift_prior_o2,
+    )
     return RhimeModelBuildResult(
         model=model,
         output_contract=OutputContract(
@@ -399,6 +538,14 @@ def run_rhime_co2_o2_from_prepared_inputs(
     independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
     use_bc: Mapping[str, bool] | None = None,
+    bc_mean_shift_prior_co2: PriorArgs | None = None,
+    bc_mean_shift_prior_o2: PriorArgs | None = None,
+    bc_anomaly_scale_co2: float | None = None,
+    bc_anomaly_scale_o2: float | None = None,
+    boundary_correction_sensitivity_co2: xr.DataArray | None = None,
+    boundary_correction_sensitivity_o2: xr.DataArray | None = None,
+    bc_centering_weights_co2: xr.DataArray | None = None,
+    bc_centering_weights_o2: xr.DataArray | None = None,
     bc_prior: Mapping[str, PriorArgs] | None = None,
     bc_state_activity: Mapping[str, StateActivity] | None = None,
     bc_freq: str | None = None,
@@ -441,6 +588,22 @@ def run_rhime_co2_o2_from_prepared_inputs(
             sensitivities. Omitted entries include available channel boundaries.
         bc_prior: Channel-keyed independent boundary-scale priors; the CO2
             default is used for each enabled channel when omitted.
+        bc_mean_shift_prior_co2: Optional scalar CO2 additive mean-shift prior,
+            in its observation concentration units. Requires bc_anomaly_scale_co2
+            and replaces that channel's multiplicative prior/activity.
+        bc_mean_shift_prior_o2: Corresponding independent O2 mean-shift prior.
+        bc_anomaly_scale_co2: Positive CO2 Gaussian scale before weighted centring,
+            in concentration units, including every supplied curtain/period state.
+        bc_anomaly_scale_o2: Corresponding positive O2 anomaly scale.
+        boundary_correction_sensitivity_co2: Dimensionless CO2 unit transport on
+            its native observation and boundary-state axes. Centered operands
+            default to their explicitly supplied H_bc_mass; no division by the
+            concentration reference is used.
+        boundary_correction_sensitivity_o2: Corresponding O2 unit transport.
+        bc_centering_weights_co2: Positive dimensionless weights with exactly the
+            resolved CO2 curtain/period labels, normalized within the model.
+        bc_centering_weights_o2: Corresponding O2 centring weights. Prepared-input
+            runners use saved correction sensitivities and weights when omitted.
         bc_state_activity: Channel-keyed labelled fixed/active boundary policies.
         bc_freq: Optional model-owned frequency for raw boundary periods.
         bc_anchor_time: Optional timestamp anchoring raw boundary periods.
@@ -484,6 +647,14 @@ def run_rhime_co2_o2_from_prepared_inputs(
         independent_error_sd=independent_error_sd,
         state_activity=state_activity,
         use_bc=use_bc,
+        bc_mean_shift_prior_co2=bc_mean_shift_prior_co2,
+        bc_mean_shift_prior_o2=bc_mean_shift_prior_o2,
+        bc_anomaly_scale_co2=bc_anomaly_scale_co2,
+        bc_anomaly_scale_o2=bc_anomaly_scale_o2,
+        boundary_correction_sensitivity_co2=boundary_correction_sensitivity_co2,
+        boundary_correction_sensitivity_o2=boundary_correction_sensitivity_o2,
+        bc_centering_weights_co2=bc_centering_weights_co2,
+        bc_centering_weights_o2=bc_centering_weights_o2,
         bc_prior=bc_prior,
         bc_state_activity=bc_state_activity,
         bc_freq=bc_freq,
@@ -532,7 +703,9 @@ def _annotate_linked_fixed_ou_trace(
 
 
 def annotate_co2_o2_trace(
-    trace: xr.DataTree, *, built: RhimeModelBuildResult,
+    trace: xr.DataTree,
+    *,
+    built: RhimeModelBuildResult,
 ) -> xr.DataTree:
     """Attach the built joint model's scientific meaning after coordinate restoration.
 

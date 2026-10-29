@@ -529,9 +529,15 @@ def test_co2_operations_derives_default_model_error_alignment(monkeypatch: Any) 
     assert "sigma" in sampled_models[0].named_vars
 
 
-def test_co2_operations_selects_boundary_and_offset_once(monkeypatch: Any) -> None:
-    """Explicit operations materialize and compose boundary and offset once."""
+@pytest.mark.parametrize("mean_shift", [False, True])
+def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any, mean_shift: bool) -> None:
+    """The public runner materializes and composes boundary and offset once."""
     inputs = _production_boundary_inputs()
+    inputs["G_bc"] = xr.DataArray(np.full((2, 8), 0.1), dims=("nmeasure", "bc_region"), attrs={"units": "1"})
+    inputs["bc_centering_weights"] = xr.DataArray(np.arange(1, 9), dims="bc_region", attrs={"units": "1"})
+    from openghg_inversions.rhime.co2.co2_preparation import _independent_boundary_weights
+    weights = _independent_boundary_weights(inputs.bc_centering_weights)
+    inputs = inputs.drop_vars("bc_centering_weights").assign(bc_centering_weights=weights)
 
     class PreparedInputsStub:
         inv_inputs = inputs
@@ -567,8 +573,10 @@ def test_co2_operations_selects_boundary_and_offset_once(monkeypatch: Any) -> No
         fixed_model_mismatch=1.0,
         no_model_error=True,
         use_bc=True,
-        bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
-        bc_state_activity=StateActivity(active=bc_active, fixed_value=bc_fixed),
+        bc_prior=None if mean_shift else {"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+        bc_state_activity=None if mean_shift else StateActivity(active=bc_active, fixed_value=bc_fixed),
+        bc_anomaly_scale=0.2 if mean_shift else None,
+        bc_mean_shift_prior={"pdf": "normal", "mu": 0.3, "sigma": 0.5} if mean_shift else None,
         offset_prior={"pdf": "normal", "mu": 0.2, "sigma": 0.1},
         offset_args={"per_site": False},
     )
@@ -577,20 +585,22 @@ def test_co2_operations_selects_boundary_and_offset_once(monkeypatch: Any) -> No
     roles = json.loads(result.attrs["rhime_variable_roles"])
     assert len(materialized_names) == 1
     assert materialized_names[0].count("H_bc") == 1
-    assert {"hbc", "bc", "mu_bc", "offset", "offset_latent"} <= set(model.named_vars)
+    assert {"hbc", "mu_bc", "offset", "offset_latent"} <= set(model.named_vars)
     metadata = json.loads(result.attrs["rhime_model_metadata"])
     assert metadata["use_bc"] is True
     assert metadata["add_offset"] is True
     assert metadata["offset_args"] == {"offset_freq": None, "drop_first": False, "per_site": False}
     assert roles["boundary_concentration"] == "mu_bc"
-    assert roles["boundary_scale"] == "bc"
+    if not mean_shift:
+        assert roles["boundary_scale"] == "bc"
     assert roles["boundary_sensitivity"] == "hbc"
     assert "baseline_concentration" not in roles
     assert "baseline_scale" not in roles
     registry = get_coord_registry(model)
     assert registry is not None
     assert registry.original_coords["bc_region"].equals(inputs.indexes["bc_region"])
-    np.testing.assert_array_equal(model["bc_is_active"].eval(), bc_active)
+    if not mean_shift:
+        np.testing.assert_array_equal(model["bc_is_active"].eval(), bc_active)
 
     variables = [
         model[name]
@@ -614,6 +624,19 @@ def test_co2_operations_selects_boundary_and_offset_once(monkeypatch: Any) -> No
         flux,
         fixed + inputs["H"].values @ flux_scaling,
     )
+
+    if mean_shift:
+        assert materialized_names[0].count("G_bc") == 1
+        assert "bc" not in model.named_vars
+        assert "boundary_scale" not in roles
+        assert roles["boundary_mean_shift"] == "bc_mean_shift"
+        np.testing.assert_allclose(
+            boundary,
+            inputs.H_bc.values.sum(axis=1) + 0.3 * inputs.G_bc.values.sum(axis=1),
+            rtol=1e-6,
+        )
+    else:
+        assert "G_bc" not in materialized_names[0]
 
 
 def test_co2_operations_does_not_auto_select_prepared_baseline(monkeypatch: Any) -> None:
@@ -1192,3 +1215,70 @@ def test_requested_facts_check_configuration_against_numerical_provenance() -> N
     prepared = replace(prepared, provenance={"start_date": "2020-01-01", "end_date": "2020-02-01", "domain": "EUROPE"})
     with pytest.raises(ValueError, match="domain conflicts"):
         requested_co2_facts(prepared, recorded_facts={"domain": "OTHER"})
+
+
+@pytest.mark.parametrize("reference", [400.0, 200_000.0])
+@pytest.mark.parametrize("explicit_transport", [False, True])
+def test_centered_additive_boundary_preserves_small_concentration_corrections(reference, explicit_transport):
+    """O2's large reference never scales the additive concentration uncertainty."""
+    inputs = _golden_inputs()
+    anomaly = np.asarray([[0.2, -0.1], [0.3, 0.05]])
+    mass = np.asarray([[0.7, 0.2], [0.1, 0.8]])
+    operands = xr.Dataset({
+        "H_bc_anomaly": (("nmeasure", "bc_region"), anomaly, {"units": "ppm"}),
+        "H_bc_mass": (("nmeasure", "bc_region"), mass, {"units": "1"}),
+        "bc_reference": ((), reference, {"units": "ppm"}),
+    }, coords={"nmeasure": inputs.nmeasure, "bc_region": ["north", "south"]}, attrs={"boundary_representation": "centered-v1"})
+    from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands
+    bound = bind_boundary_operands(operands, inputs.mf)
+    weights = xr.DataArray([1., 3.], dims="bc_region", coords={"bc_region": bound.bc_region}, attrs={"units": "1"})
+    model = _build_model(inputs, boundary_operands=operands,
+        boundary_correction_sensitivity=operands.H_bc_mass if explicit_transport else None,
+        bc_mean_shift_prior={"pdf": "normal", "mu": 0.1, "sigma": 0.2},
+        bc_anomaly_scale=0.05, bc_centering_weights=weights)
+    names = ["mu_bc_centered", "mu_bc", "bc_mean_shift", "bc_anomaly", "co2_flux_contribution", "modelled_concentration"]
+    evaluate = model.compile_fn(model.replace_rvs_by_values([model[name] for name in names]),
+        inputs=model.value_vars, on_unused_input="ignore")
+    centered, absolute, mean, deviations, flux, total = evaluate(model.initial_point())
+    expected = anomaly.sum(axis=1) + mass @ (mean + deviations)
+    np.testing.assert_allclose(centered, expected, atol=1e-12)
+    np.testing.assert_allclose(absolute, expected + reference * mass.sum(axis=1), atol=1e-10)
+    np.testing.assert_allclose(total, flux + absolute)
+    np.testing.assert_allclose(weights.values @ deviations, 0., atol=1e-14)
+    assert "bc" not in model.named_vars
+    with model:
+        draws = pm.sample_prior_predictive(500, var_names=["mu_bc_centered"], random_seed=123)
+    uncertainty = draws.prior.mu_bc_centered.std(("chain", "draw"))
+    assert (uncertainty < 0.3).all()
+
+
+@pytest.mark.parametrize(("operand", "value"), [("bc_reference", np.inf), ("bc_reference", np.nan), ("H_bc_mass", np.nan)])
+def test_centered_additive_boundary_rejects_nonfinite_reference(operand, value):
+    inputs = _golden_inputs()
+    operands = xr.Dataset({
+        "H_bc_anomaly": (("nmeasure", "bc_region"), [[.1], [.2]], {"units": "ppm"}),
+        "H_bc_mass": (("nmeasure", "bc_region"), [[.7], [.9]], {"units": "1"}),
+        "bc_reference": ((), 400., {"units": "ppm"}),
+    }, coords={"nmeasure": inputs.nmeasure, "bc_region": ["north"]},
+        attrs={"boundary_representation": "centered-v1"})
+    correction = xr.ones_like(operands.H_bc_mass)
+    operands[operand] = xr.full_like(operands[operand], value)
+    from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands
+    bound = bind_boundary_operands(operands, inputs.mf)
+    weights = xr.DataArray([1.], dims="bc_region", coords={"bc_region": bound.bc_region}, attrs={"units": "1"})
+    with pytest.raises(ValueError, match="reference.*finite"):
+        _build_model(inputs, boundary_operands=operands, boundary_correction_sensitivity=correction,
+            bc_mean_shift_prior={"pdf": "normal", "mu": 0., "sigma": .2},
+            bc_anomaly_scale=.05, bc_centering_weights=weights)
+
+
+def test_multiplicative_boundary_ignores_passive_correction_periods():
+    inputs = _production_boundary_inputs()
+    boundary = xr.DataArray(np.full((2, 2), 200.), dims=("nmeasure", "bc_region"),
+        coords={"nmeasure": inputs.nmeasure, "bc_region": ["north", "south"]},
+        attrs={"units": "ppm", "boundary_sensitivity_preparation": "raw-spatial"})
+    passive_correction = xr.ones_like(inputs.H_bc).assign_attrs(units="1")
+    model = _build_model(inputs, boundary_sensitivity=boundary, bc_freq="monthly",
+        boundary_correction_sensitivity=passive_correction)
+    assert "bc" in model.named_vars
+    assert "G_bc" not in model.named_vars
