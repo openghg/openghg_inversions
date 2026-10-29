@@ -171,6 +171,10 @@ concentration units.
 Common boundary mean and centred additive anomalies
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+See :doc:`centered_boundary_conditions` for the transport and basis definitions
+of :math:`H_{bc}`, :math:`A`, :math:`M` and :math:`G_{bc}`, and the distinction
+between numerical centering and the statistical constraint below.
+
 Use ``bc_mean_shift_prior`` with ``bc_anomaly_scale`` when a common bias in the
 supplied boundary concentration field is plausible. This selects an additive
 boundary model in the ordinary and cached fixed-OU CO2 recipes. Linked CO2/O2
@@ -181,21 +185,27 @@ For a monthly inversion with sub-monthly boundary states it is a monthly
 correction; the model does not create separate means for calendar months in a
 longer input artifact. No observation site is fixed.
 
-Let :math:`C^0_{rt}(z)` be the supplied concentration at height :math:`z`,
-boundary region :math:`r` and boundary period :math:`t`. The corrected field is
+Let :math:`\ell` identify a native boundary sample, including its location,
+height and time, and let :math:`j` identify a fitted region--period state.
+For a partition basis, write :math:`j(\ell)` for the state containing sample
+:math:`\ell`. The corrected concentration at that sample is
 
 .. math::
 
-   C_{rt}(z) &= C^0_{rt}(z) + \delta + u_{rt}, \\
-   \sum_{r,t} w_{rt}u_{rt} &= 0, \qquad
-   \sum_{r,t} w_{rt}=1.
+   C_\ell &= C^0_\ell + \delta + u_{j(\ell)}, \\
+   \sum_j w_ju_j &= 0, \qquad \sum_j w_j=1.
+
+The supplied concentration may vary within a state; its additive correction is
+shared. For a fractional basis :math:`B`, the native correction field is
+:math:`B(\delta\mathbf1+u)` instead of a single membership lookup.
 
 Here :math:`\delta` is ``bc_mean_shift`` and :math:`u` is ``bc_anomaly``.
 Both have the channel observations' concentration units, usually ppm. The caller
 supplies strictly positive centring weights :math:`w`; the model normalizes
-them to sum to one. Thus :math:`\delta` is the specified weighted mean
-correction to the boundary field. Choose weights for the scientific average
-of interest, for example boundary area and period duration. They are not
+them to sum to one. Thus :math:`\delta` is the specified weighted mean state
+correction. A mean of the native boundary field requires weights consistent
+with the basis and the chosen spatial/temporal measure. Choose weights for the
+scientific average of interest, for example boundary area and period duration. They are not
 inferred from observation counts or prevailing winds. Equal north/east/south/west
 weights define an equal-direction mean, not a curtain-area mean. Physical
 curtain-area × duration weights require an explicitly declared geometry
@@ -212,13 +222,13 @@ additive concentration corrections, rather than dimensionless BC scales.
 Anomaly prior and uncertainty
 """""""""""""""""""""""""""""
 
-Flatten the region--period pairs into :math:`K` labelled boundary states.
-Define :math:`P=I-\mathbf{1}w^\mathsf{T}`, where :math:`\mathbf{1}` is the
+There are :math:`K` labelled region--period boundary states.
+Define :math:`\Pi=I-\mathbf{1}w^\mathsf{T}`, where :math:`\mathbf{1}` is the
 length-:math:`K` vector of ones. The anomaly prior is
 
 .. math::
 
-   u &\sim \mathcal{N}\!\left(0,\,s_{bc}^{2}PP^\mathsf{T}\right), \\
+   u &\sim \mathcal{N}\!\left(0,\,s_{bc}^{2}\Pi\Pi^\mathsf{T}\right), \\
    \delta &\sim p_{\delta}, \qquad \delta\ \text{independent of}\ u.
 
 The positive fixed scale :math:`s_{bc}` is ``bc_anomaly_scale`` in concentration

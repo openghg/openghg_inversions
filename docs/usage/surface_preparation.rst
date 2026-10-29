@@ -212,6 +212,10 @@ ordinary CO₂ coherent reduction automatically; see :doc:`coherent_reduction` a
 Centered preparation handoff
 ----------------------------
 
+See :doc:`centered_boundary_conditions` for definitions of the anomaly and
+mass operators, their mathematical relation to the absolute boundary response,
+and pseudocode for native curtain products, spatial projection and period masks.
+
 Apply supported observation selection first, then derive missing observation
 errors with ``prepare_observation_errors`` on the retained population. Explicit
 existing errors remain unchanged. Project the native ``bc_anomaly_*`` and

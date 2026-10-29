@@ -13,6 +13,7 @@ Using OpenGHG Inversions
    nested_domain_model_family
    co2_model_family
    surface_preparation
+   centered_boundary_conditions
    prepared_format_support
    running_and_validating
    shared_scientific_concepts
