@@ -432,7 +432,7 @@ def _add_co2_o2_baseline_components(
             activity = (bc_state_activity or {}).get(channel)
             prior = dict((bc_prior or {}).get(channel, DEFAULT_BC_PRIOR))
             design = _pad_channel_design(native, observations, channel)
-            result = add_linear_component(
+            linear_result = add_linear_component(
                 prepare_linear_sensitivity(design, output_dim=output_dim),
                 data_name=f"{channel}_hbc",
                 prior_args=prior,
@@ -442,8 +442,8 @@ def _add_co2_o2_baseline_components(
                 state_activity=activity,
                 coordinate_owner=channel,
             )
-            components.append(_ChannelBaselineComponent(channel, result, design, result.output))
-            boundaries.append(result.output)
+            components.append(_ChannelBaselineComponent(channel, linear_result, design, linear_result.output))
+            boundaries.append(linear_result.output)
         channel_offset_prior = (offset_prior or {}).get(channel)
         if channel_offset_prior is not None:
             native_dim = f"{channel}_offset_observation"

@@ -176,7 +176,7 @@ def add_centered_boundary(
     mean = parse_prior(f"{prefix}bc_mean_shift", dict(mean_prior))
     if mean.ndim != 0:
         raise ValueError("bc_mean_shift_prior must define one scalar over the inversion window.")
-    latents = (get_model_latent(mean, f"{prefix}bc_mean_shift"),)
+    latents: tuple[TensorVariable, ...] = (get_model_latent(mean, f"{prefix}bc_mean_shift"),)
     coefficients = pt.atleast_1d(mean)
     if prepared.basis.sizes["bc_contrast"]:
         basis = register(prepared.basis, "bc_anomaly_basis")
