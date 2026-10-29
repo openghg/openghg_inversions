@@ -176,21 +176,6 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             if not enabled:
                 boundaries.pop(channel, None)
                 operands.pop(channel, None)
-    correction_inputs = {}
-    prepared_corrections = getattr(prepared, "boundary_correction_sensitivity", {})
-    prepared_weights = getattr(prepared, "bc_centering_weights", {})
-    for channel, explicit_correction, explicit_weights in (
-        ("co2", boundary_correction_sensitivity_co2, bc_centering_weights_co2),
-        ("o2", boundary_correction_sensitivity_o2, bc_centering_weights_o2),
-    ):
-        correction = (
-            explicit_correction if explicit_correction is not None else prepared_corrections.get(channel)
-        )
-        weights = explicit_weights if explicit_weights is not None else prepared_weights.get(channel)
-        if correction is not None:
-            correction_inputs[f"{channel}_correction"] = correction
-        if weights is not None:
-            correction_inputs[f"{channel}_weights"] = weights
     _validate_channel_baseline_options(
         boundaries,
         bc_prior,
@@ -203,6 +188,23 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         bc_anomaly_scale_co2=bc_anomaly_scale_co2,
         bc_anomaly_scale_o2=bc_anomaly_scale_o2,
     )
+    correction_inputs = {}
+    prepared_corrections = getattr(prepared, "boundary_correction_sensitivity", {})
+    prepared_weights = getattr(prepared, "bc_centering_weights", {})
+    for channel, mean_prior, explicit_correction, explicit_weights in (
+        ("co2", bc_mean_shift_prior_co2, boundary_correction_sensitivity_co2, bc_centering_weights_co2),
+        ("o2", bc_mean_shift_prior_o2, boundary_correction_sensitivity_o2, bc_centering_weights_o2),
+    ):
+        if mean_prior is None:
+            continue
+        correction = (
+            explicit_correction if explicit_correction is not None else prepared_corrections.get(channel)
+        )
+        weights = explicit_weights if explicit_weights is not None else prepared_weights.get(channel)
+        if correction is not None:
+            correction_inputs[f"{channel}_correction"] = correction
+        if weights is not None:
+            correction_inputs[f"{channel}_weights"] = weights
     if operands:
         require_centered_precision()
     materialized, boundaries, operands = _materialize_co2_o2_replay_inputs(

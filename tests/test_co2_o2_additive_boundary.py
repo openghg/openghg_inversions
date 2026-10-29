@@ -393,3 +393,75 @@ def test_linked_canonical_raw_spatial_absolute_inputs_bind_one_period(cached):
         else:
             model = build_co2_o2_model(**kwargs)
         assert "o2_bc_mean_shift" in model and "co2_bc_mean_shift" in model
+
+
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize("mode", ["multiplicative", "disabled", "co2_additive"])
+@pytest.mark.parametrize("source", ["prepared", "explicit"])
+def test_linked_runners_do_not_compute_passive_additive_arrays(monkeypatch, cached, mode, source):
+    from dask import delayed
+    import dask.array as da
+    from openghg_inversions.rhime.co2 import co2_o2_runner, co2_o2_cached_sigma_runner
+    from openghg_inversions.rhime.sampling import RhimeSampler
+
+    def unexpected_computation():
+        raise AssertionError("Computed an unused additive boundary graph")
+
+    def passive(array):
+        payload = da.from_delayed(delayed(unexpected_computation)(), shape=array.shape, dtype=array.dtype)
+        return array.copy(data=payload)
+
+    with pytensor.config.change_flags(floatX="float64"):
+        kwargs = _additive_inputs(False)
+        corrections = {}
+        weights = {}
+        options = {}
+        for channel in ("co2", "o2"):
+            correction = kwargs[f"boundary_correction_sensitivity_{channel}"]
+            channel_weights = kwargs[f"bc_centering_weights_{channel}"]
+            if mode == "co2_additive" and channel == "co2":
+                options["bc_mean_shift_prior_co2"] = kwargs["bc_mean_shift_prior_co2"]
+                options["bc_anomaly_scale_co2"] = kwargs["bc_anomaly_scale_co2"]
+            else:
+                correction = passive(correction)
+                channel_weights = passive(channel_weights)
+            corrections[channel] = correction
+            weights[channel] = channel_weights
+            if source == "explicit":
+                options[f"boundary_correction_sensitivity_{channel}"] = correction
+                options[f"bc_centering_weights_{channel}"] = channel_weights
+        prepared = replace(
+            _prepared(),
+            observations=kwargs["observations"],
+            boundary_sensitivity=kwargs["boundary_sensitivity"],
+            boundary_correction_sensitivity=corrections if source == "prepared" else {},
+            bc_centering_weights=weights if source == "prepared" else {},
+        )
+        if mode == "disabled":
+            options["use_bc"] = {"co2": False, "o2": False}
+
+        def prior_sample(built, sampler):
+            with built.model:
+                trace = pm.sample_prior_predictive(draws=1, random_seed=83)
+            return restore_inferencedata_coords(trace, get_coord_registry(built.model))
+
+        module = co2_o2_cached_sigma_runner if cached else co2_o2_runner
+        monkeypatch.setattr(module, "sample_rhime_model", prior_sample)
+        if cached:
+            monkeypatch.setattr(module, "_sampler_for_cached_graph", lambda sampler, **_: sampler)
+            options.update(tau_hours=6.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8})
+        runner = (
+            module.run_rhime_co2_o2_cached_sigma_from_prepared_inputs
+            if cached
+            else module.run_rhime_co2_o2_from_prepared_inputs
+        )
+        trace = runner(
+            prepared_inputs=prepared,
+            independent_error_sd=kwargs["independent_error_sd"],
+            sampler=RhimeSampler(draws=1, tune=0, chains=1, burn=0, nuts_sampler="pymc"),
+            **options,
+        )
+        assert ("co2_bc_mean_shift" in trace.prior) == (mode == "co2_additive")
+        assert "o2_bc_mean_shift" not in trace.prior
+        assert "o2_G_bc" not in trace.constant_data
+        assert "o2_bc_centering_weights" not in trace.constant_data

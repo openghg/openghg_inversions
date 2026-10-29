@@ -671,8 +671,9 @@ def test_boundary_mean_shift_response_survives_preparation_and_round_trip(tmp_pa
             prepare_co2_inputs(broken, _reduction(canonical), aggregation_error_rank=None)
 
 
-def test_centered_unit_response_and_resolved_weights_keep_independent_states(tmp_path):
-    """Raw spatial mass and explicit fitted-state weights survive artifact replay."""
+@pytest.mark.parametrize("shared_consumer", [None, "data_variable", "multidimensional_coordinate"])
+def test_centered_unit_response_and_resolved_weights_keep_independent_states(tmp_path, shared_consumer):
+    """Re-preparation replaces owned weights without changing shared inputs."""
     from openghg_inversions.boundary_sensitivity import BoundaryAlignment
 
     canonical = _canonical_inputs()
@@ -688,10 +689,32 @@ def test_centered_unit_response_and_resolved_weights_keep_independent_states(tmp
     inputs["bc_reference"] = xr.DataArray(200_000., attrs={"units": "ppm"})
     inputs.attrs["boundary_representation"] = "centered-v1"
     canonical = replace(canonical, inv_inputs=inputs)
+    single_period = BoundaryAlignment.prepare(inputs.H_bc_mass).data
+    initial_weights = xr.ones_like(single_period.isel(nmeasure=0, drop=True)).assign_attrs(units="1")
+    initial = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=None,
+                                bc_centering_weights=initial_weights)
+    borrowed = initial.rhime_inputs
+    assert borrowed.inv_inputs.sizes["bc_centering_state"] == 2
+    if shared_consumer == "data_variable":
+        borrowed.inv_inputs["shared_weights_axis"] = xr.ones_like(borrowed.inv_inputs.bc_centering_weights)
+    elif shared_consumer == "multidimensional_coordinate":
+        borrowed.inv_inputs.coords["shared_weights_axis"] = (
+            ("bc_centering_state", "region"), np.ones((2, 2))
+        )
+    original = borrowed.inv_inputs.copy(deep=True)
     resolved = BoundaryAlignment.prepare(inputs.H_bc_mass, frequency="1D").data
     weights = xr.ones_like(resolved.isel(nmeasure=0, drop=True)).assign_attrs(units="1")
-    prepared = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=None,
+    if shared_consumer is not None:
+        with pytest.raises(ValueError, match="bc_centering_state.*shared_weights_axis"):
+            prepare_co2_inputs(borrowed, _reduction(canonical), aggregation_error_rank=None,
+                               bc_centering_weights=weights)
+        xr.testing.assert_identical(borrowed.inv_inputs, original)
+        return
+    prepared = prepare_co2_inputs(borrowed, _reduction(canonical), aggregation_error_rank=None,
                                  bc_centering_weights=weights)
+    xr.testing.assert_identical(borrowed.inv_inputs, original)
+    expected_labels = resolved.indexes["bc_region"].set_names(["bc_centering_curtain", "bc_centering_period"])
+    assert prepared.inv_inputs.indexes["bc_centering_state"].equals(expected_labels)
     assert prepared.inv_inputs.sizes["bc_region"] == 2
     assert prepared.inv_inputs.sizes["bc_centering_state"] == 6
     assert isinstance(prepared.inv_inputs.G_bc.data, da.Array)

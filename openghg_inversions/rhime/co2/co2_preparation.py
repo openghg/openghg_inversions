@@ -597,7 +597,9 @@ def prepare_co2_inputs(
             model construction normalizes them to sum to one. For centered
             operands, explicitly supplied ``H_bc_mass`` supplies the unit response
             when no correction response is passed. Existing canonical arrays
-            are retained when these arguments are omitted.
+            are retained when these arguments are omitted. Replacing weights
+            removes their previous independent axis; shared data variables or
+            multidimensional coordinate consumers prevent replacement.
         provenance: Optional JSON-serializable project or preparation
             provenance. The reduction strategy and LRPD diagnostics are added
             by this boundary.
@@ -764,6 +766,21 @@ def prepare_co2_inputs(
             **{"boundary_sensitivity_preparation": reference.attrs["boundary_sensitivity_preparation"]}
         ) if "boundary_sensitivity_preparation" in reference.attrs else correction
         mapped["G_bc"] = _borrow_without_axis_coordinates(correction, "nmeasure")
+        if "bc_centering_state" in mapped.dims:
+            consumers = [
+                name for name, array in mapped.variables.items()
+                if "bc_centering_state" in array.dims and name != "bc_centering_weights"
+                and (name not in mapped.coords or array.dims != ("bc_centering_state",))
+            ]
+            if consumers:
+                raise ValueError(
+                    "Boundary weight dimension 'bc_centering_state' is also used by "
+                    f"non-weight variable(s): {consumers!r}."
+                )
+            if "bc_centering_weights" not in mapped:
+                raise ValueError("Existing bc_centering_state dimension is not owned by boundary weights.")
+            mapped = mapped.drop_dims("bc_centering_state")
+        mapped = mapped.drop_vars("bc_centering_weights", errors="ignore")
         mapped["bc_centering_weights"] = weights
     elif "bc_centering_weights" in mapped and mapped.bc_centering_weights.dims == ("bc_region",):
         # Keep resolved period-state weights independent of reusable spatial states.
