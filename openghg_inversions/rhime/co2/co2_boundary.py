@@ -2,6 +2,8 @@
 
 The additive mode replaces fitted multiplicative boundary scales. Its reference
 contribution is H_bc @ 1, and its correction is G_bc @ (mean + anomaly).
+G_bc is dimensionless transport, defaulting to boundary mass M with centered
+operands; correction coefficients have concentration units.
 See https://mc-stan.org/docs/stan-users-guide/regression.html#parameterizing-centered-vectors
 for the non-redundant normal coordinates underlying the centring constraint.
 """
@@ -56,7 +58,8 @@ def prepare_centered_boundary(
 
     Positive weights define the mean over all supplied curtain/period states,
     including states unobserved by the transport. The anomaly scale is the
-    standard deviation before weighted centring, in concentration units.
+    standard deviation before weighted centring, in concentration units. Zero
+    selects a common-level-only correction without sampled contrasts.
     This is a new additive Gaussian prior, not a transformed truncated-normal
     scaling prior. It cannot be combined with scaling priors or activity masks.
     """
@@ -82,8 +85,8 @@ def prepare_centered_boundary(
     if bc_prior is not None or bc_state_activity is not None:
         raise ValueError("Centred additive boundaries replace bc_prior and bc_state_activity; omit both.")
     assert anomaly_scale is not None
-    if not np.isfinite(anomaly_scale) or anomaly_scale <= 0:
-        raise ValueError("bc_anomaly_scale must be finite and strictly positive.")
+    if not np.isfinite(anomaly_scale) or anomaly_scale < 0:
+        raise ValueError("bc_anomaly_scale must be finite and non-negative.")
     assert boundary_sensitivity is not None and correction_sensitivity is not None and weights is not None
     hbc = boundary_sensitivity.transpose(output_dim, "bc_region")
     gbc = correction_sensitivity.transpose(output_dim, "bc_region")
@@ -126,12 +129,12 @@ def prepare_centered_boundary(
     weights = (weights / weights.sum()).assign_attrs(units="1")
     # Q spans the equal-sum-zero subspace. Applying P = I - 1 w.T gives
     # Cov(u) = scale**2 P P.T and preserves every pairwise contrast variance.
-    q = helmert(count, full=False).T
+    q = helmert(count, full=False).T if anomaly_scale > 0 else np.empty((count, 0))
     basis = q - np.ones((count, 1)) @ (weights.values @ q)[None, :]
     labelled_basis = xr.DataArray(
         basis,
         dims=("bc_region", "bc_contrast"),
-        coords={"bc_region": weights.coords["bc_region"], "bc_contrast": np.arange(count - 1)},
+        coords={"bc_region": weights.coords["bc_region"], "bc_contrast": np.arange(basis.shape[1])},
     )
     design = np.column_stack((gbc.values.sum(axis=1), gbc.values @ basis))
     return CenteredBoundary(hbc, gbc, weights, labelled_basis, design, reference_shift)
@@ -143,7 +146,8 @@ class AdditiveBoundaryResult:
 
     ``likelihood_contribution`` excludes ``reference_shift`` when numerical
     centering is used. Coefficients contain the scalar mean and K−1 Gaussian
-    contrasts; latents are the underlying sampled PyMC variables.
+    contrasts when their scale is positive; latents are the underlying sampled
+    PyMC variables.
     """
 
     term: AffineTerm
@@ -178,9 +182,12 @@ def add_centered_boundary(
     """Build additive boundary corrections on registered observation/state axes.
 
     The common mean and pre-centering anomaly scale use observation concentration
-    units. With centered operands the likelihood uses A1 + G(mean + anomaly),
-    while absolute outputs restore cM1 exactly once. The corrections are never
-    multiplied by the numerical reference c. No multiplicative state is created.
+    units. With centered operands the likelihood uses A1 + G_bc(mean + anomaly),
+    where dimensionless G_bc defaults to boundary mass M, while absolute outputs
+    restore cM1 exactly once. The corrections are never
+    multiplied by the numerical reference c or the signed concentration anomaly
+    A. A zero anomaly scale retains only the common mean as a sampled state.
+    No multiplicative state is created.
     """
 
     def register(array: xr.DataArray, name: str) -> TensorVariable:
@@ -204,7 +211,7 @@ def add_centered_boundary(
         coefficients = pt.concatenate((coefficients, contrasts))
         latents += (contrasts,)
     else:
-        anomaly_expression = pt.zeros((1,))
+        anomaly_expression = pt.zeros((prepared.weights.size,))
     anomaly = pm.Deterministic(f"{prefix}bc_anomaly", anomaly_expression, dims=state_dim)
     pm.Deterministic(f"{prefix}bc_correction", mean + anomaly, dims=state_dim)
     reference_expression = pt.sum(hbc, axis=1)

@@ -592,9 +592,12 @@ def build_co2_o2_model(
             in its observation concentration units. Requires bc_anomaly_scale_co2
             and replaces that channel's multiplicative prior/activity.
         bc_mean_shift_prior_o2: Corresponding independent O2 mean-shift prior.
-        bc_anomaly_scale_co2: Positive CO2 Gaussian scale before weighted centring,
-            in concentration units, including every supplied curtain/period state.
-        bc_anomaly_scale_o2: Corresponding positive O2 anomaly scale.
+        bc_anomaly_scale_co2: Finite, nonnegative CO2 Gaussian scale before
+            weighted centring, in concentration units, including every supplied
+            curtain/period state. Zero retains only the common mean without
+            sampled contrasts.
+        bc_anomaly_scale_o2: Corresponding independent O2 anomaly scale; zero
+            likewise omits O2 contrasts.
         boundary_correction_sensitivity_co2: Dimensionless CO2 unit transport on
             its native observation and boundary-state axes. Centered operands
             default to their explicitly supplied H_bc_mass; no division by the
