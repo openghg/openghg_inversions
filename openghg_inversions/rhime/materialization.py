@@ -74,6 +74,8 @@ def _materialize_pymc_inputs_and_priors(
     timing_start = timer_start()
     inv_inputs = prepared.inv_inputs
     names = list(dict.fromkeys(variable_names))
+    if "supplied_baseline" in inv_inputs and "supplied_baseline" not in names:
+        raise ValueError("This recipe does not consume supplied baselines; use the standard RHIME recipe.")
     missing = [name for name in names if name not in inv_inputs]
     if missing:
         raise ValueError(f"Selected PyMC component inputs are missing from prepared data: {missing!r}.")

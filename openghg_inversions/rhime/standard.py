@@ -22,6 +22,7 @@ from typing import Any
 from dask import is_dask_collection
 from dask.base import unpack_collections
 
+import pymc as pm
 import pandas as pd
 import xarray as xr
 
@@ -35,7 +36,7 @@ from openghg_inversions.models.components import (
     apply_linear_sensitivity,
 )
 from openghg_inversions.models._flux import _stack_multisector_sensitivity
-from openghg_inversions.models.coords import component_coords, registered_model
+from openghg_inversions.models.coords import add_model_data, component_coords, registered_model
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.models.state_activity import prepare_linear_sensitivity, resolve_state_activity
@@ -46,6 +47,7 @@ from ._model_building import (
     add_rhime_likelihood,
     builtin_model_build_result,
 )
+from .baseline import add_baseline_component, supplied_baseline_input_names
 from .builders import (
     RhimeLikelihoodBuilder,
     RhimeModelBuildResult,
@@ -167,6 +169,9 @@ def _standard_input_names(
             owner="Standard baseline component selected by `use_bc=True`",
         )
         names.extend(_BASELINE_INPUT_NAMES)
+    names.extend(supplied_baseline_input_names(
+        model_inputs, species=model_spec.species, use_bc=model_spec.use_bc,
+    ))
     return tuple(names)
 
 
@@ -353,6 +358,10 @@ def _build_independent_rhime_model(
             prepared_flux, state, data_name="hx", output_name="mu",
         )
 
+        if "inner_fixed_contribution" in model_inputs:
+            fixed = add_model_data(model_inputs.inner_fixed_contribution)
+            pollution_mean = pm.Deterministic("mu_inner", pollution_mean + fixed, dims="nmeasure")
+
         boundary_mean = None
         if prepared_boundary is not None:
             boundary_mean = add_linear_component(
@@ -377,15 +386,19 @@ def _build_independent_rhime_model(
                 **(offset_args or {}),
             )
 
-        baseline_mean = boundary_mean
+        effective_baseline = add_baseline_component(model_inputs, boundary_mean)
+        baseline_mean = effective_baseline
         if offset is not None:
             baseline_mean = offset if baseline_mean is None else baseline_mean + offset
         modelled_mean = pollution_mean if baseline_mean is None else pollution_mean + baseline_mean
 
+        if "supplied_baseline" in model_inputs:
+            modelled_mean = pm.Deterministic("mu_total", modelled_mean, dims="nmeasure")
+
         forward = ForwardModelTerms(
             total=modelled_mean,
             pollution=pollution_mean,
-            baseline=baseline_mean,
+            baseline=effective_baseline if "supplied_baseline" in model_inputs else baseline_mean,
         )
         add_rhime_likelihood(
             settings=model_spec.likelihood,
