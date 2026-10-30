@@ -537,9 +537,19 @@ def _legacy_inferpymc_fields(inv_out: InversionOutput, *, use_bc: bool) -> dict[
         _posterior_var(posterior, (inv_out.variable_name("flux_scale"), "x"), "emissions scaling"),
         "Emissions scaling",
     )
-    sigouts = _legacy_sigma_trace(
-        _posterior_var(posterior, ("sigma", inv_out.variable_name("model_error")), "model-error sigma")
-    )
+    try:
+        model_data = inv_out.model_data()
+    except ValueError:
+        model_data = xr.Dataset()
+    if "sigma_site" in posterior:
+        sigouts = _as_array(posterior["sigma_site"].transpose("draw", "sigma_site_dim"))[:, :, None]
+    elif "sigma_site" in model_data:
+        fixed = _as_array(model_data["sigma_site"])
+        sigouts = np.broadcast_to(fixed[None, :, None], (posterior.sizes["draw"], len(fixed), 1))
+    else:
+        sigouts = _legacy_sigma_trace(
+            _posterior_var(posterior, ("sigma", inv_out.variable_name("model_error")), "model-error sigma")
+        )
     fields = {"xouts": xouts, "sigouts": sigouts}
 
     if use_bc:
@@ -575,12 +585,19 @@ def _legacy_postprocess_fields(inv_out: InversionOutput, *, use_bc: bool) -> dic
         if use_bc
         else None
     )
-    sigma_freq_index = _model_or_input_var(
-        inv_out,
-        model_name="sigma_period_index",
-        input_name="sigma_freq_index",
-        description="sigma frequency index",
-    )
+    try:
+        model_data = inv_out.model_data()
+    except ValueError:
+        model_data = xr.Dataset()
+    if "sigma_site_index" in model_data:
+        sigma_freq_index = xr.zeros_like(model_data["sigma_site_index"], dtype=int)
+    else:
+        sigma_freq_index = _model_or_input_var(
+            inv_out,
+            model_name="sigma_period_index",
+            input_name="sigma_freq_index",
+            description="sigma frequency index",
+        )
     sigma_freq = _as_array(
         sigma_freq_index.transpose("nmeasure") if "nmeasure" in sigma_freq_index.dims else sigma_freq_index
     ).astype(int, copy=False)

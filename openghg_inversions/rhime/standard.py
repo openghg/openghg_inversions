@@ -47,7 +47,7 @@ from .builders import (
 )
 from .materialization import materialize_pymc_inputs
 from .outputs import RhimeResult, annotate_likelihood_trace, make_standard_rhime_outputs
-from .params import params_from_config, resolve_rhime_options
+from .params import params_from_config, resolve_rhime_options, select_site_sigma_from_config
 from .preparation import (
     assemble_rhime_inputs,
     build_rhime_basis,
@@ -519,6 +519,14 @@ def run_rhime(
         if config_file is not None
         else dict(kwargs)
     )
+    site_options = select_site_sigma_from_config(params)
+    if site_options is not None:
+        if likelihood_builder is not None or likelihood_kwargs:
+            raise ValueError("site_sigma cannot be combined with a custom likelihood.")
+        from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
+
+        likelihood_builder = add_site_sigma_gaussian_likelihood
+        likelihood_kwargs = site_options
     if likelihood_builder is not None:
         if params.get("mismatch_model") is not None:
             raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")

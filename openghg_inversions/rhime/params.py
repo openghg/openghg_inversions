@@ -284,6 +284,28 @@ def params_from_config(
     return normalise_rhime_params(params) if normalise else params
 
 
+def select_site_sigma_from_config(params: dict[str, Any]) -> dict[str, Any] | None:
+    """Remove INI site-sigma settings and return the component options."""
+    if params.get("likelihood") != "site_sigma":
+        return None
+    params.pop("likelihood")
+    options = {key: params.pop(key) for key in ("site_amplitude_prior", "fixed_site_amplitudes") if key in params}
+    if len(options) != 1 or not isinstance(next(iter(options.values())), Mapping):
+        raise ValueError("site_sigma requires exactly one mapping: site_amplitude_prior or fixed_site_amplitudes.")
+    if params.get("mismatch_model") is not None:
+        raise ValueError("site_sigma cannot be combined with mismatch_model.")
+    if params.get("no_model_error", False):
+        raise ValueError("site_sigma cannot be combined with no_model_error=True.")
+    if params.get("sigma_freq") is not None or params.get("sigma_per_site", True) is not True:
+        raise ValueError("site_sigma requires sigma_freq=None and sigma_per_site=True.")
+    # These legacy settings belong to the pollution-event model, not site sigma.
+    for key in ("sigprior", "sigma_prior", "sigma_freq", "sigma_per_site", "sigma_freq_anchor",
+                "pollution_events_from_obs", "power", "no_model_error"):
+        params.pop(key, None)
+    params["mismatch_model"] = None
+    return options
+
+
 def normalise_rhime_params(params: Mapping[str, Any]) -> dict[str, Any]:
     """Normalize aliases, coerce simple scalars, and validate structured values."""
     normalized = normalise_param_aliases(params)

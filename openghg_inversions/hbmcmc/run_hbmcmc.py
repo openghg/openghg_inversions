@@ -47,7 +47,7 @@ from openghg_inversions.config.paths import Paths
 from openghg_inversions.hbmcmc.hbmcmc import _LEGACY_FIXEDBASIS_OUTPUT_FORMAT, fixedbasisMCMC
 from openghg_inversions.models.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
 from openghg_inversions.rhime import PollutionEventSettings, resolve_rhime_options, run_rhime
-from openghg_inversions.rhime.params import normalise_rhime_params
+from openghg_inversions.rhime.params import normalise_rhime_params, select_site_sigma_from_config
 
 
 _RUN_HBMCMC_RHIME_ALIASES = {
@@ -490,6 +490,8 @@ def main(argv: list[str] | None = None) -> None:
     log_timing("run_hbmcmc.config_extract", timer_seconds(timing_start))
 
     if args.legacy_fixedbasis:
+        if param.get("likelihood") == "site_sigma":
+            raise ValueError("site_sigma is not supported by --legacy-fixedbasis.")
         if mcmc_type != "fixed_basis":
             raise ValueError(f"--legacy-fixedbasis only supports mcmc_type='fixed_basis'; got {mcmc_type!r}.")
         legacy_params = _prepare_legacy_fixedbasis_params(param)
@@ -507,12 +509,18 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Using MCMC type: {mcmc_type} - routing fixedbasis-style config to run_rhime(...)")
 
     with timed("run_hbmcmc.fixedbasis_to_rhime_translation"):
-        rhime_params = fixedbasis_params_to_rhime(param)
-        additive_sigma_options = _select_additive_sigma_model_options(param, rhime_params)
+        site_params = dict(param)
+        site_options = select_site_sigma_from_config(site_params)
+        rhime_params = fixedbasis_params_to_rhime(site_params)
+        additive_sigma_options = (
+            None if site_options is not None else _select_additive_sigma_model_options(param, rhime_params)
+        )
         no_model_error = bool(rhime_params.pop("no_model_error", False))
         legacy_unused_sigma_settings: PollutionEventSettings | None = None
         legacy_minimum_error_floor = False
-        if additive_sigma_options is not None:
+        if site_options is not None:
+            rhime_params["mismatch_model"] = None
+        elif additive_sigma_options is not None:
             no_model_error = bool(additive_sigma_options.get("no_model_error", no_model_error))
             if no_model_error:
                 for name in _ADDITIVE_SIGMA_OPTION_NAMES:
@@ -557,8 +565,14 @@ def main(argv: list[str] | None = None) -> None:
                 if name in additive_sigma_options
             },
         }
+    site_likelihood = {}
+    if site_options is not None:
+        from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
+
+        site_likelihood = {"likelihood_builder": add_site_sigma_gaussian_likelihood, "likelihood_kwargs": site_options}
     run_rhime(
-        preserve_legacy_likelihood=additive_sigma_options is None,
+        **site_likelihood,
+        preserve_legacy_likelihood=additive_sigma_options is None and site_options is None,
         _compatibility_likelihood_provenance=compatibility_provenance,
         _compatibility_unused_sigma_settings=legacy_unused_sigma_settings,
         _compatibility_minimum_error_floor=legacy_minimum_error_floor,

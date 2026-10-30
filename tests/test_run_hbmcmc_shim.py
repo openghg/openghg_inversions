@@ -669,3 +669,43 @@ def test_run_hbmcmc_main_checks_country_file_before_copying_or_running(
 
     with pytest.raises(FileNotFoundError, match="country_file"):
         run_hbmcmc.main(["-c", str(config_file)])
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [("site_amplitude_prior", {"pdf": "halfnormal", "sigma": 2.0}),
+     ("fixed_site_amplitudes", {"TAC": 2.0})],
+)
+def test_run_hbmcmc_selects_site_sigma_from_ini(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, name: str, value: dict[str, Any]
+) -> None:
+    from openghg_inversions.models import add_site_sigma_gaussian_likelihood
+
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    config_file.write_text(
+        config_file.read_text(encoding="utf-8").replace(
+            "[MCMC.OPTIONS]", f'[MCMC.OPTIONS]\nlikelihood = "site_sigma"\n{name} = {value!r}'
+        ), encoding="utf-8"
+    )
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(run_hbmcmc.output, "copy_config_file", lambda *args, **kwargs: None)
+    monkeypatch.setattr(run_hbmcmc, "run_rhime", lambda **kwargs: seen.update(kwargs))
+    run_hbmcmc.main(["-c", str(config_file)])
+    assert seen["likelihood_builder"] is add_site_sigma_gaussian_likelihood
+    assert seen["likelihood_kwargs"] == {name: value}
+    assert seen["mismatch_model"] is None
+    assert "sigma_prior" not in seen
+
+
+@pytest.mark.parametrize("changes", [
+    {},
+    {"site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1}, "fixed_site_amplitudes": {"TAC": 1}},
+    {"site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1}, "sigma_freq": "monthly"},
+    {"site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1}, "no_model_error": True},
+])
+def test_site_sigma_rejects_incompatible_configuration(changes: dict[str, Any]) -> None:
+    from openghg_inversions.rhime.params import select_site_sigma_from_config
+
+    with pytest.raises(ValueError, match="site_sigma"):
+        select_site_sigma_from_config({"likelihood": "site_sigma", **changes})
