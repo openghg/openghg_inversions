@@ -218,6 +218,12 @@ The absolute expression is valid without numerical centering. Applications
 requiring many significant digits still need the accuracy checks and
 operation ordering in :ref:`boundary-numerical-centering`.
 
+The anomaly operator :math:`A` is signed and has concentration units, whereas
+:math:`M` and :math:`G_{bc}` are dimensionless. Substituting :math:`A` for the
+correction response would require different coefficient units and prior
+semantics. It is not supported by the current additive transport argument;
+numerically centered inputs still use :math:`G_{bc}` for corrections.
+
 One whole-window correction and state anomalies
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -239,6 +245,13 @@ period :math:`t`. It is allowed when
 potentially nonzero. For a basis that partitions unity, :math:`\delta` gives
 a constant native concentration correction. Otherwise its native pattern is
 :math:`\delta B\mathbf1`.
+
+The constraint removes the redundant direction internal to this decomposition:
+without it, a constant could be transferred between :math:`\delta` and all
+:math:`u_j` without changing :math:`d`. It does not guarantee identifiability
+against site offsets, other boundary patterns or flux contributions after
+transport. Setting ``bc_anomaly_scale=0`` retains the scalar common correction
+and fixes every anomaly to zero, without sampling contrast variables.
 
 Independent priors on the :math:`K` corrections :math:`d_j` are a valid
 alternative scientific formulation. We use the mean-and-anomaly formulation

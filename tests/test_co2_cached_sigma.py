@@ -1381,9 +1381,10 @@ def test_centered_cache_full_operands_dense_density_and_gradients(all_fixed):
 
 
 @pytest.mark.parametrize("reference", [400.0, 200_000.0])
-@pytest.mark.parametrize("additive", [False, True])
-def test_centered_stock_and_cached_boundary_match_dense_likelihood(reference, additive, monkeypatch):
+@pytest.mark.parametrize("anomaly_scale", [None, 0.0, 0.05])
+def test_centered_stock_and_cached_boundary_match_dense_likelihood(reference, anomaly_scale, monkeypatch):
     """Both BC priors compose with stock/cached OU on the same centered residual."""
+    additive = anomaly_scale is not None
     inputs = _inputs()
     anomaly = np.asarray([[.2, -.1], [.3, .05], [-.1, .2], [.15, -.05]])
     mass = np.asarray([[.7, .2], [.1, .8], [.3, .6], [.5, .4]])
@@ -1399,7 +1400,7 @@ def test_centered_stock_and_cached_boundary_match_dense_likelihood(reference, ad
     bound = bind_boundary_operands(operands, inputs.mf)
     weights = xr.DataArray([1., 3.], dims="bc_region", coords={"bc_region": bound.bc_region}, attrs={"units": "1"})
     boundary_parameters = (
-        {"bc_mean_shift_prior": {"pdf": "normal", "mu": .1, "sigma": .2}, "bc_anomaly_scale": .05}
+        {"bc_mean_shift_prior": {"pdf": "normal", "mu": .1, "sigma": .2}, "bc_anomaly_scale": anomaly_scale}
         if additive else {"bc_prior": {"pdf": "normal", "mu": 1., "sigma": .01}}
     )
     cached = _build(inputs=inputs, boundary_operands=operands,
@@ -1441,22 +1442,33 @@ def test_centered_stock_and_cached_boundary_match_dense_likelihood(reference, ad
     evaluate = model.compile_fn(expressions, inputs=model.value_vars, on_unused_input="ignore")
     point = _initial_point(cached)
     likelihood_logp = model.compile_logp(vars=model.observed_RVs)
-    state_names = ("bc_mean_shift", "bc_anomaly_latent") if additive else ("bc",)
+    state_names = ("bc",)
+    if additive:
+        state_names = ("bc_mean_shift", "bc_anomaly_latent") if anomaly_scale else ("bc_mean_shift",)
+        assert ("bc_anomaly_latent" in model) == (anomaly_scale > 0)
+        assert ("bc_anomaly_latent" in stock) == (anomaly_scale > 0)
+        assert ("bc_anomaly_latent" in {state.name for state in cached.states}) == (anomaly_scale > 0)
     value_variables = [model.rvs_to_values[model[name]] for name in state_names]
     gradient = model.compile_fn(pt.grad(expressions[0], value_variables),
         inputs=model.value_vars, on_unused_input="ignore")
     covariance = _dense_fixed_ou_covariance(inputs, np.asarray([.3, .4]), {"AAA":3., "BBB":7.})
-    design = (np.column_stack((mass.sum(axis=1), mass @ model["bc_anomaly_basis"].eval()))
-        if additive else anomaly + reference * mass)
+    design = anomaly + reference * mass
+    if additive:
+        design = mass.sum(axis=1, keepdims=True)
+        if anomaly_scale:
+            design = np.column_stack((design, mass @ model["bc_anomaly_basis"].eval()))
     for mean_shift, contrast in ((.1, .0), (-.15, .08), (.25, -.04)):
         if additive:
             point["bc_mean_shift"] = np.asarray(mean_shift)
-            point["bc_anomaly_latent"] = np.asarray([contrast])
+            if anomaly_scale:
+                point["bc_anomaly_latent"] = np.asarray([contrast])
         else:
             point["bc"] = 1. + 1.e-6 * np.asarray([mean_shift, contrast])
         logp, mean, absolute, flux, *states = evaluate(point)
         if additive:
             delta, deviations = states
+            if anomaly_scale == 0:
+                np.testing.assert_array_equal(deviations, np.zeros(2))
             centered_boundary = anomaly.sum(axis=1) + mass @ (delta + deviations)
         else:
             scaling = states[0]

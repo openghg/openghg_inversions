@@ -110,9 +110,12 @@ def test_linked_additive_o2_has_narrow_ppm_prior_and_weighted_closure(centered):
 
 
 @pytest.mark.parametrize("centered", [False, True])
-def test_linked_additive_inferred_ou_cache_matches_stock_density_and_gradients(centered):
+@pytest.mark.parametrize("scales", [(0.04, 0.04), (0.0, 0.04), (0.04, 0.0), (0.0, 0.0)])
+def test_linked_additive_inferred_ou_cache_matches_stock_density_and_gradients(centered, scales):
     with pytensor.config.change_flags(floatX="float64"):
         kwargs = _additive_inputs(centered)
+        for channel, scale in zip(("co2", "o2"), scales):
+            kwargs[f"bc_anomaly_scale_{channel}"] = scale
         ou = {"tau_hours": 6.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.8}}
         cached = build_co2_o2_cached_sigma_model(**kwargs, **ou)
         stock = build_co2_o2_model(**kwargs, **ou)
@@ -120,8 +123,17 @@ def test_linked_additive_inferred_ou_cache_matches_stock_density_and_gradients(c
         point = model.initial_point()
         point["co2_bc_mean_shift"] = np.asarray(0.013)
         point["o2_bc_mean_shift"] = np.asarray(-0.027)
-        point["co2_bc_anomaly_latent"] = np.array([0.01, -0.02])
-        point["o2_bc_anomaly_latent"] = np.array([-0.03, 0.015])
+        for channel, scale in zip(("co2", "o2"), scales):
+            name = f"{channel}_bc_anomaly_latent"
+            assert f"{channel}_bc_mean_shift" in model
+            assert (name in model) == (scale > 0)
+            assert (name in {state.name for state in cached.states}) == (scale > 0)
+            assert (name in stock) == (scale > 0)
+            if scale > 0:
+                point[name] = np.array([0.01, -0.02])
+            else:
+                np.testing.assert_array_equal(model[f"{channel}_bc_anomaly"].eval(), np.zeros(3))
+                np.testing.assert_array_equal(model[f"{channel}_mu_bc_anomaly"].eval(), np.zeros(5))
         sigma = np.array([0.3, 0.4, 0.5])
         point["ou_site_amplitude_log__"] = np.log(sigma)
         cached.shared_cache.update(cached.target.refresh(sigma))
@@ -149,12 +161,14 @@ def test_linked_additive_inferred_ou_cache_matches_stock_density_and_gradients(c
         )
         shift = np.array([400.0, 400.0, 200000.0, 200000.0, 200000.0]) if centered else 0.0
         np.testing.assert_allclose(absolute_mean, centered_mean + shift, atol=1e-10)
-        assert cached.target.design.shape == (5, 11)
+        assert cached.target.design.shape == (5, 7 + 2 * sum(scale > 0 for scale in scales))
 
 
-def test_linked_additive_runner_restores_absolute_predictives_and_annotations(tmp_path):
+@pytest.mark.parametrize("o2_anomaly_scale", [0.0, 0.04])
+def test_linked_additive_runner_restores_absolute_predictives_and_annotations(tmp_path, o2_anomaly_scale):
     with pytensor.config.change_flags(floatX="float64"):
         kwargs = _additive_inputs(True)
+        kwargs["bc_anomaly_scale_o2"] = o2_anomaly_scale
         prepared = _prepared()
         prepared = replace(
             prepared, observations=kwargs["observations"], boundary_operands=kwargs["boundary_operands"]
@@ -192,6 +206,10 @@ def test_linked_additive_runner_restores_absolute_predictives_and_annotations(tm
         path = tmp_path / "linked-additive.nc"
         save_trace(trace, path)
         trace = load_trace(path)
+        assert ("o2_bc_anomaly_latent" in trace.prior) == (o2_anomaly_scale > 0)
+        if o2_anomaly_scale == 0:
+            np.testing.assert_array_equal(trace.prior.o2_bc_anomaly, 0.0)
+            np.testing.assert_array_equal(trace.prior.o2_mu_bc_anomaly, 0.0)
         trace["posterior"] = trace["prior"].dataset.copy(deep=False)
         result = make_co2_o2_output(
             prepared=prepared, trace=trace, start_date="2021-01-01", end_date="2021-01-02", domain="EUROPE"
@@ -234,7 +252,8 @@ def test_linked_additive_rejects_multiplicative_options_early(cached, conflictin
             builder(**kwargs)
 
 
-def test_standalone_co2_matches_linked_co2_boundary_equation_and_marginal_density():
+@pytest.mark.parametrize("anomaly_scale", [0.0, 0.04])
+def test_standalone_co2_matches_linked_co2_boundary_equation_and_marginal_density(anomaly_scale):
     from scipy.stats import multivariate_normal
     from openghg_inversions.array_ops import select_gathered_data_array
     from openghg_inversions.models import StateActivity
@@ -243,6 +262,7 @@ def test_standalone_co2_matches_linked_co2_boundary_equation_and_marginal_densit
 
     with pytensor.config.change_flags(floatX="float64"):
         kwargs = _additive_inputs(True)
+        kwargs["bc_anomaly_scale_co2"] = anomaly_scale
         kwargs["state_activity"] = StateActivity(active=False)
         linked = build_co2_o2_model(**kwargs)
 
@@ -279,7 +299,8 @@ def test_standalone_co2_matches_linked_co2_boundary_equation_and_marginal_densit
         for model, prefix in ((single, ""), (linked, "co2_")):
             point = model.initial_point()
             point[f"{prefix}bc_mean_shift"] = np.asarray(0.013)
-            point[f"{prefix}bc_anomaly_latent"] = np.array([0.01, -0.02])
+            if anomaly_scale > 0:
+                point[f"{prefix}bc_anomaly_latent"] = np.array([0.01, -0.02])
             value = model.compile_fn(
                 model.replace_rvs_by_values([model[f"{prefix}mu_bc"], model["modelled_concentration"]]),
                 inputs=model.value_vars,
@@ -307,12 +328,15 @@ def test_linked_additive_rejects_permuted_weight_labels():
 
 
 @pytest.mark.parametrize("cached", [False, True])
-def test_public_linked_runners_forward_prepared_additive_boundary_options(monkeypatch, cached):
+@pytest.mark.parametrize("scales", [(0.04, 0.04), (0.0, 0.04), (0.04, 0.0), (0.0, 0.0)])
+def test_public_linked_runners_forward_prepared_additive_boundary_options(monkeypatch, cached, scales):
     from openghg_inversions.rhime.co2 import co2_o2_runner, co2_o2_cached_sigma_runner
     from openghg_inversions.rhime.sampling import RhimeSampler
 
     with pytensor.config.change_flags(floatX="float64"):
         kwargs = _additive_inputs(True)
+        for channel, scale in zip(("co2", "o2"), scales):
+            kwargs[f"bc_anomaly_scale_{channel}"] = scale
         prepared = replace(
             _prepared(),
             observations=kwargs["observations"],
@@ -348,7 +372,11 @@ def test_public_linked_runners_forward_prepared_additive_boundary_options(monkey
         )
         np.testing.assert_allclose(trace.observed_data.y, prepared.observations)
         assert trace.prior.o2_bc_anomaly.attrs["units"] == "ppm"
-        assert trace.constant_data.o2_bc_anomaly_scale.item() == 0.04
+        for channel, scale in zip(("co2", "o2"), scales):
+            assert trace.constant_data[f"{channel}_bc_anomaly_scale"].item() == scale
+            assert (f"{channel}_bc_anomaly_latent" in trace.prior) == (scale > 0)
+            if scale == 0:
+                np.testing.assert_array_equal(trace.prior[f"{channel}_bc_anomaly"], 0.0)
         roles = json.loads(trace.attrs["rhime_variable_roles"])
         assert roles["o2_boundary_anomaly_scale"] == "o2_bc_anomaly_scale"
         assert "o2_boundary_scale" not in roles
@@ -476,9 +504,11 @@ def _mixed_centered_boundary_inputs():
     return kwargs
 
 
-def test_mixed_centered_boundary_ou_density_gradients_and_absolute_closure():
+@pytest.mark.parametrize("o2_anomaly_scale", [0.0, 0.04])
+def test_mixed_centered_boundary_ou_density_gradients_and_absolute_closure(o2_anomaly_scale):
     with pytensor.config.change_flags(floatX="float64"):
         kwargs = _mixed_centered_boundary_inputs()
+        kwargs["bc_anomaly_scale_o2"] = o2_anomaly_scale
         ou = {"tau_hours": 6.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.8}}
         stock = build_co2_o2_model(**kwargs, **ou)
         cached = build_co2_o2_cached_sigma_model(**kwargs, **ou)
@@ -501,7 +531,8 @@ def test_mixed_centered_boundary_ou_density_gradients_and_absolute_closure():
         co2_value = cached.model.rvs_to_values[co2_rv].name
         point[co2_value] = np.full_like(point[co2_value], 1.0001)
         point["o2_bc_mean_shift"] = np.asarray(-0.027)
-        point["o2_bc_anomaly_latent"] = np.array([-0.03, 0.015])
+        if o2_anomaly_scale > 0:
+            point["o2_bc_anomaly_latent"] = np.array([-0.03, 0.015])
         sigma = np.array([0.3, 0.4, 0.5])
         point["ou_site_amplitude_log__"] = np.log(sigma)
         cached.shared_cache.update(cached.target.refresh(sigma))
@@ -602,7 +633,8 @@ def test_public_linked_ou_restores_mixed_centered_boundary_predictions(monkeypat
 @pytest.mark.parametrize("cached", [False, True])
 @pytest.mark.parametrize("channel", ["co2", "o2"])
 @pytest.mark.parametrize("drop_first", [False, True])
-def test_linked_public_additive_builders_warn_on_native_channel_rows(cached, channel, drop_first):
+@pytest.mark.parametrize("anomaly_scale", [0.0, 0.04])
+def test_linked_public_additive_builders_warn_on_native_channel_rows(cached, channel, drop_first, anomaly_scale):
     import warnings
     from test_rhime_co2_o2_baselines import _prepared as prepared_with_two_sites
 
@@ -612,6 +644,7 @@ def test_linked_public_additive_builders_warn_on_native_channel_rows(cached, cha
         other = "o2" if channel == "co2" else "co2"
         kwargs.pop(f"bc_mean_shift_prior_{other}")
         kwargs.pop(f"bc_anomaly_scale_{other}")
+        kwargs[f"bc_anomaly_scale_{channel}"] = anomaly_scale
         kwargs["offset_prior"] = {channel: {"pdf": "normal", "mu": 0.0, "sigma": 0.1}}
         kwargs["offset_args"] = {channel: {"drop_first": drop_first}}
         with warnings.catch_warnings(record=True) as recorded:
@@ -630,3 +663,4 @@ def test_linked_public_additive_builders_warn_on_native_channel_rows(cached, cha
         if confounding:
             assert str(confounding[0].message).startswith(f"{channel}:")
         assert f"{channel}_bc_mean_shift" in model and f"{channel}_offset" in model
+        assert (f"{channel}_bc_anomaly_latent" in model) == (anomaly_scale > 0)

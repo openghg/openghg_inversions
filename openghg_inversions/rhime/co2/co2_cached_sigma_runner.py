@@ -268,8 +268,9 @@ def build_rhime_co2_cached_sigma(
             centered ``H_bc_mass``, ``bc_centering_weights`` and
             ``bc_anomaly_scale``. Cannot be
             combined with multiplicative ``bc_prior`` or ``bc_state_activity``.
-        bc_anomaly_scale: Positive Gaussian standard deviation in observation
-            concentration units before subtracting the weighted boundary mean.
+        bc_anomaly_scale: Finite, nonnegative Gaussian standard deviation in
+            observation concentration units before weighted centring. Zero
+            retains only the common mean without sampled contrasts.
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added.
         offset_args: Optional offset settings: ``offset_freq``, ``drop_first``,

@@ -203,8 +203,9 @@ def build_co2_model(
             over the inversion window, in concentration units. Selects centred
             additive boundaries instead of sampled multiplicative scales;
             cannot be combined with ``bc_prior`` or ``bc_state_activity``.
-        bc_anomaly_scale: Positive fixed Gaussian scale before weighted
-            centring, in concentration units. Required in additive mode.
+        bc_anomaly_scale: Finite, nonnegative Gaussian scale before weighted
+            centring, in concentration units. Required in additive mode; zero
+            retains only the common mean without sampled contrasts.
         boundary_correction_sensitivity: Dimensionless unit boundary transport
             on the observation and ``bc_region`` axes, labelled exactly as
             ``boundary_sensitivity``. Required for ordinary additive boundaries;
