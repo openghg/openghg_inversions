@@ -13,8 +13,12 @@ prepared files, low-rank sidecar, Python interpreter/dependencies, seed
 24 GiB retry. Both tasks started on 30 October 2026 at 09:49:37 UTC and finished
 at 12:05:12 / 12:05:14 UTC. Both Slurm and the process report successful exits.
 
-The frozen candidate is `c5afe448e1eefea4014fe0144273d6425e6e376f`; current
-production files are unchanged from that candidate. The
+The frozen candidate is `c5afe448e1eefea4014fe0144273d6425e6e376f`. Production
+files matched that candidate at evidence commit `a2e0d990`. A subsequent review
+fix explicitly conditions observed random variables during deterministic
+reconstruction. Linked model deterministics use free variables and data, so
+that binding does not change their graph; focused linked tests check this path
+after the review fix. These full fits were not repeated for that follow-up. The
 [exact harness adaptation](../original_acceptance_adaptation.json) records
 original/candidate script hashes and diffs: only source checkout/revision and
 allocation changed. The protected validation checkout was not modified.

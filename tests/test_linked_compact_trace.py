@@ -196,6 +196,52 @@ def test_restoration_borrows_free_states_and_preserves_input_metadata():
     assert result.attrs == posterior.attrs
 
 
+@pytest.mark.parametrize("observed", [10.0, [10.0, 12.0]], ids=["scalar", "vector"])
+@pytest.mark.parametrize("shared", [False, True], ids=["constant", "shared-data"])
+def test_restoration_conditions_observed_dependent_deterministics(observed, shared):
+    from openghg_inversions.inference.sampling import _restore_deterministics
+
+    values = np.asarray(observed, dtype="float64")
+    dims = "observation" if values.ndim else None
+    with pm.Model(coords={"observation": ["first", "second"]}) as model:
+        state = pm.Normal("state")
+        data = pm.Data("data", values, dims=dims) if shared else values
+        observed_rv = pm.Normal("y", state, 1.0, observed=data, dims=dims)
+        residual = pm.Deterministic("residual", observed_rv - state, dims=dims)
+        pm.Deterministic("squared_residual", residual**2, dims=dims)
+    posterior = xr.Dataset({"state": (("chain", "draw"), [[1.0, 2.0]])})
+    expected = np.array([9.0, 8.0]) if values.ndim == 0 else np.array([[9.0, 11.0], [8.0, 10.0]])
+
+    for _ in range(2):
+        restored = _restore_deterministics(posterior, model)
+        np.testing.assert_array_equal(restored.residual.values[0], expected)
+        np.testing.assert_array_equal(restored.squared_residual.values[0], expected**2)
+    if shared:
+        pm.set_data({"data": values + 1.0}, model=model)
+        updated = _restore_deterministics(posterior, model)
+        np.testing.assert_array_equal(updated.residual.values[0], expected + 1.0)
+
+
+def test_restoration_matches_recording_with_an_explicit_observed_transform():
+    from openghg_inversions.inference.sampling import _restore_deterministics
+
+    with pm.Model(coords={"observation": ["first", "second"]}) as model:
+        state = pm.Normal("state")
+        observed = pm.HalfNormal(
+            "y", observed=[2.0, 3.0], transform=pm.distributions.transforms.log,
+            dims="observation",
+        )
+        pm.Deterministic("residual", observed - state, dims="observation")
+    backend = pm.backends.NDArray(model=model)
+    backend.setup(draws=2, chain=0)
+    for value in (1.0, 2.0):
+        backend.record({"state": value}, in_warmup=False)
+    posterior = xr.Dataset({"state": (("chain", "draw"), [[1.0, 2.0]])})
+
+    restored = _restore_deterministics(posterior, model)
+    np.testing.assert_array_equal(restored.residual.values[0], backend.get_values("residual"))
+
+
 @pytest.mark.parametrize("likelihood", [False, True, ["y"]])
 def test_compact_sampler_preserves_warmup_and_explicit_likelihood_selection(monkeypatch, likelihood):
     with pm.Model(coords={"observation": ["co2", "o2"]}) as model:

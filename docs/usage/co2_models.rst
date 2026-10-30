@@ -1533,6 +1533,8 @@ The joint likelihood must not be treated as pointwise observation densities.
 Linked runners using PyMC record the free random variables during sampling.
 After PyMC returns and releases its recording buffers, they compute the joint
 log likelihood and evaluate every deterministic from the unchanged model graph.
+Observed random variables remain conditioned on their data during evaluation,
+following PyMC's ordinary recording and transform conventions.
 This avoids keeping observation-sized deterministics in both warmup/retained
 backend buffers and the converted posterior. Reconstruction allocates the final
 arrays once and evaluates one state at a time; it preserves all output names,

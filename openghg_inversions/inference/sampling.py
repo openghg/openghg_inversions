@@ -214,9 +214,21 @@ def _restore_deterministics(posterior: xr.Dataset, model: pm.Model) -> xr.Datase
     """
     if not model.deterministics:
         return posterior
+    # Match ordinary recording's observed-value and transform conventions.
+    observed_values = {}
+    for rv in model.observed_RVs:
+        value = model.rvs_to_values[rv]
+        transform = model.rvs_to_transforms.get(rv)
+        if transform is not None:
+            value = transform.backward(value, *rv.owner.inputs)
+            value = rv.type.filter_variable(value, allow_convert=True)
+        observed_values[rv] = value
     derived = cast(
         xr.Dataset,
-        pm.compute_deterministics(posterior, model=model, progressbar=False),
+        pm.compute_deterministics(
+            posterior, model=model, progressbar=False,
+            compile_kwargs={"givens": observed_values},
+        ),
     )
     derived = derived.assign_coords(chain=posterior.chain, draw=posterior.draw)
     return xr.merge([posterior, derived], join="exact", compat="override")

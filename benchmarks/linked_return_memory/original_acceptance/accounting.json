@@ -130,5 +130,7 @@
         }
       }
     }
-  }
+  },
+  "production_code_comparison_commit": "a2e0d9902b9a3f6290a3be79abcf783f565c6463",
+  "subsequent_review_fix": "Explicitly bind observed random variables to their data during deterministic reconstruction. Linked deterministics do not depend on observed random variables; focused linked tests cover the follow-up. Full-fit memory measurements remain those of the frozen acceptance candidate."
 }
