@@ -19,6 +19,7 @@ from openghg_inversions._pymc_config import configure_pytensor
 
 configure_pytensor()
 
+from .baseline import prepare_supplied_baseline
 from .builders import (
     RhimeLikelihoodBuilder,
     RhimeModelBuildResult,
@@ -95,6 +96,7 @@ from .specs import (
 )
 
 __all__ = [
+    "prepare_supplied_baseline",
     "run",
     "run_standard",
     "run_multisector",

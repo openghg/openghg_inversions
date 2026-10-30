@@ -17,6 +17,7 @@ openghg\_inversions.rhime
    :maxdepth: 4
 
    openghg_inversions.rhime.api
+   openghg_inversions.rhime.baseline
    openghg_inversions.rhime.builders
    openghg_inversions.rhime.cached_sigma
    openghg_inversions.rhime.ini

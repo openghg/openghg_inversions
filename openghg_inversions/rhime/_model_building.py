@@ -379,13 +379,24 @@ def builtin_model_build_result(
     elif model_spec.add_offset and not model_spec.use_bc:
         roles["baseline"] = "offset"
 
+    if "supplied_baseline" in input_names:
+        roles["baseline"] = "mu_baseline"
+        roles["concentration_mean"] = "mu_total"
+        roles["flux_contribution"] = "mu_inner"
+        roles["supplied_baseline"] = "supplied_baseline"
+        roles["inner_fixed_contribution"] = "inner_fixed_contribution"
+
     supported_output_formats: tuple[OutputFormat, ...] = (
         ("none", "inv_out", "paris") if multisector else ("none", "inv_out", "basic", "paris", "legacy")
     )
+    if "supplied_baseline" in input_names:
+        supported_output_formats = tuple(fmt for fmt in supported_output_formats if fmt != "legacy")
     return RhimeModelBuildResult(
         model=model,
         output_contract=OutputContract(
             variable_roles=roles, supported_output_formats=supported_output_formats,
-            metadata={"kind": "builtin"},
+            metadata={"kind": "builtin", **(
+                {"baseline_includes_offset": False} if "supplied_baseline" in input_names else {}
+            )},
         ),
     )

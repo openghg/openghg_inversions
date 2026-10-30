@@ -848,8 +848,8 @@ def make_concentration_outputs(
             For instance, stats_args = {"mode_kde__chunk_size": 20} would pass the
             argument chunk_size = 20 to the stat function mode_kde, and no others.
         combine_bc_and_offset: If true, report the current PARIS baseline
-            convention: boundary plus offset. A declared complete baseline is
-            used only when no separate boundary is available.
+            convention: boundary plus offset. An effective baseline takes precedence
+            when its output contract explicitly declares whether it includes the offset.
 
     Returns:
         xr.Dataset with computed flux stats.
@@ -871,10 +871,14 @@ def make_concentration_outputs(
         boundary_name,
         offset_name,
     }
-    if boundary_available:
-        conc_roles.append(boundary_role)
-    elif complete_baseline_available:
+    baseline_includes_offset = inv_out.model_metadata.get("builder", {}).get("baseline_includes_offset")
+    selected_complete_baseline = complete_baseline_available and (
+        not boundary_available or isinstance(baseline_includes_offset, bool)
+    )
+    if selected_complete_baseline:
         conc_roles.append(baseline_role)
+    elif boundary_available:
+        conc_roles.append(boundary_role)
     if offset_available:
         conc_roles.append(offset_role)
 
@@ -891,7 +895,9 @@ def make_concentration_outputs(
 
     baseline_names = []
     if combine_bc_and_offset and offset_available:
-        if boundary_available:
+        if (boundary_available and not selected_complete_baseline) or (
+            selected_complete_baseline and baseline_includes_offset is False
+        ):
             baseline_names = [str(name) for name in trace.data_vars if str(name).startswith("mu_bc")]
         elif not complete_baseline_available:
             for data_var in list(trace.data_vars):
