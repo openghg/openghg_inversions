@@ -204,5 +204,11 @@ under the original 16 GiB limit. The immutable candidate checkout is
 fix. `original_acceptance_adaptation.json` records the source hashes and exact
 harness diff: only the source checkout/revision and 24-to-16 GiB allocation
 change. These actual fits, once complete, supply the evidence that the bounded
-fixtures and saved-state replay cannot provide. Full draw-count replay and
-original-fit completion results remain pending.
+fixtures and saved-state replay cannot provide. The full draw-count replay completed: peak RSS fell from 16.53 to 6.88 GiB,
+and all recomputed posterior arrays and the normalized joint likelihood match
+the original saved trace byte for byte. The original return path peaks during
+automatic likelihood computation while both the 9.234 GiB backend and the
+4.615 GiB retained posterior exist. See `campaign_replay/README.md` and its raw
+profiles for the phase measurements. A separate full-path replay under a
+16 GiB cap is the negative control; that outcome and actual original-fit
+completion results remain pending.
