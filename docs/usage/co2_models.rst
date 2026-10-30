@@ -208,11 +208,15 @@ length-:math:`K` vector of ones. The anomaly prior is
    u &\sim \mathcal{N}\!\left(0,\,s_{bc}^{2}\Pi\Pi^\mathsf{T}\right), \\
    \delta &\sim p_{\delta}, \qquad \delta\ \text{independent of}\ u.
 
-The positive fixed scale :math:`s_{bc}` is ``bc_anomaly_scale`` in concentration
-units. It is the standard deviation of independent Gaussian corrections
-*before* subtracting their weighted mean. The implementation uses only
-:math:`K-1` independent coordinates to sample the constrained anomalies.
-For a single boundary state, the anomaly is exactly zero.
+The finite, nonnegative fixed scale :math:`s_{bc}` is ``bc_anomaly_scale`` in
+concentration units. For a positive scale it is the standard deviation of
+independent Gaussian corrections *before* subtracting their weighted mean.
+The implementation uses only :math:`K-1` independent coordinates to sample
+the constrained anomalies. Set ``bc_anomaly_scale=0`` to infer only the common
+level from ``bc_mean_shift_prior``: all anomalies are exactly zero and no
+contrast variables are sampled. For a single boundary state, the anomaly is
+also exactly zero at any accepted scale. Negative and nonfinite scales are
+rejected.
 
 Centring changes individual anomaly variances and induces correlations:
 
@@ -255,6 +259,9 @@ no separate ``G_bc`` is passed. A separately supplied response retains its
 actual transport weights, including incomplete coverage; model construction
 does not normalize its rows. The statistical prior choice leaves
 ``bc_reference`` and the prepared concentration anomalies unchanged.
+The signed concentration operator ``H_bc_anomaly`` is not a dimensionless
+correction response and cannot replace ``G_bc``; see the
+:ref:`operator units and centering equations <boundary-additive-corrections>`.
 
 Pass ``boundary_correction_sensitivity`` to preparation with dimensions
 ``("nmeasure", "bc_region")`` and dimensionless units ``"1"``. Its observation
@@ -309,6 +316,8 @@ Direct builders accept ``bc_mean_shift_prior`` and ``bc_anomaly_scale`` with
 ``boundary_correction_sensitivity``, ``bc_centering_weights`` and the existing
 ``boundary_sensitivity``. The mean prior uses the ordinary scalar prior
 dictionary. Its location and scale use concentration units.
+For a common-level-only TOML configuration, use ``anomaly_scale = 0.0`` with
+the same ``mean_shift_prior`` table.
 
 The CO2 recipes save ``bc_mean_shift``, the labelled ``bc_anomaly`` and the total
 ``bc_correction`` (:math:`\delta\mathbf{1}+u`). Observation-space outputs are
@@ -317,6 +326,8 @@ The CO2 recipes save ``bc_mean_shift``, the labelled ``bc_anomaly`` and the tota
 ``mu_bc``, the complete boundary contribution included once in
 ``modelled_concentration`` and the likelihood. The additive model has no
 sampled boundary-scaling output.
+With zero anomaly scale, the labelled ``bc_anomaly`` and ``mu_bc_anomaly``
+outputs are zero and the total correction is the common mean in every state.
 
 Linked CO2/O2 concentration scales
 """"""""""""""""""""""""""""""""""
@@ -331,6 +342,9 @@ responses in ``boundary_correction_sensitivity`` and averaging weights in
 Pass these mappings to ``prepare_co2_o2_inputs`` alongside the native-channel
 ``boundary_sensitivity`` or centered ``boundary_operands``. No site or channel
 is an identifiability reference for the other.
+Each channel independently supports a zero anomaly scale, so one can use a
+common-level-only correction while the other retains sampled contrasts or a
+multiplicative boundary prior.
 
 For O2 near 200,000 ppm, a multiplicative standard deviation of 0.01 gives
 about 2,000 ppm uncertainty in the boundary concentration before transport.
@@ -365,9 +379,10 @@ What centring does and does not identify
 """"""""""""""""""""""""""""""""""""""""
 
 The weighted constraint uniquely decomposes a given boundary correction into
-its mean and anomalies. It does not establish that observations can determine
-every correction: transport can leave boundary states poorly observed or make
-boundary and flux contributions difficult to distinguish. The `Stan User's
+its mean and anomalies, removing the redundant direction within that
+decomposition. It does not guarantee identifiability against site offsets,
+boundary patterns or flux contributions: transport can leave boundary states
+poorly observed or make their predictions difficult to distinguish. The `Stan User's
 Guide on collinearity
 <https://mc-stan.org/docs/stan-users-guide/problematic-posteriors.html#collinearity>`_
 explains why redundant or nearly redundant prediction directions remain a
@@ -593,7 +608,7 @@ LogNormal.
 Optional model components belong in their own tables. ``[model.boundary]``
 accepts boolean ``enabled`` (default true), ``frequency``, ``anchor_time``,
 and either a multiplicative ``prior`` or the additive pair
-``mean_shift_prior`` and positive ``anomaly_scale``. A disabled boundary
+``mean_shift_prior`` and finite, nonnegative ``anomaly_scale``. A disabled boundary
 cannot specify a prior, anomaly scale or period choices.
 For raw reusable inputs, omitting ``frequency`` selects one period;
 ``"monthly"`` selects calendar months, and a positive fixed duration such as

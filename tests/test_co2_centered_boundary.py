@@ -117,15 +117,23 @@ def test_weighted_anomaly_prior_preserves_contrasts_and_permutation() -> None:
 
 
 @pytest.mark.parametrize("n_boundary", [1, 3])
-def test_forward_equations_and_cached_likelihood_gradient(n_boundary: int) -> None:
+@pytest.mark.parametrize("anomaly_scale", [0.0, 0.3])
+def test_forward_equations_and_cached_likelihood_gradient(n_boundary: int, anomaly_scale: float) -> None:
     inputs = _inputs(n_boundary)
-    ordinary = build_co2_model(inputs.H, **_kwargs(inputs))
+    kwargs = _kwargs(inputs)
+    kwargs["bc_anomaly_scale"] = anomaly_scale
+    ordinary = build_co2_model(inputs.H, **kwargs)
     cached = build_co2_cached_sigma_model(
         inputs.H,
-        **_kwargs(inputs),
+        **kwargs,
         tau_hours={"AAA": 3.0, "BBB": 7.0},
         site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
         initial_site_amplitudes=0.4,
+    )
+    has_contrasts = n_boundary > 1 and anomaly_scale > 0
+    assert cached.target.design.shape == (4, n_boundary if has_contrasts else 1)
+    assert [state.name for state in cached.states] == (
+        ["bc_mean_shift", "bc_anomaly_latent"] if has_contrasts else ["bc_mean_shift"]
     )
     covariance = np.eye(4) * 0.03
     for rows, lag, tau in (([0, 1], 3.0, 3.0), ([2, 3], 4.0, 7.0)):
@@ -135,13 +143,15 @@ def test_forward_equations_and_cached_likelihood_gradient(n_boundary: int) -> No
     predictions = []
     for model in (ordinary, cached.model):
         assert "bc" not in model.named_vars
-        if n_boundary == 1:
+        if not has_contrasts:
             assert not any("anomaly" in rv.name for rv in model.free_RVs)
+            assert "bc_anomaly_latent" not in model.named_vars
+            assert "bc_anomaly_basis" not in model.named_vars
         point = model.initial_point()
         if model is cached.model:
             point["ou_site_amplitude_log__"] = np.log(np.full(2, 0.4))
         point["bc_mean_shift"] = np.asarray(0.7)
-        if n_boundary > 1:
+        if has_contrasts:
             rv = _anomaly_rv(model)
             point[model.rvs_to_values[rv].name] = np.array([0.2, -0.4])
         outputs = model.replace_rvs_by_values(
@@ -161,12 +171,16 @@ def test_forward_equations_and_cached_likelihood_gradient(n_boundary: int) -> No
         if model is cached.model:
             likelihood = model.logp(vars=model.observed_RVs)
             state_values = [model.rvs_to_values[model["bc_mean_shift"]]]
-            if n_boundary > 1:
+            if has_contrasts:
                 state_values.append(model.rvs_to_values[_anomaly_rv(model)])
             outputs.extend([likelihood, *pt.grad(likelihood, state_values)])
         evaluate = model.compile_fn(outputs, inputs=model.value_vars, on_unused_input="ignore")
         values = evaluate(point)
         anomaly, correction, reference, shift, variation, boundary, mean = values[:7]
+        assert anomaly.shape == (n_boundary,)
+        if not has_contrasts:
+            np.testing.assert_array_equal(anomaly, np.zeros(n_boundary))
+            np.testing.assert_array_equal(variation, np.zeros(4))
         response = inputs.bc_correction_sensitivity.values
         weights = inputs.bc_centering_weights.values / inputs.bc_centering_weights.sum().item()
         np.testing.assert_allclose(weights @ anomaly, 0.0, atol=1e-14)
@@ -185,7 +199,7 @@ def test_forward_equations_and_cached_likelihood_gradient(n_boundary: int) -> No
             np.testing.assert_allclose(
                 values[8], response.sum(axis=1) @ residual_precision, rtol=1e-6, atol=1e-8
             )
-            if n_boundary > 1:
+            if has_contrasts:
                 np.testing.assert_allclose(
                     values[9],
                     (response @ _anomaly_design(model)).T @ residual_precision,
@@ -199,8 +213,10 @@ def test_forward_equations_and_cached_likelihood_gradient(n_boundary: int) -> No
     "override",
     [
         {"bc_anomaly_scale": None},
-        {"bc_anomaly_scale": 0.0},
+        {"bc_anomaly_scale": -0.1},
         {"bc_anomaly_scale": np.nan},
+        {"bc_anomaly_scale": np.inf},
+        {"bc_anomaly_scale": -np.inf},
         {"bc_centering_weights": None},
         {"boundary_correction_sensitivity": None},
         {"bc_prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1}},

@@ -109,6 +109,8 @@ def build_co2_o2_cached_sigma_model(
     explicit mass); ``bc_centering_weights_co2/o2`` supply positive dimensionless
     weights on the complete resolved curtain/period labels. Their weighted
     anomaly means are zero; the numerical reference never scales corrections.
+    Each anomaly scale must be finite and nonnegative; zero retains only that
+    channel's common mean without sampled contrast variables.
 
     Raw centered ``boundary_operands`` require explicit PyTensor float64 and
     are aligned and expanded by ``bc_freq``/``bc_anchor_time`` here. Channel
