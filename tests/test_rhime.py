@@ -7526,6 +7526,30 @@ def test_paris_baseline_convention_prefers_boundary_plus_offset(
     np.testing.assert_allclose(outputs["offset_posterior_mean"], 0.2)
 
 
+@pytest.mark.parametrize("includes_offset, expected", [(True, 1.0), (False, 1.2)])
+def test_paris_effective_baseline_respects_declared_offset_policy(
+    europe_country_file: Path, includes_offset: bool, expected: float,
+) -> None:
+    """An explicit effective baseline overrides the boundary and owns offset inclusion."""
+    base = _modern_postprocessing_inv_out(europe_country_file)
+    trace = base.trace.copy()
+    for group_name in ("posterior", "prior"):
+        group = getattr(trace, group_name)
+        group["offset"] = xr.full_like(group["mu_bc"], 0.2)
+        group["mu_baseline"] = xr.full_like(group["mu_bc"], 1.0)
+    inv_out = replace(
+        base, trace=trace,
+        model_metadata={
+            **base.model_metadata,
+            "variable_roles": {"baseline": "mu_baseline", "boundary": "mu_bc", "offset": "offset"},
+            "builder": {"baseline_includes_offset": includes_offset},
+        },
+    )
+    outputs = make_concentration_outputs(inv_out, stats=["mean"], combine_bc_and_offset=True)
+    np.testing.assert_allclose(outputs["mu_bc_posterior_mean"], expected)
+    np.testing.assert_allclose(outputs["offset_posterior_mean"], 0.2)
+
+
 def test_paris_baseline_convention_reports_offset_only_as_baseline(
     europe_country_file: Path,
 ) -> None:

@@ -108,12 +108,20 @@ def prepare_supplied_baseline(
         raise ValueError("Inner support must contain at least one cell.")
     if set(native_response.dims) != {*grid_dims, "nmeasure"}:
         raise ValueError("Native response must have only native grid and nmeasure dimensions (single sector).")
+    for name, array in (("Inner support", inner_support), ("Native response", native_response)):
+        for dim in grid_dims:
+            if dim not in array.indexes:
+                raise ValueError(f"{name} requires an indexed coordinate for native grid dimension {dim!r}.")
+    if "nmeasure" not in native_response.indexes:
+        raise ValueError("Native response requires indexed observation labels on nmeasure.")
     if prepared.basis_functions.source_labels is not None:
         raise ValueError("Supplied inner-domain preparation currently requires a single-sector basis.")
     observations = prepared.inv_inputs.mf
     native_response, _ = xr.align(native_response, observations, join="exact", copy=False)
     masked_response = remove_domain_overlap(native_response, ~inner_support)
-    masked_flux = remove_domain_overlap(prepared.basis_functions.flux, ~inner_support)
+    masked_flux = remove_domain_overlap(prepared.basis_functions.flux, ~inner_support).assign_coords(
+        flux_support=inner_support,
+    )
     basis = replace(prepared.basis_functions, flux=masked_flux)
     matrix, masked_response = xr.align(basis.operator.basis_matrix, masked_response, join="exact", copy=False)
     sensitivity = xr.dot(masked_response, matrix, dim=list(grid_dims)).rename("H")

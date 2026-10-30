@@ -41,13 +41,17 @@ Provide a Boolean ``inner_support`` mask on the exact basis grid. For example::
 The helper masks the native response before basis reduction and rebuilds ``H``.
 It also masks the retained native prior flux for flux outputs. The acquired
 inputs and original prepared object remain unchanged. The support mask and
-all baseline data remain in the returned artifact. A state spanning a domain
-edge sees only its included cells. Exterior-only columns are zero and are
-removed from sampling by the existing state-activity machinery.
+all baseline data remain in the returned artifact. The retained flux carries
+this mask as a Boolean ``flux_support`` coordinate: inversion-grid reporting
+averages only included cells, and both native and inversion-grid reconstruction
+are zero outside the support. A state spanning a domain edge sees only its
+included cells. Exterior-only columns are zero and are removed from sampling
+by the existing state-activity machinery.
 
 The overlap policy includes or excludes whole cells on an exactly matching
-grid. There is no area weighting, interpolation, automatic bounding box, or
-inference of an inner domain from the larger footprint extent. For a WUR-style
+grid. Both the mask and native response must have indexed coordinates for every
+native grid dimension; same-shaped arrays without indexes are rejected.
+There is no area weighting, interpolation, automatic bounding box, or inference of an inner domain from the larger footprint extent. For a WUR-style
 background, prepare the mask matching the background's inner domain on the
 NAME grid. For an InTEM-style background, use the explicit inner/outer map and
 supply the boundary and exterior-region series as separate Dataset variables.
@@ -102,8 +106,11 @@ fixed term, and ``mu_total`` stores the absolute mean including any offset.
 Offsets remain separate and are excluded from observation-derived pollution
 scaling for supplied backgrounds. Concentration products select the effective
 baseline through the output-role contract, including for fixed-only runs;
-optional offset combination follows the product request. Legacy HBMCMC output
-is unsupported.
+optional offset combination follows the product request. The builder declares
+``baseline_includes_offset=False`` in the output contract. For other models,
+a declared ``True`` prevents adding the offset again. Without this explicit
+policy, the historical PARIS boundary-plus-offset convention is preserved
+when a separate boundary is available. Legacy HBMCMC output is unsupported.
 
 Under the same translation-invariant error model, fitting absolute observations
 with a fixed background gives the same inference as subtracting that background

@@ -19,8 +19,8 @@ from openghg_inversions.rhime.standard import build_standard_model, materialize_
 from test_prepared_inputs_serialisation import _prepared_inputs
 
 
-def _case(*, intem=False, **overrides):
-    original = _prepared_inputs()
+def _case(*, intem=False, original=None, **overrides):
+    original = _prepared_inputs() if original is None else original
     observations = original.inv_inputs.mf
     baseline = xr.full_like(observations, .008).assign_attrs(units="mmol/mol", species="ch4")
     if intem:
@@ -195,3 +195,59 @@ def test_observation_derived_pollution_scaling_excludes_offset():
     epsilon = model["epsilon"].eval({model["sigma"]: np.array([[.2]], dtype=model["sigma"].dtype)})
     np.testing.assert_allclose(epsilon, np.sqrt(prepared.inv_inputs.mf_error.values ** 2 +
                                              ((prepared.inv_inputs.mf.values - 8) * .2) ** 2))
+
+
+@pytest.mark.parametrize("array_name", ["inner_support", "native_response"])
+@pytest.mark.parametrize("dim", ["lat", "lon"])
+def test_reject_unindexed_native_grid(array_name, dim):
+    original = _prepared_inputs()
+    if array_name == "inner_support":
+        array = xr.DataArray([[True, False]], dims=("lat", "lon"), coords=original.basis_functions.flux.coords)
+    else:
+        array = xr.DataArray(
+            np.ones((1, 2, 2)), dims=("lat", "lon", "nmeasure"),
+            coords={**original.basis_functions.flux.coords, **original.inv_inputs.mf.coords},
+            attrs={"units": "ppm"},
+        )
+    with pytest.raises(ValueError, match="requires an indexed coordinate"):
+        _case(**{array_name: array.drop_indexes(dim)})
+
+
+@pytest.mark.parametrize("inversion_grid", [False, True])
+@pytest.mark.parametrize("bounded", [False, True])
+def test_crossing_state_flux_reconstruction_preserves_inner_support(tmp_path, inversion_grid, bounded):
+    from openghg_inversions.array_ops import to_dense
+    from openghg_inversions.basis.basis_functions import BasisFunctions
+    from openghg_inversions.postprocessing._basis_products import reconstruct_flux_stats
+
+    original = _prepared_inputs()
+    basis = BasisFunctions.from_flat_basis(
+        xr.ones_like(original.basis_functions.flux, dtype=int), original.basis_functions.flux,
+        operator_kwargs={"state_dim": "region"},
+    )
+    original = PreparedInputs(original.inv_inputs.isel(region=[0]), basis, original.site_metadata)
+    _, prepared, _ = _case(original=original)
+    path = tmp_path / "crossing-state.nc"
+    prepared.save(path)
+    restored = PreparedInputs.load(path)
+    xr.testing.assert_identical(
+        restored.basis_functions.flux.flux_support, prepared.basis_functions.flux.flux_support,
+    )
+    state = xr.Dataset({"x": ("region", [1.])}, coords={"region": [0]})
+    for inputs in (prepared, restored):
+        result = reconstruct_flux_stats(
+            inputs.basis_functions, inputs.basis_functions.flux, state,
+            report_flux_on_inversion_grid=inversion_grid, bounded=bounded,
+        ).map(to_dense).compute()
+        np.testing.assert_allclose(result.x, [[1.5, 0.]])
+    np.testing.assert_allclose(original.basis_functions.flux, [[1.5, 2.5]])
+
+
+def test_reject_native_response_without_observation_index():
+    original = _prepared_inputs()
+    native = xr.DataArray(
+        np.ones((1, 2, 2)), dims=("lat", "lon", "nmeasure"),
+        coords=original.basis_functions.flux.coords, attrs={"units": "ppm"},
+    )
+    with pytest.raises(ValueError, match="indexed observation labels"):
+        _case(native_response=native)
