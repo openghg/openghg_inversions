@@ -188,8 +188,9 @@ warmup states, the skipped unused dense-input validation, and the absence of
 actual MCMC updates still distinguish this controlled replay from the original
 failing job. The exact allocation that exhausted that original job's limit is
 not established by these results. The direct 16 GiB control below confirms
-the return-path failure under that limit; actual fits remain the separate
-whole-process acceptance check.
+the return-path failure under that limit. The separate
+[whole-fit acceptance runs](../original_acceptance/README.md) have now both
+completed and saved under 16 GiB, at process peaks of 6.635 and 6.644 GiB.
 
 ## Completed 16 GiB negative control
 
@@ -218,7 +219,8 @@ trace dimensions under the original allocation. Together with the matched
 24 GiB runs, it demonstrates that avoiding simultaneous backend and expanded
 posterior storage resolves this controlled return failure. It still uses
 surrogate warmup and no MCMC updates; it does not identify the precise failed
-allocation in the historical fit or establish completion of the new full fits.
+allocation in the historical fit. The separate actual-fit report establishes
+completion without the replay shortcuts.
 
 ## Completed original-environment smoke checks
 

@@ -1,0 +1,3468 @@
+{
+  "method": "Lazy NetCDF reads, one chain and at most sixteen draws per payload; full static arrays are bounded by model design size",
+  "timing_stat_exclusions": [
+    "perf_counter_diff",
+    "perf_counter_start",
+    "process_time_diff"
+  ],
+  "diagnostic_scope": "Original selected parameter gates only; pre-existing derived common-mode max R-hat 1.01048914016785 exceeds 1.01 and is not reclassified",
+  "arms": {
+    "anchored_site_offsets": {
+      "actual": "/group/chem/acrg/brendan_for_codex/openghg_inversions/.codex-worktrees/linked-return-memory/.artifacts/linked-return-memory-validation/original-acceptance-r1/anchored_site_offsets",
+      "source": "/group/chem/acrg/verification_games_round_2/verification-games-work/ope225-bc-offset-20261029-r1/linked-uob-retry-r2/anchored_site_offsets",
+      "groups": {
+        "posterior": {
+          "sizes": {
+            "chain": 4,
+            "draw": 1000,
+            "state": 334,
+            "co2_bc_region": 4,
+            "o2_bc_contrast": 3,
+            "o2_offset_term": 24,
+            "ou_site": 50,
+            "observation": 10628,
+            "o2_bc_region": 4,
+            "o2_offset_observation": 5314
+          },
+          "coordinates_match": true,
+          "multiindexes": {
+            "state": {
+              "names": [
+                "source",
+                "tracer_scope",
+                "region_in_source"
+              ],
+              "size": 334
+            },
+            "co2_bc_region": {
+              "names": [
+                "co2_bc_curtain",
+                "co2_bc_period"
+              ],
+              "size": 4
+            },
+            "observation": {
+              "names": [
+                "species",
+                "channel_observation"
+              ],
+              "size": 10628
+            },
+            "o2_bc_region": {
+              "names": [
+                "o2_bc_curtain",
+                "o2_bc_period"
+              ],
+              "size": 4
+            }
+          },
+          "group_attribute_differences": {
+            "sampling_time": {
+              "actual": 7168.2608251571655,
+              "source": 7816.608923196793
+            },
+            "created_at": {
+              "actual": "2026-10-30T11:51:18.027019+00:00",
+              "source": "2026-10-29T23:16:22.606043+00:00"
+            }
+          },
+          "variables": {
+            "flux_scaling_latent": {
+              "dims": [
+                "chain",
+                "draw",
+                "state"
+              ],
+              "shape": [
+                4,
+                1000,
+                334
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "b7d9af4cc0e67e23334b82ef8cba0b0210cb2e607ec2fab7e1e33424ba73b868",
+              "source_sha256": "b7d9af4cc0e67e23334b82ef8cba0b0210cb2e607ec2fab7e1e33424ba73b868",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "co2_bc": {
+              "dims": [
+                "chain",
+                "draw",
+                "co2_bc_region"
+              ],
+              "shape": [
+                4,
+                1000,
+                4
+              ],
+              "dtype": "float64",
+              "units": "dimensionless boundary scale",
+              "attributes_match": true,
+              "sha256": "045c9b5811b2fa784c4dea3d9380440c3c3e2608d7e1d04913aaf1c6c1c174ba",
+              "source_sha256": "045c9b5811b2fa784c4dea3d9380440c3c3e2608d7e1d04913aaf1c6c1c174ba",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_bc_mean_shift": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "dbd710cb9cd70ede1c8b411c79947254bd94dc5f899fd424c21a9284c4791d39",
+              "source_sha256": "dbd710cb9cd70ede1c8b411c79947254bd94dc5f899fd424c21a9284c4791d39",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_bc_anomaly_latent": {
+              "dims": [
+                "chain",
+                "draw",
+                "o2_bc_contrast"
+              ],
+              "shape": [
+                4,
+                1000,
+                3
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "7363f205c7b447eee90e7b017218c91a91f24340b397778c42fbddf561dbaa42",
+              "source_sha256": "7363f205c7b447eee90e7b017218c91a91f24340b397778c42fbddf561dbaa42",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_offset_latent": {
+              "dims": [
+                "chain",
+                "draw",
+                "o2_offset_term"
+              ],
+              "shape": [
+                4,
+                1000,
+                24
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "52c840489585c639561cc8583fd44a9071f7aa020b83a35a0e643b39d7c7c821",
+              "source_sha256": "52c840489585c639561cc8583fd44a9071f7aa020b83a35a0e643b39d7c7c821",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "ou_site_amplitude": {
+              "dims": [
+                "chain",
+                "draw",
+                "ou_site"
+              ],
+              "shape": [
+                4,
+                1000,
+                50
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "35cdf02b47ceb9877d23344969d0534fd7592f7c57cb9631677df4ae9a9e37db",
+              "source_sha256": "35cdf02b47ceb9877d23344969d0534fd7592f7c57cb9631677df4ae9a9e37db",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "flux_scaling": {
+              "dims": [
+                "chain",
+                "draw",
+                "state"
+              ],
+              "shape": [
+                4,
+                1000,
+                334
+              ],
+              "dtype": "float64",
+              "units": "dimensionless flux scale",
+              "attributes_match": true,
+              "sha256": "04308d482b2d00ca9365ceeaf94d186005989f540735ec20954c549bf0770f8e",
+              "source_sha256": "04308d482b2d00ca9365ceeaf94d186005989f540735ec20954c549bf0770f8e",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "co2_o2_flux_contribution": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "2b3be660ba29c00ef47856e255291a19049c39f8311f67544ce01fd75035e370",
+              "source_sha256": "2b3be660ba29c00ef47856e255291a19049c39f8311f67544ce01fd75035e370",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "co2_o2_affine_contribution": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "e9538fae11aeedbd8948a17876c35eb7431f537091ddf2d283c2a90ab5c73d64",
+              "source_sha256": "e9538fae11aeedbd8948a17876c35eb7431f537091ddf2d283c2a90ab5c73d64",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "co2_mu_bc": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "ca6218582c68d7e5c1ccca43a900346d528872cf335ae30f51d78d52dc9ae8b9",
+              "source_sha256": "ca6218582c68d7e5c1ccca43a900346d528872cf335ae30f51d78d52dc9ae8b9",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_bc_anomaly": {
+              "dims": [
+                "chain",
+                "draw",
+                "o2_bc_region"
+              ],
+              "shape": [
+                4,
+                1000,
+                4
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "4cb9d5ec5e2d55ca6819a90727b04a5acc45d5b6adbb46c3f91f7af51ed3a04c",
+              "source_sha256": "4cb9d5ec5e2d55ca6819a90727b04a5acc45d5b6adbb46c3f91f7af51ed3a04c",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_bc_correction": {
+              "dims": [
+                "chain",
+                "draw",
+                "o2_bc_region"
+              ],
+              "shape": [
+                4,
+                1000,
+                4
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "5661b50d0894420f2281ca0c42d87d603a29538e6b83561221e2729685389fb3",
+              "source_sha256": "5661b50d0894420f2281ca0c42d87d603a29538e6b83561221e2729685389fb3",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_mu_bc_reference": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "34f70641d20fbecfcf8bd8f033e90e0fddb2f1c1d98dbabf5855a532df0ea373",
+              "source_sha256": "34f70641d20fbecfcf8bd8f033e90e0fddb2f1c1d98dbabf5855a532df0ea373",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_mu_bc_mean_shift": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "f7b21224bfb31973e2c89eb646f28310af5b6b609e3aa94dd5554e2fe11b4241",
+              "source_sha256": "f7b21224bfb31973e2c89eb646f28310af5b6b609e3aa94dd5554e2fe11b4241",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_mu_bc_anomaly": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "8503b1193994f669b1090da276351324d69c313e40765c01824382c9a4375cd1",
+              "source_sha256": "8503b1193994f669b1090da276351324d69c313e40765c01824382c9a4375cd1",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_mu_bc": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "a5fa9eb67a2a99f9d664803b8f6bd5d08640b0d82ceb81b7a058d78b252b8cb9",
+              "source_sha256": "a5fa9eb67a2a99f9d664803b8f6bd5d08640b0d82ceb81b7a058d78b252b8cb9",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_mu_bc_centered": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "21e66d0b56fb100f42cf9b209ebf6124e5f38be7ca7c5ed4553d046a0158502c",
+              "source_sha256": "21e66d0b56fb100f42cf9b209ebf6124e5f38be7ca7c5ed4553d046a0158502c",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_offset_native": {
+              "dims": [
+                "chain",
+                "draw",
+                "o2_offset_observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                5314
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "90af645ee71a6ca891f4776b7294d9594fe62e372ab12ef84bb381c315239fe3",
+              "source_sha256": "90af645ee71a6ca891f4776b7294d9594fe62e372ab12ef84bb381c315239fe3",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_offset": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "00aa4ae02fdaaabf779725268241af78bfad48e78cd013d8074cac371c4ae2b5",
+              "source_sha256": "00aa4ae02fdaaabf779725268241af78bfad48e78cd013d8074cac371c4ae2b5",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "boundary_concentration": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "955f796de0943eb0edd9a82494b90038ef5ad4daf806825b46cb84fbfd9ec50f",
+              "source_sha256": "955f796de0943eb0edd9a82494b90038ef5ad4daf806825b46cb84fbfd9ec50f",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "offset_concentration": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "00aa4ae02fdaaabf779725268241af78bfad48e78cd013d8074cac371c4ae2b5",
+              "source_sha256": "00aa4ae02fdaaabf779725268241af78bfad48e78cd013d8074cac371c4ae2b5",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "baseline_concentration": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "1dd8ac68b9fede4c81c12c140dcb8c430ba3b1a16c64fc6cfa7ee5e950844872",
+              "source_sha256": "1dd8ac68b9fede4c81c12c140dcb8c430ba3b1a16c64fc6cfa7ee5e950844872",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "modelled_concentration": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "6ecf70a2d7dfa6c9fbabad5778dc5f5ee8616b9a9cd884173dd48d9ead8f418b",
+              "source_sha256": "6ecf70a2d7dfa6c9fbabad5778dc5f5ee8616b9a9cd884173dd48d9ead8f418b",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "epsilon": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "19f001c3a9fd53bfcbb214409b1423862015aa86cfbe1a12dc9b0ba3e80f5f0c",
+              "source_sha256": "19f001c3a9fd53bfcbb214409b1423862015aa86cfbe1a12dc9b0ba3e80f5f0c",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            }
+          }
+        },
+        "sample_stats": {
+          "sizes": {
+            "chain": 4,
+            "draw": 1000
+          },
+          "coordinates_match": true,
+          "multiindexes": {},
+          "group_attribute_differences": {
+            "sampling_time": {
+              "actual": 7168.2608251571655,
+              "source": 7816.608923196793
+            },
+            "created_at": {
+              "actual": "2026-10-30T11:51:18.058699+00:00",
+              "source": "2026-10-29T23:16:22.630215+00:00"
+            }
+          },
+          "variables": {
+            "sigma_nuts_diverging": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "bool",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "fc19b1997119425765295aeab72d76faa6927d4f83985d328c26f20468d6cc76",
+              "source_sha256": "fc19b1997119425765295aeab72d76faa6927d4f83985d328c26f20468d6cc76",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "tree_depth": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "int64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "6ceef9b6cfa51b183fde2fc19d9bd1c636085c1876f609a037c1d67eea3c4bc0",
+              "source_sha256": "6ceef9b6cfa51b183fde2fc19d9bd1c636085c1876f609a037c1d67eea3c4bc0",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "diverging": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "bool",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "fc19b1997119425765295aeab72d76faa6927d4f83985d328c26f20468d6cc76",
+              "source_sha256": "fc19b1997119425765295aeab72d76faa6927d4f83985d328c26f20468d6cc76",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "step_size": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "20cbc1b7987f230921019f83b70c257655a8512ad13df3905b74a0167e0f6443",
+              "source_sha256": "20cbc1b7987f230921019f83b70c257655a8512ad13df3905b74a0167e0f6443",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "sigma_nuts_tree_depth": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "int64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "673f03c78493e0f1192a8b7fa95f112cdd3aed158a959e922d72d048927f38fb",
+              "source_sha256": "673f03c78493e0f1192a8b7fa95f112cdd3aed158a959e922d72d048927f38fb",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "sigma_nuts_energy_error": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "7d133b27da2fa342c17677eac574c9d56e3b367f7c7e593487bef679fff71021",
+              "source_sha256": "7d133b27da2fa342c17677eac574c9d56e3b367f7c7e593487bef679fff71021",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "divergences": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "int64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "0c92bddb4e96f3ea9ec9f0f64a668255a6c15527ac09f6f119cafde60c7c4a39",
+              "source_sha256": "0c92bddb4e96f3ea9ec9f0f64a668255a6c15527ac09f6f119cafde60c7c4a39",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "perf_counter_diff": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "ed35fea5b9c076428ee99e93ee36e23f9a89dbaf10c88a8b81997ac7b9bdd137",
+              "source_sha256": "8c0df8358c8df5f0409ae054d1cf3d41bf3e6698175b1eafed4002cd0a6843ec",
+              "bytes_exact": false,
+              "unequal_elements": 4000,
+              "max_absolute_difference": 0.06224198825657368,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "step_size_bar": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "29e3541580a0c283d750ffdd58138dd8d1d30b6300b23232d242267b0552901b",
+              "source_sha256": "29e3541580a0c283d750ffdd58138dd8d1d30b6300b23232d242267b0552901b",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "cache_refreshes": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "int64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "a11e58977f1dc1c2ab3816f55d8b2ef63da62b10fc4e4e2facf7f3788a890cda",
+              "source_sha256": "a11e58977f1dc1c2ab3816f55d8b2ef63da62b10fc4e4e2facf7f3788a890cda",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "sigma_accept_probability": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "df41365d38e90a3d217011a7c8d774794f7d29cb38d9fd2bb6f75f70d21a8c4b",
+              "source_sha256": "df41365d38e90a3d217011a7c8d774794f7d29cb38d9fd2bb6f75f70d21a8c4b",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "perf_counter_start": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "64a1363e55bf0cb5e64c341ad3c4edf8a716ea3fc90fde3f11557fc2fa930e0d",
+              "source_sha256": "22775d04390202449e1515cc4a48e0b0aba8c3f99bce3be0001ab0f16ccca68b",
+              "bytes_exact": false,
+              "unequal_elements": 4000,
+              "max_absolute_difference": 45645.97813830711,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "largest_eigval": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "dfdcf2bc4524cc2bb82fb8a1048a049a0593d604e5aa0564c27af78104c84424",
+              "source_sha256": "dfdcf2bc4524cc2bb82fb8a1048a049a0593d604e5aa0564c27af78104c84424",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 4000,
+              "source_nonfinite_elements": 4000
+            },
+            "sigma_nuts_tree_steps": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "int64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "57cf6fc86ed79cc7d1c99248e5211a92f119a59305092b86fa3def33b09eb67d",
+              "source_sha256": "57cf6fc86ed79cc7d1c99248e5211a92f119a59305092b86fa3def33b09eb67d",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "index_in_trajectory": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "int64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "3b3d9f8a71ca8eab11c677bd7132c0adc2e6c8244ace6a0513252bed302ec335",
+              "source_sha256": "3b3d9f8a71ca8eab11c677bd7132c0adc2e6c8244ace6a0513252bed302ec335",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "smallest_eigval": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "dfdcf2bc4524cc2bb82fb8a1048a049a0593d604e5aa0564c27af78104c84424",
+              "source_sha256": "dfdcf2bc4524cc2bb82fb8a1048a049a0593d604e5aa0564c27af78104c84424",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 4000,
+              "source_nonfinite_elements": 4000
+            },
+            "acceptance_rate": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "f287af04adc9f0606a44c5fb2d4dc0f842d15459c130fca1d1a8ee2cea8f1d35",
+              "source_sha256": "f287af04adc9f0606a44c5fb2d4dc0f842d15459c130fca1d1a8ee2cea8f1d35",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "energy_error": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "ebc23899d13f0a4163dd279e1a8fe4646f8ef832be8186f14554294106482116",
+              "source_sha256": "ebc23899d13f0a4163dd279e1a8fe4646f8ef832be8186f14554294106482116",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "max_energy_error": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "8cd912cca586d9596ebbe8489b31a1b19b6a19f29d364cfae73a94258af9708a",
+              "source_sha256": "8cd912cca586d9596ebbe8489b31a1b19b6a19f29d364cfae73a94258af9708a",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "sigma_nuts_divergences": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "int64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "0c92bddb4e96f3ea9ec9f0f64a668255a6c15527ac09f6f119cafde60c7c4a39",
+              "source_sha256": "0c92bddb4e96f3ea9ec9f0f64a668255a6c15527ac09f6f119cafde60c7c4a39",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "sigma_nuts_index_in_trajectory": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "int64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "45f32edb8c8eb07445f8a7057aff7631e0611724276d81d55e9d89afaa8e06b6",
+              "source_sha256": "45f32edb8c8eb07445f8a7057aff7631e0611724276d81d55e9d89afaa8e06b6",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "reached_max_treedepth": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "bool",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "fc19b1997119425765295aeab72d76faa6927d4f83985d328c26f20468d6cc76",
+              "source_sha256": "fc19b1997119425765295aeab72d76faa6927d4f83985d328c26f20468d6cc76",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "sigma_nuts_reached_max_treedepth": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "bool",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "fc19b1997119425765295aeab72d76faa6927d4f83985d328c26f20468d6cc76",
+              "source_sha256": "fc19b1997119425765295aeab72d76faa6927d4f83985d328c26f20468d6cc76",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "energy": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "cffdeb5f6b4ca3cd73103dc474e937395d81ad40496620280d3289ab82323d07",
+              "source_sha256": "cffdeb5f6b4ca3cd73103dc474e937395d81ad40496620280d3289ab82323d07",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "sigma_proposal_scale": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "70b96fe852b05fe477999326d4ec391a4d84681f42731e63c927925ea754fd74",
+              "source_sha256": "70b96fe852b05fe477999326d4ec391a4d84681f42731e63c927925ea754fd74",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "process_time_diff": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "25391867890fdde907b90fa7feac114c86b60fa0c29b6938b1d1928d9493f065",
+              "source_sha256": "5a691e356f44a56f40f992e1c8d7246f3d6c1121898441660edd8e877f692dfd",
+              "bytes_exact": false,
+              "unequal_elements": 4000,
+              "max_absolute_difference": 0.02550997200069105,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "n_steps": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "38c56ff724dddb675cfabccb2f926bdba25b51e45aea0f708388580f703fbd8f",
+              "source_sha256": "38c56ff724dddb675cfabccb2f926bdba25b51e45aea0f708388580f703fbd8f",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "lp": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "4aba120a8ab0d5ee97a300d77bc72bf4fa806c561d3c178f1b8f476438e542bf",
+              "source_sha256": "4aba120a8ab0d5ee97a300d77bc72bf4fa806c561d3c178f1b8f476438e542bf",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "sigma_nuts_max_energy_error": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "6df959fd3ecc0936db135d4bf4ef44a7c6b1e2c6c9fc65a7d057d62677bfe657",
+              "source_sha256": "6df959fd3ecc0936db135d4bf4ef44a7c6b1e2c6c9fc65a7d057d62677bfe657",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            }
+          }
+        },
+        "observed_data": {
+          "sizes": {
+            "observation": 10628
+          },
+          "coordinates_match": true,
+          "multiindexes": {
+            "observation": {
+              "names": [
+                "species",
+                "channel_observation"
+              ],
+              "size": 10628
+            }
+          },
+          "group_attribute_differences": {
+            "created_at": {
+              "actual": "2026-10-30T11:51:18.063767+00:00",
+              "source": "2026-10-29T23:16:22.635981+00:00"
+            }
+          },
+          "variables": {
+            "y": {
+              "dims": [
+                "observation"
+              ],
+              "shape": [
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "19e0b7a487bcd1712e6b21c18e221d8a2b69014ddc6fb6c90a9d19f1fccf9fb6",
+              "source_sha256": "19e0b7a487bcd1712e6b21c18e221d8a2b69014ddc6fb6c90a9d19f1fccf9fb6",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            }
+          }
+        },
+        "constant_data": {
+          "sizes": {
+            "observation": 10628,
+            "state": 334,
+            "co2_bc_region": 4,
+            "o2_bc_region": 4,
+            "o2_bc_contrast": 3,
+            "o2_offset_observation": 5314,
+            "o2_offset_term": 24,
+            "ou_site": 50
+          },
+          "coordinates_match": true,
+          "multiindexes": {
+            "observation": {
+              "names": [
+                "species",
+                "channel_observation"
+              ],
+              "size": 10628
+            },
+            "state": {
+              "names": [
+                "source",
+                "tracer_scope",
+                "region_in_source"
+              ],
+              "size": 334
+            },
+            "co2_bc_region": {
+              "names": [
+                "co2_bc_curtain",
+                "co2_bc_period"
+              ],
+              "size": 4
+            },
+            "o2_bc_region": {
+              "names": [
+                "o2_bc_curtain",
+                "o2_bc_period"
+              ],
+              "size": 4
+            }
+          },
+          "group_attribute_differences": {
+            "created_at": {
+              "actual": "2026-10-30T11:51:18.080261+00:00",
+              "source": "2026-10-29T23:16:22.656781+00:00"
+            }
+          },
+          "variables": {
+            "co2_o2_sensitivity": {
+              "dims": [
+                "observation",
+                "state"
+              ],
+              "shape": [
+                10628,
+                334
+              ],
+              "dtype": "float64",
+              "units": "observation_units per dimensionless flux scale",
+              "attributes_match": true,
+              "sha256": "a241638038f903017aafb7a0aaa2e127f18a90bd0a541df4add899385c9d75dd",
+              "source_sha256": "a241638038f903017aafb7a0aaa2e127f18a90bd0a541df4add899385c9d75dd",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "fixed_prior_contribution": {
+              "dims": [
+                "observation"
+              ],
+              "shape": [
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "fc9b4b655fd196f3835f03b95687904c6d57bc44686a852e74537e12f54dc7a8",
+              "source_sha256": "fc9b4b655fd196f3835f03b95687904c6d57bc44686a852e74537e12f54dc7a8",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "co2_H_bc_anomaly": {
+              "dims": [
+                "observation",
+                "co2_bc_region"
+              ],
+              "shape": [
+                10628,
+                4
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "54a31b6efbde9c3a5758c5fd2bffaca05db5418a51773a90f1e092d5fc43ad20",
+              "source_sha256": "54a31b6efbde9c3a5758c5fd2bffaca05db5418a51773a90f1e092d5fc43ad20",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "co2_H_bc_mass": {
+              "dims": [
+                "observation",
+                "co2_bc_region"
+              ],
+              "shape": [
+                10628,
+                4
+              ],
+              "dtype": "float64",
+              "units": "1",
+              "attributes_match": true,
+              "sha256": "1abfd7ba4f1c4697eb8b4ec64cd4f0fcac37dbbe305df432f281d41c092c0334",
+              "source_sha256": "1abfd7ba4f1c4697eb8b4ec64cd4f0fcac37dbbe305df432f281d41c092c0334",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "co2_bc_reference": {
+              "dims": [],
+              "shape": [],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "d23ed22dfc38d6df90dd24233e59ea26555d24f372e25b5513eabf0656b2880f",
+              "source_sha256": "d23ed22dfc38d6df90dd24233e59ea26555d24f372e25b5513eabf0656b2880f",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "co2_bc_reference_shift": {
+              "dims": [
+                "observation"
+              ],
+              "shape": [
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "7f259c0b6816410b0bd09f91dcde144ccd7641f985eb749b8e624cb41b468dc0",
+              "source_sha256": "7f259c0b6816410b0bd09f91dcde144ccd7641f985eb749b8e624cb41b468dc0",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_hbc": {
+              "dims": [
+                "observation",
+                "o2_bc_region"
+              ],
+              "shape": [
+                10628,
+                4
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "8671001e26e442136163f5d857082d004e0f591b7131222ccd351554259d378c",
+              "source_sha256": "8671001e26e442136163f5d857082d004e0f591b7131222ccd351554259d378c",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_G_bc": {
+              "dims": [
+                "observation",
+                "o2_bc_region"
+              ],
+              "shape": [
+                10628,
+                4
+              ],
+              "dtype": "float64",
+              "units": "1",
+              "attributes_match": true,
+              "sha256": "8e8f757fa96bd5f41d9f94d475015b0a3fe8ccea4cc9d2eb63c1258bae208932",
+              "source_sha256": "8e8f757fa96bd5f41d9f94d475015b0a3fe8ccea4cc9d2eb63c1258bae208932",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_bc_centering_weights": {
+              "dims": [
+                "o2_bc_region"
+              ],
+              "shape": [
+                4
+              ],
+              "dtype": "float64",
+              "units": "1",
+              "attributes_match": true,
+              "sha256": "5073e61eafb5e090b20e50cfa38e1505dbb9a00d659ef6cd6659298674226ad7",
+              "source_sha256": "5073e61eafb5e090b20e50cfa38e1505dbb9a00d659ef6cd6659298674226ad7",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_bc_anomaly_scale": {
+              "dims": [],
+              "shape": [],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "20453ba92b9c16ca71b26d43e2311e068b9232bfd03f7d01ca8bb7ffb4961979",
+              "source_sha256": "20453ba92b9c16ca71b26d43e2311e068b9232bfd03f7d01ca8bb7ffb4961979",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_bc_anomaly_basis": {
+              "dims": [
+                "o2_bc_region",
+                "o2_bc_contrast"
+              ],
+              "shape": [
+                4,
+                3
+              ],
+              "dtype": "float64",
+              "units": "1",
+              "attributes_match": true,
+              "sha256": "1e8aea6c3bbbb9d407aedf8fb48dc192ea1155c905ad7afdf5741bbb1bc378e8",
+              "source_sha256": "1e8aea6c3bbbb9d407aedf8fb48dc192ea1155c905ad7afdf5741bbb1bc378e8",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_bc_reference_shift": {
+              "dims": [
+                "observation"
+              ],
+              "shape": [
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "dd6b4209df727cd00a66996008edd2648887860126afae50b7691cc6fa199f86",
+              "source_sha256": "dd6b4209df727cd00a66996008edd2648887860126afae50b7691cc6fa199f86",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_site_indicator": {
+              "dims": [
+                "o2_offset_observation"
+              ],
+              "shape": [
+                5314
+              ],
+              "dtype": "int32",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "e22c41fd6d0d6906a01ffa7c08e592f0ed32311a079eda621cb768efea678937",
+              "source_sha256": "e22c41fd6d0d6906a01ffa7c08e592f0ed32311a079eda621cb768efea678937",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_offset_native_design": {
+              "dims": [
+                "o2_offset_observation",
+                "o2_offset_term"
+              ],
+              "shape": [
+                5314,
+                24
+              ],
+              "dtype": "int32",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "0efb5c57e4732bf34d1d97b3d40a2045e35ff06607ae3c833563ca7951e8b388",
+              "source_sha256": "0efb5c57e4732bf34d1d97b3d40a2045e35ff06607ae3c833563ca7951e8b388",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_offset_design": {
+              "dims": [
+                "observation",
+                "o2_offset_term"
+              ],
+              "shape": [
+                10628,
+                24
+              ],
+              "dtype": "int32",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "01a6aab005ebd32801124b7edcc5e8eb0229c7a710ef77dde2f1dc58debfa475",
+              "source_sha256": "01a6aab005ebd32801124b7edcc5e8eb0229c7a710ef77dde2f1dc58debfa475",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "boundary_reference_shift": {
+              "dims": [
+                "observation"
+              ],
+              "shape": [
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "2cd01f9bea3552db50402352c1da1ced27bb9ee9b0a69087ceb6634208068e2b",
+              "source_sha256": "2cd01f9bea3552db50402352c1da1ced27bb9ee9b0a69087ceb6634208068e2b",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "error": {
+              "dims": [
+                "observation"
+              ],
+              "shape": [
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "4cbfb331e20b00e94587501d3cfe7ab35bdb096f052870a2931307ed0a818634",
+              "source_sha256": "4cbfb331e20b00e94587501d3cfe7ab35bdb096f052870a2931307ed0a818634",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "ou_site_index": {
+              "dims": [
+                "observation"
+              ],
+              "shape": [
+                10628
+              ],
+              "dtype": "int32",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "0bea694c58670bd45767baf996dc3d50e9d451736af162a26603bde7b63ce556",
+              "source_sha256": "0bea694c58670bd45767baf996dc3d50e9d451736af162a26603bde7b63ce556",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "ou_tau_hours": {
+              "dims": [
+                "ou_site"
+              ],
+              "shape": [
+                50
+              ],
+              "dtype": "timedelta64[ns]",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "b6fd58eef0dbac6ec71c5e11e96b58616de37100c18d8ab74fcc7a209446ece3",
+              "source_sha256": "b6fd58eef0dbac6ec71c5e11e96b58616de37100c18d8ab74fcc7a209446ece3",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            }
+          }
+        },
+        "log_likelihood": {
+          "sizes": {
+            "chain": 4,
+            "draw": 1000
+          },
+          "coordinates_match": true,
+          "multiindexes": {},
+          "group_attribute_differences": {
+            "created_at": {
+              "actual": "2026-10-30T12:04:37.772743+00:00",
+              "source": "2026-10-29T23:29:54.029413+00:00"
+            }
+          },
+          "variables": {
+            "y": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "816da8add61cbbf2a4547fe88aa5aa02b5d930c0b88d49cd08ddb8778128e657",
+              "source_sha256": "816da8add61cbbf2a4547fe88aa5aa02b5d930c0b88d49cd08ddb8778128e657",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            }
+          }
+        }
+      },
+      "public_root_attributes_match": true,
+      "sampler_events": {
+        "sigma_nuts_diverging": 0,
+        "diverging": 0,
+        "reached_max_treedepth": 0,
+        "sigma_nuts_reached_max_treedepth": 0
+      },
+      "selected_parameter_diagnostics": {
+        "variables": [
+          "flux_scaling_latent",
+          "co2_bc",
+          "o2_bc_mean_shift",
+          "o2_bc_anomaly_latent",
+          "o2_offset_latent",
+          "ou_site_amplitude",
+          "flux_scaling",
+          "o2_bc_anomaly",
+          "o2_bc_correction"
+        ],
+        "all_metrics_match_retry_exactly": true,
+        "finite_rhat_and_bulk_ess": true,
+        "max_rhat": 1.0063944148100237,
+        "min_bulk_ess": 590.0627877290087,
+        "original_gate_passed": true
+      },
+      "all_non_timing_values_equal_including_matching_nan": true,
+      "all_non_timing_bytes_exact": true,
+      "all_posterior_and_likelihood_values_finite": true,
+      "differing_timing_stat_names": [
+        "perf_counter_diff",
+        "perf_counter_start",
+        "process_time_diff"
+      ]
+    },
+    "free_site_offsets": {
+      "actual": "/group/chem/acrg/brendan_for_codex/openghg_inversions/.codex-worktrees/linked-return-memory/.artifacts/linked-return-memory-validation/original-acceptance-r1/free_site_offsets",
+      "source": "/group/chem/acrg/verification_games_round_2/verification-games-work/ope225-bc-offset-20261029-r1/linked-uob-retry-r2/free_site_offsets",
+      "groups": {
+        "posterior": {
+          "sizes": {
+            "chain": 4,
+            "draw": 1000,
+            "state": 334,
+            "co2_bc_region": 4,
+            "o2_bc_contrast": 3,
+            "o2_offset_term": 25,
+            "ou_site": 50,
+            "observation": 10628,
+            "o2_bc_region": 4,
+            "o2_offset_observation": 5314
+          },
+          "coordinates_match": true,
+          "multiindexes": {
+            "state": {
+              "names": [
+                "source",
+                "tracer_scope",
+                "region_in_source"
+              ],
+              "size": 334
+            },
+            "co2_bc_region": {
+              "names": [
+                "co2_bc_curtain",
+                "co2_bc_period"
+              ],
+              "size": 4
+            },
+            "observation": {
+              "names": [
+                "species",
+                "channel_observation"
+              ],
+              "size": 10628
+            },
+            "o2_bc_region": {
+              "names": [
+                "o2_bc_curtain",
+                "o2_bc_period"
+              ],
+              "size": 4
+            }
+          },
+          "group_attribute_differences": {
+            "sampling_time": {
+              "actual": 6796.6000764369965,
+              "source": 8015.76162147522
+            },
+            "created_at": {
+              "actual": "2026-10-30T11:45:36.777632+00:00",
+              "source": "2026-10-29T23:19:45.956813+00:00"
+            }
+          },
+          "variables": {
+            "flux_scaling_latent": {
+              "dims": [
+                "chain",
+                "draw",
+                "state"
+              ],
+              "shape": [
+                4,
+                1000,
+                334
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "8ca7997cfe0121229289f30f856acf77ee9510abfa3c12f1f7156b14dcdc6e8d",
+              "source_sha256": "8ca7997cfe0121229289f30f856acf77ee9510abfa3c12f1f7156b14dcdc6e8d",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "co2_bc": {
+              "dims": [
+                "chain",
+                "draw",
+                "co2_bc_region"
+              ],
+              "shape": [
+                4,
+                1000,
+                4
+              ],
+              "dtype": "float64",
+              "units": "dimensionless boundary scale",
+              "attributes_match": true,
+              "sha256": "4f10f3987ce00eaac4292da508a9969784882388baad96093bcb1176260feeaf",
+              "source_sha256": "4f10f3987ce00eaac4292da508a9969784882388baad96093bcb1176260feeaf",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_bc_mean_shift": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "74ced2224394094d65f4f6cbca5da705201eaadee139800e6a7801949294eba1",
+              "source_sha256": "74ced2224394094d65f4f6cbca5da705201eaadee139800e6a7801949294eba1",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_bc_anomaly_latent": {
+              "dims": [
+                "chain",
+                "draw",
+                "o2_bc_contrast"
+              ],
+              "shape": [
+                4,
+                1000,
+                3
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "f943e7e03e70b6b8fc5d8945127087ed0e00ad868d56504b3c630478fc795a91",
+              "source_sha256": "f943e7e03e70b6b8fc5d8945127087ed0e00ad868d56504b3c630478fc795a91",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_offset_latent": {
+              "dims": [
+                "chain",
+                "draw",
+                "o2_offset_term"
+              ],
+              "shape": [
+                4,
+                1000,
+                25
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "107792e32ed0f413115d207f3290b5300092206b2ead0b7029d0f7ce2d441f6f",
+              "source_sha256": "107792e32ed0f413115d207f3290b5300092206b2ead0b7029d0f7ce2d441f6f",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "ou_site_amplitude": {
+              "dims": [
+                "chain",
+                "draw",
+                "ou_site"
+              ],
+              "shape": [
+                4,
+                1000,
+                50
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "829a7fdd5905d001b5852933c01456f08a36de460844ac66a02e1b28df9e0166",
+              "source_sha256": "829a7fdd5905d001b5852933c01456f08a36de460844ac66a02e1b28df9e0166",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "flux_scaling": {
+              "dims": [
+                "chain",
+                "draw",
+                "state"
+              ],
+              "shape": [
+                4,
+                1000,
+                334
+              ],
+              "dtype": "float64",
+              "units": "dimensionless flux scale",
+              "attributes_match": true,
+              "sha256": "ca2d60cb748a6261517077805634323ce72a72f914d3b53c2b33c21313028d9b",
+              "source_sha256": "ca2d60cb748a6261517077805634323ce72a72f914d3b53c2b33c21313028d9b",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "co2_o2_flux_contribution": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "d9885ae7ba254d6b549d96ce46e9828e8736fa789151b2702c053a4793058c77",
+              "source_sha256": "d9885ae7ba254d6b549d96ce46e9828e8736fa789151b2702c053a4793058c77",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "co2_o2_affine_contribution": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "9fb5394e1816759ebc57fbfe67921856823faf49df76a05def200af8adcd8bd3",
+              "source_sha256": "9fb5394e1816759ebc57fbfe67921856823faf49df76a05def200af8adcd8bd3",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "co2_mu_bc": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "5c9b0d719b218d89b050c708f96f62633b22a0a84dd291f03509827345ba971e",
+              "source_sha256": "5c9b0d719b218d89b050c708f96f62633b22a0a84dd291f03509827345ba971e",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_bc_anomaly": {
+              "dims": [
+                "chain",
+                "draw",
+                "o2_bc_region"
+              ],
+              "shape": [
+                4,
+                1000,
+                4
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "0a9ecf6fb54c603c5508a5ee3ea70db0be631f8b638faa791ac23c6bc81251db",
+              "source_sha256": "0a9ecf6fb54c603c5508a5ee3ea70db0be631f8b638faa791ac23c6bc81251db",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_bc_correction": {
+              "dims": [
+                "chain",
+                "draw",
+                "o2_bc_region"
+              ],
+              "shape": [
+                4,
+                1000,
+                4
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "aa2a497ee8c504a4989fa3a2d3a6de71521300011c6a1a2b9a5c6ddb097b052b",
+              "source_sha256": "aa2a497ee8c504a4989fa3a2d3a6de71521300011c6a1a2b9a5c6ddb097b052b",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_mu_bc_reference": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "34f70641d20fbecfcf8bd8f033e90e0fddb2f1c1d98dbabf5855a532df0ea373",
+              "source_sha256": "34f70641d20fbecfcf8bd8f033e90e0fddb2f1c1d98dbabf5855a532df0ea373",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_mu_bc_mean_shift": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "5ac70ca6f0a7e6c1e8fcaa006bd05df60286235a6fcdb85c3174cc133dc967d3",
+              "source_sha256": "5ac70ca6f0a7e6c1e8fcaa006bd05df60286235a6fcdb85c3174cc133dc967d3",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_mu_bc_anomaly": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "1078c54f9e77e7ca642cc0cd55dc2a8aa4cf732c2d26d78480df62d3526c7c9e",
+              "source_sha256": "1078c54f9e77e7ca642cc0cd55dc2a8aa4cf732c2d26d78480df62d3526c7c9e",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_mu_bc": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "493741d5f3a79913db4c5186a8f69a4392851d5382089f0e6d835675b4978041",
+              "source_sha256": "493741d5f3a79913db4c5186a8f69a4392851d5382089f0e6d835675b4978041",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_mu_bc_centered": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "adda10d7994296095fae5bdb00f27eaf0409a7de8516dbb051347cf6da9d5369",
+              "source_sha256": "adda10d7994296095fae5bdb00f27eaf0409a7de8516dbb051347cf6da9d5369",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_offset_native": {
+              "dims": [
+                "chain",
+                "draw",
+                "o2_offset_observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                5314
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "ec12939028127cefa7490b0d955eb7450f3dc5644c44954461ef4d5f5ca94ee6",
+              "source_sha256": "ec12939028127cefa7490b0d955eb7450f3dc5644c44954461ef4d5f5ca94ee6",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_offset": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "8dad270523484016269493366c8c5aba8f279e50ff345468f9c5e36c973312ed",
+              "source_sha256": "8dad270523484016269493366c8c5aba8f279e50ff345468f9c5e36c973312ed",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "boundary_concentration": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "8a3572aae6720528068632f84cc5d1f9401d9e44d7a742cedfba991254f2424d",
+              "source_sha256": "8a3572aae6720528068632f84cc5d1f9401d9e44d7a742cedfba991254f2424d",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "offset_concentration": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "8dad270523484016269493366c8c5aba8f279e50ff345468f9c5e36c973312ed",
+              "source_sha256": "8dad270523484016269493366c8c5aba8f279e50ff345468f9c5e36c973312ed",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "baseline_concentration": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "fd0577a2f2105c7ba650039322b7c9ce02d8b7b911760014fc3fc89c1fefc57b",
+              "source_sha256": "fd0577a2f2105c7ba650039322b7c9ce02d8b7b911760014fc3fc89c1fefc57b",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "modelled_concentration": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "4fb214bb99c5ce337ae312a4b19210aec0e1f3dcfeebc43b4c25cc02f8acd859",
+              "source_sha256": "4fb214bb99c5ce337ae312a4b19210aec0e1f3dcfeebc43b4c25cc02f8acd859",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "epsilon": {
+              "dims": [
+                "chain",
+                "draw",
+                "observation"
+              ],
+              "shape": [
+                4,
+                1000,
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "88ebac89052af3db7533a2ca84a17c65bdd890dc2722e306481bf71ecb3df134",
+              "source_sha256": "88ebac89052af3db7533a2ca84a17c65bdd890dc2722e306481bf71ecb3df134",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            }
+          }
+        },
+        "sample_stats": {
+          "sizes": {
+            "chain": 4,
+            "draw": 1000
+          },
+          "coordinates_match": true,
+          "multiindexes": {},
+          "group_attribute_differences": {
+            "sampling_time": {
+              "actual": 6796.6000764369965,
+              "source": 8015.76162147522
+            },
+            "created_at": {
+              "actual": "2026-10-30T11:45:36.821490+00:00",
+              "source": "2026-10-29T23:19:45.982135+00:00"
+            }
+          },
+          "variables": {
+            "sigma_nuts_tree_steps": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "int64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "d70b4781a198f0e1c1971cff77d0b59f5a76a7c9d20ab3aed6225661f846a590",
+              "source_sha256": "d70b4781a198f0e1c1971cff77d0b59f5a76a7c9d20ab3aed6225661f846a590",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "diverging": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "bool",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "fc19b1997119425765295aeab72d76faa6927d4f83985d328c26f20468d6cc76",
+              "source_sha256": "fc19b1997119425765295aeab72d76faa6927d4f83985d328c26f20468d6cc76",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "lp": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "717a08cfd032507d1a0939b45ae1dbc7e0ccf5b7b0ae2ac5a6edb147dae1fd37",
+              "source_sha256": "717a08cfd032507d1a0939b45ae1dbc7e0ccf5b7b0ae2ac5a6edb147dae1fd37",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "sigma_nuts_max_energy_error": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "0dd10e8686ddb80ddfa103ac382dbfdf74975df54be7d504654c5b205e8abed1",
+              "source_sha256": "0dd10e8686ddb80ddfa103ac382dbfdf74975df54be7d504654c5b205e8abed1",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "divergences": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "int64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "0c92bddb4e96f3ea9ec9f0f64a668255a6c15527ac09f6f119cafde60c7c4a39",
+              "source_sha256": "0c92bddb4e96f3ea9ec9f0f64a668255a6c15527ac09f6f119cafde60c7c4a39",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "sigma_nuts_divergences": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "int64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "0c92bddb4e96f3ea9ec9f0f64a668255a6c15527ac09f6f119cafde60c7c4a39",
+              "source_sha256": "0c92bddb4e96f3ea9ec9f0f64a668255a6c15527ac09f6f119cafde60c7c4a39",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "max_energy_error": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "bcc67a91f044b6d241f1abae861d8464b5cfc38725dfccab69c4794622bc6918",
+              "source_sha256": "bcc67a91f044b6d241f1abae861d8464b5cfc38725dfccab69c4794622bc6918",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "process_time_diff": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "d44dae636892fefec45146fcfdf82c2851a56ed694ba42dc0b621201aefeaf30",
+              "source_sha256": "b55a9203e158b7f0fed5284759354156c0c14c810ff84e0701b6e3a5bec4de73",
+              "bytes_exact": false,
+              "unequal_elements": 4000,
+              "max_absolute_difference": 0.02189252900006977,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "sigma_nuts_reached_max_treedepth": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "bool",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "fc19b1997119425765295aeab72d76faa6927d4f83985d328c26f20468d6cc76",
+              "source_sha256": "fc19b1997119425765295aeab72d76faa6927d4f83985d328c26f20468d6cc76",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "index_in_trajectory": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "int64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "1e0bbb7a8ac31066e5c2b96b25b5126c0fa868c4793fc9c1f7575f37480c18d1",
+              "source_sha256": "1e0bbb7a8ac31066e5c2b96b25b5126c0fa868c4793fc9c1f7575f37480c18d1",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "sigma_nuts_tree_depth": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "int64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "9cbd122893b5edeb644f8f5220628f34aa086bf7a67d651c265059b1fb786d16",
+              "source_sha256": "9cbd122893b5edeb644f8f5220628f34aa086bf7a67d651c265059b1fb786d16",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "perf_counter_start": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "4bb3c97ef0c65f4118df41e074be37d44a5b16da0beb271ae9b0daad39cf0534",
+              "source_sha256": "269007d8ea3f1fdb90fd26998f553089aae8918175caaa0778e9af8df44f1873",
+              "bytes_exact": false,
+              "unequal_elements": 4000,
+              "max_absolute_difference": 44995.87823199853,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "sigma_nuts_energy_error": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "8584bdcb2f5c503393b4d951b3d14910b386dcdf5342d8e11efe4e48cadb4b81",
+              "source_sha256": "8584bdcb2f5c503393b4d951b3d14910b386dcdf5342d8e11efe4e48cadb4b81",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "energy_error": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "c6e06401242c4c39251f2dabea2761f0708a42bb04554754e9dfdf4c8ff48b16",
+              "source_sha256": "c6e06401242c4c39251f2dabea2761f0708a42bb04554754e9dfdf4c8ff48b16",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "perf_counter_diff": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "c337a6d01540f41a93cb2e91e90f6b7aa5d9577dba2fcb3036c80cd793547fc6",
+              "source_sha256": "8d04abf1266ed727d6c77d58583f73725f027b63e00a1b30d9ec1e69298e3ace",
+              "bytes_exact": false,
+              "unequal_elements": 4000,
+              "max_absolute_difference": 0.08408410660922527,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "n_steps": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "38c56ff724dddb675cfabccb2f926bdba25b51e45aea0f708388580f703fbd8f",
+              "source_sha256": "38c56ff724dddb675cfabccb2f926bdba25b51e45aea0f708388580f703fbd8f",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "energy": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "a8679b834bdee13723b0a2455604e257088db5798e26c0c01df2b9728cf19d36",
+              "source_sha256": "a8679b834bdee13723b0a2455604e257088db5798e26c0c01df2b9728cf19d36",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "cache_refreshes": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "int64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "e24f7e644c509912ec45193d2467954fa466aaea63c8ac110b3ee50fc77e1401",
+              "source_sha256": "e24f7e644c509912ec45193d2467954fa466aaea63c8ac110b3ee50fc77e1401",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "reached_max_treedepth": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "bool",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "fc19b1997119425765295aeab72d76faa6927d4f83985d328c26f20468d6cc76",
+              "source_sha256": "fc19b1997119425765295aeab72d76faa6927d4f83985d328c26f20468d6cc76",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "acceptance_rate": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "eff5b47d99db0cd7fe785bb4dcfcc8da1c4360876e3d1745205f1da4614789da",
+              "source_sha256": "eff5b47d99db0cd7fe785bb4dcfcc8da1c4360876e3d1745205f1da4614789da",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "sigma_nuts_diverging": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "bool",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "fc19b1997119425765295aeab72d76faa6927d4f83985d328c26f20468d6cc76",
+              "source_sha256": "fc19b1997119425765295aeab72d76faa6927d4f83985d328c26f20468d6cc76",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "sigma_nuts_index_in_trajectory": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "int64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "c10a92dfae945688d3e42c679227b25b5e9a448066ebbb4abc69f120c1974d3f",
+              "source_sha256": "c10a92dfae945688d3e42c679227b25b5e9a448066ebbb4abc69f120c1974d3f",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "largest_eigval": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "dfdcf2bc4524cc2bb82fb8a1048a049a0593d604e5aa0564c27af78104c84424",
+              "source_sha256": "dfdcf2bc4524cc2bb82fb8a1048a049a0593d604e5aa0564c27af78104c84424",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 4000,
+              "source_nonfinite_elements": 4000
+            },
+            "sigma_proposal_scale": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "4fc1d29dbdc07b0b4fdac7a25880eaadbe18c372148c7169fab83e3089b78e2d",
+              "source_sha256": "4fc1d29dbdc07b0b4fdac7a25880eaadbe18c372148c7169fab83e3089b78e2d",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "tree_depth": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "int64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "6ceef9b6cfa51b183fde2fc19d9bd1c636085c1876f609a037c1d67eea3c4bc0",
+              "source_sha256": "6ceef9b6cfa51b183fde2fc19d9bd1c636085c1876f609a037c1d67eea3c4bc0",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "sigma_accept_probability": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "10688f9d1aaa510e8641e9b6c9318b0c8ae1215ac5084f04d8b8492aac370041",
+              "source_sha256": "10688f9d1aaa510e8641e9b6c9318b0c8ae1215ac5084f04d8b8492aac370041",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "smallest_eigval": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "dfdcf2bc4524cc2bb82fb8a1048a049a0593d604e5aa0564c27af78104c84424",
+              "source_sha256": "dfdcf2bc4524cc2bb82fb8a1048a049a0593d604e5aa0564c27af78104c84424",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 4000,
+              "source_nonfinite_elements": 4000
+            },
+            "step_size_bar": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "40eb934218336313c421671d883975ad93d80c4f0d8a8d5368eb611ae2c13b9d",
+              "source_sha256": "40eb934218336313c421671d883975ad93d80c4f0d8a8d5368eb611ae2c13b9d",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "step_size": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "a7e5704bd0faf73136c0fb5f7de144d006b25355ab67b45f349fd3fe96ebe3f5",
+              "source_sha256": "a7e5704bd0faf73136c0fb5f7de144d006b25355ab67b45f349fd3fe96ebe3f5",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            }
+          }
+        },
+        "observed_data": {
+          "sizes": {
+            "observation": 10628
+          },
+          "coordinates_match": true,
+          "multiindexes": {
+            "observation": {
+              "names": [
+                "species",
+                "channel_observation"
+              ],
+              "size": 10628
+            }
+          },
+          "group_attribute_differences": {
+            "created_at": {
+              "actual": "2026-10-30T11:45:36.826930+00:00",
+              "source": "2026-10-29T23:19:45.988681+00:00"
+            }
+          },
+          "variables": {
+            "y": {
+              "dims": [
+                "observation"
+              ],
+              "shape": [
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "19e0b7a487bcd1712e6b21c18e221d8a2b69014ddc6fb6c90a9d19f1fccf9fb6",
+              "source_sha256": "19e0b7a487bcd1712e6b21c18e221d8a2b69014ddc6fb6c90a9d19f1fccf9fb6",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            }
+          }
+        },
+        "constant_data": {
+          "sizes": {
+            "observation": 10628,
+            "state": 334,
+            "co2_bc_region": 4,
+            "o2_bc_region": 4,
+            "o2_bc_contrast": 3,
+            "o2_offset_observation": 5314,
+            "o2_offset_term": 25,
+            "ou_site": 50
+          },
+          "coordinates_match": true,
+          "multiindexes": {
+            "observation": {
+              "names": [
+                "species",
+                "channel_observation"
+              ],
+              "size": 10628
+            },
+            "state": {
+              "names": [
+                "source",
+                "tracer_scope",
+                "region_in_source"
+              ],
+              "size": 334
+            },
+            "co2_bc_region": {
+              "names": [
+                "co2_bc_curtain",
+                "co2_bc_period"
+              ],
+              "size": 4
+            },
+            "o2_bc_region": {
+              "names": [
+                "o2_bc_curtain",
+                "o2_bc_period"
+              ],
+              "size": 4
+            }
+          },
+          "group_attribute_differences": {
+            "created_at": {
+              "actual": "2026-10-30T11:45:36.842564+00:00",
+              "source": "2026-10-29T23:19:46.010484+00:00"
+            }
+          },
+          "variables": {
+            "co2_o2_sensitivity": {
+              "dims": [
+                "observation",
+                "state"
+              ],
+              "shape": [
+                10628,
+                334
+              ],
+              "dtype": "float64",
+              "units": "observation_units per dimensionless flux scale",
+              "attributes_match": true,
+              "sha256": "a241638038f903017aafb7a0aaa2e127f18a90bd0a541df4add899385c9d75dd",
+              "source_sha256": "a241638038f903017aafb7a0aaa2e127f18a90bd0a541df4add899385c9d75dd",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "fixed_prior_contribution": {
+              "dims": [
+                "observation"
+              ],
+              "shape": [
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "fc9b4b655fd196f3835f03b95687904c6d57bc44686a852e74537e12f54dc7a8",
+              "source_sha256": "fc9b4b655fd196f3835f03b95687904c6d57bc44686a852e74537e12f54dc7a8",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "co2_H_bc_anomaly": {
+              "dims": [
+                "observation",
+                "co2_bc_region"
+              ],
+              "shape": [
+                10628,
+                4
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "54a31b6efbde9c3a5758c5fd2bffaca05db5418a51773a90f1e092d5fc43ad20",
+              "source_sha256": "54a31b6efbde9c3a5758c5fd2bffaca05db5418a51773a90f1e092d5fc43ad20",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "co2_H_bc_mass": {
+              "dims": [
+                "observation",
+                "co2_bc_region"
+              ],
+              "shape": [
+                10628,
+                4
+              ],
+              "dtype": "float64",
+              "units": "1",
+              "attributes_match": true,
+              "sha256": "1abfd7ba4f1c4697eb8b4ec64cd4f0fcac37dbbe305df432f281d41c092c0334",
+              "source_sha256": "1abfd7ba4f1c4697eb8b4ec64cd4f0fcac37dbbe305df432f281d41c092c0334",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "co2_bc_reference": {
+              "dims": [],
+              "shape": [],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "d23ed22dfc38d6df90dd24233e59ea26555d24f372e25b5513eabf0656b2880f",
+              "source_sha256": "d23ed22dfc38d6df90dd24233e59ea26555d24f372e25b5513eabf0656b2880f",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "co2_bc_reference_shift": {
+              "dims": [
+                "observation"
+              ],
+              "shape": [
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "7f259c0b6816410b0bd09f91dcde144ccd7641f985eb749b8e624cb41b468dc0",
+              "source_sha256": "7f259c0b6816410b0bd09f91dcde144ccd7641f985eb749b8e624cb41b468dc0",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_hbc": {
+              "dims": [
+                "observation",
+                "o2_bc_region"
+              ],
+              "shape": [
+                10628,
+                4
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "8671001e26e442136163f5d857082d004e0f591b7131222ccd351554259d378c",
+              "source_sha256": "8671001e26e442136163f5d857082d004e0f591b7131222ccd351554259d378c",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_G_bc": {
+              "dims": [
+                "observation",
+                "o2_bc_region"
+              ],
+              "shape": [
+                10628,
+                4
+              ],
+              "dtype": "float64",
+              "units": "1",
+              "attributes_match": true,
+              "sha256": "8e8f757fa96bd5f41d9f94d475015b0a3fe8ccea4cc9d2eb63c1258bae208932",
+              "source_sha256": "8e8f757fa96bd5f41d9f94d475015b0a3fe8ccea4cc9d2eb63c1258bae208932",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_bc_centering_weights": {
+              "dims": [
+                "o2_bc_region"
+              ],
+              "shape": [
+                4
+              ],
+              "dtype": "float64",
+              "units": "1",
+              "attributes_match": true,
+              "sha256": "5073e61eafb5e090b20e50cfa38e1505dbb9a00d659ef6cd6659298674226ad7",
+              "source_sha256": "5073e61eafb5e090b20e50cfa38e1505dbb9a00d659ef6cd6659298674226ad7",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_bc_anomaly_scale": {
+              "dims": [],
+              "shape": [],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "20453ba92b9c16ca71b26d43e2311e068b9232bfd03f7d01ca8bb7ffb4961979",
+              "source_sha256": "20453ba92b9c16ca71b26d43e2311e068b9232bfd03f7d01ca8bb7ffb4961979",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_bc_anomaly_basis": {
+              "dims": [
+                "o2_bc_region",
+                "o2_bc_contrast"
+              ],
+              "shape": [
+                4,
+                3
+              ],
+              "dtype": "float64",
+              "units": "1",
+              "attributes_match": true,
+              "sha256": "1e8aea6c3bbbb9d407aedf8fb48dc192ea1155c905ad7afdf5741bbb1bc378e8",
+              "source_sha256": "1e8aea6c3bbbb9d407aedf8fb48dc192ea1155c905ad7afdf5741bbb1bc378e8",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_bc_reference_shift": {
+              "dims": [
+                "observation"
+              ],
+              "shape": [
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "dd6b4209df727cd00a66996008edd2648887860126afae50b7691cc6fa199f86",
+              "source_sha256": "dd6b4209df727cd00a66996008edd2648887860126afae50b7691cc6fa199f86",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_site_indicator": {
+              "dims": [
+                "o2_offset_observation"
+              ],
+              "shape": [
+                5314
+              ],
+              "dtype": "int32",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "e22c41fd6d0d6906a01ffa7c08e592f0ed32311a079eda621cb768efea678937",
+              "source_sha256": "e22c41fd6d0d6906a01ffa7c08e592f0ed32311a079eda621cb768efea678937",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_offset_native_design": {
+              "dims": [
+                "o2_offset_observation",
+                "o2_offset_term"
+              ],
+              "shape": [
+                5314,
+                25
+              ],
+              "dtype": "int32",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "3b8b19f32b4ac170647706754cc0f4cfaf7d52b37af4955acbe5906594e5a550",
+              "source_sha256": "3b8b19f32b4ac170647706754cc0f4cfaf7d52b37af4955acbe5906594e5a550",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "o2_offset_design": {
+              "dims": [
+                "observation",
+                "o2_offset_term"
+              ],
+              "shape": [
+                10628,
+                25
+              ],
+              "dtype": "int32",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "988fe6b5826ffb572a4830534ca6ce61f0cef5353af84319368f8e2a933b1bd8",
+              "source_sha256": "988fe6b5826ffb572a4830534ca6ce61f0cef5353af84319368f8e2a933b1bd8",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "boundary_reference_shift": {
+              "dims": [
+                "observation"
+              ],
+              "shape": [
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "2cd01f9bea3552db50402352c1da1ced27bb9ee9b0a69087ceb6634208068e2b",
+              "source_sha256": "2cd01f9bea3552db50402352c1da1ced27bb9ee9b0a69087ceb6634208068e2b",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "error": {
+              "dims": [
+                "observation"
+              ],
+              "shape": [
+                10628
+              ],
+              "dtype": "float64",
+              "units": "ppm",
+              "attributes_match": true,
+              "sha256": "4cbfb331e20b00e94587501d3cfe7ab35bdb096f052870a2931307ed0a818634",
+              "source_sha256": "4cbfb331e20b00e94587501d3cfe7ab35bdb096f052870a2931307ed0a818634",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "ou_site_index": {
+              "dims": [
+                "observation"
+              ],
+              "shape": [
+                10628
+              ],
+              "dtype": "int32",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "0bea694c58670bd45767baf996dc3d50e9d451736af162a26603bde7b63ce556",
+              "source_sha256": "0bea694c58670bd45767baf996dc3d50e9d451736af162a26603bde7b63ce556",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            },
+            "ou_tau_hours": {
+              "dims": [
+                "ou_site"
+              ],
+              "shape": [
+                50
+              ],
+              "dtype": "timedelta64[ns]",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "b6fd58eef0dbac6ec71c5e11e96b58616de37100c18d8ab74fcc7a209446ece3",
+              "source_sha256": "b6fd58eef0dbac6ec71c5e11e96b58616de37100c18d8ab74fcc7a209446ece3",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            }
+          }
+        },
+        "log_likelihood": {
+          "sizes": {
+            "chain": 4,
+            "draw": 1000
+          },
+          "coordinates_match": true,
+          "multiindexes": {},
+          "group_attribute_differences": {
+            "created_at": {
+              "actual": "2026-10-30T12:04:40.879702+00:00",
+              "source": "2026-10-29T23:33:04.589991+00:00"
+            }
+          },
+          "variables": {
+            "y": {
+              "dims": [
+                "chain",
+                "draw"
+              ],
+              "shape": [
+                4,
+                1000
+              ],
+              "dtype": "float64",
+              "units": null,
+              "attributes_match": true,
+              "sha256": "331a29baaebaeb5b864bfefcf8a1b934980935a6e8a3e9442c32ce70cdc218b2",
+              "source_sha256": "331a29baaebaeb5b864bfefcf8a1b934980935a6e8a3e9442c32ce70cdc218b2",
+              "bytes_exact": true,
+              "unequal_elements": 0,
+              "max_absolute_difference": 0.0,
+              "nonfinite_elements": 0,
+              "source_nonfinite_elements": 0
+            }
+          }
+        }
+      },
+      "public_root_attributes_match": true,
+      "sampler_events": {
+        "diverging": 0,
+        "sigma_nuts_reached_max_treedepth": 0,
+        "reached_max_treedepth": 0,
+        "sigma_nuts_diverging": 0
+      },
+      "selected_parameter_diagnostics": {
+        "variables": [
+          "flux_scaling_latent",
+          "co2_bc",
+          "o2_bc_mean_shift",
+          "o2_bc_anomaly_latent",
+          "o2_offset_latent",
+          "ou_site_amplitude",
+          "flux_scaling",
+          "o2_bc_anomaly",
+          "o2_bc_correction"
+        ],
+        "all_metrics_match_retry_exactly": true,
+        "finite_rhat_and_bulk_ess": true,
+        "max_rhat": 1.009098532939287,
+        "min_bulk_ess": 469.3788366157787,
+        "original_gate_passed": true
+      },
+      "all_non_timing_values_equal_including_matching_nan": true,
+      "all_non_timing_bytes_exact": true,
+      "all_posterior_and_likelihood_values_finite": true,
+      "differing_timing_stat_names": [
+        "perf_counter_diff",
+        "perf_counter_start",
+        "process_time_diff"
+      ]
+    }
+  },
+  "resumed_groups": {
+    "anchored_site_offsets": [
+      "posterior",
+      "sample_stats",
+      "observed_data",
+      "constant_data",
+      "log_likelihood"
+    ]
+  },
+  "status": "passed",
+  "elapsed_seconds": 119.41121079772711,
+  "maxrss_kib": 305444,
+  "validation_provenance": {
+    "interpreter": "/group/chem/acrg/brendan_for_codex/openghg_inversions/.codex-worktrees/linked-return-memory/.venv/bin/python",
+    "dependency_versions": {
+      "numpy": "2.2.6",
+      "pandas": "2.3.3",
+      "xarray": "2025.9.1",
+      "netCDF4": "1.7.2",
+      "h5netcdf": "1.8.1",
+      "cf_xarray": "0.10.6"
+    },
+    "executed_anchor_scan_script_snapshot": ".artifacts/linked-return-memory-validation/validate_linked_campaign_acceptance_executed.py",
+    "executed_anchor_scan_script_sha256": "d8119294abb8c1aefd085e442ef1902287aa974fcfb55f1e416839a41b912a0e",
+    "final_validator_script": "scripts/validate_linked_campaign_acceptance.py",
+    "final_validator_sha256": "69df19d3a107371f09cf18d0570003bd1d8d50524ce958f1a5d3d0c4f3aecc41",
+    "note": "Array comparison logic unchanged throughout. Anchored hashes reused from group checkpoints. Free-arm groups scanned by resumed validator. Final equality/allowed-metadata assertions and diagnostic comparison explicitly reapplied to all completed checkpoints; redundant supplementary concentration identity oracle omitted."
+  },
+  "summary": {
+    "anchored_site_offsets": {
+      "non_timing_arrays_byte_exact": 71,
+      "all_arrays": 74,
+      "differing_timing_stat_names": [
+        "perf_counter_diff",
+        "perf_counter_start",
+        "process_time_diff"
+      ],
+      "max_rhat": 1.0063944148100237,
+      "min_bulk_ess": 590.0627877290087
+    },
+    "free_site_offsets": {
+      "non_timing_arrays_byte_exact": 71,
+      "all_arrays": 74,
+      "differing_timing_stat_names": [
+        "perf_counter_diff",
+        "perf_counter_start",
+        "process_time_diff"
+      ],
+      "max_rhat": 1.009098532939287,
+      "min_bulk_ess": 469.3788366157787
+    }
+  },
+  "timing_scope": "Elapsed/RSS describe the resumed process: anchored array hashes reused from checkpoints, all free-arm payloads scanned; initial anchored process separately completed its array scan."
+}

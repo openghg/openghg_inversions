@@ -1,0 +1,134 @@
+{
+  "array_job_id": "19833552",
+  "callback_job_id": "19833553",
+  "ticket_id": "sw-20261030T094657Z-779d42965fb7",
+  "allocation_gib_per_task": 16,
+  "candidate_revision": "c5afe448e1eefea4014fe0144273d6425e6e376f",
+  "production_code_unchanged_since_candidate": true,
+  "historical_successful_retry_array": "19824176",
+  "historical_allocation_gib_per_task": 24,
+  "arms": {
+    "anchored_site_offsets": {
+      "task_id": "19833552_1",
+      "scheduler_state": "COMPLETED",
+      "scheduler_exit_code": "0:0",
+      "scheduler_elapsed": "02:15:35",
+      "scheduler_batch_maxrss_kib": 7050880,
+      "time_process_maxrss_kib": 6957680,
+      "time_process_maxrss_gib": 6.6353607177734375,
+      "historical_scheduler_batch_maxrss_kib": 17292540,
+      "batch_maxrss_reduction_fraction": 0.5922588584441615,
+      "output_sha256": "d8c813b5beb825ead84c03c9c23614238f4ecfc44c601082f959334126d63997",
+      "saved_files": {
+        "posterior.nc": {
+          "path": ".artifacts/linked-return-memory-validation/original-acceptance-r1/anchored_site_offsets/posterior.nc",
+          "bytes": 4993550677
+        },
+        "diagnostics.nc": {
+          "path": ".artifacts/linked-return-memory-validation/original-acceptance-r1/anchored_site_offsets/diagnostics.nc",
+          "bytes": 91275
+        }
+      },
+      "convergence_gate_passed": true,
+      "max_rhat": 1.0063944148100237,
+      "min_bulk_ess": 590.0627877290087,
+      "sampler_events": {
+        "sigma_nuts_diverging": 0,
+        "diverging": 0,
+        "reached_max_treedepth": 0,
+        "sigma_nuts_reached_max_treedepth": 0
+      },
+      "timing": {
+        "rhime.sampler.pm_sample": {
+          "seconds": 7168.789702,
+          "maxrss_kb": 2147424.0
+        },
+        "rhime.sampler.sample_stats": {
+          "seconds": 0.0,
+          "maxrss_kb": 2147424.0
+        },
+        "rhime.sampler.burn_slicing": {
+          "seconds": 0.00569,
+          "maxrss_kb": 2147424.0
+        },
+        "rhime.sampler.log_likelihood": {
+          "seconds": 799.683022,
+          "maxrss_kb": 2773224.0
+        },
+        "rhime.sampler.deterministics": {
+          "seconds": 13.580702,
+          "maxrss_kb": 6944996.0
+        },
+        "rhime.sampler.coord_restore": {
+          "seconds": 0.078047,
+          "maxrss_kb": 6945052.0
+        },
+        "rhime.sampler_total": {
+          "seconds": 7982.138482,
+          "maxrss_kb": 6945052.0
+        }
+      }
+    },
+    "free_site_offsets": {
+      "task_id": "19833552_2",
+      "scheduler_state": "COMPLETED",
+      "scheduler_exit_code": "0:0",
+      "scheduler_elapsed": "02:15:37",
+      "scheduler_batch_maxrss_kib": 7010512,
+      "time_process_maxrss_kib": 6966224,
+      "time_process_maxrss_gib": 6.6435089111328125,
+      "historical_scheduler_batch_maxrss_kib": 17284784,
+      "batch_maxrss_reduction_fraction": 0.5944113620395834,
+      "output_sha256": "ca7a0eb65c0490d525c402b4a4f127730e658c5cbcc765c225b494027f379811",
+      "saved_files": {
+        "posterior.nc": {
+          "path": ".artifacts/linked-return-memory-validation/original-acceptance-r1/free_site_offsets/posterior.nc",
+          "bytes": 4993646005
+        },
+        "diagnostics.nc": {
+          "path": ".artifacts/linked-return-memory-validation/original-acceptance-r1/free_site_offsets/diagnostics.nc",
+          "bytes": 91307
+        }
+      },
+      "convergence_gate_passed": true,
+      "max_rhat": 1.009098532939287,
+      "min_bulk_ess": 469.3788366157787,
+      "sampler_events": {
+        "diverging": 0,
+        "sigma_nuts_reached_max_treedepth": 0,
+        "reached_max_treedepth": 0,
+        "sigma_nuts_diverging": 0
+      },
+      "timing": {
+        "rhime.sampler.pm_sample": {
+          "seconds": 6797.297976,
+          "maxrss_kb": 2154236.0
+        },
+        "rhime.sampler.sample_stats": {
+          "seconds": 0.0,
+          "maxrss_kb": 2154236.0
+        },
+        "rhime.sampler.burn_slicing": {
+          "seconds": 0.00634,
+          "maxrss_kb": 2154236.0
+        },
+        "rhime.sampler.log_likelihood": {
+          "seconds": 1143.970386,
+          "maxrss_kb": 2777932.0
+        },
+        "rhime.sampler.deterministics": {
+          "seconds": 13.051888,
+          "maxrss_kb": 6955656.0
+        },
+        "rhime.sampler.coord_restore": {
+          "seconds": 0.077637,
+          "maxrss_kb": 6955656.0
+        },
+        "rhime.sampler_total": {
+          "seconds": 7954.466043,
+          "maxrss_kb": 6955656.0
+        }
+      }
+    }
+  }
+}

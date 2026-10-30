@@ -151,7 +151,8 @@ other deterministics, graph/kernel workspace, or allocator behavior. The small
 offset coefficients do not explain that amplification. This accounting and the
 bounded profiles demonstrate avoidable output storage; neither proves which
 allocation exhausted the original job's memory limit. A 334-state, rank-256
-full-campaign fit and its exact peak RSS have not been repeated here.
+full-campaign fit is outside this bounded fixture; the separate original-fit
+acceptance results below complete that check.
 
 ## Original-case validation beyond the bounded fixture
 
@@ -203,8 +204,11 @@ under the original 16 GiB limit. The immutable candidate checkout is
 `c5afe448e1eefea4014fe0144273d6425e6e376f`; its production files contain this
 fix. `original_acceptance_adaptation.json` records the source hashes and exact
 harness diff: only the source checkout/revision and 24-to-16 GiB allocation
-change. These actual fits, once complete, supply the evidence that the bounded
-fixtures and saved-state replay cannot provide. Their completion remains pending.
+change. **Both actual fits completed and saved posterior and diagnostic files
+under 16 GiB**, at process peaks of 6.635 and 6.644 GiB. Comparable batch MaxRSS
+fell by 59.2% and 59.4% relative to the original successful 24 GiB retries. See
+the [full-fit acceptance report](original_acceptance/README.md), raw outputs,
+requests and accounting for provenance and scientific validation.
 
 The full draw-count replay completed: peak RSS fell from 16.53 to 6.88 GiB,
 and all recomputed posterior arrays and the normalized joint likelihood match
