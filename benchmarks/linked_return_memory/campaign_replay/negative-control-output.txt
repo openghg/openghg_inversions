@@ -1,0 +1,53 @@
+cpu-bind=MASK - bp1-compute094, task  0  0 [13694]: mask 0x400001400001 set
+0cc621515f6a572046ed1a572a9944db76d6d9f8
+{"phase_started": "frozen_input_loading"}
+frozen_input_loading {'seconds': 18.1945, 'start_rss_mib': 292.266, 'end_rss_mib': 382.844, 'sampled_peak_rss_mib': 388.145, 'process_peak_rss_mib': 388.66}
+{"phase_started": "model_construction"}
+model_construction {'seconds': 19.9105, 'start_rss_mib': 383.977, 'end_rss_mib': 799.27, 'sampled_peak_rss_mib': 884.98, 'process_peak_rss_mib': 884.984}
+{"phase_started": "cached_sampler_construction"}
+/group/chem/acrg/verification_games_round_2/verification-games-work/sources/ope188-ogi-devel-20261028/.venv/lib/python3.13/site-packages/pytensor/gradient.py:1327: FutureWarning: _PytensorSigmaLikelihoodOp should implement `pullback` instead of `L_op`/`grad`. Direct `L_op`/`grad` implementations are deprecated and will stop being called in a future version.
+  input_grads = node.op.pullback(inputs, node.outputs, new_output_grads)
+cached_sampler_construction {'seconds': 12.0625, 'start_rss_mib': 799.27, 'end_rss_mib': 823.43, 'sampled_peak_rss_mib': 823.43, 'process_peak_rss_mib': 884.984}
+{"phase_started": "saved_state_loading_and_transforms"}
+saved_state_loading_and_transforms {'seconds': 2.3147, 'start_rss_mib': 823.43, 'end_rss_mib': 830.203, 'sampled_peak_rss_mib': 830.203, 'process_peak_rss_mib': 884.984}
+{"phase_started": "backend_compile"}
+backend_compile {'seconds': 3.9318, 'start_rss_mib': 830.203, 'end_rss_mib': 859.484, 'sampled_peak_rss_mib': 859.488, 'process_peak_rss_mib': 884.984}
+{"phase_started": "backend_recording"}
+{"recorded_chain": 0, "rss_peak_mib": 3216.25}
+{"recorded_chain": 1, "rss_peak_mib": 5579.84765625}
+{"recorded_chain": 2, "rss_peak_mib": 7943.29296875}
+{"recorded_chain": 3, "rss_peak_mib": 10307.51171875}
+backend_recording {'seconds': 28.2081, 'start_rss_mib': 859.484, 'end_rss_mib': 10307.621, 'sampled_peak_rss_mib': 10307.621, 'process_peak_rss_mib': 10307.625}
+{"phase_started": "native_pymc_sample_return"}
+/group/chem/acrg/brendan_for_codex/openghg_inversions/.codex-worktrees/linked-return-memory/.artifacts/linked-return-memory-validation/campaign-replay-source/scripts/replay_linked_campaign_return.py:328: FutureWarning: Passing `log_likelihood` via `idata_kwargs` is deprecated and will be removed in future versions. Call `pm.compute_log_likelihood(idata)` instead.
+  trace = _sample_return(
+{"phase_started": "xarray_conversion"}
+xarray_conversion {'seconds': 1.9161, 'start_rss_mib': 10307.629, 'end_rss_mib': 15034.672, 'sampled_peak_rss_mib': 15034.672, 'process_peak_rss_mib': 15034.672}
+{"phase_started": "automatic_log_likelihood"}
+/group/chem/acrg/verification_games_round_2/verification-games-work/sources/ope188-ogi-devel-20261028/.venv/lib/python3.13/site-packages/pytensor/link/numba/dispatch/basic.py:234: UserWarning: Numba will use object mode to run _FixedOuLogpOp's perform method. Set `pytensor.config.compiler_verbose = True` to see more details.
+  warnings.warn(
+Command terminated by signal 9
+	Command being timed: "/group/chem/acrg/verification_games_round_2/verification-games-work/sources/ope188-ogi-devel-20261028/.venv/bin/python -u /group/chem/acrg/brendan_for_codex/openghg_inversions/.codex-worktrees/linked-return-memory/.artifacts/linked-return-memory-validation/campaign-replay-source/scripts/replay_linked_campaign_return.py full --output-dir /group/chem/acrg/brendan_for_codex/openghg_inversions/.codex-worktrees/linked-return-memory/.artifacts/linked-return-memory-validation/campaign-replay-negative-control-r1/full"
+	User time (seconds): 199.48
+	System time (seconds): 8.71
+	Percent of CPU this job got: 161%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 2:09.21
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 16752460
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 1118048
+	Voluntary context switches: 60253
+	Involuntary context switches: 5330
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 22680
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
+[2026-10-30T10:26:50.761] error: Detected 1 oom_kill event in StepId=19833773.batch. Some of the step tasks have been OOM Killed.

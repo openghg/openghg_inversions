@@ -662,7 +662,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
         fixed_site_amplitudes=fixed_site_amplitudes,
         site_amplitude_prior=site_amplitude_prior,
     )
-    trace = sample_rhime_model(built, sampler)
+    trace = sample_rhime_model(built, sampler, recompute_deterministics=True)
     return annotate_co2_o2_trace(trace, built=built)
 
 

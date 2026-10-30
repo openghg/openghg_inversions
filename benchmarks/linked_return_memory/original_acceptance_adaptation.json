@@ -1,0 +1,20 @@
+{
+  "candidate_revision": "c5afe448e1eefea4014fe0144273d6425e6e376f",
+  "candidate_source": "/group/chem/acrg/brendan_for_codex/openghg_inversions/.codex-worktrees/linked-return-memory/.artifacts/linked-return-memory-validation/acceptance-source",
+  "allocation_gib_per_task": 16,
+  "changes": "source checkout/revision pin and allocation only; same retry scientific/sampling/diagnostic code",
+  "files": {
+    "run_linked_options.py": {
+      "original": "/group/chem/acrg/verification_games_round_2/verification-games-work/ope225-bc-offset-20261029-r1/linked-uob-retry-r2/scripts/run_linked_options.py",
+      "original_sha256": "b6d64a1fc169d9472359af3bfebb49a374ba1f9e3edae441832262b5ae52f0fb",
+      "candidate_sha256": "5bb6d0941840f2da0c0edce205cc11e2122230b65eb0b1fae8fb7f58fc9177dc",
+      "diff": "--- /group/chem/acrg/verification_games_round_2/verification-games-work/ope225-bc-offset-20261029-r1/linked-uob-retry-r2/scripts/run_linked_options.py\n+++ /group/chem/acrg/brendan_for_codex/openghg_inversions/.codex-worktrees/linked-return-memory/.artifacts/linked-return-memory-validation/original-acceptance-harness/run_linked_options.py\n@@ -14,9 +14,9 @@\n import warnings\n \n \n-REVISION = \"c913da1a2fe2f816da2ba5eff63ca15847dba987\"\n+REVISION = \"c5afe448e1eefea4014fe0144273d6425e6e376f\"\n SOURCE = Path(\n-    \"/group/chem/acrg/brendan_for_codex/openghg_inversions/.codex-worktrees/ope237-shared-boundary-validation\"\n+    \"/group/chem/acrg/brendan_for_codex/openghg_inversions/.codex-worktrees/linked-return-memory/.artifacts/linked-return-memory-validation/acceptance-source\"\n )\n CAMPAIGN = Path(\n     \"/group/chem/acrg/verification_games_round_2/verification-games-work/ope188-20261028-matched-25site-v1/recovery-r1\"\n"
+    },
+    "slurm_linked_options.sh": {
+      "original": "/group/chem/acrg/verification_games_round_2/verification-games-work/ope225-bc-offset-20261029-r1/linked-uob-retry-r2/scripts/slurm_linked_options.sh",
+      "original_sha256": "0aaffa37490ce3d0284eeee0ac35938c004f9139f8a20384cd890d2906eaf136",
+      "candidate_sha256": "6cb58a45102fbfba8fe81422811d3148ddb23309d51beccfa9ee01333b67cf0a",
+      "diff": "--- /group/chem/acrg/verification_games_round_2/verification-games-work/ope225-bc-offset-20261029-r1/linked-uob-retry-r2/scripts/slurm_linked_options.sh\n+++ /group/chem/acrg/brendan_for_codex/openghg_inversions/.codex-worktrees/linked-return-memory/.artifacts/linked-return-memory-validation/original-acceptance-harness/slurm_linked_options.sh\n@@ -3,13 +3,13 @@\n #SBATCH --job-name=ope225-linked-options\n #SBATCH --array=1-2\n #SBATCH --cpus-per-task=4\n-#SBATCH --mem=24G\n+#SBATCH --mem=16G\n #SBATCH --time=06:00:00\n set -euo pipefail\n module load git || exit 1\n harness=${1:?Path to this harness directory on shared storage}\n output_root=${2:?Unique external result directory}\n-ogi_source=${3:-/group/chem/acrg/brendan_for_codex/openghg_inversions/.codex-worktrees/ope237-shared-boundary-validation}\n+ogi_source=${3:-/group/chem/acrg/brendan_for_codex/openghg_inversions/.codex-worktrees/linked-return-memory/.artifacts/linked-return-memory-validation/acceptance-source}\n python_bin=${4:-/group/chem/acrg/verification_games_round_2/verification-games-work/sources/ope188-ogi-devel-20261028/.venv/bin/python}\n arms=(no_offset anchored_site_offsets free_site_offsets)\n task=${SLURM_ARRAY_TASK_ID:?Submit as an array 1-2}\n"
+    }
+  }
+}
