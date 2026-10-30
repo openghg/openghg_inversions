@@ -460,3 +460,30 @@ def test_assembly_custom_nan_selection_and_independent_eager_inputs():
     result = _drop_nan_and_compute(ds, drop_nan_from=("quality", "absent"))
     xr.testing.assert_identical(result, original.isel(nmeasure=[0, 2]))
     xr.testing.assert_identical(ds, original)
+
+
+def test_make_inv_inputs_preserves_unit_boundary_response_and_rejects_missing_sites() -> None:
+    """Boundary correction columns retain exactly the raw H_bc states."""
+    sites = {
+        name: _make_minimal_fp_site(mf_base=400.0, include_inlet_height=False)
+        for name in ("AAA", "BBB")
+    }
+    for name, values in (("AAA", [0.8, 0.7]), ("BBB", [1.0, 0.9])):
+        response = xr.DataArray(
+            [values], dims=("bc_region", "time"), coords={"bc_region": ["north"]}, attrs={"units": "1"}
+        )
+        response = response.reindex(bc_region=["north", "east"], fill_value=0.0)
+        sites[name]["G_bc"] = response
+        sites[name]["H_bc"] = response * 400
+    result = make_inv_inputs(sites, sites=["BBB", "AAA"])
+    np.testing.assert_allclose(result.G_bc, [
+        [1.0, 0.9, 0.8, 0.7], [0.0, 0.0, 0.0, 0.0],
+    ])
+    np.testing.assert_allclose(result.H_bc, result.G_bc * 400)
+    assert result.G_bc.attrs["units"] == "1"
+    sites["AAA"]["bc_centering_weights"] = xr.DataArray([1.0, 1.0], dims="bc_region")
+    with pytest.raises(ValueError, match="resolved boundary states"):
+        make_inv_inputs(sites)
+    sites["AAA"] = sites["AAA"].drop_vars(["G_bc", "bc_centering_weights"])
+    with pytest.raises(ValueError, match="G_bc"):
+        make_inv_inputs(sites)

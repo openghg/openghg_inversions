@@ -43,3 +43,10 @@ output_format = "basic"
 # [channels.o2.offset]
 # per_site = false
 # prior = {pdf = "normal", mu = 0.0, sigma = 1.0}
+
+# Additive O2 alternative, requiring explicit prepared unit responses and weights.
+# Scales are illustrative ppm values, not recommended defaults.
+# [channels.o2.boundary]
+# enabled = true
+# anomaly_scale = 1.0
+# mean_shift_prior = {pdf = "normal", mu = 0.0, sigma = 2.0}

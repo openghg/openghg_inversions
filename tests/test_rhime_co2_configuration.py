@@ -493,3 +493,40 @@ def test_cached_configuration_accepts_positive_prior_families(prior):
     config["likelihood"] = {"kind": "fixed_ou", "tau_hours": 24.0, "site_amplitude_prior": prior}
     model = Co2ModelConfig.from_params(config).model_arguments()
     assert model["likelihood_kwargs"]["site_amplitude_prior"] == prior
+
+
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize("anomaly_scale", [0.0, 0.3])
+def test_boundary_mean_shift_hyperprior_configuration(cached: bool, anomaly_scale: float) -> None:
+    config = _ordinary()
+    if cached:
+        config["sampling"] = {"nuts_sampler": "pymc"}
+        config["likelihood"] = {"kind": "fixed_ou", "tau_hours": 24.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.0}}
+    prior = {"pdf": "normal", "mu": 0.0, "sigma": 0.5}
+    config["model"] = {"boundary": {"mean_shift_prior": prior, "anomaly_scale": anomaly_scale}}
+    arguments = Co2ModelConfig.from_params(config).model_arguments()
+    assert arguments["use_bc"] is True
+    assert arguments["bc_mean_shift_prior"] == prior
+    assert arguments["bc_anomaly_scale"] == anomaly_scale
+    config["model"]["boundary"]["enabled"] = False
+    with pytest.raises(ValueError, match="mean_shift_prior requires"):
+        Co2ModelConfig.from_params(config)
+
+
+@pytest.mark.parametrize("boundary, message", [
+    ({"mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.5}}, "together"),
+    ({"anomaly_scale": 0.3}, "together"),
+    ({"anomaly_scale": 0.0}, "together"),
+    ({"anomaly_scale": -0.1}, "non-negative"),
+    ({"anomaly_scale": float("nan")}, "finite"),
+    ({"anomaly_scale": float("inf")}, "finite"),
+    ({"anomaly_scale": float("-inf")}, "finite"),
+    ({"anomaly_scale": True}, "numeric"),
+    ({"anomaly_scale": 0.3, "mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.5},
+      "prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1}}, "cannot use"),
+])
+def test_centred_boundary_configuration_rejects_incomplete_or_scaling_options(boundary, message) -> None:
+    config = _ordinary()
+    config["model"] = {"boundary": boundary}
+    with pytest.raises((ValueError, TypeError), match=message):
+        Co2ModelConfig.from_params(config)
