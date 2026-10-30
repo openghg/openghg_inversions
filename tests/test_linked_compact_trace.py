@@ -96,7 +96,21 @@ def test_compact_recording_restores_all_deterministics_at_identical_states(
     path = tmp_path / "linked-compact.nc"
     save_trace(trace, path)
     restored = load_trace(path)
-    xr.testing.assert_identical(restored.posterior.dataset, trace.posterior.dataset)
+    original, reopened = trace.posterior.to_dataset(), restored.posterior.to_dataset()
+    if baseline == "none":
+        # Recent xarray retains second-resolution indexes until NetCDF normalizes them to ns.
+        baseline_path = tmp_path / "linked-full-prior.nc"
+        save_trace(reference, baseline_path)
+        baseline_index = load_trace(baseline_path).prior.indexes["observation"]
+        restored_index = reopened.indexes["observation"]
+        assert isinstance(restored_index, pd.MultiIndex)
+        pd.testing.assert_index_equal(restored_index, baseline_index, exact=True)
+        assert restored_index.names == original.indexes["observation"].names
+        np.testing.assert_array_equal(restored_index, original.indexes["observation"])
+        original, reopened = (dataset.reset_index("observation") for dataset in (original, reopened))
+    xr.testing.assert_identical(reopened, original)
+    for name in original.data_vars:
+        assert reopened[name].dtype == original[name].dtype
 
 
 @pytest.mark.parametrize("cached", [False, True])
