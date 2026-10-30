@@ -326,7 +326,8 @@ def test_public_linked_runners_forward_prepared_additive_boundary_options(monkey
         )
         options = {key: value for key, value in kwargs.items() if key.startswith(("bc_mean_", "bc_anomaly_"))}
 
-        def prior_sample(built, sampler):
+        def prior_sample(built, sampler, *, recompute_deterministics=False):
+            assert recompute_deterministics is True
             with built.model:
                 trace = pm.sample_prior_predictive(draws=2, random_seed=81)
             return restore_inferencedata_coords(trace, get_coord_registry(built.model))
@@ -440,7 +441,8 @@ def test_linked_runners_do_not_compute_passive_additive_arrays(monkeypatch, cach
         if mode == "disabled":
             options["use_bc"] = {"co2": False, "o2": False}
 
-        def prior_sample(built, sampler):
+        def prior_sample(built, sampler, *, recompute_deterministics=False):
+            assert recompute_deterministics is True
             with built.model:
                 trace = pm.sample_prior_predictive(draws=1, random_seed=83)
             return restore_inferencedata_coords(trace, get_coord_registry(built.model))
@@ -564,7 +566,8 @@ def test_public_linked_ou_restores_mixed_centered_boundary_predictions(monkeypat
             site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8},
         )
 
-        def prior_sample(built, sampler):
+        def prior_sample(built, sampler, *, recompute_deterministics=False):
+            assert recompute_deterministics is True
             with built.model:
                 trace = pm.sample_prior_predictive(draws=3, random_seed=93)
             return restore_inferencedata_coords(trace, get_coord_registry(built.model))

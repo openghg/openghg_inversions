@@ -93,7 +93,8 @@ def test_saved_sampling_accepts_concrete_owner_without_reparsing(tmp_path, monke
     monkeypatch.setattr(model_cls, "from_params", forbidden)
     if linked:
         monkeypatch.setattr(module, "build_rhime_co2_o2", lambda **kw: object())
-        def sample(built, sampler):
+        def sample(built, sampler, *, recompute_deterministics=False):
+            assert recompute_deterministics is True
             assert sampler.nuts_sampler == "numpyro"
             return object()
         monkeypatch.setattr(module, "sample_rhime_model", sample)
