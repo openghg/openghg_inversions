@@ -187,8 +187,38 @@ below 7 GiB in the return sequence and preserves outputs. The original unsaved
 warmup states, the skipped unused dense-input validation, and the absence of
 actual MCMC updates still distinguish this controlled replay from the original
 failing job. The exact allocation that exhausted that original job's limit is
-not established by these results. Actual fits and a direct 16 GiB memory-limit
-control are separate acceptance checks.
+not established by these results. The direct 16 GiB control below confirms
+the return-path failure under that limit; actual fits remain the separate
+whole-process acceptance check.
+
+## Completed 16 GiB negative control
+
+The same full-recording replay was repeated under the original **16 GiB** cap
+(Slurm array task `19833773_0`). The frozen source, interpreter, script, input
+checksums and scientific settings match the completed full replay above. The
+submission wrapper changes only `--mem=24G` to `--mem=16G` and selects array
+index 0 (full recording only).
+
+Slurm reports **OUT_OF_MEMORY**, exit `0:125`, after 2 minutes 10 seconds.
+The [captured output](negative-control-output.txt) records backend completion
+at 10,307.621 MiB RSS, xarray conversion completion at 15,034.672 MiB, then entry
+into `automatic_log_likelihood` inside native `_sample_return`, followed by
+SIGKILL and Slurm's `oom_kill` event. PyMC's return did not complete and no
+posterior was saved. Accounting reports batch MaxRSS 16,776,020 KiB;
+`/usr/bin/time` reports process MaxRSS 16,752,460 KiB. These are distinct
+measurements; neither is the cgroup's total memory charge.
+
+The [raw partial profile](negative-control-profile.json) retains its last
+persisted `status: running` because SIGKILL prevented finalization. It is not a
+live job. [Accounting metadata](negative-control-accounting.json) records the
+terminal state, last active phase, source paths and output checksums.
+
+This control reproduces OOM in the native return path at the original data and
+trace dimensions under the original allocation. Together with the matched
+24 GiB runs, it demonstrates that avoiding simultaneous backend and expanded
+posterior storage resolves this controlled return failure. It still uses
+surrogate warmup and no MCMC updates; it does not identify the precise failed
+allocation in the historical fit or establish completion of the new full fits.
 
 ## Completed original-environment smoke checks
 

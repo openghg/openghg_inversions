@@ -204,11 +204,23 @@ under the original 16 GiB limit. The immutable candidate checkout is
 fix. `original_acceptance_adaptation.json` records the source hashes and exact
 harness diff: only the source checkout/revision and 24-to-16 GiB allocation
 change. These actual fits, once complete, supply the evidence that the bounded
-fixtures and saved-state replay cannot provide. The full draw-count replay completed: peak RSS fell from 16.53 to 6.88 GiB,
+fixtures and saved-state replay cannot provide. Their completion remains pending.
+
+The full draw-count replay completed: peak RSS fell from 16.53 to 6.88 GiB,
 and all recomputed posterior arrays and the normalized joint likelihood match
 the original saved trace byte for byte. The original return path peaks during
 automatic likelihood computation while both the 9.234 GiB backend and the
-4.615 GiB retained posterior exist. See `campaign_replay/README.md` and its raw
-profiles for the phase measurements. A separate full-path replay under a
-16 GiB cap is the negative control; that outcome and actual original-fit
-completion results remain pending.
+4.615 GiB retained posterior exist. A separate full-path replay under the
+original 16 GiB cap was OOM-killed during that same native return phase, before
+returning or saving. See [the campaign report](campaign_replay/README.md) and
+its raw profiles, negative-control output and accounting for the measured
+phases and remaining replay limitations.
+
+The expanded 24-module validation passed all **572 tests on each of Python
+3.12 and 3.13**, using locked dependencies in Slurm job `19833596`. The modules
+cover compact trace behavior, sampler selection/replay/diagnostics, linked
+ordinary/cached runners, centered/additive boundaries, saved-input handoffs,
+serialization, configuration ownership and PARIS output. PyMC 6.0 lower-bound
+validation separately passed all 40 selected cases (`19833388`); `docs-full`
+passed with 10 existing warnings (`19833264`). Changed Python paths pass Ruff
+and `git diff --check`.
