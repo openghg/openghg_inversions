@@ -303,7 +303,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         sigma_target_accept=sigma_target_accept,
         state_target_accept=state_target_accept,
     )
-    trace = sample_rhime_model(built, sampling_sampler)
+    trace = sample_rhime_model(built, sampling_sampler, recompute_deterministics=True)
     trace = annotate_co2_o2_trace(trace, built=built)
     trace.attrs["rhime_recipe"] = "co2_o2_cached_sigma_fixed_ou"
     for group in trace.children.values():

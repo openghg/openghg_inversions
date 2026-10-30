@@ -196,7 +196,7 @@ def sample(
         referenced=(Path(preparation_manifest).resolve(), preparation.payload),
     )
     built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)
-    trace = sample_rhime_model(built, active_sampler)
+    trace = sample_rhime_model(built, active_sampler, recompute_deterministics=True)
     trace = annotate_co2_o2_trace(trace, built=built)
     return save_samples(
         preparation_manifest, trace, actual_inference=active_sampler.describe(),

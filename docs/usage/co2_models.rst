@@ -1529,3 +1529,20 @@ interface as the CO2 runner described above. It supplies one normalized joint
 log likelihood per posterior draw and optional correlated joint prior and
 posterior predictive vectors, preserving cross-channel aggregation covariance.
 The joint likelihood must not be treated as pointwise observation densities.
+
+Linked runners using PyMC record the free random variables during sampling.
+After PyMC returns and releases its recording buffers, they compute the joint
+log likelihood and evaluate every deterministic from the unchanged model graph.
+This avoids keeping observation-sized deterministics in both warmup/retained
+backend buffers and the converted posterior. Reconstruction allocates the final
+arrays once and evaluates one state at a time; it preserves all output names,
+precision, coordinates and absolute concentration semantics. The saved-input
+sampling route uses the same storage strategy. Direct builder users can select
+it with ``sample_rhime_model(built, sampler, recompute_deterministics=True)``.
+
+The returned trace still contains all requested draws and derived outputs, so
+its storage grows with chains, draws and observations. Prior and posterior
+prediction, serialization and diagnostics have their own memory costs. Other
+sampling backends, explicit trace backends or sampling callbacks, requests to
+include transformed variables and empty retained groups use the ordinary
+recording path.

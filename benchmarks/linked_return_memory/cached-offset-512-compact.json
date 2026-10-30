@@ -1,0 +1,270 @@
+{
+  "options": {
+    "strategy": "compact",
+    "rows": 512,
+    "draws": 128,
+    "tune": 128,
+    "chains": 4,
+    "no_offsets": false,
+    "cached": true,
+    "output": "evidence/linked-return-memory/cached-offset-512-compact.json"
+  },
+  "pymc": "6.3.2",
+  "python": "3.13.7 (main, Aug 18 2025, 19:20:03) [Clang 20.1.4 ]",
+  "script_sha256": "e87c5d0bd3b2de577741606b885a1b18c866dd6f001d3f1b48c4033d16eab9cd",
+  "phases": {
+    "model_construction": {
+      "seconds": 0.4324,
+      "start_rss_mib": 288.418,
+      "end_rss_mib": 340.941,
+      "sampled_peak_rss_mib": 340.941,
+      "process_peak_rss_mib": 340.941
+    },
+    "backend_compile": {
+      "seconds": 0.0425,
+      "start_rss_mib": 340.941,
+      "end_rss_mib": 341.457,
+      "sampled_peak_rss_mib": 341.457,
+      "process_peak_rss_mib": 341.457
+    },
+    "backend_recording": {
+      "seconds": 0.0184,
+      "start_rss_mib": 341.457,
+      "end_rss_mib": 341.457,
+      "sampled_peak_rss_mib": 341.457,
+      "process_peak_rss_mib": 341.457
+    },
+    "retained_slice": {
+      "seconds": 0.0003,
+      "start_rss_mib": 341.457,
+      "end_rss_mib": 341.457,
+      "sampled_peak_rss_mib": 341.457,
+      "process_peak_rss_mib": 341.457
+    },
+    "xarray_conversion": {
+      "seconds": 0.0128,
+      "start_rss_mib": 341.457,
+      "end_rss_mib": 341.457,
+      "sampled_peak_rss_mib": 341.457,
+      "process_peak_rss_mib": 341.457
+    },
+    "backend_release": {
+      "seconds": 0.1598,
+      "start_rss_mib": 341.457,
+      "end_rss_mib": 341.457,
+      "sampled_peak_rss_mib": 341.457,
+      "process_peak_rss_mib": 341.457
+    },
+    "log_likelihood": {
+      "seconds": 1.611,
+      "start_rss_mib": 341.457,
+      "end_rss_mib": 412.105,
+      "sampled_peak_rss_mib": 412.105,
+      "process_peak_rss_mib": 412.105
+    },
+    "pymc_convergence": {
+      "seconds": 0.0449,
+      "start_rss_mib": 412.105,
+      "end_rss_mib": 412.363,
+      "sampled_peak_rss_mib": 412.363,
+      "process_peak_rss_mib": 412.363
+    },
+    "deterministic_reconstruction": {
+      "seconds": 1.3528,
+      "start_rss_mib": 412.363,
+      "end_rss_mib": 451.027,
+      "sampled_peak_rss_mib": 451.027,
+      "process_peak_rss_mib": 451.031
+    },
+    "coordinate_restoration": {
+      "seconds": 0.0355,
+      "start_rss_mib": 451.027,
+      "end_rss_mib": 451.027,
+      "sampled_peak_rss_mib": 451.027,
+      "process_peak_rss_mib": 451.031
+    },
+    "serialization": {
+      "seconds": 0.4715,
+      "start_rss_mib": 451.027,
+      "end_rss_mib": 463.223,
+      "sampled_peak_rss_mib": 463.223,
+      "process_peak_rss_mib": 463.223
+    },
+    "serialization_roundtrip": {
+      "seconds": 0.3445,
+      "start_rss_mib": 463.223,
+      "end_rss_mib": 505.984,
+      "sampled_peak_rss_mib": 505.984,
+      "process_peak_rss_mib": 505.984
+    },
+    "posterior_diagnostics": {
+      "seconds": 22.301,
+      "start_rss_mib": 505.984,
+      "end_rss_mib": 506.148,
+      "sampled_peak_rss_mib": 506.148,
+      "process_peak_rss_mib": 506.152
+    }
+  },
+  "backend_bytes": 221184,
+  "slice_borrows_backend": true,
+  "log_likelihood_sha256": "ec195b11830c49db2f8f57159abe2b091761e02b12b3544363c35f516a466367",
+  "posterior_bytes": 44183552,
+  "posterior_variables": {
+    "baseline_concentration": {
+      "shape": [
+        4,
+        128,
+        1024
+      ],
+      "dtype": "float64",
+      "sha256": "85094b6b7bf1fbb23175a32a6956cffd53b60be2e1637c6fb274dc6d8d7dc213"
+    },
+    "boundary_concentration": {
+      "shape": [
+        4,
+        128,
+        1024
+      ],
+      "dtype": "float64",
+      "sha256": "28c8306eeb1b7201dfe5fc62f4d295db7a17fa866767e0b461ef3f1bc9d45ca6"
+    },
+    "co2_bc": {
+      "shape": [
+        4,
+        128,
+        4
+      ],
+      "dtype": "float64",
+      "sha256": "1e5a04136bcf778ac84bdecd522c1d2b64a6677fb189a15c6ab423990f67a127"
+    },
+    "co2_mu_bc": {
+      "shape": [
+        4,
+        128,
+        1024
+      ],
+      "dtype": "float64",
+      "sha256": "491de6a8455a132dd33ee5e4ec95b52cdd6caee9e27e351080c8a5b93b82f4a0"
+    },
+    "co2_o2_affine_contribution": {
+      "shape": [
+        4,
+        128,
+        1024
+      ],
+      "dtype": "float64",
+      "sha256": "da1cbf3edfbfaa6fc920b1d985a1afbc7547e6e26d459374cd061e1d9e9f2d04"
+    },
+    "co2_o2_flux_contribution": {
+      "shape": [
+        4,
+        128,
+        1024
+      ],
+      "dtype": "float64",
+      "sha256": "fb92f17cc5d7bedf548e61fd9aa5504e1378785a38cd322f688f6697e3122b96"
+    },
+    "epsilon": {
+      "shape": [
+        4,
+        128,
+        1024
+      ],
+      "dtype": "float64",
+      "sha256": "2ab324497c5633b6723cfc1c2bab1132a52ad0ee287272be4dae2fc6617f2573"
+    },
+    "flux_scaling": {
+      "shape": [
+        4,
+        128,
+        8
+      ],
+      "dtype": "float64",
+      "sha256": "abcf2629294a9530f50344561f0ace733d801e3423a62d3ccccd596d672d19a1"
+    },
+    "flux_scaling_latent": {
+      "shape": [
+        4,
+        128,
+        8
+      ],
+      "dtype": "float64",
+      "sha256": "eb428d478fd2a36d590843684f15ab201cbece0600577d282e1f487c828fac34"
+    },
+    "modelled_concentration": {
+      "shape": [
+        4,
+        128,
+        1024
+      ],
+      "dtype": "float64",
+      "sha256": "e7f27d04079fce2f9f7702e8a0e42428228f770684e05db2c4d35bc532e1d6fc"
+    },
+    "o2_bc": {
+      "shape": [
+        4,
+        128,
+        4
+      ],
+      "dtype": "float64",
+      "sha256": "9055850740b9fc8ba4e65c90f4917b621d677b3af1d01f00890258896a9ce8ba"
+    },
+    "o2_mu_bc": {
+      "shape": [
+        4,
+        128,
+        1024
+      ],
+      "dtype": "float64",
+      "sha256": "5bdeb520a9d88324bbf1aafae175fe1bc73138e716198d367393c91dc86787f8"
+    },
+    "o2_offset": {
+      "shape": [
+        4,
+        128,
+        1024
+      ],
+      "dtype": "float64",
+      "sha256": "d9cbf9684e35099bfdc1de1cc23781e11a56e1fa7ad069234fc76b103943ade4"
+    },
+    "o2_offset_latent": {
+      "shape": [
+        4,
+        128,
+        3
+      ],
+      "dtype": "float64",
+      "sha256": "2f1483485a76a5996eccf39e4d5767f19b50554ce26dc5b14e489136be174283"
+    },
+    "o2_offset_native": {
+      "shape": [
+        4,
+        128,
+        512
+      ],
+      "dtype": "float64",
+      "sha256": "dc25bbc9bc5c103b47c741ee342393258a201ffde394782bb95e21b58d71722c"
+    },
+    "offset_concentration": {
+      "shape": [
+        4,
+        128,
+        1024
+      ],
+      "dtype": "float64",
+      "sha256": "d9cbf9684e35099bfdc1de1cc23781e11a56e1fa7ad069234fc76b103943ade4"
+    },
+    "ou_site_amplitude": {
+      "shape": [
+        4,
+        128,
+        8
+      ],
+      "dtype": "float64",
+      "sha256": "46c51bd268e9a6d0887defd3128c995ff68846b5333263c402ac3e65a489fac6"
+    }
+  },
+  "serialized_bytes": 44918006,
+  "diagnostic_variables": 17,
+  "process_peak_rss_mib": 506.15234375
+}

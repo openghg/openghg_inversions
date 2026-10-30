@@ -19,20 +19,28 @@ from openghg_inversions.rhime.builders import RhimeModelBuildResult
 def sample_rhime_model(
     model_build_result: RhimeModelBuildResult,
     sampler: RhimeSampler,
+    *,
+    recompute_deterministics: bool = False,
 ) -> xr.DataTree:
     """Sample a built RHIME graph at the named sampler boundary.
 
     Args:
         model_build_result: Concrete graph and semantic variable roles.
         sampler: Configured sampler used for posterior and predictive draws.
+        recompute_deterministics: Record compact PyMC states and evaluate all
+            deterministic outputs after the sampling buffers are released.
+            Other backends, explicit traces or callbacks, transformed-variable
+            requests and empty retained groups use the ordinary recording path.
 
     Returns:
         Sampled posterior and predictive groups.
     """
     timing_start = timer_start()
+    sampling_options = {"recompute_deterministics": True} if recompute_deterministics else {}
     idata = sampler.sample(
         model_build_result.model,
         variable_roles=model_build_result.output_contract.variable_roles,
+        **sampling_options,
     )
     log_timing(
         "rhime.sampler_total",
