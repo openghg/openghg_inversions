@@ -431,7 +431,21 @@ This likelihood does not apply ``min_error`` or ``fixed_model_mismatch`` and
 does not add temporal correlation. In particular, it is an IID component, not
 the fixed-OU model.
 
-Select it through the existing Python-only likelihood seam. For inferred site
+Select it in an INI file used by ``openghg-inversions run-rhime`` or
+``run_hbmcmc.py``::
+
+   likelihood = "site_sigma"
+   site_amplitude_prior = {"pdf": "halfnormal", "sigma": 0.75}
+
+Alternatively, replace the prior with ``fixed_site_amplitudes = {"MHD": 0.5,
+"TAC": 0.75}``, covering all observed sites. Set ``mismatch_model = None``
+if present in a RHIME config. Exactly one amplitude option is required, in
+observation concentration units. ``sigma_freq`` must be ``None`` and
+``sigma_per_site`` must be ``True``. Historical ``sigprior``/``sigma_prior``
+and pollution-event settings do not control this likelihood. It does not apply
+``min_error``. The deprecated ``--legacy-fixedbasis`` route is not supported.
+
+It can also be selected through the Python likelihood seam. For inferred site
 amplitudes, pass an explicit positive prior:
 
 .. code-block:: python

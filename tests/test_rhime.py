@@ -8617,9 +8617,11 @@ def test_standard_latest_paris_output_writes_index_as_unlimited_dimension(
 
 
 @pytest.mark.rhime_contract
+@pytest.mark.parametrize("site_sigma", [None, "inferred", "fixed"])
 def test_standard_legacy_output_uses_modern_inversion_output(
     europe_country_file: Path,
     tmp_path: Path,
+    site_sigma: str | None,
 ) -> None:
     """Create and reload a real legacy product from modern inversion output."""
     modern_output = _modern_postprocessing_inv_out(europe_country_file)
@@ -8656,6 +8658,20 @@ def test_standard_legacy_output_uses_modern_inversion_output(
         }
     )
 
+    if site_sigma is not None:
+        posterior = idata.posterior.drop_vars("sigma", errors="ignore")
+        constant_data = idata.constant_data.assign(
+            sigma_site_index=("nmeasure", np.zeros(inv_inputs.sizes["nmeasure"], dtype=int))
+        )
+        if site_sigma == "fixed":
+            constant_data = constant_data.assign(sigma_site=("sigma_site_dim", [0.75]))
+        else:
+            posterior = posterior.assign(
+                sigma_site=(("chain", "draw", "sigma_site_dim"),
+                            np.full((posterior.sizes["chain"], posterior.sizes["draw"], 1), 0.75))
+            )
+        idata.posterior = posterior
+        idata.constant_data = constant_data
     bundle = _result_for_outputs(
         run_spec,
         idata,
@@ -8668,6 +8684,9 @@ def test_standard_legacy_output_uses_modern_inversion_output(
     assert bundle.output_metadata["postprocessing_input_contract"] == "modern_inversion_output"
     assert "legacy" in bundle.outputs
     legacy_output = bundle.outputs["legacy"]
+    if site_sigma is not None:
+        np.testing.assert_allclose(legacy_output["sigtrace"], 0.75)
+        np.testing.assert_array_equal(legacy_output["sigmafreqindex"], 0)
     for variable in ("Yobs", "Ymodmean", "fluxmode", "countrymean", "xtrace", "sigtrace"):
         assert variable in legacy_output
     expected_path = tmp_path / "legacy_test_ch4_EUROPE_2019-01-01.nc"
@@ -9219,3 +9238,66 @@ def test_cli_run_rhime_multisector_passes_config(monkeypatch, tmp_path: Path) ->
 def test_safe_pymc_name_sanitizes_source_names() -> None:
     assert safe_pymc_name("total-ukghg-edgar7") == "total_ukghg_edgar7"
     assert safe_pymc_name("Sector 2") == "sector_2"
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [("site_amplitude_prior", {"pdf": "halfnormal", "sigma": 2.0}),
+     ("fixed_site_amplitudes", {"TAC": 2.0})],
+)
+def test_run_rhime_cli_site_sigma_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, name: str, value: dict[str, Any]
+) -> None:
+    config_file = tmp_path / "site.ini"
+    config_file.write_text(
+        '[RUN]\nspecies = "ch4"\nsites = ["TAC"]\naveraging_period = ["1h"]\n'
+        'domain = "EUROPE"\nstart_date = "2019-01-01"\nend_date = "2019-01-02"\n'
+        'flux_sources = ["total"]\noutput_name = "test"\n'
+        f'output_path = {str(tmp_path)!r}\nlikelihood = "site_sigma"\n{name} = {value!r}\n',
+        encoding="utf-8",
+    )
+    seen: dict[str, Any] = {}
+
+    def capture(**kwargs: Any) -> Any:
+        seen.update(kwargs)
+        raise RuntimeError("reached model construction")
+
+    prepared = SimpleNamespace(inv_inputs=xr.Dataset(), sites=["TAC"], basis_artifact_source=None)
+    for name_to_patch in (
+        "retrieve_or_reload_rhime_data", "filter_rhime_observations", "build_rhime_basis",
+        "build_rhime_sensitivities",
+    ):
+        monkeypatch.setattr(rhime_standard, name_to_patch, lambda *args, **kwargs: None)
+    monkeypatch.setattr(rhime_standard, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
+    monkeypatch.setattr(rhime_standard, "with_prepared_rhime_sites", lambda spec, data: spec)
+    monkeypatch.setattr(rhime_standard, "standard_model_input_names", lambda *args: ())
+    monkeypatch.setattr(rhime_standard, "materialize_pymc_inputs", lambda *args, **kwargs: None)
+    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model_result", capture)
+    with pytest.raises(RuntimeError, match="reached model construction"):
+        main(["run-rhime", "-c", str(config_file)])
+    assert seen["likelihood_builder"] is models.add_site_sigma_gaussian_likelihood
+    assert seen["likelihood_kwargs"] == {name: value}
+    assert seen["run_spec"].model.likelihood is None
+
+
+@pytest.mark.parametrize("fixed", [False, True])
+def test_legacy_output_site_sigma_fields(europe_country_file: Path, fixed: bool) -> None:
+    from openghg_inversions.postprocessing.legacy_outputs import _legacy_postprocess_fields
+
+    inv_out = _modern_postprocessing_inv_out(europe_country_file)
+    posterior = inv_out.trace.posterior.drop_vars("sigma", errors="ignore")
+    nchain, ndraw = posterior.sizes["chain"], posterior.sizes["draw"]
+    constant_data = inv_out.trace.constant_data.drop_vars("hx").assign(
+        sigma_site_index=("nmeasure", np.zeros(inv_out.inv_inputs.sizes["nmeasure"], dtype=int))
+    )
+    if fixed:
+        constant_data = constant_data.assign(sigma_site=("sigma_site_dim", [0.75]))
+    else:
+        posterior = posterior.assign(
+            sigma_site=(("chain", "draw", "sigma_site_dim"), np.full((nchain, ndraw, 1), 0.75))
+        )
+    inv_out.trace.posterior = posterior
+    inv_out.trace.constant_data = constant_data
+    fields = _legacy_postprocess_fields(inv_out, use_bc=False)
+    np.testing.assert_array_equal(fields["sigma_freq_index"], np.zeros(inv_out.inv_inputs.sizes["nmeasure"]))
+    np.testing.assert_allclose(fields["sigouts"], np.full((ndraw, 1, 1), 0.75))
