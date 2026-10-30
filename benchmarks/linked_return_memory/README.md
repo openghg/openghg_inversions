@@ -152,3 +152,57 @@ offset coefficients do not explain that amplification. This accounting and the
 bounded profiles demonstrate avoidable output storage; neither proves which
 allocation exhausted the original job's memory limit. A 334-state, rank-256
 full-campaign fit and its exact peak RSS have not been repeated here.
+
+## Original-case validation beyond the bounded fixture
+
+The bounded results above establish storage amplification; they do not by
+themselves establish that the original 16 GiB fits now complete.
+`scripts/replay_linked_campaign_return.py` adds a separate campaign-specific
+replay using the original 5,314 rows per species, 334 states, rank-256 covariance
+sidecar and successful retry's saved free-variable draws. It runs real NDArray
+recording and the installed PyMC `_sample_return` inside the production sampler
+and linked runner. It records separate conversion, likelihood, reconstruction,
+annotation, serialization and diagnostic phases, flushing progress before each
+phase so a killed job still identifies its last active phase.
+
+The replay repeats saved retained states to fill warmup-shaped buffers; the
+original warmup trajectory was not saved. It bypasses sampling updates and the
+unused dense covariance's validation before replacing that covariance with the
+same checksum-verified rank-256 sidecar. It therefore tests the original return
+dimensions and scientific graph, rather than reproducing an entire original
+process or its exact failed allocation. Backend object and payload weakrefs
+must be dead before deferred likelihood or deterministic evaluation, without
+forced garbage collection. Source comparisons read at most 16 draws at once.
+
+Both full-row smoke checks passed in the original campaign interpreter with
+one chain, two retained states and two repeated warmup states. All public
+variable names, coordinates, attributes and scientific dtypes matched the
+saved source. The joint likelihood and all but one posterior variable matched
+between strategies byte for byte. The absolute `modelled_concentration` differed
+by at most one float64 ULP, about 2.91e-11 ppm; source comparison reports both
+hashes and numerical errors instead of claiming complete byte identity.
+
+Submit the default full draw-count pair on this cluster with:
+
+```bash
+slurm-wakeup submit --allow-high-memory \
+  "Matched original-case return replay: sacct 19824176_1.batch reports 17292540K MaxRSS (16.49 GiB); 24 GiB permits measuring the original path and the compact path under identical allocations" \
+  -- sbatch --output=.artifacts/campaign-replay-%A_%a.out \
+  scripts/slurm_replay_linked_campaign.sh "$PWD" "$PWD/.artifacts/campaign-replay"
+```
+
+The wrapper uses the original campaign environment, four numerical threads and
+node-local PyTensor/Numba caches. The default array compares full and compact
+recording at four chains, 1,000 retained states and 1,000 warmup-shaped states.
+Use a fresh output directory for every submission. It requires access to the
+frozen campaign artifacts named in the script.
+
+The final acceptance check separately repeats both original offset fits using
+the original retry harness, dependencies, data, seed and sampling settings,
+under the original 16 GiB limit. The immutable candidate checkout is
+`c5afe448e1eefea4014fe0144273d6425e6e376f`; its production files contain this
+fix. `original_acceptance_adaptation.json` records the source hashes and exact
+harness diff: only the source checkout/revision and 24-to-16 GiB allocation
+change. These actual fits, once complete, supply the evidence that the bounded
+fixtures and saved-state replay cannot provide. Full draw-count replay and
+original-fit completion results remain pending.
