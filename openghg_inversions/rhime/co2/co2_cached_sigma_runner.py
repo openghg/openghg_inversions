@@ -37,7 +37,7 @@ from .co2_cached_sigma_model import (
     Co2CachedSigmaModel,
     build_co2_cached_sigma_model,
 )
-from .centered_boundary import OPERAND_NAMES, require_centered_precision
+from openghg_inversions.models.boundary import OPERAND_NAMES, require_centered_precision
 from .co2_model import _normalise_offset_args
 from .co2_preparation import Co2PreparedInputs
 from .co2_runner import (

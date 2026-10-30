@@ -270,6 +270,18 @@ the likelihood alone identifies their sum. Their distinct scientific roles
 do not resolve this exact confounding. Separate prior information or external
 constraints are needed to distinguish them in that case.
 
+.. warning::
+
+   With the default NESW basis, complete jointly normalized particle weights
+   and :math:`G_{bc}=M`, we know that :math:`G_{bc}\mathbf1=\mathbf1`.
+   A global observation offset, or unrestricted site offsets, therefore
+   duplicates the boundary mean's constant direction. Model construction
+   warns for this combination. Fixing one site's offset or constraining site
+   offsets to contrasts removes that one redundancy; BC anomalies can still
+   reproduce site contrasts. See :doc:`../development/boundary_offset_identifiability`
+   for examples and the distinction between relative site effects and physical
+   bias attribution.
+
 .. _boundary-averaging-weights:
 
 Choosing the averaging weights

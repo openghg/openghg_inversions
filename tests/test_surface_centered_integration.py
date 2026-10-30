@@ -11,7 +11,7 @@ import xarray as xr
 from examples.surface_centered_pilot import acquire_supplied, prepare_pilot, run_example, surface_inputs
 from openghg_inversions.boundary_sensitivity import align_boundary_operands
 from openghg_inversions.inversion_data import MergedData, SiteOptions, acquisition
-from openghg_inversions.rhime.co2.centered_boundary import restore_absolute_predictives
+from openghg_inversions.models.boundary import restore_absolute_predictives
 
 
 @pytest.mark.parametrize("mixed_transport", [False, True])

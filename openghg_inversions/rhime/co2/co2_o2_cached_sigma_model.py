@@ -23,7 +23,7 @@ from openghg_inversions.models import (
     resolve_state_activity,
 )
 from openghg_inversions.models.components import (
-    AffineTerm,
+    ConcentrationTerm,
     LinearComponentResult,
     OffsetComponentResult,
     add_model_data,
@@ -47,7 +47,7 @@ from .co2_cached_sigma_model import (
     _centered_cached_term,
     _site_values,
 )
-from .centered_boundary import bind_boundary_operands, require_centered_precision
+from openghg_inversions.models.boundary import bind_boundary_operands, require_centered_precision
 from .co2_o2_fixed_ou import linked_fixed_ou_alignment
 from .co2_o2_model import (
     _gather_co2_o2_sensitivity,
@@ -264,7 +264,7 @@ def build_co2_o2_cached_sigma_model(
         )
         terms = [
             _CachedAffineTerm(
-                term=AffineTerm.absolute(affine),
+                term=ConcentrationTerm.absolute(affine),
                 fixed_contribution=np.asarray(fixed_prior_contribution.values) + fixed_flux,
                 active_design=active_design,
                 coefficients=state.state[activity.active_indices] if activity.n_active else None,

@@ -11,7 +11,7 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.models import get_coord_registry, restore_inferencedata_coords
-from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands
+from openghg_inversions.models.boundary import bind_boundary_operands
 from openghg_inversions.rhime.co2.co2_o2_model import build_co2_o2_model
 from openghg_inversions.rhime.co2.co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
 from openghg_inversions.rhime.co2.co2_o2_runner import build_rhime_co2_o2, annotate_co2_o2_trace
@@ -628,3 +628,39 @@ def test_public_linked_ou_restores_mixed_centered_boundary_predictions(monkeypat
             + trace.prior.o2_mu_bc,
             atol=1e-10,
         )
+
+
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize("channel", ["co2", "o2"])
+@pytest.mark.parametrize("drop_first", [False, True])
+@pytest.mark.parametrize("anomaly_scale", [0.0, 0.04])
+def test_linked_public_additive_builders_warn_on_native_channel_rows(cached, channel, drop_first, anomaly_scale):
+    import warnings
+    from test_rhime_co2_o2_baselines import _prepared as prepared_with_two_sites
+
+    with pytensor.config.change_flags(floatX="float64"):
+        kwargs = _additive_inputs(False)
+        kwargs.update(_kwargs(prepared_with_two_sites()))
+        other = "o2" if channel == "co2" else "co2"
+        kwargs.pop(f"bc_mean_shift_prior_{other}")
+        kwargs.pop(f"bc_anomaly_scale_{other}")
+        kwargs[f"bc_anomaly_scale_{channel}"] = anomaly_scale
+        kwargs["offset_prior"] = {channel: {"pdf": "normal", "mu": 0.0, "sigma": 0.1}}
+        kwargs["offset_args"] = {channel: {"drop_first": drop_first}}
+        with warnings.catch_warnings(record=True) as recorded:
+            warnings.simplefilter("always")
+            if cached:
+                kwargs.update(tau_hours=4.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.2})
+                model = build_co2_o2_cached_sigma_model(**kwargs).model
+            else:
+                model = build_co2_o2_model(**kwargs)
+        confounding = [
+            warning
+            for warning in recorded
+            if "boundary mean and unrestricted observation offsets" in str(warning.message)
+        ]
+        assert len(confounding) == (0 if drop_first else 1)
+        if confounding:
+            assert str(confounding[0].message).startswith(f"{channel}:")
+        assert f"{channel}_bc_mean_shift" in model and f"{channel}_offset" in model
+        assert (f"{channel}_bc_anomaly_latent" in model) == (anomaly_scale > 0)

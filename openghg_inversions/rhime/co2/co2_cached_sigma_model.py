@@ -26,7 +26,7 @@ from openghg_inversions.models.cached_sigma import (
     MarginalQuadraticCache,
 )
 from openghg_inversions.models.components import (
-    AffineTerm,
+    ConcentrationTerm,
     _add_offset_component_result,
     _add_prepared_correlated_lognormal_state_with_activity,
     add_model_data,
@@ -59,9 +59,13 @@ from openghg_inversions.inference.cached_sigma import PytensorMarginalQuadraticC
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
 
-from .co2_boundary import add_centered_boundary, prepare_centered_boundary
+from openghg_inversions.models.additive_boundary import (
+    add_centered_boundary,
+    prepare_centered_boundary,
+    warn_boundary_offset_confounding,
+)
 
-from .centered_boundary import (
+from openghg_inversions.models.boundary import (
     CenteredBoundaryMap,
     CenteredBoundaryResult,
     add_centered_boundary as add_multiplicative_centered_boundary,
@@ -107,7 +111,7 @@ class _CachedAffineTerm:
     mean and Gaussian contrasts. Unshifted terms lower their absolute output.
     """
 
-    term: AffineTerm
+    term: ConcentrationTerm
     fixed_contribution: NDArray[np.float64]
     active_design: NDArray[np.float64]
     coefficients: TensorVariable | None
@@ -635,7 +639,7 @@ def build_co2_cached_sigma_model(
         )
         terms = [
             _CachedAffineTerm(
-                term=AffineTerm.absolute(co2_flux_mean),
+                term=ConcentrationTerm.absolute(co2_flux_mean),
                 fixed_contribution=fixed_prior + flux_fixed_contribution,
                 active_design=flux_active_design,
                 coefficients=(state_result.state[activity.active_indices] if activity.n_active else None),
@@ -671,7 +675,7 @@ def build_co2_cached_sigma_model(
             boundary_active = boundary_result.activity.active_indices
             terms.append(
                 _CachedAffineTerm(
-                    term=AffineTerm.absolute(boundary_output),
+                    term=ConcentrationTerm.absolute(boundary_output),
                     fixed_contribution=boundary_fixed_contribution,
                     active_design=boundary_active_design,
                     coefficients=(boundary_result.state[boundary_active] if boundary_active.size else None),
@@ -708,9 +712,13 @@ def build_co2_cached_sigma_model(
                 drop_first=offset_drop_first,
                 per_site=offset_per_site,
             )
+            if additive_boundary is not None:
+                warn_boundary_offset_confounding(
+                    additive_boundary.design[:, 0], drop_first=offset_drop_first,
+                )
             terms.append(
                 _CachedAffineTerm(
-                    term=AffineTerm.absolute(offset_result.output),
+                    term=ConcentrationTerm.absolute(offset_result.output),
                     fixed_contribution=np.zeros(observations.sizes[output_dim]),
                     active_design=np.asarray(
                         offset_result.design.transpose(output_dim, "offset_term").values,

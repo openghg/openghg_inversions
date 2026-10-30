@@ -13,7 +13,7 @@ from openghg_inversions.models import StateActivity, get_coord_registry, restore
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.rhime.co2 import build_co2_model, Co2PreparedInputs, Co2O2PreparedInputs
-from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands, restore_absolute_predictives
+from openghg_inversions.models.boundary import bind_boundary_operands, restore_absolute_predictives
 from openghg_inversions.rhime.co2.co2_o2_runner import build_rhime_co2_o2, annotate_co2_o2_trace
 from openghg_inversions.rhime.co2.co2_runner import (
     materialize_co2_inputs,
