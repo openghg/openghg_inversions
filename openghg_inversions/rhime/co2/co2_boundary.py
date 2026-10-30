@@ -22,7 +22,7 @@ import xarray as xr
 
 from openghg_inversions.array_ops import to_dense
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
-from openghg_inversions.models.components import add_model_data, get_model_latent
+from openghg_inversions.models.components import AffineTerm, add_model_data, get_model_latent
 from openghg_inversions.models.priors import PriorArgs, parse_prior
 from openghg_inversions.models.coords import component_coords
 from .centered_boundary import require_centered_precision
@@ -71,7 +71,9 @@ def prepare_centered_boundary(
         boundary_sensitivity = boundary_operands.H_bc_anomaly
         if correction_sensitivity is None:
             correction_sensitivity = boundary_operands.H_bc_mass
-        reference_shift = boundary_operands.bc_reference * boundary_operands.H_bc_mass.sum("bc_region", skipna=False)
+        reference_shift = boundary_operands.bc_reference * boundary_operands.H_bc_mass.sum(
+            "bc_region", skipna=False
+        )
     if any(
         value is None
         for value in (mean_prior, anomaly_scale, correction_sensitivity, weights, boundary_sensitivity)
@@ -106,7 +108,9 @@ def prepare_centered_boundary(
                 "Boundary correction sensitivity and centring weights require dimensionless units '1'."
             )
     hbc, gbc, weights, reference_shift = dask.compute(
-        to_dense(hbc), to_dense(gbc), to_dense(weights),
+        to_dense(hbc),
+        to_dense(gbc),
+        to_dense(weights),
         None if reference_shift is None else to_dense(reference_shift),
     )
     if reference_shift is not None and not np.isfinite(reference_shift.values).all():
@@ -146,11 +150,24 @@ class AdditiveBoundaryResult:
     PyMC variables.
     """
 
-    output: TensorVariable
-    likelihood_contribution: TensorVariable
+    term: AffineTerm
     coefficients: TensorVariable
     latents: tuple[TensorVariable, ...]
-    reference_shift: xr.DataArray | None
+
+    @property
+    def output(self) -> TensorVariable:
+        """Return the absolute boundary contribution."""
+        return self.term.output
+
+    @property
+    def likelihood_contribution(self) -> TensorVariable:
+        """Return the directly evaluated likelihood contribution."""
+        return self.term.likelihood_contribution
+
+    @property
+    def reference_shift(self) -> xr.DataArray | None:
+        """Return the fixed observation translation, excluding sampled corrections."""
+        return self.term.observation_shift
 
 
 def add_centered_boundary(
@@ -172,6 +189,7 @@ def add_centered_boundary(
     A. A zero anomaly scale retains only the common mean as a sampled state.
     No multiplicative state is created.
     """
+
     def register(array: xr.DataArray, name: str) -> TensorVariable:
         return add_model_data(component_coords(array, owner, observation_dim=output_dim), f"{prefix}{name}")
 
@@ -208,4 +226,6 @@ def add_centered_boundary(
     output = pm.Deterministic(f"{prefix}mu_bc", reference + mean_signal + anomaly_signal, dims=output_dim)
     if shift_data is not None:
         likelihood = pm.Deterministic(f"{prefix}mu_bc_centered", likelihood, dims=output_dim)
-    return AdditiveBoundaryResult(output, likelihood, coefficients, latents, prepared.reference_shift)
+    return AdditiveBoundaryResult(
+        AffineTerm(output, likelihood, prepared.reference_shift), coefficients, latents
+    )

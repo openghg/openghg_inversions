@@ -24,7 +24,7 @@ Model components derive frequency indicators from observation coordinates with
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -295,6 +295,71 @@ def add_coherent_affine_component(
     """
     fixed = add_model_data(fixed_contribution)
     return pm.Deterministic(output_name, fixed + linear_signal, dims=fixed_contribution.dims)
+
+
+@dataclass(frozen=True)
+class AffineTerm:
+    """One concentration contribution in its absolute and likelihood forms.
+
+    Most terms enter the likelihood mean as their absolute ``output``. A
+    centered term instead contributes a small ``likelihood_contribution``
+    against observations translated by its deterministic ``observation_shift``;
+    adding the shift back gives ``output``. The translation changes no
+    covariance, so both forms describe the same probability model.
+
+    Attributes:
+        output: Absolute concentration contribution.
+        likelihood_contribution: This term's contribution to the likelihood mean.
+        observation_shift: Labelled concentration subtracted from the
+            observations, or ``None`` when the term enters absolutely.
+    """
+
+    output: TensorVariable
+    likelihood_contribution: TensorVariable
+    observation_shift: xr.DataArray | None = None
+
+    @classmethod
+    def absolute(cls, output: TensorVariable) -> AffineTerm:
+        """Describe a term whose likelihood contribution is its absolute output."""
+        return cls(output, output)
+
+
+def likelihood_representation(
+    terms: Sequence[AffineTerm],
+    observations: xr.DataArray,
+    modelled_mean: TensorVariable,
+) -> tuple[TensorVariable, xr.DataArray, xr.DataArray | None]:
+    """Choose the likelihood mean and observations for ordered affine terms.
+
+    Without observation shifts this returns ``modelled_mean`` and the
+    observations unchanged. Otherwise it sums the likelihood contributions
+    directly, rather than subtracting a large shift from ``modelled_mean``,
+    which would lose small centered anomalies.
+
+    Args:
+        terms: Complete ordered decomposition of ``modelled_mean``. Tensor
+            contributions must follow the observations' row order and use
+            their concentration units. Shifts must use the same observation
+            dimensions; indexed row labels are checked exactly here.
+        observations: Labelled observations in the contributions' common units.
+        modelled_mean: Prebuilt absolute mean from those same term outputs,
+            retaining the recipe's summation grouping and deterministic name.
+
+    Returns:
+        The likelihood mean, the translated observations and the total
+        observation shift (``None`` when no term is shifted).
+
+    Raises:
+        ValueError: If indexed observation labels differ between observations
+            and any shift, or between shifts.
+    """
+    shifts = [term.observation_shift for term in terms if term.observation_shift is not None]
+    if not shifts:
+        return modelled_mean, observations, None
+    observations, *shifts = xr.align(observations, *shifts, join="exact", copy=False)
+    shift = sum(shifts[1:], start=shifts[0])
+    mean = sum((term.likelihood_contribution for term in terms[1:]), start=terms[0].likelihood_contribution)
+    return mean, observations - shift, shift
 
 
 def _active_state_coords(

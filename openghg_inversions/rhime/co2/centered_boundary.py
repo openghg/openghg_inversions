@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Generic, TypeVar
 
 import numpy as np
 import pymc as pm
 import pytensor
-import pytensor.tensor as pt
 import xarray as xr
+from numpy.typing import NDArray
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.boundary_sensitivity import _select_native_boundary, align_boundary_operands
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.models.components import LinearComponentResult, add_state_vector
+from openghg_inversions.models.components import AffineTerm, LinearComponentResult, add_state_vector
 from openghg_inversions.models.coords import add_model_data, component_coords
 from openghg_inversions.models.state_activity import StateActivity, prepare_linear_sensitivity, resolve_state_activity
 
@@ -84,21 +85,66 @@ def bind_boundary_operands(
     return aligned
 
 
+ArrayT = TypeVar("ArrayT", TensorVariable, NDArray[np.float64])
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class CenteredBoundaryMap(Generic[ArrayT]):
+    """Absolute and centered concentrations of one physical boundary state.
+
+    The absolute contribution is affine in the boundary scaling ``b``:
+    ``concentration(b) = (A + c M) b``. The centered representation moves the
+    deterministic reference ``q = c M 1`` from the mean onto the observations,
+    so ``centered_concentration(b) = concentration(b) - q``. Both describe the
+    same state and the same physical model; only the likelihood representation
+    differs.
+
+    Keep ``A``, ``M`` and ``c`` separate: subtracting ``q`` from a formed
+    absolute contribution loses small anomalies against a large reference,
+    such as O2 at about 209,300 ppm. The graph builder uses registered PyTensor
+    operands; the cached likelihood projection uses the same equations on
+    dense NumPy operands. Alignment, materialization, precision and state
+    activity belong to the caller.
+
+    Attributes:
+        anomaly: Anomaly design ``A`` on observation by boundary-state axes.
+        mass: Dimensionless mass design ``M`` on those same axes.
+        reference: Scalar reference concentration ``c``.
+        reference_shift: Observation-aligned concentration ``q = c M 1``.
+            Mass rows need not sum to one.
+    """
+
+    anomaly: ArrayT
+    mass: ArrayT
+    reference: ArrayT | float
+    reference_shift: ArrayT
+
+    def centered_concentration(self, state: ArrayT) -> ArrayT:
+        """Evaluate ``A b + c M (b - 1)``, the likelihood contribution against ``y - q``."""
+        return self.anomaly @ state + self.reference * (self.mass @ (state - 1.0))
+
+    def concentration(self, state: ArrayT) -> ArrayT:
+        """Evaluate the absolute boundary concentration ``A b + c M b``."""
+        return self.centered_concentration(state) + self.reference_shift
+
+
 @dataclass(frozen=True)
 class CenteredBoundaryResult:
-    """Boundary graph with an absolute component and centered likelihood term.
+    """Boundary graph with its state, affine term and retained operands.
 
     Attributes:
         component: Boundary state, activity, anomaly design tensor and absolute
             concentration output ``A b + c M b``.
-        likelihood_contribution: Centered concentration ``A b + c M (b - 1)``.
-        reference_shift: Labelled concentration ``c M 1`` to subtract from
-            observations and restore to predictive draws.
+        term: Absolute output, centered likelihood contribution
+            ``A b + c M (b - 1)`` and observation shift ``q = c M 1``, which
+            is also restored to predictive draws.
+        operands: The aligned anomaly, mass and reference used to build the
+            graph, borrowed for a cached likelihood's dense lowering.
     """
 
     component: LinearComponentResult
-    likelihood_contribution: TensorVariable
-    reference_shift: xr.DataArray
+    term: AffineTerm
+    operands: xr.Dataset
 
 
 def add_centered_boundary(
@@ -135,10 +181,10 @@ def add_centered_boundary(
         owner: Namespace owning the boundary-state coordinates.
 
     Returns:
-        The absolute boundary component, centered likelihood contribution and
-        labelled reference shift. The component's ``output`` is ``A b + c M b``;
-        its ``data`` is the anomaly design, not the complete absolute design.
-        Pair the likelihood contribution with observations minus the shift;
+        The boundary component, its affine term and the borrowed operands. The
+        component's ``output`` is ``A b + c M b``; its ``data`` is the anomaly
+        design, not the complete absolute design. Compose the term with
+        :func:`~openghg_inversions.models.components.likelihood_representation`;
         add the shift back to observed and predictive ``y`` for absolute output.
 
     Raises:
@@ -157,12 +203,15 @@ def add_centered_boundary(
     a = add_model_data(component_coords(anomaly, owner, observation_dim=output_dim), f"{prefix}H_bc_anomaly")
     m = add_model_data(component_coords(mass, owner, observation_dim=output_dim), f"{prefix}H_bc_mass")
     c = add_model_data(reference, f"{prefix}bc_reference")
-    centered = pt.dot(a, vector.state) + c * pt.dot(m, vector.state - 1)
     shift = (reference * mass.sum("bc_region")).rename(f"{prefix}bc_reference_shift")
     shift_data = add_model_data(shift, shift.name)
-    absolute = pm.Deterministic(f"{prefix}mu_bc", centered + shift_data, dims=output_dim)
+    boundary_map = CenteredBoundaryMap(a, m, c, shift_data)
+    centered = boundary_map.centered_concentration(vector.state)
+    absolute = pm.Deterministic(f"{prefix}mu_bc", boundary_map.concentration(vector.state), dims=output_dim)
     return CenteredBoundaryResult(
-        LinearComponentResult(a, vector.latent, vector.state, absolute, resolved), centered, shift
+        LinearComponentResult(a, vector.latent, vector.state, absolute, resolved),
+        AffineTerm(absolute, centered, shift),
+        operands,
     )
 
 

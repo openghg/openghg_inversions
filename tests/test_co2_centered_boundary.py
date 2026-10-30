@@ -265,3 +265,64 @@ def test_centered_boundary_validates_scientific_inputs(invalid: str) -> None:
         kwargs["boundary_correction_sensitivity"] = response
     with pytest.raises(ValueError):
         build_co2_model(inputs.H, **kwargs)
+
+
+def test_additive_term_keeps_sampled_boundary_and_observation_offsets_in_mean() -> None:
+    from openghg_inversions.models import AffineTerm, likelihood_representation, registered_model
+    from openghg_inversions.rhime.co2.co2_boundary import prepare_centered_boundary, add_centered_boundary
+
+    inputs = _inputs()
+    mass = inputs.bc_correction_sensitivity
+    operands = xr.Dataset(
+        {
+            "H_bc_anomaly": (mass * 0.001).assign_attrs(units="ppm"),
+            "H_bc_mass": mass,
+            "bc_reference": xr.DataArray(200000.0, attrs={"units": "ppm"}),
+        }
+    )
+    prior = {"pdf": "normal", "mu": 0.0, "sigma": 0.2}
+    prepared = prepare_centered_boundary(
+        None,
+        None,
+        inputs.bc_centering_weights,
+        inputs.mf,
+        prior,
+        0.3,
+        None,
+        None,
+        boundary_operands=operands,
+    )
+    assert prepared is not None
+    with registered_model() as model:
+        result = add_centered_boundary(prepared, prior, 0.3)
+        observation_offset = pm.Normal("observation_offset", mu=0.0, sigma=0.1)
+        offset = pt.ones(inputs.sizes["nmeasure"]) * observation_offset
+        absolute = result.output + offset
+        mean, observations, shift = likelihood_representation(
+            [result.term, AffineTerm.absolute(offset)],
+            inputs.mf,
+            absolute,
+        )
+    assert result.output is result.term.output
+    assert result.likelihood_contribution is result.term.likelihood_contribution
+    assert result.reference_shift is result.term.observation_shift
+    expected_shift = 200000.0 * mass.sum("bc_region")
+    xr.testing.assert_allclose(shift, expected_shift)
+    xr.testing.assert_allclose(observations, inputs.mf - expected_shift)
+    evaluate = model.compile_fn(
+        model.replace_rvs_by_values([absolute, mean, model["bc_correction"]]),
+        inputs=model.value_vars,
+        on_unused_input="ignore",
+    )
+    for boundary_mean, instrument_offset in ((-0.25, 0.07), (0.17, -0.03)):
+        point = model.initial_point()
+        point["bc_mean_shift"] = np.asarray(boundary_mean)
+        point["bc_anomaly_latent"] = np.array([0.1, -0.05])
+        point["observation_offset"] = np.asarray(instrument_offset)
+        absolute_values, centered_values, correction = evaluate(point)
+        expected = (
+            operands.H_bc_anomaly.sum("bc_region").values + mass.values @ correction + instrument_offset
+        )
+        np.testing.assert_allclose(centered_values, expected, atol=1e-12)
+        np.testing.assert_allclose(absolute_values, centered_values + expected_shift, atol=1e-10)
+        xr.testing.assert_allclose(shift, expected_shift)

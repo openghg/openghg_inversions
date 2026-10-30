@@ -15,6 +15,7 @@ from openghg_inversions._pymc_config import configure_pytensor
 configure_pytensor()
 
 from openghg_inversions.models.components import (
+    AffineTerm,
     CorrelatedStateResult,
     LinearComponentResult,
     apply_linear_sensitivity,
@@ -26,6 +27,7 @@ from openghg_inversions.models.components import (
     add_correlated_lognormal_state,
     add_correlated_lognormal_state_with_activity,
     add_sigma_component,
+    likelihood_representation,
 )
 from openghg_inversions.models.cached_sigma import (
     FixedOuCachedSigmaTarget,
@@ -85,7 +87,9 @@ __all__ = [
     "add_model_data",
     "add_correlated_lognormal_state",
     "add_correlated_lognormal_state_with_activity",
+    "AffineTerm",
     "add_coherent_affine_component",
+    "likelihood_representation",
     "add_linked_linear_component",
     "add_linear_component",
     "apply_linear_sensitivity",

@@ -10,7 +10,6 @@ import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
-from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array
@@ -26,18 +25,20 @@ from openghg_inversions.models import (
 from openghg_inversions.models.additive_sigma import add_additive_sigma_likelihood
 from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.models.components import (
+    AffineTerm,
     LinearComponentResult,
     OffsetComponentResult,
     _add_offset_component_result,
     add_linear_component,
     add_model_data,
+    likelihood_representation,
 )
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from .co2_model import _normalise_offset_args
 from openghg_inversions.boundary_sensitivity import bind_boundary_sensitivity
 
-from .centered_boundary import bind_boundary_operands, add_centered_boundary
+from .centered_boundary import CenteredBoundaryResult, bind_boundary_operands, add_centered_boundary
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 
 from .co2_o2_fixed_ou import linked_fixed_ou_alignment
@@ -247,19 +248,18 @@ def _pad_channel_design(
 
 @dataclass(frozen=True)
 class _ChannelBaselineComponent:
-    """One channel baseline's graph, joint design and likelihood contribution.
+    """One channel baseline's graph, joint design and affine term.
 
-    ``component.output`` is always absolute. ``likelihood_contribution`` is
-    centered only when ``reference_shift`` is present. Centered boundaries have
-    full operands retained separately for the cached affine likelihood.
+    ``term`` owns total concentration composition and grouped baseline reports.
+    ``component`` retains its registered graph, state, activity and design.
+    Centered boundaries keep their complete result for that lowering.
     """
 
     channel: str
     component: LinearComponentResult | OffsetComponentResult | AdditiveBoundaryResult
     design: xr.DataArray | None
-    likelihood_contribution: TensorVariable
-    reference_shift: xr.DataArray | None = None
-    boundary_operands: xr.Dataset | None = None
+    term: AffineTerm
+    centered: CenteredBoundaryResult | None = None
     additive: AdditiveBoundaryResult | None = None
     additive_design: np.ndarray | None = None
     additive_fixed: np.ndarray | None = None
@@ -385,8 +385,7 @@ def _add_co2_o2_baseline_components(
                     channel,
                     result,
                     None,
-                    result.likelihood_contribution,
-                    result.reference_shift,
+                    result.term,
                     additive=result,
                     additive_design=prepared.design,
                     additive_fixed=np.asarray(prepared.reference_sensitivity.sum("bc_region").values),
@@ -416,12 +415,11 @@ def _add_co2_o2_baseline_components(
                     channel,
                     centered_result.component,
                     None,
-                    centered_result.likelihood_contribution,
-                    centered_result.reference_shift,
-                    padded,
+                    centered_result.term,
+                    centered_result,
                 )
             )
-            boundaries.append(centered_result.component.output)
+            boundaries.append(centered_result.term.output)
         if native is not None and not additive:
             native_dim = str(sensitivity.dims[0])
             if native.ndim != 2 or native.dims[0] != native_dim:
@@ -442,7 +440,11 @@ def _add_co2_o2_baseline_components(
                 state_activity=activity,
                 coordinate_owner=channel,
             )
-            components.append(_ChannelBaselineComponent(channel, linear_result, design, linear_result.output))
+            components.append(
+                _ChannelBaselineComponent(
+                    channel, linear_result, design, AffineTerm.absolute(linear_result.output)
+                )
+            )
             boundaries.append(linear_result.output)
         channel_offset_prior = (offset_prior or {}).get(channel)
         if channel_offset_prior is not None:
@@ -480,7 +482,11 @@ def _add_co2_o2_baseline_components(
                     dims=output_dim,
                 ),
             )
-            components.append(_ChannelBaselineComponent(channel, offset_result, design, offset_result.output))
+            components.append(
+                _ChannelBaselineComponent(
+                    channel, offset_result, design, AffineTerm.absolute(offset_result.output)
+                )
+            )
             offsets.append(offset_result.output)
     if boundaries:
         pm.Deterministic("boundary_concentration", sum(boundaries), dims=output_dim)
@@ -736,7 +742,7 @@ def build_co2_o2_model(
             offset_prior=offset_prior,
             offset_args=offset_args,
         )
-        mean_signal = joint_signal + sum(term.component.output for term in baseline_components)
+        mean_signal = joint_signal + sum(baseline.term.output for baseline in baseline_components)
         fixed = add_model_data(fixed_prior_contribution)
         modelled = pm.Deterministic(
             "modelled_concentration",
@@ -744,17 +750,13 @@ def build_co2_o2_model(
             dims=output_dim,
         )
 
-        likelihood_mean = modelled
-        likelihood_observations = observations
-        shifts = [term.reference_shift for term in baseline_components if term.reference_shift is not None]
-        if shifts:
-            shift = sum(shifts[1:], start=shifts[0]).rename("boundary_reference_shift")
-            add_model_data(shift, "boundary_reference_shift")
-            # Compose centered terms directly to preserve small concentration differences.
-            likelihood_mean = (
-                fixed + joint_signal + sum(term.likelihood_contribution for term in baseline_components)
-            )
-            likelihood_observations = observations - shift
+        likelihood_mean, likelihood_observations, shift = likelihood_representation(
+            [AffineTerm.absolute(fixed + joint_signal), *(term.term for term in baseline_components)],
+            observations,
+            modelled,
+        )
+        if shift is not None:
+            add_model_data(shift.rename("boundary_reference_shift"), "boundary_reference_shift")
         if tau_hours is None:
             if fixed_site_amplitudes is not None or site_amplitude_prior is not None:
                 raise ValueError("Fixed-OU amplitudes require tau_hours.")

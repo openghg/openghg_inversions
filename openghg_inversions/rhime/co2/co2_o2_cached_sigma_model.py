@@ -23,9 +23,11 @@ from openghg_inversions.models import (
     resolve_state_activity,
 )
 from openghg_inversions.models.components import (
+    AffineTerm,
     LinearComponentResult,
     OffsetComponentResult,
     add_model_data,
+    likelihood_representation,
     _add_prepared_correlated_lognormal_state_with_activity,
     prepare_active_correlated_lognormal_prior,
 )
@@ -42,7 +44,7 @@ from .co2_cached_sigma_model import (
     _CachedAffineTerm,
     _add_cached_likelihood,
     _materialize_cached_linear_projection,
-    _centered_cached_projection,
+    _centered_cached_term,
     _site_values,
 )
 from .centered_boundary import bind_boundary_operands, require_centered_precision
@@ -262,11 +264,11 @@ def build_co2_o2_cached_sigma_model(
         )
         terms = [
             _CachedAffineTerm(
+                term=AffineTerm.absolute(affine),
                 fixed_contribution=np.asarray(fixed_prior_contribution.values) + fixed_flux,
                 active_design=active_design,
                 coefficients=state.state[activity.active_indices] if activity.n_active else None,
                 sampled_rvs=(state.latent,) if state.latent is not None else (),
-                output=affine,
             )
         ]
         baselines = _add_co2_o2_baseline_components(
@@ -294,24 +296,18 @@ def build_co2_o2_cached_sigma_model(
                 assert baseline.additive_fixed is not None and baseline.additive_design is not None
                 terms.append(
                     _CachedAffineTerm(
+                        term=baseline.term,
                         fixed_contribution=baseline.additive_fixed,
                         active_design=baseline.additive_design,
                         coefficients=baseline.additive.coefficients,
                         sampled_rvs=baseline.additive.latents,
-                        output=baseline.additive.output,
                     )
                 )
                 continue
-            if baseline.boundary_operands is not None:
-                assert isinstance(result, LinearComponentResult)
-                active_matrix, fixed = _centered_cached_projection(
-                    baseline.boundary_operands,
-                    result.activity,
-                    output_dim=output_dim,
-                )
-                indices = result.activity.active_indices
-                coefficients = result.state[indices] - 1.0 if indices.size else None
-            elif isinstance(result, LinearComponentResult):
+            if baseline.centered is not None:
+                terms.append(_centered_cached_term(baseline.centered, output_dim=output_dim))
+                continue
+            if isinstance(result, LinearComponentResult):
                 assert design is not None
                 matrix = np.asarray(design.values, dtype=np.float64)
                 active = np.asarray(result.activity.active.values, dtype=bool)
@@ -326,26 +322,26 @@ def build_co2_o2_cached_sigma_model(
                 active_matrix = matrix
             terms.append(
                 _CachedAffineTerm(
+                    term=baseline.term,
                     fixed_contribution=fixed,
                     active_design=active_matrix,
                     coefficients=coefficients,
                     sampled_rvs=(result.latent,) if result.latent is not None else (),
-                    output=result.output,
                 )
             )
+        affine_terms = [term.term for term in terms]
         mean = pm.Deterministic(
             "modelled_concentration",
-            sum(term.output for term in terms),
+            sum(term.output for term in affine_terms),
             dims=output_dim,
         )
-        likelihood_mean = mean
-        likelihood_observations = observations
-        shifts = [baseline.reference_shift for baseline in baselines if baseline.reference_shift is not None]
-        if shifts:
-            shift = sum(shifts[1:], start=shifts[0]).rename("boundary_reference_shift")
-            add_model_data(shift)
-            likelihood_mean = affine + sum(baseline.likelihood_contribution for baseline in baselines)
-            likelihood_observations = observations - shift
+        likelihood_mean, likelihood_observations, shift = likelihood_representation(
+            affine_terms,
+            observations,
+            mean,
+        )
+        if shift is not None:
+            add_model_data(shift.rename("boundary_reference_shift"))
         return _add_cached_likelihood(
             tuple(terms),
             covariance=covariance,
