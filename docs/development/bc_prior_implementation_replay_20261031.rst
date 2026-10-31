@@ -51,7 +51,7 @@ weights; concentration functionals are retained-row means in ppm. Neither is
 a new assessment against WUR flux truth.
 
 Prescribed physical BC is :math:`b_0=(A+cM)\mathbf1`. The fitted physical BC is
-:math:`b_0+d`. The complete baseline in these experiments is physical BC plus
+:math:`b_0+d`. The complete baseline in these experiments is prescribed BC plus
 its correction, adjustable outer flux and ``fixed_full_minus_fixed_inner``.
 The full model still contains ``H_all @ x + fixed_full + b0 + d``. Outer flux
 and the coherent fixed contribution remain separately accounted for.
@@ -131,9 +131,9 @@ response, a difference crossing two independent periods has level SD
 
 Model preflights select three rows per site and coefficient period, evaluate
 nonzero physical coefficients, and compare ordinary observed log density with
-the cached quadratic. Initial five-arm checks have maximum absolute mean
+the cached quadratic. Final five-arm checks have maximum absolute mean
 difference :math:`3.6\times10^{-15}` ppm and maximum absolute log-density
-difference :math:`1.1\times10^{-12}`. The final adapter additionally evaluates
+difference :math:`1.1\times10^{-12}`. The adapter additionally evaluates
 the saved experimental design directly at the corresponding standardized
 point and compares its residual and ordinary Gaussian density.
 
@@ -172,7 +172,7 @@ Cluster array 19861094 tested implementation revision ``fc75da5d``:
 All three full-suite allocations reached approximately 8 GiB resident memory.
 The development-dependency retry uses 12 GiB and a longer wall-time allowance;
 it does not change dependencies or scientific inputs. The focused sampling
-job 19861096 remains pinned to ``fc75da5d``. Subsequent documentation and
+job 19861096 was pinned to ``fc75da5d``. Subsequent documentation and
 calibration-expression fixes do not change its manifest-specified widths or
 model operators.
 
@@ -195,14 +195,146 @@ receipts and sampling output use the fresh ``r3`` root. The frozen scripts and
 their provenance assertions are unchanged. The standalone locked environment
 uses PyMC 6.3.2, PyTensor 3.3.2, NumPy 2.2.6, SciPy 1.15.3 and xarray 2025.9.1.
 
-The planned focused sampling replay is monthly ``delta_A`` against its own
+The focused sampling replay is monthly ``delta_A`` against its own
 frozen original-prior fit: four chains, 1,000 tuning and 1,000 retained draws,
 seed 20260924, state target acceptance 0.95 and OU-amplitude acceptance 0.9.
 Run it through ``scripts/slurm_bc_prior_replay.sh`` with slurm-wakeup. Sampling
 is rejected on a login node. The comparison reports sampling health, separate
 level/pattern/outer and complete-baseline concentration means, and inner flux
 functionals with both runs' Monte Carlo standard errors. A shared seed does
-not require paired or bit-for-bit draws. No sampling result is claimed yet.
+not require paired or bit-for-bit draws.
+
+Focused sampling results
+------------------------
+
+Job 19861096 completed successfully in 1h14m21s, using approximately 4.0 GiB
+resident memory. Both the new and frozen fits have zero state/OU divergences
+and zero maximum-tree-depth events. Across the monitored physical coefficients,
+flux states and OU amplitudes, the new maximum rank R-hat is 1.00650 and minimum
+bulk ESS is 2,708.5; frozen values are 1.00713 and 3,010.1. These diagnostics
+support a focused posterior comparison. They do not establish calibration or
+likelihood separation of BC and flux effects.
+
+The tables compare posterior means with the matched historical posterior.
+Each ``MCSE`` is the estimated Monte Carlo standard error of that run's mean.
+The last column divides the new-minus-frozen mean difference by
+:math:`\sqrt{\mathrm{MCSE}_{new}^2+\mathrm{MCSE}_{frozen}^2}`; it treats the two
+runs as independent and is not a pre-specified hypothesis-test gate.
+
+Concentration functionals below are retained-row means in ppm. The row labelled
+"Outer + fixed" includes adjustable outer flux and
+``fixed_full_minus_fixed_inner``; this combined comparison reproduces the
+historical scorer's ``outer_mean``. Those terms remain separate from physical
+BC in the model. Complete baseline adds prescribed BC, level, pattern and
+these exterior/fixed terms, each once.
+
+.. list-table:: Concentration posterior means and Monte Carlo uncertainty (ppm)
+   :header-rows: 1
+
+   * - Functional
+     - New mean
+     - Frozen mean
+     - New MCSE
+     - Frozen MCSE
+     - Difference / combined MCSE
+   * - Level
+     - 1.007026
+     - 1.012926
+     - 0.004143
+     - 0.004292
+     - -0.989
+   * - Pattern
+     - 0.173807
+     - 0.171718
+     - 0.001625
+     - 0.001530
+     - 0.936
+   * - Outer + fixed
+     - -0.671244
+     - -0.673153
+     - 0.004741
+     - 0.004255
+     - 0.300
+   * - Complete baseline
+     - 410.390654
+     - 410.392556
+     - 0.004587
+     - 0.004413
+     - -0.299
+
+Flux functionals below use annualized Tg CO2/year on the historical common
+23,406-cell inner PARIS mask over all 744 July 2021 hours. GPP is gross primary
+production, TER terrestrial ecosystem respiration and FF fossil-fuel emissions;
+NET_BIOSPHERE is GPP + TER and TOTAL also includes FF and ocean. These are
+conditional retained-state posterior totals using the frozen coherent weights,
+not a new comparison against WUR truth. Native unresolved-flux posterior
+uncertainty is not included.
+
+.. list-table:: Inner flux posterior means and Monte Carlo uncertainty (Tg CO2/year)
+   :header-rows: 1
+
+   * - Functional
+     - New mean
+     - Frozen mean
+     - New MCSE
+     - Frozen MCSE
+     - Difference / combined MCSE
+   * - GPP
+     - -58,505.875
+     - -58,480.778
+     - 54.798
+     - 51.915
+     - -0.332
+   * - TER
+     - 45,140.910
+     - 45,067.716
+     - 52.614
+     - 49.153
+     - 1.017
+   * - FF
+     - 4,198.416
+     - 4,202.509
+     - 3.551
+     - 3.239
+     - -0.852
+   * - Ocean
+     - -12.808
+     - -5.536
+     - 1.800
+     - 1.962
+     - -2.732
+   * - NET_BIOSPHERE
+     - -13,364.965
+     - -13,413.062
+     - 28.317
+     - 27.780
+     - 1.212
+   * - TOTAL
+     - -9,179.357
+     - -9,216.089
+     - 28.441
+     - 27.668
+     - 0.926
+
+All four concentration-mean differences are within one combined MCSE. Five
+of the six flux differences are within 1.22 combined MCSEs; ocean is 2.73.
+This exception is retained explicitly rather than claiming every mean agrees
+within Monte Carlo error. The ocean mean difference is -7.272 Tg CO2/year,
+or -0.0475 of the frozen posterior SD (153.033 Tg CO2/year); its new posterior
+SD is 146.641 Tg CO2/year. The deterministic design and likelihood checks
+establish implementation parity; this single sampling replay provides
+supporting sampling-health and posterior evidence, not bit-for-bit chain
+reproduction or a formal stochastic equivalence test.
+
+The new trace, diagnostics, ``sampling-health.json`` and
+``reference-comparison.csv`` are under
+``inversion_outputs/bc-prior-replay-20261031-r3/fits/delta_A``. The launch
+``request.json`` records clean revision ``fc75da5d`` and the lock/script hashes.
+``comparison-provenance.json`` records the reference-draw and coherent-weight
+hashes, verification-games revision ``a21ec225`` and the comparison-time
+worktree diff (documentation and calibration-expression corrections were being
+made after model construction). Use the launch receipt for the sampled model's
+revision. No original experiments or frozen results were modified.
 
 Scientific limitations
 ----------------------
