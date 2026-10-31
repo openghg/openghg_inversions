@@ -6,13 +6,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import Any
 
+from dask import compute as dask_compute
 import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
 
 from openghg_inversions.inversion_inputs import DatetimeLike
-from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array
+from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array, to_dense
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models import (
     StateActivity,
@@ -42,6 +43,9 @@ from openghg_inversions.models.boundary import CenteredBoundaryResult, bind_boun
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 
 from .co2_o2_fixed_ou import linked_fixed_ou_alignment
+from openghg_inversions.models.boundary_corrections import (
+    add_boundary_correction, correction_design, materialize_boundary_correction,
+)
 from openghg_inversions.models.additive_boundary import (
     AdditiveBoundaryResult,
     prepare_centered_boundary,
@@ -146,6 +150,7 @@ def _validate_channel_baseline_options(
     offset_prior: Mapping[str, PriorArgs] | None,
     offset_args: Mapping[str, Mapping[str, Any]] | None,
     boundary_operands: Mapping[str, xr.Dataset] | None = None,
+    boundary_correction: Mapping[str, xr.Dataset] | None = None,
     *,
     bc_mean_shift_prior_co2: PriorArgs | None = None,
     bc_mean_shift_prior_o2: PriorArgs | None = None,
@@ -156,6 +161,7 @@ def _validate_channel_baseline_options(
     for name, values in (
         ("boundary_sensitivity", boundary_sensitivity),
         ("boundary_operands", boundary_operands),
+        ("boundary_correction", boundary_correction),
         ("bc_prior", bc_prior),
         ("bc_state_activity", bc_state_activity),
         ("offset_prior", offset_prior),
@@ -166,6 +172,10 @@ def _validate_channel_baseline_options(
     if set(boundary_sensitivity or {}) & set(boundary_operands or {}):
         raise ValueError("Supply boundary_operands or boundary_sensitivity per channel, not both.")
     for channel in ("co2", "o2"):
+        if channel in (boundary_correction or {}) and any(channel in (value or {}) for value in (
+            boundary_sensitivity, boundary_operands, bc_prior, bc_state_activity,
+        )):
+            raise ValueError(f"{channel} boundary_correction replaces other boundary inputs and priors.")
         if (
             channel not in (boundary_sensitivity or {})
             and channel not in (boundary_operands or {})
@@ -177,6 +187,8 @@ def _validate_channel_baseline_options(
         _normalise_offset_args((offset_args or {}).get(channel))
         mean = bc_mean_shift_prior_co2 if channel == "co2" else bc_mean_shift_prior_o2
         scale = bc_anomaly_scale_co2 if channel == "co2" else bc_anomaly_scale_o2
+        if channel in (boundary_correction or {}) and (mean is not None or scale is not None):
+            raise ValueError(f"{channel} boundary_correction replaces weighted additive options.")
         if mean is not None or scale is not None:
             if mean is None or scale is None:
                 raise ValueError(f"{channel} requires bc_mean_shift_prior and bc_anomaly_scale together.")
@@ -273,6 +285,7 @@ def _add_co2_o2_baseline_components(
     o2_sensitivity: xr.DataArray,
     boundary_sensitivity: Mapping[str, xr.DataArray] | None = None,
     boundary_operands: Mapping[str, xr.Dataset] | None = None,
+    boundary_correction: Mapping[str, xr.Dataset] | None = None,
     bc_mean_shift_prior_co2: PriorArgs | None = None,
     bc_mean_shift_prior_o2: PriorArgs | None = None,
     bc_anomaly_scale_co2: float | None = None,
@@ -299,6 +312,7 @@ def _add_co2_o2_baseline_components(
         offset_prior,
         offset_args,
         boundary_operands,
+        boundary_correction=boundary_correction,
         bc_mean_shift_prior_co2=bc_mean_shift_prior_co2,
         bc_mean_shift_prior_o2=bc_mean_shift_prior_o2,
         bc_anomaly_scale_co2=bc_anomaly_scale_co2,
@@ -307,6 +321,7 @@ def _add_co2_o2_baseline_components(
     if (
         not boundary_sensitivity
         and not boundary_operands
+        and not boundary_correction
         and not offset_prior
         and all(
             value is None
@@ -335,6 +350,36 @@ def _add_co2_o2_baseline_components(
         )
         weights = bc_centering_weights_co2 if channel == "co2" else bc_centering_weights_o2
         additive = mean_prior is not None or anomaly_scale is not None
+        correction_prior = (boundary_correction or {}).get(channel)
+        if correction_prior is not None:
+            if correction is not None or weights is not None:
+                raise ValueError("Independent corrections replace weighted additive response/weights.")
+            native_dim = str(sensitivity.dims[0])
+            native_observations = select_gathered_data_array(
+                observations, key=channel, key_dim="species", ragged_dim="channel_observation",
+                stack_dim=output_dim,
+            ).rename({output_dim: native_dim})
+            correction_prior = materialize_boundary_correction(correction_prior, native_observations)
+            padded_arrays = {}
+            for name, value in correction_prior.data_vars.items():
+                if native_dim not in value.dims:
+                    padded_arrays[name] = value
+                elif value.ndim == 2:
+                    padded_arrays[name] = _pad_channel_design(value, observations, channel)
+                else:
+                    padded_arrays[name] = _pad_channel_design(
+                        value.expand_dims(bc_scalar=[0], axis=1), observations, channel,
+                    ).isel(bc_scalar=0, drop=True)
+            correction_prior = xr.Dataset(padded_arrays, attrs=correction_prior.attrs)
+            result = add_boundary_correction(
+                correction_prior, output_dim=output_dim, prefix=f"{channel}_", owner=channel,
+            )
+            components.append(_ChannelBaselineComponent(
+                channel, result, None, result.term, additive=result,
+                additive_design=correction_design(correction_prior),
+                additive_fixed=correction_prior.bc_prescribed_centered.values,
+            ))
+            boundaries.append(result.output)
         if additive:
             padded_operands = None
             padded_native = None
@@ -472,6 +517,11 @@ def _add_co2_o2_baseline_components(
                 per_site=per_site,
                 namespace=f"{channel}_",
             )
+            if correction_prior is not None and correction_prior.attrs["level_support"] != "absent":
+                channel_rows = observations.indexes[output_dim].get_level_values("species") == channel
+                warn_boundary_offset_confounding(
+                    correction_prior.bc_mass_response.values[channel_rows], drop_first=drop_first, channel=channel,
+                )
             if additive:
                 channel_rows = observations.indexes[output_dim].get_level_values("species") == channel
                 warn_boundary_offset_confounding(
@@ -514,6 +564,7 @@ def build_co2_o2_model(
     state_activity: StateActivity | None = None,
     boundary_sensitivity: Mapping[str, xr.DataArray] | None = None,
     boundary_operands: Mapping[str, xr.Dataset] | None = None,
+    boundary_correction: Mapping[str, xr.Dataset] | None = None,
     bc_freq: str | None = None,
     bc_anchor_time: DatetimeLike | None = None,
     bc_mean_shift_prior_co2: PriorArgs | None = None,
@@ -590,6 +641,10 @@ def build_co2_o2_model(
         boundary_operands: Raw centered-v1 H_bc_anomaly/H_bc_mass and scalar
             bc_reference, retained until model binding. Mutually exclusive with
             absolute boundary_sensitivity for the same channel.
+        boundary_correction: Channel-keyed independent level/pattern correction
+            Datasets from prepare_boundary_correction. Each channel owns its
+            reference and widths; no cross-species covariance is introduced.
+            Replaces other boundary choices on that channel.
         bc_freq: Optional model-owned boundary period frequency.
         bc_anchor_time: Optional anchor for boundary period alignment.
         bc_prior: Channel-keyed independent boundary-scale priors; the CO2
@@ -641,11 +696,36 @@ def build_co2_o2_model(
         offset_prior,
         offset_args,
         boundary_operands,
+        boundary_correction=boundary_correction,
         bc_mean_shift_prior_co2=bc_mean_shift_prior_co2,
         bc_mean_shift_prior_o2=bc_mean_shift_prior_o2,
         bc_anomaly_scale_co2=bc_anomaly_scale_co2,
         bc_anomaly_scale_o2=bc_anomaly_scale_o2,
     )
+    if boundary_correction and (bc_freq is not None or bc_anchor_time is not None):
+        raise ValueError("Resolve frequency when preparing boundary_correction.")
+    if boundary_correction:
+        for channel, response, weights in (
+            ("co2", boundary_correction_sensitivity_co2, bc_centering_weights_co2),
+            ("o2", boundary_correction_sensitivity_o2, bc_centering_weights_o2),
+        ):
+            if channel in boundary_correction and (response is not None or weights is not None):
+                raise ValueError("Independent corrections replace weighted additive response/weights.")
+        # Materialize both channels and correction graphs together before padding.
+        (
+            observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity,
+            independent_error_sd, boundary_correction, boundary_operands, boundary_sensitivity,
+        ) = dask_compute(
+            to_dense(observations), to_dense(fixed_prior_contribution), to_dense(co2_sensitivity),
+            to_dense(o2_sensitivity), to_dense(independent_error_sd),
+            {channel: value.map(to_dense, keep_attrs=True) for channel, value in boundary_correction.items()},
+            None if boundary_operands is None else {
+                channel: value.map(to_dense, keep_attrs=True) for channel, value in boundary_operands.items()
+            },
+            None if boundary_sensitivity is None else {
+                channel: to_dense(value) for channel, value in boundary_sensitivity.items()
+            },
+        )
     if (
         not boundary_operands
         and not boundary_sensitivity
@@ -735,6 +815,7 @@ def build_co2_o2_model(
             o2_sensitivity=o2_sensitivity,
             boundary_sensitivity=boundary_sensitivity,
             boundary_operands=boundary_operands,
+            boundary_correction=boundary_correction,
             bc_mean_shift_prior_co2=bc_mean_shift_prior_co2,
             bc_mean_shift_prior_o2=bc_mean_shift_prior_o2,
             bc_anomaly_scale_co2=bc_anomaly_scale_co2,

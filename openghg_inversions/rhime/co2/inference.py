@@ -51,6 +51,7 @@ def build_co2_inference(
         ), cached
     inputs, priors = materialize_co2_inputs(
         prepared_inputs=prepared,
+        boundary_correction=model.get("boundary_correction"),
         sigma_alignment=model.get("sigma_alignment"),
         sigma_prior=model.get("sigma_prior"),
         fixed_model_mismatch=model.get("fixed_model_mismatch"),
@@ -67,6 +68,12 @@ def build_co2_inference(
     )
     return build_co2_from_materialized(
         inputs, prepared_inputs=prepared, priors=priors,
+        boundary_correction=(
+            inputs[[f"correction_{name}" for name in model["boundary_correction"].data_vars]].rename(
+                {f"correction_{name}": name for name in model["boundary_correction"].data_vars},
+            ).assign_attrs(model["boundary_correction"].attrs)
+            if model.get("boundary_correction") is not None else None
+        ),
         sigma_alignment=model.get("sigma_alignment"),
         sigma_prior=model.get("sigma_prior"),
         fixed_model_mismatch=model.get("fixed_model_mismatch"),

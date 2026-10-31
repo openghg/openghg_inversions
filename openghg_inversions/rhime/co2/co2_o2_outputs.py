@@ -253,6 +253,22 @@ def calculate_co2_o2_products(*, result: Co2O2Output, output: Co2O2OutputOptions
                     component_draws = _role(result.idata, role, when).isel(observation=rows)
                     component_draws, _ = xr.align(component_draws, values, join="exact", copy=False)
                     values[f"boundary_{component}_{when}"] = component_draws.variable
+            for component, role in (
+                ("prescribed", f"{species}_prescribed_boundary_concentration"),
+                ("level", f"{species}_boundary_level_correction"),
+                ("pattern", f"{species}_boundary_pattern_correction"),
+                ("level_coefficient", f"{species}_boundary_level_coefficient"),
+                ("pattern_coefficient", f"{species}_boundary_pattern_coefficient"),
+            ):
+                if role in roles:
+                    component_draws = _role(result.idata, role, when)
+                    if "observation" in component_draws.dims:
+                        component_draws = component_draws.isel(observation=rows)
+                    component_draws, _ = xr.align(component_draws, values, join="exact", copy=False)
+                    values = xr.merge(
+                        [values, component_draws.rename(f"boundary_{component}_{when}").to_dataset()],
+                        join="exact", compat="equals", combine_attrs="override",
+                    )
         values.attrs.update(metadata)
         products[f"{species}_concentration_components"] = values
         products[f"{species}_basic"] = _summaries(values)

@@ -72,6 +72,7 @@ def build_co2_o2_cached_sigma_model(
     state_activity: StateActivity | None = None,
     boundary_sensitivity: Mapping[str, xr.DataArray] | None = None,
     boundary_operands: Mapping[str, xr.Dataset] | None = None,
+    boundary_correction: Mapping[str, xr.Dataset] | None = None,
     bc_freq: str | None = None,
     bc_anchor_time: DatetimeLike | None = None,
     bc_mean_shift_prior_co2: PriorArgs | None = None,
@@ -104,6 +105,10 @@ def build_co2_o2_cached_sigma_model(
     values are returned separately for sampling; observations, designs,
     activity masks, and covariance stay fixed after construction.
 
+    ``boundary_correction`` accepts independently prepared per-channel level and
+    pattern corrections, replacing other boundary choices on those channels.
+    The same physical coefficients and centered terms enter both likelihoods.
+
     ``bc_mean_shift_prior_co2/o2`` and ``bc_anomaly_scale_co2/o2`` select
     independent channel additive corrections in concentration units, replacing
     that channel's multiplicative prior/activity. ``boundary_correction_sensitivity_co2/o2``
@@ -127,11 +132,36 @@ def build_co2_o2_cached_sigma_model(
         offset_prior,
         offset_args,
         boundary_operands,
+        boundary_correction=boundary_correction,
         bc_mean_shift_prior_co2=bc_mean_shift_prior_co2,
         bc_mean_shift_prior_o2=bc_mean_shift_prior_o2,
         bc_anomaly_scale_co2=bc_anomaly_scale_co2,
         bc_anomaly_scale_o2=bc_anomaly_scale_o2,
     )
+    if boundary_correction and (bc_freq is not None or bc_anchor_time is not None):
+        raise ValueError("Resolve frequency when preparing boundary_correction.")
+    if boundary_correction:
+        for channel, response, weights in (
+            ("co2", boundary_correction_sensitivity_co2, bc_centering_weights_co2),
+            ("o2", boundary_correction_sensitivity_o2, bc_centering_weights_o2),
+        ):
+            if channel in boundary_correction and (response is not None or weights is not None):
+                raise ValueError("Independent corrections replace weighted additive response/weights.")
+        # Materialize both channels and correction graphs together before padding.
+        (
+            observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity,
+            independent_error_sd, boundary_correction, boundary_operands, boundary_sensitivity,
+        ) = dask_compute(
+            to_dense(observations), to_dense(fixed_prior_contribution), to_dense(co2_sensitivity),
+            to_dense(o2_sensitivity), to_dense(independent_error_sd),
+            {channel: value.map(to_dense, keep_attrs=True) for channel, value in boundary_correction.items()},
+            None if boundary_operands is None else {
+                channel: value.map(to_dense, keep_attrs=True) for channel, value in boundary_operands.items()
+            },
+            None if boundary_sensitivity is None else {
+                channel: to_dense(value) for channel, value in boundary_sensitivity.items()
+            },
+        )
     if boundary_operands:
         require_centered_precision()
         aligned = {}
@@ -277,6 +307,7 @@ def build_co2_o2_cached_sigma_model(
             o2_sensitivity=o2_sensitivity,
             boundary_sensitivity=boundary_sensitivity,
             boundary_operands=boundary_operands,
+            boundary_correction=boundary_correction,
             bc_mean_shift_prior_co2=bc_mean_shift_prior_co2,
             bc_mean_shift_prior_o2=bc_mean_shift_prior_o2,
             bc_anomaly_scale_co2=bc_anomaly_scale_co2,

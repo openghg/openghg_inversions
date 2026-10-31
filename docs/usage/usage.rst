@@ -14,6 +14,7 @@ Using OpenGHG Inversions
    co2_model_family
    surface_preparation
    centered_boundary_conditions
+   boundary_pattern_priors
    prepared_format_support
    running_and_validating
    shared_scientific_concepts
