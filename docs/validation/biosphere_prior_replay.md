@@ -104,6 +104,15 @@ All adapters require explicit input/output paths and reject existing output
 directories. The frozen audit script, which writes alongside itself, was not
 rerun or modified. Existing experiments and artifacts are unchanged.
 
+Broader compatibility validation completed in Slurm job `19861121` against
+implementation revision `a11381d1`: **347 tests passed on Python 3.12.11 and
+347 passed on Python 3.13.7**. Both locked-dependency tox environments succeeded.
+Coverage included the new calibration/model tests, existing correlated-state,
+cached CO2 and linked fixed-OU recipes, model inference, affine outputs,
+linked saved handoffs, prepared runners and centered boundary regressions.
+The job completed in 22 minutes 38 seconds. This is relevant broader coverage,
+not a claim that the entire repository suite was run.
+
 ## Bounded sampling comparison
 
 The planned array crosses original/shrunk arithmetic covariance with lognormal
