@@ -1,5 +1,5 @@
 Independent boundary level and pattern priors
-============================================
+=============================================
 
 The CO2 and linked CO2/O2 ordinary and cached builders accept a prepared
 ``boundary_correction`` Dataset. This opt-in Python API separates a
@@ -62,7 +62,7 @@ when :math:`\operatorname{SD}(\delta)=\sigma_u/\sqrt K` and
 :math:`\operatorname{SD}(z_j)=\sigma_u`.
 
 Reference selection is part of the A prior
-----------------------------------------
+------------------------------------------
 
 Numerical centering and scientific prior choice are separate operations.
 ``reference=None`` retains the stored scalar. A finite scalar selects an
@@ -89,7 +89,7 @@ artifact records the resolved scalar and selection policy. Save it before
 subsetting rows for a replay or model preflight.
 
 Receptor-time coefficient periods
---------------------------------
+---------------------------------
 
 ``frequency`` uses the existing frequency utility and requires an explicit
 inversion-start ``anchor_time``. Periods gate receptor observation times,

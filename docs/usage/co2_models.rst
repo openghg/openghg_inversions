@@ -169,7 +169,7 @@ The location and scale parameters in ``offset_prior`` use the observations'
 concentration units.
 
 Independent level and prescribed-departure priors
-------------------------------------------------
+-------------------------------------------------
 
 For ``g delta``, ``g delta + A v`` and ``g delta + M Q z`` corrections with
 independent physical coefficients, see :doc:`boundary_pattern_priors`.

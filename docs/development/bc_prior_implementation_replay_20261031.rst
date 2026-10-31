@@ -1,5 +1,5 @@
 Boundary correction implementation replay: October 2026
-======================================================
+=======================================================
 
 Purpose and dependency choice
 -----------------------------
@@ -29,7 +29,7 @@ depends on the full open stack; its implementation is not a recommendation to
 merge the parent priors or adopt the illustrative widths.
 
 Input, model and comparison definitions
---------------------------------------
+---------------------------------------
 
 The July 2021 WUR BASE preparation has 5,314 retained site-hours at 25 sites,
 240 adjustable inner flux states and 24 adjustable outer states. Its SHA256 is
@@ -148,11 +148,33 @@ prescribed, level, pattern and total BC contributions. Predictive reference
 restoration is idempotent. Dask checks retain shared graphs and compute related
 flux/correction payloads once at the model boundary.
 
-Local validation currently records 40 focused tests and 205 broader existing
+Local validation records 40 focused tests and 205 broader existing
 boundary, linked, replay and cached-likelihood tests passing on locked Python
 3.13. Changed-path Ruff and whitespace checks pass. The offline example runs.
-Final cluster compatibility, rendered documentation, typing diagnostics and
-the focused sampling replay are recorded below when complete.
+
+Cluster array 19861094 tested implementation revision ``fc75da5d``:
+
+* Locked Python 3.12: 5,097 passed, 8 skipped, 4 deselected (43m40s job).
+* Locked Python 3.13: 5,097 passed, 8 skipped, 4 deselected (36m09s job).
+* Python 3.12 with OpenGHG devel: no failures before the one-hour time limit;
+  interrupted at 36% of the suite. This is not a passing full-suite result.
+* ``docs-full``, repository Ruff and ``borrowed-types`` completed successfully.
+  Rendered usage, API landing and module pages were inspected. New heading
+  and inline-literal warnings found in the build were corrected; regenerated
+  API pages are included. A repeat build checks these corrections.
+* Full typing failed on both candidate and parent PR 991: 142 versus 140
+  diagnostics. The two additions were the new module's untyped PyMC import
+  (the same missing third-party typing as existing modules) and an xarray
+  square-root return annotation. The latter was corrected using an
+  xarray-preserving expression; the repeat check compares against the same
+  parent, without suppressing the inherited failures.
+
+All three full-suite allocations reached approximately 8 GiB resident memory.
+The development-dependency retry uses 12 GiB and a longer wall-time allowance;
+it does not change dependencies or scientific inputs. The focused sampling
+job 19861096 remains pinned to ``fc75da5d``. Subsequent documentation and
+calibration-expression fixes do not change its manifest-specified widths or
+model operators.
 
 Reproduction and cluster validation
 -----------------------------------

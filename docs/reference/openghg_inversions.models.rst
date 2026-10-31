@@ -13,6 +13,7 @@ openghg\_inversions.models
    openghg_inversions.models.additive_boundary
    openghg_inversions.models.additive_sigma
    openghg_inversions.models.boundary
+   openghg_inversions.models.boundary_corrections
    openghg_inversions.models.cached_sigma
    openghg_inversions.models.components
    openghg_inversions.models.coords

@@ -354,7 +354,7 @@ def calibrate_pattern_width(operator: xr.DataArray, target_sd: float, *, coeffic
     The result is target_sd / median_i ||operator_i||. A zero median is
     unattainable and rejected. Inputs and target use compatible numeric units.
     """
-    norm = to_dense(np.sqrt((operator.astype(np.float64) ** 2).sum(coefficient_dim))).compute()
+    norm = to_dense((operator.astype(np.float64) ** 2).sum(coefficient_dim) ** 0.5).compute()
     median = float(norm.median())
     if not np.isfinite(target_sd) or target_sd <= 0 or not np.isfinite(median) or median <= 0:
         raise ValueError("Calibration requires a positive finite target and median operator row norm.")

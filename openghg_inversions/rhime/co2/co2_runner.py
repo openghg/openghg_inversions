@@ -384,7 +384,7 @@ def materialize_co2_inputs(
             prior, grouping or replacement likelihood.
         boundary_correction: Independent physical boundary correction Dataset
             from prepare_boundary_correction; omit use_bc. Its arrays join the
-            core materialization under correction_ names to preserve shared
+            core materialization under ``correction_`` names to preserve shared
             Dask work without replacing stored boundary operands.
         use_bc: Include prepared boundary sensitivity.
         bc_prior: Optional boundary-scale prior, enabled only with ``use_bc``.
