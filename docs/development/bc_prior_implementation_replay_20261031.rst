@@ -161,13 +161,20 @@ Cluster array 19861094 tested implementation revision ``fc75da5d``:
 * ``docs-full``, repository Ruff and ``borrowed-types`` completed successfully.
   Rendered usage, API landing and module pages were inspected. New heading
   and inline-literal warnings found in the build were corrected; regenerated
-  API pages are included. A repeat build checks these corrections.
+  API pages are included.
 * Full typing failed on both candidate and parent PR 991: 142 versus 140
   diagnostics. The two additions were the new module's untyped PyMC import
   (the same missing third-party typing as existing modules) and an xarray
   square-root return annotation. The latter was corrected using an
-  xarray-preserving expression; the repeat check compares against the same
-  parent, without suppressing the inherited failures.
+  xarray-preserving expression.
+
+Repeat quality job 19861319 at ``61e6e873`` passed ``docs-full``, repository
+Ruff and all four ``borrowed-types`` checks. The documentation has the same
+10 inherited Sphinx warnings as parent PR 991, with no new warnings in the
+changed pages. Normalized Mypy comparison against the same parent confirms
+141 versus 140 diagnostics: only the new module's missing-PyMC-stubs diagnostic
+remains added. No inherited diagnostics were removed or suppressed. The job
+therefore exits nonzero for full Mypy; the xarray annotation error is resolved.
 
 All three full-suite allocations reached approximately 8 GiB resident memory.
 The development-dependency retry uses 12 GiB and a longer wall-time allowance;
