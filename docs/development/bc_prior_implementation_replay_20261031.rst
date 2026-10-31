@@ -176,9 +176,26 @@ changed pages. Normalized Mypy comparison against the same parent confirms
 remains added. No inherited diagnostics were removed or suppressed. The job
 therefore exits nonzero for full Mypy; the xarray annotation error is resolved.
 
-All three full-suite allocations reached approximately 8 GiB resident memory.
-The development-dependency retry uses 12 GiB and a longer wall-time allowance;
-it does not change dependencies or scientific inputs. The focused sampling
+Final report build 19861333 at ``28a45397`` also passed ``docs-full`` with the
+same 10 inherited warnings. Rendered concentration/flux comparison tables,
+equations, units and scientific qualifications were inspected.
+
+All three initial full-suite allocations reached approximately 8 GiB resident
+memory. Development-dependency retry 19861321 at ``61e6e873`` reached its
+three-hour limit at 55% of the suite and approximately 12 GiB resident memory.
+It reported one failure in
+``test_installed_co2_stages_preserve_scientific_and_file_contracts``; the
+interruption occurred before pytest emitted its final failure traceback.
+This remains an incomplete, non-passing compatibility result.
+
+The follow-up partitions all 184 test files into eight separate processes,
+preserving the normal selection policy and collecting JUnit results and
+resolved dependency versions. A ninth array element tests the staged-workflow
+module on parent PR 991 to distinguish a regression from environment or
+resource effects. This changes test execution only, without altering model
+inputs, priors or assertions. Results remain pending.
+
+The focused sampling
 job 19861096 was pinned to ``fc75da5d``. Subsequent documentation and
 calibration-expression fixes do not change its manifest-specified widths or
 model operators.
