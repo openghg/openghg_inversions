@@ -50,6 +50,7 @@ from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.sigma import SigmaAlignment
 
 from .co2_model import _normalise_offset_args, build_co2_model
+from openghg_inversions.models.boundary_corrections import annotate_boundary_correction_trace, _boundary_correction_roles
 from openghg_inversions.models.boundary import OPERAND_NAMES, require_centered_precision, restore_absolute_predictives
 from .co2_preparation import Co2PreparedInputs
 
@@ -181,7 +182,7 @@ def annotate_co2_trace(
                 variable.attrs["units"] = "1"
             elif concentration_units is not None and name in concentration_variables:
                 variable.attrs["units"] = concentration_units
-    return trace
+    return annotate_boundary_correction_trace(trace)
 
 
 def _state_activity_from_inputs(model_inputs: xr.Dataset) -> StateActivity | None:
@@ -349,6 +350,7 @@ def materialize_co2_inputs(
     likelihood_kwargs: Mapping[str, Any] | None = None,
     no_model_error: bool = False,
     use_bc: bool = False,
+    boundary_correction: xr.Dataset | None = None,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
     bc_mean_shift_prior: PriorArgs | None = None,
@@ -380,6 +382,10 @@ def materialize_co2_inputs(
             additional numerical option materialization.
         no_model_error: Omit inferred additive error; cannot accompany a sigma
             prior, grouping or replacement likelihood.
+        boundary_correction: Independent physical boundary correction Dataset
+            from prepare_boundary_correction; omit use_bc. Its arrays join the
+            core materialization under ``correction_`` names to preserve shared
+            Dask work without replacing stored boundary operands.
         use_bc: Include prepared boundary sensitivity.
         bc_prior: Optional boundary-scale prior, enabled only with ``use_bc``.
         bc_state_activity: Optional boundary active/fixed-state policy.
@@ -440,9 +446,18 @@ def materialize_co2_inputs(
         use_bc_mean_shift=bc_mean_shift_prior is not None,
     )
     backend_inputs = prepared.rhime_inputs
+    if boundary_correction is not None:
+        if use_bc:
+            raise ValueError("boundary_correction supplies physical BC; omit use_bc.")
+        boundary_correction, _ = xr.align(boundary_correction, prepared.inv_inputs.mf, join="exact", copy=False)
+        correction_arrays = boundary_correction.rename({name: f"correction_{name}" for name in boundary_correction.data_vars})
+        backend_inputs = replace(backend_inputs, inv_inputs=xr.merge(
+            [backend_inputs.inv_inputs, correction_arrays], join="exact", compat="equals", combine_attrs="override",
+        ))
+        names = (*names, *correction_arrays.data_vars)
     if isinstance(fixed_model_mismatch, xr.DataArray):
         fixed_model_mismatch, _ = xr.align(fixed_model_mismatch, prepared.inv_inputs["mf"], join="exact")
-        backend_inputs = replace(backend_inputs, inv_inputs=prepared.inv_inputs.assign(
+        backend_inputs = replace(backend_inputs, inv_inputs=backend_inputs.inv_inputs.assign(
             fixed_model_mismatch=fixed_model_mismatch,
         ))
         names = (*names, "fixed_model_mismatch")
@@ -479,6 +494,7 @@ def build_co2_from_materialized(
     likelihood_kwargs: Mapping[str, Any] | None = None,
     no_model_error: bool = False,
     use_bc: bool = False,
+    boundary_correction: xr.Dataset | None = None,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
     bc_freq: str | None = None,
@@ -504,6 +520,10 @@ def build_co2_from_materialized(
         model_inputs: Selected scientific arrays already materialized together.
         prepared_inputs: Preparation supplying aggregation mode and provenance.
         priors: Materialized prior parameters under their concrete graph names.
+        boundary_correction: Independent physical correction Dataset. It owns
+            its boundary data, widths and coefficient periods; omit use_bc and
+            other boundary choices. The builder materializes any remaining
+            borrowed correction operands with the core arrays.
         bc_freq: Optional model-owned frequency for raw boundary periods.
         bc_anchor_time: Optional timestamp anchoring raw boundary periods.
 
@@ -514,6 +534,8 @@ def build_co2_from_materialized(
         ValueError: If selected inputs or numerical priors remain lazy, or
             scientific components reject the supplied choices.
     """
+    if boundary_correction is not None and use_bc:
+        raise ValueError("boundary_correction supplies physical BC; omit use_bc.")
     prepared = prepared_inputs
     if use_bc and "H_bc_anomaly" in prepared.inv_inputs:
         if likelihood_builder is not None and likelihood_builder is not add_fixed_ou_gaussian_likelihood:
@@ -575,6 +597,7 @@ def build_co2_from_materialized(
         state_activity=_state_activity_from_inputs(model_inputs),
         boundary_sensitivity=model_inputs.get("H_bc") if use_bc and boundary_operands is None else None,
         boundary_operands=boundary_operands,
+        boundary_correction=boundary_correction,
         bc_freq=bc_freq,
         bc_anchor_time=bc_anchor_time,
         bc_prior=priors["bc"] if use_bc and bc_prior is not None else None,
@@ -612,6 +635,8 @@ def build_co2_from_materialized(
     if use_bc and "H_bc_anomaly" in model_inputs:
         variable_roles.pop("boundary_sensitivity", None)
         variable_roles.update(boundary_anomaly="H_bc_anomaly", boundary_mass="H_bc_mass", boundary_reference="bc_reference")
+    if boundary_correction is not None:
+        variable_roles.update(_boundary_correction_roles(model))
     if use_bc and bc_mean_shift_prior is None:
         variable_roles["boundary_scale"] = "bc"
     if bc_mean_shift_prior is not None:
@@ -652,7 +677,7 @@ def build_co2_from_materialized(
                 "prior": "correlated arithmetic-moment lognormal",
                 "no_model_error": no_model_error,
                 "use_bc": use_bc,
-                "boundary_formulation": "additive" if bc_mean_shift_prior is not None else "multiplicative" if use_bc else None,
+                "boundary_formulation": "independent_correction" if boundary_correction is not None else "additive" if bc_mean_shift_prior is not None else "multiplicative" if use_bc else None,
                 **({
                     "boundary_representation": "centered-v1",
                     "bc_frequency": bc_freq,

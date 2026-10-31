@@ -19,6 +19,7 @@ from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 from .co2_cached_sigma_runner import (
     _sampler_for_cached_graph,
 )
+from openghg_inversions.models.boundary_corrections import _boundary_correction_roles
 from openghg_inversions.models.boundary import require_centered_precision
 from .co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
 from .co2_o2_model import _validate_channel_baseline_options
@@ -41,6 +42,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     use_bc: Mapping[str, bool] | None = None,
+    boundary_correction: Mapping[str, xr.Dataset] | None = None,
     bc_mean_shift_prior_co2: PriorArgs | None = None,
     bc_mean_shift_prior_o2: PriorArgs | None = None,
     bc_anomaly_scale_co2: float | None = None,
@@ -100,6 +102,10 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             selecting a missing channel boundary fails.
         bc_prior: Channel-keyed dimensionless boundary-scale priors. Enabled
             channels use the ordinary CO2 boundary prior when omitted.
+        boundary_correction: Mapping of channel to independently prepared
+            physical level/pattern correction Dataset. Replaces the saved
+            boundary on selected channels; omit use_bc on those channels.
+            References, widths and periods remain channel-specific.
         bc_mean_shift_prior_co2: Optional scalar CO2 additive mean-shift prior,
             in its observation concentration units. Requires bc_anomaly_scale_co2
             and replaces that channel's multiplicative prior/activity.
@@ -165,6 +171,17 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     prepared = prepared_inputs
     boundaries = dict(getattr(prepared, "boundary_sensitivity", {}))
     operands = dict(prepared.boundary_operands)
+    for channel, response, weights in (
+        ("co2", boundary_correction_sensitivity_co2, bc_centering_weights_co2),
+        ("o2", boundary_correction_sensitivity_o2, bc_centering_weights_o2),
+    ):
+        if channel in (boundary_correction or {}) and (response is not None or weights is not None):
+            raise ValueError("Independent corrections replace weighted additive response/weights.")
+    for channel in (boundary_correction or {}):
+        if (use_bc or {}).get(channel, False):
+            raise ValueError("boundary_correction supplies physical BC; omit use_bc on that channel.")
+        boundaries.pop(channel, None)
+        operands.pop(channel, None)
     if use_bc is not None:
         if (
             not isinstance(use_bc, Mapping)
@@ -186,6 +203,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         offset_prior,
         offset_args,
         operands,
+        boundary_correction=boundary_correction,
         bc_mean_shift_prior_co2=bc_mean_shift_prior_co2,
         bc_mean_shift_prior_o2=bc_mean_shift_prior_o2,
         bc_anomaly_scale_co2=bc_anomaly_scale_co2,
@@ -208,6 +226,8 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             correction_inputs[f"{channel}_correction"] = correction
         if weights is not None:
             correction_inputs[f"{channel}_weights"] = weights
+    for channel, correction_prior in (boundary_correction or {}).items():
+        correction_inputs.update({f"{channel}_prior_{name}": value for name, value in correction_prior.data_vars.items()})
     if operands:
         require_centered_precision()
     materialized, boundaries, operands = _materialize_co2_o2_replay_inputs(
@@ -217,6 +237,12 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     boundary_correction_sensitivity_o2 = boundaries.pop("o2_correction", None)
     bc_centering_weights_co2 = boundaries.pop("co2_weights", None)
     bc_centering_weights_o2 = boundaries.pop("o2_weights", None)
+    if boundary_correction is not None:
+        boundary_correction = {
+            channel: xr.Dataset(
+                {name: boundaries.pop(f"{channel}_prior_{name}") for name in raw.data_vars}, attrs=raw.attrs,
+            ) for channel, raw in boundary_correction.items()
+        }
     observations, fixed, co2, o2, error = materialized
     cached = build_co2_o2_cached_sigma_model(
         observations=observations,
@@ -234,6 +260,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         boundary_operands=operands,
         bc_freq=bc_freq,
         bc_anchor_time=bc_anchor_time,
+        boundary_correction=boundary_correction,
         bc_mean_shift_prior_co2=bc_mean_shift_prior_co2,
         bc_mean_shift_prior_o2=bc_mean_shift_prior_o2,
         bc_anomaly_scale_co2=bc_anomaly_scale_co2,
@@ -248,6 +275,8 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         offset_args=offset_args,
     )
     metadata = _co2_o2_metadata(prepared, observations=observations)
+    if boundary_correction:
+        metadata.update(boundary_representation="centered-v1", independent_boundary_channels=list(boundary_correction))
     metadata.update(
         recipe="co2_o2_cached_sigma_fixed_ou",
         likelihood="joint Gaussian with fixed OU blocks by (species, site)",
@@ -281,12 +310,14 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             bc_frequency=bc_freq,
             bc_anchor_time=None if bc_anchor_time is None else str(bc_anchor_time),
         )
-    if boundaries or operands:
+    if boundaries or operands or boundary_correction:
         roles["boundary_concentration"] = "boundary_concentration"
     if offset_prior:
         roles["offset_concentration"] = "offset_concentration"
-    if boundaries or operands or offset_prior:
+    if boundaries or operands or boundary_correction or offset_prior:
         roles["baseline_concentration"] = "baseline_concentration"
+    for channel in (boundary_correction or {}):
+        roles.update(_boundary_correction_roles(cached.model, prefix=f"{channel}_"))
     _add_additive_boundary_roles(
         roles,
         metadata,

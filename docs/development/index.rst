@@ -12,6 +12,7 @@ See :doc:`specifications` for their ownership and delivery status.
    rhime_model_development
    affine_components
    boundary_offset_identifiability
+   bc_prior_implementation_replay_20261031
    specifications
    architecture_principles
    numerical_array_ownership

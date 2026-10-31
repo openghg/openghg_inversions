@@ -59,6 +59,9 @@ from openghg_inversions.inference.cached_sigma import PytensorMarginalQuadraticC
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
 
+from openghg_inversions.models.boundary_corrections import (
+    add_boundary_correction, correction_design, materialize_boundary_correction,
+)
 from openghg_inversions.models.additive_boundary import (
     add_centered_boundary,
     prepare_centered_boundary,
@@ -346,6 +349,7 @@ def build_co2_cached_sigma_model(
     state_activity: StateActivity | None = None,
     boundary_sensitivity: xr.DataArray | None = None,
     boundary_operands: xr.Dataset | None = None,
+    boundary_correction: xr.Dataset | None = None,
     bc_freq: str | None = None,
     bc_anchor_time: DatetimeLike | None = None,
     bc_prior: PriorArgs | None = None,
@@ -407,6 +411,11 @@ def build_co2_cached_sigma_model(
             boundary scaling.
         boundary_operands: Optional raw centered-v1 anomaly, mass and reference
             dataset; mutually exclusive with ``boundary_sensitivity``.
+        boundary_correction: Labelled independent level/pattern correction from
+            models.boundary_corrections.prepare_boundary_correction. Replaces
+            all other boundary options; its reference, widths and receptor-time
+            coefficient support are already resolved. No multiplicative state
+            is created. Physical outputs restore the reference once.
         bc_freq: Optional model-owned period for raw boundary inputs.
         bc_anchor_time: Optional origin for fixed-duration boundary periods.
         bc_prior: Optional prior for dimensionless boundary-scaling
@@ -457,6 +466,21 @@ def build_co2_cached_sigma_model(
             offset options are supplied without ``offset_prior``. Also raised
             for incompatible global-offset options.
     """
+    if boundary_correction is not None:
+        if any(value is not None for value in (
+            boundary_sensitivity, boundary_operands, bc_prior, bc_state_activity,
+            bc_mean_shift_prior, bc_anomaly_scale, boundary_correction_sensitivity,
+            bc_centering_weights, bc_freq, bc_anchor_time,
+        )):
+            raise ValueError("boundary_correction replaces other boundary inputs, priors and frequency options.")
+        # One PyMC boundary shares upstream work between transport and correction operands.
+        (
+            flux_sensitivity, fixed_prior_contribution, observations, observation_error, boundary_correction,
+        ) = dask_compute(
+            to_dense(flux_sensitivity), to_dense(fixed_prior_contribution), to_dense(observations),
+            to_dense(observation_error), boundary_correction.map(to_dense, keep_attrs=True),
+        )
+        boundary_correction = materialize_boundary_correction(boundary_correction, observations)
     if boundary_sensitivity is not None:
         boundary_sensitivity = bind_boundary_sensitivity(
             boundary_sensitivity,
@@ -702,6 +726,15 @@ def build_co2_cached_sigma_model(
             if boundary_operands is not None:
                 for operand_name in ("H_bc_anomaly", "H_bc_mass", "bc_reference"):
                     add_model_data(boundary_operands[operand_name], operand_name)
+        if boundary_correction is not None:
+            correction_result = add_boundary_correction(boundary_correction, output_dim=output_dim)
+            terms.append(_CachedAffineTerm(
+                term=correction_result.term,
+                fixed_contribution=boundary_correction.bc_prescribed_centered.values,
+                active_design=correction_design(boundary_correction),
+                coefficients=correction_result.coefficients,
+                sampled_rvs=correction_result.latents,
+            ))
         if offset_prior is not None:
             offset_result = _add_offset_component_result(
                 observations,
@@ -712,6 +745,10 @@ def build_co2_cached_sigma_model(
                 drop_first=offset_drop_first,
                 per_site=offset_per_site,
             )
+            if boundary_correction is not None and boundary_correction.attrs["level_support"] != "absent":
+                warn_boundary_offset_confounding(
+                    boundary_correction.bc_mass_response.values, drop_first=offset_drop_first,
+                )
             if additive_boundary is not None:
                 warn_boundary_offset_confounding(
                     additive_boundary.design[:, 0], drop_first=offset_drop_first,

@@ -146,9 +146,12 @@ class AdditiveBoundaryResult:
     """Absolute boundary output and the affine terms used by cached likelihoods.
 
     ``likelihood_contribution`` excludes ``reference_shift`` when numerical
-    centering is used. Coefficients contain the scalar mean and K−1 Gaussian
-    contrasts when their scale is positive; latents are the underlying sampled
-    PyMC variables.
+    centering is used. Coefficients match the consuming component's correction
+    design; latents are its underlying sampled PyMC variables. The weighted
+    component concatenates one scalar mean and its positive-scale Gaussian
+    contrasts. Independent level/pattern components can instead supply period
+    levels and dimensionless A coefficients; their labelled operators and
+    coefficient metadata own the units and support.
     """
 
     term: ConcentrationTerm

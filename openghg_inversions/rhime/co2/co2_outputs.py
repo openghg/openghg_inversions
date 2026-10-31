@@ -273,6 +273,11 @@ def reconstruct_co2_concentrations(trace: xr.DataTree, prepared: Co2PreparedInpu
         "flux_scale": "flux_scale",
         "active_flux_scale": "active_flux_scale",
         "boundary_scale": "boundary_scale",
+        "boundary_prescribed": "prescribed_boundary_concentration",
+        "boundary_level_contribution": "boundary_level_correction",
+        "boundary_pattern_contribution": "boundary_pattern_correction",
+        "boundary_level_coefficient": "boundary_level_coefficient",
+        "boundary_pattern_coefficient": "boundary_pattern_coefficient",
         "boundary_mean_shift": "boundary_mean_shift",
         "boundary_anomaly": "boundary_anomaly",
         "boundary_correction": "boundary_correction",
@@ -329,6 +334,8 @@ def reconstruct_co2_concentrations(trace: xr.DataTree, prepared: Co2PreparedInpu
     for name, value in output.data_vars.items():
         value.attrs = dict(value.attrs)
         value.attrs["units"] = (
+            value.attrs.get("units", observations.attrs["units"])
+            if "boundary_pattern_coefficient" in name else
             "1" if "flux_scale" in name or "boundary_scale" in name else observations.attrs["units"]
         )
     return output

@@ -168,6 +168,15 @@ likelihood, and sampled outputs.
 The location and scale parameters in ``offset_prior`` use the observations'
 concentration units.
 
+Independent level and prescribed-departure priors
+-------------------------------------------------
+
+For ``g delta``, ``g delta + A v`` and ``g delta + M Q z`` corrections with
+independent physical coefficients, see :doc:`boundary_pattern_priors`.
+That Python/data-artifact route also supports global or period-specific levels
+and receptor-time pattern coefficients, with one whole-window scalar reference.
+The existing weighted additive formulation below retains its original meaning.
+
 Common boundary mean and centred additive anomalies
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from openghg_inversions.inversion_inputs import DatetimeLike
 
+from dataclasses import replace
 from collections.abc import Mapping, Sequence
 import copy
 import json
@@ -37,6 +38,7 @@ from .co2_cached_sigma_model import (
     Co2CachedSigmaModel,
     build_co2_cached_sigma_model,
 )
+from openghg_inversions.models.boundary_corrections import _boundary_correction_roles
 from openghg_inversions.models.boundary import OPERAND_NAMES, require_centered_precision
 from .co2_model import _normalise_offset_args
 from .co2_preparation import Co2PreparedInputs
@@ -237,6 +239,7 @@ def build_rhime_co2_cached_sigma(
     site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     use_bc: bool = False,
+    boundary_correction: xr.Dataset | None = None,
     bc_freq: str | None = None,
     bc_anchor_time: DatetimeLike | None = None,
     bc_prior: PriorArgs | None = None,
@@ -257,6 +260,9 @@ def build_rhime_co2_cached_sigma(
             observation concentration units.
         initial_site_amplitudes: Positive scalar or site mapping in the same
             units; defaults to the prior support point.
+        boundary_correction: Explicit independent physical boundary correction
+            Dataset, saved separately from prepared inputs. Omit use_bc; its
+            widths, scalar reference and coefficient periods are already resolved.
         use_bc: Include prepared ordinary or centered boundary operands.
         bc_freq: Optional model-owned period for raw boundary inputs.
         bc_anchor_time: Optional origin for fixed-duration boundary periods.
@@ -283,6 +289,8 @@ def build_rhime_co2_cached_sigma(
         ValueError: If component options contradict one another, prepared
             arrays are invalid, or fixed OU mappings or parameters are invalid.
     """
+    if boundary_correction is not None and use_bc:
+        raise ValueError("boundary_correction supplies physical BC; omit use_bc.")
     if use_bc and "H_bc_anomaly" in prepared_inputs.inv_inputs:
         require_centered_precision()
     if not use_bc and (
@@ -303,7 +311,19 @@ def build_rhime_co2_cached_sigma(
         use_bc=use_bc,
         use_bc_mean_shift=bc_mean_shift_prior is not None,
     )
-    model_inputs = materialize_pymc_inputs(prepared.rhime_inputs, variable_names=names)
+    backend_inputs = prepared.rhime_inputs
+    if boundary_correction is not None:
+        boundary_correction, _ = xr.align(boundary_correction, prepared.inv_inputs.mf, join="exact", copy=False)
+        correction_arrays = boundary_correction.rename({name: f"correction_{name}" for name in boundary_correction.data_vars})
+        backend_inputs = replace(backend_inputs, inv_inputs=xr.merge(
+            [backend_inputs.inv_inputs, correction_arrays], join="exact", compat="equals", combine_attrs="override",
+        ))
+        names = (*names, *correction_arrays.data_vars)
+    model_inputs = materialize_pymc_inputs(backend_inputs, variable_names=names)
+    if boundary_correction is not None:
+        boundary_correction = model_inputs[[f"correction_{name}" for name in boundary_correction.data_vars]].rename(
+            {f"correction_{name}": name for name in boundary_correction.data_vars},
+        ).assign_attrs(boundary_correction.attrs)
     aggregation_error = resolve_aggregation_error(
         model_inputs,
         prepared.aggregation_error_mode,
@@ -335,6 +355,7 @@ def build_rhime_co2_cached_sigma(
         state_activity=cast(StateActivity | None, _state_activity_from_inputs(model_inputs)),
         boundary_sensitivity=boundary,
         boundary_operands=operands,
+        boundary_correction=boundary_correction,
         bc_freq=bc_freq,
         bc_anchor_time=bc_anchor_time,
         bc_prior=bc_prior,
@@ -414,6 +435,9 @@ def co2_cached_sigma_build_result(
             observation="y", boundary_concentration="mu_bc",
             boundary_anomaly="H_bc_anomaly", boundary_mass="H_bc_mass", boundary_reference="bc_reference",
         )
+    if "bc_prescribed_centered" in cached_model.model.named_vars:
+        metadata.update(boundary_formulation="independent_correction", boundary_representation="centered-v1")
+        variable_roles.update(_boundary_correction_roles(cached_model.model))
     if "bc" in cached_model.model.named_vars:
         metadata["boundary_formulation"] = "multiplicative"
         variable_roles["boundary_scale"] = "bc"
