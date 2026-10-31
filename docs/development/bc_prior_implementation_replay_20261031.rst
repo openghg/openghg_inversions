@@ -152,21 +152,22 @@ Local validation records 40 focused tests and 205 broader existing
 boundary, linked, replay and cached-likelihood tests passing on locked Python
 3.13. Changed-path Ruff and whitespace checks pass. The offline example runs.
 
-Cluster array 19861094 tested implementation revision ``fc75da5d``:
+Final compatibility validation passes in all three environments, each with
+5,097 passed, 8 skipped and 4 deselected:
 
-* Locked Python 3.12: 5,097 passed, 8 skipped, 4 deselected (43m40s job).
-* Locked Python 3.13: 5,097 passed, 8 skipped, 4 deselected (36m09s job).
-* Python 3.12 with OpenGHG devel: no failures before the one-hour time limit;
-  interrupted at 36% of the suite. This is not a passing full-suite result.
-* ``docs-full``, repository Ruff and ``borrowed-types`` completed successfully.
-  Rendered usage, API landing and module pages were inspected. New heading
-  and inline-literal warnings found in the build were corrected; regenerated
-  API pages are included.
-* Full typing failed on both candidate and parent PR 991: 142 versus 140
-  diagnostics. The two additions were the new module's untyped PyMC import
-  (the same missing third-party typing as existing modules) and an xarray
-  square-root return annotation. The latter was corrected using an
-  xarray-preserving expression.
+* Locked Python 3.12, array 19861094, revision ``fc75da5d`` (43m40s job).
+* Locked Python 3.13, array 19861094, revision ``fc75da5d`` (36m09s job).
+* Python 3.12 with OpenGHG devel and unlocked dependencies, array 19861886,
+  revision ``a6d4cfe2``. Eight partitions cover all 184 test files with 5,105
+  unique selected cases and no failures. Maximum partition runtime was
+  19m20s and maximum resident memory approximately 6.15 GiB.
+
+The unlocked environment resolved OpenGHG devel to ``b9a9d1f2`` (the same
+provider revision as the lock), with PyMC 6.3.2, PyTensor 3.3.6, NumPy 2.3.3,
+SciPy 1.15.3, xarray 2026.9.0 and pytest 9.2.0. The per-partition dependency
+receipts include the provider Git revision and interpreter. JUnit files and
+``summary.json`` are retained in
+``inversion_outputs/bc-prior-validation-20261031-r4``.
 
 Repeat quality job 19861319 at ``61e6e873`` passed ``docs-full``, repository
 Ruff and all four ``borrowed-types`` checks. The documentation has the same
@@ -174,31 +175,27 @@ Ruff and all four ``borrowed-types`` checks. The documentation has the same
 changed pages. Normalized Mypy comparison against the same parent confirms
 141 versus 140 diagnostics: only the new module's missing-PyMC-stubs diagnostic
 remains added. No inherited diagnostics were removed or suppressed. The job
-therefore exits nonzero for full Mypy; the xarray annotation error is resolved.
+therefore exits nonzero for full Mypy.
 
 Final report build 19861333 at ``28a45397`` also passed ``docs-full`` with the
 same 10 inherited warnings. Rendered concentration/flux comparison tables,
 equations, units and scientific qualifications were inspected.
 
-All three initial full-suite allocations reached approximately 8 GiB resident
-memory. Development-dependency retry 19861321 at ``61e6e873`` reached its
-three-hour limit at 55% of the suite and approximately 12 GiB resident memory.
-It reported one failure in
+The first sequential unlocked run stopped at 36% after one hour; the second
+stopped at 55% after three hours. They reached approximately 8 and 12 GiB
+resident memory respectively. The second reported one failure in
 ``test_installed_co2_stages_preserve_scientific_and_file_contracts``; the
 interruption occurred before pytest emitted its final failure traceback.
-This remains an incomplete, non-passing compatibility result.
+All six staged-workflow tests subsequently passed on both the candidate and
+parent PR 991 (array element 8). No assertions or model inputs were changed.
+The earlier failure did not recur; the lower memory use and completed runs
+are consistent with cumulative resource pressure in the sequential attempt,
+although its precise failure cause remains unconfirmed. The passing sharded
+run is the final compatibility evidence.
 
-The follow-up partitions all 184 test files into eight separate processes,
-preserving the normal selection policy and collecting JUnit results and
-resolved dependency versions. A ninth array element tests the staged-workflow
-module on parent PR 991 to distinguish a regression from environment or
-resource effects. This changes test execution only, without altering model
-inputs, priors or assertions. Results remain pending.
-
-The focused sampling
-job 19861096 was pinned to ``fc75da5d``. Subsequent documentation and
-calibration-expression fixes do not change its manifest-specified widths or
-model operators.
+The focused sampling job 19861096 was pinned to ``fc75da5d``. Subsequent
+documentation and calibration-expression fixes do not change its
+manifest-specified widths or model operators.
 
 Reproduction and cluster validation
 -----------------------------------
