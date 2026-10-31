@@ -14,6 +14,8 @@ from openghg_inversions.boundary_sensitivity import bind_boundary_sensitivity
 from openghg_inversions.array_ops import select_gathered_data_array, to_dense
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.biosphere_prior import BiospherePrior
+from openghg_inversions.models.biosphere import add_biosphere_state
 from openghg_inversions.models import (
     StateActivity,
     add_coherent_affine_component,
@@ -57,6 +59,7 @@ def build_co2_o2_cached_sigma_model(
     o2_sensitivity: xr.DataArray,
     aggregation_error: AggregationError,
     retained_prior: CorrelatedLognormalPrior,
+    biosphere_prior: BiospherePrior | None = None,
     independent_error_sd: xr.DataArray,
     tau_hours: float | Mapping[str, float],
     site_amplitude_prior: PriorArgs,
@@ -152,10 +155,9 @@ def build_co2_o2_cached_sigma_model(
         activity,
         output_dim=output_dim,
     )
-    active_prior = prepare_active_correlated_lognormal_prior(
-        activity,
-        retained_prior,
-        var_name="flux_scaling",
+    active_prior = (
+        prepare_active_correlated_lognormal_prior(activity, retained_prior, var_name="flux_scaling")
+        if biosphere_prior is None else None
     )
     factor, diagonal = aggregation_error_as_low_rank(aggregation_error)
     covariance = prepare_fixed_ou_low_rank(
@@ -167,10 +169,10 @@ def build_co2_o2_cached_sigma_model(
         site_labels=tuple(str(label) for label in site_coord.values),
     )
     with registered_model():
-        state = _add_prepared_correlated_lognormal_state_with_activity(
-            activity,
-            active_prior,
-            var_name="flux_scaling",
+        state = (
+            _add_prepared_correlated_lognormal_state_with_activity(activity, active_prior, var_name="flux_scaling")
+            if biosphere_prior is None else
+            add_biosphere_state(activity, retained_prior, biosphere_prior)
         )
         flux = apply_linear_sensitivity(
             prepared_flux,

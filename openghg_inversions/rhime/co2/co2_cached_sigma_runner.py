@@ -7,6 +7,7 @@ and coordinates the compound sampler for site amplitudes and model states.
 
 from __future__ import annotations
 
+from openghg_inversions.biosphere_prior import BiospherePrior
 from openghg_inversions.boundary_sensitivity import bind_boundary_sensitivity
 from openghg_inversions.inversion_inputs import DatetimeLike
 
@@ -223,6 +224,7 @@ def _annotate_cached_co2_trace(
 
 def build_rhime_co2_cached_sigma(
     *,
+    biosphere_prior: BiospherePrior | None = None,
     prepared_inputs: Co2PreparedInputs,
     tau_hours: float | Mapping[str, float],
     site_amplitude_prior: PriorArgs,
@@ -238,6 +240,8 @@ def build_rhime_co2_cached_sigma(
     """Materialize and build the matched cached fixed-OU graph without sampling.
 
     Args:
+        biosphere_prior: Optional explicit calibration against the existing retained prior;
+            omission preserves existing behavior.
         prepared_inputs: Validated CO2 inputs with observation-aligned site and
             time coordinates and the selected aggregation-error representation.
         tau_hours: Fixed OU decorrelation time in hours, as a scalar or a
@@ -298,6 +302,7 @@ def build_rhime_co2_cached_sigma(
     cached_model = build_co2_cached_sigma_model(
         model_inputs["H"],
         retained_prior=retained_prior,
+        biosphere_prior=biosphere_prior,
         fixed_prior_contribution=model_inputs["fixed_prior_contribution"],
         observations=model_inputs["mf"],
         observation_error=model_inputs["mf_error"],
@@ -339,10 +344,11 @@ def co2_cached_sigma_build_result(
     Returns:
         Model build result with scientific roles and serializable provenance.
     """
+    biosphere_prior = getattr(cached_model.model, "biosphere_prior", None)
     metadata = {
         "recipe": "co2",
         "kind": "builtin",
-        "prior": "correlated arithmetic-moment lognormal",
+        "prior": biosphere_prior.data.attrs["family"] if biosphere_prior is not None else "correlated arithmetic-moment lognormal",
         "mismatch_component": "fixed_within_site_ou",
         "basis_artifact_source": getattr(
             prepared_inputs,
