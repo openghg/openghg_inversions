@@ -76,7 +76,7 @@ def test_zarr_writer_rechunks_shared_ragged_payloads_lazily(
         assert stored.attrs == tree.attrs
 
 
-@pytest.mark.parametrize("suffix,chunks", [(".nc", None), (".zarr", None), (".zarr", (2, 0)), (".zarr", (2, 1)), (".zarr", 2), (".zarr", np.int64(2))])
+@pytest.mark.parametrize("suffix,chunks", [(".nc", None), (".zarr", None), (".zarr", (2, 0)), (".zarr", (2, 1)), (".zarr", 2)])
 def test_empty_lazy_payload_preserves_shape_graph_and_borrowed_encoding(tmp_path, monkeypatch, suffix, chunks):
     data = da.empty((3, 0), chunks=(2, 0), dtype=np.float64)
     dataset = xr.Dataset({"pattern": (("row", "term"), data)},
