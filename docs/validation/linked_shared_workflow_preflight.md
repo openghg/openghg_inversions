@@ -43,8 +43,10 @@ resolved symlink targets retain their previous protection.
 The first bounded follow-up run passed 32 linked persistence, configuration-owner
 and acquisition cases. The replacement cases use the existing no-inference
 fixture to forbid model/sampler construction. Eight focused replacement and
-directory-containment cases then passed. Python 3.12/3.13 tox validation is
-pending the registered Slurm run.
+directory-containment cases then passed. The registered prerequisite Slurm run 19885936 completed with exit code 0:
+390 tests passed on Python 3.12 and 390 on Python 3.13. Its batch MaxRSS was
+4,414,248 KiB (about 4.2 GiB). This earlier worktree run precedes the final
+immutable integration snapshot.
 
 An independent gpt-6.1-sol high-effort review identified the during-inference
 identity and nested-Zarr-output cases; both were addressed with regressions.
@@ -92,3 +94,10 @@ The earlier configuration validation job 19885280 failed five tests due to
 obsolete test doubles/imports. Its corrective job 19885522 passed all 45 affected
 tests on Python 3.12 and 3.13. The prerequisite job 19885936 is tracked separately;
 it precedes the complete integration and is not a substitute for final checks.
+
+Final integration validation remains tracked by immutable-source job 19886130
+and synthetic control array 19886136, both submitted from commit
+`4df5eede2b82e760aaf6223272c387891fc7aa4e`. At the prerequisite wakeup, the
+former was running and the latter was pending with ordinary Priority scheduling.
+Their durable terminal callbacks remain armed; no final results are inferred
+from the successful prerequisite run.
