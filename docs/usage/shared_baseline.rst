@@ -134,6 +134,10 @@ consume the same frozen mean. They retain existing observation-error and
 aggregation-error policies. This separate recipe currently supports CO2;
 linked CO2/O2 construction is outside its supported interface.
 
+The separate :doc:`linked_shared_baseline` Python recipe supplies the linked
+counterpart with one joint flux state and independent atmospheric levels per
+tracer. It initially supports fixed and multiplicative outer choices.
+
 The :doc:`configured saved-prior workflow <configured_co2_priors>` supplies
 explicit preparation choices, artifact save/load helpers and a builder using
 the existing CO2 likelihood configuration syntax.
