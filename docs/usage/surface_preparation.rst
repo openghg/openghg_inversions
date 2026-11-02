@@ -153,8 +153,9 @@ For a user-declared point-sample input contract:
        retrieval_padding="6h",
    )
 
-Pass this object to ``prepare_surface_site``, ``acquire_surface_data`` or
-``MergedData.from_options`` with ``surface_transport`` selected. ``linear``
+Pass ``boundary_temporal_policy=point_policy`` with ``transport=...`` to
+``prepare_surface_site`` or ``acquire_surface_data``. For
+``MergedData.from_options``, pass it with ``surface_transport=...``. ``linear``
 interpolates each native concentration field between enclosing samples before
 particle contraction. ``nearest`` selects the nearest field, choosing the later
 timestamp on an exact tie. Both reject requests outside the source timestamp
