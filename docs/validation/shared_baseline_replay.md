@@ -247,7 +247,11 @@ results at the reported Monte Carlo precision.
 ### Physical inner-flux reproduction and exception
 
 The physical inner reporting functionals use the unchanged coherent signed
-flux map over the agreed inner PARIS domain for July 2021. Values are
+flux map over the corrected raw-PARIS-derived inner scoring domain for July
+2021: 23,406 cells, separate from the 114,563-cell full native transport support.
+The corrected mask equals the complement of the six frozen outer basis labels
+for every source. It is not interchangeable with the historical 23,572-cell
+mask in the older four-site conditional linked artifact. Values are
 annualized Tg CO2/year. Here the comparator is the accepted r3 posterior mean,
 not raw WUR flux truth; this section tests implementation reproduction rather
 than flux recovery. GPP, TER, fossil, ocean and net biosphere functionals are
