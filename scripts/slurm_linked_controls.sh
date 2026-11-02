@@ -2,7 +2,7 @@
 #SBATCH --job-name=ogi-linked-controls
 #SBATCH --time=00:45:00
 #SBATCH --cpus-per-task=2
-#SBATCH --mem=8G
+#SBATCH --mem=4G
 #SBATCH --array=0-4
 #SBATCH --output=inversion_outputs/linked-controls/slurm-%A_%a.out
 set -euo pipefail
@@ -26,4 +26,4 @@ python_bin=${OGI_PYTHON:-$repo_root/.venv/bin/python}
 export PYTHONPATH="$repo_root${PYTHONPATH:+:$PYTHONPATH}"
 "$python_bin" examples/shared_baseline/linked_workflow.py \
     --output-dir "inversion_outputs/linked-controls/${SLURM_ARRAY_JOB_ID:-$SLURM_JOB_ID}/$mode-$likelihood" \
-    --mode "$mode" --likelihood "$likelihood" --draws 250 --tune 250
+    --mode "$mode" --likelihood "$likelihood" --draws 1000 --tune 1000

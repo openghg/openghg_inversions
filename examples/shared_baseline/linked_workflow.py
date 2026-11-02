@@ -131,7 +131,7 @@ def synthetic_linked_inputs(*, injected_baseline: bool = False, fixed_outer_trut
 
 
 def prepare_control(*, injected_baseline=False, mode="multiplicative"):
-    """Freeze one complete native control without fitting or selecting rows."""
+    """Freeze native operators and generate targets with the reviewed shared recipe."""
     from openghg_inversions.biosphere_prior import calibrate_biosphere_prior
     from openghg_inversions.rhime.co2 import BoundaryCorrectionConfig, prepare_linked_shared_inputs
 
@@ -148,13 +148,34 @@ def prepare_control(*, injected_baseline=False, mode="multiplicative"):
                                  attrs={"units": "kg/year"})
         calibration = calibrate_biosphere_prior(linked.retained_prior, biosphere=sampled,
                                                weights=weights, reference=reference, residual_sd_multiplier=.5)
-    return prepare_linked_shared_inputs(
+    prepared = prepare_linked_shared_inputs(
         linked, boundary={name: BoundaryCorrectionConfig("level", level_sd=(1., "ppm"))
                           for name in ("co2", "o2")},
         outer=outer, sampled_outer=sampled, mode=mode,
         delta_sd={name: xr.DataArray(1., attrs={"units": "ppm"}) for name in ("co2", "o2")},
         calibrated_prior=calibration,
     )
+    from dataclasses import replace
+    from openghg_inversions.rhime.co2 import reconstruct_linked_shared_baseline
+
+    # Raw surface data above establish transport/support. Generate synthetic
+    # concentration targets after freezing the full-support atmospheric means.
+    truth = xr.DataArray(TRUTH, dims="state", coords={"state": STATE_LABELS})
+    selected = prepared.shared_baseline["co2"].state
+    coefficients = xr.Dataset({"flux_scaling": truth.sel(state=selected)})
+    for channel, delta in (("co2", .35), ("o2", -.45)):
+        coefficients[f"{channel}_bc_level"] = xr.DataArray(
+            [delta if injected_baseline else 0.], dims=f"{channel}_bc_level_term",
+        )
+    native = reconstruct_linked_shared_baseline(prepared.shared_baseline, coefficients)
+    targets = np.empty(prepared.observations.size, dtype=np.float64)
+    for channel, values in native.items():
+        positions = np.flatnonzero(prepared.observations.species.values == channel)
+        row = prepared.shared_baseline[channel].attrs["native_observation_dim"]
+        labels = prepared.observations.channel_observation.values[positions]
+        targets[positions] = values.modelled_concentration.sel({row: labels}).compute().values
+    return replace(prepared, observations=prepared.observations.copy(data=targets),
+                   provenance={**prepared.provenance, "synthetic_target_generator": "reviewed linked shared-baseline reconstruction"})
 
 
 def run_control(output_dir, *, injected_baseline=False, mode="multiplicative", likelihood="fixed_independent", draws=250, tune=250):
@@ -189,11 +210,25 @@ def run_control(output_dir, *, injected_baseline=False, mode="multiplicative", l
     products = postprocess(samples, output=Co2O2OutputOptions(output_path=destination / "products",
                                                            output_name="synthetic", save_concentrations=True))
     posterior = products.idata["posterior"]
+    from openghg_inversions.inference.diagnostics import posterior_summary
+    names = ["flux_scaling", "co2_bc_level", "o2_bc_level"]
+    if "ou_site_amplitude" in posterior:
+        names.append("ou_site_amplitude")
+    diagnostics = posterior_summary(posterior.to_dataset()[names])
     baseline_truth = {"co2": .35, "o2": -.45} if injected_baseline else {"co2": 0., "o2": 0.}
     report = {"control": "injected" if injected_baseline else "zero", "outer_mode": mode, "likelihood": likelihood,
               "baseline_truth_ppm": baseline_truth, "positive_flux_truth": dict(zip(STATE_LABELS, TRUTH.tolist(), strict=True)),
               "baseline_posterior_mean_ppm": {name: float(posterior[f"{name}_bc_level"].mean()) for name in ("co2", "o2")},
               "physical_flux_posterior_mean": products.outputs["state_scaling"].flux_scale_posterior.mean(("chain", "draw")).values.tolist()}
+    report["baseline_95pct_interval_ppm"] = {
+        name: np.quantile(posterior[f"{name}_bc_level"].values, [.025, .975]).tolist()
+        for name in ("co2", "o2")
+    }
+    report["diagnostics"] = {
+        "max_rhat": max(float(value.sel(metric="r_hat").max()) for value in diagnostics.data_vars.values()),
+        "min_ess_bulk": min(float(value.sel(metric="ess_bulk").min()) for value in diagnostics.data_vars.values()),
+        "divergences": int(products.idata["sample_stats"].diverging.sum()),
+    }
     (destination / "recovery.json").write_text(json.dumps(report, indent=2) + "\n")
     return report
 

@@ -101,3 +101,35 @@ and synthetic control array 19886136, both submitted from commit
 former was running and the latter was pending with ordinary Priority scheduling.
 Their durable terminal callbacks remain armed; no final results are inferred
 from the successful prerequisite run.
+
+
+## Initial synthetic array and target correction
+
+Array 19886136 completed all five tasks, each executing zero and injected
+controls through preparation, configured sampling, saved trace reopening and
+product export. Peak batch RSS ranged from 621,700 to 1,122,020 KiB. All ten
+fits reported zero divergences, but several 250-draw chains reported elevated
+R-hat or low effective sample size. These are execution checks, not convergence
+acceptance.
+
+Review of recovery summaries exposed an example target error. Its initial
+observations were raw physical source totals, while the shared recipe subtracts
+the frozen outer departure means. The multiplicative zero case consequently
+estimated atmospheric deltas of about -0.167 ppm CO2 and +0.190 ppm O2 instead
+of the stated zero. The injected-minus-zero estimates were about +0.351 ppm and
+-0.447 ppm, consistent with the intended +0.35/-0.45 ppm injections; the offset
+came from the target definition.
+
+The example now uses the reviewed graph-free shared reconstructor to generate
+synthetic concentrations at the known selected positive flux truth and the
+stated atmospheric deltas, after freezing native support and transport. Three
+regressions check the zero forward target and exact injected shifts for all
+outer modes. The updated preparation/template suite passed 54 tests. Independent
+read-only review cleared this example correction; production model mathematics
+and calibration are unchanged.
+
+A replacement immutable-snapshot control array uses 1000 tuning and 1000 retained
+draws per chain and records baseline intervals, divergences, R-hat and effective
+sample sizes through the maintained saved-trace diagnostics operation. Its 4 GiB
+request is based on the first array's measured peak below 1.1 GiB. This record
+will distinguish the corrected controls from the initial target-definition run.

@@ -166,3 +166,28 @@ def test_rejects_disagreeing_native_site_references(inputs):
     ))
     with pytest.raises(ValueError, match="one agreed scalar bc_reference"):
         assemble((co2, o2), prepared)
+
+
+@pytest.mark.parametrize("mode", ["fixed", "multiplicative", "multiplicative_shrunk"])
+def test_shared_control_targets_use_frozen_atmospheric_recipe(mode):
+    import pytensor
+    from openghg_inversions.rhime.co2 import reconstruct_linked_shared_baseline
+    from openghg_inversions.array_ops import select_gathered_data_array
+
+    with pytensor.config.change_flags(floatX="float64"):
+        zero = _example.prepare_control(mode=mode)
+        injected = _example.prepare_control(mode=mode, injected_baseline=True)
+    truth = xr.DataArray(_example.TRUTH, dims="state", coords={"state": _example.STATE_LABELS})
+    coefficients = xr.Dataset({"flux_scaling": truth.sel(state=zero.shared_baseline["co2"].state)})
+    for channel in ("co2", "o2"):
+        coefficients[f"{channel}_bc_level"] = xr.DataArray([0.], dims=f"{channel}_bc_level_term")
+    expected = reconstruct_linked_shared_baseline(zero.shared_baseline, coefficients)
+    for channel, delta in (("co2", .35), ("o2", -.45)):
+        def native(array):
+            return select_gathered_data_array(array, key=channel, key_dim="species",
+                ragged_dim="channel_observation", stack_dim="observation").rename(
+                    observation=zero.shared_baseline[channel].attrs["native_observation_dim"])
+        xr.testing.assert_allclose(native(zero.observations), expected[channel].modelled_concentration,
+                                   rtol=0, atol=1e-10)
+        np.testing.assert_allclose(native(injected.observations) - native(zero.observations), delta,
+                                   rtol=0, atol=1e-10)
