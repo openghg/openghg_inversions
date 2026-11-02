@@ -106,13 +106,16 @@ def _decode_serialized_bool(value: object, name: str) -> bool:
     raise ValueError(f"Serialized {name} must be Boolean or integer 0/1")
 
 
-def _json_value(value: Any, *, materialize_dataarrays: bool = False) -> Any:
+def _json_value(
+    value: Any, *, materialize_dataarrays: bool = False, require_string_keys: bool = False,
+) -> Any:
     """Convert supported metadata to JSON values without implicit lazy execution.
 
     NumPy dates and durations retain their string meaning at every precision;
     arrays become nested lists. Paths, dates, times and durations become strings,
     and slices retain their bounds in a mapping. Unsupported objects raise
     ``TypeError`` instead of being stringified. Bare Dask arrays are unsupported.
+    ``require_string_keys=True`` rejects non-string mapping keys before projection.
 
     ``materialize_dataarrays=True`` opts into an eager serialization boundary:
     DataArrays are computed and encoded with dimensions, dimension coordinates
@@ -120,7 +123,9 @@ def _json_value(value: Any, *, materialize_dataarrays: bool = False) -> Any:
     """
 
     def convert(item: Any) -> Any:
-        return _json_value(item, materialize_dataarrays=materialize_dataarrays)
+        return _json_value(
+            item, materialize_dataarrays=materialize_dataarrays, require_string_keys=require_string_keys,
+        )
 
     if isinstance(value, np.datetime64 | np.timedelta64):
         return str(value)
@@ -148,6 +153,8 @@ def _json_value(value: Any, *, materialize_dataarrays: bool = False) -> Any:
     if isinstance(value, Mapping):
         result = {}
         for key, item in value.items():
+            if require_string_keys and not isinstance(key, str):
+                raise ValueError("JSON mappings require string keys")
             converted_key = convert(key)
             if converted_key is not None and not isinstance(converted_key, str | bool | int | float):
                 raise TypeError(f"Unsupported JSON mapping key type: {type(key).__name__}")

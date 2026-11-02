@@ -16,10 +16,23 @@ from openghg_inversions._serialization_codecs import (
     _decode_serialized_bool,
     _decode_tagged_json_value,
     _encode_tagged_json_value,
+    _json_value,
     _numpy_scalar_json_default,
 )
 from openghg_inversions.source_covariance import IndependentSourceCovariance
 from openghg_inversions.serialization import decode_cf_multiindexes, encode_cf_multiindexes, save_datatree
+
+
+@pytest.mark.parametrize("wrap", [lambda value: np.array(value, dtype=object), lambda value: slice(value)])
+def test_json_projection_string_key_policy_reaches_nested_values(wrap):
+    value = wrap({1: "integer evidence", "1": "string evidence"})
+    with pytest.raises(ValueError, match="string keys"):
+        _json_value(value, require_string_keys=True)
+    projected = {"1": "string evidence"}
+    assert _json_value(value) == (
+        {"type": "slice", "start": None, "stop": projected, "step": None}
+        if isinstance(value, slice) else projected
+    )
 
 
 @pytest.mark.parametrize("storage_chunks", [None, 2, (2,)])

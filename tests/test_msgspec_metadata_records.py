@@ -180,6 +180,30 @@ def test_finite_json_and_explicit_numpy_temporal_policy(tmp_path):
         decode_record(b'{"metadata": {"invalid": NaN}}', OutputContractRecord)
 
 
+@pytest.mark.parametrize("boundary", ["convert", "encode"])
+@pytest.mark.parametrize("data", [
+    {"evidence": {1: "integer evidence", "1": "string evidence"}},
+    {"evidence": [{1: "integer evidence", "1": "string evidence"}]},
+    {"evidence": ({1: "integer evidence", "1": "string evidence"},)},
+    {"evidence": {None: "non-string key without a collision"}},
+])
+def test_raw_metadata_keys_are_rejected_before_projection(boundary, data):
+    raw = {
+        "schema": "openghg_inversions.standard.prepare", "schema_version": 1,
+        "producer": "openghg_inversions", "family": "standard", "stage": "prepare",
+        "prepared_inputs": "prepared-inputs.nc", "data": {}, "basis_artifact_source": None,
+    }
+    record = convert_record(raw, PreparationRecord)
+    record.data.update(data)
+    raw["data"] = data
+    with pytest.raises(ValueError, match="string keys"):
+        if boundary == "convert":
+            convert_record(raw, PreparationRecord)
+        else:
+            encode_record(record)
+    assert record.data == data
+
+
 @pytest.mark.parametrize("field,value", [
     ("variable_roles", {}),
     ("supported_output_formats", ["inv_out"]),

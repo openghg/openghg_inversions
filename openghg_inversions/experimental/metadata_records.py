@@ -167,13 +167,13 @@ RecordT = TypeVar("RecordT", bound=Record)
 
 
 def convert_record(value: Mapping[str, Any], record_type: type[RecordT]) -> RecordT:
-    """Project metadata scalars, reject nonfinite values, then validate strictly.
+    """Require string keys, project metadata scalars, then validate finite JSON strictly.
 
     The existing metadata projection gives NumPy scalars and temporal values
     the same wire meaning as the public writers. Xarray and Dask inputs are
     rejected here; numerical priors must arrive as #873 data references.
     """
-    finite = _copy_json_mapping(_json_value(value), "metadata record")
+    finite = _copy_json_mapping(_json_value(value, require_string_keys=True), "metadata record")
     # Fixed-type msgspec conversion otherwise supplies an omitted union tag.
     tag_field = record_type.__struct_config__.tag_field
     if tag_field is not None and tag_field not in finite:
