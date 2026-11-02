@@ -76,6 +76,12 @@ def main() -> None:
     args = parser.parse_args()
     with xr.open_dataset(args.input) as source:
         data = source.load()
+    # The summary reports RMSE in ppm; validate inputs once before fitting.
+    for name in ("H", "observations", "observation_error", "fixed_prior_contribution"):
+        if data[name].attrs.get("units") != "ppm":
+            raise ValueError(f"{name} must declare units='ppm'; convert inputs before running the probe.")
+    if not data.reference_flux.attrs.get("units"):
+        raise ValueError("reference_flux must declare its functional units.")
     if args.information_only:
         args.output.mkdir(parents=True, exist_ok=True)
         (args.output / "information.json").write_text(json.dumps(information(data), indent=2) + "\n")
@@ -135,8 +141,9 @@ def main() -> None:
         "FF": contributions.sel(flux_state="FF", drop=True),
         "net_biosphere": contributions.sel(flux_state=["GPP", "TER"]).sum("flux_state"),
     })
+    functionals.attrs.update(data.reference_flux.attrs)
     functionals.attrs["interpretation"] = (
-        "Full-domain July-weighted template functionals; Gaussian biosphere template weights are signed, "
+        "Template functionals over the input reference_flux support; Gaussian biosphere template weights are signed, "
         "not independently inferred physical gross fluxes."
     )
     functionals.to_netcdf(out / "functionals.nc")

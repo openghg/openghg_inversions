@@ -183,6 +183,9 @@ def add_biosphere_state(
         log_scales = pt.set_subtensor(log_scales[g], q + 0.5 * np.log(t0 / g0) - contrast)
         log_scales = pt.set_subtensor(log_scales[t], q + 0.5 * np.log(g0 / t0) + contrast)
         total_gross = pt.sqrt(net**2 + 4.0 * geometric_gross**2)
+        # q = (log(alpha_GPP) + log(alpha_TER))/2 and total_gross = G0*alpha_GPP + T0*alpha_TER.
+        # |d(log(alpha_GPP), log(alpha_TER))/d(net, q)| = 2/total_gross;
+        # net_sd, q_sd and the other log_sd terms map standardized coordinates to all log scales.
         log_jacobian = np.log(2.0 * net_sd * q_sd) - pt.log(total_gross) + np.log(log_sd[other]).sum()
         pm.Potential(
             "induced_lognormal_prior",
