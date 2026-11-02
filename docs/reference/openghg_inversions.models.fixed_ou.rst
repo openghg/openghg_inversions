@@ -1,0 +1,6 @@
+openghg\_inversions.models.fixed\_ou
+====================================
+
+.. automodule:: openghg_inversions.models.fixed_ou
+   :members:
+   :show-inheritance:

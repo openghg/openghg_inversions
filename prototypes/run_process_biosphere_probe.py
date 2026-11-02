@@ -105,7 +105,8 @@ def main() -> None:
     ).sample(model)
     elapsed = time.perf_counter() - start
     trace.to_netcdf(out / "posterior.nc")
-    state = trace.posterior.flux_scaling
+    posterior = trace["posterior"].to_dataset()
+    state = posterior.flux_scaling
     truth = data.truth_scaling.sel(scenario=args.scenario, drop=True)
     weights = data.reference_flux
     functionals = {}
@@ -132,9 +133,9 @@ def main() -> None:
             "ess_bulk": float(az.ess(functionals[[name]], method="bulk")[name]),
         }
     variable_names = ["flux_scaling"] + (["shared_log_sd"] if mode == "hierarchical" else [])
-    max_rhat = float(az.rhat(trace, var_names=variable_names).to_array().max())
-    min_ess = float(az.ess(trace, var_names=variable_names, method="bulk").to_array().min())
-    min_tail_ess = float(az.ess(trace, var_names=variable_names, method="tail").to_array().min())
+    max_rhat = float(az.rhat(posterior, var_names=variable_names).to_array().max())
+    min_ess = float(az.ess(posterior, var_names=variable_names, method="bulk").to_array().min())
+    min_tail_ess = float(az.ess(posterior, var_names=variable_names, method="tail").to_array().min())
     max_rhat = max(max_rhat, max(value["rhat"] for value in summaries.values()))
     min_ess = min(min_ess, min(value["ess_bulk"] for value in summaries.values()))
     divergences = int(trace.sample_stats.diverging.sum())

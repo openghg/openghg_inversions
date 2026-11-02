@@ -1,0 +1,6 @@
+openghg\_inversions.boundary\_sensitivity
+=========================================
+
+.. automodule:: openghg_inversions.boundary_sensitivity
+   :members:
+   :show-inheritance:

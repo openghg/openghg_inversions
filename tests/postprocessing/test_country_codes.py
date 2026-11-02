@@ -92,6 +92,16 @@ def test_country_info_list_modes(country_code, expected):
     assert list(country_list) == expected
 
 
+def test_country_info_list_country_code_can_change_after_construction():
+    country_list = CountryInfoList(["United States", "Ocean"], country_code="alpha2")
+
+    assert list(country_list) == ["US", "Ocean"]
+    country_list.country_code = "alpha3"
+    assert list(country_list) == ["USA", "Ocean"]
+    country_list.country_code = None
+    assert list(country_list) == ["United States", "Ocean"]
+
+
 def test_country_info_list_decodes_numpy_bytes_labels():
     """Country labels loaded as numpy bytes are decoded before code lookup."""
     country_list = CountryInfoList([np.bytes_("China"), np.bytes_("Ocean")], country_code="alpha3")

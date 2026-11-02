@@ -3,7 +3,6 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from openghg_inversions.hbmcmc.inversionsetup import monthly_bcs, create_bc_sensitivity
 from openghg_inversions.boundary_sensitivity import BoundaryAlignment
 
 # -------------------------
@@ -32,14 +31,6 @@ def _make_H_bc(*, bc_regions, times: pd.DatetimeIndex) -> xr.DataArray:
     )
 
 
-def _make_fp_data(site: str, H_bc: xr.DataArray) -> dict:
-    """
-    Old inversionsetup functions expect fp_data[site]["H_bc"] dims (bc_region, time).
-    """
-    ds = xr.Dataset({"H_bc": H_bc.transpose("bc_region", "time")})
-    return {site: ds}
-
-
 def _period_index_from_edges(times: pd.DatetimeIndex, edges: pd.DatetimeIndex) -> np.ndarray:
     """
     Assign each time to a bin m where edges[m] <= t < edges[m+1].
@@ -66,13 +57,6 @@ def _expand_Hbc_by_period(H_bc: xr.DataArray, *, period_index: np.ndarray, nperi
             mask = period_index == p
             out[r * nperiod + p, mask] = H[r, mask]
     return out
-
-
-def _monthly_edges(start_date: str, end_date: str) -> pd.DatetimeIndex:
-    """
-    Month-start edges for correct monthly binning.
-    """
-    return pd.date_range(start_date, end_date, freq="MS")
 
 
 def _monthly_period_index_like_transform(times: pd.DatetimeIndex) -> tuple[np.ndarray, int]:
@@ -104,19 +88,6 @@ def _freq_edges_old_create_bc(start_date: str, end_date: str, freq: str) -> pd.D
         pd.to_datetime(end_date) + pd.DateOffset(days=dys),
         freq=freq,
     )
-
-
-# -------------------------
-# Dead parameter/time checks
-# -------------------------
-
-
-def find_all_zero_rows(Hmbc: np.ndarray, *, atol=0.0) -> np.ndarray:
-    return np.where(np.nanmax(np.abs(Hmbc), axis=1) <= atol)[0]
-
-
-def find_all_zero_cols(Hmbc: np.ndarray, *, atol=0.0) -> np.ndarray:
-    return np.where(np.nanmax(np.abs(Hmbc), axis=0) <= atol)[0]
 
 
 def report_dead_bc_periods(H_bc_expanded: xr.DataArray, *, atol=0.0) -> xr.Dataset:
@@ -153,91 +124,6 @@ MONTH_CASES = [
     dict(start_date="2019-01-01", end_date="2019-03-10", start_offset_hours=6),
     dict(start_date="2019-01-01", end_date="2019-03-10", start_offset_hours=24 * 31 + 6),
 ]
-
-
-# ============================================================================
-# OLD FUNCTIONS: regression tests (they do what they do)
-# ============================================================================
-
-
-@pytest.mark.parametrize("bc_regions", BC_REGIONS_CASES)
-@pytest.mark.parametrize("case", MONTH_CASES)
-def test_monthly_bcs_matches_reference(bc_regions, case):
-    """
-    Regression for old monthly_bcs: matches edge-binning reference.
-    """
-    site = "MHD"
-    times = _make_time_index(
-        case["start_date"], case["end_date"], freq="12h", start_offset_hours=case["start_offset_hours"]
-    )
-    H_bc = _make_H_bc(bc_regions=bc_regions, times=times)
-    fp_data = _make_fp_data(site, H_bc)
-
-    hmbc = monthly_bcs(case["start_date"], case["end_date"], site, fp_data)
-
-    edges = _monthly_edges(case["start_date"], case["end_date"])
-    nperiod = len(edges) - 1
-    period_index = _period_index_from_edges(times, edges)
-    ref = _expand_Hbc_by_period(H_bc, period_index=period_index, nperiod=nperiod)
-
-    assert hmbc.shape == ref.shape
-    np.testing.assert_allclose(hmbc, ref, rtol=0, atol=0)
-
-
-@pytest.mark.parametrize("bc_regions", BC_REGIONS_CASES)
-@pytest.mark.parametrize("case", MONTH_CASES)
-@pytest.mark.xfail(
-    reason="Old monthly_bcs can produce dead BC params/periods in corner cases; keep as evidence.",
-    strict=False,
-)
-def test_monthly_bcs_has_no_dead_rows_or_cols(bc_regions, case):
-    """
-    Evidence test: old monthly_bcs SHOULD ideally have no dead rows/cols,
-    but currently can fail. Marked xfail.
-    """
-    site = "MHD"
-    times = _make_time_index(
-        case["start_date"], case["end_date"], freq="12h", start_offset_hours=case["start_offset_hours"]
-    )
-    H_bc = _make_H_bc(bc_regions=bc_regions, times=times)
-    fp_data = _make_fp_data(site, H_bc)
-
-    hmbc = monthly_bcs(case["start_date"], case["end_date"], site, fp_data)
-
-    assert len(find_all_zero_rows(hmbc)) == 0
-    assert len(find_all_zero_cols(hmbc)) == 0
-
-
-@pytest.mark.parametrize("bc_regions", BC_REGIONS_CASES)
-@pytest.mark.parametrize("freq", ["8D", "12H"])
-@pytest.mark.parametrize("start_offset_hours", [0, 6])
-def test_create_bc_sensitivity_matches_reference(bc_regions, freq, start_offset_hours):
-    """
-    Regression for old create_bc_sensitivity: matches old edge logic reference.
-    """
-    site = "MHD"
-    start_date = "2019-01-01"
-    end_date = "2019-03-10"
-
-    time_freq = "6h" if freq.upper().endswith("H") else "12h"
-    times = _make_time_index(start_date, end_date, freq=time_freq, start_offset_hours=start_offset_hours)
-    H_bc = _make_H_bc(bc_regions=bc_regions, times=times)
-    fp_data = _make_fp_data(site, H_bc)
-
-    hmbc = create_bc_sensitivity(start_date, end_date, site, fp_data, freq=freq)
-
-    edges = _freq_edges_old_create_bc(start_date, end_date, freq=freq)
-    ndates = int(np.sum(edges < pd.to_datetime(end_date)))
-    period_index = _period_index_from_edges(times, edges[: ndates + 1])
-    ref = _expand_Hbc_by_period(H_bc, period_index=period_index, nperiod=ndates)
-
-    assert hmbc.shape == ref.shape
-    np.testing.assert_allclose(hmbc, ref, rtol=0, atol=0)
-
-
-# ============================================================================
-# NEW FUNCTION: treated as the "correct" behaviour (no dead params)
-# ============================================================================
 
 
 @pytest.mark.parametrize("bc_regions", BC_REGIONS_CASES)

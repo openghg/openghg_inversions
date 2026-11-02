@@ -4,6 +4,7 @@ import dask.array as da
 from dask.callbacks import Callback
 import numpy as np
 import pytest
+import sparse
 import xarray as xr
 
 from openghg_inversions.flux_sanitization import (
@@ -100,9 +101,14 @@ def test_sanitize_flux_nonfinite_count_does_not_invent_counts_after_lazy_fill() 
     assert metadata.fraction is None
 
 
-def test_sanitize_flux_nonfinite_count_records_exact_metadata() -> None:
+@pytest.mark.parametrize("backend", ["dense", "sparse", "dask-sparse"])
+def test_sanitize_flux_nonfinite_count_records_exact_metadata(backend: str) -> None:
     """Count mode computes exact non-finite count metadata and warns when needed."""
     flux = _nonfinite_flux()
+    if backend != "dense":
+        flux = flux.copy(data=sparse.COO.from_numpy(flux.values))
+        if backend == "dask-sparse":
+            flux = flux.chunk({"lat": 1})
 
     with pytest.warns(NonFiniteFluxWarning, match="contains 3 non-finite values"):
         sanitized = sanitize_flux_nonfinite(flux, context="audit test", check="count", warn=True)
@@ -112,6 +118,12 @@ def test_sanitize_flux_nonfinite_count_records_exact_metadata() -> None:
     assert metadata.count == 3
     assert metadata.total == 4
     assert metadata.fraction == 0.75
+    np.testing.assert_equal(sanitized.to_numpy(), [[1.0, 0.0], [0.0, 0.0]])
+    np.testing.assert_equal(flux.to_numpy(), [[1.0, np.nan], [np.inf, -np.inf]])
+    if backend != "dense":
+        assert isinstance(sanitized.compute().data, sparse.COO)
+    if backend == "dask-sparse":
+        assert sanitized.chunks == flux.chunks
 
 
 def test_sanitize_flux_nonfinite_count_metadata_is_idempotent() -> None:

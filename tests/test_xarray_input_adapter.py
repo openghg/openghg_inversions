@@ -5,24 +5,33 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-import arviz as az
+import dask.array as da
+from dask.callbacks import Callback
 import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
 
-import openghg_inversions.rhime.prepared as rhime_prepared
-from openghg_inversions.basis.basis_functions import BasisFunctions
-from openghg_inversions.inversion_data import prepare_rhime_inputs_from_xarray
+import openghg_inversions.rhime.multisector as rhime_multisector
+import openghg_inversions.rhime.standard as rhime_standard
+import openghg_inversions.inversion_data.xarray_adapter as adapter
+from openghg_inversions.basis.basis_functions import (
+    BASIS_ARTIFACT_PATH_ATTR,
+    BASIS_ARTIFACT_SOURCE_ATTR,
+    BasisFunctions,
+)
+from openghg_inversions.inversion_data import SiteOptions, prepare_rhime_inputs_from_xarray
+from openghg_inversions.rhime.params import DataConfig
 from openghg_inversions.rhime import (
     PollutionEventSettings,
     RhimeModelSpec,
     RhimeOutputSpec,
-    RhimeRunSpec,
     RhimeSampler,
     SectorSpec,
-    run_rhime_from_prepared_inputs,
+    run_standard,
+    RhimeConfig,
 )
+from tests.helpers import make_trace
 
 
 def _basis_functions(source_order: list[str] | None = None) -> BasisFunctions:
@@ -204,6 +213,75 @@ def test_mapping_and_datatree_inputs_are_equivalent() -> None:
     assert from_mapping.sites == from_tree.sites == ("MHD", "TAC")
 
 
+@pytest.mark.parametrize("metadata, expected_source, expected_path", [
+    ({"description": "unannotated"}, "supplied", None),
+    ({BASIS_ARTIFACT_SOURCE_ATTR: "loaded", BASIS_ARTIFACT_PATH_ATTR: "basis.nc"}, "loaded", "basis.nc"),
+    ({"basis_artifact_source": "external", "basis_artifact_path": Path("fallback.nc")},
+     "external", "fallback.nc"),
+])
+def test_adapter_preserves_provenance_coordinates_and_input_ownership(
+    metadata, expected_source, expected_path,
+):
+    """Supplied provenance and ordered observation metadata survive canonical construction."""
+    basis_functions = _basis_functions().with_metadata(metadata)
+    tac = _site_dataset("TAC", ["2021-01-02", "2021-01-01"])
+    tac["release_lat"] = ("time", [51.1, 51.5])
+    tac["release_lon"] = ("time", [-2.1, -1.5])
+    site_data = {"TAC": tac, "MHD": _site_dataset("MHD", ["2021-01-03"])}
+    snapshots = {site: dataset.copy(deep=True) for site, dataset in site_data.items()}
+
+    prepared = prepare_rhime_inputs_from_xarray(
+        site_data, basis_functions=basis_functions, sites=["MHD", "TAC"],
+        averaging_period={"TAC": "2h", "MHD": None},
+    )
+
+    assert prepared.sites == ("MHD", "TAC")
+    assert prepared.averaging_period == (None, "2h")
+    assert list(prepared.inv_inputs.site.values) == ["MHD", "TAC", "TAC"]
+    np.testing.assert_allclose(prepared.inv_inputs.release_lat, [50.03, 51.1, 51.5])
+    np.testing.assert_allclose(prepared.inv_inputs.release_lon, [-2.0, -2.1, -1.5])
+    assert prepared.basis_artifact_source == expected_source
+    assert prepared.basis_artifact_path == expected_path
+    assert prepared.basis_functions.metadata[BASIS_ARTIFACT_SOURCE_ATTR] == expected_source
+    if expected_path is not None:
+        assert prepared.basis_functions.metadata[BASIS_ARTIFACT_PATH_ATTR] == expected_path
+    for key in ("basis_artifact_source", "basis_artifact_path", "description"):
+        if key in metadata:
+            assert prepared.basis_functions.metadata[key] == metadata[key]
+    assert basis_functions.metadata == metadata
+    assert prepared.basis_functions.operator is basis_functions.operator
+    assert prepared.basis_functions.flux.data is basis_functions.flux.data
+    for site, snapshot in snapshots.items():
+        xr.testing.assert_identical(site_data[site], snapshot)
+
+
+def test_adapter_final_construction_borrows_gathered_lazy_arrays(monkeypatch):
+    """The final constructor and provenance update add no materialization boundary."""
+    basis_functions = _basis_functions()
+    site_data = _canonical_site_data(
+        {"TAC": _site_dataset("TAC", ["2021-01-01", "2021-01-02"])}, basis_functions,
+    )
+    site_data["TAC"] = site_data["TAC"].drop_vars("fp_x_flux")
+    gathered = prepare_rhime_inputs_from_xarray(site_data, basis_functions=basis_functions).inv_inputs
+    gathered = gathered.chunk({"nmeasure": 1})
+    lazy_basis = BasisFunctions(
+        operator=basis_functions.operator,
+        flux=basis_functions.flux.chunk({"lat": 1}),
+        metadata={"basis_artifact_source": "borrowed", "basis_artifact_path": "lazy.nc"},
+    )
+    monkeypatch.setattr(adapter, "make_inv_inputs", lambda *a, **k: gathered)
+    tasks = []
+    with Callback(pretask=lambda *args: tasks.append(args)):
+        prepared = prepare_rhime_inputs_from_xarray(site_data, basis_functions=lazy_basis)
+
+    assert not tasks
+    for name in ("mf", "H"):
+        assert isinstance(prepared.inv_inputs[name].data, da.Array)
+        assert prepared.inv_inputs[name].data is gathered[name].data
+    assert prepared.basis_functions.flux.data is lazy_basis.flux.data
+    assert lazy_basis.metadata == {"basis_artifact_source": "borrowed", "basis_artifact_path": "lazy.nc"}
+
+
 @pytest.mark.parametrize("layout", ["site-local", "dense", "stacked"])
 def test_direct_dataset_inputs_are_rejected(layout: str) -> None:
     """Every direct Dataset layout is outside the mapping/DataTree contract."""
@@ -311,7 +389,6 @@ def test_nonmonotonic_times_and_mapping_order_are_preserved() -> None:
     prepared = prepare_rhime_inputs_from_xarray(
         data,
         basis_functions=_basis_functions(),
-        min_error="percentile",
     )
 
     assert prepared.sites == ("TAC", "MHD")
@@ -323,7 +400,7 @@ def test_nonmonotonic_times_and_mapping_order_are_preserved() -> None:
             dtype="datetime64[ns]",
         ),
     )
-    np.testing.assert_allclose(prepared.inv_inputs["min_error"], 0.45)
+    assert "min_error" not in prepared.inv_inputs
 
 
 def test_stationary_release_coordinates_are_broadcast_to_observations() -> None:
@@ -547,44 +624,6 @@ def test_emptied_site_is_reported_after_gathering(monkeypatch: pytest.MonkeyPatc
         prepare_rhime_inputs_from_xarray(data, basis_functions=_basis_functions())
 
 
-def test_min_error_per_site_defaults_to_false_and_allows_true(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Omission matches existing RHIME preparation while True remains an override."""
-    captured: list[bool] = []
-    canonical = xr.Dataset(
-        coords={
-            "nmeasure": [0],
-            "site": ("nmeasure", ["TAC"]),
-            "time": ("nmeasure", np.asarray(["2021-01-01"], dtype="datetime64[ns]")),
-        }
-    ).set_index(nmeasure=["site", "time"])
-
-    def capture_make_inv_inputs(*args: object, **kwargs: object) -> xr.Dataset:
-        """Capture the forwarded per-site minimum-error flag."""
-        captured.append(bool(kwargs["min_error_per_site"]))
-        return canonical
-
-    monkeypatch.setattr(
-        "openghg_inversions.inversion_data.xarray_adapter.make_inv_inputs",
-        capture_make_inv_inputs,
-    )
-    data = {"TAC": _site_dataset("TAC", ["2021-01-01"])}
-
-    prepare_rhime_inputs_from_xarray(data, basis_functions=_basis_functions())
-    prepare_rhime_inputs_from_xarray(
-        data,
-        basis_functions=_basis_functions(),
-        min_error_per_site=False,
-    )
-    prepare_rhime_inputs_from_xarray(
-        data,
-        basis_functions=_basis_functions(),
-        min_error_per_site=True,
-    )
-
-    assert captured == [False, False, True]
-
 
 def test_cached_and_canonical_h_inputs_match_without_retaining_caches() -> None:
     """Projection drops known caches while retaining time-aligned extensions."""
@@ -804,39 +843,42 @@ def test_adapter_output_executes_through_prepared_runner_without_openghg(
         basis_functions=basis_functions,
         averaging_period="1h",
     )
-    model_spec = RhimeModelSpec(
-        species="co2",
-        domain="EUROPE",
-        sectors=(
-            SectorSpec(
-                name="total",
-                flux_source="total-inventory",
-                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-                variable_suffix="total",
-            ),
-        ),
-        use_bc=False,
-        likelihood=PollutionEventSettings(
-            sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
-        ),
+    config = RhimeConfig.from_params(
+        {
+            "species": "co2", "domain": "EUROPE",
+            "start_date": "2021-01-01", "end_date": "2021-01-02",
+            "sites": ["stale"], "averaging_period": "1h",
+            "flux_sources": ["total-inventory"], "use_bc": False,
+            "x_prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+            "mismatch_model": "pollution_event",
+            "sigma_prior": {"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+            "output_format": "none", "output_name": "rhime", "save_inversion_output": False,
+        },
+        multisector=False,
     )
-    run_spec = RhimeRunSpec(
-        start_date="2021-01-01",
-        end_date="2021-01-02",
-        sites=("stale",),
-        averaging_period=(None,),
-        model=model_spec,
-        output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
-    )
+    monkeypatch.setattr(rhime_standard, "prepare_standard",
+                        lambda *args, **kwargs: pytest.fail("repeated acquisition/preparation"))
+    models = []
+    original_builder = rhime_standard.build_standard_model
 
-    monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: az.InferenceData())
+    def build(*args, **kwargs):
+        model = original_builder(*args, **kwargs)
+        models.append(model)
+        return model
 
-    result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+    monkeypatch.setattr(rhime_standard, "build_standard_model", build)
+
+    sampled = make_trace(posterior=xr.Dataset({
+        "x": (("chain", "draw", "region"), np.ones((1, 1, prepared.inv_inputs.sizes["region"]))),
+    }, coords={"region": prepared.inv_inputs.region}))
+    monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: sampled)
+
+    result = run_standard(prepared=prepared, config=config)
+    assert len(models) == 1
 
     xr.testing.assert_identical(result.inv_inputs, prepared.inv_inputs)
-    assert result.run_spec.sites == ("TAC",)
-    assert result.model is not None
-    assert {"x", "y"}.issubset(result.model.named_vars)
+    assert tuple(result.run_metadata["sites"]) == ("TAC",)
+    assert "x" in result.trace["posterior"]
 
 
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])
@@ -856,7 +898,6 @@ def test_unequal_source_regions_round_trip_and_execute(
         site_data,
         basis_functions=basis_functions,
         averaging_period={"TAC": "2h", "MHD": "1h"},
-        bc_freq="monthly",
     )
 
     artifact = tmp_path / f"verification-games-inputs{suffix}"
@@ -883,9 +924,9 @@ def test_unequal_source_regions_round_trip_and_execute(
     assert loaded.inv_inputs["H"].attrs["units"] == "ppm"
     assert loaded.inv_inputs["H_bc"].dims == ("bc_region", "nmeasure")
     bc_region_index = loaded.inv_inputs["H_bc"].indexes["bc_region"]
-    assert isinstance(bc_region_index, pd.MultiIndex)
-    assert bc_region_index.names == ["bc_curtain", "bc_period"]
-    assert bc_region_index.tolist() == [("north", 0), ("south", 0)]
+    assert not isinstance(bc_region_index, pd.MultiIndex)
+    assert bc_region_index.tolist() == ["north", "south"]
+    assert loaded.inv_inputs.H_bc.attrs["boundary_sensitivity_preparation"] == "raw-spatial"
     np.testing.assert_allclose(loaded.inv_inputs["H_bc"], 0.5)
     assert not {"fp_x_flux", "fp_x_flux_sectoral"} & set(loaded.inv_inputs)
     np.testing.assert_array_equal(loaded.inv_inputs["quality_flag"], [1, 2, 1])
@@ -913,31 +954,38 @@ def test_unequal_source_regions_round_trip_and_execute(
             sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
         ),
     )
-    run_spec = RhimeRunSpec(
-        start_date="2021-01-01",
-        end_date="2021-01-05",
-        sites=("stale",),
-        averaging_period=(None,),
+    config = RhimeConfig(
+        data=DataConfig(
+            site_options=SiteOptions.from_inputs(sites=("stale",), averaging_period="1h"),
+            species=model_spec.species, domain=model_spec.domain,
+            start_date="2021-01-01", end_date="2021-01-05",
+            flux_sources=tuple(source_order), use_bc=True, split_by_sectors=True,
+        ),
         model=model_spec,
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
-        split_by_sectors=True,
+        sampler=RhimeSampler(),
     )
+    models = []
+    original_builder = rhime_multisector.build_multisector_model
 
-    def skip_diagnostics(**kwargs: object) -> None:
-        """Keep this regression focused on the prepared-input execution seam."""
-        output_prepared = kwargs["prepared"]
-        assert isinstance(output_prepared, type(loaded))
-        xr.testing.assert_identical(output_prepared.inv_inputs, loaded.inv_inputs)
-        xr.testing.assert_identical(output_prepared.site_metadata, loaded.site_metadata)
-        kwargs["result"].outputs["executed"] = True  # type: ignore[attr-defined,index]
+    def build(*args, **kwargs):
+        model = original_builder(*args, **kwargs)
+        models.append(model.model)
+        return model
 
-    monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: az.InferenceData())
-    monkeypatch.setattr(rhime_prepared, "make_multisector_rhime_outputs", skip_diagnostics)
+    monkeypatch.setattr(rhime_multisector, "build_multisector_model", build)
+    monkeypatch.setattr(rhime_multisector, "prepare_multisector",
+                        lambda *args, **kwargs: pytest.fail("repeated acquisition/preparation"))
+    monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: make_trace())
 
-    result = run_rhime_from_prepared_inputs(prepared_inputs=loaded, run_spec=run_spec)
+    result = rhime_multisector.run_multisector(prepared=loaded, config=config)
 
     xr.testing.assert_identical(result.inv_inputs, loaded.inv_inputs)
-    assert result.run_spec.sites == ("TAC", "MHD")
-    assert result.model is not None
-    assert {"x_ocean", "x_ff", "bc", "mu_bc", "y"}.issubset(result.model.named_vars)
-    assert result.outputs == {"executed": True}
+    assert tuple(result.run_metadata["sites"]) == ("TAC", "MHD")
+    assert tuple(result.run_metadata["averaging_period"]) == ("2h", "1h")
+    assert len(models) == 1
+    assert {"x", "hx", "mu", "bc", "mu_bc", "y"}.issubset(models[0].named_vars)
+    assert result.variable_name("flux_scale") == "x"
+    np.testing.assert_allclose(models[0]["hx"].get_value(),
+                               loaded.inv_inputs.H.transpose("nmeasure", "region"))
+    xr.testing.assert_identical(result.basis_functions.flux, loaded.basis_functions.flux)

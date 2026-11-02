@@ -3,8 +3,8 @@
 These functions customise the behavior of `get_flux`, `get_footprint`, etc.
 
 - `get_flux_data` calls `get_flux` after adjusting the start date to begin at the
-  start of a year or month; if nothing is found, then the start date restriction
-  is dropped and the most recent result found is used.
+  start of a year or month, with bounded recovery of governing calendar labels;
+  the legacy older-inventory fallback remains available when explicitly allowed.
 
 TODO: add more docs (and add more detailed docstrings)
 """
@@ -29,6 +29,7 @@ from openghg.types import SearchError
 
 from openghg_inversions import utils
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_flux_nonfinite
+from openghg_inversions.inversion_data._provenance import selected_provenance
 from openghg_inversions.inversion_data._site_options import (
     is_column_observation,
     is_satellite_platform,
@@ -38,8 +39,23 @@ logger = logging.getLogger(__name__)
 
 
 # Flux
+def _calendar_flux_offset(periods: Iterable[object]) -> pd.DateOffset | None:
+    """Return the longest declared calendar validity interval, if present."""
+    normalized = {utils._normalize_flux_period(period) for period in periods}
+    if "yearly" in normalized:
+        return pd.DateOffset(years=1)
+    if "monthly" in normalized:
+        return pd.DateOffset(months=1)
+    return None
+
+
+def _calendar_flux_covers_start(flux: FluxData, start: pd.Timestamp, offset: pd.DateOffset) -> bool:
+    return any(label <= start < label + offset for label in flux.data.indexes["time"])
+
+
 def adjust_flux_start_date(
-    start_date: str, species: str, source: str, domain: str, store: str | None = None
+    start_date: str, species: str, source: str, domain: str, store: str | None = None,
+    *, include_previous_interval: bool = False,
 ) -> pd.Timestamp:
     """Align a flux retrieval start date with the source period.
 
@@ -53,23 +69,42 @@ def adjust_flux_start_date(
         source: OpenGHG flux source name.
         domain: Model domain.
         store: Optional OpenGHG object-store name.
+        include_previous_interval: Include a preceding source interval so shifted
+            interval labels can cover the requested start in explicit surface mode.
 
     Returns:
-        The requested start date, rewound to the start of its year or month
-        when the source metadata identifies an annual or monthly period.
+        The requested start date aligned to declared calendar periods. With
+        ``include_previous_interval``, rewind by a complete declared interval
+        to include governing labels whose phase differs from calendar starts.
 
     Raises:
         SearchError: If no matching flux data is found.
     """
-    flux_search = search_flux(species=species, source=source, domain=domain, store=store)
-    if flux_search.results.empty:
+    return _flux_start_from_periods(
+        start_date, _flux_periods(species, source, domain, store),
+        include_previous_interval=include_previous_interval,
+    )
+
+
+def _flux_periods(species: str, source: str, domain: str, store: str | None) -> set[str]:
+    """Read recognized catalog periods once for a source retrieval plan."""
+    catalog = search_flux(species=species, source=source, domain=domain, store=store)
+    if catalog.results.empty:
         raise SearchError(
             f"No flux found with species={species}, source={source}, domain={domain}, store={store}."
         )
-    flux_periods = {
-        utils._normalize_flux_period(value) for value in flux_search.results["time_period"] if pd.notna(value)
+    aliases = {"hourly": "1h", "daily": "1d"}
+    periods = {
+        utils._normalize_flux_period(aliases.get(str(value).lower(), value))
+        for value in catalog.results["time_period"] if pd.notna(value)
     }
+    return {period for period in periods if period is not None}
 
+
+def _flux_start_from_periods(
+    start_date: str, flux_periods: set[str], *, include_previous_interval: bool,
+) -> pd.Timestamp:
+    """Plan calendar alignment and optional preceding support from catalog periods."""
     start_date_flux = pd.to_datetime(start_date)
 
     if "yearly" in flux_periods and not start_date_flux.is_year_start:
@@ -77,6 +112,13 @@ def adjust_flux_start_date(
     elif "monthly" in flux_periods and not start_date_flux.is_month_start:
         start_date_flux = start_date_flux - pd.offsets.MonthBegin()
 
+    if include_previous_interval:
+        calendar_offset = _calendar_flux_offset(flux_periods)
+        if calendar_offset is not None:
+            start_date_flux = min(start_date_flux, pd.Timestamp(start_date) - calendar_offset)
+        # Include preceding fixed labels even when their phase is unknown.
+        for period in flux_periods - {"monthly", "yearly"}:
+            start_date_flux = min(start_date_flux, pd.Timestamp(start_date) - pd.Timedelta(period))
     return start_date_flux
 
 
@@ -88,6 +130,9 @@ def get_flux_data(
     end_date: str,
     store: str | None = None,
     flux_non_finite_check: FluxNonFiniteCheck = "lazy",
+    *,
+    allow_older_flux: bool = True,
+    include_previous_interval: bool = False,
 ) -> dict[str, FluxData]:
     """Retrieve, normalize, and sanitize flux data for an inversion.
 
@@ -101,21 +146,47 @@ def get_flux_data(
         flux_non_finite_check: ``"lazy"`` to apply zero-fill without counting,
             or ``"count"`` to compute exact non-finite counts and warn when
             replacements are made.
+        allow_older_flux: Allow the historical fallback which relabels the last
+            available inventory slice to the requested start. False rejects
+            missing requested data without substituting an older inventory.
+        include_previous_interval: Use a common source span including preceding
+            declared intervals, with one bounded common cadence lookup when
+            period metadata are missing. No source padding is repeated on retry.
 
     Returns:
         Retrieved flux objects keyed by source. Each ``flux`` variable is cast
-        to ``float32`` and has the non-finite policy applied.
+        to ``float32`` and has the non-finite policy applied. Calendar lookups
+        preserve governing interval labels before any permitted older-data fallback.
 
     Raises:
         SearchError: If no flux data can be found before the requested end date.
     """
-    flux_dict = {}
-
+    # Plan each source from its catalog once, then apply a common span in surface mode.
+    periods_by_source: dict[str, set[str]] = {}
+    starts: dict[str, pd.Timestamp] = {}
+    missing_catalog: dict[str, SearchError] = {}
     for source in sources:
-        logging.Logger.disabled = True  # suppress confusing OpenGHG warnings
-
         try:
-            start_date_flux = adjust_flux_start_date(start_date, species, source, domain, store)
+            periods = _flux_periods(species, source, domain, store)
+        except SearchError as exc:
+            if include_previous_interval:
+                raise
+            missing_catalog[source] = exc
+        else:
+            periods_by_source[source] = periods
+            starts[source] = _flux_start_from_periods(
+                start_date, periods, include_previous_interval=include_previous_interval,
+            )
+    common_start = min(starts.values()) if include_previous_interval and starts else None
+
+    # Retrieve requested data; ordinary mode may recover a governing calendar label
+    # before entering its historical older-inventory fallback.
+    flux_dict: dict[str, FluxData] = {}
+    for source in sources:
+        try:
+            if source in missing_catalog:
+                raise missing_catalog[source]
+            start_date_flux = common_start if common_start is not None else starts[source]
 
             flux_data = get_flux(
                 species=species,
@@ -129,43 +200,98 @@ def get_flux_data(
             # fix to prevent empty time coordinate:
             if len(flux_data.data.time) == 0:
                 raise SearchError
+            period = next((period for period in (
+                flux_data.data.flux.attrs.get("time_period"), flux_data.data.attrs.get("time_period"),
+                flux_data.metadata.get("time_period"),
+            ) if not utils._flux_period_is_missing(period)), None)
+            calendar_offset = _calendar_flux_offset([period])
+            if calendar_offset is not None and not _calendar_flux_covers_start(
+                flux_data, pd.Timestamp(start_date), calendar_offset
+            ):
+                raise SearchError
 
-        except SearchError:
-            print(f"No flux data found between {start_date} and {end_date}.")
-            print(f"Searching for flux data from before {start_date}.")
-
-            # re-try without start date
-            try:
-                flux_data = get_flux(
-                    species=species,
-                    domain=domain,
-                    source=source,
-                    start_date=None,
-                    end_date=end_date,
-                    store=store,
-                )
-            except SearchError as e:
-                raise SearchError(f"No flux data found before {start_date}") from e
+        except SearchError as exc:
+            calendar_data = None
+            if allow_older_flux and not include_previous_interval:
+                try:
+                    calendar_offset = _calendar_flux_offset(periods_by_source.get(source, set()))
+                    if calendar_offset is not None:
+                        candidate = get_flux(
+                            species=species, domain=domain, source=source,
+                            start_date=pd.Timestamp(start_date) - calendar_offset,
+                            end_date=end_date, store=store,
+                        )
+                        if _calendar_flux_covers_start(candidate, pd.Timestamp(start_date), calendar_offset):
+                            calendar_data = candidate
+                except SearchError:
+                    pass
+            if calendar_data is not None:
+                flux_data = calendar_data
+            elif not allow_older_flux:
+                raise SearchError(
+                    f"No requested flux data for source {source!r} between {start_date} and {end_date}; "
+                    "older-inventory fallback is disabled for explicit surface preparation."
+                ) from exc
             else:
-                flux_data.data = flux_data.data.isel(time=[-1])  # select the last time step
-                print(f"Using flux data from {str(flux_data.data.time.values[0]).split(':')[0]}.")
-                flux_data.data = flux_data.data.assign_coords(
-                    time=[pd.to_datetime(start_date)]
-                )  # set time to start_date
+                print(f"No flux data found between {start_date} and {end_date}.")
+                print(f"Searching for flux data from before {start_date}.")
 
-        logging.Logger.disabled = False  # resume confusing OpenGHG warnings
+                # re-try without start date
+                try:
+                    flux_data = get_flux(
+                        species=species,
+                        domain=domain,
+                        source=source,
+                        start_date=None,
+                        end_date=end_date,
+                        store=store,
+                    )
+                except SearchError as e:
+                    raise SearchError(f"No flux data found before {start_date}") from e
+                else:
+                    flux_data.data = flux_data.data.isel(time=[-1])  # select the last time step
+                    print(f"Using flux data from {str(flux_data.data.time.values[0]).split(':')[0]}.")
+                    flux_data.data = flux_data.data.assign_coords(
+                        time=[pd.to_datetime(start_date)]
+                    )  # set time to start_date
+
+
+        flux_dict[source] = flux_data
+
+    # Missing fixed-period metadata can require one bounded common cadence lookup.
+    if common_start is not None:
+        retry_start = common_start
+        for value in flux_dict.values():
+            times = value.data.indexes["time"]
+            if len(times) > 1 and times[0] > pd.Timestamp(start_date):
+                cadence = times[1] - times[0]
+                if cadence > pd.Timedelta(0):
+                    retry_start = min(retry_start, pd.Timestamp(start_date) - cadence)
+        if retry_start < common_start:
+            # Reuse the resolved common span; do not apply source padding again.
+            for source in sources:
+                flux_dict[source] = get_flux(
+                    species=species, domain=domain, source=source,
+                    start_date=retry_start, end_date=end_date, store=store,
+                )
+                if len(flux_dict[source].data.time) == 0:
+                    raise SearchError(f"No requested flux data for source {source!r} after bounded interval lookup.")
+
+    # Finalize selected identities and sanitize once, after the final retrieval.
+    # Cast to float32 to avoid up-casting the response matrix.
+    for source, v in flux_dict.items():
+        # OpenGHG's public retrieval selects latest, but its typed rewrap loses _version.
+        v.metadata = {
+            **v.metadata,
+            "dataversion": selected_provenance(v, requested_version="latest").dataversion,
+        }
 
         # Preserve source period metadata for downstream post-processing.
         # Variable metadata is more specific and must not be overwritten.
-        variable_period = flux_data.data.flux.attrs.get("time_period")
-        if utils._flux_period_is_missing(variable_period) and "time_period" in flux_data.data.attrs:
-            flux_data.data.flux.attrs["time_period"] = flux_data.data.attrs["time_period"]
+        variable_period = v.data.flux.attrs.get("time_period")
+        if utils._flux_period_is_missing(variable_period) and "time_period" in v.data.attrs:
+            v.data.flux.attrs["time_period"] = v.data.attrs["time_period"]
 
-        # add flux data to result dict
-        flux_dict[source] = flux_data
-
-    # cast to float32 to avoid up-casting H matrix
-    for source, v in flux_dict.items():
         if v.data.flux.dtype != "float32":
             v.data["flux"] = v.data.flux.astype("float32")
         v.data["flux"] = sanitize_flux_nonfinite(
@@ -183,7 +309,7 @@ def get_flux_data(
 def get_obs_data(
     site: str,
     species: str,
-    inlet: str | None,
+    inlet: str | slice | None,
     start_date: str,
     end_date: str,
     domain: str | None = None,
@@ -197,7 +323,12 @@ def get_obs_data(
     stores: str | None | Iterable[str | None] = None,
     keep_variables: list | None = None,
 ) -> ObsData | None:
-    """Try to retrieve obs. data from listed stores."""
+    """Retrieve the first non-empty observation dataset from the listed stores.
+
+    Missing results (``SearchError``, ``None``, or datasets with an empty time
+    dimension) are skipped. Return ``None`` if all stores have missing results.
+    Retrieval ``AttributeError`` exceptions are logged with context and re-raised.
+    """
 
     if is_column_observation(inlet, platform) and max_level is None:
         raise AttributeError(
@@ -265,8 +396,18 @@ def get_obs_data(
             )
             continue  # skip this site
         except AttributeError:
-            print(f"\nNo data found for {site} between {start_date} and {end_date} in store {store}.")
-            continue  # skip this site
+            logger.exception(
+                "Observation retrieval failed for site=%s, species=%s, inlet=%s, "
+                "instrument=%s, store=%s between %s and %s.",
+                site,
+                species,
+                inlet,
+                instrument,
+                store,
+                start_date,
+                end_date,
+            )
+            raise
         else:
             if obs_data is None or obs_data.data.sizes["time"] == 0:
                 print(f"\nNo data found for {site} between {start_date} and {end_date} in store {store}.")
@@ -306,7 +447,35 @@ def get_footprint_to_match(
     store: str | None = None,
     averaging_period: str | None = None,
     tolerance: float = 10.0,
+    time_resolved: bool | None = None,
 ) -> FootprintData:
+    """Retrieve footprints aligned to an observation object's inlet times.
+
+    Args:
+        obs: Observation data supplying site metadata and timestamps.
+        domain: Footprint domain to retrieve.
+        model: Optional LPDM model selector.
+        platform: Optional observation platform; satellite platforms use their
+            satellite and observation-region selectors.
+        start_date: Optional retrieval start date.
+        end_date: Optional retrieval end date.
+        met_model: Optional meteorological-model selector.
+        fp_species: Optional footprint species override.
+        fp_height: Optional footprint inlet selector.
+        store: Optional OpenGHG store name.
+        averaging_period: Optional observation averaging period.
+        tolerance: Maximum inlet-height mismatch in metres.
+        time_resolved: ``True`` selects high-frequency footprints, ``False``
+            selects integrated footprints, and ``None`` leaves the search
+            unconstrained.
+
+    Returns:
+        Footprints whose timestamps and inlet heights match the observations.
+
+    Raises:
+        SearchError: If no compatible footprints can be found.
+        ValueError: If the averaging period cannot be determined.
+    """
     site = obs.metadata["site"]
     species = fp_species or obs.metadata.get("species", "inert")
     if store is None:
@@ -324,6 +493,7 @@ def get_footprint_to_match(
         "store": store,
         "start_date": start_date,
         "end_date": end_date,
+        "time_resolved": time_resolved,
     }
 
     if is_satellite_platform(platform):
@@ -349,6 +519,7 @@ def get_footprint_to_match(
             "store": store,
             "start_date": start_date,
             "end_date": end_date,
+            "time_resolved": time_resolved,
         }
 
     results = search_footprints(**fp_kwargs)
@@ -410,7 +581,9 @@ def get_footprint_to_match(
         if "sampling_period" in obs.metadata and "sampling_period_unit" in obs.metadata:
             averaging_period = f"{obs.metadata['sampling_period']}{obs.metadata['sampling_period_unit']}"
         else:
-            raise ValueError("`averaging_period` could not be inferred from ObsData; please provide a value.")
+            raise ValueError(
+                "`averaging_period` could not be inferred from ObsData; please provide a value."
+            ) from None
 
     # select times from footprints to match with obs
     for i, fp in indexed_footprints:
@@ -419,11 +592,17 @@ def get_footprint_to_match(
         fp.data = fp.data.sel(time=fp_idx)
 
     # make FootprintData to return
-    metadata = indexed_footprints[0][1].metadata
+    metadata = dict(indexed_footprints[0][1].metadata)
 
+    identities = [selected_provenance(fp, store, requested_version="latest") for _, fp in indexed_footprints]
+    metadata.update(
+        store=identities[0].store, uuid=identities[0].uuid, dataversion=identities[0].dataversion
+    )
     if len(indexed_footprints) > 1:
         metadata["inlet"] = "varies"
         metadata["height"] = "varies"
+        for name in ("store", "uuid", "dataversion"):
+            metadata[name] = [getattr(identity, name) for identity in identities]
 
     data = xr.concat([fp.data for _, fp in indexed_footprints], dim="time").sortby("time")
 
@@ -443,12 +622,35 @@ def get_footprint_data(
     averaging_period: str | None = None,
     obs_data: ObsData | None = None,
     stores: str | None | Iterable[str | None] = None,
+    time_resolved: bool | None = None,
 ) -> FootprintData | None:
-    """Try to retrieve Footprint data from given stores.
+    """Retrieve one footprint dataset, optionally constrained by resolution.
 
-    If `fp_height` is 'auto', then `get_footprint_to_match`
-    is used to search for a footprint matching the given ObsData.
-    Otherwise, `get_footprint` is used.
+    Args:
+        domain: Footprint domain to retrieve.
+        start_date: Retrieval start date.
+        end_date: Retrieval end date.
+        model: Optional LPDM model selector.
+        met_model: Optional meteorological-model selector.
+        fp_species: Optional footprint species override.
+        fp_height: Footprint inlet selector or ``"auto"`` to match
+            observation inlet heights.
+        site: Observation site name.
+        platform: Optional observation platform.
+        averaging_period: Optional observation averaging period for automatic
+            inlet-height matching.
+        obs_data: Observation data required when ``fp_height`` is ``"auto"``.
+        stores: One or more OpenGHG stores to search in order.
+        time_resolved: ``True`` selects high-frequency footprints, ``False``
+            selects integrated footprints, and ``None`` leaves the search
+            unconstrained.
+
+    Returns:
+        The first non-empty matching footprint dataset, or ``None`` if no
+        configured store contains one.
+
+    Raises:
+        ValueError: If automatic inlet-height matching lacks observations.
     """
     # if fp_height is 'auto', use `get_footprint_to_match`
     # otherwise, use `get_footprint`
@@ -471,6 +673,8 @@ def get_footprint_data(
                     store=store,
                     fp_species=fp_species,
                     averaging_period=averaging_period,
+                    platform=platform,
+                    time_resolved=time_resolved,
                 )
         elif is_satellite_platform(platform):
             # current convention: for satellite data, the site name
@@ -494,6 +698,7 @@ def get_footprint_data(
                     start_date=start_date,
                     end_date=end_date,
                     species=fp_species,
+                    time_resolved=time_resolved,
                     store=store,
                 )
         else:
@@ -509,6 +714,7 @@ def get_footprint_data(
                     end_date=end_date,
                     store=store,
                     species=fp_species,
+                    time_resolved=time_resolved,
                 )
     except SearchError:
         print(f"\nNo obs data found for {site} with inlet {fp_height} and in store {store}.")

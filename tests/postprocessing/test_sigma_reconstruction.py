@@ -1,10 +1,10 @@
 """Tests for reconstructing observation-aligned sigma posterior values."""
 
-import arviz as az
 import numpy as np
 import xarray as xr
 
 from openghg_inversions.postprocessing.sigma import reconstruct_sigma_aligned
+from tests.helpers import make_trace
 
 
 def test_reconstruct_sigma_aligned_uses_registered_component_indexes() -> None:
@@ -21,7 +21,7 @@ def test_reconstruct_sigma_aligned_uses_registered_component_indexes() -> None:
         },
         coords={"nmeasure": ["MHD-1", "TAC-1", "MHD-2"]},
     )
-    trace = az.InferenceData(
+    trace = make_trace(
         posterior=xr.Dataset({"sigma": sigma}),
         constant_data=model_data,
     )

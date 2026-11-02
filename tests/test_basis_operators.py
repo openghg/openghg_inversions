@@ -203,7 +203,8 @@ def test_multisource_basis_source_labels_roundtrip_storage(
     else:
         tree.to_zarr(path, mode="w")
 
-    with xr.open_datatree(path) as stored:
+    engine = "zarr" if suffix == ".zarr" else None
+    with xr.open_datatree(path, engine=engine) as stored:
         restored = BasisOperator.decode_datatree(stored.load())
 
     assert isinstance(restored, MultiSourceBucketBasisOperator)

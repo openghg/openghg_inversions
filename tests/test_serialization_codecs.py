@@ -1,11 +1,16 @@
 """Tests for the private serialization codecs shared by artifact schemas."""
 
 import json
+from pathlib import Path
 
 import dask.array as da
+from dask import delayed
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
+from numcodecs import Blosc
+from openghg.storage._encoding import get_zarr_encoding
 
 from openghg_inversions.native_covariance import SeparableExponentialCovariance
 from openghg_inversions._serialization_codecs import (
@@ -16,6 +21,98 @@ from openghg_inversions._serialization_codecs import (
     _numpy_scalar_json_default,
 )
 from openghg_inversions.source_covariance import IndependentSourceCovariance
+from openghg_inversions.serialization import decode_cf_multiindexes, encode_cf_multiindexes, save_datatree
+
+
+def test_zarr_writer_preserves_format_two_compression_and_borrowed_encoding(tmp_path: Path) -> None:
+    """Stored OpenGHG compression remains usable without changing borrowed metadata."""
+    dataset = xr.Dataset({"value": ("cell", da.arange(4, chunks=2))})
+    compressor = Blosc(cname="zstd", clevel=5)
+    encoding = get_zarr_encoding(dataset.data_vars, compressor=compressor)["value"]
+    dataset["value"].encoding = encoding.copy()
+    tree = xr.DataTree(dataset)
+    path = tmp_path / "compressed.zarr"
+
+    save_datatree(tree, path)
+
+    assert json.loads((path / ".zgroup").read_text())["zarr_format"] == 2
+    with xr.open_datatree(path, engine="zarr") as stored:
+        xr.testing.assert_equal(stored.to_dataset().compute(), dataset.compute())
+    assert json.loads((path / "value" / ".zarray").read_text())["compressor"] == compressor.get_config()
+    assert tree["value"].encoding == encoding
+
+
+@pytest.mark.parametrize("storage_chunks", [None, 2, (2,)])
+def test_zarr_writer_rechunks_shared_ragged_payloads_lazily(
+    tmp_path: Path, storage_chunks: int | tuple[int, ...] | None
+) -> None:
+    """Normalize ragged data and coordinate chunks without executing shared work twice."""
+    executions = []
+
+    @delayed
+    def payload() -> np.ndarray:
+        executions.append("payload")
+        return np.arange(5, dtype=float)
+
+    data = da.from_delayed(payload(), shape=(5,), dtype=float).rechunk(((2, 3),))
+    dataset = xr.Dataset({"value": ("cell", data)}, coords={"quality": ("cell", data + 1)})
+    dataset["value"].attrs = {"units": "ppm"}
+    dataset["value"].encoding = {"dtype": np.dtype("float64")}
+    if storage_chunks is not None:
+        dataset["value"].encoding["chunks"] = storage_chunks
+    tree = xr.DataTree.from_dict({"/": xr.Dataset(attrs={"title": "chunked artifact"}), "inputs": dataset})
+    path = tmp_path / "chunks.nc"
+    save_datatree(tree, path, "zarr")
+    assert executions == ["payload"]
+    assert tree["inputs"]["value"].data is data
+    assert tree["inputs"]["quality"].data.chunks == ((2, 3),)
+    assert tree["inputs"]["value"].encoding == dataset["value"].encoding
+    with xr.open_datatree(path.with_suffix(".zarr"), engine="zarr", chunks={}) as stored:
+        assert stored["inputs"]["value"].data.chunks == (
+            ((3, 2) if storage_chunks is None else (2, 2, 1)),
+        )
+        assert stored["inputs"]["quality"].data.chunks == ((3, 2),)
+        xr.testing.assert_identical(stored["inputs"].to_dataset().compute(), dataset.compute())
+        assert stored.attrs == tree.attrs
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_cf_mixed_level_labels_roundtrip_real_file(tmp_path: Path, suffix: str) -> None:
+    """Real storage preserves integer/string identity alongside ordinary levels."""
+    times = pd.date_range("2026-01-01", periods=4)
+    expected_index = pd.MultiIndex.from_tuples(
+        [("co2", 1, times[0]), ("co2", "1", times[1]), ("o2", 2, times[2]), ("o2", "2", times[3])],
+        names=["species", "native_label", "time"],
+    )
+    original = xr.Dataset(
+        {"sensitivity": ("native", da.arange(4, chunks=2))},
+        coords=xr.Coordinates.from_pandas_multiindex(expected_index, "native"),
+        attrs={"title": "mixed native labels"},
+    )
+    original["native_label"].attrs = {"long_name": "native cell identifier"}
+    original["time"].attrs = {"standard_name": "time"}
+    encoded = encode_cf_multiindexes(original, "native")
+    assert encoded["native_label"].dtype.kind in "OU"
+    assert all(isinstance(value, str) for value in encoded["native_label"].values)
+    assert encoded["time"].dtype.kind == "M"
+    assert encoded["species"].attrs == original["species"].attrs
+    assert isinstance(encoded["sensitivity"].data, da.Array)
+    destination = tmp_path / f"labels{suffix}"
+    if suffix == ".nc":
+        encoded.to_netcdf(destination)
+        with xr.open_dataset(destination) as stored:
+            loaded = stored.load()
+    else:
+        encoded.to_zarr(destination, mode="w")
+        with xr.open_dataset(destination, engine="zarr") as stored:
+            loaded = stored.load()
+    actual = decode_cf_multiindexes(loaded, "native")
+    pd.testing.assert_index_equal(actual.indexes["native"], expected_index)
+    assert type(actual.indexes["native"][0][1]) is int
+    assert type(actual.indexes["native"][1][1]) is str
+    xr.testing.assert_identical(actual, original.compute())
+    assert original["native_label"].attrs == {"long_name": "native cell identifier"}
+    assert isinstance(original["sensitivity"].data, da.Array)
 
 
 def _source_covariance() -> IndependentSourceCovariance:
@@ -247,3 +344,25 @@ def test_source_dispatch_does_not_compute_lazy_source_coordinates() -> None:
     assert isinstance(result.coords["lazy_equal"].data, da.Array)
     assert result.coords["lazy_equal"].data is rhs.coords["lazy_equal"].data
     assert result.coords["lazy_equal"].dims == ("native_source", "observation")
+
+
+@pytest.mark.parametrize("suffix", ["nc", "zarr"])
+def test_trace_multiindex_coordinate_attributes_survive_storage(tmp_path: Path, suffix: str) -> None:
+    """Boundary ownership metadata survives persisted MultiIndex coordinates."""
+    from openghg_inversions.serialization import load_trace, save_trace
+
+    index = pd.MultiIndex.from_tuples([("ocean", "a"), ("land", "b")],
+                                     names=["bc_source", "bc_region"])
+    original = xr.Dataset(
+        {"x": ("bc_state", [1., 2.])},
+        coords=xr.Coordinates.from_pandas_multiindex(index, "bc_state"),
+    )
+    for name, local in [("bc_state", "state"),
+                        ("bc_source", "source"), ("bc_region", "region")]:
+        original[name].attrs = {"rhime_component": "bc", "rhime_local_name": local}
+    before = original.copy(deep=True)
+    path = tmp_path / f"owned-trace.{suffix}"
+    save_trace(xr.DataTree.from_dict({"posterior": original}), path)
+    restored = load_trace(path).posterior.to_dataset()
+    xr.testing.assert_identical(restored, original)
+    xr.testing.assert_identical(original, before)

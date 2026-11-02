@@ -5,6 +5,11 @@ and heterotrophic respiration (Rh) templates. Atmospheric signs belong to the
 supplied sensitivities; all multipliers are positive. It changes scientific
 priors and is not a neutral reparameterisation or a production default.
 
+Current source targets PyMC 6 and ArviZ 1 with xarray DataTree samples.
+The frozen 2026 experiment used PyMC 5 and ArviZ 0; its chains, timings and
+convergence results describe that recorded environment. Current compatibility
+checks preserve the equations but do not replace the frozen experiment.
+
 Each state has unique `flux_state`, `source` and `group` labels. Pairing follows
 source/group identity, never array position. The full supplied state is the
 complete uncertain flux model: no unresolved native directions or aggregation

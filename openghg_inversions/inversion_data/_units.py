@@ -1,7 +1,7 @@
-"""Derive numeric mol/mol scales at inversion-data output boundaries.
+"""Validate or derive mol/mol scales at inversion-data boundaries.
 
 OpenGHG ``ModelScenario`` objects own dataset unit conversion. This module only
-derives numeric scales for merged-data metadata and output formats.
+validates unit compatibility and derives numeric scales for output formats.
 ``mole_fraction_unit_scale`` parses an OpenGHG unit expression relative to
 ``mol/mol`` and raises ``ValueError`` for invalid or incompatible units; it
 does not mutate datasets or perform cross-site conversion.

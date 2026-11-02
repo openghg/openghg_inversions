@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Download and verify the pinned RHIME tutorial data release."""
 
 from __future__ import annotations
@@ -7,13 +6,9 @@ import argparse
 import hashlib
 from pathlib import Path
 import shutil
-from typing import Sequence
+import tomllib
+from collections.abc import Sequence
 from urllib.request import urlopen
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # Python 3.10; OpenGHG depends on toml.
-    import toml as tomllib  # type: ignore[no-redef]
 
 
 DATA_TAG = "v1.0.0"

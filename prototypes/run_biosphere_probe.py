@@ -133,7 +133,8 @@ def main() -> None:
     ).sample(model)
     elapsed = time.perf_counter() - started
     trace.to_netcdf(out / "posterior.nc")
-    state = trace.posterior.flux_scaling
+    posterior = trace["posterior"].to_dataset()
+    state = posterior.flux_scaling
     contributions = state * data.reference_flux
     functionals = xr.Dataset({
         "GPP_template": contributions.sel(flux_state="GPP", drop=True),
@@ -160,8 +161,8 @@ def main() -> None:
             "rhat": float(az.rhat(functionals[[name]])[name]),
         }
     stats = trace.sample_stats
-    max_rhat = float(az.rhat(trace, var_names=["flux_scaling"]).to_array().max())
-    min_ess = float(az.ess(trace, var_names=["flux_scaling"], method="bulk").to_array().min())
+    max_rhat = float(az.rhat(posterior, var_names=["flux_scaling"]).to_array().max())
+    min_ess = float(az.ess(posterior, var_names=["flux_scaling"], method="bulk").to_array().min())
     divergences = int(stats.diverging.sum())
     depth_hits = int((stats.tree_depth >= 10).sum())
     state_values = state.transpose("chain", "draw", "flux_state").values.reshape(-1, 3)

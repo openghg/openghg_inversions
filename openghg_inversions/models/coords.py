@@ -7,19 +7,105 @@ model coordinates, so model construction should use sanitized, PyMC-safe coords.
 
 The current sanitization policy is intentionally simple: convert each known
 dimension coordinate to a range index. The original scientific coordinates are
-stored separately so they can later be restored onto ArviZ ``InferenceData``.
+stored separately so they can later be restored onto sampled trace groups.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
-import arviz as az
 import numpy as np
 import pandas as pd
 import pymc as pm
 import xarray as xr
+from pytensor.tensor.sharedvar import TensorSharedVariable
+from pytensor.tensor.variable import TensorVariable
+
+
+def component_coords(
+    array: xr.DataArray, owner: str | None, *, observation_dim: str = "nmeasure",
+) -> xr.DataArray:
+    """Qualify component-owned state coordinates without copying array payloads.
+
+    Observation coordinates and scalar metadata remain shared and must agree
+    across components. Every other dimension and coordinate depending on it
+    receives the owner's prefix, unless it already has that prefix. Metadata
+    records ownership so ambiguous qualified names are rejected at registration.
+
+    Args:
+        array: Borrowed scientific array.
+        owner: Explicit component name, or ``None`` to retain local names.
+        observation_dim: Shared observation dimension, excluded from qualification.
+
+    Returns:
+        Labelled view sharing the original numerical payload.
+
+    Raises:
+        ValueError: Local and already-prefixed coordinates would share a name.
+    """
+    if owner is None:
+        return array
+    state_dims = set(array.dims) - {observation_dim}
+    rename = {
+        str(name): str(name) if str(name).startswith(f"{owner}_") else f"{owner}_{name}"
+        for name, coord in array.coords.items()
+        if name in state_dims or state_dims.intersection(coord.dims)
+    }
+    rename.update({
+        str(dim): str(dim) if str(dim).startswith(f"{owner}_") else f"{owner}_{dim}"
+        for dim in state_dims
+    })
+    if len(set(rename.values())) != len(rename):
+        raise ValueError(f"Component {owner!r} has conflicting local and prefixed coordinate names.")
+    result = array.rename(rename)
+    for local, qualified in rename.items():
+        if qualified in result.coords:
+            result.coords[qualified].attrs = {
+                **result.coords[qualified].attrs,
+                "rhime_component": owner,
+                "rhime_local_name": local,
+            }
+    return result
+
+
+def add_model_data(data: xr.DataArray, name: str | None = None) -> TensorVariable:
+    """Register labelled numerical data on the active registered model.
+
+    Args:
+        data: Borrowed array, materialized here with its coordinates.
+        name: Model variable name; defaults to ``data.name``.
+
+    Returns:
+        The registered tensor, reusing existing model data only when dimensions,
+        backend dtype and values, and supplied scientific coordinates agree.
+
+    Raises:
+        ValueError: If neither an explicit name nor ``data.name`` is available,
+            or an existing name has incompatible data or coordinates.
+        RuntimeError: If the model lacks the coordinate registry installed by
+            :func:`registered_model`.
+    """
+    name = name or (str(data.name) if data.name is not None else None)
+    if name is None:
+        raise ValueError("Data must have a name if a name is not provided.")
+    model = pm.modelcontext(None)
+    materialized = data.compute()
+    dims = tuple(str(dim) for dim in materialized.dims)
+    existing = model[name] if name in model else None
+    if existing is not None:
+        if existing not in model.data_vars:
+            raise ValueError(f"Model variable {name!r} already exists and is not registered data.")
+        if model.named_vars_to_dims.get(existing.name, ()) != dims:
+            raise ValueError(f"Conflicting model data registration for {name!r}: dimensions differ.")
+        values = pm.pytensorf.convert_data(materialized.values)
+        current = cast(TensorSharedVariable, existing).get_value(borrow=True)
+        if current.dtype != values.dtype or not np.array_equal(current, values):
+            raise ValueError(f"Conflicting model data registration for {name!r}: dtype or values differ.")
+    add_coords(materialized.coords, model_dims=dims)
+    if existing is not None:
+        return cast(TensorVariable, existing)
+    return cast(TensorVariable, pm.Data(name, materialized.values, dims=dims))
 
 
 def _coords_to_mapping(coords: dict[str, Any] | xr.Coordinates) -> dict[str, Any]:
@@ -107,11 +193,14 @@ class CoordRegistry:
         auxiliary_coords: Additional non-dimension coordinates attached to
             model dimensions, such as exploded ``time`` or ``site`` coordinates
             derived from a stacked ``nmeasure`` MultiIndex.
+        coordinate_attrs: Scientific coordinate attributes, including explicit
+            component ownership and local names used to reject ambiguous registrations.
     """
 
     pymc_coords: dict[str, np.ndarray] = field(default_factory=dict)
     original_coords: dict[str, Any] = field(default_factory=dict)
     auxiliary_coords: dict[str, xr.DataArray] = field(default_factory=dict)
+    coordinate_attrs: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def _store_original_coord(self, name: str, coord: Any) -> None:
         """Store an original coordinate, rejecting conflicting re-registrations."""
@@ -132,6 +221,10 @@ class CoordRegistry:
             if existing.dims != coord.dims or existing.shape != coord.shape:
                 raise ValueError(f"Conflicting coord registration for {name!r}: shape mismatch.")
             if not _coords_equal(existing.values, coord.values):
+                if not coord.dims:
+                    raise ValueError(
+                        f"Conflicting shared scalar coordinate {name!r}: values must agree across components."
+                    )
                 raise ValueError(f"Conflicting coord registration for {name!r}: values differ.")
             return
 
@@ -154,9 +247,21 @@ class CoordRegistry:
 
         Raises:
             ValueError: If the same coordinate name is registered more than once
-                with conflicting lengths, shapes, or values.
+                with conflicting lengths, shapes, values or ownership metadata.
+                Scalar metadata is shared and must agree across components.
         """
         mapping = _coords_to_mapping(coords)
+        for name, coord in mapping.items():
+            attrs = dict(coord.attrs) if isinstance(coord, xr.DataArray) else {}
+            if name in self.coordinate_attrs:
+                previous = self.coordinate_attrs[name]
+                for key in ("rhime_component", "rhime_local_name"):
+                    if previous.get(key) != attrs.get(key):
+                        raise ValueError(
+                            f"Conflicting coord registration for {name!r}: {key} ownership differs."
+                        )
+            else:
+                self.coordinate_attrs[name] = attrs
         dims_to_register = tuple(model_dims) if model_dims is not None else tuple(mapping)
         dim_set = set(dims_to_register)
         pymc_coords = sanitize_coords_for_pymc(coords, model_dims=dims_to_register)
@@ -210,7 +315,7 @@ class CoordRegistry:
 
 def attach_coord_registry(model: pm.Model, registry: CoordRegistry) -> None:
     """Attach a coordinate registry to a PyMC model."""
-    setattr(model, "_openghg_coord_registry", registry)
+    model._openghg_coord_registry = registry
 
 
 def get_coord_registry(model: pm.Model) -> CoordRegistry | None:
@@ -235,7 +340,7 @@ def registered_model(*args: Any, **kwargs: Any) -> pm.Model:
     if coords is None:
         model = pm.Model(*args, **kwargs)
     else:
-        model_dims = tuple(coords.dims) if isinstance(coords, xr.Coordinates) else tuple(coords)
+        model_dims = tuple(map(str, coords.dims)) if isinstance(coords, xr.Coordinates) else tuple(coords)
         pymc_coords = sanitize_coords_for_pymc(coords, model_dims=model_dims)
         model = pm.Model(
             *args,
@@ -277,18 +382,18 @@ def add_coords(
 
 
 def restore_inferencedata_coords(
-    idata: az.InferenceData,
+    idata: xr.DataTree,
     coords_or_registry: CoordRegistry | dict[str, Any],
-) -> az.InferenceData:
-    """Restore saved scientific coordinates onto matching ``InferenceData`` groups.
+) -> xr.DataTree:
+    """Restore saved scientific coordinates onto matching trace groups.
 
     Args:
-        idata: Inference data object returned by sampling.
+        idata: Trace tree returned by sampling.
         coords_or_registry: Either a ``CoordRegistry`` or a legacy mapping of
             original coordinates keyed by dimension name.
 
     Returns:
-        The same ``InferenceData`` object with compatible original coordinates
+        The same trace tree with compatible original coordinates
         and auxiliary coordinates restored onto its xarray groups.
     """
     original_coords = (
@@ -297,10 +402,8 @@ def restore_inferencedata_coords(
         else coords_or_registry
     )
 
-    for group_name in idata.groups():
-        group = getattr(idata, group_name)
-        if not isinstance(group, xr.Dataset):
-            continue
+    for group_name, node in idata.children.items():
+        group = node.to_dataset()
 
         restored_multiindex_levels: set[str] = set()
         for dim, coord in original_coords.items():
@@ -333,6 +436,11 @@ def restore_inferencedata_coords(
                 # labels and silently replace ordinary auxiliaries with NaN.
                 group = group.assign_coords({name: (coord.dims, np.array(coord.values, copy=True))})
 
-        setattr(idata, group_name, group)
+        if isinstance(coords_or_registry, CoordRegistry):
+            for name, attrs in coords_or_registry.coordinate_attrs.items():
+                if name in group.coords:
+                    group.coords[name].attrs.update(attrs)
+
+        idata[group_name] = group
 
     return idata

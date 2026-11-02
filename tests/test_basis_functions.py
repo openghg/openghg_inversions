@@ -1,5 +1,5 @@
+from collections.abc import Sequence
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -10,48 +10,36 @@ from sparse import SparseArray
 import openghg_inversions.basis as basis_package
 import openghg_inversions.basis._functions as basis_module
 from openghg_inversions.basis.algorithms import ConnectedComponentSplitStrategy
-from openghg_inversions.basis._functions import (
-    basis,
-    basis_functions,
-    _flux_fp_from_fp_all,
-    _mean_fp_times_mean_flux,
-)
+from openghg_inversions.basis._functions import _mean_fp_times_mean_flux
+from openghg_inversions.basis.compatibility import basis
 from openghg_inversions.basis import (
-    basis_weights_from_fp_all,
-    basis_functions_wrapper,
+    basis_weights_from_data,
+    basis_functions_from_flat_basis,
+    fixed_outer_regions_basis_from_data,
+    make_basis_functions,
+    load_basis_functions,
+)
+from openghg_inversions.inversion_data import MergedData
+from openghg_inversions.inversion_data import SiteOptions
+from openghg_inversions.native_flux import resolve_runtime_flux
+from openghg_inversions.basis import (
     bucket_basis_from_weights,
-    bucket_basis_function,
-    fixed_outer_regions_basis,
     load_country_region_classes,
     load_intem_outer_regions,
     paired_abs_response_weights,
     quadtree_basis_from_weights,
-    quadtree_basis_function,
     region_constrained_basis_from_weights,
     region_constrained_fixed_outer_basis_from_weights,
-    region_constrained_basis_function,
 )
-from openghg_inversions.basis._wrapper import (
-    _save_basis,
-    _save_basis_datatree,
-    load_basis_functions,
-    make_basis_functions,
-)
+from openghg_inversions.basis.compatibility import _save_basis, _save_basis_datatree
 from openghg_inversions.basis.basis_functions import (
     BASIS_ARTIFACT_PATH_ATTR,
     BASIS_ARTIFACT_SOURCE_ATTR,
     BasisFunctions,
-    basis_functions_from_fp_all_flat_basis,
-    flux_from_fp_all,
 )
 from openghg_inversions.basis.operators import (
     BucketBasisOperator,
     MultiSourceBucketBasisOperator,
-)
-from openghg_inversions.basis._helpers import (
-    _legacy_multisource_h_if_needed,
-    apply_fp_basis_functions,
-    fp_sensitivity,
 )
 from openghg_inversions.flux_sanitization import (
     FluxNonFiniteMetadata,
@@ -59,9 +47,7 @@ from openghg_inversions.flux_sanitization import (
     NONFINITE_POLICY_ZERO_FILL,
     sanitize_flux_nonfinite,
 )
-from openghg_inversions.inversion_data import data_processing_surface_notracer
 
-from helpers import basis_function, footprint
 from helpers import (
     convert_old_multisector_H_to_gathered,
     make_basis_flat_from_blocks,
@@ -72,40 +58,56 @@ from helpers import (
 )
 
 
-def test_fp_x_flux(tac_ch4_data_args):
+@pytest.fixture
+def tac_basis_data(tac_ch4_data_args):
+    options = dict(tac_ch4_data_args)
+    site_options = SiteOptions.from_inputs(
+        **{
+            name: options.pop(name)
+            for name in ("sites", "averaging_period", "inlet", "instrument", "fp_height")
+            if name in options
+        }
+    )
+    return MergedData.from_options(site_options=site_options, **options)
+
+
+def test_fp_x_flux(tac_basis_data):
     """Test that mean(fp) * mean(flux) is invariant to duplicating sites and shifting time coords.
 
-    This is a regression test for legacy preprocessing helpers `_flux_fp_from_fp_all` and
-    `_mean_fp_times_mean_flux`: changing site membership or time coordinates (without changing
+    This exercises `_mean_fp_times_mean_flux` on canonical provider arrays: changing site membership or time coordinates (without changing
     values) should not change the mean footprint×flux product.
     """
-    fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
-    emissions_name = [next(iter(fp_all[".flux"].keys()))]
+    sites, fluxes = tac_basis_data.site_data, tac_basis_data.flux_data
 
-    flux1, fp1 = _flux_fp_from_fp_all(fp_all, emissions_name)
+    emissions_name = [next(iter(fluxes.keys()))]
+
+    flux1 = fluxes[emissions_name[0]].flux
+    fp1 = [sites["TAC"].fp]
     mean_fp_flux1 = _mean_fp_times_mean_flux(flux1, fp1)
 
     # add new site with same footprint -- this should not change the mean over time
-    fp_all["ABC"] = fp_all["TAC"]
+    sites["ABC"] = sites["TAC"]
 
-    flux2, fp2 = _flux_fp_from_fp_all(fp_all, emissions_name)
+    flux2 = flux1
+    fp2 = [sites["TAC"].fp, sites["ABC"].fp]
     mean_fp_flux2 = _mean_fp_times_mean_flux(flux2, fp2)
 
     xr.testing.assert_allclose(mean_fp_flux1, mean_fp_flux2)
 
     # shift time of second site -- this should not change the mean over time
-    max_time = pd.Timedelta(fp_all["TAC"].time.max().values - fp_all["TAC"].time.min().values)
-    new_time = fp_all["TAC"].time + max_time
-    fp_all["ABC"] = fp_all["ABC"].assign_coords(time=new_time)
+    max_time = pd.Timedelta(sites["TAC"].time.max().values - sites["TAC"].time.min().values)
+    new_time = sites["TAC"].time + max_time
+    sites["ABC"] = sites["ABC"].assign_coords(time=new_time)
 
-    flux3, fp3 = _flux_fp_from_fp_all(fp_all, emissions_name)
+    flux3 = flux1
+    fp3 = [sites["TAC"].fp, sites["ABC"].fp]
     mean_fp_flux3 = _mean_fp_times_mean_flux(flux3, fp3)
 
     xr.testing.assert_allclose(mean_fp_flux1, mean_fp_flux3)
 
 
-def _simple_fp_all_for_basis_weights() -> dict:
-    """Build a tiny legacy ``fp_all`` mapping for weight-adapter tests."""
+def _simple_inputs_for_basis_weights() -> tuple[dict, dict]:
+    """Build small site datasets and canonical source flux datasets."""
     time = pd.date_range("2019-01-01", periods=2)
     coords = {"time": time, "lat": [10.0, 20.0], "lon": [1.0, 2.0]}
     flux = xr.DataArray(
@@ -125,10 +127,7 @@ def _simple_fp_all_for_basis_weights() -> dict:
         coords=coords,
         name="fp",
     )
-    return {
-        ".flux": {"test-source": SimpleNamespace(data=xr.Dataset({"flux": flux}))},
-        "TAC": xr.Dataset({"fp": footprint}),
-    }
+    return {"TAC": xr.Dataset({"fp": footprint})}, {"test-source": xr.Dataset({"flux": flux})}
 
 
 def _flux_nonfinite_metadata(data: xr.DataArray | xr.Dataset) -> FluxNonFiniteMetadata:
@@ -138,28 +137,30 @@ def _flux_nonfinite_metadata(data: xr.DataArray | xr.Dataset) -> FluxNonFiniteMe
     return metadata
 
 
-def test_basis_weights_from_fp_all_matches_current_weight_definition():
+def test_basis_weights_from_inputs_matches_current_weight_definition():
     """Weight helper matches the current mean-footprint times mean-flux convention."""
-    fp_all = _simple_fp_all_for_basis_weights()
-    flux = fp_all[".flux"]["test-source"].data.flux
+    sites, fluxes = _simple_inputs_for_basis_weights()
 
-    weights = basis_weights_from_fp_all(fp_all, ["test-source"])
+    flux = fluxes["test-source"].flux
+
+    weights = basis_weights_from_data(sites, fluxes["test-source"].flux)
 
     xr.testing.assert_allclose(weights, flux.mean("time"))
 
 
-def test_basis_weights_from_fp_all_applies_abs_flux_and_mask():
+def test_basis_weights_from_inputs_applies_abs_flux_and_mask():
     """Weight helper preserves legacy absolute-flux and mask handling."""
-    fp_all = _simple_fp_all_for_basis_weights()
-    flux = fp_all[".flux"]["test-source"].data.flux
-    fp_all[".flux"]["test-source"] = SimpleNamespace(data=xr.Dataset({"flux": -flux}))
+    sites, fluxes = _simple_inputs_for_basis_weights()
+
+    flux = fluxes["test-source"].flux
+    fluxes["test-source"] = xr.Dataset({"flux": -flux})
     mask = xr.DataArray(
         np.array([[True, False], [False, True]]),
         dims=("lat", "lon"),
         coords={"lat": flux.lat, "lon": flux.lon},
     )
 
-    weights = basis_weights_from_fp_all(fp_all, ["test-source"], abs_flux=True, mask=mask)
+    weights = basis_weights_from_data(sites, fluxes["test-source"].flux, abs_flux=True, mask=mask)
 
     expected = flux.mean("time").where(mask, drop=True)
     xr.testing.assert_allclose(weights, expected)
@@ -192,9 +193,10 @@ def test_paired_abs_response_weights_use_retained_footprint_times_only():
 
 def test_paired_abs_response_weights_applies_mask():
     """Paired response weights preserve the lower-level mask convention."""
-    fp_all = _simple_fp_all_for_basis_weights()
-    flux = fp_all[".flux"]["test-source"].data.flux
-    footprint = fp_all["TAC"].fp
+    sites, fluxes = _simple_inputs_for_basis_weights()
+
+    flux = fluxes["test-source"].flux
+    footprint = sites["TAC"].fp
     mask = xr.DataArray(
         np.array([[True, False], [False, True]]),
         dims=("lat", "lon"),
@@ -241,9 +243,10 @@ def test_paired_abs_response_weights_weights_sites_by_retained_observation_count
 
 def test_paired_abs_response_weights_rejects_unpaired_times():
     """Paired response weights fail fast when retained observations lack flux."""
-    fp_all = _simple_fp_all_for_basis_weights()
-    flux = fp_all[".flux"]["test-source"].data.flux
-    footprint = fp_all["TAC"].fp.assign_coords(time=pd.to_datetime(["2021-01-01", "2021-01-02"]))
+    sites, fluxes = _simple_inputs_for_basis_weights()
+
+    flux = fluxes["test-source"].flux
+    footprint = sites["TAC"].fp.assign_coords(time=pd.to_datetime(["2021-01-01", "2021-01-02"]))
 
     with pytest.raises(ValueError, match="footprint times must be present"):
         paired_abs_response_weights(flux, [footprint])
@@ -251,9 +254,10 @@ def test_paired_abs_response_weights_rejects_unpaired_times():
 
 def test_paired_abs_response_weights_rejects_reordered_spatial_coordinates():
     """Paired response weights fail fast instead of multiplying grids positionally."""
-    fp_all = _simple_fp_all_for_basis_weights()
-    flux = fp_all[".flux"]["test-source"].data.flux
-    footprint = fp_all["TAC"].fp.sortby("lon", ascending=False)
+    sites, fluxes = _simple_inputs_for_basis_weights()
+
+    flux = fluxes["test-source"].flux
+    footprint = sites["TAC"].fp.sortby("lon", ascending=False)
 
     with pytest.raises(ValueError, match="exact time and spatial coordinates"):
         paired_abs_response_weights(flux, [footprint])
@@ -261,9 +265,10 @@ def test_paired_abs_response_weights_rejects_reordered_spatial_coordinates():
 
 def test_paired_abs_response_weights_rejects_reordered_mask_coordinates():
     """Paired response masks must be on the same coordinate grid."""
-    fp_all = _simple_fp_all_for_basis_weights()
-    flux = fp_all[".flux"]["test-source"].data.flux
-    footprint = fp_all["TAC"].fp
+    sites, fluxes = _simple_inputs_for_basis_weights()
+
+    flux = fluxes["test-source"].flux
+    footprint = sites["TAC"].fp
     mask = xr.DataArray(
         np.array([[False, True], [True, False]]),
         dims=("lat", "lon"),
@@ -276,9 +281,10 @@ def test_paired_abs_response_weights_rejects_reordered_mask_coordinates():
 
 def test_paired_abs_response_weights_rejects_mismatched_spatial_dimensions():
     """Paired responses reject arrays that would broadcast across renamed dimensions."""
-    fp_all = _simple_fp_all_for_basis_weights()
-    flux = fp_all[".flux"]["test-source"].data.flux
-    footprint = fp_all["TAC"].fp.rename(lat="latitude", lon="longitude")
+    sites, fluxes = _simple_inputs_for_basis_weights()
+
+    flux = fluxes["test-source"].flux
+    footprint = sites["TAC"].fp.rename(lat="latitude", lon="longitude")
 
     with pytest.raises(ValueError, match="same time and spatial dimensions"):
         paired_abs_response_weights(flux, [footprint])
@@ -286,9 +292,10 @@ def test_paired_abs_response_weights_rejects_mismatched_spatial_dimensions():
 
 def test_paired_abs_response_weights_rejects_extra_flux_dimensions():
     """Paired responses remain two-dimensional when callers pass source-stacked flux."""
-    fp_all = _simple_fp_all_for_basis_weights()
-    flux = fp_all[".flux"]["test-source"].data.flux.expand_dims(source=["test-source"])
-    footprint = fp_all["TAC"].fp
+    sites, fluxes = _simple_inputs_for_basis_weights()
+
+    flux = fluxes["test-source"].flux.expand_dims(source=["test-source"])
+    footprint = sites["TAC"].fp
 
     with pytest.raises(ValueError, match="exactly two spatial dimensions"):
         paired_abs_response_weights(flux, [footprint])
@@ -296,24 +303,26 @@ def test_paired_abs_response_weights_rejects_extra_flux_dimensions():
 
 def test_paired_abs_response_weights_rejects_non_boolean_mask():
     """Paired response masks reject numeric values with ambiguous truth semantics."""
-    fp_all = _simple_fp_all_for_basis_weights()
-    flux = fp_all[".flux"]["test-source"].data.flux
-    footprint = fp_all["TAC"].fp
+    sites, fluxes = _simple_inputs_for_basis_weights()
+
+    flux = fluxes["test-source"].flux
+    footprint = sites["TAC"].fp
     mask = xr.ones_like(flux.isel(time=0), dtype=float)
 
     with pytest.raises(ValueError, match="mask must be Boolean"):
         paired_abs_response_weights(flux, [footprint], mask=mask)
 
 
-def test_flux_from_fp_all_sanitizes_nonfinite_single_source():
+def test_flux_from_inputs_sanitizes_nonfinite_single_source():
     """Retained single-source flux replaces non-finite cells with zero."""
-    fp_all = _simple_fp_all_for_basis_weights()
-    flux = fp_all[".flux"]["test-source"].data.flux.copy()
+    _sites, fluxes = _simple_inputs_for_basis_weights()
+    split_by_sectors = False
+    flux = fluxes["test-source"].flux.copy()
     flux.values[0, 0, 0] = np.nan
     flux.values[1, 1, 1] = np.inf
-    fp_all[".flux"]["test-source"] = SimpleNamespace(data=xr.Dataset({"flux": flux}))
+    fluxes["test-source"] = xr.Dataset({"flux": flux})
 
-    retained_flux = flux_from_fp_all(fp_all)
+    retained_flux = resolve_runtime_flux(fluxes, split_by_sectors=split_by_sectors)
 
     assert np.isfinite(retained_flux.values).all()
     assert retained_flux.values[0, 0, 0] == 0.0
@@ -321,21 +330,22 @@ def test_flux_from_fp_all_sanitizes_nonfinite_single_source():
     assert _flux_nonfinite_metadata(retained_flux).policy == NONFINITE_POLICY_ZERO_FILL
 
 
-def test_flux_from_fp_all_sanitizes_nonfinite_multisource():
+def test_flux_from_inputs_sanitizes_nonfinite_multisource():
     """Retained multisource flux replaces non-finite cells after source stacking."""
-    fp_all = _simple_fp_all_for_basis_weights()
-    base_flux = fp_all[".flux"]["test-source"].data.flux
+    _sites, fluxes = _simple_inputs_for_basis_weights()
+    split_by_sectors = False
+    base_flux = fluxes["test-source"].flux
     flux_a = base_flux.copy()
     flux_b = (2.0 * base_flux).copy()
     flux_a.values[0, 0, 0] = np.nan
     flux_b.values[1, 1, 1] = -np.inf
-    fp_all[".flux"] = {
-        "a": SimpleNamespace(data=xr.Dataset({"flux": flux_a})),
-        "b": SimpleNamespace(data=xr.Dataset({"flux": flux_b})),
+    fluxes = {
+        "a": xr.Dataset({"flux": flux_a}),
+        "b": xr.Dataset({"flux": flux_b}),
     }
-    fp_all[".split_by_sectors"] = True
+    split_by_sectors = True
 
-    retained_flux = flux_from_fp_all(fp_all)
+    retained_flux = resolve_runtime_flux(fluxes, split_by_sectors=split_by_sectors)
 
     assert retained_flux.dims[0] == "source"
     assert np.isfinite(retained_flux.values).all()
@@ -343,34 +353,36 @@ def test_flux_from_fp_all_sanitizes_nonfinite_multisource():
     assert float(retained_flux.sel(source="b").isel(time=1, lat=1, lon=1)) == 0.0
     metadata = _flux_nonfinite_metadata(retained_flux)
     assert metadata.policy == NONFINITE_POLICY_ZERO_FILL
-    assert metadata.context == "retained basis flux from fp_all"
+    assert metadata.context == "retained basis runtime flux"
     assert metadata.source is None
 
 
-def test_flux_from_fp_all_refreshes_source_stacked_metadata() -> None:
+def test_flux_from_inputs_refreshes_source_stacked_metadata() -> None:
     """Source-stacked flux gets aggregate metadata instead of first-source attrs."""
-    fp_all = _simple_fp_all_for_basis_weights()
-    base_flux = fp_all[".flux"]["test-source"].data.flux
+    _sites, fluxes = _simple_inputs_for_basis_weights()
+    split_by_sectors = False
+    base_flux = fluxes["test-source"].flux
     flux_a = sanitize_flux_nonfinite(base_flux.copy(), context="source a", source="a")
     flux_b = sanitize_flux_nonfinite((2.0 * base_flux).copy(), context="source b", source="b")
-    fp_all[".flux"] = {
-        "a": SimpleNamespace(data=xr.Dataset({"flux": flux_a})),
-        "b": SimpleNamespace(data=xr.Dataset({"flux": flux_b})),
+    fluxes = {
+        "a": xr.Dataset({"flux": flux_a}),
+        "b": xr.Dataset({"flux": flux_b}),
     }
-    fp_all[".split_by_sectors"] = True
+    split_by_sectors = True
 
-    retained_flux = flux_from_fp_all(fp_all)
+    retained_flux = resolve_runtime_flux(fluxes, split_by_sectors=split_by_sectors)
     metadata = _flux_nonfinite_metadata(retained_flux)
 
     assert metadata.policy == NONFINITE_POLICY_ZERO_FILL
-    assert metadata.context == "retained basis flux from fp_all"
+    assert metadata.context == "retained basis runtime flux"
     assert metadata.source is None
 
 
-def test_flux_from_fp_all_preserves_single_source_count_metadata() -> None:
+def test_flux_from_inputs_preserves_single_source_count_metadata() -> None:
     """A retained single source keeps an exact audit performed at ingestion."""
-    fp_all = _simple_fp_all_for_basis_weights()
-    flux = fp_all[".flux"]["test-source"].data.flux.copy()
+    _sites, fluxes = _simple_inputs_for_basis_weights()
+    split_by_sectors = False
+    flux = fluxes["test-source"].flux.copy()
     flux.values[0, 0, 0] = np.nan
     sanitized = sanitize_flux_nonfinite(
         flux,
@@ -378,9 +390,9 @@ def test_flux_from_fp_all_preserves_single_source_count_metadata() -> None:
         source="test-source",
         check="count",
     )
-    fp_all[".flux"]["test-source"] = SimpleNamespace(data=xr.Dataset({"flux": sanitized}))
+    fluxes["test-source"] = xr.Dataset({"flux": sanitized})
 
-    retained_flux = flux_from_fp_all(fp_all)
+    retained_flux = resolve_runtime_flux(fluxes, split_by_sectors=split_by_sectors)
     metadata = _flux_nonfinite_metadata(retained_flux)
 
     assert metadata.checked == NONFINITE_CHECKED_COMPUTED
@@ -390,8 +402,9 @@ def test_flux_from_fp_all_preserves_single_source_count_metadata() -> None:
 
 def test_basis_constructor_does_not_resanitize_retained_flux() -> None:
     """Constructing a basis from sanitized flux preserves its graph and history."""
-    fp_all = _simple_fp_all_for_basis_weights()
-    retained_flux = flux_from_fp_all(fp_all)
+    _sites, fluxes = _simple_inputs_for_basis_weights()
+    split_by_sectors = False
+    retained_flux = resolve_runtime_flux(fluxes, split_by_sectors=split_by_sectors)
     basis_flat = xr.ones_like(retained_flux.isel(time=0), dtype=int)
 
     basis_functions = BasisFunctions.from_flat_basis(basis_flat=basis_flat, flux=retained_flux)
@@ -440,13 +453,13 @@ def test_bucket_basis_from_weights_sanitizes_nonfinite_before_dispatch(monkeypat
         nregion: int,
         bucket: float,
         domain: str,
-        country_directory: str | None = None,
+        landsea_indices: np.ndarray | None = None,
     ) -> np.ndarray:
         """Assert non-finite cells were replaced and normalized before dispatch."""
         assert nregion == 4
         assert bucket == 1
         assert domain == "TEST"
-        assert country_directory == "/tmp/countries"
+        assert landsea_indices is not None
         np.testing.assert_allclose(grid, np.array([[0.0, 0.0], [0.0, 1.0]]))
         return np.arange(1, grid.size + 1).reshape(grid.shape)
 
@@ -457,7 +470,7 @@ def test_bucket_basis_from_weights_sanitizes_nonfinite_before_dispatch(monkeypat
         "2019-01-01",
         "TEST",
         nbasis=4,
-        country_directory="/tmp/countries",
+        landsea_indices=np.ones(weights.shape, dtype=int),
     )
 
     assert basis_func.dims == ("lat", "lon", "time")
@@ -479,16 +492,18 @@ def test_bucket_basis_from_weights_preserves_all_negative_normalization(monkeypa
         nregion: int,
         bucket: float,
         domain: str,
-        country_directory: str | None = None,
+        landsea_indices: np.ndarray | None = None,
     ) -> np.ndarray:
         """Assert all-negative weights are still divided by their maximum."""
-        del nregion, bucket, domain, country_directory
+        del nregion, bucket, domain, landsea_indices
         np.testing.assert_allclose(grid, np.array([[4.0, 2.0], [1.0, 3.0]]))
         return np.arange(1, grid.size + 1).reshape(grid.shape)
 
     monkeypatch.setattr(basis_module, "weighted_algorithm", fake_weighted_algorithm)
 
-    basis_func = bucket_basis_from_weights(weights, "2019-01-01", "TEST")
+    basis_func = bucket_basis_from_weights(
+        weights, "2019-01-01", "TEST", landsea_classes=xr.ones_like(weights, dtype=int)
+    )
 
     assert basis_func.dims == ("lat", "lon", "time")
     assert basis_func.attrs["domain"] == "TEST"
@@ -556,12 +571,17 @@ def test_quadtree_and_bucket_basis_from_weights_reject_empty_sanitized_weights(f
     )
 
     with pytest.raises(ValueError, match=message):
-        factory(weights, "2019-01-01", "TEST")
+        kwargs = (
+            {"landsea_classes": xr.ones_like(weights, dtype=int)}
+            if factory is bucket_basis_from_weights
+            else {}
+        )
+        factory(weights, "2019-01-01", "TEST", **kwargs)
 
 
 def test_region_constrained_basis_from_weights_all_zero_falls_back_to_area():
     """Region-constrained all-zero finite weights keep the existing area fallback."""
-    _fp_all, region_classes = _tiny_region_constrained_fp_all()
+    _sites, _fluxes, region_classes = _tiny_region_constrained_inputs()
     weights = xr.zeros_like(region_classes, dtype=float)
 
     basis_func = region_constrained_basis_from_weights(
@@ -712,86 +732,21 @@ def test_region_constrained_basis_from_weights_rejects_no_finite_cells(values, m
         )
 
 
-def test_quadtree_basis_from_weights_matches_fp_all_adapter(monkeypatch):
-    """Quadtree ``fp_all`` wrapper delegates to the weight-first helper."""
-    fp_all = _simple_fp_all_for_basis_weights()
-    weights = basis_weights_from_fp_all(fp_all, ["test-source"])
-
-    def fake_quadtree_algorithm(grid: np.ndarray, nbasis: int, seed: int | None = None) -> np.ndarray:
-        """Return deterministic labels while recording expected adapter args."""
-        assert nbasis == 3
-        assert seed == 7
-        return (grid > 0).astype(int)
-
-    monkeypatch.setattr(basis_module, "quadtree_algorithm", fake_quadtree_algorithm)
-
-    from_weights = quadtree_basis_from_weights(weights, "2019-01-01", "TEST", nbasis=3, seed=7)
-    from_fp_all = quadtree_basis_function(
-        fp_all,
-        "2019-01-01",
-        "TEST",
-        emissions_name=["test-source"],
-        nbasis=3,
-        seed=7,
-    )
-
-    xr.testing.assert_equal(from_fp_all, from_weights)
-    assert from_fp_all.attrs["domain"] == "TEST"
-
-
-def test_bucket_basis_from_weights_matches_fp_all_adapter(monkeypatch):
-    """Weighted bucket ``fp_all`` wrapper delegates to the weight-first helper."""
-    fp_all = _simple_fp_all_for_basis_weights()
-    weights = basis_weights_from_fp_all(fp_all, ["test-source"])
-
-    def fake_weighted_algorithm(
-        grid: np.ndarray,
-        nregion: int,
-        bucket: float,
-        domain: str,
-        country_directory: str | None = None,
-    ) -> np.ndarray:
-        """Return deterministic labels while recording expected adapter args."""
-        assert nregion == 4
-        assert bucket == 1
-        assert domain == "TEST"
-        assert country_directory == "/tmp/countries"
-        assert np.isclose(grid.max(), 1.0)
-        return np.arange(1, grid.size + 1).reshape(grid.shape)
-
-    monkeypatch.setattr(basis_module, "weighted_algorithm", fake_weighted_algorithm)
-
-    from_weights = bucket_basis_from_weights(
-        weights,
-        "2019-01-01",
-        "TEST",
-        nbasis=4,
-        country_directory="/tmp/countries",
-    )
-    from_fp_all = bucket_basis_function(
-        fp_all,
-        "2019-01-01",
-        "TEST",
-        emissions_name=["test-source"],
-        nbasis=4,
-        country_directory="/tmp/countries",
-    )
-
-    xr.testing.assert_equal(from_fp_all, from_weights)
-    assert from_fp_all.attrs["domain"] == "TEST"
-
-
-def test_quadtree_basis_function(tac_ch4_data_args, raw_data_path):
+def test_quadtree_basis_function(tac_basis_data, raw_data_path):
     """Check if quadtree basis created with seed 42 and TAC CH4 args matches
     a basis created with the same arguments and saved to file.
 
     This is to check against changes in the code from when this test was made
     (13 Feb 2024)
     """
-    fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
-    emissions_name = next(iter(fp_all[".flux"].keys()))
-    basis_func = quadtree_basis_function(
-        emissions_name=[emissions_name], fp_all=fp_all, start_date="2019-01-01", seed=42, domain="EUROPE"
+    sites, fluxes = tac_basis_data.site_data, tac_basis_data.flux_data
+
+    emissions_name = next(iter(fluxes.keys()))
+    basis_func = quadtree_basis_from_weights(
+        basis_weights_from_data(sites, fluxes[emissions_name].flux),
+        start_date="2019-01-01",
+        seed=42,
+        domain="EUROPE",
     )
 
     basis_func_reloaded = basis(
@@ -803,21 +758,22 @@ def test_quadtree_basis_function(tac_ch4_data_args, raw_data_path):
     xr.testing.assert_allclose(basis_func, basis_func_reloaded.basis)
 
 
-def test_bucket_basis_function(tac_ch4_data_args, raw_data_path):
+def test_bucket_basis_function(tac_basis_data, raw_data_path):
     """Check if quadtree basis created with seed 42 and TAC CH4 args matches
     a basis created with the same arguments and saved to file.
 
     This is to check against changes in the code from when this test was made
     (13 Feb 2024)
     """
-    fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
-    emissions_name = next(iter(fp_all[".flux"].keys()))
-    basis_func = bucket_basis_function(
-        emissions_name=[emissions_name],
-        fp_all=fp_all,
+    sites, fluxes = tac_basis_data.site_data, tac_basis_data.flux_data
+
+    emissions_name = next(iter(fluxes.keys()))
+    basis_func = bucket_basis_from_weights(
+        basis_weights_from_data(sites, fluxes[emissions_name].flux),
         start_date="2019-01-01",
         domain="EUROPE",
         nbasis=98,
+        landsea_classes=load_country_region_classes("EUROPE"),
     )
 
     basis_func_reloaded = basis(
@@ -829,36 +785,41 @@ def test_bucket_basis_function(tac_ch4_data_args, raw_data_path):
     xr.testing.assert_allclose(basis_func, basis_func_reloaded.basis)
 
 
-def test_fixed_outer_region_basis_function(tac_ch4_data_args, raw_data_path):
-    """Check if fixed outer region basis created with seed 42 and TAC CH4 args matches
-    a basis created with the same arguments and saved to file.
+def test_fixed_outer_region_basis_function(tac_basis_data):
+    """Fixed outer labels are retained and inner labels respect land/sea classes."""
+    sites, fluxes = tac_basis_data.site_data, tac_basis_data.flux_data
 
-    This is to check against changes in the code from when this test was made
-    (2 Sep 2024)
-    """
-    fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
-    emissions_name = next(iter(fp_all[".flux"].keys()))
-    basis_func = fixed_outer_regions_basis(
-        emissions_name=[emissions_name],
-        fp_all=fp_all,
+    emissions_name = next(iter(fluxes.keys()))
+    basis_func = fixed_outer_regions_basis_from_data(
+        site_data=sites,
+        weighting_flux=fluxes[emissions_name].flux,
         start_date="2019-01-01",
         domain="EUROPE",
         basis_algorithm="weighted",
+        outer_regions=load_intem_outer_regions("EUROPE", None),
+        landsea_classes=load_country_region_classes("EUROPE", None),
     )
 
-    basis_func_reloaded = basis(
-        domain="EUROPE",
-        basis_case="fixed_outer_region_ch4-test_basis",
-        basis_directory=raw_data_path / "basis",
+    labels = basis_func.squeeze("time", drop=True)
+    outer_regions = load_intem_outer_regions("EUROPE")
+    _, outer_regions = xr.align(labels, outer_regions, join="override")
+    inner_mask = outer_regions == outer_regions.max()
+    outer_mask = ~inner_mask
+    np.testing.assert_array_equal(
+        labels.values[outer_mask.values],
+        (outer_regions + 1).values[outer_mask.values],
     )
+    assert labels.values[inner_mask.values].min() > labels.values[outer_mask.values].max()
 
-    # TODO: create new "fixed" basis function file, since we've switched basis functions from
-    # dataset to data array
-    xr.testing.assert_allclose(basis_func, basis_func_reloaded.basis)
+    landsea = load_country_region_classes("EUROPE")
+    _, landsea = xr.align(labels, landsea, join="override")
+    for label in np.unique(labels.values[inner_mask.values]):
+        classes = np.unique(landsea.values[inner_mask.values & (labels.values == label)])
+        assert len(classes) == 1
 
 
-def _tiny_region_constrained_fp_all() -> tuple[dict, xr.DataArray]:
-    """Build a tiny fp_all fixture and aligned region classes."""
+def _tiny_region_constrained_inputs() -> tuple[dict, dict, xr.DataArray]:
+    """Build site/flux datasets and aligned region classes."""
     time = pd.date_range("2020-01-01", periods=2)
     lat = np.arange(4.0)
     lon = np.arange(4.0)
@@ -879,11 +840,10 @@ def _tiny_region_constrained_fp_all() -> tuple[dict, xr.DataArray]:
         coords={"lat": lat, "lon": lon},
         name="region_class",
     )
-    fp_all = {
-        "SITE": xr.Dataset({"fp": fp}),
-        ".flux": {"total": SimpleNamespace(data=xr.Dataset({"flux": flux}))},
-    }
-    return fp_all, region_classes
+    sites = {"SITE": xr.Dataset({"fp": fp})}
+    fluxes = {"total": xr.Dataset({"flux": flux})}
+
+    return sites, fluxes, region_classes
 
 
 def _assert_basis_labels_do_not_cross_classes(labels: xr.DataArray, classes: xr.DataArray) -> None:
@@ -898,13 +858,12 @@ def _assert_basis_labels_do_not_cross_classes(labels: xr.DataArray, classes: xr.
 
 def test_region_constrained_basis_function_uses_supplied_region_classes():
     """Region-constrained basis generation uses caller-supplied class fields."""
-    fp_all, region_classes = _tiny_region_constrained_fp_all()
+    sites, fluxes, region_classes = _tiny_region_constrained_inputs()
 
-    basis_func = region_constrained_basis_function(
-        fp_all=fp_all,
+    basis_func = region_constrained_basis_from_weights(
+        basis_weights_from_data(sites, fluxes["total"].flux),
         start_date="2020-01-01",
         domain="TEST",
-        emissions_name=["total"],
         nbasis=4,
         region_classes=region_classes,
     )
@@ -914,34 +873,10 @@ def test_region_constrained_basis_function_uses_supplied_region_classes():
     _assert_basis_labels_do_not_cross_classes(labels, region_classes)
 
 
-def test_region_constrained_basis_from_weights_matches_fp_all_adapter():
-    """Region-constrained ``fp_all`` wrapper delegates to the weight-first helper."""
-    fp_all, region_classes = _tiny_region_constrained_fp_all()
-    weights = basis_weights_from_fp_all(fp_all, ["total"])
-
-    from_weights = region_constrained_basis_from_weights(
-        weights,
-        "2020-01-01",
-        "TEST",
-        region_classes=region_classes,
-        nbasis=2,
-    )
-    from_fp_all = region_constrained_basis_function(
-        fp_all=fp_all,
-        start_date="2020-01-01",
-        domain="TEST",
-        emissions_name=["total"],
-        nbasis=2,
-        region_classes=region_classes,
-    )
-
-    xr.testing.assert_equal(from_fp_all, from_weights)
-    assert from_fp_all.attrs["domain"] == "TEST"
-
-
 def test_region_constrained_basis_function_can_use_contrast_score_acceptance():
     """Contrast-score acceptance is opt-in and can stop low-contrast wrapper splits."""
-    fp_all, region_classes = _tiny_region_constrained_fp_all()
+    sites, fluxes, region_classes = _tiny_region_constrained_inputs()
+
     contrast_contribution = xr.DataArray(
         np.ones((2, *region_classes.shape), dtype=float),
         dims=("design_obs", *region_classes.dims),
@@ -949,11 +884,10 @@ def test_region_constrained_basis_function_can_use_contrast_score_acceptance():
         name="design_contribution",
     )
 
-    basis_func = region_constrained_basis_function(
-        fp_all=fp_all,
+    basis_func = region_constrained_basis_from_weights(
+        basis_weights_from_data(sites, fluxes["total"].flux),
         start_date="2020-01-01",
         domain="TEST",
-        emissions_name=["total"],
         nbasis=4,
         region_classes=region_classes,
         split_acceptance="contrast_score",
@@ -968,8 +902,9 @@ def test_region_constrained_basis_function_can_use_contrast_score_acceptance():
 
 def test_region_constrained_basis_from_weights_preserves_contrast_score_acceptance():
     """Weight-first constrained helper keeps the contrast-score acceptance option."""
-    fp_all, region_classes = _tiny_region_constrained_fp_all()
-    weights = basis_weights_from_fp_all(fp_all, ["total"])
+    sites, fluxes, region_classes = _tiny_region_constrained_inputs()
+
+    weights = basis_weights_from_data(sites, fluxes["total"].flux)
     contrast_contribution = xr.DataArray(
         np.ones((2, *region_classes.shape), dtype=float),
         dims=("design_obs", *region_classes.dims),
@@ -993,55 +928,28 @@ def test_region_constrained_basis_from_weights_preserves_contrast_score_acceptan
     _assert_basis_labels_do_not_cross_classes(labels, region_classes)
 
 
-@pytest.mark.parametrize(
-    ("legacy_name", "canonical_name"),
-    [
-        ("bucketbasisfunction", "bucket_basis_function"),
-        ("quadtreebasisfunction", "quadtree_basis_function"),
-    ],
-)
-def test_legacy_basis_function_names_warn(monkeypatch, legacy_name, canonical_name):
-    """Legacy compressed basis function names warn and delegate to canonical names."""
-    sentinel = object()
-    monkeypatch.setattr(basis_module, canonical_name, lambda *args, **kwargs: sentinel)
-
-    with pytest.warns(DeprecationWarning, match=f"{legacy_name}.*deprecated"):
-        result = getattr(basis_module, legacy_name)("arg", option=True)
-
-    assert result is sentinel
-    with pytest.warns(DeprecationWarning, match=f"{legacy_name}.*deprecated"):
-        package_result = getattr(basis_package, legacy_name)("arg", option=True)
-
-    assert package_result is sentinel
-
-
 def test_region_constrained_compressed_name_is_not_exported():
     """The new region-constrained function only uses the canonical name."""
     assert not hasattr(basis_module, "regionconstrainedbasisfunction")
     assert not hasattr(basis_package, "regionconstrainedbasisfunction")
 
 
-def test_legacy_basis_algorithm_registry_keeps_quadtree_and_weighted():
-    """Legacy run_hbmcmc algorithm names remain registered."""
-    assert "quadtree" in basis_functions
-    assert "weighted" in basis_functions
-    assert basis_functions["quadtree"].algorithm is quadtree_basis_function
-    assert basis_functions["weighted"].algorithm is bucket_basis_function
-
-
 def test_make_basis_functions_accepts_region_constrained_algorithm():
     """make_basis_functions can build a retained basis from caller-supplied classes."""
-    fp_all, region_classes = _tiny_region_constrained_fp_all()
+    sites, fluxes, region_classes = _tiny_region_constrained_inputs()
+    split_by_sectors = False
 
     basis_object = make_basis_functions(
-        fp_all=fp_all,
+        site_data=sites,
+        flux_data=fluxes,
+        split_by_sectors=split_by_sectors,
         species="ch4",
         domain="TEST",
         start_date="2020-01-01",
-        emissions_name=["total"],
         nbasis=4,
         basis_algorithm="region_constrained",
         region_classes=region_classes,
+        flux_sources=["total"],
     )
 
     labels = basis_object.flat_basis()
@@ -1050,7 +958,8 @@ def test_make_basis_functions_accepts_region_constrained_algorithm():
 
 def test_fixed_outer_regions_can_use_region_constrained_algorithm(tmp_path):
     """Fixed outer regions crop whole-domain classes for the bounded inner maximum."""
-    fp_all, region_classes = _tiny_region_constrained_fp_all()
+    sites, fluxes, region_classes = _tiny_region_constrained_inputs()
+
     outer_values = np.array(
         [
             [0, 0, 1, 1],
@@ -1071,15 +980,17 @@ def test_fixed_outer_regions_can_use_region_constrained_algorithm(tmp_path):
     )
     outer_regions.to_netcdf(tmp_path / "outer_region_definition_TEST.nc")
 
-    basis_func = fixed_outer_regions_basis(
-        fp_all=fp_all,
+    basis_func = fixed_outer_regions_basis_from_data(
+        site_data=sites,
+        weighting_flux=fluxes["total"].flux,
         start_date="2020-01-01",
         basis_algorithm="region_constrained",
         domain="TEST",
-        emissions_name=["total"],
         nbasis=4,
-        country_directory=str(tmp_path),
         region_classes=region_classes,
+        outer_regions=load_intem_outer_regions(
+            "TEST", outer_regions_path=tmp_path / "outer_region_definition_TEST.nc"
+        ),
     )
 
     labels = basis_func.squeeze("time", drop=True)
@@ -1090,6 +1001,347 @@ def test_fixed_outer_regions_can_use_region_constrained_algorithm(tmp_path):
         assert len(set(region_classes.values[inner_mask & (labels.values == label)])) == 1
     assert len(np.unique(labels.values[outer_values == 0])) == 1
     assert len(np.unique(labels.values[outer_values == 1])) == 1
+
+
+def test_fixed_outer_regions_accepts_direct_outer_map_path(tmp_path):
+    """A nested-domain outer map need not use the domain-derived filename."""
+    sites, fluxes, region_classes = _tiny_region_constrained_inputs()
+    split_by_sectors = False
+    outer_values = np.array(
+        [
+            [0, 0, 1, 1],
+            [0, 2, 2, 1],
+            [0, 2, 2, 1],
+            [0, 0, 1, 1],
+        ],
+        dtype=int,
+    )
+    outer_path = tmp_path / "outer_region_definition_EUHROB.nc"
+    xr.Dataset(
+        {"region": (("lat", "lon"), outer_values)},
+        coords=region_classes.coords,
+    ).to_netcdf(outer_path)
+
+    basis_func = fixed_outer_regions_basis_from_data(
+        site_data=sites,
+        weighting_flux=fluxes["total"].flux,
+        start_date="2020-01-01",
+        basis_algorithm="region_constrained",
+        domain="TEST",
+        nbasis=3,
+        region_classes=region_classes,
+        outer_regions=load_intem_outer_regions("TEST", outer_regions_path=outer_path),
+    )
+
+    assert basis_func.sizes["time"] == 1
+    assert bool((basis_func > 0).all())
+
+    retained = make_basis_functions(
+        site_data=sites,
+        flux_data=fluxes,
+        split_by_sectors=split_by_sectors,
+        species="ch4",
+        domain="TEST",
+        start_date="2020-01-01",
+        nbasis=3,
+        basis_algorithm="region_constrained",
+        fix_outer_regions=True,
+        outer_regions_path=outer_path,
+        region_classes=region_classes,
+        flux_sources=["total"],
+    )
+    assert isinstance(retained, BasisFunctions)
+    assert bool((retained.flat_basis() > 0).all())
+
+
+@pytest.mark.parametrize("latitude", [np.arange(4.0) + 0.25, np.arange(4.0)[::-1]])
+def test_fixed_outer_regions_rejects_misaligned_custom_map_grid(tmp_path, latitude):
+    """A same-size custom map cannot silently replace its grid with flux coordinates."""
+    sites, fluxes, region_classes = _tiny_region_constrained_inputs()
+
+    outer_path = tmp_path / "misaligned-fixed-outer-map.nc"
+    xr.DataArray(
+        np.array(
+            [
+                [0, 0, 1, 1],
+                [0, 2, 2, 1],
+                [0, 2, 2, 1],
+                [0, 0, 1, 1],
+            ],
+            dtype=int,
+        ),
+        dims=("lat", "lon"),
+        coords={"lat": latitude, "lon": region_classes.lon},
+        name="region",
+    ).to_dataset().to_netcdf(outer_path)
+
+    with pytest.raises(xr.AlignmentError, match="not physically compatible"):
+        fixed_outer_regions_basis_from_data(
+            site_data=sites,
+            weighting_flux=fluxes["total"].flux,
+            start_date="2020-01-01",
+            basis_algorithm="region_constrained",
+            domain="TEST",
+            nbasis=3,
+            region_classes=region_classes,
+            outer_regions=load_intem_outer_regions("TEST", outer_regions_path=outer_path),
+        )
+
+
+def _zeroed_inner_response_inputs(
+    sites: dict, fluxes: dict, region_classes: xr.DataArray, inner_mask: np.ndarray
+) -> tuple[dict, dict]:
+    """Return a copy of ``inputs`` with its fp/flux response zeroed under ``inner_mask``.
+
+    Mimics ``mask_outer_merged_for_inner_domain`` zeroing the outer footprint response
+    and prior flux over the nested inner domain's extent.
+    """
+    mask = xr.DataArray(inner_mask, dims=("lat", "lon"), coords=region_classes.coords)
+    fp = sites["SITE"]["fp"].where(~mask, 0.0)
+    flux = fluxes["total"]["flux"].where(~mask, 0.0)
+    return {"SITE": xr.Dataset({"fp": fp})}, {"total": xr.Dataset({"flux": flux})}
+
+
+def test_fixed_outer_regions_empty_inner_raises_by_default(tmp_path):
+    """A marked inner region with no residual footprint*flux response still raises by default."""
+    sites, fluxes, region_classes = _tiny_region_constrained_inputs()
+
+    outer_values = np.array(
+        [
+            [0, 0, 1, 1],
+            [0, 2, 2, 1],
+            [0, 2, 2, 1],
+            [0, 0, 1, 1],
+        ],
+        dtype=int,
+    )
+    outer_path = tmp_path / "outer_region_definition_EMPTYINNER.nc"
+    xr.Dataset(
+        {"region": (("lat", "lon"), outer_values)},
+        coords=region_classes.coords,
+    ).to_netcdf(outer_path)
+    zeroed_sites, zeroed_fluxes = _zeroed_inner_response_inputs(
+        sites, fluxes, region_classes, outer_values == 2
+    )
+
+    with pytest.raises(ValueError, match="no non-zero finite values"):
+        fixed_outer_regions_basis_from_data(
+            site_data=zeroed_sites,
+            weighting_flux=zeroed_fluxes["total"].flux,
+            start_date="2020-01-01",
+            basis_algorithm="quadtree",
+            domain="TEST",
+            nbasis=2,
+            outer_regions=load_intem_outer_regions("TEST", outer_regions_path=outer_path),
+        )
+
+
+def test_fixed_outer_regions_keeps_empty_inner_region_fixed_when_allowed(tmp_path):
+    """Nested outer-domain preparation may opt into an expected-empty marked inner region.
+
+    Instead of raising, the marked region is kept as one fixed label -- like the
+    surrounding fixed outer labels -- rather than being subdivided into `nbasis`
+    sub-regions that would have no real footprint*flux signal to distinguish them.
+    """
+    sites, fluxes, region_classes = _tiny_region_constrained_inputs()
+
+    outer_values = np.array(
+        [
+            [0, 0, 1, 1],
+            [0, 2, 2, 1],
+            [0, 2, 2, 1],
+            [0, 0, 1, 1],
+        ],
+        dtype=int,
+    )
+    outer_path = tmp_path / "outer_region_definition_EMPTYINNER.nc"
+    xr.Dataset(
+        {"region": (("lat", "lon"), outer_values)},
+        coords=region_classes.coords,
+    ).to_netcdf(outer_path)
+    zeroed_sites, zeroed_fluxes = _zeroed_inner_response_inputs(
+        sites, fluxes, region_classes, outer_values == 2
+    )
+
+    basis_func = fixed_outer_regions_basis_from_data(
+        site_data=zeroed_sites,
+        weighting_flux=zeroed_fluxes["total"].flux,
+        start_date="2020-01-01",
+        basis_algorithm="quadtree",
+        domain="TEST",
+        nbasis=2,
+        allow_empty_inner_region=True,
+        outer_regions=load_intem_outer_regions("TEST", outer_regions_path=outer_path),
+    )
+
+    labels = basis_func.squeeze("time", drop=True)
+    inner_labels = set(np.unique(labels.values[outer_values == 2]))
+    assert len(inner_labels) == 1
+
+    retained = make_basis_functions(
+        site_data=zeroed_sites,
+        flux_data=zeroed_fluxes,
+        split_by_sectors=False,
+        species="ch4",
+        domain="TEST",
+        start_date="2020-01-01",
+        nbasis=2,
+        basis_algorithm="quadtree",
+        fix_outer_regions=True,
+        outer_regions_path=outer_path,
+        allow_empty_inner_region=True,
+        flux_sources=["total"],
+    )
+    assert isinstance(retained, BasisFunctions)
+
+
+def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, tmp_path):
+    """An asset's inner-region metadata takes precedence over the legacy max-label rule."""
+    sites, fluxes, region_classes = _tiny_region_constrained_inputs()
+
+    outer_values = np.array(
+        [
+            [0, 0, 2, 2],
+            [0, 1, 1, 2],
+            [0, 1, 1, 2],
+            [0, 0, 2, 2],
+        ],
+        dtype=int,
+    )
+    outer_path = tmp_path / "explicit-inner-label.nc"
+    outer_regions = xr.Dataset(
+        {"region": (("lat", "lon"), outer_values)},
+        coords=region_classes.coords,
+        attrs={"inner_region_label": 1},
+    )
+    outer_regions.to_netcdf(outer_path)
+    seen: dict[str, xr.DataArray] = {}
+
+    def fake_quadtree_basis(weights, start_date, domain, nbasis=100):
+        del domain, nbasis
+        expected_weights = basis_weights_from_data(
+            sites, fluxes["total"].flux, mask=outer_regions["region"] == 1
+        )
+        xr.testing.assert_equal(weights, expected_weights)
+        seen["weights"] = weights
+        inner = xr.DataArray([[1, 1], [2, 2]], dims=weights.dims, coords=weights.coords)
+        return inner.expand_dims(time=[pd.Timestamp(start_date)], axis=-1)
+
+    monkeypatch.setattr(basis_module, "quadtree_basis_from_weights", fake_quadtree_basis)
+
+    result = fixed_outer_regions_basis_from_data(
+        site_data=sites,
+        weighting_flux=fluxes["total"].flux,
+        start_date="2020-01-01",
+        basis_algorithm="quadtree",
+        domain="TEST",
+        outer_regions=load_intem_outer_regions("TEST", outer_regions_path=outer_path),
+    )
+
+    assert seen["weights"].shape == (2, 2)
+    labels = result.squeeze("time", drop=True)
+    inner_labels = set(np.unique(labels.values[outer_values == 1]))
+    fixed_outer_labels = set(np.unique(labels.values[outer_values != 1]))
+    assert inner_labels == {4, 5}
+    assert fixed_outer_labels == {1, 3}
+    assert inner_labels.isdisjoint(fixed_outer_labels)
+
+
+def test_packaged_euhrob_map_marks_the_6km_inner_rectangle():
+    """The bundled EUHROB map distinguishes its non-maximum inner label from all outer labels."""
+    regions = load_intem_outer_regions(
+        "EUROPE",
+        outer_regions_path="intem_region_definition_EUHROB.nc",
+    )
+
+    assert regions.attrs["inner_region_label"] == 6
+    assert regions.attrs["inner_domain"] == "EUROPE-6km"
+    assert regions.attrs["outer_domain"] == "EUROPE"
+    assert regions.sizes == {"lat": 293, "lon": 391}
+    assert set(np.unique(regions)) == set(range(15))
+
+    inner = regions == regions.attrs["inner_region_label"]
+    inner_lat = inner.any("lon")
+    inner_lon = inner.any("lat")
+    assert int(inner.sum()) == int(inner_lat.sum()) * int(inner_lon.sum()) == 14_560
+    assert float(regions.lat.where(inner_lat, drop=True).min()) == pytest.approx(34.597)
+    assert float(regions.lat.where(inner_lat, drop=True).max()) == pytest.approx(64.783)
+    assert float(regions.lon.where(inner_lon, drop=True).min()) == pytest.approx(-10.956)
+    assert float(regions.lon.where(inner_lon, drop=True).max()) == pytest.approx(28.116)
+    assert set(np.unique(regions.values[~inner.values])) == {
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+    }
+
+
+def test_fixed_outer_weighted_basis_crops_landsea_mask_to_inner_region(monkeypatch, tmp_path):
+    """Fixed-outer weighted generation aligns land/sea classes before cropping."""
+    sites, fluxes, region_classes = _tiny_region_constrained_inputs()
+
+    outer_values = np.array(
+        [
+            [0, 0, 1, 1],
+            [0, 2, 2, 1],
+            [0, 2, 2, 1],
+            [0, 0, 1, 1],
+        ],
+        dtype=int,
+    )
+    landsea_values = np.array(
+        [
+            [0, 0, 1, 1],
+            [0, 0, 1, 1],
+            [0, 1, 0, 1],
+            [0, 0, 1, 1],
+        ],
+        dtype=int,
+    )
+    outer_path = tmp_path / "outer_region_definition_TEST.nc"
+    xr.Dataset(
+        {"region": (region_classes.dims, outer_values)},
+        coords=region_classes.coords,
+    ).to_netcdf(outer_path)
+    xr.Dataset(
+        {"country": (region_classes.dims, landsea_values)},
+        coords=region_classes.coords,
+    ).to_netcdf(tmp_path / "country-land-sea_TEST.nc")
+    seen: dict[str, np.ndarray] = {}
+
+    def fake_weighted_basis(
+        weights, start_date, domain, nbasis=100, landsea_classes=None, landsea_indices=None
+    ):
+        del domain, nbasis, landsea_classes
+        assert landsea_indices is not None
+        seen["landsea"] = landsea_indices
+        inner = xr.ones_like(weights, dtype=int)
+        return inner.expand_dims(time=[pd.Timestamp(start_date)], axis=-1)
+
+    monkeypatch.setattr(basis_module, "bucket_basis_from_weights", fake_weighted_basis)
+
+    result = fixed_outer_regions_basis_from_data(
+        site_data=sites,
+        weighting_flux=fluxes["total"].flux,
+        start_date="2020-01-01",
+        basis_algorithm="weighted",
+        domain="TEST",
+        outer_regions=load_intem_outer_regions("TEST", outer_regions_path=outer_path),
+        landsea_classes=load_country_region_classes("TEST", str(tmp_path)),
+    )
+
+    np.testing.assert_array_equal(seen["landsea"], landsea_values[1:3, 1:3])
+    assert result.shape == (1, 4, 4)
 
 
 def test_region_constrained_fixed_outer_basis_from_weights_allocates_inner_only():
@@ -1365,6 +1617,8 @@ def test_region_constrained_fixed_outer_basis_from_weights_rejects_non_integral_
             "2020-01-01",
             "TEST",
             nbasis=nbasis,
+            outer_regions=xr.ones_like(weights, dtype=int),
+            region_classes=xr.ones_like(weights, dtype=int),
         )
 
 
@@ -1398,8 +1652,8 @@ def test_fixed_outer_loaders_use_separate_custom_paths(tmp_path):
         "2020-01-01",
         "TEST",
         nbasis=2,
-        country_directory=country_directory,
-        outer_regions_path=outer_regions_path,
+        region_classes=load_country_region_classes("TEST", country_directory),
+        outer_regions=loaded_outer_regions,
         allocation="area",
     ).squeeze("time", drop=True)
 
@@ -1470,84 +1724,6 @@ def test_packaged_fixed_outer_and_landsea_fields_compose_on_weights_grid(domain)
     xr.testing.assert_equal(labels.lon, weights.lon)
     assert np.count_nonzero(labels.values) == labels.size
     assert set(np.unique(labels)) == set(range(1, 9))
-
-
-def test_fp_sensitivity_one_flux():
-    """Test fp_sensitivity with one flux sector."""
-    nlat, nlon = 10, 12
-    nbasis = 3
-    basis_func = basis_function(nlat, nlon, nbasis)
-    fp = footprint(nlat, nlon, "2019-01-01", "2019-01-02", 2)
-
-    fp_and_data = {"TAC": xr.Dataset({"fp_x_flux": fp}), ".flux": {"a": 1}}
-
-    fp_and_data = fp_sensitivity(fp_and_data, basis_func)
-
-    h = fp_and_data["TAC"].H
-
-    # the footprint values at time 0 are 1, and at time 1 are 2
-    np.testing.assert_allclose(2 * h.isel(time=0), h.isel(time=1))
-
-
-def test_fp_sensitivity_two_flux_sectors():
-    """Check that we can apply a common basis function to two separate sources."""
-    nlat, nlon = 10, 12
-    nbasis = 3
-    basis_func = basis_function(nlat, nlon, nbasis)
-
-    fp1 = footprint(nlat, nlon, "2019-01-01", "2019-01-02", 2)
-    fp2 = footprint(nlat, nlon, "2019-01-01", "2019-01-02", 2)
-    fp = xr.concat([fp1.expand_dims({"source": ["a"]}), fp2.expand_dims({"source": ["b"]})], dim="source")
-    fp_and_data = {"TAC": xr.Dataset({"fp_x_flux_sectoral": fp}), ".flux": {"a": 1, "b": 2}}
-
-    fp_and_data = fp_sensitivity(fp_and_data, basis_func)
-
-    for source in ["a", "b"]:
-        h = fp_and_data["TAC"].H.sel(source=source).dropna("region")
-
-        # the footprint values at time 0 are 1, and at time 1 are 2
-        np.testing.assert_allclose(2 * h.isel(time=0), h.isel(time=1))
-
-
-def test_fp_sensitivity_two_flux_sources_combined_mode():
-    """If split_by_sectors is False, use combined `fp_x_flux` even with multiple flux entries."""
-    nlat, nlon = 10, 12
-    nbasis = 3
-    basis_func = basis_function(nlat, nlon, nbasis)
-    fp = footprint(nlat, nlon, "2019-01-01", "2019-01-02", 2)
-
-    fp_and_data = {
-        "TAC": xr.Dataset({"fp_x_flux": fp}),
-        ".flux": {"a": 1, "b": 2},
-        ".split_by_sectors": False,
-    }
-
-    fp_and_data = fp_sensitivity(fp_and_data, basis_func)
-    h = fp_and_data["TAC"].H
-    np.testing.assert_allclose(2 * h.isel(time=0), h.isel(time=1))
-
-
-def test_fp_sensitivity_two_flux_sectors_two_basis_funcs():
-    """Check that we can apply separate basis functions to separate sources."""
-    nlat, nlon = 10, 12
-    nbasis1 = 3
-    nbasis2 = 4
-    basis_func1 = basis_function(nlat, nlon, nbasis1)
-    basis_func2 = basis_function(nlat, nlon, nbasis2)
-    basis_func = {"a": basis_func1, "b": basis_func2}
-
-    fp1 = footprint(nlat, nlon, "2019-01-01", "2019-01-02", 2)
-    fp2 = footprint(nlat, nlon, "2019-01-01", "2019-01-02", 2)
-    fp = xr.concat([fp1.expand_dims({"source": ["a"]}), fp2.expand_dims({"source": ["b"]})], dim="source")
-    fp_and_data = {"TAC": xr.Dataset({"fp_x_flux_sectoral": fp}), ".flux": {"a": 1, "b": 2}}
-
-    fp_and_data = fp_sensitivity(fp_and_data, basis_func)
-
-    for source in ["a", "b"]:
-        h = fp_and_data["TAC"].H.sel(source=source).dropna("region")
-
-        # the footprint values at time 0 are 1, and at time 1 are 2
-        np.testing.assert_allclose(2 * h.isel(time=0), h.isel(time=1))
 
 
 def test_basisfunctions_sensitivity_synthetic_matches_explicit_sum():
@@ -1676,187 +1852,13 @@ def test_synthetic_no_all_zero_state_rows_when_fp_positive_everywhere():
 
 
 # @pytest.mark.slow
-def test_basisfunctions_sensitivity_matches_apply_fp_basis_functions_real_data(
-    default_bc_basis_directory, openghg_test_store
-):
-    """New sensitivity matches legacy `apply_fp_basis_functions` for real test-suite data.
-
-    This is a higher-level integration test:
-        - It uses `basis_functions_wrapper` to construct the legacy basis and compute H.
-        - It then reconstructs a `BasisFunctions` instance using the same basis and a representative
-          flux field, and verifies `BasisFunctions.sensitivity(ds.fp_x_flux)` matches the legacy H.
-
-    This guards against coordinate alignment, dimension ordering, and subtle differences in the
-    region-labelling conventions on real-world data.
-    """
-    data_args = {
-        "species": "ch4",
-        "sites": ["MHD", "TAC"],
-        "start_date": "2019-01-01",
-        "end_date": "2019-01-02",
-        "bc_store": "inversions_tests",
-        "obs_store": "inversions_tests",
-        "footprint_store": "inversions_tests",
-        "emissions_store": "inversions_tests",
-        "inlet": ["10m", "185m"],
-        "instrument": ["gcmd", "picarro"],
-        "domain": "EUROPE",
-        "fp_height": ["10m", "185m"],
-        "fp_model": "NAME",
-        "emissions_name": ["total-ukghg-edgar7"],
-        "averaging_period": ["1h", "1h"],
-    }
-
-    fp_all, *_ = data_processing_surface_notracer(**data_args)
-
-    basis_args = {
-        "species": "ch4",
-        "domain": "EUROPE",
-        "start_date": "2019-01-01",
-        "emissions_name": ["total-ukghg-edgar7"],
-        "nbasis": 100,
-        "use_bc": True,
-        "basis_algorithm": "weighted",
-        "bc_basis_case": "NESW",
-        "bc_basis_directory": default_bc_basis_directory,
-    }
-
-    fp_all_with_basis = basis_functions_wrapper(fp_all, **basis_args)
-
-    site = "MHD"
-    ds = fp_all_with_basis[site]
-
-    # old sensitivity (already computed by wrapper) is ds["H"]; but we want to call the legacy fn directly too
-    H_old = apply_fp_basis_functions(ds.fp_x_flux, fp_all_with_basis[".basis"])
-
-    # new sensitivity
-    # Need a flux field; the wrapper has fp_all_with_basis[".flux"][source].data.flux
-    flux_source = next(iter(fp_all_with_basis[".flux"].keys()))
-    flux = fp_all_with_basis[".flux"][flux_source].data.flux
-
-    # bf = BasisFunctions(basis_flat=fp_all_with_basis[".basis"], flux=flux)
-    bf = BasisFunctions.from_flat_basis(
-        basis_flat=fp_all_with_basis[".basis"], flux=flux, operator_kwargs={"state_dim": "region"}
-    )
-    H_new = bf.sensitivity(ds.fp_x_flux)
-
-    # Ensure same dim order for comparison
-    if H_new.dims != H_old.dims:
-        H_new = H_new.transpose(*H_old.dims)
-
-    xr.testing.assert_allclose(H_new, H_old)
-
-    # now test vs. result of basis_functions_wrapper
-    H_old = ds.H
-
-    if H_new.dims != H_old.dims:
-        H_new = H_new.transpose(*H_old.dims)
-
-    xr.testing.assert_allclose(H_new, H_old)
-
-
-# @pytest.mark.slow
-def test_multisector_ragged_new_matches_old_after_conversion(openghg_test_store):
-    """Ragged multi-source: new gathered H matches legacy padded H after conversion.
-
-    Historically, multi-sector sensitivities were represented as a padded array:
-        H_old(region=max_regions, time, source)
-    where missing regions for a given source were represented by all-zero rows.
-
-    The new MultiSourceBucketBasisOperator produces a gathered representation with a MultiIndex:
-        H_new(region=(source, region_in_source), time)
-
-    This test:
-        1) Computes the old padded H via `fp_sensitivity` with two different bases (ragged region counts).
-        2) Converts H_old -> gathered MultiIndex using `convert_old_multisector_H_to_gathered`.
-        3) Computes H_new with `BasisFunctions.from_multi_source_flat_basis(...).sensitivity(...)`.
-        4) Asserts equality.
-
-    This is the key equivalence test justifying the new MultiIndex-based operator.
-    """
-    # --- Load test-suite data (same as notebook) ---
-    data_args = {
-        "species": "ch4",
-        "sites": ["MHD", "TAC"],
-        "start_date": "2019-01-01",
-        "end_date": "2019-01-02",
-        "bc_store": "inversions_tests",
-        "obs_store": "inversions_tests",
-        "footprint_store": "inversions_tests",
-        "emissions_store": "inversions_tests",
-        "inlet": ["10m", "185m"],
-        "instrument": ["gcmd", "picarro"],
-        "domain": "EUROPE",
-        "fp_height": ["10m", "185m"],
-        "fp_model": "NAME",
-        "emissions_name": ["total-ukghg-edgar7"],
-        "averaging_period": ["1h", "1h"],
-    }
-    fp_all, *_ = data_processing_surface_notracer(**data_args)
-
-    # --- Make a "sectoral" fp_x_flux like your notebook did ---
-    fp_all_sectoral = fp_all.copy()
-    fp_all_sectoral[".flux"] = fp_all[".flux"].copy()
-    fp_all_sectoral[".flux"]["sector2"] = fp_all_sectoral[".flux"]["total-ukghg-edgar7"]
-
-    for k, v in fp_all_sectoral.items():
-        if str(k).startswith("."):
-            continue
-        ds = v["fp_x_flux"]
-        to_concat = [
-            ds.expand_dims({"source": ["total-ukghg-edgar7"]}),
-            ds.expand_dims({"source": ["sector2"]}),
-        ]
-        v["fp_x_flux_sectoral"] = xr.concat(to_concat, dim="source")
-
-    fp_all_sectoral[".split_by_sectors"] = True
-
-    # --- Build two different basis partitions (ragged region counts) ---
-    weighted_basis_args_1 = {
-        "domain": "EUROPE",
-        "start_date": "2019-01-01",
-        "emissions_name": ["total-ukghg-edgar7"],
-        "nbasis": 100,
-    }
-    weighted_basis_args_2 = {
-        "domain": "EUROPE",
-        "start_date": "2019-01-01",
-        "emissions_name": ["sector2"],
-        "nbasis": 200,
-    }
-
-    basis1 = basis_functions["weighted"].algorithm(fp_all_sectoral, **weighted_basis_args_1)
-    basis2 = basis_functions["weighted"].algorithm(fp_all_sectoral, **weighted_basis_args_2)
-
-    basis_dict = {"total-ukghg-edgar7": basis1, "sector2": basis2}
-
-    # --- Old behaviour: fp_sensitivity pads to max(region) and introduces zero rows for missing regions ---
-    fp_old = fp_sensitivity(fp_all_sectoral.copy(), basis_func=basis_dict)
-    site = "MHD"
-    H_old = fp_old[site]["H"]  # (region=max, time, source)
-
-    # Convert old padded to gathered multiindex region and drop all-zero rows
-    H_old_gathered = convert_old_multisector_H_to_gathered(H_old)
-
-    # --- New behaviour
-    flux_dict = {k: v.data.flux for k, v in fp_all_sectoral[".flux"].items()}
-
-    multisector_bf = BasisFunctions.from_multi_source_flat_basis(
-        basis_flat=basis_dict, flux=flux_dict, operator_kwargs={"state_dim": "region"}
-    )
-
-    H_new_gathered = multisector_bf.sensitivity(fp_all_sectoral[site].fp_x_flux_sectoral)
-    # Source-wise projection changes the float32 summation order over the grid.
-    xr.testing.assert_allclose(H_new_gathered, H_old_gathered, atol=2e-5)
-
-
 def _make_simple_state_trace(
     *,
     region_dim: str = "region",
     draw_dim: str = "draw",
     chain_dim: str | None = None,
-    region_values: list[float] = [10.0, 100.0],
-    draw_values: list[int] = [0, 1, 2],
+    region_values: Sequence[float] = (10.0, 100.0),
+    draw_values: Sequence[int] = (0, 1, 2),
 ) -> xr.DataArray:
     """Make a tiny deterministic PyMC-like trace array for interpolate tests."""
     state = xr.DataArray(
@@ -2123,43 +2125,6 @@ def test_basisfunctions_interpolate_trace_with_chain_dim():
 
 # --------------------------------------------------------------------------------------
 # Multi-source equivalence: gathered MultiIndex vs legacy padded H conversion
-# --------------------------------------------------------------------------------------
-@pytest.mark.parametrize("use_multiindex", [True, False], ids=["multiindex", "auxiliary-coordinates"])
-def test_legacy_multisource_adapter_only_zero_fills_structural_padding(use_multiindex: bool) -> None:
-    """Legacy rectangularization must preserve NaNs in represented state cells."""
-    state_index = pd.MultiIndex.from_tuples(
-        [("ff", 0), ("ff", 1), ("ocean", 0)],
-        names=["source", "region_in_source"],
-    )
-    state_coords: dict = (
-        dict(xr.Coordinates.from_pandas_multiindex(state_index, "state"))
-        if use_multiindex
-        else {
-            "state": [0, 1, 2],
-            "source": ("state", ["ff", "ff", "ocean"]),
-            "region_in_source": ("state", [0, 1, 0]),
-        }
-    )
-    sensitivity = xr.DataArray(
-        [[1.0, 2.0], [np.nan, 4.0], [5.0, 6.0]],
-        dims=("state", "time"),
-        coords={
-            **state_coords,
-            "time": [0, 1],
-        },
-    )
-
-    result = _legacy_multisource_h_if_needed(
-        sensitivity,
-        state_dim="state",
-        flux_sources=["ff", "ocean"],
-    )
-
-    assert np.isnan(result.sel(source="ff", region=1, time=0))
-    assert result.sel(source="ocean", region=1, time=0).item() == 0.0
-    assert result.coords["source_region_count"].to_dict()["data"] == [2, 1]
-
-
 def test_multisource_sensitivity_matches_legacy_padded_conversion_smoke():
     """Smoke test: gathered multi-source sensitivity matches legacy padded->gathered conversion.
 
@@ -2299,9 +2264,7 @@ def test_multisource_sensitivity_avoids_extra_dimension_collision() -> None:
     )
 
     actual = basis_functions.sensitivity(fp_x_flux.expand_dims(native_source=factor.native_source) * factor)
-    expected = (basis_functions.sensitivity(fp_x_flux) * factor).transpose(
-        "region", "time", "native_source"
-    )
+    expected = (basis_functions.sensitivity(fp_x_flux) * factor).transpose("region", "time", "native_source")
 
     xr.testing.assert_identical(actual, expected)
 
@@ -2368,22 +2331,25 @@ def test_multisource_sensitivity_source_independent_control() -> None:
     )
 
 
-def test_basis_functions_from_fp_all_flat_basis(tac_ch4_data_args):
-    """Construct BasisFunctions object from fp_all side-channel flux data."""
-    fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
-    basis_name = next(iter(fp_all[".flux"].keys()))
+def test_basis_functions_from_inputs_flat_basis(tac_basis_data):
+    """Construct BasisFunctions from resolved native flux and labeled partitions."""
+    fluxes = tac_basis_data.flux_data
+    split_by_sectors = False
+    basis_name = next(iter(fluxes.keys()))
 
-    flux = fp_all[".flux"][basis_name].data["flux"]
+    flux = fluxes[basis_name]["flux"]
     basis_flat = xr.ones_like(flux, dtype=int).rename("basis")
 
-    bf = basis_functions_from_fp_all_flat_basis(fp_all=fp_all, basis_flat=basis_flat)
+    bf = basis_functions_from_flat_basis(
+        flux=resolve_runtime_flux(fluxes, split_by_sectors=split_by_sectors), basis_flat=basis_flat
+    )
 
     assert isinstance(bf, BasisFunctions)
     assert bf.operator.meta.state_dim == "region"
     assert bf.flux.dims == flux.dims
 
 
-def test_basis_functions_from_fp_all_sums_fluxes_non_sectoral():
+def test_basis_functions_from_inputs_sums_fluxes_non_sectoral():
     """Non-sectoral workflows should sum flux entries into one representative flux."""
     basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]])
     flux_a = xr.DataArray(
@@ -2398,22 +2364,21 @@ def test_basis_functions_from_fp_all_sums_fluxes_non_sectoral():
         coords={"lat": basis_flat.lat, "lon": basis_flat.lon},
         name="flux",
     )
-    fp_x_flux_sectoral = make_fp_x_flux_sectoral(sources=["a", "b"], nlat=2, nlon=2, ntime=2)
-    fp_all = {
-        # Even if sectoral variables are present, explicit mode flag should control behavior.
-        "TAC": xr.Dataset({"fp_x_flux_sectoral": fp_x_flux_sectoral}),
-        ".flux": {"a": flux_a, "b": flux_b},
-        ".split_by_sectors": False,
-    }
+    make_fp_x_flux_sectoral(sources=["a", "b"], nlat=2, nlon=2, ntime=2)
 
-    bf = basis_functions_from_fp_all_flat_basis(fp_all=fp_all, basis_flat=basis_flat)
+    fluxes = {"a": flux_a.to_dataset(name="flux"), "b": flux_b.to_dataset(name="flux")}
+    split_by_sectors = False
+
+    bf = basis_functions_from_flat_basis(
+        flux=resolve_runtime_flux(fluxes, split_by_sectors=split_by_sectors), basis_flat=basis_flat
+    )
 
     assert isinstance(bf, BasisFunctions)
     assert "source" not in bf.flux.dims
     xr.testing.assert_allclose(bf.flux, flux_a + flux_b)
 
 
-def test_basis_functions_from_fp_all_stacks_fluxes_sectoral():
+def test_basis_functions_from_inputs_stacks_fluxes_sectoral():
     """Sectoral workflows should preserve source-resolved fluxes along `source`."""
     basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]])
     flux_a = xr.DataArray(
@@ -2428,14 +2393,14 @@ def test_basis_functions_from_fp_all_stacks_fluxes_sectoral():
         coords={"lat": basis_flat.lat, "lon": basis_flat.lon},
         name="flux",
     )
-    fp_x_flux_sectoral = make_fp_x_flux_sectoral(sources=["a", "b"], nlat=2, nlon=2, ntime=2)
-    fp_all = {
-        "TAC": xr.Dataset({"fp_x_flux_sectoral": fp_x_flux_sectoral}),
-        ".flux": {"a": flux_a, "b": flux_b},
-        ".split_by_sectors": True,
-    }
+    make_fp_x_flux_sectoral(sources=["a", "b"], nlat=2, nlon=2, ntime=2)
 
-    bf = basis_functions_from_fp_all_flat_basis(fp_all=fp_all, basis_flat=basis_flat)
+    fluxes = {"a": flux_a.to_dataset(name="flux"), "b": flux_b.to_dataset(name="flux")}
+    split_by_sectors = True
+
+    bf = basis_functions_from_flat_basis(
+        flux=resolve_runtime_flux(fluxes, split_by_sectors=split_by_sectors), basis_flat=basis_flat
+    )
 
     assert isinstance(bf, BasisFunctions)
     assert "source" in bf.flux.dims
@@ -2448,19 +2413,18 @@ def test_basis_functions_from_fp_all_stacks_fluxes_sectoral():
     xr.testing.assert_allclose(bf.flux, expected)
 
 
-def test_basis_functions_from_fp_all_selects_runtime_basis_sources():
+def test_basis_functions_from_inputs_selects_runtime_basis_sources():
     """A legacy basis mapping may contain more sources than the current run."""
     basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]])
-    fp_all = {
-        ".flux": {
-            "B": xr.ones_like(basis_flat, dtype=float).rename("flux"),
-            "A": (2.0 * xr.ones_like(basis_flat, dtype=float)).rename("flux"),
-        },
-        ".split_by_sectors": True,
-    }
 
-    bf = basis_functions_from_fp_all_flat_basis(
-        fp_all=fp_all,
+    fluxes = {
+        "B": xr.ones_like(basis_flat, dtype=float).rename("flux").to_dataset(name="flux"),
+        "A": (2.0 * xr.ones_like(basis_flat, dtype=float)).rename("flux").to_dataset(name="flux"),
+    }
+    split_by_sectors = True
+
+    bf = basis_functions_from_flat_basis(
+        flux=resolve_runtime_flux(fluxes, split_by_sectors=split_by_sectors),
         basis_flat={"EXTRA": basis_flat, "A": basis_flat, "B": basis_flat},
     )
 
@@ -2469,7 +2433,7 @@ def test_basis_functions_from_fp_all_selects_runtime_basis_sources():
     assert bf.flux.source.values.tolist() == ["B", "A"]
 
 
-def test_flux_from_fp_all_stacks_sources_with_equal_time_coordinates():
+def test_flux_from_inputs_stacks_sources_with_equal_time_coordinates():
     """Sector fluxes sharing an exact time index stack without temporal expansion."""
     time = pd.date_range("2019-01-01", periods=2, freq="h")
     flux_a = xr.DataArray(
@@ -2480,11 +2444,8 @@ def test_flux_from_fp_all_stacks_sources_with_equal_time_coordinates():
     )
     flux_b = (2.0 * flux_a).rename("flux")
 
-    stacked = flux_from_fp_all(
-        {
-            ".flux": {"a": flux_a, "b": flux_b},
-            ".split_by_sectors": True,
-        }
+    stacked = resolve_runtime_flux(
+        {"a": flux_a.to_dataset(name="flux"), "b": flux_b.to_dataset(name="flux")}, split_by_sectors=True
     )
 
     assert stacked.dims == ("source", "time", "lat", "lon")
@@ -2492,7 +2453,7 @@ def test_flux_from_fp_all_stacks_sources_with_equal_time_coordinates():
     xr.testing.assert_identical(stacked.time, flux_a.time)
 
 
-def test_flux_from_fp_all_rejects_sources_with_different_time_coordinates():
+def test_flux_from_inputs_rejects_sources_with_different_time_coordinates():
     """Mixed source frequencies require explicit resampling before source stacking."""
     hourly = xr.DataArray(
         np.ones((2, 1, 1)),
@@ -2516,15 +2477,13 @@ def test_flux_from_fp_all_rejects_sources_with_different_time_coordinates():
     )
 
     with pytest.raises(ValueError):
-        flux_from_fp_all(
-            {
-                ".flux": {"hourly": hourly, "monthly": monthly},
-                ".split_by_sectors": True,
-            }
+        resolve_runtime_flux(
+            {"hourly": hourly.to_dataset(name="flux"), "monthly": monthly.to_dataset(name="flux")},
+            split_by_sectors=True,
         )
 
 
-def test_flux_from_fp_all_rejects_mixed_timed_and_timeless_sources():
+def test_flux_from_inputs_rejects_mixed_timed_and_timeless_sources():
     """Timed and timeless source fluxes cannot be stacked without a time policy."""
     timed = xr.DataArray(
         np.ones((1, 1, 1)),
@@ -2535,15 +2494,13 @@ def test_flux_from_fp_all_rejects_mixed_timed_and_timeless_sources():
     timeless = timed.isel(time=0, drop=True)
 
     with pytest.raises(ValueError):
-        flux_from_fp_all(
-            {
-                ".flux": {"timed": timed, "timeless": timeless},
-                ".split_by_sectors": True,
-            }
+        resolve_runtime_flux(
+            {"timed": timed.to_dataset(name="flux"), "timeless": timeless.to_dataset(name="flux")},
+            split_by_sectors=True,
         )
 
 
-def test_flux_from_fp_all_rejects_unlabeled_or_duplicate_time_coordinates():
+def test_flux_from_inputs_rejects_unlabeled_or_duplicate_time_coordinates():
     """A positional or duplicate time axis cannot define source alignment semantics."""
     unlabeled = xr.DataArray(
         np.ones((2, 1, 1)),
@@ -2555,15 +2512,13 @@ def test_flux_from_fp_all_rejects_unlabeled_or_duplicate_time_coordinates():
 
     for invalid in (unlabeled, duplicate):
         with pytest.raises(ValueError, match="time coordinate"):
-            flux_from_fp_all(
-                {
-                    ".flux": {"a": invalid, "b": invalid.copy()},
-                    ".split_by_sectors": True,
-                }
+            resolve_runtime_flux(
+                {"a": invalid.to_dataset(name="flux"), "b": invalid.copy().to_dataset(name="flux")},
+                split_by_sectors=True,
             )
 
 
-def test_flux_from_fp_all_rejects_source_only_extra_dimension():
+def test_flux_from_inputs_rejects_source_only_extra_dimension():
     """An extra dimension on one source is rejected instead of broadcast."""
     time = pd.date_range("2019-01-01", periods=2, freq="h")
     reference = xr.DataArray(
@@ -2574,74 +2529,11 @@ def test_flux_from_fp_all_rejects_source_only_extra_dimension():
     )
     with_ensemble = reference.expand_dims(ensemble=[0, 1])
 
-    with pytest.raises(ValueError, match="different dimensions"):
-        flux_from_fp_all(
-            {
-                ".flux": {"a": reference, "b": with_ensemble},
-                ".split_by_sectors": True,
-            }
+    with pytest.raises(ValueError, match="permuted list"):
+        resolve_runtime_flux(
+            {"a": reference.to_dataset(name="flux"), "b": with_ensemble.to_dataset(name="flux")},
+            split_by_sectors=True,
         )
-
-
-def test_basis_functions_from_fp_all_uses_legacy_multisource_fallback():
-    """If .split_by_sectors is missing, fallback inference uses number of flux entries."""
-    basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]])
-    fp_all = {
-        ".flux": {
-            "a": xr.ones_like(basis_flat, dtype=float).rename("flux"),
-            "b": (2.0 * xr.ones_like(basis_flat, dtype=float)).rename("flux"),
-        },
-    }
-    bf = basis_functions_from_fp_all_flat_basis(fp_all=fp_all, basis_flat=basis_flat)
-
-    assert "source" in bf.flux.dims
-    assert list(bf.flux.source.values) == ["a", "b"]
-
-
-def test_basis_functions_wrapper_return_basis_objects(tac_ch4_data_args):
-    """Wrapper can optionally return BasisFunctions payload without changing default path."""
-    fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
-
-    basis_args = {
-        "species": "ch4",
-        "domain": "EUROPE",
-        "start_date": "2019-01-01",
-        "emissions_name": ["total-ukghg-edgar7"],
-        "nbasis": 100,
-        "use_bc": False,
-        "basis_algorithm": "weighted",
-        "return_basis_objects": True,
-    }
-
-    fp_data, basis_objects = basis_functions_wrapper(fp_all, **basis_args)
-
-    site_keys = [k for k in fp_data if not str(k).startswith(".")]
-    assert len(site_keys) >= 1
-    assert "emissions" in basis_objects
-    assert isinstance(basis_objects["emissions"], BasisFunctions)
-
-
-def test_basis_functions_wrapper_invalid_basis_output_format(tac_ch4_data_args, tmp_path):
-    """Invalid basis_output_format should raise a clear ValueError."""
-    fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
-
-    basis_args = {
-        "species": "ch4",
-        "domain": "EUROPE",
-        "start_date": "2019-01-01",
-        "emissions_name": ["total-ukghg-edgar7"],
-        "nbasis": 100,
-        "use_bc": False,
-        "basis_algorithm": "weighted",
-        "output_path": str(tmp_path),
-        "basis_output_format": "invalid",
-    }
-
-    with pytest.raises(
-        ValueError,
-        match="Unknown basis_output_format 'invalid'. Expected one of: 'legacy', 'datatree'.",
-    ):
-        basis_functions_wrapper(fp_all, **basis_args)
 
 
 def test_save_basis_datatree_roundtrip(tmp_path):
@@ -2715,7 +2607,9 @@ def test_load_basis_functions_prefers_datatree_schema(tmp_path):
         flux=serialized_flux,
         operator_kwargs={"state_dim": "region"},
     )
-    fp_all = {".flux": {"emissions": current_flux}, ".split_by_sectors": False}
+
+    fluxes = {"emissions": current_flux.to_dataset(name="flux")}
+    split_by_sectors = False
 
     saved_path = _save_basis_datatree(
         basis_functions=bf,
@@ -2728,7 +2622,8 @@ def test_load_basis_functions_prefers_datatree_schema(tmp_path):
     )
 
     loaded = load_basis_functions(
-        fp_all=fp_all,
+        flux_data=fluxes,
+        split_by_sectors=split_by_sectors,
         domain="EUROPE",
         basis_case="weighted_ch4-loader",
         basis_directory=tmp_path,
@@ -2743,107 +2638,6 @@ def test_load_basis_functions_prefers_datatree_schema(tmp_path):
     assert _flux_nonfinite_metadata(loaded.flux).policy == NONFINITE_POLICY_ZERO_FILL
 
 
-def test_datatree_basis_artifact_can_use_basisfunctions_state_labels(tmp_path):
-    """Wrapper H construction uses BasisFunctions labels instead of legacy flat-basis labels."""
-    basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]]).expand_dims(time=[np.datetime64("2019-01-01")])
-    basis_for_operator = basis_flat.isel(time=0, drop=True)
-    flux = xr.ones_like(basis_for_operator, dtype=float).rename("flux")
-    bf = BasisFunctions.from_flat_basis(
-        basis_flat=basis_flat,
-        flux=flux,
-        region_labels="range1",
-        operator_kwargs={"state_dim": "region"},
-    )
-    fp_x_flux = make_fp_x_flux(nlat=2, nlon=2, ntime=2)
-    fp_x_flux = fp_x_flux.assign_coords(lat=basis_for_operator.lat, lon=basis_for_operator.lon)
-    fp_all = {
-        "TAC": xr.Dataset({"fp_x_flux": fp_x_flux}),
-        ".flux": {"emissions": flux},
-        ".split_by_sectors": False,
-    }
-
-    _save_basis_datatree(
-        basis_functions=bf,
-        basis=basis_flat,
-        basis_algorithm="weighted",
-        output_dir=str(tmp_path),
-        domain="EUROPE",
-        species="ch4",
-        output_name="range1",
-    )
-
-    fp_data, basis_objects = basis_functions_wrapper(
-        fp_all,
-        species="ch4",
-        domain="EUROPE",
-        start_date="2019-01-01",
-        emissions_name=["emissions"],
-        nbasis=2,
-        use_bc=False,
-        fp_basis_case="weighted_ch4-range1",
-        basis_directory=tmp_path,
-        return_basis_objects=True,
-    )
-
-    xr.testing.assert_identical(fp_data["TAC"].H.region, bf.operator.basis_matrix.region)
-    xr.testing.assert_allclose(fp_data["TAC"].H, bf.sensitivity(fp_x_flux))
-    assert basis_objects["emissions"].basis_artifact_source == "datatree"
-
-
-def test_multisource_datatree_basis_artifact_keeps_legacy_h_shape(tmp_path):
-    """Multi-source DataTree artifacts use BasisFunctions.sensitivity but keep legacy H shape."""
-    sources = ["A", "B"]
-    basis_a = make_basis_flat_from_blocks([[1, 1], [2, 2]])
-    basis_b = make_basis_flat_from_blocks([[1, 2], [1, 2]])
-    basis_by_source = {"extra": basis_a, "B": basis_b, "A": basis_a}
-    expected_basis_by_source = {"A": basis_a, "B": basis_b}
-    flux_by_source = {
-        source: xr.ones_like(basis, dtype=float).rename("flux")
-        for source, basis in expected_basis_by_source.items()
-    }
-    artifact_flux_by_source = {
-        source: xr.ones_like(basis, dtype=float).rename("flux") for source, basis in basis_by_source.items()
-    }
-    fp_x_flux_sectoral = make_fp_x_flux_sectoral(sources=sources, nlat=2, nlon=2, ntime=3)
-    fp_all = {
-        "TAC": xr.Dataset({"fp_x_flux_sectoral": fp_x_flux_sectoral}),
-        ".flux": flux_by_source,
-        ".split_by_sectors": True,
-    }
-    bf = BasisFunctions.from_multi_source_flat_basis(
-        basis_flat=basis_by_source,
-        flux=artifact_flux_by_source,
-        operator_kwargs={"state_dim": "region"},
-    )
-
-    basis_dir = tmp_path / "EUROPE"
-    basis_dir.mkdir()
-    bf.save(basis_dir / "weighted_ch4-loader_EUROPE_2019-01_basis_datatree.nc")
-
-    fp_data, basis_objects = basis_functions_wrapper(
-        fp_all,
-        species="ch4",
-        domain="EUROPE",
-        start_date="2019-01-01",
-        emissions_name=sources,
-        nbasis=2,
-        use_bc=False,
-        fp_basis_case="weighted_ch4-loader",
-        basis_directory=tmp_path,
-        return_basis_objects=True,
-    )
-    legacy_fp = fp_sensitivity(fp_all.copy(), basis_func=expected_basis_by_source)
-
-    assert fp_data["TAC"].H.dims == ("region", "time", "source")
-    assert list(fp_data["TAC"].H.source.values) == sources
-    assert list(fp_data[".basis"].source.values) == sources
-    assert list(basis_objects["emissions"].flat_basis()) == sources
-    xr.testing.assert_allclose(fp_data["TAC"].H, legacy_fp["TAC"].H)
-    xr.testing.assert_identical(fp_data[".basis"].sel(source="A", drop=True), basis_a.rename("basis"))
-    xr.testing.assert_identical(fp_data[".basis"].sel(source="B", drop=True), basis_b.rename("basis"))
-    assert basis_objects["emissions"].basis_artifact_source == "datatree"
-
-
 def test_load_basis_functions_reports_multiple_datatree_matches(tmp_path):
     """Ambiguous DataTree artifacts should list paths and resolution steps."""
     basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]]).expand_dims(time=[np.datetime64("2019-01-01")])
@@ -2853,7 +2647,9 @@ def test_load_basis_functions_reports_multiple_datatree_matches(tmp_path):
         flux=flux,
         operator_kwargs={"state_dim": "region"},
     )
-    fp_all = {".flux": {"emissions": flux}, ".split_by_sectors": False}
+
+    fluxes = {"emissions": flux.to_dataset(name="flux")}
+    split_by_sectors = False
 
     basis_dir = tmp_path / "EUROPE"
     basis_dir.mkdir()
@@ -2862,7 +2658,8 @@ def test_load_basis_functions_reports_multiple_datatree_matches(tmp_path):
 
     with pytest.raises(ValueError, match="Use a more specific basis_case"):
         load_basis_functions(
-            fp_all=fp_all,
+            flux_data=fluxes,
+            split_by_sectors=split_by_sectors,
             domain="EUROPE",
             basis_case="weighted_ch4-loader",
             basis_directory=tmp_path,
@@ -2873,7 +2670,9 @@ def test_load_basis_functions_falls_back_to_legacy_flat(tmp_path):
     """Legacy flat basis artifacts should still load and build retained BasisFunctions."""
     basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]]).expand_dims(time=[np.datetime64("2019-01-01")])
     flux = xr.ones_like(basis_flat.isel(time=0, drop=True), dtype=float).rename("flux")
-    fp_all = {".flux": {"emissions": flux}, ".split_by_sectors": False}
+
+    fluxes = {"emissions": flux.to_dataset(name="flux")}
+    split_by_sectors = False
 
     saved_path = _save_basis(
         basis=basis_flat,
@@ -2885,7 +2684,8 @@ def test_load_basis_functions_falls_back_to_legacy_flat(tmp_path):
     )
 
     loaded = load_basis_functions(
-        fp_all=fp_all,
+        flux_data=fluxes,
+        split_by_sectors=split_by_sectors,
         domain="EUROPE",
         basis_case="weighted_ch4-loader",
         basis_directory=tmp_path,
@@ -2923,35 +2723,26 @@ def test_make_basis_functions_records_saved_generated_basis_path(tmp_path):
     """Generated basis saves record the written artifact path on the retained object."""
     basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]]).expand_dims(time=[np.datetime64("2019-01-01")])
     flux = xr.ones_like(basis_flat.isel(time=0, drop=True), dtype=float).rename("flux")
-    fp_all = {".flux": {"emissions": flux}, ".split_by_sectors": False}
+    flux = flux.expand_dims(time=[np.datetime64("2019-01-01")])
+    sites = {"TEST": xr.ones_like(flux).rename("fp").to_dataset()}
+    fluxes = {"emissions": flux.to_dataset(name="flux")}
+    split_by_sectors = False
 
-    class StaticBasisAlgorithm:
-        description = "static test basis"
-
-        @staticmethod
-        def algorithm(*args: object, **kwargs: object) -> xr.DataArray:
-            return basis_flat
-
-    old_algorithm = basis_module.basis_functions.get("static_path_test")
-    basis_module.basis_functions["static_path_test"] = StaticBasisAlgorithm
-    try:
-        basis_object = make_basis_functions(
-            fp_all=fp_all,
-            species="ch4",
-            domain="EUROPE",
-            start_date="2019-01-01",
-            emissions_name=["emissions"],
-            nbasis=2,
-            basis_algorithm="static_path_test",
-            outputname="path-check",
-            output_path=str(tmp_path),
-            basis_output_format="datatree",
-        )
-    finally:
-        if old_algorithm is None:
-            del basis_module.basis_functions["static_path_test"]
-        else:
-            basis_module.basis_functions["static_path_test"] = old_algorithm
+    basis_object = make_basis_functions(
+        site_data=sites,
+        flux_data=fluxes,
+        split_by_sectors=split_by_sectors,
+        species="ch4",
+        domain="EUROPE",
+        start_date="2019-01-01",
+        nbasis=2,
+        basis_algorithm="region_constrained",
+        region_classes=basis_flat.isel(time=0, drop=True),
+        outputname="path-check",
+        output_path=str(tmp_path),
+        basis_output_format="datatree",
+        flux_sources=["emissions"],
+    )
 
     assert basis_object.basis_artifact_source == "generated"
     assert basis_object.basis_artifact_path is not None

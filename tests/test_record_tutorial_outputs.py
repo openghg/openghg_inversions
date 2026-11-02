@@ -1,6 +1,7 @@
 """Test the explicit RHIME tutorial-output recorder."""
 
 import nbformat
+import base64
 from pathlib import Path
 import pytest
 import subprocess
@@ -137,7 +138,7 @@ def test_recorded_outputs_ignores_stderr_when_a_cell_has_a_result() -> None:
 
 @pytest.mark.parametrize(
     ("name", "inputs"),
-    [("rhime_standard_tutorial", 4), ("rhime_multisector_tutorial", 3)],
+    [("rhime_standard_tutorial", 4), ("rhime_multisector_tutorial", 3), ("prior_predictive_checking", 8)],
 )
 def test_tutorials_are_manual_downloadable_notebooks(name: str, inputs: int) -> None:
     document = (record_tutorial_outputs._ROOT / "docs" / "usage" / f"{name}.rst").read_text(encoding="utf-8")
@@ -148,3 +149,32 @@ def test_tutorials_are_manual_downloadable_notebooks(name: str, inputs: int) -> 
     assert len(record_tutorial_outputs._directives(document.splitlines(), "jupyter-output")) == inputs
     assert ".. jupyter-execute::" not in document
     assert ".. code-block:: python" not in document
+
+
+def test_recorded_outputs_saves_displayed_pngs_without_recording_figure_repr(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(record_tutorial_outputs, "_ROOT", tmp_path)
+    image_bytes = b"recorded PNG payload"
+    notebook = nbformat.v4.new_notebook(
+        cells=[
+            nbformat.v4.new_code_cell(
+                "plt.show(); 'Plot caption'",
+                outputs=[
+                    nbformat.v4.new_output(
+                        "display_data",
+                        data={
+                            "image/png": base64.b64encode(image_bytes).decode(),
+                            "text/plain": "<Figure>",
+                        },
+                    ),
+                    nbformat.v4.new_output(
+                        "execute_result", data={"text/plain": "'Plot caption'"}, execution_count=1
+                    ),
+                ],
+            )
+        ]
+    )
+
+    assert record_tutorial_outputs._recorded_outputs(notebook, name="example") == ["'Plot caption'"]
+    assert (tmp_path / "docs/_static/tutorials/example-1-1.png").read_bytes() == image_bytes

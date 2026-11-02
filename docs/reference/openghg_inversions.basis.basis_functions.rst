@@ -1,7 +1,6 @@
 openghg\_inversions.basis.basis\_functions
-===========================================
+==========================================
 
 .. automodule:: openghg_inversions.basis.basis_functions
    :members:
    :show-inheritance:
-   :undoc-members:

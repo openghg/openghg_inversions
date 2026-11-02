@@ -25,10 +25,9 @@ from openghg_inversions.postprocessing.make_outputs import (
     make_country_outputs,
     make_flux_outputs,
     make_multisector_country_trace_outputs,
-    make_multisector_flux_trace_outputs,
     observation_and_error_outputs,
 )
-from openghg_inversions.postprocessing.stats import calculate_stats, stats_functions
+from openghg_inversions.postprocessing.stats import calculate_stats, combine_chain_draw, stats_functions
 
 # path to `paris_formatting` submodule
 paris_formatting_path = Path(__file__).parent
@@ -419,11 +418,17 @@ def make_global_attrs(
     author: str | None = None,
     species: str = "inert",
     domain: str = "EUROPE",
-    apriori_description: str = "EDGAR 8.0",
+    apriori_description: str = "",
     history: str | None = None,
     comment: str | None = None,
+    transport_model: str = "",
+    transport_model_version: str = "",
+    met_model: str = "",
 ) -> dict[str, str]:
     """Build global attributes shared by PARIS output products.
+
+    PARIS postprocessing fills the prior and footprint arguments from the
+    ``InversionOutput`` automatically; scripts normally call ``make_paris_outputs``.
 
     Args:
         output_type: PARIS product type, either flux or concentration.
@@ -435,6 +440,9 @@ def make_global_attrs(
             processing entry.
         comment: Optional dataset comment. A descriptive nonempty default is
             used when this is omitted or empty.
+        transport_model: Transport model recorded by the footprint source.
+        transport_model_version: Version recorded by the footprint source.
+        met_model: Meteorological model recorded by the footprint source.
 
     Returns:
         CF-oriented global attributes for a PARIS dataset.
@@ -457,9 +465,9 @@ def make_global_attrs(
         inversion_system="RHIME",
         inversion_system_version=code_version(),
         apriori_description=apriori_description,
-        transport_model="NAME",
-        transport_model_version="NAME III (version 8.0)",
-        met_model="UKV",
+        transport_model=transport_model,
+        transport_model_version=transport_model_version,
+        met_model=met_model,
         domain=domain,
         species=species,
         project="Process Attribution of Regional emISsions (PARIS)",
@@ -474,6 +482,30 @@ def make_global_attrs(
     global_attrs["license"] = "CC-BY-4.0"
 
     return global_attrs
+
+
+def _inversion_global_attr_provenance(inv_out: InversionOutput) -> dict[str, str]:
+    """Describe the actual flux sources and footprint metadata in an inversion."""
+    sectors = inv_out.model_metadata.get("sectors", ())
+    sources = {
+        sector["flux_source"]
+        for sector in sectors
+        if isinstance(sector, Mapping) and isinstance(sector.get("flux_source"), str)
+    }
+    if not sources and isinstance(inv_out.flux.attrs.get("source"), str):
+        sources = {inv_out.flux.attrs["source"]}
+
+    footprint_provenance = inv_out.model_metadata.get("footprint_provenance", {})
+    result = {"apriori_description": "; ".join(sorted(sources))}
+    for name in ("transport_model", "transport_model_version", "met_model"):
+        values = {
+            str(site_metadata.get(name, "")).strip()
+            for site_metadata in footprint_provenance.values()
+            if isinstance(site_metadata, Mapping)
+        }
+        values.discard("")
+        result[name] = "; ".join(sorted(values))
+    return result
 
 
 def add_variable_attrs(
@@ -586,6 +618,7 @@ def paris_concentration_outputs(
             obs_avg_period=obs_avg_period,
         )
 
+    species, domain = _require_paris_metadata(inv_out)
     stats = ["kde_mode", "quantiles"] if report_mode else ["mean", "quantiles"]
 
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
@@ -667,7 +700,9 @@ def paris_concentration_outputs(
 
     result.sitenames.attrs["long_name"] = "identifier of site"
 
-    result.attrs = make_global_attrs("conc")
+    result.attrs = make_global_attrs(
+        "conc", species=species, domain=domain, **_inversion_global_attr_provenance(inv_out)
+    )
     result.attrs["paris_concentration_template_version"] = template_files.concentration_version
 
     return _cast_float_data_vars_to_float32(result)
@@ -791,7 +826,9 @@ def paris_concentration_outputs_latest(
         .transpose("index", "percentile", "platform", "nbnds", missing_dims="ignore")
     )
 
-    result.attrs = make_global_attrs("conc", species=species, domain=domain)
+    result.attrs = make_global_attrs(
+        "conc", species=species, domain=domain, **_inversion_global_attr_provenance(inv_out)
+    )
     result.attrs["paris_concentration_template_version"] = template_files.concentration_version
 
     result = _cast_data_vars_to_template_dtypes(result, template_files.concentration).as_numpy()
@@ -1164,9 +1201,10 @@ def _country_posterior_covariance_kg(
         flux_frequency,
     )
 
-    posterior = posterior.isel(flux_time=valid_indices).dropna("draw", how="all")
+    posterior, sample_dim = combine_chain_draw(posterior.isel(flux_time=valid_indices))
+    posterior = posterior.dropna(sample_dim, how="all")
     values = np.asarray(
-        posterior.transpose("flux_time", "country", "draw").values,
+        posterior.transpose("flux_time", "country", sample_dim).values,
         dtype=np.float64,
     )
     if values.shape[2] == 0:
@@ -1223,13 +1261,18 @@ def _sector_country_posterior_covariances_kg(
         flux_frequency,
     )
 
-    sector_posteriors = [
-        sector_trace[f"country_{sector_name}_posterior"]
-        .isel(flux_time=valid_indices)
-        .dropna("draw", how="all")
-        .transpose("flux_time", "country", "draw")
-        for sector_name in sector_names
-    ]
+    sector_posteriors = []
+    for sector_name in sector_names:
+        posterior, sample_dim = combine_chain_draw(
+            sector_trace[f"country_{sector_name}_posterior"].isel(flux_time=valid_indices)
+        )
+        sector_posteriors.append(
+            (
+                posterior.dropna(sample_dim, how="all").rename({sample_dim: "sample"})
+                if sample_dim != "sample"
+                else posterior.dropna(sample_dim, how="all")
+            ).transpose("flux_time", "country", "sample")
+        )
     sector_covariances = {}
     for sector_name, posterior in zip(sector_names, sector_posteriors, strict=True):
         values = np.asarray(posterior.values, dtype=np.float64)
@@ -1252,7 +1295,7 @@ def _sector_country_posterior_covariances_kg(
         dim="sector",
     )
     values = np.asarray(
-        posterior_by_sector.transpose("flux_time", "country", "sector", "draw").values,
+        posterior_by_sector.transpose("flux_time", "country", "sector", "sample").values,
         dtype=np.float64,
     )
     if values.shape[3] == 0:
@@ -1459,7 +1502,7 @@ def paris_flux_output(
             return ds
 
     result = (
-        xr.merge([flux_outs, country_outs, country_fraction.reindex_like(flux_outs)], join="outer")
+        xr.merge([flux_outs, country_outs, align_sparse_lat_lon(country_fraction, flux_outs)], join="outer")
         .rename(dim_rename_dict)
         .pipe(time_func)
         .pipe(convert_time_to_unix_epoch, "1d")
@@ -1484,11 +1527,13 @@ def paris_flux_output(
             .pipe(add_variable_attrs, emissions_attrs)
             .rename(inversion_grid_flux_rename_dict)
         )
-        result = result.merge(inversion_grid_flux_outs)
+        result = result.merge(inversion_grid_flux_outs, join="outer", compat="no_conflicts")
 
     result = result.transpose("time", "percentile", "country", "latitude", "longitude")
 
-    result.attrs = make_global_attrs("flux")
+    result.attrs = make_global_attrs(
+        "flux", species=species, domain=domain, **_inversion_global_attr_provenance(inv_out)
+    )
     result.attrs["paris_flux_template_version"] = template_files.flux_version
     result = copy_flux_nonfinite_attrs(result, flux_outs)
 
@@ -1552,25 +1597,12 @@ def paris_flux_output_latest(
     sector_name_by_suffix = _paris_sector_name_by_suffix(inv_out)
     sector_names = list(sector_name_by_suffix.values())
 
-    spatial_flux_trace = (
-        make_multisector_flux_trace_outputs(
-            inv_out,
-            report_flux_on_inversion_grid=False,
-            materialize=False,
-        )
-        if inv_out.is_multisector
-        else None
-    )
-    flux_outs = (
-        calculate_stats(spatial_flux_trace, stats=stats, **stats_args)
-        if spatial_flux_trace is not None
-        else make_flux_outputs(
-            inv_out,
-            stats=stats,
-            stats_args=stats_args,
-            report_flux_on_inversion_grid=False,
-            include_scale_factors=False,
-        )
+    flux_outs = make_flux_outputs(
+        inv_out,
+        stats=stats,
+        stats_args=stats_args,
+        report_flux_on_inversion_grid=False,
+        include_scale_factors=False,
     )
     countries = _latest_paris_countries(
         country_file=country_file,
@@ -1683,6 +1715,7 @@ def paris_flux_output_latest(
                 align_sparse_lat_lon(cell_area, flux_outs),
             ],
             join="outer",
+            compat="no_conflicts",
         )
         .rename(dim_rename_dict)
         .pipe(_assign_flux_time_bounds, flux_frequency, inv_out.start_time, inv_out.end_time)
@@ -1715,7 +1748,7 @@ def paris_flux_output_latest(
             .rename(inversion_grid_flux_rename_dict)
             .pipe(add_variable_attrs, emissions_attrs)
         )
-        result = result.merge(inversion_grid_flux_outs)
+        result = result.merge(inversion_grid_flux_outs, join="outer", compat="no_conflicts")
 
     result = result.transpose(
         "percentile",
@@ -1740,11 +1773,13 @@ def paris_flux_output_latest(
         sector_cross_covariance,
         emissions_attrs,
     )
-    result.attrs = make_global_attrs("flux", species=species, domain=domain)
+    result.attrs = make_global_attrs(
+        "flux", species=species, domain=domain, **_inversion_global_attr_provenance(inv_out)
+    )
     result.attrs["paris_flux_template_version"] = template_files.flux_version
     result = copy_flux_nonfinite_attrs(
         result,
-        spatial_flux_trace if spatial_flux_trace is not None else flux_outs,
+        flux_outs,
     )
 
     result = _cast_data_vars_to_template_dtypes(result, template_files.flux, sector_names=sector_names)
@@ -1811,6 +1846,30 @@ def infer_flux_frequency(flux: xr.DataArray) -> str:
             return flux_frequency
 
 
+
+def validate_paris_options(
+    *, template_version: ParisTemplateVersion, time_point: Literal["start", "midpoint"],
+    flux_frequency: str | None,
+) -> None:
+    """Validate scalar reporting choices before constructing PARIS products.
+
+    Args:
+        template_version: Selected PARIS CDL schema.
+        time_point: Flux interval timestamp convention.
+        flux_frequency: Explicit calendar period or positive duration; None requests inference.
+
+    Raises:
+        ValueError: If the schema, timestamp, or explicit frequency is unsupported.
+    """
+    paris_template_files(template_version)
+    if time_point not in ("start", "midpoint"):
+        raise ValueError("PARIS time_point must be 'start' or 'midpoint'.")
+    if template_version == "latest" and time_point != "midpoint":
+        raise ValueError("Latest PARIS flux output requires midpoint time coordinates and time bounds.")
+    if flux_frequency is not None:
+        _flux_frequency_to_offset(flux_frequency)
+
+
 def make_paris_outputs(
     inv_out: InversionOutput,
     country_file: str | Path | None = None,
@@ -1821,6 +1880,7 @@ def make_paris_outputs(
     domain: str | None = None,
     template_version: ParisTemplateVersion = DEFAULT_PARIS_TEMPLATE_VERSION,
     country_selections: Iterable[str] | None = PARIS_LATEST_COUNTRIES,
+    flux_frequency: str | None = None,
 ) -> tuple[xr.Dataset, xr.Dataset]:
     """Create matching PARIS flux and concentration products.
 
@@ -1839,6 +1899,8 @@ def make_paris_outputs(
         country_selections: Optional latest-template country names or codes.
             The default emits the canonical 22-country EUROPE v03 schema; pass
             ``None`` to include all countries from another domain file.
+        flux_frequency: Explicit calendar period or positive fixed duration.
+            If omitted, infer it from the retained prior flux.
 
     Returns:
         A tuple containing the flux dataset followed by the concentration
@@ -1848,8 +1910,11 @@ def make_paris_outputs(
         ValueError: If required inversion metadata is missing or template
             constraints are not satisfied.
     """
-    # infer flux frequency
-    flux_frequency = infer_flux_frequency(inv_out.flux)
+    validate_paris_options(
+        template_version=template_version, time_point=time_point, flux_frequency=flux_frequency,
+    )
+    if flux_frequency is None:
+        flux_frequency = infer_flux_frequency(inv_out.flux)
     conc_outs = paris_concentration_outputs(
         inv_out,
         report_mode=report_mode,

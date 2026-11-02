@@ -16,6 +16,7 @@ from typing import cast
 
 import numpy as np
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
@@ -41,7 +42,7 @@ class RegisteredAggregationError:
 
 
 def add_aggregation_error_data(
-    aggregation_error: AggregationError,
+    aggregation_error: AggregationError | None,
     observations: xr.DataArray,
     *,
     output_dim: str,
@@ -49,7 +50,8 @@ def add_aggregation_error_data(
     """Register labelled fixed aggregation-error data with the active model.
 
     Args:
-        aggregation_error: Validated backend-neutral covariance representation.
+        aggregation_error: Validated backend-neutral covariance representation,
+            or ``None`` for no fixed aggregation covariance.
         observations: Observation vector supplying labels for the marginal
             variance.
         output_dim: Observation dimension.
@@ -57,8 +59,10 @@ def add_aggregation_error_data(
     Returns:
         Registered tensors used by the error scale and likelihood graph.
     """
+    if aggregation_error is None:
+        return RegisteredAggregationError(mode="none", marginal_variance=pt.constant(floatX(0.0)))
     marginal = xr.DataArray(
-        pm.floatX(aggregation_error.marginal_variance),
+        floatX(aggregation_error.marginal_variance),
         dims=(output_dim,),
         coords={output_dim: observations.coords[output_dim]},
         name="aggregation_error_marginal_variance",
@@ -127,11 +131,11 @@ def _low_rank_gaussian_logp(
         latent_mode,
         latent_mode,
     )
-    logdet = pt.sum(pt.log(diagonal_variance)) + pm.floatX(2.0) * pt.sum(
+    logdet = pt.sum(pt.log(diagonal_variance)) + floatX(2.0) * pt.sum(
         pt.log(pt.diagonal(cholesky))
     )
-    normalizing_constant = value.shape[0] * pm.floatX(np.log(2.0 * np.pi))
-    return -pm.floatX(0.5) * (normalizing_constant + logdet + quadratic)
+    normalizing_constant = value.shape[0] * floatX(np.log(2.0 * np.pi))
+    return -floatX(0.5) * (normalizing_constant + logdet + quadratic)
 
 
 def _low_rank_gaussian_random(

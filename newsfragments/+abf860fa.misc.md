@@ -1,0 +1,1 @@
+Speed up CO2-family tests by reusing CLI handlers for output replay, avoiding redundant posterior sampling in PARIS checks, and sampling only the prior variables used by baseline-equation checks. Keep installed staged handoffs and genuine sampler integration coverage.

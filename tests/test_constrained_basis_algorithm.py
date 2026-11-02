@@ -685,6 +685,64 @@ def test_region_class_composition_rejects_one_cell_shift_on_large_float32_projec
         intersect_region_class_layers({"reference": reference, "candidate": candidate})
 
 
+@pytest.mark.parametrize("quantified_reference", [False, True])
+def test_region_class_composition_preserves_pint_coordinate_units(quantified_reference: bool):
+    """Quantified grid coordinates keep their units after normalization."""
+    with_units = xr.DataArray(
+        np.full((2, 2), "class", dtype=object),
+        dims=("lat", "lon"),
+        coords={
+            "lat": ("lat", [50.0, 51.0 + 1.0e-6], {"units": "degrees_north"}),
+            "lon": ("lon", [-2.0, -1.0], {"units": "degrees_east"}),
+        },
+    ).pint.quantify()
+    plain = xr.DataArray(
+        np.full((2, 2), "other", dtype=object),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0, 51.0], "lon": [-2.0, -1.0]},
+    )
+    layers = {"reference": with_units, "candidate": plain} if quantified_reference else {
+        "reference": plain,
+        "candidate": with_units,
+    }
+
+    result = intersect_region_class_layers(layers)
+
+    assert result.lat.attrs["units"] == "degrees_north"
+    assert result.lon.attrs["units"] == "degrees_east"
+    assert result.lat.pint.units is None
+
+
+def test_region_class_composition_rejects_conflicting_pint_units():
+    """Pint units participate in the same metadata check as attribute units."""
+    reference = xr.DataArray(
+        np.full((2, 2), "reference", dtype=object),
+        dims=("lat", "lon"),
+        coords={"lat": ("lat", [50.0, 51.0], {"units": "degrees_north"}), "lon": [-2.0, -1.0]},
+    ).pint.quantify()
+    candidate = xr.DataArray(
+        np.full((2, 2), "candidate", dtype=object),
+        dims=("lat", "lon"),
+        coords={"lat": ("lat", [50.0, 51.0], {"units": "radians"}), "lon": [-2.0, -1.0]},
+    )
+
+    with pytest.raises(xr.AlignmentError, match="conflicting 'units' metadata"):
+        intersect_region_class_layers({"reference": reference, "candidate": candidate})
+
+
+def test_region_class_composition_explains_unitless_coordinate_mismatch():
+    """A rounded coordinate without units reports the missing angular context."""
+    reference = xr.DataArray(
+        np.full((2, 2), "reference", dtype=object),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0, 51.0], "lon": [-2.0, -1.0]},
+    )
+    candidate = reference.assign_coords(lat=[50.0, 51.0 + 1.0e-6])
+
+    with pytest.raises(xr.AlignmentError, match="Neither coordinate has units"):
+        intersect_region_class_layers({"reference": reference, "candidate": candidate})
+
+
 def test_region_class_composition_rejects_unresolved_grid_mapping_reference():
     """Dataset grid mappings must be attached as coordinates before alignment."""
     dataset = xr.Dataset(
@@ -713,7 +771,12 @@ def test_packaged_inner_outer_fields_run_through_core_on_one_physical_grid(domai
     with xr.open_dataset(basis_directory / f"outer_region_definition_{domain}.nc") as dataset:
         outer_regions = dataset["region"].load()
     with xr.open_dataset(basis_directory / "algorithms" / land_sea_name) as dataset:
-        inner_classes = xr.where(dataset["country"].load() > 0, "land", "sea")
+        country = dataset["country"].load()
+        inner_classes = xr.where(country > 0, "land", "sea").assign_coords(country.coords)
+
+    assert inner_classes.attrs == {}
+    assert inner_classes.lat.attrs.get("units") == country.lat.attrs.get("units")
+    assert inner_classes.lon.attrs.get("units") == country.lon.attrs.get("units")
 
     inner_mask = outer_regions == outer_regions.max()
     classes = combine_inner_outer_region_classes(inner_mask, inner_classes, outer_regions)

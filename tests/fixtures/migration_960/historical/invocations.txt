@@ -1,0 +1,26 @@
+# Original source routes; commands below describe real execution, so use the
+# adjacent characterize.py harness for bounded checks without acquisition/MCMC.
+# Relative resource paths are relative to the invocation's working directory.
+
+# Released Python RHIME (returns RhimeResult, including ArviZ InferenceData):
+from openghg_inversions.rhime import run_rhime
+result = run_rhime(config_file="rhime.ini", draws=7, burn=2, tune=3, chains=2)
+posterior = result.idata.posterior
+
+# Installed executable, run-rhime is a subcommand, not a standalone executable:
+openghg-inversions run-rhime 2019-01-01 2019-02-01 -c rhime.ini --kwargs '{"draws": 7, "burn": 2, "tune": 3, "chains": 2}'
+
+# Ordinary wrapper: route is RHIME even though INI uses fixedbasis spellings.
+python -m openghg_inversions.hbmcmc.run_hbmcmc -c sampling.ini
+
+# True fixedbasis route must be explicitly selected and characterized separately.
+python -m openghg_inversions.hbmcmc.run_hbmcmc --legacy-fixedbasis -c sampling.ini
+
+# Typical original batch body (no submission needed for this evidence capture):
+#!/bin/bash
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=4G
+#SBATCH --time=00:30:00
+export OPENBLAS_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+openghg-inversions run-rhime -c rhime.ini --kwargs '{"draws": 7, "burn": 2}'

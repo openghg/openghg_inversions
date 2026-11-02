@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 import warnings
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Hashable, Iterable, Mapping, Sequence
+from math import prod
 from pathlib import Path
-from typing import cast, Literal, TypeVar
-from typing_extensions import Self
+from typing import cast, Literal, Self, TypeVar
 
 import xarray as xr
 from openghg_inversions import convert, utils
@@ -19,6 +19,7 @@ from openghg_inversions.utils import get_country_file_path
 from ._country_codes import CountryInfoList
 from ._basis_products import make_x_to_country_matrix
 from .inversion_output import InversionOutput
+from .stats import _STATS_MAX_POINTS, _chunk_non_sample_dims
 
 # type for xr.Dataset *or* xr.DataArray
 DataSetOrArray = TypeVar("DataSetOrArray", xr.DataArray, xr.Dataset)
@@ -39,6 +40,42 @@ def get_area_grid(lat: xr.DataArray, lon: xr.DataArray) -> xr.DataArray:
     """
     ag_vals = utils.areagrid(lat.values, lon.values)
     return xr.DataArray(ag_vals, coords=[lat, lon], dims=["lat", "lon"], name="area_grid")
+
+
+def regrid_country_dataset(countries_ds: xr.Dataset, lat: xr.DataArray, lon: xr.DataArray) -> xr.Dataset:
+    """Nearest-neighbour regrid a country/region definition onto another grid.
+
+    Nested-domain inversions retain an independent basis and prior flux on a
+    fine (e.g. 6 km) inner grid that rarely has a matching country definition
+    file. Country membership is categorical, so nearest-neighbour resampling
+    (rather than interpolation) is used to move the coarse country map onto
+    the fine grid; this mirrors how country totals were reconstructed for the
+    legacy inner-domain implementation.
+
+    Args:
+        countries_ds: Loaded country dataset (see ``load_country_dataset``),
+            with a ``country`` variable on ``(lat, lon)`` and a ``name``
+            variable.
+        lat: Target grid latitude coordinate.
+        lon: Target grid longitude coordinate.
+
+    Returns:
+        Country dataset with ``country`` resampled onto ``(lat, lon)``; any
+        ``name``/``country_code`` variables are carried over unchanged.
+    """
+    if "country" not in countries_ds:
+        raise ValueError("Country dataset must contain a `country` variable to regrid.")
+
+    regridded_country = (
+        countries_ds["country"]
+        .interp(lat=lat, lon=lon, method="nearest", kwargs={"fill_value": 0})
+        .astype(countries_ds["country"].dtype)
+    )
+    result = xr.Dataset({"country": regridded_country})
+    for name in ("name", "country_code"):
+        if name in countries_ds:
+            result[name] = countries_ds[name]
+    return result
 
 
 paris_regions_dict = {
@@ -191,7 +228,7 @@ class CountryRegions:
         """
         country_list = CountryInfoList(country_list)
 
-        missing = defaultdict(CountryInfoList)
+        missing: defaultdict[str, CountryInfoList] = defaultdict(CountryInfoList)
 
         for region, region_countries in self.to_dict().items():
             for rc in region_countries:
@@ -237,6 +274,7 @@ class CountryRegions:
             warnings.warn(
                 "Dropping country regions with unmatched countries in `country_regions`: " + msg,
                 UserWarning,
+                stacklevel=2,
             )
 
         aligned_country_regions = {}
@@ -257,6 +295,20 @@ class CountryRegions:
     def region_names(self) -> list[str]:
         """List of region names stored."""
         return list(self._regions.keys())
+
+
+def _bounded_projection(projection: xr.DataArray, contraction_dims: Iterable[Hashable]) -> xr.DataArray:
+    """Prepare a projection so its contraction with samples has bounded output blocks.
+
+    Output dimensions are chunked within the summary point budget; contraction
+    dimensions stay complete. Small projections are returned unchanged to keep
+    their accumulation order.
+    """
+    contraction_dims = set(contraction_dims)
+    output_points = prod(size for dim, size in projection.sizes.items() if dim not in contraction_dims)
+    if output_points > _STATS_MAX_POINTS:
+        return _chunk_non_sample_dims(projection, contraction_dims)
+    return projection
 
 
 class Countries:
@@ -326,7 +378,7 @@ class Countries:
             except KeyError:
                 raise ValueError(
                     "Country region definitions not consistent with country file names. Try setting `country_code`."
-                )
+                ) from None
             else:
                 region_matrix = xr.concat(
                     region_vectors,
@@ -443,6 +495,7 @@ class Countries:
         TODO: there is a "country unit" conversion in the old code, but it seems to always produce
               1.0, based on how it is used in hbmcmc
         """
+        x_to_country = _bounded_projection(x_to_country, set(x_to_country.dims) & set(x_trace.dims))
         raw_trace = sparse_xr_dot(x_to_country, x_trace)
         molar_mass = convert.molar_mass(species)
         return raw_trace * 365 * 24 * 3600 * molar_mass  # type: ignore

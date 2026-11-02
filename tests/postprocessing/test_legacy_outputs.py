@@ -2,7 +2,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
-import arviz as az
 import h5py
 import numpy as np
 import pandas as pd
@@ -14,6 +13,20 @@ from openghg_inversions import utils
 from openghg_inversions.postprocessing import legacy_outputs
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.legacy_outputs import _compute_apriori_flux
+from tests.helpers import make_trace
+
+
+@pytest.mark.parametrize("model_data", [False, True])
+def test_raw_boundary_inputs_cannot_replace_fitted_legacy_operand(model_data):
+    output = _legacy_inv_out(model_data=model_data, include_bc=True)
+    output.inv_inputs["H_bc"].attrs["boundary_sensitivity_preparation"] = "raw-spatial"
+    arguments = dict(model_name="hbc", input_name="H_bc", description="boundary sensitivity")
+    if model_data:
+        fitted = legacy_outputs._model_or_input_var(output, **arguments)
+        xr.testing.assert_identical(fitted, output.model_data()["hbc"])
+    else:
+        with pytest.raises(ValueError, match="fitted boundary operand.*hbc"):
+            legacy_outputs._model_or_input_var(output, **arguments)
 
 
 def _minimal_legacy_inv_inputs(
@@ -121,7 +134,7 @@ def _legacy_inv_out(
         groups["constant_data"] = xr.Dataset(constant_vars, coords=constant_coords)
 
     return InversionOutput(
-        trace=cast(Any, az.InferenceData)(**groups),
+        trace=make_trace(**groups),
         inv_inputs=_minimal_legacy_inv_inputs(include_bc=include_bc, observation_times=observation_times),
         basis_functions=cast(Any, _basis_functions_stub(flux_time=flux_time, time_period=time_period)),
         run_metadata={
@@ -153,7 +166,7 @@ def stub_legacy_product_builders(monkeypatch: pytest.MonkeyPatch) -> None:
             "y_posterior_predictive_hdi_68": (("nmeasure", "hdi"), np.ones((2, 2))),
             "y_posterior_predictive_hdi_95": (("nmeasure", "hdi"), np.ones((2, 2))),
         }
-        if "bc" in cast(Any, inv_out.trace).posterior:
+        if "bc" in inv_out.trace_group("posterior"):
             data_vars.update(
                 {
                     "mu_bc_posterior_mean": (("nmeasure",), np.array([0.5, 1.5])),
@@ -202,6 +215,28 @@ def stub_legacy_product_builders(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         legacy_outputs, "_legacy_country_index", lambda domain, country_file=None: np.array([[1]])
     )
+
+
+def test_legacy_products_use_all_chains_and_keep_trace_metadata(
+    stub_legacy_product_builders: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy product summaries and diagnostic metadata retain all sampled chains."""
+    inv_out = _legacy_inv_out(model_data=True, chains=2)
+    original = legacy_outputs.make_concentration_outputs
+    captured: dict[str, int] = {}
+
+    def record_concentration(inv_out: InversionOutput, **kwargs: object) -> xr.Dataset:
+        captured["chains"] = inv_out.trace_group("posterior").sizes["chain"]
+        return original(inv_out, **kwargs)
+
+    monkeypatch.setattr(legacy_outputs, "make_concentration_outputs", record_concentration)
+
+    output = legacy_outputs.make_legacy_hbmcmc_output(inv_out)
+
+    assert captured["chains"] == 2
+    assert output.attrs["Number of chains"] == "2"
+    assert output.sizes["steps"] == inv_out.trace_group("posterior").sizes["draw"]
 
 
 def test_compute_apriori_flux_handles_missing_month():
@@ -405,3 +440,12 @@ def test_make_legacy_hbmcmc_output_falls_back_to_inv_inputs_for_sensitivities(
     assert output["bctrace"].dtype == np.dtype("float32")
     assert output["YaprioriBC"].dtype == np.dtype("float32")
     assert "YaprioriBC" in output
+
+
+def test_legacy_metadata_allows_custom_likelihood_without_settings() -> None:
+    """Custom likelihoods without built-in sigma settings retain legacy defaults."""
+    inv_out = _legacy_inv_out(model_data=False)
+    inv_out.model_metadata["likelihood"] = None
+    attrs = legacy_outputs._legacy_hbmcmc_attrs(inv_out)
+    assert attrs["Error for each site"] == "Unavailable"
+    assert "Model error Prior" not in attrs

@@ -1,0 +1,146 @@
+"""Runner resource preflight precedes acquisition across public entry points."""
+
+from importlib import import_module
+from pathlib import Path
+
+import pandas as pd
+import pytest
+import xarray as xr
+
+from openghg_inversions.inversion_data import MergedData
+from openghg_inversions.rhime.params import RhimeConfig
+from tests.test_bc_basis_resources import _basis
+from tests.test_staged_workflow import _params
+
+
+@pytest.mark.parametrize("route", ["standard", "multisector", "staged", "multisector_staged", "nested", "example", "custom_basis"])
+@pytest.mark.parametrize("selection", ["files", "missing", "disabled", "nesw", "explicit_nesw", "invalid", "empty"])
+def test_bc_resource_loading_precedes_acquisition(tmp_path, monkeypatch, route, selection):
+    module = import_module(
+        "examples.rhime_customisation.custom_basis_runner" if route == "custom_basis" else
+        "examples.rhime_customisation.runner" if route == "example" else
+        f"openghg_inversions.rhime.{'_standard_stages' if route == 'staged' else 'multisector_stages' if route == 'multisector_staged' else route}"
+    )
+    monkeypatch.chdir(tmp_path)
+    options = _params(basis_algorithm="quadtree", output_format="none", use_bc=selection != "disabled")
+    if route in ("multisector", "multisector_staged"):
+        options["flux_sources"] = ["first", "second"]
+    paths = [tmp_path / "early.nc", tmp_path / "late.nc"]
+    if selection == "files":
+        times = pd.date_range("2020-01-01", periods=2)
+        for path, time, weight in zip(paths, times, [2, 3], strict=True):
+            _basis([time], [weight]).to_netcdf(path)
+    if selection not in ("nesw", "explicit_nesw", "invalid"):
+        options["bc_basis_paths"] = [] if selection == "empty" else paths
+    if selection in ("files", "disabled", "invalid"):
+        options["bc_basis_algorithm"] = "inactive" if selection != "invalid" else "unsupported"
+    elif selection == "explicit_nesw":
+        options["bc_basis_algorithm"] = "NESW"
+    loaded = []
+    from openghg_inversions.basis import support
+    real_load = support.load_bc_basis
+
+    def load(selected):
+        value = real_load(selected)
+        loaded.append(value)
+        return value
+
+    class Acquired(Exception):
+        pass
+
+    def acquire(**kwargs):
+        if selection == "files":
+            assert len(loaded) == 1
+            xr.testing.assert_equal(loaded[0], _basis(pd.date_range("2020-01-01", periods=2), [2, 3]))
+        else:
+            assert not loaded
+        raise Acquired
+
+    monkeypatch.setattr(support, "load_bc_basis", load)
+    monkeypatch.setattr(MergedData, "from_options", acquire)
+
+    def run():
+        if route in ("staged", "multisector_staged", "nested"):
+            config = RhimeConfig.from_params(options, multisector=route == "multisector_staged")
+            if route in ("staged", "multisector_staged"):
+                module.prepare(config.data, output_dir="stage")
+            else:
+                module.run_nested(config=config, inner_domain="6km")
+        elif route == "multisector":
+            module.run_multisector(**options)
+        elif route in ("example", "custom_basis"):
+            module.run_custom_rhime(**options)
+        else:
+            module.run_standard(**options)
+
+    error = FileNotFoundError if selection == "missing" else ValueError if selection in ("invalid", "empty") else Acquired
+    with pytest.raises(error):
+        run()
+    assert not Path("absent").exists()
+    if selection == "missing":
+        assert not Path("stage").exists()
+
+
+def test_packaged_preparation_defaults_are_independent_of_reporting(tmp_path):
+    from openghg_inversions.basis.support import load_basis_support_map, packaged_basis_support_path
+    from openghg_inversions.rhime.preparation import resolve_basis_inputs
+
+    config = RhimeConfig.from_params(_params(basis_algorithm="weighted", country_file=tmp_path / "report.nc"),
+                                     multisector=False)
+    selected = resolve_basis_inputs(config.data)
+    expected = load_basis_support_map(packaged_basis_support_path("landsea", "EUROPE"), "country")
+    xr.testing.assert_equal(selected["landsea_classes"], expected)
+    assert config.output.country_file == tmp_path / "report.nc"
+    assert config.data.landsea_path is None
+    explicit = tmp_path / "classes.nc"
+    xr.Dataset({"country": (("lat", "lon"), [[7]])}, coords={"lat": [50.0], "lon": [0.0]}).to_netcdf(explicit)
+    from dataclasses import replace
+
+    overridden = resolve_basis_inputs(replace(config.data, landsea_path=explicit))
+    assert overridden["landsea_classes"].item() == 7
+    with pytest.raises(FileNotFoundError):
+        resolve_basis_inputs(replace(config.data, landsea_path=tmp_path / "missing.nc"))
+    with pytest.raises(FileNotFoundError):
+        resolve_basis_inputs(replace(config.data, domain="NO-SUCH-PACKAGED-DOMAIN"))
+    assert resolve_basis_inputs(replace(config.data, domain="NO-SUCH-PACKAGED-DOMAIN", basis_algorithm="quadtree")) == {
+        "landsea_classes": None, "outer_regions": None,
+    }
+    outer_config = replace(config.data, domain="EUHROB", basis_algorithm="quadtree", fix_basis_outer_regions=True)
+    selected_outer = resolve_basis_inputs(outer_config)["outer_regions"]
+    xr.testing.assert_equal(selected_outer, load_basis_support_map(
+        packaged_basis_support_path("outer_regions", "EUHROB"), "region"))
+    explicit_outer = tmp_path / "outer.nc"
+    xr.Dataset({"region": (("lat", "lon"), [[3]])}, coords={"lat": [50.0], "lon": [0.0]}).to_netcdf(explicit_outer)
+    assert resolve_basis_inputs(replace(outer_config, outer_regions_path=explicit_outer))["outer_regions"].item() == 3
+    with pytest.raises(FileNotFoundError):
+        resolve_basis_inputs(replace(outer_config, outer_regions_path=tmp_path / "missing-outer.nc"))
+    with pytest.raises(FileNotFoundError):
+        resolve_basis_inputs(replace(outer_config, domain="NO-SUCH-PACKAGED-DOMAIN"))
+
+
+@pytest.mark.parametrize("route", ["standard", "multisector", "staged", "nested", "example", "custom_basis"])
+def test_modern_routes_reject_historical_resource_selectors_before_acquisition(monkeypatch, route):
+    module = import_module(
+        "examples.rhime_customisation.custom_basis_runner" if route == "custom_basis" else
+        "examples.rhime_customisation.runner" if route == "example"
+        else f"openghg_inversions.rhime.{'requests' if route == 'staged' else route}"
+    )
+    options = _params(output_format="none", bc_basis_case="NESW", bc_basis_directory=None)
+
+    def unexpected_acquisition(**kwargs):
+        pytest.fail("Historical options reached acquisition")
+
+    monkeypatch.setattr("openghg_inversions.inversion_data.MergedData.from_options", unexpected_acquisition)
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*bc_basis_case.*bc_basis_directory") as error:
+        if route == "staged":
+            # The standard prepare phase loads its request through the single loader.
+            module.load_params(overrides=options, phase_groups={"data"})
+        elif route == "nested":
+            module.run_nested(**options, inner_domain="inner")
+        elif route == "multisector":
+            module.run_multisector(**{**options, "flux_sources": ["a", "b"]})
+        elif route in ("example", "custom_basis"):
+            module.run_custom_rhime(**options)
+        else:
+            module.run_standard(**options)
+    assert "HBMCMC" not in str(error.value)

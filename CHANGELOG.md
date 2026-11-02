@@ -1,3 +1,27 @@
+## 0.7.4 (2026-10-01)
+
+
+### Miscellaneous
+
+- Add a contributor-review checklist to automatically prepared release pull requests.
+
+### Bug fixes
+
+- Select the Zarr backend explicitly when loading ``.zarr`` DataTree artifacts, preserving Zarr round trips with recent xarray versions. ([#685](https://github.com/openghg/openghg_inversions/issues/685))
+
+- Fix staged preparation's merged-data NetCDF output by encoding the sector-splitting marker safely and omitting absent coordinate-unit metadata. Preserve the marker's Boolean meaning on load without assigning unknown physical units.
+
+## 0.7.3 (2026-09-25)
+
+
+### Bug fixes
+
+- PARIS outputs now report the inversion species, domain, footprint model metadata, and prior flux sources. Latest-template concentration files now serialize through the standard RHIME output path. ([#247](https://github.com/openghg/openghg_inversions/issues/247))
+
+### Miscellaneous
+
+- Add Supriya Mantri to the Zenodo contributor metadata.
+
 ## 0.7.2 (2026-09-21)
 
 

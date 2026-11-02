@@ -4,6 +4,15 @@
 {% endif -%}
 .. automodule:: {{ qualname }}
 {%- for option in automodule_options %}
+{%- if option != "undoc-members" %}
    :{{ option }}:
+{%- endif %}
 {%- endfor %}
+{%- if qualname == "openghg_inversions.rhime.stages" %}
+   :imported-members:
+{%- endif %}
+{%- if qualname == "openghg_inversions.inversion_data.acquisition" %}
 
+.. autoclass:: openghg_inversions.inversion_data.SiteOptions
+   :members:
+{%- endif %}

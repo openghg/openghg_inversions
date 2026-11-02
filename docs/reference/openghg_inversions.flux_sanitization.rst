@@ -1,0 +1,6 @@
+openghg\_inversions.flux\_sanitization
+======================================
+
+.. automodule:: openghg_inversions.flux_sanitization
+   :members:
+   :show-inheritance:

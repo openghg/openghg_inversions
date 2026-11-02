@@ -188,9 +188,9 @@ def _set_legacy_var_attrs(ds: xr.Dataset, obs_units: str, country_units: str, us
         if dv in ds:
             ds[dv].attrs["longname"] = lname
 
-    for dv in ds.data_vars:
-        if "longname" not in ds[dv].attrs:
-            ds[dv].attrs["longname"] = str(dv).replace("_", " ")
+    for variable_name in ds.data_vars:
+        if "longname" not in ds[variable_name].attrs:
+            ds[variable_name].attrs["longname"] = str(variable_name).replace("_", " ")
 
 
 def _cast_legacy_float_data_vars(ds: xr.Dataset) -> xr.Dataset:
@@ -440,7 +440,14 @@ def _model_or_input_var(
     if model_name in model_data:
         return model_data[model_name]
     if input_name in inv_out.inv_inputs:
-        return inv_out.inv_inputs[input_name]
+        value = inv_out.inv_inputs[input_name]
+        if (input_name == "H_bc"
+                and value.attrs.get("boundary_sensitivity_preparation") == "raw-spatial"):
+            raise ValueError(
+                "Legacy output requires the fitted boundary operand 'hbc' in trace constant_data; "
+                "raw spatial H_bc cannot replace the sampled model's temporal alignment."
+            )
+        return value
     raise ValueError(
         f"Legacy HBMCMC output formatting requires {description} as model data {model_name!r} "
         f"or InversionOutput.inv_inputs variable {input_name!r}."
@@ -463,9 +470,10 @@ def _as_legacy_sensitivity(data: xr.DataArray, description: str) -> np.ndarray:
 
 def _posterior_first_chain(inv_out: InversionOutput) -> xr.Dataset:
     """Return posterior samples for the first chain, matching the old adapter."""
-    posterior = getattr(inv_out.trace, "posterior", None)
-    if posterior is None:
-        raise ValueError("Legacy HBMCMC output formatting requires posterior trace samples.")
+    try:
+        posterior = inv_out.trace_group("posterior")
+    except KeyError as exc:
+        raise ValueError("Legacy HBMCMC output formatting requires posterior trace samples.") from exc
     if "chain" in posterior.dims:
         return posterior.isel(chain=0, drop=True)
     return posterior
@@ -508,8 +516,11 @@ def _legacy_sigma_trace(trace: xr.DataArray) -> np.ndarray:
 
 def _legacy_convergence(inv_out: InversionOutput) -> str:
     """Return legacy convergence status from ArviZ R-hat when enough chains exist."""
-    posterior = getattr(inv_out.trace, "posterior", None)
-    if posterior is None or posterior.sizes.get("chain", 0) < 2 or posterior.sizes.get("draw", 0) < 2:
+    try:
+        posterior = inv_out.trace_group("posterior")
+    except KeyError:
+        return "Unavailable"
+    if posterior.sizes.get("chain", 0) < 2 or posterior.sizes.get("draw", 0) < 2:
         return "Unavailable"
 
     x_name = inv_out.variable_name("flux_scale")
@@ -519,7 +530,7 @@ def _legacy_convergence(inv_out: InversionOutput) -> str:
         return "Unavailable"
 
     try:
-        rhat_dataset = cast(xr.Dataset, az.rhat(inv_out.trace, var_names=[x_name]))
+        rhat_dataset = cast(xr.Dataset, az.rhat(posterior, var_names=[x_name]))
         rhat = rhat_dataset[x_name]
         max_rhat = float(rhat.max(skipna=True).item())
     except (AttributeError, KeyError, TypeError, ValueError):
@@ -639,16 +650,23 @@ def _legacy_hbmcmc_attrs(inv_out: InversionOutput) -> dict[str, str]:
         if "chains" in sampler:
             attrs.setdefault("Number of chains", str(int(sampler["chains"])))
 
-    posterior = getattr(inv_out.trace, "posterior", None)
-    if posterior is not None and "chain" in posterior.sizes:
-        attrs.setdefault("Number of chains", str(int(posterior.sizes["chain"])))
+    try:
+        posterior = inv_out.trace_group("posterior")
+    except KeyError:
+        pass
+    else:
+        if "chain" in posterior.sizes:
+            attrs.setdefault("Number of chains", str(int(posterior.sizes["chain"])))
 
     model_metadata = inv_out.model_metadata
-    attrs.setdefault("Error for each site", str(model_metadata.get("sigma_per_site", "Unavailable")))
+    likelihood = model_metadata.get("likelihood")
+    if not isinstance(likelihood, dict):
+        likelihood = model_metadata
+    attrs.setdefault("Error for each site", str(likelihood.get("sigma_per_site", "Unavailable")))
 
     prior_attrs = {
         "Emissions Prior": _format_legacy_attr_prior(_legacy_single_sector_x_prior(model_metadata)),
-        "Model error Prior": _format_legacy_attr_prior(model_metadata.get("sigma_prior")),
+        "Model error Prior": _format_legacy_attr_prior(likelihood.get("sigma_prior")),
         "BCs Prior": _format_legacy_attr_prior(model_metadata.get("bc_prior")),
         "Offset Prior": _format_legacy_attr_prior(model_metadata.get("offset_prior")),
     }
@@ -687,6 +705,7 @@ def make_legacy_hbmcmc_output(
     times = _legacy_measurement_times(inv_out)
     site_indicators, site_names = _legacy_site_fields(inv_out)
     site_lons, site_lats = _legacy_site_locations(inv_out, site_names.sizes["nsite"])
+
 
     conc = make_concentration_outputs(
         inv_out,

@@ -1,7 +1,7 @@
 Standard RHIME tutorial
 =======================
 
-This tutorial runs the supported one-sector :func:`openghg_inversions.rhime.run_rhime`
+This tutorial runs the supported one-sector :func:`openghg_inversions.rhime.run_standard`
 recipe, inspects its labelled result, and reloads its durable inversion-output
 product.
 
@@ -64,6 +64,13 @@ and prior flux. The 50 tuning and 50 retained draws are only an end-to-end
 smoke test. A scientific inversion needs enough chains and draws for stable
 diagnostics and must not disable convergence checks.
 
+Before committing time to posterior sampling, use the staged
+:doc:`prior-predictive checking tutorial <prior_predictive_checking>` to inspect
+what these priors and the observation model imply on the concentration scale.
+That workflow prepares the same scientific inputs once, checks prior
+predictions, and then passes the saved prepared artifact to posterior
+sampling.
+
 Run it
 ------
 
@@ -71,7 +78,7 @@ From a source checkout, the supported CLI route is:
 
 .. code-block:: console
 
-   $ pixi run -e dev openghg-inversions run-rhime \
+   $ pixi run -e dev rhime run \
        --config openghg_inversions/rhime/config/standard_tutorial.ini \
        --output-path outputs
 
@@ -86,22 +93,22 @@ The equivalent supported Python entry point is:
    import os
    from pathlib import Path
 
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.rhime import run_standard
 
    tutorial_output_path = Path(os.environ.get("OPENGHG_TUTORIAL_OUTPUT_PATH", "outputs"))
    resource = files("openghg_inversions.rhime").joinpath("config/standard_tutorial.ini")
    with as_file(resource) as config:
-       result = run_rhime(config_file=config, output_path=tutorial_output_path)
+       result = run_standard(config_file=config, output_path=tutorial_output_path)
 
    {
        "OpenGHG Inversions commit": os.environ.get(
            "OPENGHG_TUTORIAL_CODE_REF", "local checkout"
        ),
        "tutorial data": os.environ.get("OPENGHG_TUTORIAL_DATA_TAG", "v1.0.0"),
-       "sites": list(result.run_spec.sites),
+       "sites": list(result.site_names),
        "observations": result.inv_inputs.sizes["nmeasure"],
        "posterior samples": {
-           name: result.idata.posterior.sizes[name] for name in ("chain", "draw")
+           name: result.trace.posterior.sizes[name] for name in ("chain", "draw")
        },
    }
 
@@ -119,23 +126,23 @@ values such as ``output_path`` override the INI file.
 Inspect and interpret the result
 --------------------------------
 
-``RhimeResult`` keeps the resolved scientific and output specifications,
-canonical labelled arrays, the ArviZ trace, and generated products together:
+``InversionOutput`` holds the canonical labelled arrays, retained basis, trace,
+scientific metadata and output roles. Requested files are written by the runner;
+product functions can derive in-memory summaries from this scientific result:
 
 .. jupyter-input::
 
    measurement_index = result.inv_inputs.indexes["nmeasure"]
    {
-       "period": (result.run_spec.start_date, result.run_spec.end_date),
+       "period": (result.run_metadata["start_date"], result.run_metadata["end_date"]),
        "sectors": [
-           (sector.name, sector.flux_source) for sector in result.model_spec.sectors
+           (sector["name"], sector["flux_source"]) for sector in result.model_metadata["sectors"]
        ],
        "H dimensions": result.inv_inputs["H"].dims,
        "input sizes": dict(result.inv_inputs.sizes),
        "measurement sites": measurement_index.get_level_values("site").unique().tolist(),
-       "x dimensions": result.idata.posterior["x"].dims,
-       "variable roles": result.model_build_result.variable_roles,
-       "output products": sorted(result.outputs),
+       "x dimensions": result.trace["posterior"]["x"].dims,
+       "variable roles": result.variable_roles,
    }
 
 .. jupyter-output::
@@ -165,8 +172,7 @@ canonical labelled arrays, the ArviZ trace, and generated products together:
      'boundary': 'mu_bc',
      'baseline_scale': 'bc',
      'baseline_sensitivity': 'hbc',
-     'baseline': 'mu_bc'},
-    'output products': ['inversion_output']}
+     'baseline': 'mu_bc'}}
 
 ``mf(nmeasure)`` is the observed mole fraction and ``mf_error(nmeasure)`` is
 its supplied observation uncertainty. ``H(region, nmeasure)`` is the labelled
@@ -186,11 +192,11 @@ Inspect diagnostics before interpreting any posterior quantity:
    import arviz as az
 
    summary = az.summary(
-       result.idata,
+       result.trace,
        var_names=["x", "bc", "sigma"],
        kind="diagnostics",
    )
-   summary["divergences"] = int(result.idata.sample_stats["diverging"].sum())
+   summary["divergences"] = int(result.trace.sample_stats["diverging"].sum())
    summary.round(2)
 
 .. jupyter-output::
@@ -212,17 +218,17 @@ Increase chains, tuning, and retained draws; require acceptable R-hat,
 effective sample sizes, trace behaviour, divergences, and posterior-predictive
 fit before drawing conclusions.
 
-The configured ``inv_out`` product is available in memory and on disk:
+The returned scientific result is also saved by the configured ``inv_out`` export.
+The filename follows the output policy; it is not stored on the returned result:
 
 .. jupyter-input::
 
    from openghg_inversions.postprocessing.inversion_output import InversionOutput
 
-   inv_out = result.outputs["inversion_output"]
-   saved = Path(result.output_metadata["inversion_output_path"])
+   inv_out = result
+   saved = tutorial_output_path / "standard_tutorial2020-01-01_inversion_output.nc"
    reloaded = InversionOutput.load(saved)
    {
-       "provenance contract": reloaded.provenance["contract"],
        "basis artifact source": reloaded.run_metadata["basis_artifact_source"],
        "split by sectors": reloaded.run_metadata["split_by_sectors"],
        "saved file": saved.name,
@@ -233,8 +239,7 @@ The configured ``inv_out`` product is available in memory and on disk:
 
 .. jupyter-output::
 
-   {'provenance contract': 'modern_rhime_inversion_output',
-    'basis artifact source': 'generated',
+   {'basis artifact source': 'generated',
     'split by sectors': False,
     'saved file': 'standard_tutorial2020-01-01_inversion_output.nc',
     'posterior variables': ['bc', 'epsilon', 'mu', 'mu_bc', 'sigma', 'x'],
@@ -249,11 +254,15 @@ The configured ``inv_out`` product is available in memory and on disk:
 
 The file retains the trace, canonical inputs, basis functions, run/model/output
 metadata, and provenance needed by supported postprocessing. It is not a
-legacy fixedbasis NetCDF file. ``provenance["contract"]`` identifies this
-modern product, while ``run_metadata["basis_artifact_source"]`` records how the
-basis entered preparation and ``output_metadata["sampler"]`` records the
+legacy fixedbasis NetCDF file. ``provenance`` describes the installed package
+version and available source revision at sampling. ``run_metadata["basis_artifact_source"]``
+records how the basis entered preparation and ``output_metadata["sampler"]`` records the
 resolved sampling options. It does not snapshot the OpenGHG object store or
 guarantee that the original acquisition query can be replayed unchanged.
+Supported ``basic`` and PARIS postprocessing uses every retained chain in this
+artifact, preserving ``chain`` and ``draw`` identity until a statistic or
+covariance is calculated. See :doc:`legacy_and_migration` for historical
+reproduction with OpenGHG Inversions 0.7.
 The companion-data tag is likewise not added to this output automatically:
 record ``v1.0.0`` with the run so the file-level manifest can be matched to the
 inversion.
@@ -271,10 +280,12 @@ a clean source checkout, run:
 
 This opt-in command downloads the pinned ``v1.0.0`` companion release under the
 ignored ``build`` directory and verifies its files against the manifest,
-populates the named OpenGHG store, executes both downloadable notebooks, and
-updates only their paired output blocks. It records the current clean
+populates the named OpenGHG store, executes the registered downloadable notebooks,
+and updates their paired output blocks and displayed PNG assets. Select one
+notebook with ``--tutorial`` when invoking ``python -m scripts.record_tutorial_outputs``.
+It records the current clean
 OpenGHG Inversions commit and the data tag, then rebuilds the rendered pages.
-Review and commit the resulting RST changes. Ordinary previews, documentation
+Review and commit the resulting RST and image changes. Ordinary previews, documentation
 CI, and ``tox -e docs`` never acquire data or execute these tutorial inputs;
 they render the committed outputs offline. The recorder invokes Sphinx
 directly and does not create a tox environment.

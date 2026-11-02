@@ -1,342 +1,104 @@
-"""Functions to create fit basis functiosn and apply to data."""
+"""Boundary-condition sensitivity helpers."""
 
-import numpy as np
-import pandas as pd
 import xarray as xr
 
-from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot, to_dense
-from openghg_inversions.basis.basis_functions import BasisFunctions
 
-from ._functions import basis_boundary_conditions
+def bc_sensitivity(fp_and_data: dict, bc_basis: xr.Dataset | None = None) -> dict:
+    """Project absolute or centered directional boundary contributions.
 
-
-def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.DataArray]) -> dict:
-    """Add a sensitivity matrix, H, to each site xr.Dataset in fp_and_data.
-
-    Deprecated:
-        Prefer ``BasisFunctions.sensitivity`` for new code. This legacy helper
-        is retained for callers that still pass flat basis arrays directly.
-
-    The sensitivity matrix H takes the footprint sensitivities (the `fp` variable),
-    multiplies it by the flux files, then aggregates over the basis regions.
-
-    The basis functions can have one of two forms:
-    - a xr.DataArray with lat/lon coordinates, and positive integer values, where all
-      lat/lon pairs with value == i form the i-th basis region
-    - a xr.DataArray with coordinates: lat, lon, region. For each fixed region value, there is
-      a lat-lon grid with 1 in region and 0 outside region.
-
-    Region numbering must start from 1
-
-    TODO: describe output coordinates?
+    Absolute ``bc_n/e/s/w`` inputs produce ``H_bc``. Centered
+    ``bc_anomaly_n/e/s/w`` and ``bc_mass_n/e/s/w`` inputs produce
+    ``H_bc_anomaly`` and ``H_bc_mass`` through the same spatial basis; their
+    scalar ``bc_reference`` is preserved unchanged. Centered inputs require
+    ``boundary_representation="centered-v1"``. See
+    :ref:`surface-centered-boundary-contract`.
 
     Args:
-        fp_and_data: output from `data_processing_surface_notracer`; contains "combined scenarios" keyed by
-            site code, as well as fluxes.
-        basis_func: basis functions to use; output from `utils.basis` or basis functions in `basis` submodule.
-        verbose: if True, print info messages.
+        fp_and_data: Site datasets with all four directional contributions
+            for the selected representation. Centered anomaly units must
+            match the reference concentration units; mass units must be
+            ``"1"``. Dot-prefixed metadata entries are retained unchanged.
+        bc_basis: Resolved labelled basis with ``bc_basis_<direction>`` variables
+            and a ``region`` dimension. A singleton time applies to every
+            observation; multiple times align by their labels. None uses the
+            acquired NESW contributions directly, without resource I/O.
 
     Returns:
-        dict in same format as fp_and_data with sensitivity matrix and basis functions added.
-    """
-    sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
-
-    flux_sources = list(fp_and_data[".flux"].keys())
-    split_by_sectors = bool(fp_and_data.get(".split_by_sectors", len(flux_sources) > 1))
-
-    if not split_by_sectors:
-        if not isinstance(basis_func, xr.DataArray):
-            basis_func = next(iter(basis_func.values()))
-
-        fp_x_flux_name = "fp_x_flux"
-
-    else:
-        # multi-sector case
-        fp_x_flux_name = "fp_x_flux_sectoral"
-
-        if isinstance(basis_func, dict):
-            if len(basis_func) == 1:
-                basis_func = next(iter(basis_func.values()))
-            elif all(fs in basis_func for fs in flux_sources):
-                # concat along sources
-                basis_func = xr.concat(
-                    [bf.expand_dims({"source": [k]}) for k, bf in basis_func.items()],
-                    dim="source",
-                    join="outer",
-                )
-            else:
-                raise ValueError(
-                    "There should either only be one basis_func, or it should be a dictionary keyed by sources."
-                )
-
-    if "time" in basis_func.dims and basis_func.sizes["time"] <= 1:
-        basis_func = basis_func.squeeze("time")
-
-    fp_and_data[".basis"] = basis_func
-
-    for site in sites:
-        sensitivity = apply_fp_basis_functions(
-            fp_x_flux=fp_and_data[site][fp_x_flux_name],
-            basis_func=basis_func,
-        )
-        fp_and_data[site]["H"] = sensitivity
-
-    return fp_and_data
-
-
-def apply_basis_functions_sensitivity(fp_and_data: dict, basis_functions: BasisFunctions) -> dict:
-    """Legacy adapter that writes wrapper sensitivities from ``BasisFunctions``.
-
-    This mutating wrapper-boundary helper replaces the internal call to
-    ``fp_sensitivity`` while preserving the legacy ``fp_data`` contract. It
-    still records the flat ``.basis`` side channel because current
-    fixedbasisMCMC postprocessing reads that field directly.
-
-    Args:
-        fp_and_data: Legacy ``fp_all``/``fp_data`` dictionary containing site
-            datasets, ``".flux"``, and optional ``".split_by_sectors"``.
-        basis_functions: Retained basis object used to compute site ``H``.
-
-    Returns:
-        The input dictionary with ``".basis"`` and each site ``H`` updated.
-    """
-    sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
-    flux_sources = list(fp_and_data[".flux"].keys())
-    split_by_sectors = bool(fp_and_data.get(".split_by_sectors", len(flux_sources) > 1))
-    fp_x_flux_name = "fp_x_flux_sectoral" if split_by_sectors else "fp_x_flux"
-
-    fp_and_data[".basis"] = _legacy_flat_basis_for_fp_data(
-        basis_functions=basis_functions,
-        source_order=flux_sources,
-        split_by_sectors=split_by_sectors,
-    )
-
-    for site in sites:
-        sensitivity = basis_functions.sensitivity(fp_and_data[site][fp_x_flux_name])
-        state_dim = basis_functions.operator.meta.state_dim
-        if state_dim != "region" and state_dim in sensitivity.dims:
-            sensitivity = sensitivity.rename({state_dim: "region"})
-            state_dim = "region"
-        if split_by_sectors:
-            sensitivity = _legacy_multisource_h_if_needed(
-                sensitivity,
-                state_dim=state_dim,
-                flux_sources=flux_sources,
-            )
-        fp_and_data[site]["H"] = sensitivity
-
-    return fp_and_data
-
-
-def _legacy_flat_basis_for_fp_data(
-    *,
-    basis_functions: BasisFunctions,
-    source_order: list[str],
-    split_by_sectors: bool,
-) -> xr.DataArray:
-    """Legacy adapter returning the flat ``.basis`` side channel.
-
-    This preserves the current ``fp_data[".basis"]`` contract for
-    fixedbasisMCMC and postprocessing. It should be removed once issue #429
-    replaces the remaining flat-basis sensitivity paths and issue #383
-    refactors output handling around retained basis objects.
-
-    Args:
-        basis_functions: Retained basis object to expose as a flat basis.
-        source_order: Source names and output order expected by legacy callers.
-        split_by_sectors: Whether the current workflow expects source-resolved
-            basis functions.
-
-    Returns:
-        Flat basis array in the shape expected by current postprocessing.
+        New mapping and site datasets, sharing input storage where possible.
+        Projected sensitivities have ``bc_region`` and ``time`` dimensions;
+        centered anomaly retains concentration units and mass retains ``"1"``.
+        Centered operands remain spatial, without fitted boundary-period
+        expansion. Inputs remain unchanged and lazy arrays remain lazy.
 
     Raises:
-        ValueError: If a multi-source flat basis cannot be matched to the
-            current flux sources.
+        ValueError: If centered directional operands, representation, reference
+            shape, units or basis alignment are invalid.
     """
-    basis_func = basis_functions.flat_basis()
+    result = dict(fp_and_data)
+    if bc_basis is not None:
+        if bc_basis.sizes.get("time") == 1:
+            bc_basis = bc_basis.squeeze("time")
+        elif "time" in bc_basis.dims:
+            bc_basis = bc_basis.sortby("time")
+        bc_basis = bc_basis.rename({dv: str(dv).replace("basis_", "") for dv in bc_basis.data_vars})
 
-    if not split_by_sectors:
-        if not isinstance(basis_func, xr.DataArray):
-            for source in source_order:
-                if source in basis_func:
-                    basis_func = basis_func[source]
-                    break
-            else:
-                basis_func = next(iter(basis_func.values()))
-    elif isinstance(basis_func, dict):
-        if len(basis_func) == 1:
-            basis_func = next(iter(basis_func.values()))
-        elif all(source in basis_func for source in source_order):
-            basis_func = xr.concat(
-                [basis_func[source].expand_dims({"source": [source]}) for source in source_order],
-                dim="source",
-                join="outer",
-            )
+    for site, ds in fp_and_data.items():
+        if site.startswith("."):
+            continue
+        representation = ds.attrs.get("boundary_representation")
+        if representation is not None and representation != "centered-v1":
+            raise ValueError(f"Unsupported boundary_representation {representation!r}.")
+        centered = any(str(name).startswith(("bc_anomaly_", "bc_mass_")) for name in ds) or (
+            ds.attrs.get("boundary_representation") == "centered-v1"
+        )
+        if centered:
+            projected = _project_centered_boundaries(ds, bc_basis)
         else:
-            raise ValueError(
-                "There should either only be one basis function, or it should be a dictionary "
-                "keyed by the requested sources."
-            )
-
-    if "time" in basis_func.dims and basis_func.sizes["time"] <= 1:
-        basis_func = basis_func.squeeze("time")
-
-    return basis_func
+            projected = {"H_bc": _project_boundaries(ds[[f"bc_{d}" for d in "nesw"]], bc_basis)}
+        result[site] = ds.assign(projected)
+    return result
 
 
-def _legacy_multisource_h_if_needed(
-    sensitivity: xr.DataArray,
-    *,
-    state_dim: str,
-    flux_sources: list[str],
+def _project_boundaries(
+    ds: xr.Dataset, basis: xr.Dataset | None, *, centered: bool = False,
 ) -> xr.DataArray:
-    """Legacy adapter for gathered multi-source H.
-
-    ``MultiSourceBucketBasisOperator.sensitivity`` returns a gathered MultiIndex
-    state dimension. ``fixedbasisMCMC`` and its legacy output path still expect
-    separate ``region`` and ``source`` dimensions, so this converts to legacy
-    ``(region, time, source)`` shape only at that wrapper boundary. Modern RHIME
-    preparation must not call this adapter.
-    """
-    source_dim = "source"
-    region_in_source_dim = "region_in_source"
-    if source_dim in sensitivity.dims:
-        return sensitivity
-    if state_dim not in sensitivity.dims or source_dim not in sensitivity.coords:
-        return sensitivity
-
-    source_labels = [str(source) for source in sensitivity.coords[source_dim].values]
-    available_sources = list(dict.fromkeys(source_labels))
-    missing_sources = [source for source in flux_sources if source not in available_sources]
-    extra_sources = [source for source in available_sources if source not in flux_sources]
-    if missing_sources or extra_sources:
-        raise ValueError(
-            "Multi-source sensitivity does not match requested flux sources; "
-            f"missing source(s): {missing_sources!r}; extra source(s): {extra_sources!r}."
-        )
-    region_counts = {source: source_labels.count(source) for source in set(source_labels)}
-    state_index = sensitivity.indexes.get(state_dim)
-    if not isinstance(state_index, pd.MultiIndex):
-        source_coord = sensitivity.coords[source_dim]
-        region_coord = sensitivity.coords.get(region_in_source_dim)
-        if source_coord.dims != (state_dim,) or region_coord is None or region_coord.dims != (state_dim,):
-            return sensitivity
-        state_index = pd.MultiIndex.from_arrays(
-            [source_coord.values, region_coord.values],
-            names=[source_dim, region_in_source_dim],
-        )
-        sensitivity = sensitivity.assign_coords(
-            xr.Coordinates.from_pandas_multiindex(state_index, state_dim)
-        )
-    occupied = xr.DataArray(
-        np.ones(sensitivity.sizes[state_dim], dtype=bool),
-        dims=state_dim,
-        coords=xr.Coordinates.from_pandas_multiindex(state_index, state_dim),
-    ).unstack(state_dim).notnull()
-    legacy_h = sensitivity.unstack(state_dim).where(occupied, 0.0)
-    if region_in_source_dim in legacy_h.dims:
-        legacy_h = legacy_h.rename({region_in_source_dim: "region"})
-    if source_dim not in legacy_h.dims or "region" not in legacy_h.dims:
-        return sensitivity
-
-    legacy_h = legacy_h.sel({source_dim: flux_sources})
-    legacy_h = legacy_h.assign_coords(
-        source_region_count=(
-            source_dim,
-            [region_counts.get(source, 0) for source in flux_sources],
-        )
-    )
-    dim_order = ["region"]
-    if "time" in legacy_h.dims:
-        dim_order.append("time")
-    dim_order.append(source_dim)
-    dim_order.extend(str(dim) for dim in legacy_h.dims if str(dim) not in dim_order)
-    return legacy_h.transpose(*dim_order)
-
-
-def apply_fp_basis_functions(
-    fp_x_flux: xr.DataArray,
-    basis_func: xr.DataArray,
-) -> xr.DataArray:
-    """Computes sensitivity matrix `H` for one site.
-
-    See `fp_sensitivity` for more info about the sensitivity matrix.
-
-    # TODO: accept more complex basis functions
-    # TODO: accept time varying basis functions?
-
-    Args:
-        fp_x_flux: xr.DataArray from `ModelScenario.footprints_data_merge`, e.g. `fp_all["TAC"].fp_x_flux` or
-            `fp_all["TAC"].fp_x_flux_sectoral`.
-        basis_func: basis functions with integer values in lat/lon grid cells
-
-    Returns:
-        sensitivity ("H") xr.DataArray
-    """
-    # add squeeze just in case this function is used directly
-    if "time" in basis_func.dims and basis_func.sizes["time"] <= 1:
-        basis_func = basis_func.squeeze("time")
-
-    _, basis_aligned = xr.align(fp_x_flux.isel(time=0), basis_func, join="override")
-    basis_mat = get_xr_dummies(basis_aligned, cat_dim="region")
-    sensitivity = sparse_xr_dot(basis_mat, fp_x_flux.fillna(0.0), dim=["lat", "lon"])
-
-    if sensitivity.dims[:2] != ("region", "time"):
-        sensitivity = sensitivity.transpose("region", "time", ...)
-
-    return to_dense(sensitivity)
-
-
-def bc_sensitivity(
-    fp_and_data: dict, domain: str, basis_case: str, bc_basis_directory: str | None = None
-) -> dict:
-    """Add boundary conditions sensitivity matrix `H_bc` to each site xr.Dataframe in fp_and_data.
-
-    Args:
-        fp_and_data: dict containing xr.Datasets output by `ModelScenario.footprints_data_merge`
-            keyed by site code.
-        domain: inversion domain. For instance "EUROPE"
-        basis_case: BC basis case to read in. Examples of basis cases are "NESW","stratgrad".
-        bc_basis_directory: bc_basis_directory can be specified if files are not in the default
-            directory. Must point to a directory which contains subfolders organized
-            by domain. (optional)
-
-    Returns:
-        dict of xr.Datasets in same format as fp_and_data with `H_bc` sensitivity matrix added.
-
-    """
-    sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
-
-    if basis_case.lower() == "nesw":
-        for site in sites:
-            ds = fp_and_data[site]
-            bc_ds = ds[[f"bc_{d}" for d in "nesw"]].rename({f"bc_{d}": d for d in "nesw"})
-            sensitivity = bc_ds.sum(["lat", "lon", "height"]).to_dataarray(dim="bc_region")
-            fp_and_data[site]["H_bc"] = sensitivity
-
-        return fp_and_data
-
-    basis_func = basis_boundary_conditions(
-        domain=domain, basis_case=basis_case, bc_basis_directory=bc_basis_directory
+    """Contract directional curtains with the same spatial boundary basis."""
+    if basis is None:
+        return ds.rename({f"bc_{d}": d for d in "nesw"}).sum(
+            ["lat", "lon", "height"], skipna=False if centered else None,
+        ).to_dataarray(dim="bc_region")
+    if centered:
+        if basis.sizes.get("time", 0) > 1:
+            try:
+                basis = basis.sel(time=ds.time)
+            except KeyError as exc:
+                raise ValueError("Centered boundary basis must cover every retained site timestamp.") from exc
+        ds, basis = xr.align(ds, basis, join="exact", copy=False)
+    return (
+        (ds * basis).sum(["lat", "lon", "height"], skipna=False if centered else None)
+        .to_dataarray(dim="__newdim__").sum("__newdim__", skipna=False if centered else None)
+        .rename(region="bc_region")
     )
 
-    # drop time if there is only one value
-    if basis_func.sizes.get("time", -1) == 1:
-        basis_func = basis_func.squeeze("time")
-    else:
-        basis_func = basis_func.sortby("time")
 
-    # align basis data var names with baseline sensitivity data var names from ModelScenario
-    bc_basis = basis_func.rename({dv: str(dv).replace("basis_", "") for dv in basis_func.data_vars})
-
-    for site in sites:
-        ds = fp_and_data[site]
-        bc_ds = ds[[f"bc_{d}" for d in "nesw"]]
-        sensitivity = (
-            (bc_ds * bc_basis).sum(["lat", "lon", "height"]).to_dataarray(dim="__newdim__").sum("__newdim__")
+def _project_centered_boundaries(ds: xr.Dataset, basis: xr.Dataset | None) -> dict[str, xr.DataArray]:
+    """Validate the directional centered handoff and project anomaly and mass."""
+    prefixes = ("bc_anomaly", "bc_mass")
+    required = {f"{prefix}_{d}" for prefix in prefixes for d in "nesw"} | {"bc_reference"}
+    if not required <= set(ds.variables) or ds.bc_reference.ndim:
+        raise ValueError("Centered site boundaries require all directional A/M operands and scalar bc_reference.")
+    if ds.attrs.get("boundary_representation") != "centered-v1":
+        raise ValueError("Centered site boundaries require boundary_representation='centered-v1'.")
+    projected = {}
+    for prefix in prefixes:
+        curtains = ds[[f"{prefix}_{d}" for d in "nesw"]].rename(
+            {f"{prefix}_{d}": f"bc_{d}" for d in "nesw"}
         )
-        sensitivity = sensitivity.rename(region="bc_region")
-        fp_and_data[site]["H_bc"] = sensitivity
-
-    return fp_and_data
+        expected = "1" if prefix == "bc_mass" else ds.bc_reference.attrs.get("units")
+        if not expected or any(value.attrs.get("units") != expected for value in curtains.data_vars.values()):
+            raise ValueError("Directional boundary operands have incompatible units.")
+        sensitivity = _project_boundaries(curtains, basis, centered=True)
+        sensitivity.attrs = dict(ds[f"{prefix}_n"].attrs)
+        sensitivity.attrs["boundary_sensitivity_preparation"] = "unexpanded"
+        projected[prefix.replace("bc", "H_bc", 1)] = sensitivity
+    return projected

@@ -1,0 +1,6 @@
+openghg\_inversions.rhime.cached\_sigma
+=======================================
+
+.. automodule:: openghg_inversions.rhime.cached_sigma
+   :members:
+   :show-inheritance:

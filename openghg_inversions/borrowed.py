@@ -47,7 +47,8 @@ import numpy as np
 import xarray as xr
 
 if TYPE_CHECKING:
-    from typing_extensions import Never, deprecated
+    from typing import Never
+    from typing_extensions import deprecated
 else:
     Never = Any
 
@@ -127,7 +128,7 @@ class BorrowedNDArray(np.ndarray[Any, Any]):
     @deprecated("Mutation through a borrowed array reference is unsupported", category=None)
     def resize(self, *args: Any, **kwargs: Any) -> None:
         """Mark in-place resizing as unsupported."""
-        super().resize(*args, **kwargs)
+        super().resize(*args, **kwargs)  # type: ignore[deprecated]
 
     @deprecated("Mutation through a borrowed array reference is unsupported", category=None)
     def setfield(self, *args: Any, **kwargs: Any) -> None:

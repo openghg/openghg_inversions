@@ -8,7 +8,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from openghg_inversions.rhime import RhimeResult, run_rhime
+from openghg_inversions.rhime import run_standard
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 
 from .likelihoods import likelihood_builder
 
@@ -17,7 +18,7 @@ def run(
     *,
     config_file: str | Path | None = None,
     **kwargs: Any,
-) -> RhimeResult:
+) -> InversionOutput:
     """Run ordinary RHIME with this project's likelihood.
 
     Args:
@@ -25,10 +26,10 @@ def run(
         **kwargs: Standard RHIME option names overriding the configuration.
 
     Returns:
-        The library-owned RHIME result and any requested supported output.
+        The scientific result; the runner writes requested outputs.
     """
     kwargs["mismatch_model"] = None
-    return run_rhime(
+    return run_standard(
         config_file=config_file,
         likelihood_builder=likelihood_builder,
         **kwargs,
@@ -46,7 +47,7 @@ def _json_object(value: str) -> dict[str, Any]:
     return parsed
 
 
-def main(argv: Sequence[str] | None = None) -> RhimeResult:
+def main(argv: Sequence[str] | None = None) -> InversionOutput:
     """Parse project CLI arguments and run the customized inversion."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("config_file", type=Path, help="RHIME INI configuration file")

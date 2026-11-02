@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 
-import arviz as az
 import numpy as np
 import pymc as pm
 import pytest
@@ -14,10 +13,11 @@ from scipy.stats import multivariate_normal
 from openghg_inversions.models.coords import get_coord_registry, registered_model
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.observation_error import resolve_aggregation_error
-from openghg_inversions.rhime.multisector import build_multisector_rhime_model
+from openghg_inversions.rhime.multisector import build_multisector_model
 from openghg_inversions.rhime.outputs import annotate_likelihood_trace
-from openghg_inversions.rhime.specs import SectorSpec
-from openghg_inversions.rhime.standard import build_standard_rhime_model
+from openghg_inversions.serialization import load_trace, save_trace
+from openghg_inversions.rhime.specs import RhimeModelSpec, SectorSpec
+from openghg_inversions.rhime.standard import build_standard_model
 
 
 def _ou_inputs(*, low_rank: bool = True, zero_base: bool = False) -> xr.Dataset:
@@ -101,6 +101,7 @@ def test_low_rank_builder_keeps_the_dynamic_cholesky_rank_sized(
         for dims in model.named_vars_to_dims.values()
     )
     assert "ou_correlation_template" not in model.named_vars
+    logp = model.compile_logp()
     original_cholesky = np.linalg.cholesky
     cholesky_shapes: list[tuple[int, ...]] = []
 
@@ -109,7 +110,7 @@ def test_low_rank_builder_keeps_the_dynamic_cholesky_rank_sized(
         return original_cholesky(value)
 
     monkeypatch.setattr(np.linalg, "cholesky", record_cholesky)
-    assert np.isfinite(float(model.compile_logp()(model.initial_point())))
+    assert np.isfinite(float(logp(model.initial_point())))
     assert cholesky_shapes == [(1, 1)]
 
 
@@ -272,21 +273,16 @@ def test_standard_recipes_accept_installed_fixed_ou_likelihood(
         dims=("nmeasure", "region"),
         coords={"nmeasure": data.nmeasure, "region": ["r1"]},
     )
-    common = {
-        "observations": data["mf"],
-        "observation_error": data["mf_error"],
-        "aggregation_error": resolve_aggregation_error(data, "none"),
-        "use_bc": False,
-        "likelihood_builder": add_fixed_ou_gaussian_likelihood,
-        "likelihood_kwargs": {"tau_hours": 5.0, "fixed_site_amplitudes": 0.5},
-    }
+    likelihood_kwargs = {"tau_hours": 5.0, "fixed_site_amplitudes": 0.5}
     if multisector:
         source_design = xr.concat(
             [design, 2.0 * design],
             dim=xr.IndexVariable("source", ["ff", "ocean"]),
         )
-        model = build_multisector_rhime_model(
-            source_design,
+        model_spec = RhimeModelSpec(
+            species="ch4",
+            domain="EUROPE",
+            use_bc=False,
             sectors=(
                 SectorSpec(
                     name="fossil fuel",
@@ -301,24 +297,36 @@ def test_standard_recipes_accept_installed_fixed_ou_likelihood(
                     x_prior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
                 ),
             ),
-            **common,
         )
+        model = build_multisector_model(
+            data.assign(H=source_design),
+            model_spec,
+            priors={f"x_{sector.variable_suffix}": sector.x_prior for sector in model_spec.sectors},
+            likelihood_builder=add_fixed_ou_gaussian_likelihood,
+            likelihood_kwargs=likelihood_kwargs,
+        ).model
     else:
-        model = build_standard_rhime_model(
-            design,
-            x_prior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
-            **common,
+        prior = {"pdf": "normal", "mu": 1.0, "sigma": 1.0}
+        model_spec = RhimeModelSpec(
+            species="ch4", domain="EUROPE", use_bc=False,
+            sectors=(SectorSpec("total", "inventory", prior, "total"),),
         )
+        model = build_standard_model(
+            data.assign(H=design), model_spec, priors={"x": prior},
+            likelihood_builder=add_fixed_ou_gaussian_likelihood,
+            likelihood_kwargs=likelihood_kwargs,
+        ).model
 
     assert {"y", "epsilon", "ou_site_amplitude", "ou_tau_hours"} <= set(
         model.named_vars
     )
     assert "sigma" not in model.named_vars
+    np.testing.assert_allclose(model["epsilon"].eval(), np.sqrt(0.2**2 + 0.5**2))
 
 
 def test_likelihood_trace_annotation_round_trips_identity_and_options(tmp_path) -> None:
     """Raw trace metadata identifies the custom callable and its arguments."""
-    idata = az.InferenceData(posterior=xr.Dataset())
+    idata = xr.DataTree.from_dict({"posterior": xr.Dataset()})
     identity = {
         "module": "openghg_inversions.models.fixed_ou",
         "qualname": "add_fixed_ou_gaussian_likelihood",
@@ -330,8 +338,8 @@ def test_likelihood_trace_annotation_round_trips_identity_and_options(tmp_path) 
         likelihood_kwargs=options,
     )
     path = tmp_path / "ou-trace.nc"
-    idata.to_netcdf(path)
-    loaded = az.from_netcdf(path)
+    save_trace(idata, path)
+    loaded = load_trace(path)
 
     assert json.loads(loaded.attrs["rhime_likelihood_builder"]) == identity
     assert json.loads(loaded.attrs["rhime_likelihood_kwargs"]) == options
@@ -339,7 +347,7 @@ def test_likelihood_trace_annotation_round_trips_identity_and_options(tmp_path) 
 
 def test_likelihood_trace_annotation_serializes_array_options() -> None:
     """Numeric and temporal array options remain valid after sampling."""
-    idata = az.InferenceData(posterior=xr.Dataset())
+    idata = xr.DataTree.from_dict({"posterior": xr.Dataset()})
 
     annotate_likelihood_trace(
         idata,

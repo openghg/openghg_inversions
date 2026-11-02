@@ -1,17 +1,66 @@
-"""Normalize, calculate, and align minimum model-error values."""
+"""Normalize, calculate, and align minimum total-error floors."""
 
+import json
 import numbers
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import xarray as xr
 
+MinErrorConfig = Literal["percentile", "residual"] | dict[str, float] | None | int | float
+
+
+def minimum_error_input_names(
+    observations: xr.Dataset, value: MinErrorConfig,
+) -> tuple[str, ...]:
+    """Select estimator operands, including optional modelled BC concentration.
+
+    Site and time coordinates travel with ``mf``. Consumers materialize these
+    arrays and their auxiliary coordinates together before estimating a floor.
+    """
+    if value == "residual":
+        return ("mf", "mf_mod", "bc_mod") if "bc_mod" in observations else ("mf", "mf_mod")
+    return ("mf",)
+
+
+def minimum_error_source_policy(
+    value: MinErrorConfig, sites: Sequence[str], *, by_site: bool,
+) -> dict[str, object]:
+    """Describe only estimator choices relevant to the retained observations."""
+    if isinstance(value, Mapping):
+        return {"sites": {site: value.get(site) for site in sites}}
+    if isinstance(value, str):
+        policy: dict[str, object] = {"method": value}
+        if value == "residual":
+            policy["by_site"] = by_site
+        return policy
+    return {"scalar": 0.0 if value is None else float(value)}
+
+
+def validate_minimum_error_policy(
+    floor: xr.DataArray, value: MinErrorConfig, *, by_site: bool,
+) -> None:
+    """Reject changed estimator choices without executing the floor's arrays.
+
+    Unmarked independently supplied final floors remain authoritative. Site-map
+    comparison covers only the retained sites recorded by the producer.
+    """
+    source = floor.attrs.get("minimum_error_source_policy")
+    if source is None:
+        return
+    policy = json.loads(source)
+    if policy != minimum_error_source_policy(value, tuple(policy.get("sites", {})), by_site=by_site):
+        raise ValueError(
+            "min_error was resolved with a different minimum-error policy; "
+            "materialize the prepared inputs again with the requested likelihood settings."
+        )
+
 
 @dataclass(frozen=True, eq=False, slots=True)
 class MinimumError:
-    """Observation-aligned minimum model error.
+    """Observation-aligned minimum total-error floor.
 
     Attributes:
         values: Minimum error labelled by observation.
@@ -26,11 +75,10 @@ class MinimumError:
     sites: tuple[str, ...]
 
     @classmethod
-    def prepare(
+    def from_observations(
         cls,
         observations: xr.Dataset,
-        fp_data: Mapping[str, xr.Dataset],
-        value: str | Mapping[str, float] | int | float = 0.0,
+        value: str | Mapping[str, float] | int | float | None = 0.0,
         *,
         by_site: bool = True,
     ) -> "MinimumError":
@@ -38,9 +86,11 @@ class MinimumError:
 
         Args:
             observations: Gathered observations containing ``mf`` and a labelled
-                ``site`` coordinate for per-site values.
-            fp_data: Per-site scientific datasets used by calculated methods.
+                ``site`` coordinate for per-site values. Named methods consume
+                retained eager observations: residual also requires ``mf_mod``
+                and accepts ``bc_mod``; percentile requires a ``time`` coordinate.
             value: Scalar, per-site mapping, ``"residual"``, or ``"percentile"``.
+                ``None`` uses a zero scalar floor.
             by_site: Whether residual values are calculated separately by site.
 
         Returns:
@@ -59,6 +109,9 @@ class MinimumError:
         sites: tuple[str, ...] = ()
         method: str
         varies_by_site = False
+
+        if value is None:
+            value = 0.0
 
         if isinstance(value, numbers.Real) and not isinstance(value, bool):
             source = np.asarray(float(value))
@@ -82,17 +135,31 @@ class MinimumError:
             if site_coord is None:
                 raise ValueError("Calculated min_error values require a labelled site coordinate.")
             sites = tuple(dict.fromkeys(str(site) for site in site_coord.values))
-            selected = {site: fp_data[site] for site in sites if site in fp_data}
-            missing_data = [site for site in sites if site not in selected]
-            if missing_data:
-                raise ValueError(f"Minimum-error calculation is missing fp_data for site(s): {missing_data}")
             method = value
             varies_by_site = value == "percentile" or by_site
-            source = (
-                residual_error_method(selected, by_site=by_site)
-                if value == "residual"
-                else percentile_error_method(selected)
-            )
+            if value == "residual":
+                if "mf_mod" not in observations:
+                    raise ValueError("Residual minimum error requires 'mf_mod'.")
+                modelled = _in_observation_units(observations.mf_mod, observations.mf)
+                if "bc_mod" in observations:
+                    modelled = modelled + _in_observation_units(observations.bc_mod, observations.mf)
+                residual = observations.mf - modelled
+                if by_site:
+                    source = np.asarray([
+                        residual.where(site_coord == site, drop=True).std().item() for site in sites
+                    ])
+                else:
+                    source = residual.std().item()
+            else:
+                # Reconstruct only the retained site/time observations for the
+                # monthly percentile calculation; no original site data is used.
+                selected = {}
+                for site in sites:
+                    mf = observations.mf.where(site_coord == site, drop=True)
+                    selected[site] = xr.Dataset({"mf": xr.DataArray(
+                        mf.data, dims="time", coords={"time": mf.time.data}, attrs=mf.attrs,
+                    )})
+                source = percentile_error_method(selected)
         else:
             raise ValueError(f"Option '{value}' is not valid.")
 
@@ -112,7 +179,8 @@ class MinimumError:
                 coords={"site": np.asarray(sites)},
                 dims="site",
             )
-            data = per_site.sel(site=site_coord)
+            aligned = per_site.sel(site=site_coord)
+            data = xr.DataArray(aligned.data, dims=observations.mf.dims, coords=observations.mf.coords)
         else:
             if source.size != 1:
                 raise ValueError("A non-site minimum error must contain exactly one value.")
@@ -126,6 +194,46 @@ class MinimumError:
             "minimum_error_sites": ",".join(sites),
         }
         return cls(data, method, varies_by_site, sites)
+
+
+def _in_observation_units(value: xr.DataArray, observations: xr.DataArray) -> xr.DataArray:
+    """Express a modelled concentration in the observation's declared units."""
+    source = value.attrs.get("units", observations.attrs.get("units", ""))
+    target = observations.attrs.get("units", source)
+    if source == target:
+        return value
+    # OpenGHG registers the concentration aliases and numeric unit spellings.
+    from openghg.util import enable_pint_xarray
+    from cf_xarray.units import units
+
+    enable_pint_xarray()
+    factor = units.Quantity(1, source).to(target).magnitude
+    return value * factor
+
+
+def normalise_min_error(value: Any) -> float | str | dict[str, float]:
+    """Validate and own minimum-error configuration without observation data.
+
+    Accept ``None`` as zero, a finite nonnegative numeric scalar, a mapping
+    of site labels to such scalars, or the methods ``residual``/``percentile``.
+    Reject booleans and other values with ``ValueError``. Mapping coverage is
+    checked later against retained sites; this boundary copies the mapping.
+    """
+    if value is None:
+        return 0.0
+    if isinstance(value, str):
+        if value not in ("residual", "percentile"):
+            raise ValueError(f"Named `min_error` methods must be 'residual' or 'percentile'; got {value!r}.")
+        return value
+
+    def scalar(item: Any) -> float:
+        if not isinstance(item, numbers.Real) or isinstance(item, bool) or not np.isfinite(item) or item < 0:
+            raise ValueError(f"`min_error` values must be finite nonnegative numbers, got {item!r}.")
+        return float(item)
+
+    if isinstance(value, Mapping):
+        return {site: scalar(item) for site, item in value.items()}
+    return scalar(value)
 
 
 def normalise_min_error_options(options: Mapping[str, Any] | None) -> dict[str, bool]:
@@ -159,102 +267,16 @@ def normalise_min_error_options(options: Mapping[str, Any] | None) -> dict[str, 
     return {"by_site": by_site}
 
 
-def residual_error_method(
-    ds_dict: dict[str, xr.Dataset],
-    robust: bool = False,
-    by_site: bool = False,
-) -> np.ndarray:
-    """Compute estimate of model error using residual error method.
-
-    This method is explained in "Modeling of Atmospheric Chemistry" by Brasseur
-    and Jacobs in Box 11.2 on p.499-500, following "Comparative inverse analysis of satellitle (MOPITT)
-    and aircraft (TRACE-P) observations to estimate Asian sources of carbon monoxide", by Heald, Jacob,
-    Jones, et.al. (Journal of Geophysical Research, vol. 109, 2004).
-
-    Roughly, we assume that the observations y are equal to the modelled observations y_mod (mf_mod + bc_mod),
-    plus a bias term b, and instrument, representation, and model error:
-
-    y = y_mod + b + err_I + err_R + err_M
-
-    Assuming the errors are mean zero, we have
-
-    (y - y_mod) - mean(y - y_mod) = err_I + err_R + err_M  (*)
-
-    where the mean is taken over all observations.
-
-    Calculating the RMS of the LHS of (*) gives us an estimate for
-
-    sqrt(sigma_I^2 + sigma_R^2 +  sigma_M^2),
-
-    where sigma_I is the standard deviation of err_I, and so on.
-
-    Thus a rough estimate for sigma_M is the RMS of the LHS of (*), possibly with the RMS of
-    the instrument/observation and averaging errors removed (this isn't implemented here).
-
-    Note: in the "non-robust" case, we are computing the standard deviation of y - y_mod. The mean on the LHS
-    of equation (*) could be taken over a subset of the observation, in which case the value calculated is not
-    a standard deviation. We wrote the derivation this way to match Brasseur and Jacobs.
-
-    Args:
-        ds_dict: dictionary of combined scenario datasets, keyed by site codes.
-        robust: if True, use the "median absolute deviation" (https://en.wikipedia.org/wiki/Median_absolute_deviation)
-            instead of the standard deviation. MAD is a measure of spread, similar to standard deviation, but
-            is more robust to outliers.
-        by_site: if True, return array with one mininum error value per site
-
-    Returns:
-        np.ndarray: estimated value(s) for model error.
-    """
-    # if "bc_mod" is present, we need to add it to "mf_mod"
-    if all("bc_mod" in v for k, v in ds_dict.items() if not k.startswith(".")):
-        ds = xr.concat(
-            [
-                v[["mf", "bc_mod", "mf_mod"]].expand_dims({"site": [k]})
-                for k, v in ds_dict.items()
-                if not k.startswith(".")
-            ],
-            dim="site",
-        )
-
-        scaling_factor = float(ds.mf.units) / float(ds.bc_mod.units)
-        ds["modelled_obs"] = ds.mf_mod + ds.bc_mod / scaling_factor
-    else:
-        ds = xr.concat(
-            [
-                v[["mf", "mf_mod"]].expand_dims({"site": [k]})
-                for k, v in ds_dict.items()
-                if not k.startswith(".")
-            ],
-            dim="site",
-        )
-        ds["modelled_obs"] = ds.mf_mod
-
-    if robust is True:
-        # call `.as_numpy` because dask arrays throw an error when we try to compute a median
-        if by_site is True:
-            avg = (ds.mf - ds.modelled_obs).as_numpy().groupby("site").median(dim="time")
-            res_err = np.abs(ds.mf - ds.modelled_obs - avg).as_numpy().groupby("site").median(dim="time")
-        else:
-            avg = (ds.mf - ds.modelled_obs).as_numpy().median(dim=["time", "site"])
-            res_err = np.abs(ds.mf - ds.modelled_obs - avg).as_numpy().median(dim=["site", "time"])
-    elif by_site is True:
-        avg = (ds.mf - ds.modelled_obs).groupby("site").mean(dim="time")
-        res_err = np.sqrt(((ds.mf - ds.modelled_obs - avg) ** 2).groupby("site").mean("time"))
-    else:
-        avg = (ds.mf - ds.modelled_obs).mean()
-        res_err = np.sqrt(((ds.mf - ds.modelled_obs - avg) ** 2).mean())
-
-    return res_err.values
-
-
 def percentile_error_method(ds_dict: dict[str, xr.Dataset]) -> np.ndarray:
     """Compute estimate of minimum model error using percentile error method.
 
     This is a simple method to estimate the minimum model error (i.e. the model error used at baseline
-    points). For each site. it takes the monthly median measured mf and subtracts the monthly 5th
-    percentile measured mf, then calculates the annual mean of these monthly values. The thinking behind
+    points). For each site, it takes the monthly median measured mf and subtracts the monthly 5th
+    percentile measured mf, then averages these differences across all available months. The thinking behind
     this is that transport error might result in modelled enhancements at the baseline points, even with
     an accurate flux map. So this provides a rough calculation for the likely impact of such an event.
+
+    Each site's measured data is converted eagerly to NumPy before calculation.
 
     Args:
         ds_dict: dictionary of combined scenario datasets, keyed by site codes.

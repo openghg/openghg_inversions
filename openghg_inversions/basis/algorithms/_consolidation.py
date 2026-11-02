@@ -18,6 +18,7 @@ from ._contrast import (
     SplitContrastScore,
     _design_by_grid_values,
     _s_diag_values,
+    _validate_optional_non_negative,
 )
 
 if TYPE_CHECKING:
@@ -235,7 +236,7 @@ class ContrastProximityComponentConsolidation:
 
         consolidated_values, final_groups = _labels_from_active_regions(
             active,
-            label_values.shape,
+            (label_values.shape[0], label_values.shape[1]),
         )
         deliberately_disconnected = _deliberately_disconnected_regions(
             consolidated_values,
@@ -776,12 +777,6 @@ def _deliberately_disconnected_regions(
                 }
             )
     return result
-
-
-def _validate_optional_non_negative(name: str, value: float | None) -> None:
-    """Validate an optional non-negative finite scalar."""
-    if value is not None and (value < 0.0 or not np.isfinite(value)):
-        raise ValueError(f"{name} must be non-negative and finite.")
 
 
 __all__ = [
