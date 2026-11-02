@@ -247,10 +247,18 @@ def test_declared_boundary_policy_survives_saved_product_replay(inputs, tmp_path
         record = expected[name]["sites"]["SYNTH"]
         assert record["boundary_temporal_provenance"] == declared[name]
         assert record["selected_surface_inputs"]["sources"].keys() == _example.SOURCE_STATE[name].keys()
+    empty = [prepared.shared_baseline[channel][name] for channel in ("co2", "o2")
+             for name in ("bc_pattern_raw", "bc_pattern_mean", "bc_pattern_centered")]
+    borrowed = [(value.data, value.data.__dask_graph__(), value.chunks, dict(value.encoding)) for value in empty]
     path = tmp_path / f"prepared.{extension}"
     prepared.save(path)
+    for value, (data, graph, chunks, encoding) in zip(empty, borrowed, strict=True):
+        assert value.data is data and data.__dask_graph__() is graph
+        assert value.chunks == chunks and value.encoding == encoding
     restored = Co2O2PreparedInputs.load(path)
     assert restored.provenance == prepared.provenance
+    for channel in ("co2", "o2"):
+        xr.testing.assert_identical(restored.shared_baseline[channel], prepared.shared_baseline[channel].compute())
     trace_path = tmp_path / f"trace.{extension}"
     save_trace(trace, trace_path)
     reopened = load_trace(trace_path)

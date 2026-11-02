@@ -357,21 +357,22 @@ def save_datatree(
     elif output_format == "zarr":
         if output_path.suffix.lower() != ".zarr":
             output_path = output_path.with_suffix(".zarr")
-        dt = dt.map_over_datasets(
-            lambda dataset: dataset.assign(
-                {
-                    name: variable.copy(
-                        deep=False,
-                        data=variable.data.rechunk(
-                            variable.encoding.get("chunks")
-                            or tuple(max(axis) for axis in variable.chunks)
-                        ),
-                    )
-                    for name, variable in dataset.variables.items()
-                    if variable.chunks is not None
-                }
-            )
-        )
+        def storage_chunks(dataset: xr.Dataset) -> xr.Dataset:
+            variables = {}
+            for name, variable in dataset.variables.items():
+                if variable.chunks is None:
+                    continue
+                chunks = variable.encoding.get("chunks") or tuple(max(axis) for axis in variable.chunks)
+                stored = variable.copy(deep=False, data=variable.data.rechunk(chunks))
+                if 0 in variable.shape and not isinstance(chunks, (int, np.integer)) and 0 in chunks:
+                    # Empty Dask axes have chunk 0; Zarr storage chunks must be positive.
+                    storage_shape = tuple(1 if n == 0 and length == 0 else n
+                                          for n, length in zip(chunks, variable.shape, strict=True))
+                    stored.encoding = {**variable.encoding, "chunks": storage_shape}
+                variables[name] = stored
+            return dataset.assign(variables)
+
+        dt = dt.map_over_datasets(storage_chunks)
         dt.to_zarr(output_path, mode="w", zarr_format=2)
     else:
         raise ValueError(f"Unsupported output_format: {output_format!r}")
