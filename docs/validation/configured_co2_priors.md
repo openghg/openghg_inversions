@@ -4,6 +4,8 @@ The implementation is based on reviewed shared-API commit
 `02b0313fb28636dcee1ee53c7727d5088215a68c` (PR #1003). Both the remote branch
 and PR head were verified before creating the isolated implementation branch.
 The inherited #996 and #997 equations and existing model defaults are retained.
+The parent's subsequent `6c61837f` lint/documentation-only commit was inspected
+and merged before submitting broader validation; it changes no scientific target.
 Python package metadata remains unchanged: supported runtimes are 3.12 and 3.13,
 not the inherited request's Python 3.10.
 
