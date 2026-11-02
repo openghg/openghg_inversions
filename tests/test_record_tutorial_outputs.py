@@ -151,6 +151,15 @@ def test_tutorials_are_manual_downloadable_notebooks(name: str, inputs: int) -> 
     assert ".. code-block:: python" not in document
 
 
+def test_standard_tutorial_reads_sampler_diagnostics_from_public_trace() -> None:
+    document = (record_tutorial_outputs._ROOT / "docs" / "usage" / "rhime_standard_tutorial.rst").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'result.trace.attrs["sampler_convergence"]' in document
+    assert "result.idata" not in document
+
+
 def test_recorded_outputs_saves_displayed_pngs_without_recording_figure_repr(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
