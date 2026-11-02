@@ -1,0 +1,778 @@
+{
+  "source_commit": "5cda695fa87ecc220c2d317ae95bd992967ee112",
+  "core_validation_commit": "4df5eede2b82e760aaf6223272c387891fc7aa4e",
+  "core_validation_job": "19886130",
+  "control_array": "19886194",
+  "controls": [
+    {
+      "control": "injected",
+      "outer_mode": "fixed",
+      "likelihood": "fixed_independent",
+      "baseline_truth_ppm": {
+        "co2": 0.35,
+        "o2": -0.45
+      },
+      "positive_flux_truth": {
+        "gpp": 1.15,
+        "ter": 0.85,
+        "ff": 1.2,
+        "co2_ocean": 1.0,
+        "o2_ocean": 1.0
+      },
+      "baseline_posterior_mean_ppm": {
+        "co2": 0.36254440283548944,
+        "o2": -0.4675190999679753
+      },
+      "physical_flux_posterior_mean": [
+        1.1500000000000432,
+        0.8499999999999736,
+        1.1748195059053306,
+        1.0,
+        1.0
+      ],
+      "baseline_95pct_interval_ppm": {
+        "co2": [
+          0.2803771726198676,
+          0.43545588685170705
+        ],
+        "o2": [
+          -0.5736960997429348,
+          -0.3577954518762704
+        ]
+      },
+      "diagnostics": {
+        "max_rhat": 1.0027514272959943,
+        "min_ess_bulk": 477.71619271869736,
+        "divergences": 0
+      },
+      "physical_flux_95pct_interval": {
+        "gpp": [
+          1.15,
+          1.15
+        ],
+        "ter": [
+          0.85,
+          0.85
+        ],
+        "ff": [
+          1.0418032823247607,
+          1.315240133315484
+        ],
+        "co2_ocean": [
+          1.0,
+          1.0
+        ],
+        "o2_ocean": [
+          1.0,
+          1.0
+        ]
+      },
+      "flux_truth_within_95pct_interval": {
+        "gpp": true,
+        "ter": true,
+        "ff": true,
+        "co2_ocean": true,
+        "o2_ocean": true
+      },
+      "baseline_truth_within_95pct_interval": {
+        "co2": true,
+        "o2": true
+      },
+      "minimum_physical_flux_scale": 0.85,
+      "maximum_product_accounting_error_ppm": 1.1368683772161603e-13
+    },
+    {
+      "control": "zero",
+      "outer_mode": "fixed",
+      "likelihood": "fixed_independent",
+      "baseline_truth_ppm": {
+        "co2": 0.0,
+        "o2": 0.0
+      },
+      "positive_flux_truth": {
+        "gpp": 1.15,
+        "ter": 0.85,
+        "ff": 1.2,
+        "co2_ocean": 1.0,
+        "o2_ocean": 1.0
+      },
+      "baseline_posterior_mean_ppm": {
+        "co2": 0.009961926695259951,
+        "o2": -0.013647327256280015
+      },
+      "physical_flux_posterior_mean": [
+        1.1500000000000432,
+        0.8499999999999736,
+        1.179624130277169,
+        1.0,
+        1.0
+      ],
+      "baseline_95pct_interval_ppm": {
+        "co2": [
+          -0.06871344999216031,
+          0.09137575160242768
+        ],
+        "o2": [
+          -0.12067133687839539,
+          0.0969575325281895
+        ]
+      },
+      "diagnostics": {
+        "max_rhat": 1.019149772847757,
+        "min_ess_bulk": 471.19678366654443,
+        "divergences": 0
+      },
+      "physical_flux_95pct_interval": {
+        "gpp": [
+          1.15,
+          1.15
+        ],
+        "ter": [
+          0.85,
+          0.85
+        ],
+        "ff": [
+          1.0430287871224795,
+          1.3230859722266772
+        ],
+        "co2_ocean": [
+          1.0,
+          1.0
+        ],
+        "o2_ocean": [
+          1.0,
+          1.0
+        ]
+      },
+      "flux_truth_within_95pct_interval": {
+        "gpp": true,
+        "ter": true,
+        "ff": true,
+        "co2_ocean": true,
+        "o2_ocean": true
+      },
+      "baseline_truth_within_95pct_interval": {
+        "co2": true,
+        "o2": true
+      },
+      "minimum_physical_flux_scale": 0.85,
+      "maximum_product_accounting_error_ppm": 5.684341886080802e-14
+    },
+    {
+      "control": "injected",
+      "outer_mode": "multiplicative",
+      "likelihood": "fixed_independent",
+      "baseline_truth_ppm": {
+        "co2": 0.35,
+        "o2": -0.45
+      },
+      "positive_flux_truth": {
+        "gpp": 1.15,
+        "ter": 0.85,
+        "ff": 1.2,
+        "co2_ocean": 1.0,
+        "o2_ocean": 1.0
+      },
+      "baseline_posterior_mean_ppm": {
+        "co2": 0.36391652565077076,
+        "o2": -0.4683917379490358
+      },
+      "physical_flux_posterior_mean": [
+        1.0963749631765023,
+        0.9525935038244532,
+        1.1729260339954914,
+        1.0,
+        1.0
+      ],
+      "baseline_95pct_interval_ppm": {
+        "co2": [
+          0.28573899863110236,
+          0.4450463286691321
+        ],
+        "o2": [
+          -0.5833347405788611,
+          -0.3563221311003426
+        ]
+      },
+      "diagnostics": {
+        "max_rhat": 1.0099607582774885,
+        "min_ess_bulk": 635.3895285029427,
+        "divergences": 0
+      },
+      "physical_flux_95pct_interval": {
+        "gpp": [
+          0.9527784971669053,
+          1.2349833647382573
+        ],
+        "ter": [
+          0.6952578797289034,
+          1.2304369442274923
+        ],
+        "ff": [
+          1.027204064915224,
+          1.3125879448530429
+        ],
+        "co2_ocean": [
+          1.0,
+          1.0
+        ],
+        "o2_ocean": [
+          1.0,
+          1.0
+        ]
+      },
+      "flux_truth_within_95pct_interval": {
+        "gpp": true,
+        "ter": true,
+        "ff": true,
+        "co2_ocean": true,
+        "o2_ocean": true
+      },
+      "baseline_truth_within_95pct_interval": {
+        "co2": true,
+        "o2": true
+      },
+      "minimum_physical_flux_scale": 0.5267342267059213,
+      "maximum_product_accounting_error_ppm": 1.1368683772161603e-13
+    },
+    {
+      "control": "zero",
+      "outer_mode": "multiplicative",
+      "likelihood": "fixed_independent",
+      "baseline_truth_ppm": {
+        "co2": 0.0,
+        "o2": 0.0
+      },
+      "positive_flux_truth": {
+        "gpp": 1.15,
+        "ter": 0.85,
+        "ff": 1.2,
+        "co2_ocean": 1.0,
+        "o2_ocean": 1.0
+      },
+      "baseline_posterior_mean_ppm": {
+        "co2": 0.013785341774772362,
+        "o2": -0.02028831642586826
+      },
+      "physical_flux_posterior_mean": [
+        1.0952588865390849,
+        0.9575393698153885,
+        1.1724755130298956,
+        1.0,
+        1.0
+      ],
+      "baseline_95pct_interval_ppm": {
+        "co2": [
+          -0.06660618575387295,
+          0.0911723118080851
+        ],
+        "o2": [
+          -0.12799473650684254,
+          0.08670686189161368
+        ]
+      },
+      "diagnostics": {
+        "max_rhat": 1.0037439479633723,
+        "min_ess_bulk": 743.3256255165074,
+        "divergences": 0
+      },
+      "physical_flux_95pct_interval": {
+        "gpp": [
+          0.9515721463896579,
+          1.2271389619439337
+        ],
+        "ter": [
+          0.7312498676946642,
+          1.2365322787364637
+        ],
+        "ff": [
+          1.0341083195898364,
+          1.3089446209943703
+        ],
+        "co2_ocean": [
+          1.0,
+          1.0
+        ],
+        "o2_ocean": [
+          1.0,
+          1.0
+        ]
+      },
+      "flux_truth_within_95pct_interval": {
+        "gpp": true,
+        "ter": true,
+        "ff": true,
+        "co2_ocean": true,
+        "o2_ocean": true
+      },
+      "baseline_truth_within_95pct_interval": {
+        "co2": true,
+        "o2": true
+      },
+      "minimum_physical_flux_scale": 0.5473932640369945,
+      "maximum_product_accounting_error_ppm": 5.684341886080802e-14
+    },
+    {
+      "control": "injected",
+      "outer_mode": "multiplicative",
+      "likelihood": "fixed_ou",
+      "baseline_truth_ppm": {
+        "co2": 0.35,
+        "o2": -0.45
+      },
+      "positive_flux_truth": {
+        "gpp": 1.15,
+        "ter": 0.85,
+        "ff": 1.2,
+        "co2_ocean": 1.0,
+        "o2_ocean": 1.0
+      },
+      "baseline_posterior_mean_ppm": {
+        "co2": 0.3720734681825769,
+        "o2": -0.48638726808713445
+      },
+      "physical_flux_posterior_mean": [
+        1.065758354807752,
+        1.0005287017797422,
+        1.1471760809165072,
+        1.0,
+        1.0
+      ],
+      "baseline_95pct_interval_ppm": {
+        "co2": [
+          0.20402691822232621,
+          0.5372977714046693
+        ],
+        "o2": [
+          -0.6985687328337374,
+          -0.277622864691231
+        ]
+      },
+      "diagnostics": {
+        "max_rhat": 1.0063779098944896,
+        "min_ess_bulk": 866.9461416532525,
+        "divergences": 0
+      },
+      "physical_flux_95pct_interval": {
+        "gpp": [
+          0.8418008565784539,
+          1.2825249760245627
+        ],
+        "ter": [
+          0.7081695852367905,
+          1.3633406530486334
+        ],
+        "ff": [
+          0.9452761862962286,
+          1.3572381002532043
+        ],
+        "co2_ocean": [
+          1.0,
+          1.0
+        ],
+        "o2_ocean": [
+          1.0,
+          1.0
+        ]
+      },
+      "flux_truth_within_95pct_interval": {
+        "gpp": true,
+        "ter": true,
+        "ff": true,
+        "co2_ocean": true,
+        "o2_ocean": true
+      },
+      "baseline_truth_within_95pct_interval": {
+        "co2": true,
+        "o2": true
+      },
+      "minimum_physical_flux_scale": 0.5782515412040877,
+      "maximum_product_accounting_error_ppm": 1.1368683772161603e-13
+    },
+    {
+      "control": "zero",
+      "outer_mode": "multiplicative",
+      "likelihood": "fixed_ou",
+      "baseline_truth_ppm": {
+        "co2": 0.0,
+        "o2": 0.0
+      },
+      "positive_flux_truth": {
+        "gpp": 1.15,
+        "ter": 0.85,
+        "ff": 1.2,
+        "co2_ocean": 1.0,
+        "o2_ocean": 1.0
+      },
+      "baseline_posterior_mean_ppm": {
+        "co2": 0.026154922826783132,
+        "o2": -0.04052961866344129
+      },
+      "physical_flux_posterior_mean": [
+        1.073868803471418,
+        0.9849366986458975,
+        1.1435746991532225,
+        1.0,
+        1.0
+      ],
+      "baseline_95pct_interval_ppm": {
+        "co2": [
+          -0.1352752086247661,
+          0.1854264027107856
+        ],
+        "o2": [
+          -0.2535055558269429,
+          0.1631813446972582
+        ]
+      },
+      "diagnostics": {
+        "max_rhat": 1.0026709141119388,
+        "min_ess_bulk": 881.6242480226058,
+        "divergences": 0
+      },
+      "physical_flux_95pct_interval": {
+        "gpp": [
+          0.8586903980009462,
+          1.2825340581946443
+        ],
+        "ter": [
+          0.6930998293535436,
+          1.3087464732467802
+        ],
+        "ff": [
+          0.9455684863495906,
+          1.3460713606301908
+        ],
+        "co2_ocean": [
+          1.0,
+          1.0
+        ],
+        "o2_ocean": [
+          1.0,
+          1.0
+        ]
+      },
+      "flux_truth_within_95pct_interval": {
+        "gpp": true,
+        "ter": true,
+        "ff": true,
+        "co2_ocean": true,
+        "o2_ocean": true
+      },
+      "baseline_truth_within_95pct_interval": {
+        "co2": true,
+        "o2": true
+      },
+      "minimum_physical_flux_scale": 0.5516107411892656,
+      "maximum_product_accounting_error_ppm": 5.684341886080802e-14
+    },
+    {
+      "control": "injected",
+      "outer_mode": "multiplicative",
+      "likelihood": "inferred_ou",
+      "baseline_truth_ppm": {
+        "co2": 0.35,
+        "o2": -0.45
+      },
+      "positive_flux_truth": {
+        "gpp": 1.15,
+        "ter": 0.85,
+        "ff": 1.2,
+        "co2_ocean": 1.0,
+        "o2_ocean": 1.0
+      },
+      "baseline_posterior_mean_ppm": {
+        "co2": 0.36815882541230827,
+        "o2": -0.4778781131616693
+      },
+      "physical_flux_posterior_mean": [
+        1.0873217584373087,
+        0.9659060645675116,
+        1.1618614511120438,
+        1.0,
+        1.0
+      ],
+      "baseline_95pct_interval_ppm": {
+        "co2": [
+          0.27159064825448986,
+          0.46707339866117215
+        ],
+        "o2": [
+          -0.6192720286180329,
+          -0.33677593827948826
+        ]
+      },
+      "diagnostics": {
+        "max_rhat": 1.0051618761947225,
+        "min_ess_bulk": 570.2285517220184,
+        "divergences": 0
+      },
+      "physical_flux_95pct_interval": {
+        "gpp": [
+          0.9273708824583833,
+          1.2424097190886263
+        ],
+        "ter": [
+          0.7194670151844119,
+          1.240271280680026
+        ],
+        "ff": [
+          1.0081274674696494,
+          1.311898458022035
+        ],
+        "co2_ocean": [
+          1.0,
+          1.0
+        ],
+        "o2_ocean": [
+          1.0,
+          1.0
+        ]
+      },
+      "flux_truth_within_95pct_interval": {
+        "gpp": true,
+        "ter": true,
+        "ff": true,
+        "co2_ocean": true,
+        "o2_ocean": true
+      },
+      "baseline_truth_within_95pct_interval": {
+        "co2": true,
+        "o2": true
+      },
+      "minimum_physical_flux_scale": 0.5861043160631141,
+      "maximum_product_accounting_error_ppm": 1.1368683772161603e-13
+    },
+    {
+      "control": "zero",
+      "outer_mode": "multiplicative",
+      "likelihood": "inferred_ou",
+      "baseline_truth_ppm": {
+        "co2": 0.0,
+        "o2": 0.0
+      },
+      "positive_flux_truth": {
+        "gpp": 1.15,
+        "ter": 0.85,
+        "ff": 1.2,
+        "co2_ocean": 1.0,
+        "o2_ocean": 1.0
+      },
+      "baseline_posterior_mean_ppm": {
+        "co2": 0.018763383004810442,
+        "o2": -0.028784562990162264
+      },
+      "physical_flux_posterior_mean": [
+        1.0879922309005385,
+        0.9692917303600572,
+        1.1594288991685282,
+        1.0,
+        1.0
+      ],
+      "baseline_95pct_interval_ppm": {
+        "co2": [
+          -0.09005886677038107,
+          0.136742951604671
+        ],
+        "o2": [
+          -0.191743176239066,
+          0.12051836678330373
+        ]
+      },
+      "diagnostics": {
+        "max_rhat": 1.0112441063482014,
+        "min_ess_bulk": 474.41604753135147,
+        "divergences": 0
+      },
+      "physical_flux_95pct_interval": {
+        "gpp": [
+          0.9306948840336832,
+          1.2454257042786625
+        ],
+        "ter": [
+          0.713715540504701,
+          1.234693614637758
+        ],
+        "ff": [
+          0.9912525151498118,
+          1.3154565620287237
+        ],
+        "co2_ocean": [
+          1.0,
+          1.0
+        ],
+        "o2_ocean": [
+          1.0,
+          1.0
+        ]
+      },
+      "flux_truth_within_95pct_interval": {
+        "gpp": true,
+        "ter": true,
+        "ff": true,
+        "co2_ocean": true,
+        "o2_ocean": true
+      },
+      "baseline_truth_within_95pct_interval": {
+        "co2": true,
+        "o2": true
+      },
+      "minimum_physical_flux_scale": 0.5798490321358434,
+      "maximum_product_accounting_error_ppm": 5.684341886080802e-14
+    },
+    {
+      "control": "injected",
+      "outer_mode": "multiplicative_shrunk",
+      "likelihood": "fixed_independent",
+      "baseline_truth_ppm": {
+        "co2": 0.35,
+        "o2": -0.45
+      },
+      "positive_flux_truth": {
+        "gpp": 1.15,
+        "ter": 0.85,
+        "ff": 1.2,
+        "co2_ocean": 1.0,
+        "o2_ocean": 1.0
+      },
+      "baseline_posterior_mean_ppm": {
+        "co2": 0.36428036191471164,
+        "o2": -0.46932389861639684
+      },
+      "physical_flux_posterior_mean": [
+        1.1054849617257512,
+        0.93309941805094,
+        1.1732006044148127,
+        1.0,
+        1.0
+      ],
+      "baseline_95pct_interval_ppm": {
+        "co2": [
+          0.28761429101748653,
+          0.44304968663885747
+        ],
+        "o2": [
+          -0.5707997581027751,
+          -0.3634387862867755
+        ]
+      },
+      "diagnostics": {
+        "max_rhat": 1.0036965101025122,
+        "min_ess_bulk": 612.3256586140783,
+        "divergences": 0
+      },
+      "physical_flux_95pct_interval": {
+        "gpp": [
+          0.9669106941229706,
+          1.243522027890183
+        ],
+        "ter": [
+          0.7167794517019028,
+          1.167086899178524
+        ],
+        "ff": [
+          1.036590157117048,
+          1.314914858547686
+        ],
+        "co2_ocean": [
+          1.0,
+          1.0
+        ],
+        "o2_ocean": [
+          1.0,
+          1.0
+        ]
+      },
+      "flux_truth_within_95pct_interval": {
+        "gpp": true,
+        "ter": true,
+        "ff": true,
+        "co2_ocean": true,
+        "o2_ocean": true
+      },
+      "baseline_truth_within_95pct_interval": {
+        "co2": true,
+        "o2": true
+      },
+      "minimum_physical_flux_scale": 0.6213465013163137,
+      "maximum_product_accounting_error_ppm": 1.1368683772161603e-13
+    },
+    {
+      "control": "zero",
+      "outer_mode": "multiplicative_shrunk",
+      "likelihood": "fixed_independent",
+      "baseline_truth_ppm": {
+        "co2": 0.0,
+        "o2": 0.0
+      },
+      "positive_flux_truth": {
+        "gpp": 1.15,
+        "ter": 0.85,
+        "ff": 1.2,
+        "co2_ocean": 1.0,
+        "o2_ocean": 1.0
+      },
+      "baseline_posterior_mean_ppm": {
+        "co2": 0.012789387194678412,
+        "o2": -0.018641204965786275
+      },
+      "physical_flux_posterior_mean": [
+        1.1066207534242558,
+        0.9295875414670585,
+        1.1733627096533437,
+        1.0,
+        1.0
+      ],
+      "baseline_95pct_interval_ppm": {
+        "co2": [
+          -0.06277009991448629,
+          0.0928780716329733
+        ],
+        "o2": [
+          -0.1262557446387496,
+          0.09225739586829663
+        ]
+      },
+      "diagnostics": {
+        "max_rhat": 1.0027866231163785,
+        "min_ess_bulk": 719.1207857834049,
+        "divergences": 0
+      },
+      "physical_flux_95pct_interval": {
+        "gpp": [
+          0.96981732630422,
+          1.2428127581525776
+        ],
+        "ter": [
+          0.7208180475137538,
+          1.1623738627205384
+        ],
+        "ff": [
+          1.0331619412079374,
+          1.3099455958492552
+        ],
+        "co2_ocean": [
+          1.0,
+          1.0
+        ],
+        "o2_ocean": [
+          1.0,
+          1.0
+        ]
+      },
+      "flux_truth_within_95pct_interval": {
+        "gpp": true,
+        "ter": true,
+        "ff": true,
+        "co2_ocean": true,
+        "o2_ocean": true
+      },
+      "baseline_truth_within_95pct_interval": {
+        "co2": true,
+        "o2": true
+      },
+      "minimum_physical_flux_scale": 0.630713354254688,
+      "maximum_product_accounting_error_ppm": 5.684341886080802e-14
+    }
+  ]
+}

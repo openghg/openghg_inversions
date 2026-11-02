@@ -133,3 +133,14 @@ draws per chain and records baseline intervals, divergences, R-hat and effective
 sample sizes through the maintained saved-trace diagnostics operation. Its 4 GiB
 request is based on the first array's measured peak below 1.1 GiB. This record
 will distinguish the corrected controls from the initial target-definition run.
+
+
+## Final terminal evidence
+
+Job 19886130 completed successfully: 430 tests passed on each of Python 3.12
+and 3.13. Corrected array 19886194 completed all five tasks, including ten saved
+sampling/product runs. The [completed-control report](linked_shared_workflow_results.md)
+records baseline and state truth intervals, positivity, atmospheric accounting,
+resource evidence and the two remaining R-hat flags. Its machine-readable
+companion preserves the full numerical summaries. No scientific convergence
+or real-data acceptance is inferred solely from scheduler completion.
