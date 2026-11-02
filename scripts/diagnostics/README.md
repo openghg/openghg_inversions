@@ -34,9 +34,11 @@ from hash-verified accepted posterior coefficients. Other concentration and flux
 scores remain supported by the archived selected provenance; this diagnostic
 does not rescore them or establish a producer-preferred temporal policy.
 
-Run `--self-test` directly for the bounded row-alignment check. Submit the full
-command through the installed Slurm callback workflow; an initial allocation of
-one CPU, 16 GiB and one hour is sufficient to try. The script processes native
+Run `--self-test` directly for the bounded row-alignment and cache-validation checks.
+Submit the full command through the installed Slurm callback workflow. A measured
+run completed 28 of 31 sites in 90 minutes with about 355 MiB peak resident memory;
+allow about two and a half hours and 4 GiB for a fresh full replay, subject to
+shared-storage performance. The script processes native
 curtains in 24-hour batches and retains only reduced time-by-curtain operands.
 From the repository root, the compute-node command is:
 
@@ -55,3 +57,20 @@ are saved per site. A failed check exits nonzero and leaves partial diagnostic
 outputs for inspection. Native boundary/spec/endpoint identities and imported
 overlay/helper sources must match the frozen oracle receipt; changed external
 sources require a new reviewed acceptance archive.
+
+To continue an interrupted run, use the same output directory and add
+`--resume --resume-origin /path/to/origin.json`. The origin JSON must declare
+the original full `script_sha256` and absolute `log_path`; include the original
+git revision and job ID when available. This is caller-supplied historical
+provenance, recorded separately from the current validation script hash. The
+origin JSON and previous log are hashed into the final receipt.
+
+Resume checks every existing site's complete species/policy/time/curtain grid,
+mass, anomaly and absolute contribution against the independently hash-verified
+native oracle before reusing its reduced arrays. Boundary sources, footprint
+metadata, endpoint overlays, specification and helper hashes are checked again.
+Invalid cached files fail the run; only absent site files are computed. Cached
+NetCDF files remain unchanged, and each site gets a `.validation.json` receipt
+with its hash, oracle/spec identity and validation result. The selected 15-case
+design/posterior replay always runs after all native sites pass. Without
+`--resume`, an existing output directory is still refused.

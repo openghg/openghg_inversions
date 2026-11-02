@@ -58,7 +58,38 @@ def align_frame(frame, rows):
     return frame.iloc[positions]
 
 
-def sample_sites(spec_path, output, sources):
+def validate_site_operands(combined, oracle, site):
+    """Revalidate the full reduced artifact, including each species/policy slice."""
+    expected_policies = [*POLICIES, "interval_containment"]
+    expected_dims = ("species", "policy", "time", "bc_region")
+    if set(combined.data_vars) != {"mass", "anomaly"} or set(combined.coords) != set(expected_dims):
+        raise ValueError(f"Incomplete reduced operand artifact for {site}")
+    for name in ("mass", "anomaly"):
+        if combined[name].dims != expected_dims:
+            raise ValueError(f"Wrong reduced operand dimensions for {site}: {name}")
+    np.testing.assert_array_equal(combined.species, ["co2", "o2"])
+    np.testing.assert_array_equal(combined.policy, expected_policies)
+    np.testing.assert_array_equal(combined.time, oracle.time)
+    np.testing.assert_array_equal(combined.bc_region, oracle.bc_region)
+    records = []
+    for species, reference in (("co2", 400.), ("o2", 209300.)):
+        for policy in expected_policies:
+            values = combined.sel(species=species, policy=policy)
+            target = oracle.sel(species=species, policy="interval_containment" if policy == "nearest_midpoint" else policy)
+            errors = {
+                "mass_max_abs": close(values.mass, target.curtain_mass, atol=1e-12),
+                "anomaly_max_abs_ppm": close(values.anomaly, target.curtain_anomaly_contribution),
+                "absolute_max_abs_ppm": close(
+                    (values.anomaly + reference * values.mass).sum("bc_region", skipna=False),
+                    target.boundary_contribution,
+                ),
+            }
+            records.append({"site": site, "species": species, "policy": policy,
+                            "rows": combined.sizes["time"], **errors})
+    return records
+
+
+def sample_sites(spec_path, output, sources, *, resume=False, cache_origin=None):
     """Use production operands with the archived independent endpoint overlay owner."""
     from openghg_inversions.inversion_data import BoundaryTemporalPolicy
     from openghg_inversions.inversion_data._boundary import baseline_reference_sensitivities
@@ -98,6 +129,29 @@ def sample_sites(spec_path, output, sources):
             if receipt["spec_sha256"] != spec_hash:
                 raise ValueError(f"Wrong oracle specification for {name}")
             checked(oracle_path, receipt["sha256"], sources)
+            if "overlay" in site:
+                checked(site["overlay"]["path"], site["overlay"]["sha256"], sources)
+            cache_path = output / "sites" / f"{name}.nc"
+            if resume and cache_path.exists():
+                with xr.open_dataset(oracle_path) as opened_oracle, xr.open_dataset(cache_path) as opened_cache:
+                    oracle = opened_oracle.sel(endpoint_version="repaired").load()
+                    combined = opened_cache.load()
+                site_records = validate_site_operands(combined, oracle, name)
+                cache_hash = digest(cache_path)
+                sources[str(cache_path)] = cache_hash
+                records.extend(dict(record, reused=True, cache_sha256=cache_hash) for record in site_records)
+                cache_receipt = {"site": name, "status": "cached_oracle_revalidated", "sha256": cache_hash,
+                                 "spec_sha256": spec_hash, "oracle_sha256": receipt["sha256"],
+                                 "validation_script_sha256": digest(__file__), "cache_origin": cache_origin,
+                                 "checks": site_records}
+                validation_path = cache_path.with_suffix(".validation.json")
+                if validation_path.exists():
+                    cache_receipt["previous_validation"] = json.loads(validation_path.read_text())
+                    cache_receipt["previous_validation_sha256"] = digest(validation_path)
+                validation_path.write_text(json.dumps(cache_receipt, indent=2) + "\n")
+                operands[name] = combined.sel(species="co2")
+                print(json.dumps({"site": name, "status": "cached_oracle_revalidated"}), flush=True)
+                continue
             with ExitStack() as stack:
                 oracle = stack.enter_context(xr.open_dataset(oracle_path)).sel(endpoint_version="repaired").load()
                 fp = stack.enter_context(xr.open_zarr(site["path"], chunks=None)).sel(time=oracle.time)
@@ -166,7 +220,14 @@ def sample_sites(spec_path, output, sources):
                         site_results.append(result.expand_dims(policy=[policy_name]))
                     species_results.append(xr.concat(site_results, dim="policy").expand_dims(species=[species]))
                 combined = xr.concat(species_results, dim="species")
-                combined.to_netcdf(output / "sites" / f"{name}.nc")
+                site_records = validate_site_operands(combined, oracle, name)
+                combined.to_netcdf(cache_path)
+                cache_path.with_suffix(".validation.json").write_text(json.dumps({
+                    "site": name, "status": "native_oracle_passed", "sha256": digest(cache_path),
+                    "spec_sha256": spec_hash, "oracle_sha256": receipt["sha256"],
+                    "validation_script_sha256": digest(__file__),
+                    "checks": site_records,
+                }, indent=2) + "\n")
                 operands[name] = combined.sel(species="co2")
                 print(json.dumps({"site": name, "status": "native_oracle_passed"}), flush=True)
     return operands, records
@@ -283,6 +344,26 @@ def self_check():
         pass
     else:
         raise AssertionError("Duplicate rows were accepted")
+    coords = {"species": ["co2", "o2"], "policy": [*POLICIES, "interval_containment"],
+              "time": pd.date_range("2021-07-01", periods=2, freq="h"), "bc_region": list("nesw")}
+    dims = ("species", "policy", "time", "bc_region")
+    cached = xr.Dataset({"mass": (dims, np.full((2, 4, 2, 4), .25)),
+                         "anomaly": (dims, np.zeros((2, 4, 2, 4)))}, coords=coords)
+    oracle = xr.Dataset({
+        "curtain_mass": (("time", "bc_region"), np.full((2, 4), .25)),
+        "curtain_anomaly_contribution": (dims, np.zeros((2, 3, 2, 4))),
+        "boundary_contribution": (("species", "policy", "time"),
+                                  np.broadcast_to(np.array([400., 209300.])[:, None, None], (2, 3, 2))),
+    }, coords={**coords, "policy": ["midpoint_ffill", "linear_midpoints", "interval_containment"]})
+    assert len(validate_site_operands(cached, oracle, "test")) == 8
+    for broken in (cached.isel(policy=slice(0, 3)), cached.assign(mass=cached.mass + .001),
+                   cached.transpose("policy", "species", "time", "bc_region")):
+        try:
+            validate_site_operands(broken, oracle, "test")
+        except (AssertionError, ValueError):
+            pass
+        else:
+            raise AssertionError("Invalid cached site operands were accepted")
 
 
 def main():
@@ -291,20 +372,41 @@ def main():
     parser.add_argument("--selection", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--resume", action="store_true", help="Revalidate and reuse complete reduced site artifacts")
+    parser.add_argument("--resume-origin", type=Path, help="JSON with original script_sha256 and log_path")
     args = parser.parse_args()
     self_check()
     if args.self_test:
-        print("Row alignment self-check passed")
+        print("Row alignment and cache validation self-checks passed")
         return
     if not all((args.timing_spec, args.selection, args.output)):
         parser.error("--timing-spec, --selection and --output are required")
-    args.output.mkdir(parents=True, exist_ok=False)
-    (args.output / "sites").mkdir()
     sources = {}
-    operands, native = sample_sites(args.timing_spec, args.output, sources)
+    cache_origin = None
+    if args.resume:
+        if not args.resume_origin or not (args.output / "sites").is_dir():
+            parser.error("--resume requires --resume-origin and an existing output/sites directory")
+        cache_origin = json.loads(args.resume_origin.read_text())
+        script_hash = cache_origin.get("script_sha256", "")
+        if len(script_hash) != 64 or any(c not in "0123456789abcdef" for c in script_hash):
+            parser.error("--resume-origin must declare the original full script_sha256")
+        log_path = Path(cache_origin["log_path"]).resolve()
+        sources[str(args.resume_origin.resolve())] = digest(args.resume_origin)
+        sources[str(log_path)] = digest(log_path)
+        cache_origin = {**cache_origin, "log_path": str(log_path), "log_sha256": sources[str(log_path)],
+                        "origin_receipt": str(args.resume_origin.resolve()),
+                        "provenance_status": "Caller-supplied original run identity; operands independently revalidated"}
+    else:
+        if args.resume_origin:
+            parser.error("--resume-origin requires --resume")
+        args.output.mkdir(parents=True, exist_ok=False)
+        (args.output / "sites").mkdir()
+    operands, native = sample_sites(args.timing_spec, args.output, sources,
+                                    resume=args.resume, cache_origin=cache_origin)
     selected = replay_selected(args.selection, operands, sources)
     result = {"status": "passed", "native_oracle": native, "selected_replays": selected,
               "source_sha256": sources, "script_sha256": digest(__file__),
+              "resume_origin": cache_origin,
               "diagnostic_input_contract": {
                   "hold_time_period": "3h, checked against the complete native grid",
                   "interval_bounds": "midpoint +/- 90 minutes, sensitivity hypothesis",
