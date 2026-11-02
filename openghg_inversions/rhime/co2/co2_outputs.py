@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 import json
 from pathlib import Path
@@ -562,6 +562,24 @@ def calculate_co2_products(
     result.outputs.update(products, concentration_components=components)
 
 
+def _co2_output_paths(
+    output: Co2OutputOptions, *, domain: str, start_date: str, product_names: Iterable[str],
+) -> tuple[dict[str, Path], Path | None]:
+    """Resolve the writer's concrete product and trace paths before inference."""
+    if output.output_format == "none":
+        return {}, None
+    product_paths = {
+        name: _define_output_filename(
+            output.output_path, "co2", domain, f"{output.output_name}_{name}", start_date,
+            filename_convention="rhime",
+        )
+        for name in product_names if name != "concentration_components"
+    } if output.output_path is not None else {}
+    trace_path = _resolve_output_path(output.save_trace, output.output_path,
+                                      f"{output.output_name}{start_date}_trace.nc")
+    return product_paths, trace_path
+
+
 def save_co2_products(
     result: Co2Output, *, output: Co2OutputOptions,
 ) -> None:
@@ -574,13 +592,9 @@ def save_co2_products(
         return
     domain = result.domain
     start_date = result.start_date
-    product_paths = {
-        name: _define_output_filename(
-            output.output_path, "co2", domain, f"{output.output_name}_{name}", start_date,
-            filename_convention="rhime",
-        )
-        for name in result.outputs if name != "concentration_components"
-    } if output.output_path is not None else {}
+    product_paths, trace_path = _co2_output_paths(
+        output, domain=domain, start_date=start_date, product_names=result.outputs,
+    )
     for name, path in product_paths.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         product = result.outputs[name]
@@ -589,8 +603,6 @@ def save_co2_products(
         else:
             write_netcdf_preserving_bounds_attrs(product, path)
         result.output_metadata[f"{name}_path"] = str(path)
-    trace_path = _resolve_output_path(output.save_trace, output.output_path,
-                                      f"{output.output_name}{start_date}_trace.nc")
     if trace_path is not None:
         trace_path.parent.mkdir(parents=True, exist_ok=True)
         save_trace(result.idata, trace_path)

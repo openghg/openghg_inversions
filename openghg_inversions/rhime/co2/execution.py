@@ -11,12 +11,12 @@ from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load as load_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import PreparedInputs
-from openghg_inversions.rhime._stage_artifacts import _validate_filename_component
+from openghg_inversions.rhime._stage_artifacts import _validate_filename_component, check_checkpoint_targets
 
 from .co2_affine_output import _bind_affine_flux_map, prepared_inputs_content_id
 from .co2_outputs import (
     Co2Output, Co2OutputOptions, calculate_co2_products, save_co2_products, make_co2_output,
-    validate_co2_product_request,
+    validate_co2_product_request, _co2_output_paths,
 )
 from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs, requested_co2_facts
 from .inference import sample_co2_inference
@@ -80,7 +80,8 @@ def run_co2(
     callers use the model-selected inference steps directly. Supplied canonical
     inputs and their coherent reduction are prepared together; an existing
     preparation is reused unchanged. Imported runs must supply requested dates
-    and domain explicitly or retain them in preparation provenance.
+    and domain explicitly or retain them in preparation provenance. Selected prior
+    artifacts are protected from trace/product output aliases before sampling.
 
     Returns:
         Scientific result containing the trace, concentration components and
@@ -135,6 +136,23 @@ def run_co2(
     )
     if bound is not None and output.output_format != "none" and not sampler.sample_prior_predictive:
         raise ValueError("CO2 affine products require prior draws; enable sample_prior_predictive.")
+    product_names = ["basic"]
+    if bound is not None:
+        product_names.append("native_flux")
+        if countries is not None:
+            product_names.append("country_flux")
+        if output.output_format == "paris":
+            product_names.extend(("paris_concentration", "paris_flux"))
+    product_paths, trace_path = _co2_output_paths(
+        output, domain=facts["domain"], start_date=facts["start_date"], product_names=product_names,
+    )
+    protected = model_config.artifact_paths()
+    targets = list(product_paths.values())
+    if trace_path is not None:
+        targets.append(trace_path)
+    for path in targets:
+        check_checkpoint_targets(path.parent, stage=None, payloads=(path.name,), referenced=protected)
+        protected += (path,)
     trace, actual = sample_co2_inference(
         prepared, model, sampler, sigma_target_accept=sampling.sigma_target_accept,
         state_target_accept=sampling.state_target_accept,

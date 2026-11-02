@@ -77,3 +77,25 @@ prepare/sample/product manifests and linked shared-baseline inference remain
 outside that entry point. Existing linked #996/#997 builders retain their
 supported routes. Archived experiments and shared production inputs were not
 modified. A full Sphinx site build has not been run.
+
+
+## PR review follow-through
+
+The full configured `run_co2` route now resolves the writer's concrete product
+and trace paths before sampling and checks them against selected boundary and
+biosphere artifacts. The shared path checker rejects resolved aliases, hardlinks
+and ancestor/descendant directory overlaps. The containment rule is the same
+one already used by the child linked-workflow branch; this parent fix makes it
+available consistently without changing scientific defaults or naming.
+
+Fourteen new full-run regressions use real matching saved priors and require
+sampling to remain uncalled and input bytes unchanged. They cover direct,
+symlink and hardlink aliases for trace/basic outputs and both enclosing-Zarr
+trace writes and writes inside a selected prior store. All fourteen passed.
+Forty-five existing full/saved execution, output, CLI and stage-contract tests
+also passed. Focused Ruff and whitespace checks pass. The curated API landing
+now includes the seven public prior-configuration exports and the shared
+wrapper links directly to its labelled scientific input contract.
+
+Dual-Python CI-equivalent validation and a documentation build are submitted
+from the exact fix source, with completion recorded separately when available.

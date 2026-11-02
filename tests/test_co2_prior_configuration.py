@@ -478,3 +478,81 @@ def test_saved_calibration_documented_example(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["saved_configuration", str(output)])
     main()
     assert {path.name for path in output.iterdir()} == {"biosphere.nc", "boundary.nc", "prior-predictive.nc"}
+
+
+@pytest.mark.parametrize("kind", ["biosphere", "boundary"])
+@pytest.mark.parametrize("target", ["trace", "basic"])
+@pytest.mark.parametrize("alias", ["direct", "symlink", "hardlink"])
+def test_full_run_protects_selected_prior_before_sampling(tmp_path, monkeypatch, kind, target, alias):
+    from openghg_inversions.rhime.co2 import execution
+
+    prepared = _ordinary()
+    inv = prepared.inv_inputs
+    artifact = tmp_path / "selected-prior.nc"
+    if kind == "biosphere":
+        prior = CorrelatedLognormalPrior(inv.alpha_prior_mean, inv.alpha_prior_covariance,
+                                         covariance_dim="region_cov")
+        weights = xr.DataArray([[-1., 0.], [0., 1.]], dims=("process", "region"),
+                               coords={"process": ["GPP", "TER"], **prior.mean.coords}, attrs={"units": "kg/year"})
+        config = BiospherePriorConfig.from_params({"residual_sd_multiplier": 1.})
+        bio = config.prepare(prior, biosphere=prior.mean.copy(data=[True, True]), weights=weights,
+                             reference=xr.dot(weights, prior.mean, dim="region").assign_attrs(units="kg/year"))
+        config.save(bio, artifact)
+        model = {"biosphere": {"path": str(artifact)}}
+    else:
+        config = BoundaryCorrectionConfig("level", level_sd=(.2, "ppm"))
+        config.save(config.prepare(operands(inv.mf), inv.mf), artifact)
+        model = {"boundary": {"correction_path": str(artifact)}}
+    destination = tmp_path / ("trace.nc" if target == "trace" else "rhime_basic_co2_EUROPE_2020-01-01.nc")
+    if alias == "direct":
+        artifact.rename(destination)
+        artifact = destination
+        model[kind]["path" if kind == "biosphere" else "correction_path"] = str(artifact)
+    elif alias == "symlink":
+        destination.symlink_to(artifact)
+    else:
+        destination.hardlink_to(artifact)
+    before = artifact.read_bytes()
+    request = {
+        "prepared_inputs": {"start_date": "2020-01-01", "end_date": "2020-02-01", "domain": "EUROPE"},
+        "model": model, "likelihood": {"kind": "additive_sigma"},
+        "outputs": {"output_format": "basic", "output_path": str(tmp_path),
+                    "save_trace": str(destination) if target == "trace" else False},
+    }
+    # Resolve the real matching scientific artifact, rather than bypass loading.
+    resolved = Co2ModelConfig.from_params(request).model_arguments()
+    if kind == "biosphere":
+        xr.testing.assert_identical(resolved["biosphere_prior"].baseline.mean, prior.mean)
+    monkeypatch.setattr(execution, "sample_co2_inference", lambda *a, **kw: pytest.fail("sampling reached"))
+    with pytest.raises(ValueError, match="overwrite"):
+        execution.run_co2(params=request, prepared=prepared)
+    assert artifact.read_bytes() == before
+    assert destination.read_bytes() == before
+
+
+@pytest.mark.parametrize("enclosing_trace", [False, True])
+def test_full_run_protects_prior_from_overlapping_directory_targets(tmp_path, monkeypatch, enclosing_trace):
+    from openghg_inversions.rhime.co2 import execution
+
+    prepared = _ordinary()
+    trace = tmp_path / "trace.zarr"
+    artifact = trace / "prior.nc" if enclosing_trace else tmp_path / "prior.zarr"
+    if not enclosing_trace:
+        trace = artifact / "trace.nc"
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    config = BoundaryCorrectionConfig("level", level_sd=(.2, "ppm"))
+    config.save(config.prepare(operands(prepared.inv_inputs.mf), prepared.inv_inputs.mf), artifact)
+    def contents():
+        files = sorted(artifact.rglob("*")) if artifact.is_dir() else [artifact]
+        return {str(path): path.read_bytes() for path in files if path.is_file()}
+    before = contents()
+    request = {
+        "prepared_inputs": {"start_date": "2020-01-01", "end_date": "2020-02-01", "domain": "EUROPE"},
+        "model": {"boundary": {"correction_path": str(artifact)}},
+        "likelihood": {"kind": "additive_sigma"},
+        "outputs": {"save_trace": str(trace)},
+    }
+    monkeypatch.setattr(execution, "sample_co2_inference", lambda *a, **kw: pytest.fail("sampling reached"))
+    with pytest.raises(ValueError, match="overwrite"):
+        execution.run_co2(params=request, prepared=prepared)
+    assert contents() == before
