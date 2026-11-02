@@ -366,3 +366,39 @@ def test_trace_multiindex_coordinate_attributes_survive_storage(tmp_path: Path, 
     restored = load_trace(path).posterior.to_dataset()
     xr.testing.assert_identical(restored, original)
     xr.testing.assert_identical(original, before)
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+@pytest.mark.parametrize("empty_domains", [False, True])
+def test_cf_empty_gather_repeated_file_roundtrip(tmp_path, suffix, empty_domains):
+    levels = [pd.Index([], dtype=str), pd.Index([], dtype=int)] if empty_domains else [
+        pd.Index(["gpp", "ocean"]), pd.Index([0, 1]),
+    ]
+    index = pd.MultiIndex(levels=levels, codes=[[], []], names=["source", "region"])
+    original = xr.Dataset({"h": (("row", "outer"), np.empty((2, 0)))},
+                          coords=xr.Coordinates.from_pandas_multiindex(index, "outer"))
+    original.outer.attrs["long_name"] = "selected outer state"
+    original.source.attrs["long_name"] = "physical source"
+    original.region.attrs["long_name"] = "native region"
+    actual = original
+    for generation in range(3):
+        encoded = encode_cf_multiindexes(actual, "outer")
+        path = tmp_path / f"empty-{generation}{suffix}"
+        if suffix == ".nc":
+            encoded.to_netcdf(path)
+            actual = xr.load_dataset(path)
+        else:
+            encoded.to_zarr(path, mode="w")
+            actual = xr.load_dataset(path, engine="zarr")
+        actual = decode_cf_multiindexes(actual, "outer")
+        xr.testing.assert_identical(actual, original)
+        for expected_level, level in zip(index.levels, actual.indexes["outer"].levels, strict=True):
+            np.testing.assert_array_equal(level, expected_level)
+        assert actual.indexes["outer"].names == ["source", "region"]
+
+
+def test_cf_nonempty_gather_rejects_empty_level_domain():
+    encoded = xr.Dataset(coords={"state": ("state", [0], {"compress": "source region"}),
+                                 "source": ("source", np.array([], dtype=str)), "region": [0]})
+    with pytest.raises(ValueError, match="CF level coordinate 'source' cannot be empty"):
+        decode_cf_multiindexes(encoded, "state")

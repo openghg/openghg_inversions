@@ -289,3 +289,45 @@ def test_explicit_preparation_rejects_missing_or_unsupported_inputs(native, faul
         kwargs["mode"] = "additive"
     with pytest.raises(ValueError, match="oxidative allocation" if fault == "additive" else "co2|scalar"):
         prepare_linked_shared_inputs(native, **kwargs)
+
+
+@pytest.mark.parametrize("extension", ["nc", "zarr"])
+@pytest.mark.parametrize("empty_outer", [False, True])
+def test_gathered_shared_preparation_survives_repeated_save_load(native, tmp_path, extension, empty_outer):
+    import pandas as pd
+    from openghg_inversions.rhime.co2.co2_o2_preparation import prepare_co2_o2_inputs
+    from test_rhime_co2_o2 import _inputs
+
+    inputs = _inputs(gathered_state=True)
+    inputs["o2_units"] = "ppm"
+    for channel in ("co2", "o2"):
+        row = str(inputs[f"{channel}_observations"].dims[0])
+        inputs[f"{channel}_observations"] = select_gathered_data_array(
+            native.observations, key=channel, key_dim="species", ragged_dim="channel_observation",
+            stack_dim="observation",
+        ).rename(observation=row)
+    base = replace(prepare_co2_o2_inputs(**inputs), boundary_operands=native.boundary_operands)
+    kwargs = options(base)
+    if empty_outer:
+        kwargs.update(outer=base.retained_prior.mean.copy(data=np.zeros(5, dtype=bool)),
+                      sampled_outer=base.retained_prior.mean.copy(data=np.zeros(5, dtype=bool)))
+    original = prepare_linked_shared_inputs(base, **kwargs)
+    actual = original
+    for generation in range(3):
+        path = tmp_path / f"shared-{generation}.{extension}"
+        actual.save(path)
+        actual = Co2O2PreparedInputs.load(path)
+        xr.testing.assert_identical(actual.observations, original.observations)
+        xr.testing.assert_identical(actual.retained_prior.mean, original.retained_prior.mean)
+        xr.testing.assert_identical(actual.retained_prior.arithmetic_covariance,
+                                    original.retained_prior.arithmetic_covariance)
+        for channel in ("co2", "o2"):
+            expected, restored = original.shared_baseline[channel], actual.shared_baseline[channel]
+            xr.testing.assert_identical(restored, expected)
+            xr.testing.assert_identical(getattr(actual, f"{channel}_sensitivity"), getattr(original, f"{channel}_sensitivity"))
+            index = restored.indexes["physical_outer_state"]
+            assert isinstance(index, pd.MultiIndex)
+            assert index.names == expected.indexes["physical_outer_state"].names
+            if empty_outer:
+                for left, right in zip(index.levels, expected.indexes["physical_outer_state"].levels, strict=True):
+                    np.testing.assert_array_equal(left, right)

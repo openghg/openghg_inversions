@@ -144,3 +144,30 @@ records baseline and state truth intervals, positivity, atmospheric accounting,
 resource evidence and the two remaining R-hat flags. Its machine-readable
 companion preserves the full numerical summaries. No scientific convergence
 or real-data acceptance is inferred solely from scheduler completion.
+
+## Zero-outer repeated serialization fix
+
+The VG acceptance input exposed a production CF-codec defect after this initial
+integration: a legitimate empty `physical_outer_state` MultiIndex lost unused
+level domains on decoding; the next load rejected its empty level coordinates.
+The shared serialization owner now accepts empty domains only for zero-row
+gathers and restores their declared level domains and coordinate metadata.
+Nonempty gathers with empty level domains still fail validation.
+
+Four shared-preparation regressions perform three complete NetCDF/Zarr save/load
+cycles for zero and nonempty outer selections with MultiIndex retained states.
+They check exact scientific arrays, state/prior identity and empty-index level
+metadata. Shared-codec tests also cover unused and fully empty level domains,
+coordinate metadata and malformed nonempty gathers. All 231 broader shared-codec,
+linked-preparation and general-preparation tests passed; Ruff and whitespace
+checks passed. Independent read-only review found no actionable issues and
+checked simultaneous empty/nonempty indexes, mixed labels, encoding, borrowed
+input ownership and lazy payload identity.
+
+The exact 1302-row VG artifact was loaded and saved/reopened three more times
+using production preparation manifests, with `xr.testing.assert_identical` on
+the complete scientific trees. No rows, targets or source artifacts changed.
+Retest evidence and new manifests are in the worktree's
+`inversion_outputs/linked-codec-fix/retest.json` and `cycle-{0,1,2}/`.
+This is a codec check. The selected artifact's zeroed outer sensitivities remain
+a separate scientific-input concern owned by the VG worker and model lead.
