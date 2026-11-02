@@ -12,7 +12,7 @@ scalar fixed values. The default fixed value is one, which preserves the prior
 forward-model contribution of a multiplicative flux-scaling state.
 
 ``prepare_linear_sensitivity`` validates a sensitivity matrix, removes exact-zero
-columns, and retains the full-state mapping. ``resolve_state_activity``
+columns by default, and retains the full-state mapping. ``resolve_state_activity``
 combines that mapping with a policy to produce the canonical
 ``ResolvedStateActivity``;
 ``active_prior_args`` then aligns and subsets state-valued prior parameters.
@@ -88,18 +88,23 @@ def prepare_linear_sensitivity(
     sensitivity: xr.DataArray,
     *,
     output_dim: str = "nmeasure",
+    prune_zero_columns: bool = True,
 ) -> PreparedLinearSensitivity:
-    """Remove exact-zero columns once and retain their full-state mapping.
+    """Prepare a validated design and its full-state mapping.
 
     This is the eager inspection boundary for a labelled sensitivity matrix. The
     returned sensitivity borrows the matrix payload when all columns are retained;
     otherwise it selects only nonzero columns. ``removed`` retains the complete
     scientific state coordinate and auxiliary state metadata for reconstruction
-    and provenance.
+    and provenance. Set ``prune_zero_columns=False`` to retain zero columns
+    whose joint prior is needed for physical diagnostics after a design transform.
+    Validation still inspects the full matrix; no states are structurally removed.
     """
     output_dim = str(output_dim)
     matrix = sensitivity.transpose(output_dim, ...)
     removed = detect_zero_sensitivity(matrix, output_dim=output_dim)
+    if not prune_zero_columns:
+        removed = xr.zeros_like(removed, dtype=bool)
     state_dim = str(removed.dims[0])
     retained_indices = np.flatnonzero(~removed.to_numpy())
     retained = matrix

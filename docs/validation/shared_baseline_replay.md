@@ -173,8 +173,137 @@ SHA256 `9baf3ce3e728dd29e6be1242085e648d5713b4675f8c755d840f753f90b51823`;
 later adapter edits add source hashes, failure receipts and peak memory
 accounting without changing model or scoring equations.
 
-Production sampling results remain to be recorded. The prototype took approximately
-94–101 minutes per arm with four cores and a reported process peak RSS of
-1.7 GiB; this is historical sizing evidence, not a guarantee of resource use.
-Run substantial replays through Slurm with the installed callback workflow.
-No production sampling pass is claimed by this document yet.
+## Completed production implementation replay
+
+All four arms completed on 2026-11-02 using scientific revision
+`6c61837f5e08ed2de9ff67bd28f3a39dfeb6e54b` and replay-script SHA256
+`a704fc78230d60e2b0565c00eccbf216941b051ce098304db2ad74a9be9ed941`.
+Slurm array `19885274` returned exit code zero for every task. Each used the
+full 5,314 rows, four chains, 1,000 tuning and 1,000 retained draws per chain,
+and the matched seed and acceptance targets stated above. Scientific source
+hashes in all four receipts match the reviewed owners recorded in the
+[independent review](shared_baseline_review.md).
+
+The first eight-GiB attempt exhausted memory in the two multiplicative arms;
+the other two arms were stopped near the same limit. Those attempts are
+preserved separately and contribute no scores below. The successful retry
+requested 16 GiB and four cores per arm. Recorded process high-water RSS is
+11.58–11.76 GiB; Slurm elapsed times are 77.8–93.7 minutes. These measurements
+replace the smaller historical prototype estimate for this implementation.
+
+The following convergence diagnostics cover flux-state values and latent
+coordinates, atmospheric delta, BC pattern coefficients, additive outer
+coefficients where present, and OU site amplitudes. All four satisfy the declared gate of
+maximum R-hat at most 1.01, minimum bulk effective sample size (ESS) at least
+100, and no divergences or maximum-tree-depth events in either sampling step.
+These diagnostics support the finite replay; they do not establish exact
+posterior equality.
+
+| Arm | Maximum R-hat | Minimum bulk ESS | Divergences | Tree-depth events | Saved absolute reconstruction error (ppm) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| fixed_outer | 1.00685 | 3125 | 0 | 0 | 2.27e-13 |
+| additive_net | 1.00539 | 2803 | 0 | 0 | 2.27e-13 |
+| multiplicative | 1.00689 | 3032 | 0 | 0 | 1.71e-13 |
+| multiplicative_shrunk | 1.00569 | 3185 | 0 | 0 | 1.71e-13 |
+
+Saved absolute reconstruction compares the stored concentration with the sum
+of original fixed affine contribution, outer prior contribution, physical BC,
+inner transported state, atmospheric delta and centred BC/outer corrections.
+It reopens four sample positions (first/last chains and first/last draws) per
+arm and checks every retained observation row. It does not evaluate every
+stored draw.
+
+### Concentration-space reproduction
+
+These are scores of deterministic posterior-mean absolute predictions,
+without an observation-noise draw. Baseline bias and RMSE use the archived
+`baseline_wur` comparator on the same July WUR BASE site-hours after subtracting
+the physical inner contribution, including its fixed affine remainder. Total
+bias and RMSE use the repaired WUR BASE observations. No UOB synthetic truth
+or flux truth is used in this concentration-space table. Bias is prediction
+minus comparator. The value after each plus/minus sign is its chain-based
+Monte Carlo standard error (MCSE), not posterior uncertainty or observational
+error. Scores weight retained observation rows equally, separately from the
+equal-site weights used to centre the correction operators. RMSE MCSE uses
+the first-order delta method on chain influence samples.
+
+| Arm | Baseline bias (ppm) | Baseline RMSE (ppm) | Total bias (ppm) | Total RMSE (ppm) | Largest absolute replay/accepted difference divided by summed MCSEs |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| fixed_outer | -1.49603 ± 0.00256 | 1.86926 ± 0.00214 | -0.79819 ± 0.00911 | 3.24473 ± 0.00265 | 1.006 |
+| additive_net | -1.18011 ± 0.00382 | 1.63034 ± 0.00293 | -0.24795 ± 0.00905 | 3.14867 ± 0.00179 | 1.070 |
+| multiplicative | -1.16105 ± 0.00326 | 1.59007 ± 0.00258 | -0.20552 ± 0.00912 | 3.15545 ± 0.00199 | 0.865 |
+| multiplicative_shrunk | -1.15777 ± 0.00349 | 1.58813 ± 0.00276 | -0.20898 ± 0.00919 | 3.15577 ± 0.00197 | 1.000 |
+
+For each score the comparison ratio is
+`(replay estimate - accepted estimate) / (replay MCSE + accepted MCSE)`.
+The denominator is a conservative sum of the separate run errors, not the
+quadrature error for assumed independent estimates. Shared seeds do not
+supply paired draws or a measured cross-run covariance. The ratios are
+precision diagnostics, not calibrated hypothesis tests or a simultaneous
+equivalence criterion. All 16 atmospheric comparisons have absolute ratio
+at most 1.070. This supports reproduction of the archived concentration
+results at the reported Monte Carlo precision.
+
+### Physical inner-flux reproduction and exception
+
+The physical inner reporting functionals use the unchanged coherent signed
+flux map over the corrected raw-PARIS-derived inner scoring domain for July
+2021: 23,406 cells, separate from the 114,563-cell full native transport support.
+The corrected mask equals the complement of the six frozen outer basis labels
+for every source. It is not interchangeable with the historical 23,572-cell
+mask in the older four-site conditional linked artifact. Values are
+annualized Tg CO2/year. Here the comparator is the accepted r3 posterior mean,
+not raw WUR flux truth; this section tests implementation reproduction rather
+than flux recovery. GPP, TER, fossil, ocean and net biosphere functionals are
+compared separately. Net biosphere is signed GPP plus TER.
+
+| Arm | Inner net-biosphere mean (Tg CO2/year) | Mean MCSE (Tg CO2/year) | Replay minus accepted (Tg CO2/year) | Difference divided by summed MCSEs |
+| --- | ---: | ---: | ---: | ---: |
+| fixed_outer | -13796.56 | 28.32 | -26.12 | -0.465 |
+| additive_net | -13020.66 | 28.64 | -2.12 | -0.037 |
+| multiplicative | -12947.70 | 27.90 | +35.86 | +0.629 |
+| multiplicative_shrunk | -12979.96 | 28.23 | -22.70 | -0.389 |
+
+Nineteen of the twenty inner-flux mean comparisons have absolute ratio below
+two. The exception is multiplicative TER: replay mean 47634.42 versus accepted
+47512.53 Tg CO2/year, a difference of +121.88. Its MCSEs are 28.41 and 29.53
+Tg CO2/year, respectively, giving a ratio of **2.103**. Its posterior SD is
+2054.92 versus 2067.03 Tg CO2/year. This exception must not be described as
+all means agreeing within two summed MCSEs. Net biosphere, the atmospheric
+scores and convergence checks do not show a corresponding discrepancy;
+these facts do not prove the TER discrepancy is exclusively Monte Carlo error.
+
+A read-only follow-up aligned all 258 multiplicative states by exact
+`(source, region_in_source)` labels: transport, arithmetic prior mean and
+covariance, centred BC patterns, centring weights, observations, measurement
+errors, OU site grouping and timescale match the archive exactly. Physical BC
+and centred affine differences are at most 2.26e-13 ppm. The state order itself
+differs, so the same seed produces different latent trajectories. This finds
+no systematic physical target mismatch, without proving the cause of the
+finite TER difference.
+
+Accepted TER chain means are 47569.44, 47549.02, 47413.94 and 47517.74;
+replay means are 47580.09, 47537.44, 47717.96 and 47702.20 Tg CO2/year.
+Chainwise MCSEs range from 50.06 to 66.01 Tg CO2/year. The discrepancy is
+concentrated in two replay chains and one lower archived chain. A separate
+independent-seed replication would be appropriate before making a stronger
+uniform-equivalence claim; it is not part of this completed replay.
+
+The full-support ordinary/cached normalized density and gradients agree at
+the tested nonzero state in every replay. Direct cached-likelihood gradient
+errors are at most 2.52e-11. Together with unchanged reviewed source hashes,
+matched physical inputs and the results above, the replay supports carrying
+this opt-in implementation forward. It leaves the TER exception visible and
+does not claim exact distributional equivalence, improved physical flux
+recovery, identified gross exchange, or selected production widths. No
+additional fit was launched solely to reduce an observed comparison ratio.
+
+Per-arm inputs, diagnostics, traces and receipts are in
+`inversion_outputs/shared-baseline-20261102/fits-r2/<arm>/`. The aggregate
+`replay-summary.json` and CSV beside that directory bind each receipt by SHA256.
+The broader compatibility run passed 495 cases on Python 3.12.11 and 495 on
+Python 3.13.7 (Slurm `19884998`); repository lint and full documentation passed
+at the replay revision (Slurm `19885186`). The sequential configuration handoff
+is recorded separately in draft PR #1005. These CO2 results do not validate
+linked CO2/O2 workflows or the separate research-only linked additive
+net/gross prototype; the CO2 `additive_net` arm is included in this replay.

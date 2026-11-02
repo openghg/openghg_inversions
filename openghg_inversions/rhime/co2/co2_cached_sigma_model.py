@@ -350,6 +350,7 @@ def build_co2_cached_sigma_model(
     site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
+    prune_zero_flux_columns: bool = True,
     boundary_sensitivity: xr.DataArray | None = None,
     boundary_operands: xr.Dataset | None = None,
     boundary_correction: xr.Dataset | None = None,
@@ -410,6 +411,9 @@ def build_co2_cached_sigma_model(
             observed site. Defaults to the prior support point.
         state_activity: Optional labelled active/fixed policy for retained flux
             states. Fixed values are dimensionless flux scalings.
+        prune_zero_flux_columns: Remove exact-zero flux columns by default.
+            Disable when a transformed design has zero columns whose joint
+            physical prior must remain sampled.
         boundary_sensitivity: Optional atmospheric boundary-condition
             sensitivity, in concentration units per unit dimensionless
             boundary scaling.
@@ -585,6 +589,7 @@ def build_co2_cached_sigma_model(
     prepared_flux = prepare_linear_sensitivity(
         flux_sensitivity,
         output_dim=output_dim,
+        prune_zero_columns=prune_zero_flux_columns,
     )
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
     (
