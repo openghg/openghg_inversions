@@ -49,7 +49,7 @@ from openghg_inversions._serialization_codecs import (
     _decode_serialized_bool,
     _decode_tagged_json_value,
     _encode_tagged_json_value,
-    _numpy_scalar_json_default,
+    _json_value,
 )
 
 __all__ = ["IndependentSourceCovariance"]
@@ -287,9 +287,8 @@ class IndependentSourceCovariance:
                 label_names.append(str(class_labels.name) if class_labels.name is not None else "")
                 label_attrs.append(
                     json.dumps(
-                        class_labels.attrs,
+                        _json_value(class_labels.attrs),
                         sort_keys=True,
-                        default=_numpy_scalar_json_default,
                     )
                 )
             else:
@@ -394,7 +393,7 @@ class IndependentSourceCovariance:
                 f"class_blocked flag for source {label!r}",
             )
             encoded = dataset["class_label_encoded"].sel({source_dim: label}, drop=True)
-            encoded_values = np.asarray(encoded.values, dtype=str)
+            encoded_values = encoded.values
             has_encoded_labels = bool(np.any(encoded_values != ""))
             if blocked != has_encoded_labels:
                 raise ValueError(

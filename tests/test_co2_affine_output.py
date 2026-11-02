@@ -14,7 +14,7 @@ from openghg_inversions.basis.affine_flux_map import AffineFluxMap
 from openghg_inversions.basis.affine_flux_map_io import save
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.basis.operators import BucketBasisOperator, MultiSourceBucketBasisOperator
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.rhime.co2.co2_affine_output import (
     _bind_affine_flux_map,
     import_explicit_affine_flux_map,
@@ -64,7 +64,7 @@ def _prepared() -> tuple[Co2PreparedInputs, xr.DataArray]:
     inputs["diagonal_residual_variance"].attrs["units"] = "ppm**2"
     site_metadata = xr.Dataset({"averaging_period": ("site", ["1h"])}, coords={"site": ["MHD"]})
     prepared = Co2PreparedInputs(
-        RhimePreparedInputs(inputs, basis, site_metadata),
+        PreparedInputs(inputs, basis, site_metadata),
         aggregation_error_mode="low_rank",
         provenance={"projection_strategy": "fixture-restriction"},
     )
@@ -126,7 +126,7 @@ def _multisource_prepared() -> tuple[Co2PreparedInputs, xr.DataArray]:
         inputs[name].attrs["units"] = "ppm"
     inputs["diagonal_residual_variance"].attrs["units"] = "ppm**2"
     prepared = Co2PreparedInputs(
-        RhimePreparedInputs(
+        PreparedInputs(
             inputs,
             basis,
             xr.Dataset({"averaging_period": ("site", ["1h"])}, coords={"site": ["MHD"]}),
@@ -301,7 +301,7 @@ def test_public_load_and_bind_checks_saved_prepared_content(tmp_path, suffix: st
     changed_inputs = prepared.inv_inputs.copy(deep=True)
     changed_inputs["mf"].data[0] = 402.0
     changed = Co2PreparedInputs(
-        RhimePreparedInputs(changed_inputs, prepared.basis_functions, prepared.site_metadata),
+        PreparedInputs(changed_inputs, prepared.basis_functions, prepared.site_metadata),
         prepared.aggregation_error_mode,
         prepared.provenance,
     )
@@ -356,3 +356,24 @@ def test_saved_bucket_flux_must_match_prepared_basis(tmp_path, multisource: bool
 
     with pytest.raises(ValueError, match="bucket flux differs"):
         load_and_bind_affine_flux_map(reconstruction_path, prepared_path)
+
+
+@pytest.mark.parametrize("multisource", [False, True])
+@pytest.mark.parametrize("mismatch", ["assignments", "flux"])
+def test_in_memory_binding_preserves_saved_bucket_compatibility(multisource, mismatch):
+    """Live and saved binding reject numerically different bucket ingredients."""
+    prepared, native_mean = _multisource_prepared() if multisource else _prepared()
+    artifact = produce_bucket_affine_flux_map(prepared, native_mean, prepared_inputs_id="fixture")
+    if mismatch == "flux":
+        affine_map = replace(artifact.affine_map, flux=artifact.affine_map.flux.copy(data=artifact.affine_map.flux.values * 2))
+    else:
+        original = prepared.basis_functions.operator
+        if multisource:
+            altered_bases = dict(original.basis_flat)
+            altered_bases["fossil"] = altered_bases["fossil"].copy(data=[[2, 1]])
+            operator = MultiSourceBucketBasisOperator(altered_bases, state_dim=original.meta.state_dim)
+        else:
+            operator = BucketBasisOperator(original.basis_flat.copy(data=[[2, 1]]), state_dim=original.meta.state_dim)
+        affine_map = replace(artifact.affine_map, prolongation=operator)
+    with pytest.raises(ValueError, match=f"bucket {mismatch}.*differ"):
+        _bind_affine_flux_map(replace(artifact, affine_map=affine_map), prepared, prepared_inputs_id="fixture")

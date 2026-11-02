@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
+from numcodecs import Blosc
+from openghg.storage._encoding import get_zarr_encoding
 
 from openghg_inversions.native_covariance import SeparableExponentialCovariance
 from openghg_inversions._serialization_codecs import (
@@ -20,6 +22,24 @@ from openghg_inversions._serialization_codecs import (
 )
 from openghg_inversions.source_covariance import IndependentSourceCovariance
 from openghg_inversions.serialization import decode_cf_multiindexes, encode_cf_multiindexes, save_datatree
+
+
+def test_zarr_writer_preserves_format_two_compression_and_borrowed_encoding(tmp_path: Path) -> None:
+    """Stored OpenGHG compression remains usable without changing borrowed metadata."""
+    dataset = xr.Dataset({"value": ("cell", da.arange(4, chunks=2))})
+    compressor = Blosc(cname="zstd", clevel=5)
+    encoding = get_zarr_encoding(dataset.data_vars, compressor=compressor)["value"]
+    dataset["value"].encoding = encoding.copy()
+    tree = xr.DataTree(dataset)
+    path = tmp_path / "compressed.zarr"
+
+    save_datatree(tree, path)
+
+    assert json.loads((path / ".zgroup").read_text())["zarr_format"] == 2
+    with xr.open_datatree(path, engine="zarr") as stored:
+        xr.testing.assert_equal(stored.to_dataset().compute(), dataset.compute())
+    assert json.loads((path / "value" / ".zarray").read_text())["compressor"] == compressor.get_config()
+    assert tree["value"].encoding == encoding
 
 
 @pytest.mark.parametrize("storage_chunks", [None, 2, (2,)])
@@ -324,3 +344,25 @@ def test_source_dispatch_does_not_compute_lazy_source_coordinates() -> None:
     assert isinstance(result.coords["lazy_equal"].data, da.Array)
     assert result.coords["lazy_equal"].data is rhs.coords["lazy_equal"].data
     assert result.coords["lazy_equal"].dims == ("native_source", "observation")
+
+
+@pytest.mark.parametrize("suffix", ["nc", "zarr"])
+def test_trace_multiindex_coordinate_attributes_survive_storage(tmp_path: Path, suffix: str) -> None:
+    """Boundary ownership metadata survives persisted MultiIndex coordinates."""
+    from openghg_inversions.serialization import load_trace, save_trace
+
+    index = pd.MultiIndex.from_tuples([("ocean", "a"), ("land", "b")],
+                                     names=["bc_source", "bc_region"])
+    original = xr.Dataset(
+        {"x": ("bc_state", [1., 2.])},
+        coords=xr.Coordinates.from_pandas_multiindex(index, "bc_state"),
+    )
+    for name, local in [("bc_state", "state"),
+                        ("bc_source", "source"), ("bc_region", "region")]:
+        original[name].attrs = {"rhime_component": "bc", "rhime_local_name": local}
+    before = original.copy(deep=True)
+    path = tmp_path / f"owned-trace.{suffix}"
+    save_trace(xr.DataTree.from_dict({"posterior": original}), path)
+    restored = load_trace(path).posterior.to_dataset()
+    xr.testing.assert_identical(restored, original)
+    xr.testing.assert_identical(original, before)

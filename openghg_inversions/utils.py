@@ -167,7 +167,7 @@ def write_netcdf_preserving_bounds_attrs(
     *,
     unlimited_dims: list[str] | None = None,
 ) -> None:
-    """Write a compressed NetCDF while preserving explicit bounds metadata.
+    """Write a compressed NetCDF preserving coordinates and explicit bounds metadata.
 
     Xarray's CF encoder removes ``units`` and ``calendar`` from a bounds
     variable when those attributes match its coordinate. Some external schemas,
@@ -180,7 +180,7 @@ def write_netcdf_preserving_bounds_attrs(
         path: Destination NetCDF path.
         unlimited_dims: Optional dimensions to encode as unlimited.
     """
-    ds = ds.map(to_dense, keep_attrs=True)
+    ds = ds.assign({name: to_dense(value) for name, value in ds.data_vars.items()})
     ds.to_netcdf(
         path,
         unlimited_dims=unlimited_dims,

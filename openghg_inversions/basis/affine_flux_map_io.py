@@ -11,6 +11,7 @@ from typing import Any
 
 import xarray as xr
 
+from openghg_inversions._serialization_codecs import _copy_json_mapping, _decode_json_mapping
 from openghg_inversions.array_ops import to_dense
 from openghg_inversions.serialization import (
     MULTIINDEX_DIMS_ATTR,
@@ -66,13 +67,7 @@ def _json_mapping(value: Mapping[str, Any], name: str) -> Mapping[str, Any]:
     """Freeze a JSON-safe provenance object without coercing unsupported values."""
     if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
         raise ValueError(f"{name} must be a JSON object with string keys.")
-    try:
-        encoded = json.dumps(dict(value), sort_keys=True, allow_nan=False)
-        decoded = json.loads(encoded)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{name} must be JSON-serializable.") from exc
-    if not isinstance(decoded, dict):
-        raise ValueError(f"{name} must be a JSON object.")
+    decoded = _copy_json_mapping(value, name, sort_keys=True)
 
     def check_keys(item: Any) -> None:
         if isinstance(item, dict):
@@ -244,14 +239,7 @@ def _validate_operator_node(node: xr.DataTree) -> xr.DataTree:
 
 
 def _decode_json_attr(attrs: Mapping[Hashable, Any], name: str) -> Mapping[str, Any]:
-    raw = attrs[name]
-    if not isinstance(raw, str):
-        raise ValueError(f"{name} must be a JSON object string.")
-    try:
-        value = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"{name} contains invalid JSON.") from exc
-    return _json_mapping(value, name)
+    return _json_mapping(_decode_json_mapping(attrs[name], name), name)
 
 
 def from_datatree(tree: xr.DataTree) -> AffineFluxMapArtifact:

@@ -7,6 +7,8 @@ import pytest
 import sparse
 import xarray as xr
 
+from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.postprocessing._basis_products import reconstruct_flux_stats
 from openghg_inversions.postprocessing.inversion_output import (
     convert_idata_to_dataset,
     merge_trace_groups,
@@ -160,6 +162,25 @@ def test_merge_trace_groups_uses_exact_direct_names_and_retains_chains() -> None
     assert result["x_prior"].dims == ("chain", "draw")
 
 
+@pytest.mark.parametrize("new_combine_defaults", [False, True])
+def test_merge_trace_groups_preserves_complementary_values_and_rejects_conflicts(
+    new_combine_defaults: bool,
+) -> None:
+    """Unsuffixed groups may fill gaps, but cannot replace conflicting samples."""
+    prior = xr.Dataset({"x": ("draw", [1.0, np.nan])}, coords={"draw": [0, 1]})
+    posterior = xr.Dataset({"x": ("draw", [2.0, 3.0])}, coords={"draw": [1, 2]})
+    with xr.set_options(use_new_combine_kwarg_defaults=new_combine_defaults):
+        result = merge_trace_groups(make_trace(prior=prior, posterior=posterior), add_suffix=False)
+        xr.testing.assert_identical(
+            result, xr.Dataset({"x": ("draw", [1.0, 2.0, 3.0])}, coords={"draw": [0, 1, 2]})
+        )
+        with pytest.raises(xr.MergeError, match="conflicting values"):
+            merge_trace_groups(
+                make_trace(prior=prior, posterior=posterior.assign_coords(draw=[0, 2])),
+                add_suffix=False,
+            )
+
+
 def test_convert_idata_to_dataset_preserves_substring_group_filters() -> None:
     """The legacy conversion wrapper selects groups containing each filter."""
     trace = make_trace(
@@ -191,6 +212,45 @@ def test_prior_and_posterior_samples_are_reduced_independently() -> None:
     assert result["x_posterior_mean"].item() == 6.0
     assert result["x_prior_mode"].item() == 4.0
     assert result["x_posterior_mode"].item() == 6.0
+
+
+@pytest.mark.parametrize("report_flux_on_inversion_grid", [False, True], ids=["native-grid", "inversion-grid"])
+def test_jax_statistics_reconstruct_with_lazy_flux(report_flux_on_inversion_grid: bool) -> None:
+    """JAX statistics interoperate with lazy retained flux in both output paths."""
+    jnp = pytest.importorskip("jax.numpy")
+    grid = {"lat": [50.0], "lon": [-2.0]}
+    retained_flux = xr.DataArray([[2.0]], dims=("lat", "lon"), coords=grid).chunk()
+    basis = BasisFunctions.from_flat_basis(
+        xr.DataArray([[1]], dims=("lat", "lon"), coords=grid), retained_flux
+    )
+    basis_flux_data = basis.flux.data
+    trace = xr.Dataset(
+        {
+            "x": xr.DataArray(
+                jnp.full((3, 1), 3.0),
+                dims=("draw", "state"),
+                coords={"state": basis.operator.basis_matrix.state},
+            )
+        }
+    )
+    trace_data = trace["x"].data
+    stats_ds = calculate_stats(trace, stats=["mean"])
+
+    assert isinstance(stats_ds["x_mean"].data, np.ndarray)
+    assert trace["x"].data is trace_data
+    result = reconstruct_flux_stats(
+        basis,
+        basis.flux.expand_dims(flux_time=[0]),
+        stats_ds,
+        report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+    )
+
+    assert result["x_mean"].chunks is not None
+    assert result.flux_time.values.tolist() == [0]
+    assert result.lat.values.tolist() == [50.0]
+    assert result.lon.values.tolist() == [-2.0]
+    assert float(result["x_mean"].compute().to_numpy().item()) == pytest.approx(6.0)
+    assert basis.flux.data is basis_flux_data
 
 
 def test_mode_uses_each_variables_finite_sample_count() -> None:

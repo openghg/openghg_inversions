@@ -440,7 +440,14 @@ def _model_or_input_var(
     if model_name in model_data:
         return model_data[model_name]
     if input_name in inv_out.inv_inputs:
-        return inv_out.inv_inputs[input_name]
+        value = inv_out.inv_inputs[input_name]
+        if (input_name == "H_bc"
+                and value.attrs.get("boundary_sensitivity_preparation") == "raw-spatial"):
+            raise ValueError(
+                "Legacy output requires the fitted boundary operand 'hbc' in trace constant_data; "
+                "raw spatial H_bc cannot replace the sampled model's temporal alignment."
+            )
+        return value
     raise ValueError(
         f"Legacy HBMCMC output formatting requires {description} as model data {model_name!r} "
         f"or InversionOutput.inv_inputs variable {input_name!r}."
@@ -652,11 +659,14 @@ def _legacy_hbmcmc_attrs(inv_out: InversionOutput) -> dict[str, str]:
             attrs.setdefault("Number of chains", str(int(posterior.sizes["chain"])))
 
     model_metadata = inv_out.model_metadata
-    attrs.setdefault("Error for each site", str(model_metadata.get("sigma_per_site", "Unavailable")))
+    likelihood = model_metadata.get("likelihood")
+    if not isinstance(likelihood, dict):
+        likelihood = model_metadata
+    attrs.setdefault("Error for each site", str(likelihood.get("sigma_per_site", "Unavailable")))
 
     prior_attrs = {
         "Emissions Prior": _format_legacy_attr_prior(_legacy_single_sector_x_prior(model_metadata)),
-        "Model error Prior": _format_legacy_attr_prior(model_metadata.get("sigma_prior")),
+        "Model error Prior": _format_legacy_attr_prior(likelihood.get("sigma_prior")),
         "BCs Prior": _format_legacy_attr_prior(model_metadata.get("bc_prior")),
         "Offset Prior": _format_legacy_attr_prior(model_metadata.get("offset_prior")),
     }
@@ -669,7 +679,6 @@ def make_legacy_hbmcmc_output(
     inv_out: InversionOutput,
     country_file: str | Path | None = None,
     use_bc: bool = False,
-    derived_output_chain: int | None = None,
 ) -> xr.Dataset:
     """Create a legacy-format hbmcmc output dataset from modern inversion output.
 
@@ -679,8 +688,6 @@ def make_legacy_hbmcmc_output(
         inv_out: Inversion outputs container.
         country_file: Optional path to country definition file.
         use_bc: Whether BC variables should be included.
-        derived_output_chain: Optional zero-based chain index for derived
-            compatibility summaries. Raw legacy traces remain chain 0.
 
     Returns:
         Legacy-style ``xr.Dataset`` matching key variable names/attrs from
@@ -699,12 +706,9 @@ def make_legacy_hbmcmc_output(
     site_indicators, site_names = _legacy_site_fields(inv_out)
     site_lons, site_lats = _legacy_site_locations(inv_out, site_names.sizes["nsite"])
 
-    derived_inv_out = inv_out
-    if derived_output_chain is not None:
-        derived_inv_out = inv_out.select_chain(derived_output_chain)
 
     conc = make_concentration_outputs(
-        derived_inv_out,
+        inv_out,
         stats=["mean", "median", "mode_kde", "hdi"],
         stats_args={
             "hdi__hdi_prob": [0.68, 0.95],
@@ -713,14 +717,14 @@ def make_legacy_hbmcmc_output(
         },
     )
     flux = make_flux_outputs(
-        derived_inv_out,
+        inv_out,
         stats=["mean", "mode_kde"],
         stats_args={
             "mode_kde__chunk_size": 1,
         },
     )
     country = make_country_outputs(
-        derived_inv_out,
+        inv_out,
         country_file=country_file,
         stats=["mean", "median", "mode_kde", "stdev", "hdi"],
         stats_args={

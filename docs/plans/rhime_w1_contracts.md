@@ -1,23 +1,21 @@
 # RHIME W1 behavioural and usability contracts
 
 - **Status:** Complete — merged in PR #590 as `21785585` on 2026-08-15
-- **Scope:** Current public RHIME behaviour only. Production code and future
-  customization choices are outside this baseline. Rows for the retired
-  direct `fixedbasisMCMC` implementation were removed when that implementation
-  ceased to be supported; this is a maintained contract map, not an archive.
+- **Scope:** Historical characterization of public RHIME behavior in PR #590, with subsequent direct-legacy rows removed. This is not a maintained capability specification or current test inventory. Later refactors removed or renamed eight test functions listed below; the table is retained as historical evidence until the [planned record cleanup](README.md).
 
-## Authoritative command
+Current supported behavior is described in [the standard model-family documentation](../usage/standard_model_family.rst) and [running and validating inversions](../usage/running_and_validating.rst), with reviewed capability specifications and current executable tests supplying their respective contracts.
 
-Every contract below is selected by one command:
+## Original characterization command
+
+The original characterization used this command; removed or renamed node IDs below are historical references:
 
 ```bash
 tox -e py312-openghgCur -- -m rhime_contract
 ```
 
-There is no second, prose-only contract suite. Parameterized node IDs below
-name the base node; every parameter case is selected by the marker.
+Parameterized node IDs recorded the base node, with parameter cases selected by the marker. Consult current tests rather than using this snapshot to infer present coverage.
 
-## Executable contract map
+## Historical executable contract map
 
 | Contract | Executable pytest node ID |
 | --- | --- |
@@ -45,9 +43,9 @@ name the base node; every parameter case is selected by the marker.
 | Standalone trace write, metadata, and serialized measurement coordinates | `tests/test_rhime.py::test_save_inferencedata_preserves_burn_attrs_and_resets_multiindex_coords` |
 | Selected `run_hbmcmc.py` translation fields, exact config-copy contents, modern legacy-output mode, and historical filename convention | `tests/test_run_hbmcmc_shim.py::test_run_hbmcmc_main_routes_to_run_rhime` |
 
-## Current Dask boundary
+## Characterized Dask boundary
 
-The current implementation is not lazy through sampling. Preparation's NaN
+The characterized implementation was not lazy through sampling. Preparation's NaN
 check computes Dask-backed `H` and `H_bc`. Model construction then computes
 the Dask-backed `H`, `H_bc`, `mf`, `mf_error`, and `min_error` arrays while
 registering PyMC data, before sampling begins. Those operations leave the
@@ -56,9 +54,9 @@ materialization counters in
 `tests/test_rhime.py::test_rhime_dask_materialization_boundaries` assert each
 part of this statement.
 
-## Built-model inventory
+## Characterized model inventory
 
-The standard built model currently contains `Y`, `error`, `min_error`, `hx`,
+The characterized standard model contained `Y`, `error`, `min_error`, `hx`,
 `x`, `mu`, `hbc`, `bc`, `mu_bc`, `sigma_site_index`,
 `sigma_period_index`, `sigma`, `epsilon`, and `y`. The multi-sector model
 replaces standard `hx`/`x`/`mu` with source-suffixed design, state, and
@@ -66,7 +64,7 @@ contribution variables and retains total `mu`. A global offset adds
 `site_indicator`, scalar `offset_latent`, and observation-aligned `offset`.
 Prior and posterior predictive generation selects built-model variable `y`.
 
-These inventories are copied from the exact `model.named_vars` and
+These inventories were copied from the exact `model.named_vars` and
 `model.named_vars_to_dims` equality assertions in the mapped model tests; they
 are not inferred from helper names or documentation.
 

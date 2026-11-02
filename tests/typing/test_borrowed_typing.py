@@ -103,6 +103,7 @@ def _mypy_diagnostics(probe: Path) -> tuple[int, dict[int, list[str]], str]:
             "--cache-dir=/dev/null",
             "--no-error-summary",
             "--no-pretty",
+            "--show-absolute-path",
             "--show-error-codes",
             "--enable-error-code=deprecated",
             str(probe),

@@ -1,0 +1,1 @@
+Use flux_store/flux_domain and inner_flux_store/inner_flux_domain for source flux selection, and flux_sources in make_basis_functions. Deprecated emissions_* spellings warn and will be removed in 0.9; supplying both old and new spellings is an error.

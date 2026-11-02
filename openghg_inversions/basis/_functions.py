@@ -2,13 +2,9 @@
 
 import getpass
 import logging
-import os
-import warnings
-from collections import namedtuple
-from collections.abc import Hashable
+from collections.abc import Hashable, Mapping
 from functools import partial
 from numbers import Integral
-from pathlib import Path
 from typing import Any, Literal, cast
 
 import numpy as np
@@ -29,141 +25,14 @@ from .algorithms import (
 )
 from .algorithms import quadtree_algorithm, weighted_algorithm
 
+from openghg_inversions.array_ops import to_dense
 from openghg_inversions.config.paths import Paths
-from openghg_inversions.utils import read_netcdfs
 
 logger = logging.getLogger(__name__)
 
 
 openghginv_path = Paths.openghginv
 _INNER_REGION_LABEL_ATTR = "inner_region_label"
-
-
-def basis(domain: str, basis_case: str, basis_directory: str | None = None) -> xr.Dataset:
-    """Load matching basis files from ``<directory>/<domain>/<basis_case>_<domain>*.nc``.
-
-    Args:
-        domain: Domain subdirectory and filename suffix.
-        basis_case: Filename prefix used to select basis files.
-        basis_directory: Optional root directory. Defaults to the repository's
-            ``basis_functions`` directory.
-
-    Returns:
-        Combined dataset of matching basis files.
-
-    Raises:
-        ValueError: If the default directory is missing; the directory is
-            created before this error is raised.
-        FileNotFoundError: If no files match the domain and basis case.
-    """
-    if basis_directory is None:
-        basis_path = openghginv_path / "basis_functions"
-        if not basis_path.exists():
-            basis_path.mkdir()
-            raise ValueError(
-                f"Default basis directory {basis_path} was empty. Add basis files or specify `basis_path`."
-            )
-    else:
-        basis_path = Path(basis_directory)
-
-    file_path = (basis_path / domain).glob(f"{basis_case}_{domain}*.nc")
-    files = sorted(list(file_path))
-
-    if len(files) == 0:
-        raise FileNotFoundError(
-            f"Can't find basis function files for domain '{domain}' and basis_case '{basis_case}' "
-        )
-
-    basis_ds = read_netcdfs(files)
-
-    return basis_ds
-
-
-def basis_boundary_conditions(domain: str, basis_case: str, bc_basis_directory: str | None = None):
-    """Load matching boundary-condition basis files for a domain and case.
-
-    Files match ``<directory>/<domain>/<basis_case>_<domain>*.nc``.
-    Unreadable matches are reported and skipped.
-
-    Args:
-        domain: Domain subdirectory and filename suffix.
-        basis_case: Filename prefix used to select boundary-condition basis files.
-        bc_basis_directory: Optional root directory. Defaults to the
-            repository's ``bc_basis_functions`` directory.
-
-    Returns:
-        Combined dataset of readable matching basis files.
-
-    Raises:
-        ValueError: If the default directory is missing; the directory is
-            created before this error is raised.
-        FileNotFoundError: If no readable files match the domain and basis case.
-    """
-    if bc_basis_directory is None:
-        bc_basis_path = openghginv_path / "bc_basis_functions"
-        if not bc_basis_path.exists():
-            bc_basis_path.mkdir()
-            raise ValueError(
-                f"Default BC basis directory {bc_basis_path} was empty. "
-                "Add basis files or specify `bc_basis_path`."
-            )
-    else:
-        bc_basis_path = Path(bc_basis_directory)
-
-    file_path = (bc_basis_path / domain).glob(f"{basis_case}_{domain}*.nc")
-    files = sorted(list(file_path))
-
-    # check for files that we can't access
-    # NOTE: Hannah added this in 2021 to the ACRG code.
-    # I don't know why it is only for BC boundary conditions -- BM, 2024
-    file_no_acc = [ff for ff in files if not os.access(ff, os.R_OK)]
-    if len(file_no_acc) > 0:
-        print(
-            "Warning: unable to read all boundary conditions basis function files which match this criteria:"
-        )
-        print("\n".join(map(str, file_no_acc)))
-
-    # only use files we can access
-    files = [ff for ff in files if ff not in file_no_acc]
-
-    if len(files) == 0:
-        raise FileNotFoundError(
-            f"Can't find BC basis function files for domain '{domain}' and bc_basis_case '{basis_case}' "
-        )
-
-    basis_ds = read_netcdfs(files)
-
-    return basis_ds
-
-
-def _flux_fp_from_fp_all(
-    fp_all: dict, emissions_name: list[str] | None = None
-) -> tuple[xr.DataArray, list[xr.DataArray]]:
-    """Extract a flux field and site footprints from a legacy ``fp_all`` mapping.
-
-    Args:
-        fp_all: Dictionary returned by the merged-data preparation path. Flux
-            data are expected under the ``".flux"`` key, while measurement-site
-            footprint datasets are stored under the remaining site keys.
-        emissions_name: Optional list of OpenGHG flux source names. When
-            supplied, the first source is selected from ``fp_all[".flux"]``.
-            When omitted, the first available flux entry is used.
-
-    Returns:
-        Tuple containing the selected flux ``DataArray`` and the list of
-        footprint ``DataArray`` objects for all sites.
-    """
-    if emissions_name is not None:
-        flux = fp_all[".flux"][emissions_name[0]].data.flux
-    else:
-        first_flux = next(iter(fp_all[".flux"].values()))
-        flux = first_flux.data.flux
-
-    flux = cast(xr.DataArray, flux)
-
-    footprints: list[xr.DataArray] = [v.fp for k, v in fp_all.items() if not k.startswith(".")]
-
-    return flux, footprints
 
 
 def _mean_fp_times_mean_flux(
@@ -313,75 +182,84 @@ def paired_abs_response_weights(
     return weights
 
 
-def basis_weights_from_fp_all(
-    fp_all: dict,
-    emissions_name: list[str] | None = None,
+def basis_weights_from_data(
+    site_data: Mapping[str, xr.Dataset],
+    weighting_flux: xr.DataArray,
     *,
     abs_flux: bool = False,
     mask: xr.DataArray | None = None,
 ) -> xr.DataArray:
-    """Build the standard 2D basis weight field from a legacy ``fp_all`` mapping.
+    """Materialize mean-footprint times mean-flux weights for basis fitting.
 
-    The generated basis algorithms historically computed weights internally
-    from mean footprints multiplied by mean flux. This helper exposes that
-    adapter step so algorithms and experiments can use already computed weight
-    fields directly.
+    All site footprint times contribute to the measurement-weighted footprint
+    mean. Flux is averaged over its own native time axis; it is not paired to
+    individual observation times. This named eager algorithm boundary leaves
+    borrowed inputs unchanged.
 
     Args:
-        fp_all: Legacy merged-data dictionary produced by the data preparation
-            path.
-        emissions_name: Optional list of OpenGHG flux source names used to
-            select emissions from ``fp_all``.
-        abs_flux: If true, use absolute flux values before averaging.
-        mask: Optional Boolean spatial mask. When supplied, weights outside the
-            mask are dropped from the returned field.
+        site_data: Non-empty mapping of site datasets containing ``fp`` with
+            ``time`` and spatial dimensions. Spatial cells must already match
+            the flux grid in size and order; footprint coordinates are adopted.
+        weighting_flux: One selected source flux with ``time`` and the same
+            spatial dimensions as the footprints. Callers implementing the
+            standard RHIME policy select the first requested source.
+        abs_flux: Take absolute flux values before temporal averaging.
+        mask: Optional Boolean spatial mask; cells outside it are dropped.
 
     Returns:
-        Two-dimensional weight field with spatial coordinates preserved.
+        Eager spatial weights equal to mean footprint times mean selected flux.
     """
-    flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
+    flux = weighting_flux
+    footprints = [dataset["fp"] for dataset in site_data.values()]
     return _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
 
 
-def load_intem_outer_regions(
+def _validate_basis_algorithm(basis_algorithm: str) -> None:
+    """Reject unsupported generated algorithms before fitting inputs are materialized."""
+    if basis_algorithm not in ("quadtree", "weighted", "region_constrained"):
+        raise ValueError(
+            "Basis algorithm not recognised. Please use 'quadtree', 'weighted', "
+            "'region_constrained', or input a basis function file"
+        )
+
+
+def basis_from_weights(
+    weights: xr.DataArray,
+    start_date: str,
     domain: str,
-    outer_regions_path: str | Path | None = None,
+    basis_algorithm: str,
+    nbasis: int,
+    *,
+    landsea_classes: xr.DataArray | None = None,
+    landsea_indices: np.ndarray | None = None,
+    **region_kwargs: Any,
 ) -> xr.DataArray:
-    """Load a coordinate-preserving InTEM fixed-outer region map.
+    """Dispatch resolved spatial weights to one eager basis-fitting algorithm.
 
-    Args:
-        domain: Domain suffix used to select
-            ``outer_region_definition_{domain}.nc`` when
-            ``outer_regions_path`` is omitted.
-        outer_regions_path: Optional direct path to an outer-region NetCDF
-            file. A bare relative filename may name a packaged file in
-            :mod:`openghg_inversions.basis`. When omitted, the packaged file
-            for ``domain`` is used.
+    ``basis_algorithm`` selects ``quadtree``, ``weighted`` or
+    ``region_constrained``. Weighted fitting requires ``landsea_classes`` or
+    a pre-aligned dense ``landsea_indices`` array; region-constrained fitting
+    requires ``region_classes`` in ``region_kwargs``. Other region keywords
+    follow :func:`region_constrained_basis_from_weights`.
 
-    Returns:
-        Loaded two-dimensional ``region`` field, including its spatial
-        coordinates and metadata.
-
-    Raises:
-        FileNotFoundError: If the selected region file does not exist.
-        KeyError: If the selected dataset does not contain ``region``.
+    Inputs are borrowed; the selected fitting boundary materializes weights.
+    Returns integer region labels on the spatial grid with a singleton time
+    coordinate from ``start_date`` and domain metadata. Invalid algorithms or
+    missing required maps raise ValueError; no resource discovery occurs here.
     """
-    if outer_regions_path is None:
-        logger.info(f"Loading default InTEM outer region file for domain {domain}.")
-        outer_regions_path = Path(__file__).parent / f"outer_region_definition_{domain}.nc"
-    else:
-        outer_regions_path = Path(outer_regions_path)
-        if not outer_regions_path.is_absolute() and not outer_regions_path.exists():
-            packaged_path = Path(__file__).parent / outer_regions_path
-            if packaged_path.exists():
-                outer_regions_path = packaged_path
-        logger.info(f"Loading InTEM outer region file for domain {domain} from {outer_regions_path}.")
-
-    with xr.open_dataset(outer_regions_path, decode_coords="all") as dataset:
-        regions = dataset["region"].load()
-        for name, value in dataset.attrs.items():
-            regions.attrs.setdefault(name, value)
-        return regions
+    _validate_basis_algorithm(basis_algorithm)
+    if basis_algorithm == "quadtree":
+        return quadtree_basis_from_weights(weights, start_date, domain, nbasis=nbasis)
+    if basis_algorithm == "weighted":
+        return bucket_basis_from_weights(
+            weights, start_date, domain, nbasis=nbasis,
+            landsea_classes=landsea_classes, landsea_indices=landsea_indices,
+        )
+    if region_kwargs.get("region_classes") is None:
+        raise ValueError("region_classes must be supplied for the region_constrained basis algorithm.")
+    return region_constrained_basis_from_weights(
+        weights, start_date, domain, nbasis=nbasis, **region_kwargs,
+    )
 
 
 def _fixed_outer_inner_region_label(regions: xr.DataArray) -> int:
@@ -399,50 +277,6 @@ def _fixed_outer_inner_region_label(regions: xr.DataArray) -> int:
             f"Fixed outer-region map marks inner label {inner_label}, but that label is absent."
         )
     return inner_label
-
-
-def load_country_region_classes(
-    domain: str,
-    country_directory: str | Path | None = None,
-) -> xr.DataArray:
-    """Load a coordinate-preserving country or land/sea class map.
-
-    The path-selection behavior matches the legacy weighted-basis loader. A
-    caller-supplied directory uses ``country-land-sea_{domain}.nc``. Packaged
-    EUROPE data use ``country-EUROPE-UKMO-landsea-2023.nc``; other packaged
-    domains use ``country-land-sea_{domain}.nc`` and fall back to the EUROPE
-    file when that domain file is unavailable. Values are returned unchanged:
-    every distinct non-null value can be used as a separate region class, so a
-    caller-supplied multi-country integer map is not coerced to binary.
-
-    Args:
-        domain: Domain used to select the country/land-sea file.
-        country_directory: Optional directory containing the class-map file.
-
-    Returns:
-        Loaded two-dimensional ``country`` field with its original values,
-        spatial coordinates, and metadata.
-
-    Raises:
-        FileNotFoundError: If the selected file does not exist.
-        KeyError: If the selected dataset does not contain ``country``.
-    """
-    default_directory = Path(__file__).parent / "algorithms"
-    if country_directory is not None:
-        class_map_path = Path(country_directory) / f"country-land-sea_{domain}.nc"
-    elif domain == "EUROPE":
-        class_map_path = default_directory / "country-EUROPE-UKMO-landsea-2023.nc"
-    else:
-        class_map_path = default_directory / f"country-land-sea_{domain}.nc"
-        if not class_map_path.exists():
-            logger.warning(
-                f"No land-sea file found for domain {domain}. Defaulting to EUROPE "
-                "(country-EUROPE-UKMO-landsea-2023.nc)"
-            )
-            class_map_path = default_directory / "country-EUROPE-UKMO-landsea-2023.nc"
-
-    with xr.open_dataset(class_map_path, decode_coords="all") as dataset:
-        return dataset["country"].load()
 
 
 def _sanitize_generated_basis_weights(
@@ -545,34 +379,44 @@ def bucket_basis_from_weights(
     domain: str,
     *,
     nbasis: int = 100,
-    country_directory: str | None = None,
+    landsea_classes: xr.DataArray | None = None,
     landsea_indices: np.ndarray | None = None,
 ) -> xr.DataArray:
     """Create a legacy weighted bucket basis field from precomputed 2D weights.
 
-    This is a weight-first version of :func:`bucket_basis_function`. It still
-    delegates to the existing land/sea-aware weighted algorithm for
-    compatibility.
+    Weights are normalized by their nonzero maximum before fitting. This eager
+    fitting boundary materializes a supplied class map; inputs are borrowed.
+    Resolve map files before calling. One of ``landsea_classes`` or
+    ``landsea_indices`` must be supplied, and labelled classes take precedence.
 
     Args:
         weights: Two-dimensional basis weight field.
         start_date: Start date of the inversion period.
         domain: Domain across which to calculate basis functions.
         nbasis: Desired number of basis regions.
-        country_directory: Optional directory containing land/sea files.
-        landsea_indices: Optional pre-aligned land/sea mask for ``weights``.
+        landsea_classes: Borrowed map on the weights grid. Coordinates are
+            normalized to that grid before fitting. Classes 0 and 1 are split
+            separately; other values remain label 0.
+        landsea_indices: Pre-aligned dense class array with the same shape and
+            axis order as ``weights``, used when no labelled map is supplied.
 
     Returns:
         Basis field with ``lat``/``lon`` dimensions, a singleton ``time``
         dimension, and integer region labels.
     """
+    if landsea_classes is not None:
+        landsea_classes = normalize_spatial_grid(
+            weights, landsea_classes, reference_name="weights", candidate_name="land/sea class map",
+        )
+        landsea_indices = landsea_classes.transpose(*weights.dims).to_numpy()
+    if landsea_indices is None:
+        raise ValueError("landsea_classes must be resolved before weighted basis construction.")
     weights = _sanitize_generated_basis_weights(weights, algorithm="weighted bucket", require_nonzero=True)
     weights = _normalise_weights_by_nonzero_max(weights)
     algorithm_kwargs: dict[str, Any] = {
         "nregion": nbasis,
         "bucket": 1,
         "domain": domain,
-        "country_directory": country_directory,
     }
     if landsea_indices is not None:
         algorithm_kwargs["landsea_indices"] = landsea_indices
@@ -820,10 +664,8 @@ def region_constrained_fixed_outer_basis_from_weights(
     domain: str,
     *,
     nbasis: int | np.integer = 100,
-    outer_regions: xr.DataArray | None = None,
-    region_classes: xr.DataArray | None = None,
-    country_directory: str | Path | None = None,
-    outer_regions_path: str | Path | None = None,
+    outer_regions: xr.DataArray,
+    region_classes: xr.DataArray,
     allocation: AllocationMode = "weight",
     min_regions_per_class: int = 1,
     split_strategy: SplitStrategy | None = None,
@@ -845,21 +687,12 @@ def region_constrained_fixed_outer_basis_from_weights(
             adapter does not accept cropped weights because it emits the outer
             states as well as the bounded inner states.
         start_date: Start date of the inversion period.
-        domain: Domain used for output metadata and default file loading.
+        domain: Domain used for output metadata.
         nbasis: Total number of requested inner-region basis labels.
-        outer_regions: Optional already-loaded InTEM outer-region map. When
-            omitted, :func:`load_intem_outer_regions` is used. Supplying this
-            field takes precedence over ``outer_regions_path``.
-        region_classes: Optional already-loaded inner classification, such as
-            a binary land/sea or multi-country integer map. Each distinct
-            non-null selected value is a class. When omitted,
-            :func:`load_country_region_classes` is used.
-        country_directory: Optional directory containing the country or
-            land/sea class-map file. Used only when ``region_classes`` is
-            omitted.
-        outer_regions_path: Optional direct path to an outer-region NetCDF
-            file. Used only when ``outer_regions`` is omitted. When both are
-            omitted, the packaged file for ``domain`` is used.
+        outer_regions: Borrowed resolved InTEM outer-region map.
+        region_classes: Borrowed inner classification, such as a binary
+            land/sea or multi-country integer map. Each distinct non-null
+            selected value is a class. Resolve maps before numerical work.
         allocation: Mode used to distribute ``nbasis`` across selected inner
             classes.
         min_regions_per_class: Minimum automatic allocation for each non-empty
@@ -881,23 +714,15 @@ def region_constrained_fixed_outer_basis_from_weights(
         TypeError: If ``nbasis`` is not a non-Boolean integral value.
         ValueError: If weights, dimensions, dimension names, outer-map values,
             inner classes, allocation, or split-strategy labels are invalid.
-        FileNotFoundError: If a required default or caller-selected map file is
-            missing.
-        KeyError: If a selected outer map lacks ``region`` or a selected class
-            map lacks ``country``.
-        xarray.AlignmentError: If the supplied or loaded fields are not on
+        xarray.AlignmentError: If the supplied fields are not on
             physically compatible spatial grids.
     """
     if isinstance(nbasis, (bool, np.bool_)) or not isinstance(nbasis, (Integral, np.integer)):
         raise TypeError("nbasis must be an integer inner-region target.")
     nbasis = int(nbasis)
 
-    loaded_outer_regions = (
-        load_intem_outer_regions(domain, outer_regions_path) if outer_regions is None else outer_regions
-    )
-    loaded_region_classes = (
-        load_country_region_classes(domain, country_directory) if region_classes is None else region_classes
-    )
+    loaded_outer_regions = outer_regions
+    loaded_region_classes = region_classes
 
     loaded_outer_regions = _spatial_field_on_weights_grid(
         weights,
@@ -958,201 +783,6 @@ def region_constrained_fixed_outer_basis_from_weights(
     )
 
 
-def quadtree_basis_function(
-    fp_all: dict,
-    start_date: str,
-    domain: str,
-    emissions_name: list[str] | None = None,
-    nbasis: int = 100,
-    country_directory: str | None = None,
-    abs_flux: bool = False,
-    seed: int | None = None,
-    mask: xr.DataArray | None = None,
-) -> xr.DataArray:
-    """Create a basis field with the quadtree algorithm.
-
-    The domain is split with smaller grid cells for regions which contribute
-    more to the a priori above-baseline mole fraction. This is based on the
-    average footprint over the inversion period and the a priori emissions field.
-
-    Dual annealing selects the split threshold to approach ``nbasis`` regions.
-
-    Args:
-        fp_all: Legacy merged-data dictionary produced by the data preparation
-            path.
-        start_date: Start date of the inversion period.
-        domain: Domain across which to calculate basis functions.
-        emissions_name: Optional list of OpenGHG flux source names used to
-            select emissions from ``fp_all``.
-        nbasis: Desired number of basis regions.
-        country_directory: Accepted for a consistent basis-algorithm interface;
-            the quadtree algorithm does not use it.
-        abs_flux: If true, use absolute flux values when constructing weights.
-        seed: Optional seed passed to ``scipy.optimize.dual_annealing``.
-        mask: Optional Boolean spatial mask for fitting basis functions over a
-            sub-region.
-
-    Returns:
-        Basis field with ``lat``/``lon`` dimensions, a singleton ``time``
-        dimension, and integer region labels.
-    """
-    weights = basis_weights_from_fp_all(fp_all, emissions_name, abs_flux=abs_flux, mask=mask)
-    return quadtree_basis_from_weights(weights, start_date, domain, nbasis=nbasis, seed=seed)
-
-
-def bucket_basis_function(
-    fp_all: dict,
-    start_date: str,
-    domain: str,
-    emissions_name: list[str] | None = None,
-    nbasis: int = 100,
-    country_directory: str | None = None,
-    abs_flux: bool = False,
-    mask: xr.DataArray | None = None,
-    landsea_indices: np.ndarray | None = None,
-) -> xr.DataArray:
-    """Create a basis field with the legacy weighted bucket algorithm.
-
-    This algorithm recursively splits weighted rectangles so each scaling region
-    contains approximately the same total weight. The implementation also uses
-    land/sea masks from ``country_directory`` through the lower-level weighted
-    algorithm.
-
-    Args:
-        fp_all: Legacy merged-data dictionary produced by the data preparation
-            path.
-        start_date: Start date of the inversion period.
-        domain: Domain across which to calculate basis functions.
-        emissions_name: Optional list of OpenGHG flux source names used to
-            select emissions from ``fp_all``.
-        nbasis: Desired number of basis regions.
-        country_directory: Optional directory containing land/sea files. When
-            omitted, default package files are used.
-        abs_flux: If true, use absolute flux values when constructing weights.
-        mask: Optional Boolean spatial mask for fitting basis functions over a
-            sub-region.
-        landsea_indices: Optional pre-aligned land/sea mask for the selected
-            sub-region.
-
-    Returns:
-        Basis field with ``lat``/``lon`` dimensions, a singleton ``time``
-        dimension, and integer region labels.
-    """
-    weights = basis_weights_from_fp_all(fp_all, emissions_name, abs_flux=abs_flux, mask=mask)
-    return bucket_basis_from_weights(
-        weights,
-        start_date,
-        domain,
-        nbasis=nbasis,
-        country_directory=country_directory,
-        landsea_indices=landsea_indices,
-    )
-
-
-def region_constrained_basis_function(
-    fp_all: dict,
-    start_date: str,
-    domain: str,
-    emissions_name: list[str] | None = None,
-    nbasis: NbasisAllocation = 100,
-    country_directory: str | None = None,
-    abs_flux: bool = False,
-    mask: xr.DataArray | None = None,
-    region_classes: xr.DataArray | None = None,
-    allocation: AllocationMode = "weight",
-    min_regions_per_class: int = 1,
-    split_acceptance: Literal["none", "contrast_score"] = "none",
-    contrast_contribution: xr.DataArray | None = None,
-    contrast_cell_weight: xr.DataArray | None = None,
-    min_contrast_delta_eig: float | None = None,
-    min_contrast_lambda: float | None = None,
-    contrast_tau: float | None = None,
-    contrast_sigma_design: float | None = None,
-    contrast_s_diag: xr.DataArray | None = None,
-) -> xr.DataArray:
-    """Create weighted basis regions constrained by caller-supplied classes.
-
-    This adapter keeps file loading outside the constrained algorithm: callers
-    provide ``region_classes`` directly, for example from a country file,
-    land/sea file, or a user-defined region-class field. It links the pure
-    ``region_constrained_basis`` helper to the current ``fp_all``-based wrapper
-    interface by constructing the usual footprint-times-flux weight field first.
-
-    Args:
-        fp_all: Legacy merged-data dictionary produced by the data preparation
-            path.
-        start_date: Start date of the inversion period.
-        domain: Domain across which to calculate basis functions.
-        emissions_name: Optional list of OpenGHG flux source names used to
-            select emissions from ``fp_all``.
-        nbasis: Total number of basis regions, or class-local allocation
-            accepted by ``region_constrained_basis``.
-        country_directory: Accepted for a consistent basis-algorithm interface;
-            file loading for ``region_classes`` must happen before calling this
-            adapter.
-        abs_flux: If true, use absolute flux values when constructing weights.
-        mask: Optional Boolean spatial mask for fitting basis functions over a
-            sub-region.
-        region_classes: Two-dimensional class field on the same spatial grid as
-            the generated weights. Positive basis labels are generated
-            independently within each non-null class value.
-        allocation: Automatic allocation mode used when ``nbasis`` is an
-            integer. ``"weight"`` allocates regions by total class weight;
-            ``"area"`` allocates by mapped cell count.
-        min_regions_per_class: Minimum automatic allocation for each non-empty
-            mapped class.
-        split_acceptance: Optional split-acceptance criterion. The default
-            ``"none"`` preserves existing behavior. ``"contrast_score"`` uses
-            a mass-preserving observation-space contrast gate.
-        contrast_contribution: Design contribution array for contrast scoring,
-            with at least one design-observation dimension plus the two spatial
-            dimensions. Observed mole-fraction values must not be used here.
-        contrast_cell_weight: Optional prior flux or split-mass field used as
-            ``mu`` in contrast scoring. When omitted, the unnormalised generated
-            basis weight field is used as a split-mass proxy.
-        min_contrast_delta_eig: Optional minimum ``delta_eig`` threshold. If
-            both contrast thresholds are omitted, contrast diagnostics are
-            computed but proposed splits are not rejected.
-        min_contrast_lambda: Optional minimum ``lambda`` threshold.
-        contrast_tau: Prior standard deviation of the split contrast
-            coefficient ``delta = alpha_A - alpha_B``. If omitted, ``tau=1`` is
-            used and scores are uncalibrated.
-        contrast_sigma_design: Optional scalar design standard deviation,
-            equivalent to ``S = contrast_sigma_design**2 I``.
-        contrast_s_diag: Optional diagonal design covariance entries in the
-            same row space as ``contrast_contribution``.
-
-    Returns:
-        Basis field with ``lat``/``lon`` dimensions, a singleton ``time``
-        dimension, and globally unique integer labels that do not cross
-        ``region_classes`` values.
-
-    Raises:
-        ValueError: If ``region_classes`` is not supplied.
-    """
-    if region_classes is None:
-        raise ValueError("region_classes must be supplied for the region_constrained basis algorithm.")
-
-    weights = basis_weights_from_fp_all(fp_all, emissions_name, abs_flux=abs_flux, mask=mask)
-    return region_constrained_basis_from_weights(
-        weights,
-        start_date,
-        domain,
-        region_classes=region_classes,
-        nbasis=nbasis,
-        allocation=allocation,
-        min_regions_per_class=min_regions_per_class,
-        split_acceptance=split_acceptance,
-        contrast_contribution=contrast_contribution,
-        contrast_cell_weight=contrast_cell_weight,
-        min_contrast_delta_eig=min_contrast_delta_eig,
-        min_contrast_lambda=min_contrast_lambda,
-        contrast_tau=contrast_tau,
-        contrast_sigma_design=contrast_sigma_design,
-        contrast_s_diag=contrast_s_diag,
-    )
-
-
 def _region_constrained_split_strategy(
     *,
     split_acceptance: Literal["none", "contrast_score"],
@@ -1204,49 +834,17 @@ def _region_constrained_split_strategy(
     )
 
 
-def quadtreebasisfunction(*args, **kwargs) -> xr.DataArray:
-    """Deprecated alias for :func:`quadtree_basis_function`."""
-    warnings.warn(
-        "`quadtreebasisfunction` is deprecated; use `quadtree_basis_function` instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return quadtree_basis_function(*args, **kwargs)
-
-
-def bucketbasisfunction(*args, **kwargs) -> xr.DataArray:
-    """Deprecated alias for :func:`bucket_basis_function`."""
-    warnings.warn(
-        "`bucketbasisfunction` is deprecated; use `bucket_basis_function` instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return bucket_basis_function(*args, **kwargs)
-
-
-# dict to retrieve basis function and description by algorithm name
-BasisFunction = namedtuple("BasisFunction", ["description", "algorithm"])
-basis_functions = {
-    "quadtree": BasisFunction("quadtree algorithm", quadtree_basis_function),
-    "weighted": BasisFunction("weighted by data algorithm", bucket_basis_function),
-    "region_constrained": BasisFunction(
-        "region-constrained weighted by data algorithm",
-        region_constrained_basis_function,
-    ),
-}
-
-
-def fixed_outer_regions_basis(
-    fp_all: dict,
+def fixed_outer_regions_basis_from_data(
+    site_data: Mapping[str, xr.Dataset],
+    weighting_flux: xr.DataArray,
     start_date: str,
     basis_algorithm: str,
     domain: str,
-    emissions_name: list[str] | None = None,
     nbasis: int = 100,
-    country_directory: str | None = None,
     abs_flux: bool = False,
     *,
-    outer_regions_path: str | Path | None = None,
+    outer_regions: xr.DataArray,
+    landsea_classes: xr.DataArray | None = None,
     region_classes: xr.DataArray | None = None,
     region_allocation: AllocationMode = "weight",
     min_regions_per_class: int = 1,
@@ -1266,7 +864,9 @@ def fixed_outer_regions_basis(
     ``inner_region_label`` attribute identifies the inner inversion region;
     legacy files without that metadata continue to use their largest label.
     This inner mask is passed to ``basis_algorithm`` and then inserted back
-    into the fixed outer map.
+    into the fixed outer map. This fitting boundary materializes a dense local
+    geometry map after coordinate alignment; borrowed Dask/sparse inputs remain
+    unchanged. Weight preparation has its existing eager fitting boundary.
 
     For nested outer-domain preparation, ``allow_empty_inner_region=True``
     keeps the inner label unsplit when its masked weights contain finite values
@@ -1274,23 +874,17 @@ def fixed_outer_regions_basis(
     weights normally.
 
     Args:
-        fp_all: Legacy merged-data dictionary produced by the data preparation
-            path.
+        site_data: Borrowed site datasets containing footprints.
+        weighting_flux: Borrowed singular source flux used to fit weights.
         start_date: Start date of the inversion period.
         basis_algorithm: Algorithm used to fit the inner region. Supported
             values are ``"quadtree"``, ``"weighted"``, and
             ``"region_constrained"``.
         domain: Domain across which to calculate basis functions.
-        emissions_name: Optional list of OpenGHG flux source names used to
-            select emissions from ``fp_all``.
         nbasis: Desired number of inner-region basis labels.
-        country_directory: Optional directory containing land/sea files and the
-            InTEM outer-region file. When omitted, default package files are
-            used.
         abs_flux: If true, use absolute flux values when constructing weights.
-        outer_regions_path: Optional direct path to the fixed outer-region
-            NetCDF file. When omitted, the packaged
-            ``outer_region_definition_<domain>.nc`` file is used.
+        outer_regions: Borrowed resolved fixed outer-region map.
+        landsea_classes: Borrowed resolved land/sea classes for weighted fitting.
         region_classes: Region or country class field used only with
             ``basis_algorithm="region_constrained"``. File loading should
             happen before calling this helper.
@@ -1319,23 +913,11 @@ def fixed_outer_regions_basis(
         ``allow_empty_inner_region`` is true and finite inner weights are all
         zero, its label is kept unsplit.
     """
-    if outer_regions_path is not None:
-        selected_outer_regions_path = Path(outer_regions_path)
-        if not selected_outer_regions_path.is_absolute() and country_directory is not None:
-            country_path = Path(country_directory) / selected_outer_regions_path
-            if country_path.exists():
-                selected_outer_regions_path = country_path
-        intem_regions = load_intem_outer_regions(domain, selected_outer_regions_path)
-    elif country_directory is None:
-        intem_regions = load_intem_outer_regions(domain)
-    else:
-        intem_regions = load_intem_outer_regions(
-            domain,
-            Path(country_directory) / f"outer_region_definition_{domain}.nc",
-        )
+    _validate_basis_algorithm(basis_algorithm)
+    intem_regions = outer_regions
 
     # Validate the physical grid before adopting the authoritative flux coordinates.
-    flux, _ = _flux_fp_from_fp_all(fp_all, emissions_name)
+    flux = weighting_flux
     flux_grid = flux.isel(
         {dimension: 0 for dimension in flux.dims if dimension not in intem_regions.dims},
         drop=True,
@@ -1347,13 +929,18 @@ def fixed_outer_regions_basis(
         candidate_name="fixed outer-region map",
     )
 
+    # Fixed-outer fitting needs concrete geometry for label discovery, cropped
+    # masks and insertion. Materialize it once here; the caller's map is borrowed.
+    intem_regions = to_dense(intem_regions).compute()
     inner_index = _fixed_outer_inner_region_label(intem_regions)
 
     mask = intem_regions == inner_index
 
+    weights = basis_weights_from_data(
+        site_data, weighting_flux, abs_flux=abs_flux, mask=mask,
+    )
     if allow_empty_inner_region:
-        inner_weights = basis_weights_from_fp_all(fp_all, emissions_name, abs_flux=abs_flux, mask=mask)
-        finite_inner_weights = inner_weights.to_numpy()
+        finite_inner_weights = weights.to_numpy()
         finite_inner_weights = finite_inner_weights[np.isfinite(finite_inner_weights)]
         if finite_inner_weights.size and not bool((finite_inner_weights != 0.0).any()):
             logger.warning(
@@ -1361,15 +948,15 @@ def fixed_outer_regions_basis(
                 "response; keeping it as a single fixed region instead of subdividing it further "
                 "(allow_empty_inner_region=True)."
             )
-            basis = intem_regions.rename("basis")
+            basis = intem_regions.copy().rename("basis")
             basis += 1  # intem_region_definitions.nc regions start at 0, not 1
             basis = basis.expand_dims({"time": [pd.to_datetime(start_date)]})
             return basis
 
-    basis_function = basis_functions[basis_algorithm].algorithm
-    algorithm_kwargs = {"country_directory": country_directory, "abs_flux": abs_flux, "mask": mask}
+    algorithm_kwargs: dict[str, Any] = {}
     if basis_algorithm == "weighted":
-        landsea_classes = load_country_region_classes(domain, country_directory=country_directory)
+        if landsea_classes is None:
+            raise ValueError("landsea_classes must be resolved before weighted basis construction.")
         landsea_classes = normalize_spatial_grid(
             intem_regions,
             landsea_classes,
@@ -1394,16 +981,11 @@ def fixed_outer_regions_basis(
                 "contrast_s_diag": contrast_s_diag,
             }
         )
-    inner_region = basis_function(
-        fp_all,
-        start_date,
-        domain,
-        emissions_name,
-        nbasis,
-        **algorithm_kwargs,
+    inner_region = basis_from_weights(
+        weights, start_date, domain, basis_algorithm, nbasis, **algorithm_kwargs,
     )
 
-    basis = intem_regions.rename("basis")
+    basis = intem_regions.copy().rename("basis")
 
     fixed_outer_values = intem_regions.where(~mask).to_numpy()
     finite_outer_values = fixed_outer_values[np.isfinite(fixed_outer_values)]

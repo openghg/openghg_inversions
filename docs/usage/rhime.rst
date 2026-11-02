@@ -1,10 +1,11 @@
 .. _rhime-terminology-and-quickstart:
 
-RHIME configuration and prepared-input reference
-================================================
+RHIME terminology and prepared-input reference
+==============================================
 
-This page is reference material for RHIME vocabulary, configuration, and
-advanced prepared-input boundaries. For a first complete inversion, use the
+This page is reference material for RHIME vocabulary and advanced prepared-input
+boundaries. For configuration inspection and parsing, see
+:doc:`rhime_configuration`. For a first complete inversion, use the
 :doc:`standard tutorial <rhime_standard_tutorial>` or
 :doc:`multisector tutorial <rhime_multisector_tutorial>` instead. New Python
 examples and configuration files should use the modern spec names below.
@@ -45,11 +46,12 @@ Terminology
    linked forward models. The standard-family acquisition and preparation path
    does not support tracer inversions; the advanced linked CO₂/O₂ recipe starts
    from separately prepared channel arrays. The generic ``use_tracer`` flag
-   must be omitted or ``False``; ``True`` raises ``ValueError`` before
-   acquisition or execution, including when merged data is supplied.
+   must be omitted. Every explicit value, including ``False``, receives
+   ordinary unsupported-option validation before scientific work, including
+   when merged data is supplied.
 
 ``emissions_name``
-   Legacy compatibility spelling accepted only when ``flux_sources`` is absent.
+   Unsupported historical spelling; use ``flux_sources``.
 
 Configuring PyTensor precision
 ------------------------------
@@ -78,7 +80,8 @@ Python API
 For complete prerequisite-to-output walkthroughs, start with
 :doc:`rhime_standard_tutorial` or :doc:`rhime_multisector_tutorial`.
 
-The stable package imports below are unchanged. Scientists who want to inspect
+Use the public model selector below. Existing runner imports remain compatible
+as described in :doc:`cli`. Scientists who want to inspect
 or copy a complete implementation can read
 ``openghg_inversions.rhime.standard`` or
 ``openghg_inversions.rhime.multisector`` directly; each module shows its whole
@@ -86,9 +89,9 @@ scientific process from option resolution through output construction.
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import run_rhime, run_rhime_multisector
+   from openghg_inversions.rhime import run
 
-   result = run_rhime(
+   result = run(
        species="ch4",
        sites=["TAC"],
        averaging_period=["1h"],
@@ -98,9 +101,11 @@ scientific process from option resolution through output construction.
        output_path="outputs",
        output_name="example",
        flux_sources=["total-ukghg-edgar7"],
+       mismatch_model="pollution_event",
    )
 
-   multi_sector_result = run_rhime_multisector(
+   multi_sector_result = run(
+       model="multisector",
        species="ch4",
        sites=["TAC"],
        averaging_period=["1h"],
@@ -110,6 +115,7 @@ scientific process from option resolution through output construction.
        output_path="outputs",
        output_name="example_multisector",
        flux_sources=["ff-inventory", "gpp-inventory", "ter-inventory", "ocean-inventory"],
+       mismatch_model="pollution_event",
        sector_sources={
            "FF": "ff-inventory",
            "GPP": "gpp-inventory",
@@ -135,10 +141,30 @@ operator; it does not rename arbitrary state axes to ``region``.
 ``source`` remains the OpenGHG retrieval identity; sector names and priors live
 in the model specification and select ``H`` by source label. Source-coordinate
 order therefore does not determine sector routing. The current builder
-supports one distinct source and one independent state vector per sector.
+supports one distinct source and one independent prior block per sector in a
+single full physical state ``x``. Its two-dimensional model sensitivity ``hx``
+uses the matching retained entries of that state to produce the combined flux
+concentration contribution ``mu``. Rectangular sensitivity inputs are packed
+into a gathered source/local state index for construction only; prepared inputs and basis artifacts retain
+their existing layouts. Select source blocks from ``x`` by label. The first
+requested ``flux_sources`` entry still supplies basis weighting, independently
+of sector declaration order.
 Rectangular legacy inputs may carry ``source_region_count(source)`` so padded
 layouts can be rejected; modern preparation does not create that compatibility
 metadata.
+
+Inspecting configuration
+------------------------
+
+Pass options directly to ``run_standard`` or ``run_multisector`` for an
+ordinary inversion. To inspect their resolved choices before retrieving data,
+use ``RhimeConfig.from_params(options, multisector=False)`` (or
+``multisector=True`` for the multisector recipe), then pass the result as
+``config=`` to the matching runner.
+
+See :doc:`rhime_configuration` for complete inspection examples, INI decoding,
+override precedence, site-selector alignment, and forwarding resolved values
+in custom runners.
 
 Satellite multisector inputs
 ----------------------------
@@ -167,63 +193,67 @@ legacy HBMCMC output formatting does not support column observations.
 Running Prepared Inputs
 -----------------------
 
-Advanced workflows can prepare canonical RHIME inputs separately from data
-acquisition and run them without repeating OpenGHG-backed preparation. Supply
-the retained ``RhimePreparedInputs`` together with the existing public run,
-model, output, and sampler specifications:
+Advanced standard workflows can prepare canonical inputs separately from data
+acquisition. Pass the retained ``PreparedInputs`` as ``prepared`` to
+``run_standard`` with the ordinary resolved configuration. This skips acquisition
+and preparation, then uses the same explicit materialization, model construction,
+sampling and output operations. The result is ``InversionOutput``:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import (
-       PollutionEventSettings,
-       RhimeModelSpec,
-       SectorSpec,
-   )
-   from openghg_inversions.inversion_data import RhimePreparedInputs
-   from openghg_inversions.rhime import (
-       RhimeOutputSpec,
-       RhimeRunSpec,
-       RhimeSampler,
-       run_rhime_from_prepared_inputs,
-   )
+   from openghg_inversions.inversion_data import PreparedInputs
+   from openghg_inversions.rhime import RhimeConfig, run_standard
 
-   # Produced by prepare_rhime_inputs or by another source adapter that
-   # satisfies the same canonical contract.
-   prepared = prepare_inputs_elsewhere()
-   prepared.save("prepared-inputs.nc")
-   prepared = RhimePreparedInputs.load("prepared-inputs.nc")
-   model_spec = RhimeModelSpec(
-       species="ch4",
-       domain="EUROPE",
-       likelihood=PollutionEventSettings(),
-       sectors=(
-           SectorSpec(
-               name="total",
-               flux_source="total-ukghg-edgar7",
-               x_prior={"pdf": "lognormal", "mean": 1.0, "stdev": 1.0},
-               variable_suffix="total",
-           ),
-       ),
+   # Constructed by another preparation graph or restored from a numerical cache.
+   prepared = PreparedInputs.load("prepared-inputs.nc")
+   config = RhimeConfig.from_params(
+       {
+           "species": "ch4",
+           "domain": "EUROPE",
+           "sites": prepared.sites,
+           "averaging_period": prepared.averaging_period,
+           "start_date": "2019-01-01",
+           "end_date": "2019-01-02",
+           "flux_sources": ["total-ukghg-edgar7"],
+           "x_prior": {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0},
+           "draws": 1000,
+           "tune": 1000,
+           "chains": 4,
+           "output_name": "prepared",
+           "output_format": "none",
+       },
+       multisector=False,
    )
-   run_spec = RhimeRunSpec(
-       start_date="2019-01-01",
-       end_date="2019-01-02",
-       sites=prepared.sites,
-       averaging_period=prepared.averaging_period,
-       model=model_spec,
-       output=RhimeOutputSpec(output_format="none"),
-       split_by_sectors=False,
-   )
-   result = run_rhime_from_prepared_inputs(
-       prepared_inputs=prepared,
-       run_spec=run_spec,
-       sampler=RhimeSampler(draws=1000, tune=1000, chains=4),
-   )
+   result = run_standard(prepared=prepared, config=config)
+
+Keep model, output and sampler choices in the ordinary configuration. A supplied
+``prepared`` handoff and a supplied ``merged_data`` handoff are mutually exclusive:
+they enter at different scientific boundaries. Standard results retain the actual
+inference description in ``result.output_metadata["sampler"]`` without a live
+sampler or PyMC model. Replay reuses that description without inference or current
+defaults.
+
+For multisector execution with ordinary resolved configuration, use
+``run_multisector(prepared=prepared, config=config)`` with
+``RhimeConfig.from_params(options, multisector=True)``. It returns ``InversionOutput``
+and uses the same materialization, construction, inference and output operations
+as a full multisector run. Saved phases use those operations through
+``rhime.multisector_stages``; see :doc:`staged_workflow` for preparation reuse,
+compatible prior/likelihood changes and graph-free product replay.
+
+The old ``run_rhime_from_prepared_inputs`` entry point is removed. Standard and
+multisector callers use their ordinary runner with ``prepared`` and ``config``.
+For whole-model changes, compose construction and sampling directly as shown in
+:ref:`rhime-complete-model-composition`. The nested, CO2 and CO2/O2 prepared
+runners retain their separate interfaces; they accept ``sampler="default"``
+(also omission) or a configured ``RhimeSampler``. Explicit ``sampler=None`` is
+rejected. Each invocation isolates mutable option containers while borrowing
+scientific arrays.
 
 The prepared object is trusted canonical input: it must already contain the
 observation, error, sensitivity, and optional boundary-condition variables
-required by the selected model. A multisector run requires
-``run_spec.split_by_sectors=True`` and a source-resolved layout on
+required by the selected model. A multisector run requires sector-split
+configuration and a source-resolved layout on
 ``prepared.inv_inputs["H"]``. Shared-basis inputs may use a rectangular
 ``source`` dimension. Source-specific, ragged state blocks use one gathered
 state dimension with a ``(source, region_in_source)`` MultiIndex. A scalar
@@ -231,44 +261,6 @@ state dimension with a ``(source, region_in_source)`` MultiIndex. A scalar
 multisector layout. The sector count, prepared ``H`` layout, layout flag, and
 output settings are validated before model construction or sampling. Output
 side effects are still controlled by ``RhimeOutputSpec``.
-
-Aggregation-error covariance
-----------------------------
-
-Aggregation error is disabled by default. An advanced run may explicitly add
-fixed aggregation error to the observation covariance without changing the
-raw ``mf_error`` values. Attach these arrays only after observation filtering,
-averaging, global site gathering, and basis projection, so both covariance
-axes match the final ``nmeasure`` ordering. Prepared inputs may contain one of:
-
-* ``aggregation_error_covariance(nmeasure, nmeasure_cov)`` for the exact dense
-  covariance;
-* ``low_rank_factor(nmeasure, agg_rank)`` together with
-  ``diagonal_residual_variance(nmeasure)`` for a low-rank-plus-diagonal
-  approximation;
-* ``aggregation_error_sd(nmeasure)`` for an independent diagonal
-  approximation or diagnostic.
-
-Dense and low-rank forms are the primary representations. If a matching
-``aggregation_error_sd`` diagnostic is present beside either one, RHIME
-validates it against the structured covariance diagonal but does not replace
-the structured likelihood with it. Select ``aggregation_error_mode="dense"``,
-``"low_rank"``, or ``"diagonal"`` to opt into a representation. ``"auto"``
-is also an explicit opt-in that selects an available structured form first;
-merely placing an array in prepared inputs does not enable it. The default
-``"none"`` ignores prepared aggregation-error arrays.
-
-This likelihood option does not perform or certify a coherent prior
-transformation. If aggregation covariance represents states removed by a
-native-to-reduced transformation, the caller must also supply the matching
-transformed prior and forward operator as one coherent preparation product.
-
-The minimum-error setting remains a floor on total marginal standard
-deviation, including aggregation error, while off-diagonal covariance is left
-unchanged. Until the derived-error reconstruction follow-up lands,
-aggregation-error runs support
-``output_format="inv_out"`` and ``"none"``; ``"basic"``, ``"paris"``, and
-``"legacy"`` are rejected rather than producing lossy error fields.
 
 Model Construction
 ------------------
@@ -282,20 +274,29 @@ corresponding recipe module. See
 :ref:`the concrete model stability contract <rhime-builder-stability>` for the
 full contract.
 
-``RhimePreparedInputs.save`` accepts NetCDF paths ending in ``.nc`` and Zarr
+``PreparedInputs.save`` accepts NetCDF paths ending in ``.nc`` and Zarr
 paths ending in ``.zarr``. Each artifact contains the canonical inversion
 inputs and the retained operator-backed basis, including its reference flux;
 ``basis_artifact_path`` is recorded only as provenance and is not needed to
 reload or run the prepared inputs. Prepared-input artifacts use a versioned
-schema, CF compression-by-gathering for MultiIndexes, and a labeled
-``site_metadata(site)`` dataset. Integer ``site_indicator`` values are derived
-from the ``nmeasure`` site level as zero-based positions into that separate
-site coordinate:
+schema. Writers use generic version 3 for both ordinary and explicitly centered
+representations. The reader also accepts validated ordinary raw version 2;
+retired baked-v1 and ambiguous centered-v2 artifacts require regeneration. See
+:doc:`prepared_format_support` for identifiers and enclosing versions. See the
+:ref:`centered boundary contract <surface-centered-boundary-contract>` for
+operands and supported models. The artifacts use CF compression-by-gathering
+for MultiIndexes and a labeled ``site_metadata(site)`` dataset. Integer
+``site_indicator`` values are derived from the ``nmeasure`` site level as
+zero-based positions into that separate site coordinate:
 ``site_metadata.site[site_indicator]`` must equal the ``site`` level of
 ``nmeasure``. The indicator itself is not the CF gathering coordinate, and
-callers do not need to keep a second positional decoder synchronized. Site
+callers do not need to keep a second positional decoder synchronized. Indicators
+and site-name lookup arrays are regenerated on loading rather than serialized. Site
 metadata also aligns averaging periods, with exactly one value per site.
-Metadata that is genuinely constant per site may be stored there too. Release
+Metadata that is genuinely constant per site may be stored there too. Nullable
+string metadata such as ``instrument`` preserves missing values separately from
+empty strings in NetCDF and Zarr. Missing averaging periods retain their existing
+normalization: an empty period is treated as absent. Release
 locations that vary within a site, as they do for satellite or aircraft
 observations, are instead arrays aligned with the observations and must not be
 reduced to site scalars. These metadata arrays may be carried alongside the
@@ -332,7 +333,7 @@ data acquisition. The supported container boundary is deliberately narrow:
      - Unsupported
      - Wrap one or more site-local datasets in an ordered mapping or a
        direct-child ``DataTree``. Load an already canonical artifact with
-       ``RhimePreparedInputs.load``.
+       ``PreparedInputs.load``.
    * - Dense ``Dataset(site, time)``
      - Unsupported
      - No trimming or interpretation of padded rows is attempted. Split it
@@ -344,7 +345,7 @@ data acquisition. The supported container boundary is deliberately narrow:
    * - Pre-stacked ``nmeasure`` data
      - Unsupported
      - Pass per-site data to the adapter. Load an already canonical prepared
-       artifact with ``RhimePreparedInputs.load`` instead.
+       artifact with ``PreparedInputs.load`` instead.
 
 This matches the cached verification-games workflow: sites may have unequal or
 disjoint time axes, and the existing ragged gather path creates ``nmeasure``
@@ -420,8 +421,6 @@ Adapt the application data with OpenGHG Inversions:
        site_data,
        basis_functions=basis_functions,
        averaging_period="1h",
-       min_error=0.0,
-       start_date="2021-01-01",
    )
 
 Optionally save a durable checkpoint so projection is not repeated when the
@@ -429,53 +428,43 @@ prepared artifact is reopened:
 
 .. code-block:: python
 
-   from openghg_inversions.inversion_data import RhimePreparedInputs
+   from openghg_inversions.inversion_data import PreparedInputs
 
    prepared.save("base-prepared-inputs.zarr")
-   prepared = RhimePreparedInputs.load("base-prepared-inputs.zarr")
+   prepared = PreparedInputs.load("base-prepared-inputs.zarr")
 
 Finally, construct and execute the OpenGHG Inversions run from the canonical
 prepared object:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import RhimeModelSpec, SectorSpec
-   from openghg_inversions.rhime import (
-       RhimeOutputSpec,
-       RhimeRunSpec,
-       RhimeSampler,
-       run_rhime_from_prepared_inputs,
-   )
+   from openghg_inversions.rhime import RhimeConfig, run_multisector
 
    sources = ["ocean", "FF", "GPP", "TER"]
-   sectors = tuple(
-       SectorSpec(
-           name=source,
-           flux_source=source,
-           x_prior={"pdf": "lognormal", "mean": 1.0, "stdev": 1.0},
-           variable_suffix=source.lower(),
-       )
-       for source in sources
+   config = RhimeConfig.from_params(
+       {
+           "species": "co2",
+           "domain": "EUROPE",
+           "start_date": "2021-01-01",
+           "end_date": "2021-01-05",
+           "sites": list(prepared.sites),
+           "averaging_period": list(prepared.averaging_period),
+           "flux_sources": sources,
+           "sector_priors": {
+               source: {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0}
+               for source in sources
+           },
+           "sigma_freq": "monthly",
+           "use_bc": False,
+           "output_name": "external-inputs",
+           "output_format": "none",
+           "draws": 1000,
+           "tune": 1000,
+           "chains": 4,
+       },
+       multisector=True,
    )
-   run_spec = RhimeRunSpec(
-       start_date="2021-01-01",
-       end_date="2021-01-05",
-       sites=prepared.sites,
-       averaging_period=prepared.averaging_period,
-       model=RhimeModelSpec(
-           species="co2",
-           domain="EUROPE",
-           sectors=sectors,
-           sigma_freq="monthly",
-       ),
-       output=RhimeOutputSpec(output_format="none"),
-       split_by_sectors=True,
-   )
-   result = run_rhime_from_prepared_inputs(
-       prepared_inputs=prepared,
-       run_spec=run_spec,
-       sampler=RhimeSampler(draws=1000, tune=1000, chains=4),
-   )
+   result = run_multisector(prepared=prepared, config=config)
 
 This adapter is an extension boundary for data acquisition and assembly, not a
 plugin interface for alternative RHIME models or likelihood components.
@@ -486,17 +475,19 @@ Each site dataset must contain ``mf``, ``mf_error``, ``mf_repeatability``,
 before ragged sites are gathered and are not copied into canonical inputs.
 Other time-aligned extension variables are retained. Non-time-dependent data
 variables are removed at this boundary rather than copied into every
-observation. The retained operator and prior/reference flux are carried into
-postprocessing; artifact provenance may be added to the returned basis value.
+observation, except the scalar centered ``bc_reference`` retained with its
+projected boundary operands. The retained operator and prior/reference flux
+are carried into postprocessing; artifact provenance may be added to the
+returned basis value.
 
 The adapter treats every supplied row as an active observation. Each site
 therefore needs a nonempty, explicit, unique ``datetime64`` ``time`` coordinate
 with no ``NaT`` values. Valid non-monotonic input ordering is retained.
 Required observations, projected ``H``, and optional sampled ``H_bc`` values
 must be finite. A site emptied by downstream input preparation is reported as
-an error instead of being silently removed. ``min_error_per_site`` defaults to
-``False``, matching the OpenGHG-backed RHIME preparation route; pass ``True``
-to request per-site minimum errors.
+an error instead of being silently removed. BC periods and minimum-error floors
+are selected by the model after preparation; this adapter does not accept
+``bc_freq``, ``min_error``, ``min_error_per_site`` or a temporal anchor.
 
 ``mf.units`` must be a nonempty string. Every present concentration-valued
 field---observation-error components, canonical ``H`` or the selected cache,
@@ -533,13 +524,18 @@ labels are intentionally deferred generalizations. They should be added only
 with a concrete consumer and explicit semantics rather than inferred by this
 adapter.
 
-Include ``H_bc`` for the existing sampled boundary-condition contribution. A
-deterministic observation-aligned ``fixed_baseline`` is deliberately rejected
-until a reusable semantic Baseline component defines common likelihood and
-output behavior; this follow-up is tracked in `issue #550
+Include ``H_bc`` for the absolute sampled boundary-condition contribution.
+Alternatively, supply ``H_bc_anomaly`` and ``H_bc_mass`` on ``(bc_region, time)``
+in either dimension order, scalar ``bc_reference``, and
+``boundary_representation="centered-v1"``. The anomaly and reference use the
+exact observation unit string; mass uses ``"1"``. These centered operands
+remain spatial until model construction selects boundary periods. See the
+:ref:`centered boundary contract <surface-centered-boundary-contract>` for
+preparation and filtering. A deterministic
+observation-aligned ``fixed_baseline`` is deliberately rejected until a reusable
+semantic Baseline component defines common likelihood and output behavior; this follow-up is tracked in `issue #550
 <https://github.com/openghg/openghg_inversions/issues/550>`_. New prepared-input
-features do not change the transitional old-INI wrapper's compatibility
-contract.
+features do not establish historical artifact compatibility.
 
 Config Files
 ------------
@@ -592,18 +588,20 @@ omit it and use one shared ``x_prior``.
 Generated Basis Functions
 -------------------------
 
-RHIME can load saved flux basis functions with ``fp_basis_case`` or generate a
-basis with ``basis_algorithm`` and ``nbasis``. The legacy generated-basis
-choices exposed through RHIME config are still ``"quadtree"`` and
-``"weighted"``.
+RHIME loads a selected retained basis artifact with ``basis_path`` or generates
+a basis with ``basis_algorithm`` and ``nbasis``. ``basis_output_path`` is an
+optional exact ``.nc`` or ``.zarr`` destination. The generated-basis choices
+exposed through RHIME config remain ``"quadtree"`` and ``"weighted"``. See
+:doc:`rhime_configuration` for support maps and migration from historical
+case/directory options.
 
 The lower-level Python basis API also supports ``"region_constrained"`` when a
 caller supplies an already loaded ``region_classes`` ``DataArray``. That path
 keeps generated labels from crossing land/sea, country, inner/outer, or other
-class boundaries, but RHIME config and ``run_hbmcmc.py`` do not yet load
+class boundaries, but RHIME config does not yet load
 ``region_classes`` from files. For RHIME runs that need these masks today,
-build and save the basis through the Python basis API, then load it as a saved
-basis case.
+build and save the basis through the Python basis API, then select its exact
+``basis_path``.
 
 As weights-first Python groundwork for issue #452, built on the class
 composition merged in PR #520, the lower-level API can build a
@@ -615,13 +613,17 @@ every distinct outer label receives one target:
 .. code-block:: python
 
    from openghg_inversions.basis import (
-       load_country_region_classes,
-       load_intem_outer_regions,
+       load_basis_support_map,
+       packaged_basis_support_path,
        region_constrained_fixed_outer_basis_from_weights,
    )
 
-   outer_regions = load_intem_outer_regions("EUROPE")
-   region_classes = load_country_region_classes("EUROPE")
+   outer_regions = load_basis_support_map(
+       packaged_basis_support_path("outer_regions", "EUROPE"), "region"
+   )
+   region_classes = load_basis_support_map(
+       packaged_basis_support_path("landsea", "EUROPE"), "country"
+   )
    basis = region_constrained_fixed_outer_basis_from_weights(
        weights,
        start_date="2020-01-01",
@@ -639,18 +641,15 @@ boundary before global relabelling.
 
 ``weights`` must cover the whole fixed-outer grid because the result includes
 the outer states; the general constrained weights-first adapter separately
-supports cropped weights. When neither loaded maps nor path arguments are
-supplied, the adapter loads both packaged fields. When ``outer_regions`` is
-omitted, ``outer_regions_path`` selects a direct NetCDF file; when
-``region_classes`` is omitted, ``country_directory`` selects the country or
-land/sea class-map directory. Already-loaded custom fields are also accepted
-and normalized to the authoritative weights grid. Distinct
-non-null values in a custom country map remain distinct classes. Small float
-storage differences are accepted; incompatible coordinate values, units, or
-CRS definitions are rejected, and null outer cells remain label ``0``. This
-adapter is separate from the legacy
-``fixed_outer_regions_basis`` weighted route, whose historical output remains
-unchanged, and it is not yet routed through RHIME configuration.
+supports cropped weights. Resolve packaged resources or load caller-selected
+files before invoking the weights-first helper. The resolved fields are
+normalized to the authoritative weights grid. Distinct non-null values in a
+custom country map remain distinct classes. Small float storage differences are
+accepted; incompatible coordinate values, units, or CRS definitions are rejected,
+and null outer cells remain label ``0``. The weights-first helper is not yet
+routed through RHIME configuration. It is separate from
+``fixed_outer_regions_basis_from_data``, which receives site datasets and a
+singular explicit ``weighting_flux`` array.
 
 This groundwork composes a transient class field and still passes one weight
 field to the downstream algorithm. Separate source weights, sensitivities, and
@@ -698,39 +697,44 @@ experiment such as asking what could be recovered if one emissions sector were
 known without uncertainty. The fixed state's uncertainty is deliberately
 removed rather than transferred into aggregation error.
 
-Given canonical ``inv_inputs``, the following example assumes that
-``inv_inputs["H"]`` carries a state-aligned ``basis_group`` coordinate
+Given canonical ``prepared`` inputs and a resolved one-sector ``model_spec``,
+the following example assumes that ``prepared.inv_inputs["H"]`` carries a
+state-aligned ``basis_group`` coordinate
 containing the value ``"outer"``:
 
 .. code-block:: python
 
    from openghg_inversions.models import StateActivity
-   from openghg_inversions.observation_error import resolve_aggregation_error
-   from openghg_inversions.rhime import PollutionEventSettings
-   from openghg_inversions.rhime.standard import build_standard_rhime_model
+   from dataclasses import replace
+   from openghg_inversions.rhime.standard import (
+       build_standard_model,
+       materialize_standard_inputs,
+   )
 
    state_policy = StateActivity(
        fixed_groups=("outer",),
        fixed_value=1.0,
    )
-   model = build_standard_rhime_model(
-       inv_inputs["H"],
-       observations=inv_inputs["mf"],
-       observation_error=inv_inputs["mf_error"],
-       aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
-       minimum_error=inv_inputs["min_error"],
-       likelihood_settings=PollutionEventSettings(
-           sigma_prior={"pdf": "uniform", "lower": 0.0, "upper": 0.1},
-       ),
-       boundary_sensitivity=inv_inputs.get("H_bc"),
-       x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.5},
-       state_activity=state_policy,
+   selected_model = replace(model_spec, state_activity=state_policy)
+   inputs, priors = materialize_standard_inputs(prepared, selected_model)
+   built = build_standard_model(
+       inputs,
+       selected_model,
+       priors=priors,
    )
+   model = built.model
 
-The direct multisector builder accepts one ordered sequence of ``SectorSpec``
-objects. Each sector carries its source, backend suffix, prior, and optional
-``state_activity`` override; the builder's ``state_activity`` argument supplies
-the shared policy. ``StateActivity(active=False)`` freezes a complete sector.
+The multisector builder reads the ordered ``RhimeModelSpec.sectors`` sequence.
+Each ``SectorSpec`` carries its source, backend suffix, prior, and optional
+``state_activity`` override; ``RhimeModelSpec.state_activity`` supplies the
+shared policy. Call ``materialize_multisector_inputs(prepared, model_spec)``
+first, then pass its Dataset and eager priors to ``build_multisector_model``.
+The two family materializers compute selected arrays and resolve model-specific
+BC periods and likelihood floors. Reuse their resolved Dataset with matching
+settings; after changing a BC or floor policy, call the helper on the raw
+preparation again. The backend-neutral handoff and direct-builder rules are
+described in :doc:`concrete_rhime_model`.
+``StateActivity(active=False)`` freezes a complete sector.
 RHIME config-file syntax and persisted activity-reason tables remain follow-up
 work. Each ``SectorSpec.x_prior`` supports the same scalar, full-state array,
 and labelled ``DataArray`` parameter forms; labelled values must match the
@@ -743,16 +747,14 @@ consume the resulting ``ResolvedStateActivity``; they do not inspect ``H`` or
 infer its output dimension.
 
 Boundary-condition scaling states can be handled the same way. Set
-``RhimeModelSpec(bc_state_activity=StateActivity(active=False))`` (or the
-equivalent low-level builder argument) to retain ``mu_bc = H_bc @ bc`` with a
+``bc_state_activity=StateActivity(active=False)`` on ``RhimeModelSpec`` to retain
+``mu_bc = H_bc @ bc`` with a
 fixed ``bc`` vector and no boundary-condition random variable. This is distinct
 from supplying a standalone baseline time series, which belongs to a separate
 baseline component.
 
-The transitional ``run_hbmcmc.py`` wrapper supports only the standard
-single-sector RHIME recipe; it does not add multisector behaviour to an old INI
-file. Migrate source-resolved workflows to ``run_rhime_multisector`` and its
-canonical configuration vocabulary.
+Use ``run_multisector`` and canonical configuration for source-resolved
+workflows; the historical HBMCMC wrapper is removed.
 
 Correlated Positive Reduced States
 ----------------------------------
@@ -858,33 +860,38 @@ The retained flux is used unless an explicit replacement is supplied. State
 and source labels come from the retained operator; source-specific ragged bases
 retain their gathered ``(source, region_in_source)`` state coordinate.
 
+This example uses canonical ``prepared`` inputs and a resolved one-sector
+``model_spec`` matching the retained basis.
+
 .. code-block:: python
 
    from openghg_inversions.basis import (
        calibrate_basis_prior_stdev,
        project_basis_prior_stdev,
    )
-   from openghg_inversions.observation_error import resolve_aggregation_error
-   from openghg_inversions.rhime import PollutionEventSettings
-   from openghg_inversions.rhime.standard import build_standard_rhime_model
+   from dataclasses import replace
+   from openghg_inversions.rhime.standard import (
+       build_standard_model,
+       materialize_standard_inputs,
+   )
 
    x_prior_stdev = project_basis_prior_stdev(
        basis_functions,
        area_grid=cell_area,
        grid_cell_prior_stdev=grid_prior_sd,
    )
-   model = build_standard_rhime_model(
-       inv_inputs["H"],
-       observations=inv_inputs["mf"],
-       observation_error=inv_inputs["mf_error"],
-       aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
-       minimum_error=inv_inputs["min_error"],
-       likelihood_settings=PollutionEventSettings(
-           sigma_prior={"pdf": "uniform", "lower": 0.0, "upper": 0.1},
-       ),
-       boundary_sensitivity=inv_inputs.get("H_bc"),
+   selected_sector = replace(
+       model_spec.sectors[0],
        x_prior={"pdf": "normal", "mu": 1.0, "sigma": x_prior_stdev},
    )
+   selected_model = replace(model_spec, sectors=(selected_sector,))
+   inputs, priors = materialize_standard_inputs(prepared, selected_model)
+   built = build_standard_model(
+       inputs,
+       selected_model,
+       priors=priors,
+   )
+   model = built.model
 
 ``calibrate_basis_prior_stdev`` accepts a caller-defined target matrix and
 requested relative standard deviation. It projects a unit cell standard
@@ -920,18 +927,46 @@ Output Formats
 
 Standard single-sector RHIME supports ``inv_out``, ``basic``, ``paris``, and
 ``legacy`` output formats. ``legacy`` writes the old HBMCMC-compatible NetCDF
-product from the modern ``InversionOutput``. The deprecated names ``hbmcmc``
-and ``hbmcmc_postprocessing`` are accepted as aliases for ``legacy``.
+product from the modern ``InversionOutput``. The historical names ``hbmcmc``
+and ``hbmcmc_postprocessing`` are unsupported; use ``legacy``.
+
+``basic`` selects no written product and does not compute a discarded summary in
+the standard runner. To inspect reporting results in memory, call
+``basic_output(result, country_file=...)`` on the returned ``InversionOutput``.
+The runner calls ``postprocess_standard_outputs`` to compute and write configured
+PARIS or legacy products, then ``save_inversion_output`` to export the scientific
+result and trace. PARIS and legacy requests require an ``output_path`` before
+sampling. Export defaults and filename policy remain unchanged. See
+:doc:`staged_workflow` for the distinction between checkpoints, self-contained
+inversion outputs, traces and basis exports.
 
 Single-sector ``paris`` keeps the legacy template by default. Pass
 ``paris_postprocessing_kwargs={"template_version": "latest"}`` to write the
 PARIS concentration v04 and flux v03 templates.
+
+Standard, multisector, nested and ordinary CO₂ recipes resolve their PARIS
+choices through shared typed options, including template version, time point
+and optional ``flux_frequency``.
+Set these through the existing ``paris_postprocessing_kwargs`` mapping; omitted
+frequency is inferred from the retained flux. Invalid option names, explicit
+frequencies and incompatible template/time-point choices fail before inference.
+Each recipe retains its own supported defaults and restrictions: multisector
+and CO₂ products require the latest templates, while standard and nested output
+keep the legacy default. Nested output adds the inner country file and cache
+directory; see :doc:`nested_domains`.
 
 PARIS global attributes automatically use the selected prior flux sources and
 metadata read from the footprint files; scripts do not need to pass these
 attributes to ``make_paris_outputs``. A missing footprint model version is
 recorded as an empty attribute; distinct values across sites are separated by
 semicolons.
+
+``InversionOutput`` saves metadata as finite JSON: NumPy Booleans and numbers
+keep their scalar meaning, arrays become lists, and dates, durations and paths
+become strings. Unsupported objects raise an error rather than being stringified;
+metadata conversion does not compute Dask arrays. Loading requires the supported
+artifact version and rejects malformed present JSON metadata. Absent optional
+metadata mappings remain empty.
 
 Modern RHIME preparation, ``InversionOutput`` artifacts, and postprocessing use
 retained ``BasisFunctions`` / ``BasisOperator`` objects as the primary basis
@@ -948,11 +983,65 @@ Derived flux products keep their existing ``flux_time`` coordinate label;
 see :doc:`retained_state_reconstruction` for the linear reconstruction and
 source-axis contract.
 
-``run_hbmcmc.py`` is a transitional compatibility wrapper for supported old
-fixedbasis-style INI files. It translates legacy option names to the modern
-``run_rhime`` API and uses the legacy filename convention. It always executes
-RHIME: the direct ``fixedbasisMCMC`` / ``inferpymc`` implementation and the
-``--legacy-fixedbasis`` option have been removed. New scripts and new configs
-should use ``openghg-inversions run-rhime`` or ``run_rhime(...)`` directly.
+The complete HBMCMC namespace and runtime request translation are removed.
+Use canonical settings with ``rhime run`` or ``run_standard(...)`` directly;
+matching older software is required for historical execution.
 See :doc:`legacy_and_migration` for the parameter map, return-type changes,
 and interfaces without a current equivalent.
+
+Postprocessing memory
+~~~~~~~~~~~~~~~~~~~~~
+
+Standard flux products reduce samples in basis-state space before reconstructing
+the grid. Multisector nonlinear statistics first combine matching sector draws; marginal
+sector intervals are not added together. Mean-only requests keep the existing
+state-space shortcut when the sector sample masks permit it. Built-in
+bucket-basis reconstruction uses bounded spatial and flux-time chunks. Built-in
+statistics complete one bounded non-sample block at a time, retaining all required
+samples and reusing its sources across requested summaries and HDI probabilities.
+Postprocessing pools all chains and draws at the reduction boundary within each block,
+retaining its statistic kernels and missing-sample handling.
+
+Custom statistics registered with ``register_stat`` are called once per variable.
+Register with ``whole_dataset=True`` for a statistic that combines related
+variables. Requests containing a custom statistic run on the complete dataset
+and do not inherit the built-in statistics' block memory bound, unless every
+requested statistic is registered with ``pointwise=True``, declaring that each
+non-sample point is reduced independently.
+
+Quantities derived from several sampled variables, such as a baseline formed
+from a modelled boundary contribution and an offset, use ``summarize_derived``
+from ``openghg_inversions.postprocessing.stats``. It broadcasts the operands as
+borrowed views. When every requested statistic declares ``pointwise=True``, it
+applies the arithmetic within bounded blocks before computing statistics. If any
+requested statistic lacks that declaration, the compatibility path applies the
+arithmetic once to the complete dataset. Basis reconstruction applies the shared
+spatial and flux-time chunk limits by default.
+
+Operands and companion variables use outer alignment, preserving all coordinate
+labels and padding missing values. Derived and companion dataset attributes are
+combined without conflicts; contradictory attributes raise an error rather than
+silently replacing quantity meaning or provenance.
+
+Variables with matching point dimensions and compatible chunk layouts share
+source tasks within each block. Lower-dimensional operands or companions may be
+read again in other blocks or groups; reuse across those computations is not
+guaranteed.
+
+Multisector flux products retain the selected compact state samples for the duration
+of the product, preserving their sample chunks and reusing them for grid tiles and
+scale-factor summaries. Full reconstructed grid samples are not retained.
+
+Trace selection occurs within each prior/posterior group before their coordinates
+are aligned, so requesting flux scaling does not pad unrelated concentration
+variables. ``InversionOutput.trace_dataset`` accepts semantic ``var_roles`` or
+exact ``var_names`` for this selection.
+
+These bounds limit additional computation workspace. Country projection geometry
+and region-mean prior flux retain their existing spatial calculations. Already
+resident inputs, retained compact intermediates, and the completed output still
+require memory, and an externally supplied lazy source must itself have suitably
+bounded producer tasks. Splitting its result into small blocks cannot shrink a
+task that reads or constructs a larger array. The shared
+``calculate_stats`` boundary executes blocks serially and returns completed
+summaries; individual statistic helpers can still return lazy arrays.

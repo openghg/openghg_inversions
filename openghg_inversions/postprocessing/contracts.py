@@ -4,12 +4,69 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import xarray as xr
+
+
+from openghg_inversions._serialization_codecs import _copy_json_mapping
 
 
 _SCHEMA = "openghg_inversions.output_contract"
 _FORMATS = frozenset({"none", "inv_out", "basic", "paris", "legacy"})
+
+
+DEFAULT_VARIABLE_ROLES: dict[str, str] = {
+    "observation": "mf",
+    "observation_error": "mf_error",
+    "observation_prior_factor": "mf_prior_factor",
+    "observation_prior_upper_level_factor": "mf_prior_upper_level_factor",
+    "observation_repeatability": "mf_repeatability",
+    "observation_variability": "mf_variability",
+    "flux_scale": "x",
+    "model_error": "epsilon",
+    "concentration": "y",
+    "baseline": "mu_bc",
+    "boundary": "mu_bc",
+    "offset": "offset",
+    "emissions_sensitivity": "hx",
+    "baseline_sensitivity": "hbc",
+    "minimum_error": "min_error",
+}
+
+
+def resolve_predictive_names(
+    names: list[str], *, available: set[str], variable_roles: Mapping[str, str] | None = None,
+) -> list[str]:
+    """Resolve predictive roles with the same concentration convention as outputs.
+
+    Concrete names remain valid. The historical default concentration name is
+    redirected only when absent and an explicit concentration role is supplied.
+
+    Args:
+        names: Concrete model variable names or semantic role names to predict.
+        available: Variables available in the constructed model.
+        variable_roles: Explicit semantic role-to-variable mapping.
+
+    Returns:
+        Concrete variable names in requested order, with duplicates removed.
+
+    Raises:
+        ValueError: If any resolved variable is absent from the model.
+    """
+    roles = dict(variable_roles or {})
+    concentration = DEFAULT_VARIABLE_ROLES["concentration"]
+    if concentration not in available and "concentration" in roles:
+        roles.setdefault(concentration, roles["concentration"])
+    resolved = [roles.get(name, name) for name in names]
+    missing = sorted(set(resolved) - available)
+    if missing:
+        raise ValueError(
+            "RhimeSampler posterior-predictive variables are absent from the model: "
+            f"{missing!r}. Use concrete model names or semantic keys from `variable_roles`."
+        )
+    return list(dict.fromkeys(resolved))
 
 
 @dataclass(frozen=True)
@@ -52,10 +109,7 @@ class OutputContract:
             raise ValueError("OutputContract.supported_output_formats must include 'none'.")
         if not isinstance(self.metadata, Mapping):
             raise ValueError("OutputContract.metadata must be a JSON-compatible mapping.")
-        try:
-            metadata = json.loads(json.dumps(dict(self.metadata), allow_nan=False))
-        except (TypeError, ValueError) as exc:
-            raise ValueError("OutputContract.metadata must be finite JSON-compatible data.") from exc
+        metadata = _copy_json_mapping(self.metadata, "OutputContract.metadata")
         if not isinstance(self.state_dimension_mapping, Mapping):
             raise ValueError("OutputContract.state_dimension_mapping must be a mapping.")
         dimensions = dict(self.state_dimension_mapping)
@@ -79,6 +133,30 @@ class OutputContract:
                 f"Declared formats: {list(self.supported_output_formats)!r}. Use output_format='none' or "
                 "select a model that explicitly supports the requested RHIME output contract."
             )
+
+    def validate_trace(self, trace: xr.DataTree) -> None:
+        """Require saved reconstruction states without materializing trace arrays.
+
+        Predictive evidence is optional. A contract advertising products must
+        retain its declared flux scales, boundary scales and observation offsets
+        in the posterior, even when the current invocation requests no products.
+
+        Args:
+            trace: Externally supplied or loaded samples to validate.
+
+        Raises:
+            ValueError: If a declared reconstruction state is absent from the posterior.
+        """
+        if set(self.supported_output_formats) == {"none"}:
+            return
+        posterior = trace.children.get("posterior")
+        available = set(posterior.data_vars) if posterior is not None else set()
+        missing = {
+            role: name for role, name in self.variable_roles.items()
+            if role.split(":", 1)[0] in {"flux_scale", "baseline_scale", "offset"} and name not in available
+        }
+        if missing:
+            raise ValueError(f"Trace is missing output-contract reconstruction state(s): {missing!r}.")
 
     def to_dict(self) -> dict[str, Any]:
         """Return a versioned JSON value with no numerical payload or callable."""

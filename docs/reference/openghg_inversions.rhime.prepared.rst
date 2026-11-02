@@ -1,6 +1,0 @@
-openghg\_inversions.rhime.prepared
-==================================
-
-.. automodule:: openghg_inversions.rhime.prepared
-   :members:
-   :show-inheritance:

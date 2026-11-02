@@ -9,17 +9,20 @@ the ``OPENGHG_OCO2_*`` environment variables below.
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from openghg_inversions.inversion_data.preparation import RhimePreparedInputs, prepare_rhime_inputs
+from tests.helpers import prepare_inputs
+
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.rhime import (
     RhimeSampler,
-    resolve_rhime_options,
-    run_rhime_from_prepared_inputs,
+    RhimeConfig,
+    run_multisector,
 )
 
 
@@ -48,7 +51,7 @@ def _skip_if_missing(*paths: Path) -> None:
 
 
 @pytest.fixture(scope="module")
-def real_oco2_prepared_inputs(tmp_path_factory: pytest.TempPathFactory) -> RhimePreparedInputs:
+def real_oco2_prepared_inputs(tmp_path_factory: pytest.TempPathFactory) -> PreparedInputs:
     """Prepare the six-sounding OCO2 sample with a fresh weighted basis."""
     _skip_if_missing(
         _DATA_STORE,
@@ -58,7 +61,7 @@ def real_oco2_prepared_inputs(tmp_path_factory: pytest.TempPathFactory) -> Rhime
         _COUNTRY_DIRECTORY,
     )
     basis_output_path = tmp_path_factory.mktemp("oco2_multisector_basis")
-    return prepare_rhime_inputs(
+    return prepare_inputs(
         species="co2",
         sites=["OCO2-EASTASIA"],
         domain="EASTASIA",
@@ -73,7 +76,7 @@ def real_oco2_prepared_inputs(tmp_path_factory: pytest.TempPathFactory) -> Rhime
         bc_store=str(_DATA_STORE),
         obs_store=str(_DATA_STORE),
         footprint_store=str(_FOOTPRINT_STORE),
-        emissions_store=str(_DATA_STORE),
+        flux_store=str(_DATA_STORE),
         fp_height=["column"],
         fp_species="co2",
         time_resolved=[True],
@@ -97,7 +100,7 @@ def real_oco2_prepared_inputs(tmp_path_factory: pytest.TempPathFactory) -> Rhime
 
 @pytest.mark.slow
 def test_real_oco2_store_prepares_time_resolved_multisector_columns(
-    real_oco2_prepared_inputs: RhimePreparedInputs,
+    real_oco2_prepared_inputs: PreparedInputs,
 ) -> None:
     """Check scientific invariants at the store-to-model input boundary."""
     prepared = real_oco2_prepared_inputs
@@ -147,10 +150,10 @@ def test_real_oco2_store_prepares_time_resolved_multisector_columns(
 
 @pytest.mark.slow
 def test_real_oco2_prepared_inputs_run_through_multisector_model(
-    real_oco2_prepared_inputs: RhimePreparedInputs,
+    real_oco2_prepared_inputs: PreparedInputs,
 ) -> None:
     """Sample the prepared satellite columns through the public RHIME model path."""
-    setup = resolve_rhime_options(
+    config = RhimeConfig.from_params(
         params={
             "species": "co2",
             "sites": ["OCO2-EASTASIA"],
@@ -167,14 +170,13 @@ def test_real_oco2_prepared_inputs_run_through_multisector_model(
         },
         multisector=True,
     )
-    result = run_rhime_from_prepared_inputs(
-        prepared_inputs=real_oco2_prepared_inputs,
-        run_spec=setup.run_spec,
-        sampler=RhimeSampler(draws=1, tune=0, chains=1, progressbar=False),
+    result = run_multisector(
+        prepared=real_oco2_prepared_inputs,
+        config=replace(config, sampler=RhimeSampler(draws=1, tune=0, chains=1, progressbar=False)),
     )
 
     assert result.inv_inputs.sizes["nmeasure"] == 6
     assert tuple(result.inv_inputs.source.values) == _FLUX_SOURCES
-    assert {"x_anth", "x_resp", "x_gpp_atm"}.issubset(result.idata.posterior)
-    assert result.model_build_result is not None
-    assert result.model_build_result.variable_roles["flux_scale:anth"] == "x_anth"
+    assert {"x", "mu"}.issubset(result.trace["posterior"])
+    assert result.variable_roles["flux_scale"] == "x"
+    assert tuple(dict.fromkeys(result.trace["posterior"]["x"].source.values.tolist())) == _FLUX_SOURCES

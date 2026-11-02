@@ -19,8 +19,8 @@ around NetCDF/Zarr limitations.
 """
 
 from pathlib import Path
-from collections.abc import Hashable, Iterable, Mapping
-from dataclasses import dataclass, field, replace
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
 from typing import Any, Literal, Self, cast
 import json
 
@@ -28,7 +28,9 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from openghg_inversions._serialization_codecs import _decode_json_mapping, _json_value
 from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.postprocessing.contracts import DEFAULT_VARIABLE_ROLES
 from openghg_inversions.serialization import (
     MULTIINDEX_DIMS_ATTR as _MULTIINDEX_DIMS_ATTR,
     open_datatree_loaded as _open_datatree_loaded,
@@ -46,33 +48,22 @@ TRACE_SAMPLE_GROUPS = ("prior", "prior_predictive", "posterior", "posterior_pred
 TRACE_MODEL_DATA_GROUPS = ("constant_data",)
 
 
-def _json_default(value: object) -> str:
-    """JSON fallback for metadata values stored on output artifacts."""
-    return str(value)
-
-
 def _json_attr(value: dict[str, Any]) -> str:
-    """Encode output metadata for xarray attrs."""
-    return json.dumps(value, default=_json_default)
+    """Encode finite output metadata without changing scalar meaning."""
+    return json.dumps(_json_value(value), allow_nan=False)
 
 
 def _load_json_attr(attrs: dict[Any, Any], key: str) -> dict[str, Any]:
-    """Decode optional JSON metadata from xarray attrs."""
-    raw = attrs.get(key)
-    if raw is None:
+    """Decode optional metadata, rejecting malformed present attributes."""
+    if key not in attrs:
         return {}
+    raw = attrs[key]
     if isinstance(raw, bytes):
         try:
             raw = raw.decode()
-        except UnicodeDecodeError:
-            return {}
-    if not isinstance(raw, str):
-        return {}
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError:
-        return {}
-    return payload if isinstance(payload, dict) else {}
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"InversionOutput {key} must contain UTF-8 JSON.") from exc
+    return _decode_json_mapping(raw, f"InversionOutput {key}")
 
 
 def filter_data_vars_by_prefix(
@@ -106,37 +97,6 @@ def filter_data_vars_by_prefix(
     return ds[data_vars]
 
 
-def _filter_trace_data_vars_by_name(ds: xr.Dataset, var_names: str | list[str]) -> xr.Dataset:
-    """Select trace variables by exact base variable name.
-
-    Trace datasets use names like ``x_prior`` or ``mu_bc_posterior``. This
-    helper matches the full base variable name before the trace-group suffix so
-    ``var_names="x"`` does not also select ``x_latent_prior``.
-    """
-    if isinstance(var_names, str):
-        var_names = [var_names]
-
-    group_suffixes = (
-        "_prior_predictive",
-        "_posterior_predictive",
-        "_prior",
-        "_posterior",
-    )
-    selected: list[Hashable] = []
-    wanted = set(var_names)
-
-    for dv in ds.data_vars:
-        name = str(dv)
-        for suffix in group_suffixes:
-            if name.endswith(suffix):
-                base_name = name.removesuffix(suffix)
-                if base_name in wanted:
-                    selected.append(dv)
-                break
-
-    return ds[selected]
-
-
 def trace_group(trace: xr.DataTree, name: str) -> xr.Dataset:
     """Return one exact, direct trace group as a Dataset.
 
@@ -161,6 +121,7 @@ def merge_trace_groups(
     groups: Iterable[str] = TRACE_SAMPLE_GROUPS,
     *,
     add_suffix: bool = True,
+    var_names: Iterable[str] | str | None = None,
 ) -> xr.Dataset:
     """Merge selected direct trace groups into a Dataset.
 
@@ -169,20 +130,28 @@ def merge_trace_groups(
         groups: Exact direct-child group names to merge. Missing groups are
             ignored so posterior-only and prior-only traces remain valid.
         add_suffix: If true, suffix each data variable with its group name.
+        var_names: Exact unsuffixed variable names to select before alignment.
+            None selects all variables; groups without a requested variable
+            cannot enlarge the selected coordinates.
 
     Returns:
-        Dataset containing all variables in the selected groups. Native chain
-        and draw dimensions are retained.
+        Dataset containing selected variables with outer-join padding. Native
+        chain and draw dimensions are retained; borrowed payloads remain lazy.
     """
+    wanted = None if var_names is None else set([var_names] if isinstance(var_names, str) else var_names)
     datasets = []
     for group in groups:
         if group not in trace.children:
             continue
         dataset = trace_group(trace, group)
+        if wanted is not None:
+            dataset = dataset[[name for name in dataset.data_vars if name in wanted]]
+            if not dataset.data_vars:
+                continue
         if add_suffix:
             dataset = dataset.rename_vars({name: f"{name}_{group}" for name in dataset.data_vars})
         datasets.append(dataset)
-    return xr.merge(datasets, join="outer")
+    return xr.merge(datasets, join="outer", compat="no_conflicts")
 
 
 def convert_idata_to_dataset(
@@ -252,25 +221,6 @@ def _add_attributes_to_trace_dataset(trace_ds: xr.Dataset, obs_units: str, obs_l
             trace_ds[dv].attrs["long_name"] = f"posterior_trace_of_{name}"
 
 
-DEFAULT_VARIABLE_ROLES: dict[str, str] = {
-    "observation": "mf",
-    "observation_error": "mf_error",
-    "observation_prior_factor": "mf_prior_factor",
-    "observation_prior_upper_level_factor": "mf_prior_upper_level_factor",
-    "observation_repeatability": "mf_repeatability",
-    "observation_variability": "mf_variability",
-    "flux_scale": "x",
-    "model_error": "epsilon",
-    "concentration": "y",
-    "baseline": "mu_bc",
-    "boundary": "mu_bc",
-    "offset": "offset",
-    "emissions_sensitivity": "hx",
-    "baseline_sensitivity": "hbc",
-    "minimum_error": "min_error",
-}
-
-
 @dataclass
 class InversionOutput:
     """Modern RHIME inversion output contract.
@@ -295,17 +245,6 @@ class InversionOutput:
     model_metadata: dict[str, Any] = field(default_factory=dict)
     output_metadata: dict[str, Any] = field(default_factory=dict)
     provenance: dict[str, Any] = field(default_factory=dict)
-
-    def select_chain(self, index: int) -> Self:
-        """Return a derived-output view containing one chain.
-
-        Args:
-            index: Zero-based chain position to retain.
-
-        Returns:
-            A shallowly replaced output whose trace retains only that chain.
-        """
-        return replace(self, trace=self.trace.isel(chain=[index]))
 
     def trace_group(self, name: str) -> xr.Dataset:
         """Return one exact, direct trace group as a Dataset.
@@ -474,9 +413,27 @@ class InversionOutput:
 
         return self.inv_inputs[list(dict.fromkeys(selected))]
 
-    def trace_dataset(self, var_roles: Iterable[str] | str | None = None) -> xr.Dataset:
-        """Return prior and posterior trace samples selected by semantic role."""
-        result = merge_trace_groups(self.trace)
+    def trace_dataset(
+        self,
+        var_roles: Iterable[str] | str | None = None,
+        *,
+        var_names: Iterable[str] | str | None = None,
+    ) -> xr.Dataset:
+        """Return selected prior/posterior samples, including predictive groups.
+
+        Select by semantic ``var_roles`` or exact unsuffixed ``var_names``, not
+        both; omitting both selects all trace variables. Each direct group is
+        filtered before outer alignment. All chains and selected-variable
+        missing-draw padding are retained without modifying borrowed inputs or
+        computing lazy payloads. Explicit state-dimension mappings apply only
+        when variables are selected.
+        """
+        selected = var_roles is not None or var_names is not None
+        if var_roles is not None:
+            if var_names is not None:
+                raise ValueError("Select trace variables by var_roles or var_names, not both.")
+            var_names = self._variable_names_for_roles(var_roles)
+        result = merge_trace_groups(self.trace, var_names=var_names)
         obs_name = self.variable_name("observation")
         if obs_name in self.inv_inputs:
             obs = self.inv_inputs[obs_name]
@@ -487,8 +444,7 @@ class InversionOutput:
             )
             _add_attributes_to_trace_dataset(result, obs.attrs.get("units", ""), obs_long_name)
 
-        if var_roles is not None:
-            result = _filter_trace_data_vars_by_name(result, self._variable_names_for_roles(var_roles))
+        if selected:
             result = self._normalise_selected_trace_state_dimension(result)
 
         return result
@@ -514,7 +470,12 @@ class InversionOutput:
         return [self.variable_name(role) for role in self._normalise_roles(roles)]
 
     def to_datatree(self) -> xr.DataTree:
-        """Convert the modern output to a serialisable DataTree."""
+        """Convert the output to a DataTree with finite JSON metadata.
+
+        NumPy scalars retain their meaning and arrays become lists. Unsupported
+        metadata raises ``TypeError``; nonfinite numbers raise ``ValueError``.
+        Metadata conversion does not compute lazy arrays.
+        """
         dt = xr.DataTree.from_dict(
             {
                 "trace": _trace_to_datatree(self.trace),
@@ -538,7 +499,11 @@ class InversionOutput:
 
     @classmethod
     def from_datatree(cls, dt: xr.DataTree) -> Self:
-        """Construct a modern InversionOutput from a serialised DataTree."""
+        """Restore a version-1 output from a serialised DataTree.
+
+        Raise ``ValueError`` for an unsupported version or malformed present
+        metadata. Absent optional metadata mappings default to empty mappings.
+        """
         schema = dt.attrs.get("schema")
         if schema is not None and schema != MODERN_INVERSION_OUTPUT_SCHEMA:
             raise ValueError(f"Unexpected InversionOutput schema: {schema!r}")
@@ -547,6 +512,10 @@ class InversionOutput:
                 "Expected a complete InversionOutput artifact with a 'trace' group; standalone "
                 "trace artifacts must be loaded with load_trace() instead."
             )
+
+        version = dt.attrs.get("schema_version")
+        if isinstance(version, (bool, np.bool_)) or not isinstance(version, (int, np.integer)) or version != 1:
+            raise ValueError(f"Unsupported InversionOutput schema_version: {version!r}")
 
         trace = _trace_from_datatree(cast(xr.DataTree, dt["trace"]))
         inv_inputs = _restore_serialisation_multiindexes(cast(xr.DataTree, dt["inv_inputs"]).to_dataset())
@@ -563,5 +532,5 @@ class InversionOutput:
 
     @classmethod
     def load(cls, file_path: str | Path) -> Self:
-        """Load a modern InversionOutput artifact."""
+        """Load a version-1 output, rejecting malformed present JSON metadata."""
         return cls.from_datatree(_open_datatree_loaded(file_path))

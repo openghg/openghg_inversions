@@ -6,9 +6,9 @@ flux components independently. Surface-site and satellite inversions use the
 same public runner and model. They differ only in their observation and
 footprint acquisition options.
 
-Use :func:`openghg_inversions.rhime.run_rhime_multisector` when every flux
-component should have its own scaling state. The ``flux_sources`` values are
-the OpenGHG ``source`` metadata used for retrieval. Optional
+Use :func:`openghg_inversions.rhime.run_multisector` when every flux
+component should have its own scaling prior within the full state. The
+``flux_sources`` values are the OpenGHG ``source`` metadata used for retrieval. Optional
 ``sector_sources`` entries give those sources shorter model-facing names.
 
 Before running
@@ -32,9 +32,9 @@ paths with values available in your OpenGHG installation.
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import run_rhime_multisector
+   from openghg_inversions.rhime import run_multisector
 
-   site_result = run_rhime_multisector(
+   site_result = run_multisector(
        species="ch4",
        sites=["TAC"],
        averaging_period=["1h"],
@@ -46,7 +46,7 @@ paths with values available in your OpenGHG installation.
        end_date="2019-01-08",
        obs_store="user",
        footprint_store="user",
-       emissions_store="user",
+       flux_store="user",
        bc_store="user",
        flux_sources=["ff-inventory", "biosphere-inventory"],
        sector_sources={
@@ -59,7 +59,6 @@ paths with values available in your OpenGHG installation.
        },
        basis_algorithm="weighted",
        nbasis=20,
-       bc_basis_case="NESW",
        output_path="outputs/site_multisector",
        output_name="tac_ch4_multisector",
        output_format="inv_out",
@@ -82,9 +81,9 @@ high-time-resolution footprints.
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import run_rhime_multisector
+   from openghg_inversions.rhime import run_multisector
 
-   satellite_result = run_rhime_multisector(
+   satellite_result = run_multisector(
        species="co2",
        sites=["OCO2-EASTASIA"],
        averaging_period=["1H"],
@@ -100,7 +99,7 @@ high-time-resolution footprints.
        start_date="2022-03-31 04:00:00",
        end_date="2022-04-01 04:08:10",
        obs_store="/path/to/oco2_data_store",
-       emissions_store="/path/to/oco2_data_store",
+       flux_store="/path/to/oco2_data_store",
        bc_store="/path/to/oco2_data_store",
        footprint_store="/path/to/oco2_footprint_store",
        flux_sources=["anth", "resp", "gpp_atm"],
@@ -111,12 +110,9 @@ high-time-resolution footprints.
        },
        use_bc=True,
        bc_input="cams",
-       bc_basis_case="NESW",
-       bc_basis_directory="/path/to/bc_basis_functions",
        basis_algorithm="weighted",
-       basis_directory="/path/to/basis_functions",
-       country_directory="/path/to/countries",
-       basis_output_path="outputs/satellite_multisector/basis",
+       landsea_path="/path/to/maps/eastasia-landsea.nc",
+       basis_output_path="outputs/satellite_multisector/basis.nc",
        nbasis=8,
        averaging_error=True,
        min_error=0.0,
@@ -127,6 +123,12 @@ high-time-resolution footprints.
        tune=500,
        chains=2,
    )
+
+``landsea_path`` selects the exact class map used for weighted basis
+construction, and ``basis_output_path`` is the exact retained-artifact destination.
+To reuse a saved basis instead of generating one, select its exact ``basis_path``.
+See :doc:`rhime_configuration` for packaged support-map selection and migration.
+The BC case/directory options above retain their existing compatibility convention.
 
 Set ``time_resolved=False`` to request integrated footprints, or ``None`` to
 leave this metadata unconstrained during the OpenGHG search. For several
@@ -143,7 +145,9 @@ multisector model used for surface sites.
 Inspecting and processing results
 ---------------------------------
 
-Both calls return a :class:`openghg_inversions.rhime.RhimeResult`. Inspect the
+Both calls return an
+:class:`~openghg_inversions.postprocessing.inversion_output.InversionOutput`.
+Inspect the
 canonical inputs before interpreting the posterior:
 
 .. code-block:: python
@@ -152,7 +156,7 @@ canonical inputs before interpreting the posterior:
 
    print(result.inv_inputs["H"].dims)
    print(result.inv_inputs["H"].coords["source"].values)
-   print(result.idata.posterior)
+   print(result.trace_group("posterior"))
    print(result.output_metadata)
 
 For a shared basis, expect a distinct ``source`` dimension and one sensitivity
@@ -162,25 +166,44 @@ slice per requested flux source. Satellite inputs should also contain finite
 applied. Column runs retain ``mf_prior_factor`` and, when supplied,
 ``mf_prior_upper_level_factor`` in ``inv_inputs``.
 
-The posterior contains one sector scaling variable per sanitized sector name,
-for example ``x_anth``, ``x_resp``, and ``x_gpp_atm``. Use the semantic mapping
-instead of constructing names in downstream code:
+The posterior contains one full scaling variable, ``x``, on a gathered state
+coordinate carrying the source and local state labels. Its blocks retain their
+sector-specific priors. Use the scientific role to find the variable and the
+recorded source association to select a sector:
 
 .. code-block:: python
 
-   roles = result.model_build_result.variable_roles
-   for sector in result.model_spec.sectors:
-       role = f"flux_scale:{sector.name}"
-       variable = roles[role]
-       print(sector.name, result.idata.posterior[variable].mean().item())
+   scales = result.trace_group("posterior")[result.variable_name("flux_scale")]
+   for sector in result.model_metadata["sectors"]:
+       block = scales.sel(source=sector["flux_source"], drop=True)
+       print(sector["name"], block.mean().item())
 
-With ``output_format="inv_out"``, ``result.inv_out`` is the modern,
-serializable inversion product and is also saved when
-``save_inversion_output=True``. Multisector runs additionally populate
-``result.outputs`` and ``result.output_metadata`` with any requested sector
-diagnostics. Legacy output is intentionally unavailable for multisector runs;
-use ``inv_out``, ``basic``, ``paris``, or ``none`` according to the required
-downstream product.
+The model uses one two-dimensional sensitivity ``hx`` and one total flux
+concentration contribution ``mu``. Rectangular prepared ``H`` is packed only
+for model construction; the prepared inputs and retained basis remain unchanged.
+The first requested ``flux_sources`` entry supplies automatic basis weighting.
+Changing the order of ``sector_sources`` does not change that preparation choice.
+
+The returned value is the modern, serializable scientific result, including with
+``output_format="none"``. ``output_format="inv_out"`` requests its file export;
+``save_inversion_output`` and ``save_trace`` control optional exports. Current
+output policy is separate from the result's scientific context and inference
+metadata. Compute in-memory sector diagnostics explicitly:
+
+.. code-block:: python
+
+   from openghg_inversions.postprocessing.make_outputs import make_sector_flux_outputs
+
+   diagnostics = make_sector_flux_outputs(
+       result, stats=["mean"], include_scale_factors=True,
+       report_flux_on_inversion_grid=False,
+   )
+
+Copied runners call ``postprocess_multisector_outputs(result, output_spec)`` for
+configured products, then ``save_inversion_output(result, output_spec)`` for
+exports. Use ``inv_out``, ``paris``, or ``none`` for multisector runs;
+``basic`` and legacy HBMCMC output remain single-sector-only. See :doc:`staged_workflow` for
+reusing prepared inputs and saved samples with current product choices.
 
 Configuration and batch runs
 ----------------------------
@@ -192,7 +215,7 @@ run it with the multisector command:
 
 .. code-block:: console
 
-   openghg-inversions run-rhime-multisector 2022-03-31T04:00:00 2022-04-01T04:08:10 \
+   rhime run --model multisector 2022-03-31T04:00:00 2022-04-01T04:08:10 \
        --config /path/to/oco2_multisector.ini
 
 See :doc:`cli` for scheduler and batch-script examples. Use

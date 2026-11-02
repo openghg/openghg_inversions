@@ -9,23 +9,37 @@ from typing import Any, cast
 import numpy as np
 import pandas as pd
 import pymc as pm
+from pymc.step_methods import CompoundStep
+import pytensor
 import pytensor.tensor as pt
 import pytest
-from scipy.stats import multivariate_normal
+from scipy.stats import halfnorm, multivariate_normal, norm
+from pymc.blocking import DictToArrayBijection
+from pymc.initial_point import make_initial_point_fn
+
+from openghg_inversions.inference.cached_sigma import make_cached_sigma_compound_step
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
+from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.rhime.co2.inference import sample_co2_inference
 from openghg_inversions.rhime.co2 import (
     build_co2_cached_sigma_model,
-    run_rhime_co2_cached_sigma,
 )
 from openghg_inversions.rhime.co2 import co2_cached_sigma_runner
 from openghg_inversions.rhime.co2 import co2_cached_sigma_model
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.serialization import load_trace, save_trace
+
+
+@pytest.fixture(autouse=True)
+def dense_oracle_precision():
+    """Keep strict double-precision oracles independent of package import order."""
+    with pytensor.config.change_flags(floatX="float64"):
+        yield
 
 
 def _inputs() -> xr.Dataset:
@@ -141,8 +155,8 @@ def _dense_fixed_ou_covariance(
     return covariance
 
 
-def _build(*, state_activity: StateActivity | None = None, **kwargs: Any) -> Any:
-    inputs = _inputs()
+def _build(*, state_activity: StateActivity | None = None, inputs: xr.Dataset | None = None, **kwargs: Any) -> Any:
+    inputs = _inputs() if inputs is None else inputs
     prior = CorrelatedLognormalPrior(
         inputs["alpha_prior_mean"],
         inputs["alpha_prior_covariance"],
@@ -156,10 +170,26 @@ def _build(*, state_activity: StateActivity | None = None, **kwargs: Any) -> Any
         observation_error=inputs["mf_error"],
         aggregation_error=resolve_aggregation_error(inputs, "dense"),
         tau_hours={"AAA": 3.0, "BBB": 7.0},
-        site_amplitude_prior_scale=0.75,
-        initial_site_amplitudes={"BBB": 0.4, "unused": 9.0, "AAA": 0.3},
+        site_amplitude_prior=kwargs.pop("site_amplitude_prior", {"pdf": "halfnormal", "sigma": 0.75}),
+        initial_site_amplitudes=kwargs.pop("initial_site_amplitudes", {"BBB": 0.4, "unused": 9.0, "AAA": 0.3}),
         state_activity=state_activity,
         **kwargs,
+    )
+
+
+def _initial_point(cached):
+    return make_initial_point_fn(
+        model=cached.model, overrides=cached.initial_values, return_transformed=True,
+    )(769)
+
+
+def _compound(cached):
+    return make_cached_sigma_compound_step(
+        model=cached.model, sigma=cached.amplitude, states=cached.states,
+        modelled_mean=cached.modelled_mean, target=cached.target,
+        shared_cache=cached.shared_cache, initial_cache=cached.initial_cache,
+        cached_state_logp=cached.cached_state_logp, initial_point=_initial_point(cached),
+        rng=np.random.default_rng(769),
     )
 
 
@@ -201,7 +231,7 @@ def test_cached_input_names_do_not_auto_select_prepared_boundary() -> None:
     assert "H_bc" not in names
 
 
-def test_named_cached_co2_model_owns_normalized_potential_and_sampler_inputs() -> None:
+def test_named_cached_co2_model_owns_one_observed_likelihood_and_sampler_inputs() -> None:
     cached = _build()
 
     assert {
@@ -210,25 +240,30 @@ def test_named_cached_co2_model_owns_normalized_potential_and_sampler_inputs() -
         "modelled_concentration",
         "ou_site_amplitude",
         "ou_site_index",
-        "cached_fixed_ou_likelihood",
+        "y",
     } <= set(cached.model.named_vars)
-    assert "y" not in cached.model.named_vars
+    assert not cached.model.potentials
+    assert [rv.name for rv in cached.model.observed_RVs] == ["y"]
+    assert "cached_fixed_ou_likelihood" not in cached.model.named_vars
     assert "cached_linear_state" not in cached.model.named_vars
     assert cached.target.n_state == 2
     assert cached.target.n_group == 2
     assert cached.target.prepared.site_labels == ("AAA", "BBB")
     np.testing.assert_allclose(cached.target.prepared.tau_hours_by_site, [3.0, 7.0])
 
-    point = cached.model.initial_point()
+    point = _initial_point(cached)
     modelled_mean, actual = cached.model.compile_fn(
         cached.model.replace_rvs_by_values(
-            [cached.modelled_mean, cached.model["cached_fixed_ou_likelihood"]]
+            [cached.modelled_mean, cached.cached_state_logp]
         ),
         inputs=cached.model.value_vars,
         on_unused_input="ignore",
     )(point)
     expected = cached.target.log_likelihood_from_mean(modelled_mean, [0.3, 0.4])
     np.testing.assert_allclose(actual, expected, rtol=1.0e-5, atol=1.0e-7)
+    np.testing.assert_allclose(cached.model.compile_logp(vars=[cached.model["y"]])(point), expected)
+    assert all(value is None for value in cached.model.rvs_to_initial_values.values())
+    np.testing.assert_array_equal(cached.initial_values["ou_site_amplitude"], [0.3, 0.4])
 
 
 def test_active_prior_is_prepared_once_for_graph_and_sampler(
@@ -277,8 +312,83 @@ def test_active_prior_is_prepared_once_for_graph_and_sampler(
     assert step_args["state_target_accept"] == 0.92
     assert step_args["modelled_mean"] is cached.modelled_mean
     assert step_args["states"] == cached.states
+    assert step_args["cached_state_logp"] is cached.cached_state_logp
     assert "state_location" not in step_args
     assert "state_cholesky" not in step_args
+
+
+@pytest.mark.parametrize("positive_offset", [False, True])
+def test_lifted_prior_starts_and_caller_transforms_preserve_complete_state_target(positive_offset):
+    inputs = _boundary_inputs()
+    cached = _build(
+        inputs=inputs, boundary_sensitivity=inputs["H_bc"],
+        bc_prior={"pdf": "lognormal", "mu": 0.0, "sigma": 0.1, "initval": np.full(8, 0.8)},
+        offset_prior=(
+            {"pdf": "lognormal", "mu": -1.6, "sigma": 0.3, "initval": "prior"}
+            if positive_offset else {"pdf": "normal", "mu": 0.2, "sigma": 0.1, "initval": "prior"}
+        ),
+    )
+    assert all(value is None for value in cached.model.rvs_to_initial_values.values())
+    np.testing.assert_array_equal(cached.initial_values["bc"].eval(), np.full(8, 0.8))
+    assert cached.initial_values["offset_latent"] == "prior"
+    offset_value_name = cached.model.rvs_to_values[cached.states[-1]].name
+    sampler = co2_cached_sigma_runner._sampler_for_cached_graph(
+        RhimeSampler(chains=3, sample_kwargs={"initvals": [
+            {"ou_site_amplitude_log__": np.log([0.6, 0.7]), "bc_log__": np.log(np.full(8, 0.9))},
+            {"ou_site_amplitude": [0.2, 0.5], "bc": np.full(8, 1.1)},
+            None,
+        ]}),
+        cached_model=cached, sigma_target_accept=0.8, state_target_accept=0.9,
+    )
+    starts = [make_initial_point_fn(
+        model=cached.model, overrides=overrides, return_transformed=True,
+    )(seed=seed) for overrides, seed in zip(sampler.sample_kwargs["initvals"], [769, 770, 771], strict=True)]
+    np.testing.assert_allclose(starts[0]["ou_site_amplitude_log__"], np.log([0.6, 0.7]))
+    np.testing.assert_allclose(starts[1]["ou_site_amplitude_log__"], np.log([0.2, 0.5]))
+    np.testing.assert_allclose(starts[0]["bc_log__"], np.log(0.9))
+    np.testing.assert_allclose(starts[1]["bc_log__"], np.log(1.1))
+    np.testing.assert_allclose(starts[2]["ou_site_amplitude_log__"], np.log([0.3, 0.4]))
+    np.testing.assert_allclose(starts[2]["bc_log__"], np.log(0.8))
+    assert not np.array_equal(starts[0][offset_value_name], starts[1][offset_value_name])
+    repeated = make_initial_point_fn(
+        model=cached.model, overrides=sampler.sample_kwargs["initvals"][0], return_transformed=True,
+    )(seed=769)
+    np.testing.assert_array_equal(starts[0][offset_value_name], repeated[offset_value_name])
+    state_step = sampler.sample_kwargs["step"].methods[1]
+    mean = cached.model.compile_fn(
+        cached.model.replace_rvs_by_values([cached.modelled_mean])[0],
+        inputs=cached.model.value_vars, on_unused_input="ignore",
+    )
+    public_logp = cached.model.compile_logp()
+    public_gradient = cached.model.compile_dlogp(vars=list(cached.states))
+    for point in starts:
+        amplitude = np.exp(point["ou_site_amplitude_log__"])
+        cached.shared_cache.update(cached.target.refresh(amplitude))
+        state_step._logp_dlogp_func.set_extra_values(point)
+        actual, gradient = state_step._logp_dlogp_func(DictToArrayBijection.map(
+            {name: point[name] for name in state_step.var_names}
+        ))
+        # LogNormal physical density plus the log transform Jacobian equals
+        # this Normal density in log space; omitting either term changes it.
+        prior = (
+            norm.logpdf(point["flux_scaling_latent"]).sum()
+            + norm.logpdf(point["bc_log__"], scale=0.1).sum()
+            + norm.logpdf(
+                point[offset_value_name], loc=-1.6 if positive_offset else 0.2,
+                scale=0.3 if positive_offset else 0.1,
+            ).sum()
+            + halfnorm.logpdf(amplitude, scale=0.75).sum()
+            + point["ou_site_amplitude_log__"].sum()
+        )
+        expected = prior + multivariate_normal.logpdf(
+            inputs["mf"].values, mean=mean(point),
+            cov=_dense_fixed_ou_covariance(inputs, amplitude, {"AAA": 3.0, "BBB": 7.0}),
+        )
+        np.testing.assert_allclose(actual, expected, atol=1e-8)
+        np.testing.assert_allclose(actual, public_logp(point), atol=1e-8)
+        np.testing.assert_allclose(
+            gradient, public_gradient(point), atol=1e-8,
+        )
 
 
 def test_cached_boundary_and_default_site_offset_match_dense_oracle_at_varied_points() -> None:
@@ -307,7 +417,7 @@ def test_cached_boundary_and_default_site_offset_match_dense_oracle_at_varied_po
         observation_error=inputs["mf_error"],
         aggregation_error=resolve_aggregation_error(inputs, "dense"),
         tau_hours={"AAA": 3.0, "BBB": 7.0},
-        site_amplitude_prior_scale=0.75,
+        site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
         initial_site_amplitudes={"AAA": 0.3, "BBB": 0.4},
         state_activity=StateActivity(
             active=xr.DataArray(
@@ -329,7 +439,7 @@ def test_cached_boundary_and_default_site_offset_match_dense_oracle_at_varied_po
 
     value_vars = [cached.model.rvs_to_values[rv] for rv in cached.states]
     likelihood = cached.model.replace_rvs_by_values(
-        [cached.model["cached_fixed_ou_likelihood"]]
+        [cached.cached_state_logp]
     )[0]
     outputs = cached.model.replace_rvs_by_values(
         [
@@ -338,7 +448,7 @@ def test_cached_boundary_and_default_site_offset_match_dense_oracle_at_varied_po
             cached.model["co2_flux_contribution"],
             cached.model["mu_bc"],
             cached.model["offset"],
-            cached.model["cached_fixed_ou_likelihood"],
+            cached.cached_state_logp,
             cached.model["flux_scaling"],
         ]
     )
@@ -352,7 +462,7 @@ def test_cached_boundary_and_default_site_offset_match_dense_oracle_at_varied_po
         inputs=cached.model.value_vars,
         on_unused_input="ignore",
     )
-    base_point = cached.model.initial_point()
+    base_point = _initial_point(cached)
     state_names = [cast(str, variable.name) for variable in value_vars]
     assert state_names == ["flux_scaling_active_latent", "bc_active", "offset_latent"]
     varied_values = [
@@ -360,11 +470,9 @@ def test_cached_boundary_and_default_site_offset_match_dense_oracle_at_varied_po
         ([0.2], [1.4, 0.6, 1.2, 0.8], [0.5, -0.1]),
         ([0.7], [0.9, 1.5, 0.5, 1.1], [0.15, 0.65]),
     ]
-    covariance = _dense_fixed_ou_covariance(
-        inputs,
-        np.asarray([0.3, 0.4]),
-        {"AAA": 3.0, "BBB": 7.0},
-    )
+    state_step = _compound(cached).methods[1]
+    public_logp = cached.model.compile_logp()
+    public_gradient = cached.model.compile_dlogp(vars=list(cached.states))
 
     def varied_point(values: tuple[list[float], list[float], list[float]]) -> dict[str, Any]:
         point = {name: np.asarray(value).copy() for name, value in base_point.items()}
@@ -377,7 +485,9 @@ def test_cached_boundary_and_default_site_offset_match_dense_oracle_at_varied_po
             multivariate_normal.logpdf(
                 inputs["mf"].values,
                 mean=np.asarray(mean_fn(point)),
-                cov=covariance,
+                cov=_dense_fixed_ou_covariance(
+                    inputs, np.exp(point["ou_site_amplitude_log__"]), {"AAA": 3.0, "BBB": 7.0},
+                ),
             )
         )
 
@@ -385,6 +495,9 @@ def test_cached_boundary_and_default_site_offset_match_dense_oracle_at_varied_po
     gradient_point: dict[str, Any] | None = None
     for index, values in enumerate(varied_values):
         point = varied_point(values)
+        amplitude = np.asarray([(0.3, 0.4), (0.6, 0.2), (0.25, 0.8)][index])
+        point["ou_site_amplitude_log__"] = np.log(amplitude)
+        cached.shared_cache.update(cached.target.refresh(amplitude))
         evaluated = list(map(np.asarray, compiled(point)))
         total, fixed, flux, boundary, offset, cached_logp, flux_scaling = evaluated[:7]
         np.testing.assert_allclose(total, flux + boundary + offset)
@@ -394,6 +507,19 @@ def test_cached_boundary_and_default_site_offset_match_dense_oracle_at_varied_po
         )
         logp_rtol = 2.0e-6 if np.asarray(cached_logp).dtype == np.float32 else 2.0e-10
         assert float(cached_logp) == pytest.approx(dense_logp(point), rel=logp_rtol)
+        prior = (
+            norm.logpdf(point[state_names[0]]).sum()
+            + norm.logpdf(point[state_names[1]], loc=1.0, scale=0.1).sum()
+            + norm.logpdf(point[state_names[2]], loc=0.2, scale=0.1).sum()
+            + halfnorm.logpdf(amplitude, scale=0.75).sum()
+            + np.log(amplitude).sum()
+        )
+        state_step._logp_dlogp_func.set_extra_values(point)
+        state_point = DictToArrayBijection.map({name: point[name] for name in state_step.var_names})
+        state_logp, state_gradient = state_step._logp_dlogp_func(state_point)
+        np.testing.assert_allclose(state_logp, dense_logp(point) + prior, atol=1e-8)
+        np.testing.assert_allclose(state_logp, public_logp(point), atol=1e-8)
+        np.testing.assert_allclose(state_gradient, public_gradient(point), atol=1e-8)
         if index == 1:
             gradient_values = evaluated[7:]
             gradient_point = point
@@ -482,7 +608,7 @@ def test_cached_offset_modes_match_completed_mean_and_dense_likelihood(
         observation_error=inputs["mf_error"],
         aggregation_error=resolve_aggregation_error(inputs, "dense"),
         tau_hours={"AAA": 3.0, "BBB": 7.0},
-        site_amplitude_prior_scale=0.75,
+        site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
         offset_prior=offset_prior,
         offset_per_site=offset_per_site,
         offset_freq=offset_freq,
@@ -495,7 +621,7 @@ def test_cached_offset_modes_match_completed_mean_and_dense_likelihood(
             cached.model["co2_flux_contribution"],
             cached.model["flux_scaling"],
             cached.model["offset"],
-            cached.model["cached_fixed_ou_likelihood"],
+            cached.cached_state_logp,
         ]
     )
     compiled = cached.model.compile_fn(
@@ -503,7 +629,7 @@ def test_cached_offset_modes_match_completed_mean_and_dense_likelihood(
         inputs=cached.model.value_vars,
         on_unused_input="ignore",
     )
-    point = cached.model.initial_point()
+    point = _initial_point(cached)
     for state in cached.states:
         value_name = cast(str, cached.model.rvs_to_values[state].name)
         point[value_name] = np.full_like(point[value_name], 0.25)
@@ -566,7 +692,7 @@ def test_cached_all_fixed_flux_uses_other_active_component(
         observation_error=inputs["mf_error"],
         aggregation_error=resolve_aggregation_error(inputs, "dense"),
         tau_hours={"AAA": 3.0, "BBB": 7.0},
-        site_amplitude_prior_scale=0.75,
+        site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
         state_activity=StateActivity(active=False, fixed_value=fixed_flux),
         **kwargs,
     )
@@ -582,37 +708,91 @@ def test_cached_all_fixed_flux_uses_other_active_component(
         cached.model.replace_rvs_by_values(
             [
                 cached.model["modelled_concentration"],
-                cached.model["cached_fixed_ou_likelihood"],
+                cached.cached_state_logp,
             ]
         ),
         inputs=cached.model.value_vars,
         on_unused_input="ignore",
-    )(cached.model.initial_point())
+    )(_initial_point(cached))
     assert float(potential) == pytest.approx(
         cached.target.log_likelihood_from_mean(mean, np.asarray([0.75, 0.75]))
     )
+    point = _initial_point(cached)
+    state_step = _compound(cached).methods[1]
+    state_step._logp_dlogp_func.set_extra_values(point)
+    actual, gradient = state_step._logp_dlogp_func(DictToArrayBijection.map(
+        {name: point[name] for name in state_step.var_names}
+    ))
+    prior_location = 1.0 if active_component == "boundary" else 0.2
+    prior = sum(norm.logpdf(point[name], loc=prior_location, scale=0.1).sum() for name in state_step.var_names)
+    prior += halfnorm.logpdf([0.75, 0.75], scale=0.75).sum() + np.log([0.75, 0.75]).sum()
+    np.testing.assert_allclose(actual, float(potential) + prior, atol=1e-7)
+    np.testing.assert_allclose(actual, cached.model.compile_logp()(point), atol=1e-8)
+    np.testing.assert_allclose(gradient, cached.model.compile_dlogp(vars=list(cached.states))(point), atol=1e-8)
 
 
-def test_cached_rejects_model_without_active_affine_coefficients() -> None:
-    """Reject a cached graph with no coefficient for its state transition."""
+@pytest.mark.parametrize("centered", [False, True])
+def test_cached_all_fixed_states_infer_amplitudes(centered) -> None:
+    """A fixed mean still has an inferred covariance and exact amplitude transition."""
     inputs = _inputs()
     prior = CorrelatedLognormalPrior(
-        inputs["alpha_prior_mean"],
-        inputs["alpha_prior_covariance"],
-        covariance_dim="region_cov",
+        inputs["alpha_prior_mean"], inputs["alpha_prior_covariance"], covariance_dim="region_cov",
     )
+    boundary_options = {}
+    shift = np.zeros(4)
+    if centered:
+        operands = xr.Dataset({
+            "H_bc_anomaly": xr.DataArray(np.full((4,1), .03), dims=("nmeasure", "bc_region"), attrs={"units": "ppm"}),
+            "H_bc_mass": xr.DataArray(np.full((4,1), .1), dims=("nmeasure", "bc_region"), attrs={"units": "1"}),
+            "bc_reference": xr.DataArray(400., attrs={"units": "ppm"}),
+        }, coords={"nmeasure": inputs.nmeasure, "bc_region": ["constant"]}, attrs={"boundary_representation": "centered-v1"})
+        shift[:] = 40.
+        inputs["mf"] = inputs.mf + shift
+        inputs.mf.attrs["units"] = "ppm"
+        boundary_options = dict(boundary_operands=operands, bc_state_activity=StateActivity(active=False, fixed_value=1.2))
+    cached = build_co2_cached_sigma_model(
+        inputs["H"], retained_prior=prior,
+        fixed_prior_contribution=inputs["fixed_prior_contribution"], observations=inputs["mf"],
+        observation_error=inputs["mf_error"], aggregation_error=resolve_aggregation_error(inputs, "dense"),
+        tau_hours={"AAA": 3.0, "BBB": 7.0, "DROPPED": 9.0},
+        site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
+        initial_site_amplitudes={"AAA": 0.5, "BBB": 0.7, "DROPPED": 1.0},
+        state_activity=StateActivity(active=False),
+        **boundary_options,
+    )
+    assert cached.states == ()
+    assert cached.target.design.shape == (4, 0)
+    amplitude = np.asarray([0.5, 0.7])
+    expected = multivariate_normal.logpdf(
+        inputs["mf"].values-shift, mean=cached.modelled_mean.eval(),
+        cov=_dense_fixed_ou_covariance(inputs, amplitude, {"AAA": 3.0, "BBB": 7.0}),
+    )
+    np.testing.assert_allclose(cached.target.refresh(amplitude).log_likelihood(np.empty(0)), expected)
+    sampler = co2_cached_sigma_runner._sampler_for_cached_graph(
+        RhimeSampler(draws=3, tune=2, chains=1, nuts_sampler="pymc"), cached_model=cached,
+        sigma_target_accept=0.8, state_target_accept=0.9,
+    )
+    step = sampler.sample_kwargs["step"]
+    assert len(step.methods) == 1
+    point = make_initial_point_fn(model=cached.model, overrides=cached.initial_values, return_transformed=True)(seed=3)
+    updated, _ = step.step(point)
+    assert np.isfinite(updated["ou_site_amplitude_log__"]).all()
 
-    with pytest.raises(ValueError, match="at least one active flux, boundary, or offset"):
+
+@pytest.mark.parametrize("name", ["tau_hours", "initial_site_amplitudes"])
+@pytest.mark.parametrize("invalid", [True, "bad", 0.0, -1.0, float("nan")])
+def test_cached_mapping_validates_dropped_sites(name, invalid):
+    inputs = _inputs()
+    options = {"tau_hours": {"AAA": 3.0, "BBB": 7.0},
+               "initial_site_amplitudes": {"AAA": 0.5, "BBB": 0.7}}
+    options[name]["DROPPED"] = invalid
+    with pytest.raises(ValueError, match="numeric|positive"):
         build_co2_cached_sigma_model(
-            inputs["H"],
-            retained_prior=prior,
-            fixed_prior_contribution=inputs["fixed_prior_contribution"],
-            observations=inputs["mf"],
-            observation_error=inputs["mf_error"],
-            aggregation_error=resolve_aggregation_error(inputs, "dense"),
-            tau_hours={"AAA": 3.0, "BBB": 7.0},
-            site_amplitude_prior_scale=0.75,
-            state_activity=StateActivity(active=False),
+            inputs["H"], retained_prior=CorrelatedLognormalPrior(
+                inputs["alpha_prior_mean"], inputs["alpha_prior_covariance"], covariance_dim="region_cov"),
+            fixed_prior_contribution=inputs["fixed_prior_contribution"], observations=inputs["mf"],
+            observation_error=inputs["mf_error"], aggregation_error=resolve_aggregation_error(inputs, "dense"),
+            site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75}, **options,
         )
 
 
@@ -643,7 +823,7 @@ def test_cached_state_dimensions_include_boundary_and_offset_coefficients(
         observation_error=inputs["mf_error"],
         aggregation_error=resolve_aggregation_error(inputs, "dense"),
         tau_hours={"AAA": 3.0, "BBB": 7.0},
-        site_amplitude_prior_scale=0.75,
+        site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
         state_activity=StateActivity(active=np.asarray([True, False])),
         boundary_sensitivity=inputs["H_bc"],
         bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
@@ -659,82 +839,124 @@ def test_cached_state_dimensions_include_boundary_and_offset_coefficients(
     )
 
 
-def test_joint_outputs_are_exact_and_predict_complete_correlated_vectors() -> None:
-    cached = _build()
-    draws = 6_000
-    state = np.broadcast_to(np.asarray([1.0, 1.0]), (1, draws, 2)).copy()
-    sigma = np.broadcast_to(np.asarray([0.5, 0.8]), (1, draws, 2)).copy()
-    inputs = _inputs()
-    modelled_mean = np.broadcast_to(
-        inputs["fixed_prior_contribution"].values + inputs["H"].values @ np.ones(2),
-        (1, draws, 4),
-    ).copy()
-    posterior = xr.Dataset(
-        {
-            "flux_scaling": (("chain", "draw", "region"), state),
-            "modelled_concentration": (("chain", "draw", "nmeasure"), modelled_mean),
-            "ou_site_amplitude": (("chain", "draw", "ou_site"), sigma),
-        },
-        coords={
-            "chain": [0],
-            "draw": np.arange(draws),
-            "region": ["biosphere", "fossil"],
-            "nmeasure": inputs["nmeasure"].values,
-            "ou_site": ["AAA", "BBB"],
-        },
-    )
+def _assert_native_joint_outputs(cached, covariance):
+    """Check both native predictions and density with deliberately stale cache."""
+    cached.shared_cache.update(cached.target.refresh(np.full(cached.target.n_group, 3.0)))
+    with cached.model:
+        prior = pm.sample_prior_predictive(draws=1000, random_seed=769)
+        repeated = pm.sample_prior_predictive(draws=1000, random_seed=769)
+    np.testing.assert_array_equal(prior.prior_predictive.y, repeated.prior_predictive.y)
+    means = prior.prior[cached.modelled_mean.name].values[0]
+    amplitudes = prior.prior[cached.amplitude.name].values[0]
+    residual = prior.prior_predictive.y.values[0] - means
+    whitened = np.stack([
+        np.linalg.solve(np.linalg.cholesky(covariance(sigma)), noise)
+        for noise, sigma in zip(residual, amplitudes, strict=True)
+    ])
+    np.testing.assert_allclose(whitened.mean(axis=0), 0.0, atol=0.16)
+    np.testing.assert_allclose(np.cov(whitened.T), np.eye(cached.target.n_obs), atol=0.18)
+    chains = []
+    for chain in range(2):
+        sections = [
+            prior.prior.to_dataset().isel(chain=0, draw=2 * chain + half, drop=True)
+            .expand_dims(draw=np.arange(half * 500, (half + 1) * 500))
+            for half in range(2)
+        ]
+        chains.append(xr.concat(sections, dim="draw"))
+    posterior = xr.concat(chains, dim=xr.IndexVariable("chain", [0, 1]))
     trace = xr.DataTree.from_dict({"posterior": posterior})
-
-    result = co2_cached_sigma_runner._append_joint_outputs(
-        trace,
-        cached_model=cached,
-        observations=inputs["mf"],
-        posterior_predictive=True,
-        random_seed=42,
-    )
-
-    expected_logp = cached.target.log_likelihood_from_mean(
-        modelled_mean[0, 0],
-        [0.5, 0.8],
-    )
-    np.testing.assert_allclose(result.log_likelihood["y"], expected_logp)
-    assert result.log_likelihood["y"].dims == ("chain", "draw")
-    assert result.log_likelihood["y"].attrs["rhime_likelihood_scope"] == (
-        "joint_observation_vector"
-    )
-    predictive = np.asarray(result.posterior_predictive["y"]).reshape(draws, 4)
-    expected_covariance = (
-        inputs["aggregation_error_covariance"].values
-        + np.diag(inputs["mf_error"].values ** 2)
-    )
-    expected_covariance[:2, :2] += 0.5**2 * np.asarray(
-        [[1.0, np.exp(-1.0)], [np.exp(-1.0), 1.0]]
-    )
-    expected_covariance[2:, 2:] += 0.8**2 * np.asarray(
-        [[1.0, np.exp(-4.0 / 7.0)], [np.exp(-4.0 / 7.0), 1.0]]
-    )
+    cached.shared_cache.update(cached.target.refresh(np.full(cached.target.n_group, 4.0)))
+    with cached.model:
+        predictions = pm.sample_posterior_predictive(
+            trace, var_names=["y", cached.modelled_mean.name], random_seed=770, progressbar=False,
+        )
+        repeated = pm.sample_posterior_predictive(
+            trace, var_names=["y"], random_seed=770, progressbar=False,
+        )
+    np.testing.assert_array_equal(predictions.posterior_predictive.y, repeated.posterior_predictive.y)
     np.testing.assert_allclose(
-        np.cov(predictive, rowvar=False),
-        expected_covariance,
-        atol=0.035,
+        predictions.posterior_predictive[cached.modelled_mean.name], posterior[cached.modelled_mean.name],
     )
-    assert result.posterior_predictive["y"].attrs["rhime_predictive_scope"] == (
-        "joint_observation_vector"
+    assert predictions.posterior_predictive.y.shape == (2, 1000, cached.target.n_obs)
+    assert not np.allclose(posterior[cached.modelled_mean.name][0], posterior[cached.modelled_mean.name][1])
+    pm.compute_log_likelihood(trace, model=cached.model, progressbar=False)
+    assert trace.log_likelihood.y.dims == ("chain", "draw")
+    for chain in range(2):
+        for half in range(2):
+            section = slice(half * 500, (half + 1) * 500)
+            sigma = posterior[cached.amplitude.name].values[chain, section.start]
+            mean = posterior[cached.modelled_mean.name].values[chain, section.start]
+            dense = covariance(sigma)
+            expected = multivariate_normal.logpdf(cached.target.observations, mean=mean, cov=dense)
+            np.testing.assert_allclose(trace.log_likelihood.y.values[chain, section], expected, atol=1e-8)
+            noise = predictions.posterior_predictive.y.values[chain, section] - mean
+            whitened = np.linalg.solve(np.linalg.cholesky(dense), noise.T).T
+            np.testing.assert_allclose(whitened.mean(axis=0), 0.0, atol=0.18)
+            np.testing.assert_allclose(np.cov(whitened.T), np.eye(cached.target.n_obs), atol=0.27)
+    alternate = pt.dvector("alternate_observations")
+    density = cached.model.replace_rvs_by_values([pm.logp(cached.model["y"], alternate)])[0]
+    evaluate = cached.model.compile_fn(
+        density, inputs=[alternate, *cached.model.value_vars], point_fn=False, on_unused_input="ignore",
+    )
+    point = _initial_point(cached)
+    mean_fn = cached.model.compile_fn(
+        cached.model.replace_rvs_by_values([cached.modelled_mean])[0],
+        inputs=cached.model.value_vars, on_unused_input="ignore",
+    )
+    value = cached.target.observations + np.linspace(-0.4, 0.7, cached.target.n_obs)
+    sigma = np.exp(point[cached.model.rvs_to_values[cached.amplitude].name])
+    expected = multivariate_normal.logpdf(value, mean=mean_fn(point), cov=covariance(sigma))
+    np.testing.assert_allclose(
+        evaluate(value, *[point[variable.name] for variable in cached.model.value_vars]), expected, atol=1e-8,
+    )
+
+
+def test_native_joint_outputs_use_each_draw_and_ignore_sampler_cache():
+    inputs = _inputs()
+    _assert_native_joint_outputs(
+        _build(), lambda amplitude: _dense_fixed_ou_covariance(inputs, amplitude, {"AAA": 3.0, "BBB": 7.0}),
     )
 
 
 @pytest.mark.parametrize("prior_predictive", [8, True, False])
+def test_cached_sampler_preserves_prior_predictive_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    prior_predictive: bool | int,
+) -> None:
+    """The cached adapter leaves draw-count policy to the generic sampler."""
+    monkeypatch.setattr(
+        co2_cached_sigma_runner,
+        "make_cached_sigma_compound_step",
+        lambda **_: object(),
+    )
+    sampler = RhimeSampler(
+        draws=3,
+        burn=1,
+        chains=2,
+        sample_prior_predictive=prior_predictive,
+    )
+
+    configured = co2_cached_sigma_runner._sampler_for_cached_graph(
+        sampler,
+        cached_model=_build(),
+        sigma_target_accept=0.8,
+        state_target_accept=0.9,
+    )
+
+    assert configured.sample_prior_predictive == prior_predictive
+    assert type(configured.sample_prior_predictive) is type(prior_predictive)
+
+
 def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    prior_predictive: bool | int,
 ) -> None:
     """The named runner samples the real graph and labels every cached output."""
     inputs = _boundary_inputs()
     step_settings: dict[str, float] = {}
     original_make_step = co2_cached_sigma_runner.make_cached_sigma_compound_step
 
-    def capture_step_settings(**kwargs: Any) -> pm.CompoundStep:
+    def capture_step_settings(**kwargs: Any) -> CompoundStep:
         step_settings["sigma_target_accept"] = kwargs["sigma_target_accept"]
         step_settings["state_target_accept"] = kwargs["state_target_accept"]
         return original_make_step(**kwargs)
@@ -743,9 +965,6 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
         inv_inputs = inputs
         rhime_inputs = None
         aggregation_error_mode = "dense"
-
-        def validated(self) -> "PreparedInputsStub":
-            return self
 
     selected: list[tuple[str, ...]] = []
 
@@ -764,46 +983,54 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
         capture_step_settings,
     )
     sampler = RhimeSampler(
-        draws=2,
+        draws=3,
+        burn=1,
         tune=2,
-        chains=1,
+        chains=2,
         progressbar=False,
         sample_kwargs={
             "random_seed": 147,
             "cores": 1,
             "compute_convergence_checks": False,
         },
-        sample_prior_predictive=prior_predictive,
+        sample_prior_predictive=8,
+        sample_posterior_predictive=("concentration", "y", "concentration"),
         posterior_predictive_kwargs={"random_seed": 148},
     )
 
-    result = run_rhime_co2_cached_sigma(
-        prepared_inputs=cast(Any, PreparedInputsStub()),
-        tau_hours={"AAA": 3.0, "BBB": 7.0},
-        site_amplitude_prior_scale=0.75,
-        initial_site_amplitudes=0.4,
-        sampler=sampler,
-        sigma_target_accept=0.82,
-        state_target_accept=0.93,
-        use_bc=True,
-        bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
-        bc_state_activity=StateActivity(
-            active=np.asarray([True, False, False, False, False, False, False, False]),
-            fixed_value=1.0,
-        ),
-        offset_prior={"pdf": "normal", "mu": 0.2, "sigma": 0.1},
+    result, actual = sample_co2_inference(
+        cast(Any, PreparedInputsStub()),
+        {
+            "use_bc": True,
+            "bc_prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+            "bc_state_activity": StateActivity(
+                active=np.asarray([True, False, False, False, False, False, False, False]),
+                fixed_value=1.0,
+            ),
+            "offset_prior": {"pdf": "normal", "mu": 0.2, "sigma": 0.1},
+            "likelihood_builder": add_fixed_ou_gaussian_likelihood,
+            "likelihood_kwargs": {
+                "tau_hours": {"AAA": 3.0, "BBB": 7.0},
+                "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.75},
+                "initial_site_amplitudes": 0.4,
+            },
+        },
+        sampler, sigma_target_accept=0.82, state_target_accept=0.93,
     )
 
     assert step_settings == {
         "sigma_target_accept": 0.82,
         "state_target_accept": 0.93,
     }
+    assert actual["sigma_target_accept"] == 0.82
+    assert actual["state_target_accept"] == 0.93
+    assert json.loads(result.attrs["rhime_actual_inference"]) == actual
     assert len(selected) == 1
     assert selected[0].count("H_bc") == 1
-    assert result.posterior["flux_scaling"].shape == (1, 2, 2)
-    assert result.posterior["bc"].shape == (1, 2, 8)
-    assert result.posterior["offset"].shape == (1, 2, 4)
-    assert result.posterior["offset_latent"].shape == (1, 2, 2)
+    assert result.posterior["flux_scaling"].shape == (2, 2, 2)
+    assert result.posterior["bc"].shape == (2, 2, 8)
+    assert result.posterior["offset"].shape == (2, 2, 4)
+    assert result.posterior["offset_latent"].shape == (2, 2, 2)
     assert result.posterior["offset_latent"].dims == (
         "chain",
         "draw",
@@ -814,8 +1041,10 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
         ["AAA", "BBB"],
     )
     assert result.posterior["offset_latent"].attrs["units"] == "ppm"
-    assert result.posterior_predictive["y"].shape == (1, 2, 4)
-    assert result.log_likelihood["y"].shape == (1, 2)
+    assert result.posterior_predictive["y"].shape == (2, 2, 4)
+    np.testing.assert_array_equal(result.posterior_predictive.draw, np.arange(2))
+    assert result.posterior_predictive.attrs["burn"] == 1
+    assert result.log_likelihood["y"].shape == (2, 2)
     roles = json.loads(result.attrs["rhime_variable_roles"])
     metadata = json.loads(result.attrs["rhime_model_metadata"])
     assert roles["boundary_concentration"] == "mu_bc"
@@ -823,13 +1052,9 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     assert roles["boundary_sensitivity"] == "hbc"
     assert "baseline_concentration" not in roles
     assert "baseline_scale" not in roles
-    assert json.loads(result.posterior["bc"].attrs["rhime_scientific_roles"]) == [
-        "boundary_scale"
-    ]
-    assert json.loads(result.posterior["mu_bc"].attrs["rhime_scientific_roles"]) == [
-        "boundary_concentration"
-    ]
-    assert metadata["recipe"] == "co2_cached_sigma_fixed_ou"
+    assert json.loads(result.posterior["bc"].attrs["rhime_scientific_roles"]) == ["boundary_scale"]
+    assert json.loads(result.posterior["mu_bc"].attrs["rhime_scientific_roles"]) == ["boundary_concentration"]
+    assert metadata["recipe"] == "co2"
     assert "sampler" not in metadata
     assert "numerical_preparation" not in metadata
     assert "rhime_sampler_provenance" not in result.attrs
@@ -839,22 +1064,13 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     }
     assert result.posterior["ou_site_amplitude"].attrs["units"] == "ppm"
     assert result.posterior_predictive["y"].attrs["units"] == "ppm"
-    assert json.loads(result.posterior_predictive["y"].attrs["rhime_scientific_roles"]) == [
-        "concentration"
-    ]
+    assert json.loads(result.posterior_predictive["y"].attrs["rhime_scientific_roles"]) == ["concentration"]
     assert "units" not in result.log_likelihood["y"].attrs
-    assert json.loads(result.log_likelihood["y"].attrs["rhime_scientific_roles"]) == [
-        "joint_log_likelihood"
-    ]
-    assert result.posterior.attrs["rhime_recipe"] == "co2_cached_sigma_fixed_ou"
+    assert json.loads(result.log_likelihood["y"].attrs["rhime_scientific_roles"]) == ["joint_log_likelihood"]
+    assert result.posterior.attrs["rhime_recipe"] == "co2"
 
-    if not prior_predictive:
-        assert "prior" not in result.children
-        assert "prior_predictive" not in result.children
-        return
-    prior_count = 2 if prior_predictive is True else int(prior_predictive)
-    assert result.prior.sizes["draw"] == prior_count
-    assert result.prior_predictive["y"].shape == (1, prior_count, 4)
+    assert result.prior.sizes["draw"] == 8
+    assert result.prior_predictive["y"].shape == (1, 8, 4)
     assert result.prior_predictive["y"].attrs["rhime_predictive_scope"] == "joint_observation_vector"
     assert result.prior_predictive["y"].attrs["units"] == "ppm"
     np.testing.assert_array_equal(result.prior["site"], inputs["site"])
@@ -868,12 +1084,10 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
 
 def test_cached_runner_rejects_generic_target_accept() -> None:
     """The cached runner rejects one target acceptance rate for its two samplers."""
+
     class PreparedInputsStub:
         inv_inputs = _inputs()
         aggregation_error_mode = "dense"
-
-        def validated(self) -> "PreparedInputsStub":
-            return self
 
     prepared = PreparedInputsStub()
     prepared.rhime_inputs = cast(Any, prepared)
@@ -882,9 +1096,247 @@ def test_cached_runner_rejects_generic_target_accept() -> None:
         ValueError,
         match="sigma_target_accept.*state_target_accept",
     ):
-        run_rhime_co2_cached_sigma(
-            prepared_inputs=cast(Any, prepared),
-            tau_hours={"AAA": 3.0, "BBB": 7.0},
-            site_amplitude_prior_scale=0.75,
-            sampler=RhimeSampler(sample_kwargs={"target_accept": 0.95}),
+        sample_co2_inference(
+            cast(Any, prepared),
+            {
+                "likelihood_builder": add_fixed_ou_gaussian_likelihood,
+                "likelihood_kwargs": {
+                    "tau_hours": {"AAA": 3.0, "BBB": 7.0},
+                    "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.75},
+                },
+            },
+            RhimeSampler(sample_kwargs={"target_accept": 0.95}),
         )
+
+
+@pytest.mark.parametrize("options", [
+    {"sample_posterior_predictive": ("flux_scaling",)},
+    {"sample_posterior_predictive": False, "posterior_predictive_kwargs": {"var_names": ["y"]}},
+])
+def test_cached_predictive_options_fail_before_constructing_step(monkeypatch, options):
+    monkeypatch.setattr(
+        co2_cached_sigma_runner, "make_cached_sigma_compound_step",
+        lambda **_: pytest.fail("Invalid predictive options must fail before constructing a sampler."),
+    )
+    with pytest.raises(ValueError, match="predict|random_seed"):
+        co2_cached_sigma_runner._sampler_for_cached_graph(
+            RhimeSampler(**options),
+            cached_model=cast(Any, object()),
+            sigma_target_accept=0.8,
+            state_target_accept=0.9,
+        )
+
+
+def test_cached_sampler_honors_disabled_likelihood_and_posterior_prediction():
+    cached = _build()
+    sampler = co2_cached_sigma_runner._sampler_for_cached_graph(
+        RhimeSampler(
+            draws=3, tune=3, chains=1, burn=1, sample_prior_predictive=4, sample_posterior_predictive=False,
+            sample_kwargs={"cores": 1, "random_seed": 769, "compute_convergence_checks": False,
+                           "idata_kwargs": {"log_likelihood": False}},
+        ),
+        cached_model=cached, sigma_target_accept=0.8, state_target_accept=0.9,
+    )
+    trace = sampler.sample(cached.model, variable_roles={"concentration": "y"})
+    assert "log_likelihood" not in trace.children
+    assert "posterior_predictive" not in trace.children
+    assert trace.prior_predictive.y.shape == (1, 4, 4)
+    assert trace.posterior.sizes["draw"] == 2
+
+
+@pytest.mark.parametrize("initial, expected", [(None, [0.8, 0.8]), (0.4, [0.4, 0.4]), ({"AAA": 0.3, "BBB": 0.7}, [0.3, 0.7])])
+def test_bounded_amplitude_prior_resolves_support_point_and_explicit_starts(initial, expected):
+    cached = _build(site_amplitude_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.5}, initial_site_amplitudes=initial)
+    np.testing.assert_allclose(cached.initial_cache.sigma, expected)
+    point = _initial_point(cached)
+    assert "ou_site_amplitude_interval__" in point
+    assert np.isfinite(point["ou_site_amplitude_interval__"]).all()
+    assert np.isfinite(cached.model.compile_logp()(point))
+    assert all(value is None for value in cached.model.rvs_to_initial_values.values())
+
+
+@pytest.mark.parametrize("initial", [0.1, 1.5, 1.6, 0.0, float("nan")])
+def test_bounded_amplitude_prior_rejects_invalid_or_endpoint_start(initial):
+    with pytest.raises(ValueError, match="Initial site amplitudes"):
+        _build(site_amplitude_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.5}, initial_site_amplitudes=initial)
+
+
+@pytest.mark.parametrize("parameter", [0.7, np.array([0.6, 0.8]), xr.DataArray([0.8, 0.6], dims="ou_site", coords={"ou_site": ["BBB", "AAA"]})])
+def test_cached_positive_prior_uses_scalar_positional_and_labelled_parameters(parameter):
+    from openghg_inversions.models.priors import prior_records
+
+    cached = _build(site_amplitude_prior={"pdf": "gamma", "alpha": 2.0, "beta": parameter}, initial_site_amplitudes=None)
+    expected_beta = np.array([0.7, 0.7]) if np.ndim(parameter) == 0 else np.array([0.6, 0.8])
+    np.testing.assert_allclose(cached.initial_cache.sigma, 2.0 / expected_beta)
+    assert prior_records(cached.model)["ou_site_amplitude"]["pdf"] == "gamma"
+
+
+def test_cached_lognormal_normalizes_optional_reparameterization_without_mutating_prior():
+    from openghg_inversions.models.priors import prior_records
+
+    prior = {"pdf": "lognormal", "mean": 0.7, "stdev": 0.3, "reparameterise": True}
+    with pytest.warns(UserWarning, match="reparameterise=True.*False.*physical prior"):
+        cached = _build(site_amplitude_prior=prior, initial_site_amplitudes=None)
+    assert prior == {"pdf": "lognormal", "mean": 0.7, "stdev": 0.3, "reparameterise": True}
+    assert cached.amplitude in cached.model.free_RVs
+    assert prior_records(cached.model)["ou_site_amplitude"] == {**prior, "reparameterise": False}
+    assert np.isfinite(cached.model.compile_logp()(_initial_point(cached)))
+
+
+@pytest.mark.parametrize("storage", ["sparse", "lazy"])
+def test_cached_uniform_prior_materializes_bounds_together_once(storage):
+    import dask.array as da
+    from dask import delayed
+    import sparse
+
+    executions = []
+    values = np.array([[0.0, 0.2], [1.0, 1.2]])
+    if storage == "sparse":
+        lower, upper = (sparse.COO.from_numpy(value) for value in values)
+    else:
+        @delayed
+        def bounds():
+            executions.append(1)
+            return values
+
+        payload = da.from_delayed(bounds(), shape=(2, 2), dtype=float)
+        lower, upper = payload[0], payload[1]
+    prior = {"pdf": "uniform", "lower": lower, "upper": upper}
+    cached = _build(site_amplitude_prior=prior, initial_site_amplitudes=None)
+    np.testing.assert_allclose(cached.initial_cache.sigma, [0.5, 0.7])
+    assert executions == ([1] if storage == "lazy" else [])
+    assert prior["lower"] is lower and prior["upper"] is upper
+    assert isinstance(lower, sparse.COO if storage == "sparse" else da.Array)
+
+
+@pytest.mark.parametrize("frequency,expected_states", [(None, 2), ("monthly", 4)])
+@pytest.mark.parametrize("direct", [False, True])
+def test_cached_runner_reuses_raw_boundary_periods(monkeypatch, frequency, expected_states, direct):
+    inputs = _boundary_inputs().drop_dims("bc_region")
+    inputs["H_bc"] = xr.DataArray(
+        np.ones((4, 2)), dims=("nmeasure", "bc_region"),
+        coords={"nmeasure": inputs.nmeasure, "bc_region": ["north", "south"]},
+        attrs={"units": "ppm", "boundary_sensitivity_preparation": "raw-spatial"},
+    )
+
+    class PreparedInputsStub:
+        inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
+
+    monkeypatch.setattr(co2_cached_sigma_runner, "materialize_pymc_inputs", lambda *a, **k: inputs)
+    if direct:
+        result = _build(inputs=inputs, boundary_sensitivity=inputs.H_bc, bc_freq=frequency)
+    else:
+        result = co2_cached_sigma_runner.build_rhime_co2_cached_sigma(
+            prepared_inputs=cast(Any, PreparedInputsStub()), use_bc=True, bc_freq=frequency,
+            tau_hours=3., site_amplitude_prior={"pdf": "halfnormal", "sigma": .75},
+        )
+    assert result.model["bc"].eval().size == expected_states
+    assert inputs.H_bc.shape == (4, 2)
+
+
+def test_cached_runner_ignores_disabled_centered_boundary(monkeypatch):
+    inputs = _inputs().assign(H_bc_anomaly=xr.DataArray(0.))
+
+    class PreparedInputsStub:
+        inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
+
+    monkeypatch.setattr(co2_cached_sigma_runner, "materialize_pymc_inputs", lambda *a, **k: inputs)
+    result = co2_cached_sigma_runner.build_rhime_co2_cached_sigma(
+        prepared_inputs=cast(Any, PreparedInputsStub()), use_bc=False,
+        tau_hours=3., site_amplitude_prior={"pdf": "halfnormal", "sigma": .75},
+    )
+    assert "bc" not in result.model
+
+
+@pytest.mark.parametrize("all_fixed", [False, True])
+def test_centered_cache_full_operands_dense_density_and_gradients(all_fixed):
+    """Full operands survive zero-design pruning, physical fixed states and offsets."""
+    inputs = _inputs()
+    reference = 400.0
+    mass = np.asarray([[.2, .1, .05], [.3, .1, .05], [.4, .1, .05], [.2, .1, .05]])
+    anomaly = np.asarray([[.01, 0., -20.], [.03, 0., -20.], [-.02, 0., -20.], [.04, 0., -20.]])
+    operands = xr.Dataset({
+        "H_bc_anomaly": (("nmeasure", "bc_region"), anomaly),
+        "H_bc_mass": (("nmeasure", "bc_region"), mass),
+        "bc_reference": xr.DataArray(reference, attrs={"units": "ppm"}),
+    }, coords={"nmeasure": inputs.nmeasure, "bc_region": ["varying", "constant", "zero"]})
+    operands.attrs["boundary_representation"] = "centered-v1"
+    operands.H_bc_anomaly.attrs["units"] = "ppm"
+    operands.H_bc_mass.attrs["units"] = "1"
+    shift = reference * mass.sum(axis=1)
+    inputs["mf"] = inputs.mf + shift
+    inputs.mf.attrs["units"] = "ppm"
+    from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands
+    bound = bind_boundary_operands(operands, inputs.mf)
+    active = xr.DataArray([not all_fixed, not all_fixed, False], dims="bc_region", coords={"bc_region": bound.bc_region})
+    fixed = xr.DataArray([.9, 1.2, .7], dims="bc_region", coords=active.coords)
+    cached = _build(inputs=inputs, boundary_operands=operands,
+        bc_state_activity=StateActivity(active=active, fixed_value=fixed),
+        bc_prior={"pdf": "lognormal", "mu": 0., "sigma": .1},
+        offset_prior={"pdf": "normal", "mu": .2, "sigma": .1})
+    model = cached.model
+    expr = model.replace_rvs_by_values([cached.cached_state_logp, cached.modelled_mean, model["modelled_concentration"], model["bc"], model["co2_flux_contribution"], model["offset"]])
+    evaluate = model.compile_fn(expr, inputs=model.value_vars, on_unused_input="ignore")
+    cache_grad = model.compile_fn(pt.grad(expr[0], [model.rvs_to_values[rv] for rv in cached.states]),
+        inputs=model.value_vars, on_unused_input="ignore")
+    public_likelihood = model.compile_logp(vars=model.observed_RVs)
+    public_gradient = model.compile_dlogp()
+    prior_logp = model.compile_logp(vars=model.free_RVs)
+    point = _initial_point(cached)
+    max_errors = np.zeros(3)
+    for i, amplitude in enumerate(([.3, .4], [.6, .2], [.25, .8])):
+        point["ou_site_amplitude_log__"] = np.log(amplitude)
+        point["flux_scaling_latent"] = np.asarray([-.2 + i*.2, .1-i*.1])
+        if not all_fixed:
+            point["bc_active_log__"] = np.log([.95+i*.03, 1.1-i*.02])
+        point["offset_latent"] = np.asarray([.1+i*.01, -.1])
+        cached.shared_cache.update(cached.target.refresh(np.asarray(amplitude)))
+        cache_logp, centered, absolute, b, flux, offset = evaluate(point)
+        expected_mean = flux + offset + anomaly @ b + reference * (mass @ (b-1))
+        np.testing.assert_allclose(centered, expected_mean, atol=1e-12)
+        np.testing.assert_allclose(absolute, centered + shift, atol=1e-12)
+        dense = multivariate_normal.logpdf(inputs.mf.values-shift, mean=expected_mean,
+            cov=_dense_fixed_ou_covariance(inputs, np.asarray(amplitude), {"AAA": 3., "BBB": 7.}))
+        np.testing.assert_allclose(cache_logp, dense, atol=1e-9)
+        np.testing.assert_allclose(public_likelihood(point), dense, atol=1e-9)
+        max_errors[0] = max(max_errors[0], abs(cache_logp-dense), abs(public_likelihood(point)-dense))
+        # Independent dense finite differences include physical prior transforms/Jacobians.
+        def oracle(p, include_prior=True):
+            _, _, _, b0, flux0, offset0 = evaluate(p)
+            mean0 = flux0+offset0+anomaly@b0+reference*(mass@(b0-1))
+            a0 = np.exp(p["ou_site_amplitude_log__"])
+            likelihood0 = multivariate_normal.logpdf(inputs.mf.values-shift, mean=mean0,
+                cov=_dense_fixed_ou_covariance(inputs,a0,{"AAA":3.,"BBB":7.}))
+            return likelihood0 + prior_logp(p) if include_prior else likelihood0
+        numerical = []
+        for value in model.value_vars:
+            name = value.name
+            for ix in np.ndindex(point[name].shape):
+                plus={k:v.copy() for k,v in point.items()}
+                minus={k:v.copy() for k,v in point.items()}
+                plus[name][ix]+=1e-6
+                minus[name][ix]-=1e-6
+                numerical.append((oracle(plus)-oracle(minus))/2e-6)
+        np.testing.assert_allclose(public_gradient(point), numerical, rtol=3e-5, atol=3e-5)
+        max_errors[1] = max(max_errors[1], np.max(np.abs(public_gradient(point)-numerical)))
+        for rv, gradient in zip(cached.states, cache_grad(point), strict=True):
+            name = model.rvs_to_values[rv].name
+            numerical_state = np.empty_like(point[name])
+            for ix in np.ndindex(point[name].shape):
+                plus={k:v.copy() for k,v in point.items()}
+                minus={k:v.copy() for k,v in point.items()}
+                plus[name][ix]+=1e-6
+                minus[name][ix]-=1e-6
+                numerical_state[ix]=(oracle(plus,False)-oracle(minus,False))/2e-6
+            np.testing.assert_allclose(gradient, numerical_state, rtol=3e-5, atol=3e-5)
+            max_errors[2] = max(max_errors[2], np.max(np.abs(gradient-numerical_state)))
+    print(f"CO2 all_fixed_bc={all_fixed}: density max error={max_errors[0]:.3g}, full-gradient finite-difference error={max_errors[1]:.3g}, cache-state finite-difference error={max_errors[2]:.3g}")
+    if not all_fixed:
+        compound = _compound(cached)
+        np.testing.assert_allclose(compound.methods[0].modelled_mean_fn(point), evaluate(point)[1])
+        next_point, _ = compound.step(point)
+        assert all(np.isfinite(value).all() for value in next_point.values())

@@ -5,6 +5,8 @@ Mainly for creating fake data.
 
 from __future__ import annotations
 
+from openghg_inversions.basis import prepare_basis
+
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -25,10 +27,8 @@ def lat_lon_data(nlat: int, nlon: int, values: np.ndarray | list | None = None) 
     return xr.DataArray(values, coords=[lat, lon], dims=["lat", "lon"])
 
 
-rng = np.random.default_rng(seed=123)
-
-
 def basis_function(nlat: int, nlon: int, nbasis: int) -> xr.DataArray:
+    rng = np.random.default_rng(seed=123)
     values = rng.integers(1, nbasis, size=nlat * nlon, endpoint=True).reshape((nlat, nlon))
     return lat_lon_data(nlat, nlon, values)
 
@@ -219,3 +219,39 @@ def convert_old_multisector_H_to_gathered(
         H = H.transpose(gathered_dim, ...)
 
     return H
+
+
+def prepare_inputs(**params):
+    """Compose canonical RHIME stages for scientific regression fixtures."""
+    from openghg_inversions.rhime.params import DataConfig, group_params
+    from openghg_inversions.rhime import preparation
+
+    data = DataConfig.from_params(group_params(params)["data"],
+                                  multisector=params.get("split_by_sectors", False))
+    basis_inputs = preparation.resolve_basis_inputs(data)
+    bc_basis = preparation.resolve_bc_basis(data)
+    merged = preparation.acquire_merged_data(data)
+    filtered, site_options = preparation.filter_observations(
+        merged.site_data, merged.site_options, filters=data.filters,
+    )
+    filtered = preparation.prepare_observation_errors(filtered, averaging_error=data.averaging_error)
+    from openghg_inversions.native_flux import resolve_runtime_flux
+
+    runtime_flux = resolve_runtime_flux(merged.flux_data, split_by_sectors=merged.split_by_sectors)
+    basis = prepare_basis(
+        site_data=filtered,
+        runtime_flux=runtime_flux,
+        weighting_flux=merged.flux_data[data.flux_sources[0]]["flux"],
+        **data.select(
+            "domain", "start_date", "basis_algorithm", "nbasis",
+        ),
+        fix_outer_regions=data.fix_basis_outer_regions,
+        **basis_inputs,
+    )
+    basis = preparation.export_basis(basis, data.basis_output_path)
+    sites = preparation.build_sensitivities(filtered, basis, **data.select(
+        "flux_sources", "use_bc",
+    ), bc_basis=bc_basis, multisector=data.split_by_sectors)
+    return preparation.assemble_inputs(sites, basis, site_options=site_options, **data.select(
+        "domain", "start_date", "use_bc",
+    ))

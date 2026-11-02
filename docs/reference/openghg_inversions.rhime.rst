@@ -16,15 +16,20 @@ openghg\_inversions.rhime
 .. toctree::
    :maxdepth: 4
 
+   openghg_inversions.rhime.api
    openghg_inversions.rhime.builders
    openghg_inversions.rhime.cached_sigma
+   openghg_inversions.rhime.ini
+   openghg_inversions.rhime.likelihood_inputs
    openghg_inversions.rhime.materialization
+   openghg_inversions.rhime.model_inputs
    openghg_inversions.rhime.multisector
+   openghg_inversions.rhime.multisector_stages
    openghg_inversions.rhime.nested
    openghg_inversions.rhime.outputs
    openghg_inversions.rhime.params
    openghg_inversions.rhime.preparation
-   openghg_inversions.rhime.prepared
+   openghg_inversions.rhime.requests
    openghg_inversions.rhime.sampling
    openghg_inversions.rhime.specs
    openghg_inversions.rhime.stages

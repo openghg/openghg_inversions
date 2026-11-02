@@ -1,8 +1,8 @@
 Standard and multisector RHIME models
 =====================================
 
-This page makes the model graph behind :func:`run_rhime` and
-:func:`run_rhime_multisector` explicit. The advanced CO₂-only and linked
+This page makes the model graph behind :func:`run_standard` and
+:func:`run_multisector` explicit. The advanced CO₂-only and linked
 CO₂/O₂ graphs have their canonical home in :doc:`co2_models`. This page has two
 purposes:
 
@@ -29,8 +29,8 @@ The current builders
 --------------------
 
 Each recipe directly composes one readable concrete graph. The standard graph
-lives beside :func:`run_rhime` in ``openghg_inversions.rhime.standard``; the
-multisector graph lives beside :func:`run_rhime_multisector` in
+lives beside :func:`run_standard` in ``openghg_inversions.rhime.standard``; the
+multisector graph lives beside :func:`run_multisector` in
 ``openghg_inversions.rhime.multisector``:
 
 .. code-block:: text
@@ -41,6 +41,39 @@ multisector graph lives beside :func:`run_rhime_multisector` in
    -> total flux contribution, mu
    -> boundary, offset, error, and likelihood components
    -> PyMC model
+
+The standard builder is ``build_standard_model(model_inputs, model_spec,
+priors=...)`` and returns the concrete model plus its output contract. It accepts
+already materialized model operands and prior parameters. Call
+``materialize_standard_inputs(prepared, model_spec)`` for raw prepared inputs,
+including when their arrays are already eager. The helper computes selected
+inputs and enabled priors together, then resolves BC periods and any selected
+minimum-error floor. Multisector uses ``materialize_multisector_inputs``.
+The generic ``materialize_pymc_inputs`` only materializes arrays and does not
+perform these recipe-specific calculations. Direct eager builders reject raw
+boundary operands; construction does not execute a borrowed lazy graph or
+consume output choices.
+
+The resolved Dataset is backend-neutral but specific to the selected model:
+``H_bc`` contains fitted boundary periods, and ``min_error`` contains the floor
+selected by the likelihood. ``resolve_model_inputs(eager_inputs, model_spec)``
+performs these scientific calculations without building a PyMC graph, so an
+analytic inversion can use the same boundary alignment. Its selected operands
+must already be eager; the family materializers arrange their joint execution
+with enabled priors before calling it.
+
+``mf_error`` is the prepared observation-error standard deviation and is carried
+through unchanged. Selection and observation-error imputation happen in
+scientific preparation; the selected likelihood separately prepares its minimum
+total-error floor. The resolver composes that likelihood-input operation with
+BC resolution.
+
+Pass the resolved Dataset to a builder with the same BC and consumed floor
+settings. Changing their frequency, anchor or floor policy requires resolving
+the raw preparation again; builders reject conflicting producer-recorded
+settings. Sigma periods remain a graph-time choice. Independently supplied final
+arrays without resolution provenance remain authoritative for direct builders;
+they do not request new temporal expansion or floor estimation.
 
 .. _rhime-builder-stability:
 
@@ -91,8 +124,7 @@ mean of the observed distribution is therefore
 where omitted components are left out of the sum.
 
 The configuration template explicitly selects
-``mismatch_model="pollution_event"``. This preserves the fractional-error
-equation used by ``run_hbmcmc.py`` for users who start from that template.
+``mismatch_model="pollution_event"`` for the documented fractional-error model.
 Direct runner calls must make a likelihood selection explicitly. The concrete
 model recipe has no mismatch default: parameter resolution converts the
 selector to ``PollutionEventSettings`` in the serializable model specification
@@ -100,8 +132,9 @@ before construction. Select
 ``mismatch_model="additive_sigma"`` for an absolute concentration-scale
 mismatch instead; this is a resolved model option and does not use the custom
 ``likelihood_builder`` extension point. Additive sigma does not select the
-prepared ``min_error`` input unless ``use_minimum_error_floor=True`` is also
-set. Aggregation error is disabled by default. Let
+model-owned ``min_error`` floor unless ``use_minimum_error_floor=True`` is also
+set. Named minimum-error estimates use observations retained after unusable rows
+are dropped. Let
 :math:`P` be the pollution event and let ``sigma`` be the observation-aligned
 fractional model-error parameter. With the default
 ``pollution_events_from_obs=False``,
@@ -121,39 +154,13 @@ including any boundary and offset contributions. Thus
 :math:`P=|Y-(\mu_{bc}+\mathrm{offset})|` when a baseline exists; without one,
 it uses :math:`P=|Y|+10^{-6}\operatorname{mean}(Y)`.
 
-The ``run_hbmcmc.py`` compatibility path retains its historical boundary-only
-variant: :math:`P=|Y-\mu_{bc}|`, even when an offset is also included in
-:math:`\mu_{\mathrm{obs}}`. That exception preserves existing configurations;
-it is not the scientific default for new RHIME recipes.
+Historical boundary-only variants require matching older software; modern
+construction uses the full baseline above.
 
 Select ``mismatch_model="fixed_error"`` to omit inferred mismatch error. Its
 likelihood scale uses the reported observation error and does not select
 ``min_error``.
-``run_hbmcmc.py`` privately preserves the different historical floor and
-unused-variable details of its two ``no_model_error`` routes.
-
-Aggregation covariance is an explicit advanced opt-in. If a caller selects a
-prepared covariance :math:`C_{agg}` with marginal variance
-:math:`v_{agg}=\operatorname{diag}(C_{agg})`, the marginal floor and observed
-distribution become
-
-.. math::
-
-   v_{raw} &= \mathrm{error}^2 + (P\sigma)^{\mathrm{power}}, \\
-   v_{ind} &= v_{raw} + \max\left(
-     \mathrm{min\_error}^2-v_{raw}-v_{agg}, 0
-   \right), \\
-   \epsilon &= \sqrt{v_{ind}+v_{agg}}, \\
-   y &\sim \mathcal{N}\left(
-     \mu_{\mathrm{obs}}, \operatorname{diag}(v_{ind})+C_{agg}
-   \right).
-
-Selecting aggregation error says only that this fixed covariance should enter
-the likelihood. It does not perform, imply, or verify a coherent prior and
-forward-model transformation. Covariance obtained by marginalising native
-states must therefore be supplied together with the matching transformed
-prior and forward operator. Merely finding an aggregation-error array in
-prepared inputs does not opt a run into this model.
+Historical fixed-error floors and disconnected sigma variables are not restored.
 
 The default priors are:
 
@@ -226,7 +233,9 @@ Equivalent construction from public helpers
 The default production builder constructs the graph in the same direct style
 shown below. A researcher does not need to construct a private plan to write an
 equivalent concrete single-flux model. The following uses public component
-helpers:
+helpers. Here ``inv_inputs`` contains the selected raw inputs already
+materialized at an explicit boundary; the floor and fitted BC periods are model
+choices:
 
 .. code-block:: python
 
@@ -236,7 +245,8 @@ helpers:
        registered_model,
    )
    from openghg_inversions.models.pollution_event import add_pollution_event_likelihood
-   from openghg_inversions.observation_error import resolve_aggregation_error
+   from openghg_inversions.boundary_sensitivity import BoundaryAlignment
+   from openghg_inversions.model_error import MinimumError
    from openghg_inversions.sigma import SigmaAlignment
 
    x_prior = {
@@ -259,7 +269,11 @@ helpers:
        per_site=True,
    )
    flux_sensitivity = prepare_linear_sensitivity(inv_inputs["H"])
-   boundary_sensitivity = prepare_linear_sensitivity(inv_inputs["H_bc"])
+   boundary = BoundaryAlignment.prepare(
+       inv_inputs["H_bc"], frequency="monthly", anchor_time="2021-01-01",
+   )
+   boundary_sensitivity = prepare_linear_sensitivity(boundary.data)
+   minimum_error = MinimumError.from_observations(inv_inputs, 0.0)
 
    with registered_model() as model:
        flux = add_linear_component(
@@ -277,6 +291,7 @@ helpers:
            var_name="bc",
            output_name="mu_bc",
            output_dim="nmeasure",
+           coordinate_owner="bc",
        )
        pollution_mean = flux.output
        baseline_mean = boundary.output
@@ -285,8 +300,7 @@ helpers:
        add_pollution_event_likelihood(
            observations=inv_inputs["mf"],
            observation_error=inv_inputs["mf_error"],
-           minimum_error=inv_inputs["min_error"],
-           aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
+           minimum_error=minimum_error.values,
            mean=modelled_mean,
            pollution_mean=pollution_mean,
            pollution_event_baseline=baseline_mean,
@@ -300,7 +314,7 @@ helpers:
 
 This example is deliberately concrete and editable. It is suitable when a
 model developer needs to change graph construction directly. It does not
-automatically participate in the complete ``run_rhime`` output pipeline; that
+automatically participate in the complete ``run_standard`` output pipeline; that
 pipeline still selects one of the built-in model builders.
 
 ``prepare_linear_sensitivity`` is the single owning boundary for exact-zero column
@@ -314,31 +328,61 @@ forward operator without constructing a second prior.
 Multisector model
 -----------------
 
-For the current shared-basis multisector model, each sector has an independent
-state and forward contribution:
+The multisector model uses one full physical state, with an independent prior
+for each source block:
 
 .. math::
 
    x_s &\sim p_s, \\
-   \mu_s &= H_s x_s, \\
-   \mu &= \sum_s \mu_s.
+   x &= \operatorname{concat}_s x_s, \\
+   H &= [H_1\; H_2\; \cdots], \\
+   \mu &= H x.
 
-If the normalized PyMC suffix for sector ``s`` is ``ff``, its variables are
-``x_ff`` and ``mu_ff`` and its sensitivity data is ``hx_ff``. Source values select
-the corresponding ``H`` slices; sector names provide model identities. They
-are not required to be the same strings.
+Standard and multisector expose the same physical ``x``, two-dimensional
+sensitivity data ``hx`` and combined flux contribution ``mu``. Multisector
+``x`` carries a gathered source/local-state index, including when sources have
+different region counts. Source values select the corresponding input blocks;
+sector names identify their priors and reporting labels. They are not required
+to be the same strings. Rectangular preparation is packed only for construction,
+without changing the retained preparation or basis.
+Registered ``hx`` may omit structurally zero columns; the shared linear operation
+selects ``x`` entries for the columns retained in ``hx``. Use complete prepared
+source blocks with their matching full-state blocks when reconstructing the
+scientific forward equation directly.
 
-Every sector state and every reparameterization-generated latent must have a
-unique backend name. Concrete composition relies on PyMC to reject duplicate
-generated names.
+Private prior variables and reparameterization-generated latents may still
+have source-block names, and their construction-owned prior records retain the
+sector associations. New models do not add separate ``x_ff``, ``hx_ff`` or
+``mu_ff`` full-state aliases for reporting. Every private prior and generated
+latent still needs a unique backend name; PyMC rejects duplicate names.
+
+Boundary coordinates
+--------------------
+
+Built-in standard, multisector, nested and CO2 recipes qualify boundary-state
+coordinates with ``bc_`` when registering the graph. Existing ``bc_`` names,
+including ``bc_region``, keep their names. Linked CO2/O2 uses its existing
+``co2_`` and ``o2_`` channel prefixes, such as ``co2_bc_region``. Flux dimensions,
+source labels and supplied ``sector`` auxiliaries keep their scientific names.
+
+This lets a flux ``source(region)`` coordinate coexist with a boundary-prior
+``source(bc_region)`` coordinate, stored as ``bc_source`` in the trace. Saved
+traces retain the qualified boundary names; output selection does not rename
+flux coordinates. Borrowed inputs retain their original labels and payloads.
+
+Observation coordinates and scalar metadata remain shared. Their values must
+agree across components; conflicting scalar metadata raises an explicit error.
+State coordinates with different ownership or local-name metadata cannot share
+a registered name, even when their values match. Custom compositions can use
+``coordinate_owner`` on ``add_linear_component`` for the same boundary behavior.
 
 Names and generated names
 -------------------------
 
 PyMC model variables currently share one flat effective namespace. A prior can
 create more names than the requested base name. In particular, a
-reparameterized lognormal requested as ``x_ff`` creates both ``x_ff`` and
-``x_ff_latent``.
+reparameterized lognormal prior requested as ``scale`` creates both ``scale``
+and ``scale_latent``.
 
 Both names should be treated as reserved for that prior. No data variable,
 other state, forward-term deterministic, or total should use either name. PyMC
@@ -347,19 +391,18 @@ helper still relies on conventional names for boundary, offset, error, and
 likelihood components; there is not yet one allocator for the complete model
 namespace.
 
-Generated-name reporting, whole-model allocation, and component namespaces are
+Generated-name reporting and whole-model variable-name allocation are
 not implemented. They are tracked in
 `issue #532 <https://github.com/openghg/openghg_inversions/issues/532>`_.
 
 Alternative models and likelihoods
 ----------------------------------
 
-Direct-Python likelihood builders enter through ``run_rhime``,
-``run_rhime_multisector``, or ``run_rhime_from_prepared_inputs``.
-Complete-model builders remain available only at the prepared-input boundary.
-Callables are never read from configuration or stored on ``RhimeModelSpec`` or
-``RhimeRunSpec``, so model and run specs remain serializable. There is no
-entry-point or config-file plugin registry.
+Direct-Python likelihood builders enter through ``run_standard`` or
+``run_multisector``. Complete-model changes use the explicit construction and
+sampling operations below. Callables are never read from configuration or
+stored on ``RhimeModelSpec``, so model settings remain serializable. There is
+no entry-point or config-file plugin registry.
 
 A concrete recipe owns the complete forward-model mean: pollution, baseline,
 and optional offset contributions are composed visibly and packaged as named
@@ -367,8 +410,8 @@ forward terms before the shared built-in dispatcher is invoked. The runner
 stores one typed settings value on ``RhimeModelSpec``; the dispatcher calls the
 ordinary built-in equation with only that likelihood's inputs. A custom caller
 instead supplies a mean-only callable. Every likelihood receives the completed
-concentration, prepared observations and reported observation error, a
-validated ``AggregationError``, and output dimension. Built-in pollution-event
+concentration, prepared observations and reported observation error, and
+output dimension. Built-in pollution-event
 scaling additionally receives the named pollution and baseline terms.
 ``likelihood_kwargs`` is reserved for custom callables.
 The builder adds and returns the canonical observed variable ``y`` and also
@@ -385,16 +428,15 @@ ordinary runner:
 .. code-block:: python
 
    from my_project.likelihoods import likelihood_builder
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.rhime import run_standard
 
-   result = run_rhime(
+   result = run_standard(
        config_file="config.ini",
        mismatch_model=None,
        likelihood_builder=likelihood_builder,
    )
 
-This example supports independent fixed aggregation-error representations. A
-custom likelihood with additional options declares them in its own signature,
+A custom likelihood with additional options declares them in its own signature,
 and the runner supplies only those values through ``likelihood_kwargs``.
 
 Pass ``add_offset=True`` and ``offset_args={"per_site": False}`` as Python or
@@ -425,21 +467,25 @@ per site:
    R = A + D_{obs}
        + \operatorname{diag}\left(\sigma_{site}[\operatorname{site}(i)]^2\right).
 
-Here ``A`` is the selected aggregation-error covariance and ``D_obs`` is the
-diagonal covariance from reported observation errors. Each is included once.
+Here ``A`` is a fixed coherent-reduction covariance when the component is
+composed with CO2 inputs, and ``D_obs`` is the diagonal covariance from reported
+observation errors. Each is included once. The ordinary standard/multisector
+example below omits ``aggregation_error``, giving ``A = 0``.
 This likelihood does not apply ``min_error`` or ``fixed_model_mismatch`` and
 does not add temporal correlation. In particular, it is an IID component, not
 the fixed-OU model.
 
-Select it through the existing Python-only likelihood seam. For inferred site
-amplitudes, pass an explicit positive prior:
+For standard or multisector execution, pass the component directly as the
+likelihood builder. Omitting ``aggregation_error`` or passing ``None`` adds no
+fixed aggregation covariance. For inferred site amplitudes, pass an explicit
+positive prior:
 
 .. code-block:: python
 
    from openghg_inversions.models import add_site_sigma_gaussian_likelihood
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.rhime import run_standard
 
-   result = run_rhime(
+   result = run_standard(
        config_file="config.ini",
        mismatch_model=None,
        likelihood_builder=add_site_sigma_gaussian_likelihood,
@@ -451,9 +497,9 @@ amplitudes, pass an explicit positive prior:
 The ``0.75`` value above is an explicit scale in ppm because all prior
 parameters and fixed amplitudes are interpreted in the observations'
 concentration units; OpenGHG Inversions does not choose a universal default
-scale. To use known values instead, replace ``site_amplitude_prior`` with
-``fixed_site_amplitudes``, a mapping covering every observed site label. Pass
-exactly one of these two options.
+scale. To use known values instead, pass ``fixed_site_amplitudes`` instead of
+``site_amplitude_prior`` in ``likelihood_kwargs`` as a mapping covering every
+observed site label. Pass exactly one of these two options.
 
 The graph names the labelled site vector ``sigma_site`` on
 ``sigma_site_dim``, with ``sigma_site_index`` retaining the observation-to-site
@@ -462,97 +508,90 @@ posterior variables. The ordinary runner records the callable identity,
 and JSON-compatible options in the saved output. The component reuses OpenGHG
 Inversions' aggregation-error and Gaussian likelihood machinery.
 
-Advanced whole-model compatibility boundary
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. _rhime-complete-model-composition:
 
-A complete model builder is an advanced escape hatch available only through
-``run_rhime_from_prepared_inputs``. It receives a
-``RhimeModelBuilderContext`` containing the validated ``RhimePreparedInputs``,
-updated ``RhimeRunSpec``, and validated single- versus multi-sector mode, and
-returns a ``RhimeModelBuildResult``. Ordinary standard and multisector recipes
-never construct or consume this context. Complete builders also bypass the
-ordinary recipe-owned materialization step, so they must select, validate, and
-materialize any lazy arrays they consume:
+Compose a complete model directly
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Standard and multisector prepared execution use the same construction,
+sampling and output operations as their full and saved routes. A complete-model
+change belongs in an ordinary scientific function receiving the inputs it
+needs. Copy the nearby concrete builder, edit its scientific operations, and
+call it directly; the multisector runner has no ``model_builder`` hook or
+ambient run-specification context.
+
+This example exposes the multisector operations using an existing canonical
+``prepared`` value and resolved ``config``. Replace the ``build_multisector_model``
+call with your copied builder to change the complete graph. Keep input and prior
+materialization explicit, so selected scientific arrays and enabled prior
+parameters compute together. Construction consumes these eager values; it does
+not materialize them or read unrelated lazy preparation extensions:
 
 .. code-block:: python
 
-   from importlib.metadata import version
-
-   import pymc as pm
-
-   from openghg_inversions.rhime import (
-       RhimeModelBuilderContext,
-       RhimeModelBuildResult,
-       run_rhime_from_prepared_inputs,
+   from openghg_inversions.rhime.multisector import (
+       build_multisector_model,
+       materialize_multisector_inputs,
    )
-   from openghg_inversions.models import (
-       add_coords,
-       registered_model,
+   from openghg_inversions.rhime.outputs import (
+       annotate_sample_trace,
+       make_model_output,
+       postprocess_multisector_outputs,
+       save_inversion_output,
+       validate_multisector_output_resources,
    )
+   from openghg_inversions.rhime.sampling import sample_rhime_model
 
-
-   def complete_model(
-       context: RhimeModelBuilderContext,
-   ) -> RhimeModelBuildResult:
-       data = context.prepared_inputs.inv_inputs
-       with registered_model() as model:
-           add_coords(data.coords, model_dims=("nmeasure",))
-           mean = pm.Normal("custom_mean", mu=0.0, sigma=10.0)
-           pm.Normal(
-               "custom_y",
-               mu=mean,
-               sigma=data.mf_error.values,
-               observed=data.mf.values,
-               dims="nmeasure",
-           )
-       return RhimeModelBuildResult(
-           model=model,
-           variable_roles={
-               "observation": "mf",
-               "observation_error": "mf_error",
-               "concentration": "custom_y",
-           },
-           supported_output_formats=("none", "inv_out"),
-           metadata={
-               "package": "my-rhime-models",
-               "version": version("my-rhime-models"),
-               "model": "complete_model_v1",
-           },
-       )
-
-
-   result = run_rhime_from_prepared_inputs(
-       prepared_inputs=prepared,
-       run_spec=run_spec,
-       model_builder=complete_model,
+   validate_multisector_output_resources(config.output)
+   model_inputs, priors = materialize_multisector_inputs(prepared, config.model)
+   built = build_multisector_model(
+       model_inputs,
+       config.model,
+       priors=priors,
    )
+   built.output_contract.validate_requested_output(config.output.output_format)
+   posterior = sample_rhime_model(built, config.sampler)
+   annotate_sample_trace(built, posterior)
+   result = make_model_output(
+       prepared=prepared,
+       model_spec=config.model,
+       split_by_sectors=config.data.split_by_sectors,
+       posterior=posterior,
+       output_contract=built.output_contract,
+       start_date=config.data.start_date,
+       end_date=config.data.end_date,
+       actual_inference=config.sampler.describe(),
+   )
+   postprocess_multisector_outputs(result, config.output)
+   save_inversion_output(result, config.output)
 
-The compatibility rules are explicit:
+The standard recipe exposes corresponding ``materialize_standard_inputs`` and
+``build_standard_model`` functions. Both recipes share ``make_model_output``
+with an explicit ``split_by_sectors`` choice and ``save_inversion_output`` for
+scientific result and trace exports. Each recipe has one eager model builder.
+Both builders return ``RhimeModelBuildResult``, containing the concrete
+``pm.Model`` and its ``OutputContract``. The sampler consumes that graph and
+its scientific variable roles; it does not resolve model choices or output destinations.
+Pass ``sigma_alignment=...`` to either builder when you already have a
+``SigmaAlignment`` for the selected observations; otherwise the likelihood
+constructs its alignment from those observations.
 
-* a complete builder must return a concrete ``pm.Model`` and a non-empty role
-  manifest; ``concentration`` is required;
-* every declared role name must exist in either the model or prepared inversion
-  inputs;
-* builders must construct their graph with ``registered_model()`` before
-  calling ``add_coords`` or public model components, so
-  ``RhimeSampler`` can restore MultiIndexes and auxiliary scientific
-  coordinates;
-* builder metadata must be JSON serializable, and external packages should
-  record their package version and stable model identity there;
-* custom builders support only ``output_format="none"`` unless they explicitly
-  declare more formats; declaring a format promises that the trace, roles,
-  basis layout, and variables required by that output really are present;
-* ``model_builder`` and ``likelihood_builder`` are mutually exclusive; and
-* a component that does not exist, such as inferred model error in a fixed-error
-  model, is omitted from the role manifest rather than represented by a magic
-  name.
+A copied builder should use ``registered_model()`` before ``add_coords`` or
+public model components so inference can restore MultiIndexes and auxiliary
+scientific coordinates. Keep the output contract consistent with the graph:
+standard and multisector roles include ``flux_scale: x``,
+``emissions_sensitivity: hx`` and ``flux_contribution: mu``. Multisector
+sector/source metadata selects blocks from the full state. Omit roles for absent
+terms. The flux reconstruction and products shown here require the existing
+multiplicative sector-state meaning,
+retained basis and source mappings. A model that changes those meanings must
+provide its own reconstruction and product functions rather than reuse an
+incompatible contract. Direct construction does not make a custom graph
+recordable by the package's saved multisector sampling operation.
 
-The built-in standard and multisector builders produce the same
-``RhimeModelBuildResult`` contract on ``RhimeResult.model_build_result``. Their
-sector roles use keys such as ``flux_scale:FF`` and
-``flux_contribution:FF``. The low-level recipe builders return a plain
-``pm.Model``; the corresponding ``*_model_result`` wrappers add the runner and
-output metadata contract.
+Nested construction also accepts explicit model inputs and materialized priors;
+see :doc:`nested_domains`. Model construction takes scientific choices directly;
+the former ``RhimeRunSpec`` execution envelope is removed.
 
 Structurally distinct observation-channel models belong in readable named
 recipes with concrete builders. The active design guidance is

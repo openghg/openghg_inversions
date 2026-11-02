@@ -23,6 +23,7 @@ openghg\_inversions.postprocessing
    openghg_inversions.postprocessing.metrics
    openghg_inversions.postprocessing.nested_paris_outputs
    openghg_inversions.postprocessing.output_views
+   openghg_inversions.postprocessing.paris_options
    openghg_inversions.postprocessing.sigma
    openghg_inversions.postprocessing.stats
    openghg_inversions.postprocessing.utils

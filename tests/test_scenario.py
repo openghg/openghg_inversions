@@ -117,3 +117,21 @@ def test_satellite_scenario_forwards_multisector(
     assert init_kwargs["obs_column"] is obs_data
     assert init_kwargs["max_level"] == 20
     assert merge_kwargs["split_by_sectors"] is True
+
+
+def test_scenario_transport_metadata_uses_valid_wrapper_fallback(monkeypatch):
+    class FakeModelScenario:
+        def __init__(self, **kwargs):
+            pass
+
+        def footprints_data_merge(self, **kwargs):
+            return xr.Dataset()
+
+    monkeypatch.setattr(scenario_module, "ModelScenario", FakeModelScenario)
+    times = pd.date_range("2020-01-01", periods=2, freq="h")
+    obs = _data_object(times)
+    fp = _data_object(times)
+    fp.data.attrs.update(model="not_set", model_version=None, met_model="", max_level=None)
+    fp.metadata = {"model": "NAME", "transport_model_version": "v2", "metmodel": "UKV", "max_level": np.int64(20)}
+    result = scenario_module.merged_scenario_data(obs, fp, {})
+    assert result.attrs == {"footprint_transport_model": "NAME", "footprint_transport_model_version": "v2", "footprint_met_model": "UKV", "footprint_max_level": 20}

@@ -1,6 +1,6 @@
 # RHIME programme architecture and outcome roadmap
 
-Status: proposed programme-level north star and milestone model
+Status: historical programme-level proposal; not current policy or a maintained roadmap
 
 Evidence date: 2026-08-28
 
@@ -14,40 +14,38 @@ inspected at that revision.
 
 Compatibility update (2026-09-22): PR #714 removed the direct HBMCMC
 implementation. Only the inbound `run_hbmcmc.py` old-INI wrapper and the modern
-legacy-format output adapter remain. The compatibility outcome and Gate G
-below now govern that residual surface, not a second inversion implementation.
+legacy-format output adapter remain. The original compatibility outcome and Gate G below described that residual
+surface, rather than a second inversion implementation.
 
-## Purpose and authority
+## Historical purpose and scope
 
 This document explains what RHIME is becoming, how the pieces fit together,
 and how to organise the remaining work around observable outcomes. It is
 intended to stand on its own as the programme-level roadmap.
 
-The detailed engineering rules remain normative in:
+Current architectural explanation and validation guidance live in:
 
 - [`Developing RHIME models`](../development/rhime_model_development.rst);
 - [`Validation and labelled-array patterns`](../development/validation_and_xarray.rst);
-- [`Numerical data ownership and execution boundaries`](numerical_data_ownership_and_execution_boundaries.md);
-- the proposed [Issue #443 DataTree migration plan](issue_443_datatree_migration.md)
-  for the PyMC 6 / ArviZ 1 trace transition.
+- [Numerical array ownership](../development/numerical_array_ownership.rst);
+- the historical [Issue #443 DataTree migration record](issue_443_datatree_migration.md),
+  whose transition has since been delivered; it is not an active release gate.
 
-The approved [`run_rhime` readability and modifiability
-plan](run_rhime_readability_and_modifiability.md) and the [model-family
-expansion plan](rhime_model_family_expansion.md) remain the detailed delivery
-plans. They should be updated to distinguish work which has merged from
-acceptance evidence which is still missing.
+The [`run_rhime` readability record](run_rhime_readability_and_modifiability.md) and
+[model-family proposal](rhime_model_family_expansion.md) retain historical delivery
+context. Check current issues and reviewed changes for the work that remains.
 
-The [architecture reconciliation](rhime_architecture_reconciliation.md) is the
-one-time operational companion to this roadmap. It owns the dated issue-level
-status correction and tracker cleanup. This document owns the longer-lived
-destination, coding guardrails, outcome gates, and milestone design. Once its
-cleanup has been applied, the reconciliation note can be archived without
-losing the programme direction recorded here.
+The [architecture reconciliation](rhime_architecture_reconciliation.md) records
+the related issue-level assessment. This document proposed a programme
+destination, outcome gates, and milestone design at the same evidence date;
+neither record supplies current governance or completion criteria.
 
-Linear is authoritative for current priority, ownership, dependencies, project
-status, and milestone status. GitHub is the public implementation and review
-record. Repository plans define accepted engineering policy. None of the three
-should silently substitute for another.
+This document records the programme assessment at its evidence date. Current
+implementation and acceptance work belongs to its owning issues; reviewed
+capability specifications define accepted behavioral requirements. Repository
+plans preserve context and do not define accepted engineering policy. See the
+[record inventory and migration plan](README.md) before reusing a checklist or
+status claim below.
 
 ## Executive direction
 

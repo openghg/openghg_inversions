@@ -86,6 +86,13 @@ def test_from_frequency_derives_compact_periods(
     np.testing.assert_array_equal(alignment.period_index, expected)
 
 
+@pytest.mark.parametrize("frequency", ["0h", "-1h", "NaT", "nan", "inf"])
+@pytest.mark.filterwarnings("error")
+def test_sigma_frequency_rejects_invalid_duration(frequency: str) -> None:
+    with pytest.raises(ValueError, match="Invalid frequency"):
+        SigmaAlignment.from_frequency(_index(), frequency=frequency)
+
+
 def test_from_observations_derives_site_positions_and_periods() -> None:
     """Observation labels are the source of sigma site alignment."""
     observations = xr.DataArray(

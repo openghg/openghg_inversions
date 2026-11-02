@@ -105,7 +105,11 @@ def normalise_declared_multiindex(
     # Install the index explicitly so xarray does not rely on deprecated
     # implicit pandas.MultiIndex promotion.
     result = ds.drop_vars(list(levels))
-    return result.assign_coords(xr.Coordinates.from_pandas_multiindex(multiindex, dim))
+    result = result.assign_coords(xr.Coordinates.from_pandas_multiindex(multiindex, dim))
+    for name in (dim, *levels):
+        if name in ds.coords:
+            result.coords[name].attrs = dict(ds.coords[name].attrs)
+    return result
 
 
 def _normalise_cf_multiindex_names(index_names: str | Iterable[str]) -> tuple[str, ...]:
@@ -305,7 +309,8 @@ def save_datatree(
 
     This writes the tree, replacing an existing destination artifact. NetCDF
     uses xarray's default engine so callers that already loaded NetCDF inputs
-    do not switch HDF5 bindings at the serialization boundary. Zarr writes
+    do not switch HDF5 bindings at the serialization boundary. Zarr artifacts
+    use format 2 with either Zarr 2 or Zarr 3 packages. Zarr writes
     lazily rechunk arrays to their encoded storage chunks, or regular chunks
     sized to the largest existing chunk on each axis. Inputs are not mutated.
 
@@ -315,7 +320,8 @@ def save_datatree(
             supplied, the matching ``.nc`` or ``.zarr`` suffix is added or
             replaces an existing suffix as needed.
         output_format: Storage format. When omitted, infer the format from an
-            existing ``.nc`` or ``.zarr`` suffix.
+            existing ``.nc`` or ``.zarr`` suffix, case-insensitively. Matching
+            suffixes retain their requested spelling.
 
     Raises:
         ValueError: If the format cannot be inferred or is unsupported.
@@ -324,18 +330,18 @@ def save_datatree(
 
     if output_format is None:
         try:
-            output_format = {".nc": "netcdf", ".zarr": "zarr"}[output_path.suffix]  # type: ignore[assignment]
+            output_format = {".nc": "netcdf", ".zarr": "zarr"}[output_path.suffix.lower()]  # type: ignore[assignment]
         except KeyError:
             raise ValueError(
                 f"Output file {output_path} does not end in '.nc' or '.zarr'; please specify `output_format`."
             ) from None
 
     if output_format == "netcdf":
-        if output_path.suffix != ".nc":
+        if output_path.suffix.lower() != ".nc":
             output_path = output_path.with_suffix(".nc")
         dt.to_netcdf(output_path)
     elif output_format == "zarr":
-        if output_path.suffix != ".zarr":
+        if output_path.suffix.lower() != ".zarr":
             output_path = output_path.with_suffix(".zarr")
         dt = dt.map_over_datasets(
             lambda dataset: dataset.assign(
@@ -352,7 +358,7 @@ def save_datatree(
                 }
             )
         )
-        dt.to_zarr(output_path, mode="w")
+        dt.to_zarr(output_path, mode="w", zarr_format=2)
     else:
         raise ValueError(f"Unsupported output_format: {output_format!r}")
 
@@ -521,6 +527,10 @@ def encode_multiindexes_for_storage(ds: xr.Dataset) -> xr.Dataset:
         dim_name = str(dim)
         level_names = _validate_multiindex(index, dim=dim_name)
         result = result.reset_index(dim)
+        if ds.coords[dim].attrs:
+            result = result.assign_coords({
+                dim: xr.DataArray(np.arange(ds.sizes[dim]), dims=dim, attrs=dict(ds.coords[dim].attrs)),
+            })
         records.append(
             {
                 "dim": dim_name,

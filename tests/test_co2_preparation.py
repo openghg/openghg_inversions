@@ -16,18 +16,17 @@ import xarray as xr
 from openghg_inversions._labelled_matrices import renamed_column_coordinates
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.rhime.co2 import Co2PreparedInputs, prepare_co2_inputs
 from openghg_inversions.rhime.co2 import (
     co2_cached_sigma_runner,
     co2_runner,
     prepare_co2_scalar_sigma_eigenbasis,
-    run_rhime_co2,
-    run_rhime_co2_cached_sigma,
+    build_rhime_co2_cached_sigma,
 )
 
 
-def _canonical_inputs() -> RhimePreparedInputs:
+def _canonical_inputs() -> PreparedInputs:
     """Build canonical inputs with a labelled observation MultiIndex."""
     observations = pd.MultiIndex.from_arrays(
         [
@@ -66,7 +65,7 @@ def _canonical_inputs() -> RhimePreparedInputs:
     )
     inv_inputs["mf"].attrs["units"] = "ppm"
     inv_inputs["mf_error"].attrs["units"] = "ppm"
-    return RhimePreparedInputs(
+    return PreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=BasisFunctions.from_flat_basis(
             basis_flat=basis,
@@ -80,7 +79,7 @@ def _canonical_inputs() -> RhimePreparedInputs:
     )
 
 
-def _reduction(canonical: RhimePreparedInputs) -> CoherentGaussianReduction:
+def _reduction(canonical: PreparedInputs) -> CoherentGaussianReduction:
     """Build a coherent reduction aligned to the canonical test inputs."""
     observation_index = canonical.inv_inputs.indexes["nmeasure"]
     observation_coords = xr.Coordinates.from_pandas_multiindex(
@@ -155,6 +154,7 @@ def test_prepare_co2_inputs_maps_reduction_and_preserves_canonical_metadata() ->
     assert prepared.provenance == {
         "projection_strategy": "unit-test-projection",
         "source": "test",
+        "aggregation_error_rank": None,
     }
     np.testing.assert_allclose(prepared.inv_inputs["H"], reduction.effective_observation_operator)
     np.testing.assert_allclose(prepared.inv_inputs["alpha_prior_mean"], reduction.retained_mean)
@@ -487,10 +487,10 @@ def test_reloaded_truncated_low_rank_artifact_drives_cached_runner_selection(
     )
 
     with pytest.raises(ModelBoundaryReached):
-        run_rhime_co2_cached_sigma(
+        build_rhime_co2_cached_sigma(
             prepared_inputs=restored,
             tau_hours=24.0,
-            site_amplitude_prior_scale=0.75,
+            site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
         )
 
     selected = received["aggregation_error"]
@@ -515,10 +515,12 @@ def test_standard_runner_uses_real_co2_prepared_inputs(monkeypatch: pytest.Monke
     monkeypatch.setattr(co2_runner, "build_co2_model", build_model)
 
     with pytest.raises(ModelBoundaryReached):
-        run_rhime_co2(
-            prepared_inputs=prepared,
-            fixed_model_mismatch=0.0,
-            no_model_error=True,
+        inputs, priors = co2_runner.materialize_co2_inputs(
+            prepared_inputs=prepared, fixed_model_mismatch=0.0, no_model_error=True,
+        )
+        co2_runner.build_co2_from_materialized(
+            inputs, prepared_inputs=prepared, priors=priors,
+            fixed_model_mismatch=0.0, no_model_error=True,
         )
 
     assert received["aggregation_error"].mode == "low_rank"
@@ -569,10 +571,43 @@ def test_standard_runner_materializes_aggregation_payload_once(
     monkeypatch.setattr(co2_runner, "build_co2_model", build_model)
 
     with pytest.raises(ModelBoundaryReached):
-        run_rhime_co2(
-            prepared_inputs=prepared,
-            fixed_model_mismatch=0.0,
-            no_model_error=True,
+        inputs, priors = co2_runner.materialize_co2_inputs(
+            prepared_inputs=prepared, fixed_model_mismatch=0.0, no_model_error=True,
+        )
+        co2_runner.build_co2_from_materialized(
+            inputs, prepared_inputs=prepared, priors=priors,
+            fixed_model_mismatch=0.0, no_model_error=True,
         )
 
     assert executions == 1
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_centered_co2_envelope_embeds_current_generic_representation(tmp_path: Path, suffix: str) -> None:
+    """The CO2 envelope has independent versions and validates its generic child."""
+    canonical = _canonical_inputs()
+    inputs = canonical.inv_inputs.copy(deep=False)
+    inputs["H_bc_anomaly"] = xr.DataArray(
+        [[1., 2., 3.]], dims=("bc_region", "nmeasure"),
+        coords={"bc_region": ["north"], "nmeasure": inputs.nmeasure}, attrs={"units": "ppm"},
+    )
+    inputs["H_bc_mass"] = xr.ones_like(inputs.H_bc_anomaly).assign_attrs(units="1")
+    inputs["bc_reference"] = xr.DataArray(400., attrs={"units": "ppm"})
+    inputs.attrs["boundary_representation"] = "centered-v1"
+    canonical = PreparedInputs(inputs, canonical.basis_functions, canonical.site_metadata)
+    prepared = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=None)
+    tree = prepared.to_datatree()
+    assert tree.attrs["schema_version"] == 2
+    assert tree["rhime_inputs"].attrs["schema_version"] == 3
+    assert tree["rhime_inputs"].attrs["representation"] == "centered"
+    path = tmp_path / f"centered-co2{suffix}"
+    prepared.save(path)
+    restored = Co2PreparedInputs.load(path)
+    xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)
+    tree["rhime_inputs"].attrs["representation"] = "ordinary"
+    with pytest.raises(ValueError, match="representation"):
+        Co2PreparedInputs.from_datatree(tree)
+    tree["rhime_inputs"].attrs["schema_version"] = 2
+    del tree["rhime_inputs"].attrs["representation"]
+    with pytest.raises(ValueError, match="[Rr]egenerate"):
+        Co2PreparedInputs.from_datatree(tree)

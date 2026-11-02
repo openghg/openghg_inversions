@@ -23,9 +23,10 @@ from openghg.util import (  # pyright: ignore[reportPrivateImportUsage, reportAt
     cf_ureg,
 )
 
+from openghg_inversions._serialization_codecs import _copy_json_mapping, _decode_json_mapping
 from openghg_inversions.array_ops import require_unique_index, same_index, validate_covariance_coordinates
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_COVARIANCE,
@@ -37,9 +38,11 @@ from openghg_inversions.observation_error import (
 )
 from openghg_inversions.serialization import open_datatree_loaded, save_datatree
 
+from .co2_o2_preparation import Co2O2PreparedInputs
+
 
 CO2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_prepared_inputs"
-CO2_PREPARED_INPUTS_SCHEMA_VERSION = 1
+CO2_PREPARED_INPUTS_SCHEMA_VERSION = 2
 Co2AggregationErrorMode = Literal["dense", "low_rank"]
 _AGGREGATION_PAYLOAD_NAMES = (
     AGGREGATION_ERROR_COVARIANCE,
@@ -52,14 +55,7 @@ _AGGREGATION_REPRESENTATION_DIMS = {"agg_rank", "nmeasure_cov"}
 
 def _json_mapping(value: Mapping[str, Any]) -> Mapping[str, Any]:
     """Return an immutable JSON-safe copy."""
-    try:
-        encoded = json.dumps(dict(value), sort_keys=True, allow_nan=False)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("CO2 preparation provenance must be JSON-serializable.") from exc
-    decoded = json.loads(encoded)
-    if not isinstance(decoded, dict):  # Mapping always encodes as an object; keep the boundary explicit.
-        raise ValueError("CO2 preparation provenance must encode as a JSON object.")
-    return MappingProxyType(decoded)
+    return MappingProxyType(_copy_json_mapping(value, "CO2 preparation provenance", sort_keys=True))
 
 
 _require_axis = require_unique_index
@@ -173,6 +169,9 @@ def _require_equivalent_units(actual: Any, expected: str, *, name: str) -> None:
 
 def _validate_co2_dataset(inputs: xr.Dataset) -> None:
     """Validate the scientific layout owned by the CO2 artifact."""
+    from openghg_inversions.boundary_sensitivity import validate_boundary_operands
+
+    validate_boundary_operands(inputs)
     required = (
         "H",
         "alpha_prior_mean",
@@ -275,7 +274,7 @@ class Co2PreparedInputs:
             artifacts include approximation diagnostics.
     """
 
-    rhime_inputs: RhimePreparedInputs
+    rhime_inputs: PreparedInputs
     aggregation_error_mode: Co2AggregationErrorMode
     provenance: Mapping[str, Any] = field(default_factory=dict)
 
@@ -348,10 +347,6 @@ class Co2PreparedInputs:
         """Return the provenance-only basis artifact path."""
         return self.rhime_inputs.basis_artifact_path
 
-    def validated(self) -> Self:
-        """Return this structurally validated frozen wrapper."""
-        return self
-
     def to_datatree(self) -> xr.DataTree:
         """Build the versioned in-memory serialization tree.
 
@@ -384,7 +379,7 @@ class Co2PreparedInputs:
                 DIAGONAL_RESIDUAL_VARIANCE
             ].copy(deep=False, data=aggregation_error.diagonal_variance.data)
         serializable_inputs = self.inv_inputs._replace(variables=variables)
-        serializable = RhimePreparedInputs(
+        serializable = PreparedInputs(
             inv_inputs=serializable_inputs,
             basis_functions=self.basis_functions,
             site_metadata=self.site_metadata,
@@ -392,7 +387,7 @@ class Co2PreparedInputs:
         tree = xr.DataTree.from_dict({"rhime_inputs": serializable.to_datatree()})
         tree.attrs = {
             "schema": CO2_PREPARED_INPUTS_SCHEMA,
-            "schema_version": CO2_PREPARED_INPUTS_SCHEMA_VERSION,
+            "schema_version": CO2_PREPARED_INPUTS_SCHEMA_VERSION if "H_bc_anomaly" in self.inv_inputs else 1,
             "aggregation_error_mode": self.aggregation_error_mode,
             "provenance_json": json.dumps(dict(self.provenance), sort_keys=True, allow_nan=False),
         }
@@ -400,7 +395,7 @@ class Co2PreparedInputs:
 
     @classmethod
     def from_datatree(cls, tree: xr.DataTree) -> Self:
-        """Restore CO2 inputs from the dedicated version-1 schema.
+        """Restore absolute or centered CO2 inputs from the dedicated schema.
 
         Args:
             tree: In-memory tree using the CO2 prepared-input schema.
@@ -419,25 +414,25 @@ class Co2PreparedInputs:
                 f"got {tree.attrs.get('schema')!r}."
             )
         version = tree.attrs.get("schema_version")
-        if isinstance(version, bool) or not isinstance(version, Integral) or version != 1:
+        if isinstance(version, bool) or not isinstance(version, Integral) or version not in (1, 2):
             raise ValueError(
-                f"Expected Co2PreparedInputs schema_version "
-                f"{CO2_PREPARED_INPUTS_SCHEMA_VERSION}, got {version!r}."
+                f"Expected Co2PreparedInputs schema_version 1 or 2, got {version!r}."
             )
         if "rhime_inputs" not in tree.children:
             raise KeyError("Missing required Co2PreparedInputs node 'rhime_inputs'.")
         mode = tree.attrs.get("aggregation_error_mode")
         if mode not in ("dense", "low_rank"):
             raise ValueError(f"Invalid serialized CO2 aggregation_error_mode {mode!r}.")
-        try:
-            provenance = json.loads(str(tree.attrs.get("provenance_json", "{}")))
-        except json.JSONDecodeError as exc:
-            raise ValueError("Serialized CO2 provenance is not valid JSON.") from exc
+        provenance = _decode_json_mapping(
+            tree.attrs.get("provenance_json", "{}"), "Serialized CO2 provenance"
+        )
         prepared = cls(
-            RhimePreparedInputs.from_datatree(cast(xr.DataTree, tree["rhime_inputs"])),
+            PreparedInputs.from_datatree(cast(xr.DataTree, tree["rhime_inputs"])),
             aggregation_error_mode=cast(Co2AggregationErrorMode, mode),
             provenance=provenance,
         )
+        if version == 1 and "H_bc_anomaly" in prepared.inv_inputs:
+            raise ValueError("Centered boundary operands require CO2 prepared schema version 2.")
         resolve_aggregation_error(prepared.inv_inputs, prepared.aggregation_error_mode)
         return prepared
 
@@ -475,8 +470,51 @@ class Co2PreparedInputs:
         return cls.from_datatree(open_datatree_loaded(file_path))
 
 
+def requested_co2_facts(
+    prepared: Co2PreparedInputs | Co2O2PreparedInputs, *, start_date: str | None = None,
+    end_date: str | None = None, domain: str | None = None,
+    recorded_facts: Mapping[str, object] | None = None,
+) -> dict[str, str]:
+    """Return authoritative requested facts without inferring observation extrema.
+
+    Explicit values fill missing provenance facts. Repeated facts must agree;
+    dates compare by timestamp meaning. ``recorded_facts`` supplies declared
+    configuration or handoff facts alongside numerical preparation provenance;
+    all claims must agree. Only start/end dates and domain are consumed.
+    Imported preparations missing facts require explicit caller values;
+    observation extrema cannot recover the original requested window.
+    """
+    supplied = {"start_date": start_date, "end_date": end_date, "domain": domain}
+    facts: dict[str, str] = {}
+    for name, value in supplied.items():
+        for claim in (prepared.provenance.get(name), (recorded_facts or {}).get(name), value):
+            if claim is None:
+                continue
+            if not isinstance(claim, str) or not claim.strip():
+                raise ValueError(f"CO2 preparation requires explicit requested facts: {[name]!r}.")
+            if name in facts:
+                recorded = facts[name]
+                equivalent = (
+                    pd.Timestamp(claim) == pd.Timestamp(recorded)
+                    if name in {"start_date", "end_date"} else claim == recorded
+                )
+                if not equivalent:
+                    raise ValueError(
+                        f"CO2 requested {name} conflicts with preparation or declared request: {claim!r} != {recorded!r}."
+                    )
+            else:
+                facts[name] = claim
+    missing = [name for name in supplied if name not in facts]
+    if missing:
+        raise ValueError(f"CO2 preparation requires explicit requested facts: {missing!r}.")
+    start, end = pd.Timestamp(facts["start_date"]), pd.Timestamp(facts["end_date"])
+    if pd.isna(start) or pd.isna(end) or start >= end:
+        raise ValueError("CO2 requested start_date must precede a valid end_date.")
+    return facts
+
+
 def prepare_co2_inputs(
-    canonical_inputs: RhimePreparedInputs,
+    canonical_inputs: PreparedInputs,
     reduction: CoherentGaussianReduction,
     *,
     aggregation_error_rank: int | None = 512,
@@ -706,10 +744,11 @@ def prepare_co2_inputs(
     if declared_strategy is not None and declared_strategy != reduction.projection_strategy:
         raise ValueError("CO2 provenance projection_strategy conflicts with the coherent reduction.")
     metadata["projection_strategy"] = reduction.projection_strategy
+    metadata["aggregation_error_rank"] = aggregation_error_rank
     if approximation is not None:
         metadata["aggregation_error"] = dict(approximation.diagnostics)
     return Co2PreparedInputs(
-        RhimePreparedInputs(
+        PreparedInputs(
             inv_inputs=mapped,
             basis_functions=canonical.basis_functions,
             site_metadata=canonical.site_metadata,
@@ -724,4 +763,5 @@ __all__ = [
     "CO2_PREPARED_INPUTS_SCHEMA_VERSION",
     "Co2PreparedInputs",
     "prepare_co2_inputs",
+    "requested_co2_facts",
 ]

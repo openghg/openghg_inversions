@@ -30,11 +30,13 @@ If ``pollution_events_from_obs=True``, the configured mismatch scale also uses
 the observed concentrations. The resulting simulations are a data-dependent
 conditional check, not a wholly pre-data prior predictive distribution.
 
-This workflow currently supports the staged ``standard`` and ``multisector``
-recipes. This tutorial uses ``standard``. The CO₂ model family does not have a
-staged CLI route; in particular, do not treat PyMC's generic prior-predictive
-sampling as a substitute for a predictive implementation for models whose
-likelihood is represented by a ``Potential``.
+This tutorial uses the staged ``standard`` recipe; the same workflow also
+supports ``multisector``. The :doc:`CO₂ model family <co2_model_family>` has
+a separate staged prepared-input route for CO₂-only models. Both cached-sigma
+CO₂ and linked CO₂/O₂ models expose an observed distribution for native PyMC
+prior and posterior prediction. The linked ``--model co2_o2`` route also supports
+native joint prior checks with unequal channel axes and cross-channel covariance; see
+:ref:`linked-staged-commands`.
 
 Prerequisites
 -------------
@@ -65,7 +67,7 @@ Run the preparation stage:
 
 .. code-block:: bash
 
-   openghg-inversions prepare \
+   rhime prepare \
      --config "$CONFIG" \
      --model standard \
      --output-dir "$RUN/prepare"
@@ -126,10 +128,9 @@ tails:
 
 .. code-block:: bash
 
-   openghg-inversions prior-predictive \
+   rhime prior-predictive \
      --config "$CONFIG" \
      --model standard \
-     --prepared-inputs "$RUN/prepare/prepared-inputs.nc" \
      --preparation-manifest "$RUN/prepare/prepare-manifest.json" \
      --draws 500 \
      --output-dir "$RUN/prior-predictive" \
@@ -156,7 +157,6 @@ The notebook equivalent runs the same finite-value check:
 
    with as_file(resource) as config:
        stage("prior-predictive", "--config", config, "--model", "standard",
-             "--prepared-inputs", prepared_path,
              "--preparation-manifest", preparation_manifest,
              "--draws", 500, "--output-dir", run / "prior-predictive", "--strict")
    readiness = json.loads((run / "prior-predictive/prior-predictive-readiness.json").read_text())
@@ -174,10 +174,10 @@ Load the result and inspect its groups and variable names before plotting:
 .. jupyter-input::
 
    from openghg_inversions.serialization import load_trace
-   from openghg_inversions.inversion_data import RhimePreparedInputs
+   from openghg_inversions.inversion_data import PreparedInputs
 
    prior = load_trace(run / "prior-predictive/prior-predictive.nc")
-   prepared = RhimePreparedInputs.load(prepared_path)
+   prepared = PreparedInputs.load(prepared_path)
    observations = prepared.inv_inputs["mf"]
    concentration_units = observations.attrs.get("units", "mole fraction")
    {
@@ -358,10 +358,13 @@ Revise and repeat
 -----------------
 
 If the simulations are implausible, change the relevant prior or model option
-in the configuration and repeat both ``prepare`` and ``prior-predictive`` in a
-new output directory. Prior settings are part of the preparation manifest's
-configuration identity, so a manifest from the previous configuration is
-intentionally rejected. Record why each change is scientifically justified;
+in the configuration and rerun ``prior-predictive`` with the same preparation
+manifest when the revised model is compatible with the prepared inputs.
+Standard preparation supports compatible graph-time prior and likelihood changes;
+it does not require full-configuration equality. Repeat ``prepare`` when changing
+acquired data, filtering or averaging, basis or sensitivities, or another baked
+preparation policy. See :doc:`staged_workflow` for compatibility details.
+Record why each change is scientifically justified;
 repeatedly tuning a prior only to mimic the observed series turns the exercise
 into data-dependent model fitting.
 
@@ -375,19 +378,19 @@ The packaged tutorial configuration uses only 50 tuning and 50 retained draws,
 two chains, and disabled convergence checks. Those settings demonstrate the
 workflow but are not adequate for scientific interpretation. Increase the
 sampler settings and enable convergence checks for a scientific run.
-Sampler-only changes do not invalidate the prepared artifact; changes to the
-scientific preparation, model, or prior settings require a new preparation.
+Sampler-only changes and compatible graph-time model or prior changes reuse the
+prepared artifact. Changes to acquired data, filtering or averaging, basis or
+sensitivities, or other baked preparation policies require new preparation.
 
 .. code-block:: bash
 
-   openghg-inversions sample \
+   rhime sample \
      --config "$CONFIG" \
      --model standard \
-     --prepared-inputs "$RUN/prepare/prepared-inputs.nc" \
      --preparation-manifest "$RUN/prepare/prepare-manifest.json" \
      --output-dir "$RUN/sample"
 
-This rebuilds the same configured model from the authenticated prepared data,
+This rebuilds the same configured model from the saved prepared data,
 runs the configured sampler, and writes ``posterior.nc`` and
 ``sample-manifest.json``. It reuses the data artifact, not the in-memory PyMC
 graph from the prior-predictive process.
@@ -398,7 +401,6 @@ In the notebook, explicitly reuse the same artifact and manifest:
 
    with as_file(resource) as config:
        stage("sample", "--config", config, "--model", "standard",
-             "--prepared-inputs", prepared_path,
              "--preparation-manifest", preparation_manifest,
              "--output-dir", run / "sample")
    posterior = load_trace(run / "sample/posterior.nc")
@@ -413,7 +415,7 @@ Next run the staged convergence check:
 
 .. code-block:: bash
 
-   openghg-inversions diagnose \
+   rhime diagnose \
      --posterior "$RUN/sample/posterior.nc" \
      --sample-manifest "$RUN/sample/sample-manifest.json" \
      --output-dir "$RUN/diagnose"

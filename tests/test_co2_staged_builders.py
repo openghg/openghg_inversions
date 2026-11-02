@@ -4,15 +4,17 @@ from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
-import pytest
+import pymc as pm
 import xarray as xr
 
 from openghg_inversions.rhime.co2 import (
-    build_rhime_co2,
-    build_rhime_co2_cached_sigma,
-    sample_co2_cached_prior_predictive,
+    materialize_co2_inputs,
+    build_co2_from_materialized,
 )
 from openghg_inversions.rhime.co2 import co2_cached_sigma_runner, co2_runner
+from openghg_inversions.rhime.co2.inference import build_co2_inference, annotate_co2_inference
+from openghg_inversions.rhime.co2.configuration import Co2ModelConfig
+from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.serialization import load_trace, save_trace
 
 
@@ -47,9 +49,6 @@ def test_unsampled_builders_and_correlated_cached_prior(monkeypatch: Any, tmp_pa
         rhime_inputs = None
         aggregation_error_mode = "dense"
 
-        def validated(self) -> "Prepared":
-            return self
-
     def materialize(_prepared: Any, *, variable_names: tuple[str, ...]) -> xr.Dataset:
         return inputs[list(variable_names)]
 
@@ -57,20 +56,30 @@ def test_unsampled_builders_and_correlated_cached_prior(monkeypatch: Any, tmp_pa
         raise AssertionError("Building a staged graph must not sample the posterior")
 
     for module in (co2_runner, co2_cached_sigma_runner):
-        monkeypatch.setattr(module, "materialize_pymc_inputs", materialize)
-        monkeypatch.setattr(module, "sample_rhime_model", unexpected_sampling)
+        if module is co2_runner:
+            monkeypatch.setattr(module, "_materialize_pymc_inputs_and_priors",
+                                lambda prepared, *, variable_names, prior_parameters: (
+                                    materialize(prepared, variable_names=variable_names), prior_parameters,
+                                ))
+        else:
+            monkeypatch.setattr(module, "materialize_pymc_inputs", materialize)
+    monkeypatch.setattr(pm, "sample", unexpected_sampling)
     prepared = cast(Any, Prepared())
-    ordinary = build_rhime_co2(prepared_inputs=prepared, no_model_error=True)
-    assert ordinary.variable_roles["model_mean"] == "modelled_concentration"
-    cached = build_rhime_co2_cached_sigma(
-        prepared_inputs=prepared,
-        tau_hours=4.0,
-        site_amplitude_prior_scale=0.5,
-    )
-    with pytest.warns(UserWarning, match="Potentials"):
-        trace = sample_co2_cached_prior_predictive(
-            cached, prepared, draws=2000, random_seed=917,
-        )
+    inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, no_model_error=True)
+    ordinary = build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, no_model_error=True)
+    assert ordinary.output_contract.variable_roles["model_mean"] == "modelled_concentration"
+    options = Co2ModelConfig.from_params({"likelihood": {
+        "kind": "fixed_ou", "tau_hours": 4.0,
+        "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.5},
+    }}).model_arguments()
+    built, cached = build_co2_inference(prepared, options)
+    assert cached is not None
+    with built.model:
+        trace = pm.sample_prior_predictive(draws=2000, random_seed=917)
+    registry = get_coord_registry(built.model)
+    if registry is not None:
+        trace = restore_inferencedata_coords(trace, registry)
+    trace = annotate_co2_inference(trace, built, prepared, options, cached)
     assert "posterior" not in trace.children
     assert "log_likelihood" not in trace.children
     assert trace.prior_predictive["y"].attrs["units"] == "ppm"
@@ -94,13 +103,13 @@ def test_unsampled_builders_and_correlated_cached_prior(monkeypatch: Any, tmp_pa
     # The cached normalized likelihood is stored as one value per joint
     # observation vector. Its provenance must survive canonical NetCDF replay.
     posterior = xr.DataTree.from_dict({"posterior": trace.prior.to_dataset().isel(draw=slice(0, 2))})
-    posterior = co2_cached_sigma_runner._append_joint_outputs(
-        posterior,
-        cached_model=cached,
-        observations=inputs["mf"],
-        posterior_predictive=True,
-        random_seed=918,
-    )
+    with cached.model:
+        pm.compute_log_likelihood(posterior)
+        pm.sample_posterior_predictive(
+            posterior, extend_inferencedata=True, random_seed=918,
+            freeze_vars=["flux_scaling_latent", "ou_site_amplitude"],
+        )
+    posterior = annotate_co2_inference(posterior, built, prepared, options, cached)
     path = tmp_path / "cached-posterior.nc"
     save_trace(posterior, path)
     replay = load_trace(path)

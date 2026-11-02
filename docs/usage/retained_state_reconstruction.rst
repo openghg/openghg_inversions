@@ -54,3 +54,42 @@ explicit reference state :math:`\alpha_{ref}`. Current postprocessing products
 keep their historical ``flux_time`` coordinate label. The retained flux keeps
 its own native time coordinate until that output boundary; a state sample
 ``time`` axis remains independent.
+
+Multisector flux statistics and memory
+--------------------------------------
+
+:func:`~openghg_inversions.postprocessing.make_outputs.make_sector_flux_outputs`
+reports sector and total flux statistics. For ``stats=["mean"]`` with ordinary
+jointly sampled chain/draw traces, it reduces scaling samples before
+reconstructing the grid.
+Linearity makes this equivalent to averaging reconstructed draws, without
+creating a latitude/longitude flux field for every sample. Shared whole-sample
+NaN padding, such as different prior and posterior sample counts, is supported.
+Unusual missing-data layouts, including differing sample availability across
+sectors or entirely missing sample groups, use the general draw-wise path.
+Partial-state NaNs, infinities, or a custom sample dimension also use that path.
+
+RHIME's sector flux diagnostics request means. The multisector route
+through :func:`~openghg_inversions.postprocessing.make_outputs.make_flux_outputs`
+uses the same optimization when only the mean is requested.
+
+.. warning::
+
+   Other statistics, including the default mean and quantiles, and mean-only
+   inputs outside the conditions above reconstruct draw-wise multisector fluxes.
+   Total quantiles and standard deviations must be calculated after summing
+   sectors at matching chain/draw coordinates so that posterior dependence
+   between sectors is retained. Summing sector
+   quantiles or standard deviations does not give the total's statistic.
+
+   These products can require substantial memory as the spatial grid, retained
+   flux times, samples, and number of sectors grow. Concurrent Dask tasks and
+   temporary arrays also affect peak memory; lazy input alone does not make
+   this calculation fit in memory. Request ``stats=["mean"]`` when means are
+   sufficient, and size nonlinear-statistic jobs for their draw-wise workspace.
+
+The mean-only path preserves float32 flux products when the scaling samples,
+basis, and prior flux use float32; it does not impose a blanket float64 cast.
+Mixed input precision and operations with an explicitly chosen accumulation
+precision can still produce wider results. Storage precision and PyTensor graph
+precision are separate choices; see :ref:`rhime-terminology-and-quickstart`.

@@ -1,4 +1,8 @@
-"""Tracer-local boundary and offset equations on unequal observation axes."""
+"""Tracer-local boundary and offset equations on unequal observation axes.
+
+Prior draws exercise the equations and restored coordinates; observation
+replicates are unnecessary for these checks.
+"""
 
 import json
 
@@ -12,7 +16,7 @@ from openghg_inversions.models import StateActivity, restore_inferencedata_coord
 from openghg_inversions.rhime.co2 import (
     build_co2_o2_model,
     prepare_co2_o2_inputs,
-    resolve_co2_family_config,
+    Co2O2ModelConfig,
     run_rhime_co2_o2_from_prepared_inputs,
 )
 from openghg_inversions.rhime.co2 import co2_o2_runner
@@ -73,13 +77,17 @@ def test_boundary_fixed_and_active_state_reconstructs_exact_joint_sum(channels):
     }
     model = _model(prepared, bc_state_activity=activities)
     with model:
-        trace = pm.sample_prior_predictive(draws=3, random_seed=42)
+        trace = pm.sample_prior_predictive(
+            draws=3,
+            random_seed=42,
+            var_names=[var.name for var in model.free_RVs + model.deterministics],
+        )
     trace = restore_inferencedata_coords(trace, get_coord_registry(model))
-    expected = np.zeros((1, 3, 5))
+    expected = np.zeros((1, 3, 5), dtype=trace.prior.modelled_concentration.dtype)
     for channel in channels:
         scale = trace.prior[f"{channel}_bc"].values
         np.testing.assert_array_equal(scale[..., 1], 2.0)
-        contribution = scale @ prepared.boundary_sensitivity[channel].values.T
+        contribution = scale @ prepared.boundary_sensitivity[channel].values.astype(scale.dtype).T
         selected = slice(0, 2) if channel == "co2" else slice(2, 5)
         expected[..., selected] += contribution
         padded = np.zeros_like(expected)
@@ -87,8 +95,11 @@ def test_boundary_fixed_and_active_state_reconstructs_exact_joint_sum(channels):
         np.testing.assert_allclose(trace.prior[f"{channel}_mu_bc"], padded)
         assert trace.prior[f"{channel}_bc"][f"{channel}_boundary"].values.tolist() == ["north", "south"]
     np.testing.assert_allclose(trace.prior.baseline_concentration, expected)
-    flux = trace.prior.co2_o2_flux_contribution + trace.constant_data.fixed_prior_contribution
-    np.testing.assert_allclose(trace.prior.modelled_concentration, flux + expected)
+    # Follow the float32 graph's addition order before the coherent affine intercept.
+    signal = trace.prior.co2_o2_flux_contribution + expected
+    np.testing.assert_allclose(
+        trace.prior.modelled_concentration, signal + trace.constant_data.fixed_prior_contribution
+    )
     np.testing.assert_allclose(
         trace.constant_data.aggregation_error_covariance, prepared.aggregation_error.covariance
     )
@@ -106,7 +117,11 @@ def test_independent_offsets_and_boundary_reconstruct_from_draws(per_site, frequ
         offset_args={channel: {"per_site": per_site, "offset_freq": frequency} for channel in ("co2", "o2")},
     )
     with model:
-        trace = pm.sample_prior_predictive(draws=3, random_seed=7)
+        trace = pm.sample_prior_predictive(
+            draws=3,
+            random_seed=7,
+            var_names=[var.name for var in model.free_RVs + model.deterministics],
+        )
     trace = restore_inferencedata_coords(trace, get_coord_registry(model))
     path = tmp_path / "baselines.nc"
     save_trace(trace, path)
@@ -133,11 +148,10 @@ def test_independent_offsets_and_boundary_reconstruct_from_draws(per_site, frequ
 
 def test_configuration_and_runner_forward_same_channel_options(monkeypatch):
     prepared = _prepared(("co2",))
-    setup = resolve_co2_family_config(
+    setup = Co2O2ModelConfig.from_params(
         {
             "format_version": 1,
             "recipe": "co2_o2",
-            "variant": "linked",
             "channels": {
                 "co2": {
                     "units": "ppm",
@@ -156,12 +170,16 @@ def test_configuration_and_runner_forward_same_channel_options(monkeypatch):
             },
         }
     )
-    configured = dict(setup.runner_arguments(prepared))
+    configured = {"prepared_inputs": prepared, **setup.bind(prepared)}
     configured["sampler"] = RhimeSampler(draws=2, tune=0, chains=1, burn=0, nuts_sampler="pymc")
 
     def prior_sample(built, sampler):
         with built.model:
-            trace = pm.sample_prior_predictive(draws=2, random_seed=8)
+            trace = pm.sample_prior_predictive(
+                draws=2,
+                random_seed=8,
+                var_names=[var.name for var in built.model.free_RVs + built.model.deterministics],
+            )
         return restore_inferencedata_coords(trace, get_coord_registry(built.model))
 
     monkeypatch.setattr(co2_o2_runner, "sample_rhime_model", prior_sample)
@@ -237,7 +255,11 @@ def test_offsets_restore_native_site_time_multiindexes(per_site, frequency, extr
         offset_args={channel: {"per_site": per_site, "offset_freq": frequency} for channel in ("co2", "o2")},
     )
     with model:
-        trace = pm.sample_prior_predictive(draws=3, random_seed=12)
+        trace = pm.sample_prior_predictive(
+            draws=3,
+            random_seed=12,
+            var_names=[var.name for var in model.free_RVs + model.deterministics],
+        )
     trace = restore_inferencedata_coords(trace, get_coord_registry(model))
     assert trace.prior.indexes["observation"].equals(prepared.observations.indexes["observation"])
     if extra_level:

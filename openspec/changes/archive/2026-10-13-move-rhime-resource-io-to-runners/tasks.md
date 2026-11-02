@@ -1,0 +1,57 @@
+# Tasks
+
+Deliver under #868 before #866 consumes these boundaries. Exact destinations and
+selected-resource checks already exist; preserve their tests and scientific behavior.
+
+## 1. Runner-owned resources and exports
+
+- [x] 1.1 Resolve file resource values and explicit invocation overrides at their
+  owning boundary; verify selected paths from a different working directory,
+  absolute paths and equivalent full/staged requests, plus deterministic sorted
+  loading of explicit outer/inner partition collections.
+  Drive conversion from declared path fields, preserving each value's origin;
+  supply the converter with the owning record's declarations without imports
+  of concrete configuration owners. Convert at one external boundary and forward
+  canonical paths thereafter; cover full, staged, directly configured and
+  output-only calls, with no discovery in constructors or repeated adaptation.
+  Consume the separate HBMCMC isolation contract for legacy-only translation and
+  reject `country_directory` with an early migration error.
+- [x] 1.2 Remove optional saving from `prepare_basis` and migrate every runner,
+  staged and copied/example caller to the existing save codec; verify generated,
+  reused and partition bases, export metadata, no unrequested writes and exact
+  destinations inside/outside checkpoint directories without a repeated prefix.
+- [x] 1.3 Update affected API documentation and add the #868 release note; pass
+  focused caller/scientific parity checks, including early missing-resource errors
+  without fallback or read-side directory creation.
+  Add a 0.8 migration section and a distinct list of planned 0.9 deprecations and
+  removals; explain NESW needs no basis file and a legacy directory is unused
+  on the HBMCMC route. Align with the separate HBMCMC change's complete 0.9
+  removal schedule and 0.8 modern-entry migration; verify links and docs build.
+- [x] 1.4 Move BC basis selection/loading before acquisition and pass resolved
+  labelled data to sensitivities. Cover NESW with no file I/O, ignored legacy
+  directories with a warning, explicit single/multiple files and time alignment,
+  missing files and legacy translation without downstream case/glob discovery.
+- [x] 1.5 Resolve required packaged land/sea and outer-region defaults in runners
+  for the selected domain; cover explicit overrides, missing-domain failures,
+  algorithms needing no map and independence from explicit reporting `country_file`.
+
+The initial ownership correction is implemented; approved follow-up review
+checks cover deterministic partition ordering and migration documentation. The separate
+[HBMCMC change](../../isolate-and-retire-hbmcmc/tasks.md) owns the legacy entry-point
+fix, dependency enforcement and retirement. Existing BC-loading and basis-export
+work remains subject to its focused regression checks after integration.
+
+## 2. Completion
+
+- [x] 2.1 Record implementation and acceptance, then sync both deltas and
+  archive this change before the grouped-configuration delta is synced. Confirm
+  the durable resource spec describes the resulting implemented save boundary.
+  As part of sync/archive, update remaining active consumers and the developer
+  contract map from this change to the delivered capability; retain historical
+  references only via the actual archive location. Check links in promoted specs
+  and remaining active changes after archival. Requirement links use durable
+  capability URLs so copying them does not depend on source-directory depth.
+
+Accepted for merge on PR #869 after green CI at `7260b43d`; all 294 affected
+tests and the full docs build (SLURM 19376573) passed. The maintainer requested
+promotion/archive before the final merge. HBMCMC 0.9 retirement remains open.

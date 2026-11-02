@@ -32,7 +32,7 @@ def sample_rhime_model(
     timing_start = timer_start()
     idata = sampler.sample(
         model_build_result.model,
-        variable_roles=model_build_result.variable_roles,
+        variable_roles=model_build_result.output_contract.variable_roles,
     )
     log_timing(
         "rhime.sampler_total",

@@ -2,6 +2,9 @@ from typing import Any, cast
 
 import numpy as np
 import pymc as pm
+import pytensor
+import pytensor.tensor as pt
+from pymc.pytensorf import floatX
 import pytest
 import xarray as xr
 from scipy.stats import multivariate_normal
@@ -11,6 +14,8 @@ from openghg_inversions.models.additive_sigma import (
 )
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.fixed_error import add_fixed_error_likelihood
+from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
 from openghg_inversions.models.pollution_event import add_pollution_event_likelihood
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.sigma import SigmaAlignment
@@ -28,7 +33,6 @@ def _add_pollution_event_likelihood(
     power: dict[str, Any] | float = 1.99,
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
-    retain_unused_sigma: bool = False,
     aggregation_error_mode: Any = "none",
 ) -> None:
     """Compose the ordinary mean and add the built-in error and distribution."""
@@ -40,7 +44,10 @@ def _add_pollution_event_likelihood(
         observations=data["mf"],
         observation_error=data["mf_error"],
         minimum_error=data["min_error"],
-        aggregation_error=resolve_aggregation_error(data, aggregation_error_mode),
+        aggregation_error=(
+            None if aggregation_error_mode == "none"
+            else resolve_aggregation_error(data, aggregation_error_mode)
+        ),
         mean=mean,
         pollution_mean=mu,
         pollution_event_baseline=baseline,
@@ -49,7 +56,6 @@ def _add_pollution_event_likelihood(
         power=power,
         pollution_events_from_obs=pollution_events_from_obs,
         no_model_error=no_model_error,
-        retain_unused_sigma=retain_unused_sigma,
     )
 
 
@@ -77,7 +83,7 @@ def _low_rank_data() -> tuple[xr.Dataset, np.ndarray]:
 def _fixed_likelihood_model(data: xr.Dataset) -> pm.Model:
     aggregation_error = resolve_aggregation_error(data)
     with registered_model(coords={"nmeasure": data.coords["nmeasure"]}) as model:
-        mean = pm.Data("mean", pm.floatX(np.array([0.8, 1.7, 2.9])), dims="nmeasure")
+        mean = pm.Data("mean", floatX(np.array([0.8, 1.7, 2.9])), dims="nmeasure")
         add_fixed_error_likelihood(
             observations=data["mf"],
             observation_error=data["mf_error"],
@@ -87,6 +93,7 @@ def _fixed_likelihood_model(data: xr.Dataset) -> pm.Model:
     return model
 
 
+@pytest.mark.compiled_backend
 def test_low_rank_logp_matches_dense_gaussian() -> None:
     low_rank_data, covariance = _low_rank_data()
     dense_data = _base_data()
@@ -107,6 +114,14 @@ def test_low_rank_logp_matches_dense_gaussian() -> None:
 
     assert low_rank_logp == pytest.approx(expected, rel=1e-6)
     assert low_rank_logp == pytest.approx(dense_logp, rel=1e-6)
+
+    expected_gradient = np.linalg.solve(
+        covariance + np.diag(low_rank_data["mf_error"].values**2),
+        low_rank_data["mf"].values - np.array([0.8, 1.7, 2.9]),
+    )
+    for model in (low_rank_model, dense_model):
+        logp = pm.logp(model["y"], low_rank_data["mf"].values).sum()
+        np.testing.assert_allclose(pt.grad(logp, model["mean"]).eval(), expected_gradient, rtol=1e-8)
 
 
 def test_low_rank_likelihood_retains_observed_y_and_predictive_sampling() -> None:
@@ -144,6 +159,7 @@ def test_fixed_error_likelihood_uses_reported_and_aggregation_error_only() -> No
     np.testing.assert_allclose(model["epsilon"].eval(), expected)
 
 
+@pytest.mark.compiled_backend
 @pytest.mark.parametrize(
     ("mode", "payload_names"),
     [
@@ -218,8 +234,8 @@ def test_min_error_is_a_floor_on_total_marginal_sd(mode: str) -> None:
     assert "model_error" not in model.named_vars
 
 
-def test_no_model_error_retains_legacy_sigma_graph_and_observation_error_floor() -> None:
-    """Disabling model error preserves the legacy graph but epsilon uses only data error."""
+def test_no_model_error_uses_reported_error_without_sigma_or_minimum_floor() -> None:
+    """Disabling model error uses reported errors and excludes unused sigma variables."""
     data = _base_data()
     data["mf_error"] = ("nmeasure", np.array([0.0, 0.3, 0.4]))
     data["min_error"] = ("nmeasure", np.full(3, 20.0))
@@ -235,19 +251,17 @@ def test_no_model_error_retains_legacy_sigma_graph_and_observation_error_floor()
             sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
             sigma_alignment=sigma_alignment,
             no_model_error=True,
-            retain_unused_sigma=True,
         )
 
     small_amount = 1e-12 * np.nanmean(data["mf"].values)
     expected = np.maximum(np.abs(data["mf_error"].values), small_amount)
     np.testing.assert_allclose(model.named_vars["epsilon"].eval(), expected)
     assert "model_error" not in model.named_vars
-    assert model["sigma"] in model.free_RVs
-    assert {"sigma", "sigma_site_index", "sigma_period_index"}.issubset(model.named_vars)
+    assert not {"sigma", "sigma_site_index", "sigma_period_index"}.intersection(model.named_vars)
 
 
 def test_no_model_error_omits_unused_sigma_by_default() -> None:
-    """The ordinary component keeps compatibility-only variables out of the graph."""
+    """The ordinary component omits sigma when model error is disabled."""
     data = _base_data()
     sigma_alignment = SigmaAlignment.from_frequency(
         data["site_indicator"], frequency=None, per_site=False
@@ -284,7 +298,6 @@ def test_pollution_event_validation_names_malformed_input_and_owner() -> None:
                 observations=data["mf"],
                 observation_error=data["mf_error"],
                 minimum_error=data["min_error"],
-                aggregation_error=resolve_aggregation_error(data, "none"),
                 mean=pollution_mean,
                 pollution_mean=pollution_mean,
                 pollution_event_baseline=None,
@@ -312,7 +325,6 @@ def test_additive_sigma_validation_names_malformed_input_and_owner() -> None:
             add_additive_sigma_likelihood(
                 observations=data["mf"],
                 observation_error=malformed_error,
-                aggregation_error=resolve_aggregation_error(data, "none"),
                 mean=pm.math.constant(np.ones(3)),
                 additive_sigma_alignment=sigma_alignment,
                 additive_sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
@@ -341,7 +353,6 @@ def test_likelihoods_reject_reordered_observation_error_coordinates(
                     observations=data["mf"],
                     observation_error=reordered_error,
                     minimum_error=data["min_error"],
-                    aggregation_error=resolve_aggregation_error(data, "none"),
                     mean=pollution_mean,
                     pollution_mean=pollution_mean,
                     pollution_event_baseline=None,
@@ -355,7 +366,6 @@ def test_likelihoods_reject_reordered_observation_error_coordinates(
                 add_additive_sigma_likelihood(
                     observations=data["mf"],
                     observation_error=reordered_error,
-                    aggregation_error=resolve_aggregation_error(data, "none"),
                     mean=pm.math.constant(np.ones(3)),
                     additive_sigma_alignment=sigma_alignment,
                     additive_sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
@@ -398,7 +408,6 @@ def test_additive_sigma_likelihood_omits_optional_sigma_and_minimum_error() -> N
         add_additive_sigma_likelihood(
             observations=data["mf"],
             observation_error=data["mf_error"],
-            aggregation_error=resolve_aggregation_error(data, "none"),
             mean=pm.math.constant(np.ones(3)),
         )
 
@@ -422,7 +431,6 @@ def test_additive_sigma_likelihood_uses_completed_mean() -> None:
             observations=data["mf"],
             observation_error=data["mf_error"],
             minimum_error_floor=data["min_error"],
-            aggregation_error=resolve_aggregation_error(data, "none"),
             mean=mean,
             additive_sigma_alignment=sigma_alignment,
             additive_sigma_prior={"pdf": "uniform", "lower": 0.2, "upper": 0.200001},
@@ -462,3 +470,62 @@ def test_observation_derived_pollution_event_subtracts_complete_baseline() -> No
     sigma = np.asarray(model.named_vars["sigma"].eval()).item()
     expected = np.abs(data["mf"].values - 0.25 - 0.5) * sigma
     np.testing.assert_allclose(model.named_vars["epsilon"].eval(), expected)
+
+
+@pytest.mark.compiled_backend
+@pytest.mark.parametrize("explicit_none", [False, True], ids=["omitted", "none"])
+@pytest.mark.parametrize("component", ["fixed", "additive", "pollution", "site", "ou"])
+def test_absent_aggregation_covariance_matches_independent_reference(
+    component: str,
+    explicit_none: bool,
+) -> None:
+    """Absence adds no covariance while each component retains its mismatch policy."""
+    data = _base_data().assign_coords(
+        site=("nmeasure", ["A", "B", "A"]),
+        time=(
+            "nmeasure",
+            np.array(["2020-01-01T00", "2020-01-01T00", "2020-01-01T02"], dtype="datetime64[h]"),
+        ),
+    )
+    mean_value = np.array([0.8, 1.7, 2.9])
+    covariance = np.diag(data["mf_error"].values**2)
+    options = {"aggregation_error": None} if explicit_none else {}
+    with registered_model(coords={"nmeasure": data.nmeasure.values}) as model:
+        mean = pt.dvector("mean")
+        common = dict(observations=data["mf"], observation_error=data["mf_error"], mean=mean)
+        if component == "fixed":
+            add_fixed_error_likelihood(**common, **options)
+        elif component == "additive":
+            add_additive_sigma_likelihood(
+                **common, **options, fixed_model_mismatch=xr.full_like(data["mf"], 0.5),
+            )
+            covariance += np.eye(3) * 0.5**2
+        elif component == "pollution":
+            add_pollution_event_likelihood(
+                **common, **options, minimum_error=data["min_error"], pollution_mean=mean,
+                pollution_event_baseline=None, sigma_alignment=None, sigma_prior={},
+                power=2.0, pollution_events_from_obs=False, no_model_error=True,
+            )
+        elif component == "site":
+            add_site_sigma_gaussian_likelihood(
+                **common, **options, fixed_site_amplitudes={"A": 0.5, "B": 0.5},
+            )
+            covariance += np.eye(3) * 0.5**2
+        else:
+            add_fixed_ou_gaussian_likelihood(
+                **common, **options, tau_hours=4.0, fixed_site_amplitudes=0.5,
+            )
+            hours = np.array([0.0, 0.0, 2.0])
+            same_site = np.equal.outer(data.site.values, data.site.values)
+            covariance += 0.5**2 * np.exp(-np.abs(hours[:, None] - hours) / 4.0) * same_site
+        logp = pm.logp(model["y"], data["mf"].values).sum()
+        evaluate = pytensor.function([mean], [logp, pt.grad(logp, mean)])
+
+    actual_logp, actual_gradient = evaluate(mean_value)
+    expected = multivariate_normal.logpdf(data["mf"].values, mean=mean_value, cov=covariance)
+    assert actual_logp == pytest.approx(expected, rel=1e-8)
+    np.testing.assert_allclose(
+        actual_gradient, np.linalg.solve(covariance, data["mf"].values - mean_value),
+    )
+    np.testing.assert_allclose(model["epsilon"].eval(), np.sqrt(np.diag(covariance)))
+    assert not any(name.startswith("aggregation_error") for name in model.named_vars)

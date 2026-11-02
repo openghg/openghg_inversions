@@ -1,12 +1,14 @@
 import numpy as np
 import pandas as pd
 import pymc as pm
+import pytensor
 import xarray as xr
 import pytest
 
 from openghg_inversions.models.coords import (
     CoordRegistry,
     add_coords,
+    add_model_data,
     attach_coord_registry,
     get_coord_registry,
     registered_model,
@@ -14,6 +16,57 @@ from openghg_inversions.models.coords import (
     sanitize_coords_for_pymc,
 )
 from tests.helpers import make_trace
+
+
+@pytest.mark.parametrize("model_name", ["", "recipe"])
+@pytest.mark.parametrize("float_dtype", ["float32", "float64"])
+def test_add_model_data_reuses_matching_values_and_scientific_coordinates(model_name, float_dtype) -> None:
+    data = xr.DataArray(
+        [.1, .2], dims="state",
+        coords={"state": ["west", "east"], "latitude": ("state", [50., 51.])},
+        name="sensitivity",
+    )
+    with pytensor.config.change_flags(floatX=float_dtype), registered_model(name=model_name):
+        registered = add_model_data(data)
+        assert add_model_data(data.copy(deep=True)) is registered
+        assert add_model_data(data, registered.name) is registered
+
+
+@pytest.mark.parametrize("conflicting, message", [
+    (xr.DataArray([9., 8.], dims="state"), "values differ"),
+    (xr.DataArray([.1, .2, .3], dims="state"), "values differ"),
+    (xr.DataArray([.1, .2], dims="other"), "dimensions differ"),
+    (xr.DataArray([.1, .2], dims="state", coords={"state": ["east", "west"]}), "values differ"),
+    (xr.DataArray([.1, .2], dims="state", coords={
+        "state": ["west", "east"], "latitude": ("state", [99., 51.]),
+    }), "values differ"),
+])
+def test_add_model_data_rejects_conflicting_reuse(conflicting, message) -> None:
+    data = xr.DataArray(
+        [.1, .2], dims="state",
+        coords={"state": ["west", "east"], "latitude": ("state", [50., 51.])},
+    )
+    with registered_model() as model:
+        registered = add_model_data(data, "sensitivity")
+        original = registered.get_value()
+        with pytest.raises(ValueError, match=message):
+            add_model_data(conflicting, "sensitivity")
+        np.testing.assert_array_equal(registered.get_value(), original)
+        assert "other" not in model.coords
+
+
+def test_add_model_data_rejects_equal_values_with_different_backend_dtype() -> None:
+    with registered_model():
+        add_model_data(xr.DataArray([True, False], dims="state"), "selector")
+        with pytest.raises(ValueError, match="dtype"):
+            add_model_data(xr.DataArray([1, 0], dims="state"), "selector")
+
+
+def test_add_model_data_rejects_existing_random_variable() -> None:
+    with registered_model():
+        pm.Normal("sensitivity")
+        with pytest.raises(ValueError, match="not.*data"):
+            add_model_data(xr.DataArray(1.), "sensitivity")
 
 
 def test_sanitize_coords_for_pymc_returns_range_coords() -> None:
@@ -179,3 +232,67 @@ def test_restore_inferencedata_preserves_independent_auxiliary_on_multiindex() -
 
     assert restored.posterior.indexes["state"].equals(state_index)
     np.testing.assert_array_equal(restored.posterior["latitude"], [50.0, 51.0])
+
+
+def test_boundary_coordinates_borrow_payload_and_preserve_existing_prefix() -> None:
+    from openghg_inversions.models.coords import component_coords
+
+    index = pd.MultiIndex.from_tuples([("north", "a"), ("south", "b")], names=["source", "region"])
+    array = xr.DataArray(
+        np.ones((2, 2)), dims=("nmeasure", "bc_state"),
+        coords={**xr.Coordinates.from_pandas_multiindex(index, "bc_state"),
+                "nmeasure": [0, 1], "site": ("nmeasure", ["A", "B"]),
+                "origin": ("bc_state", ["one", "two"])},
+    )
+    before = array.copy(deep=True)
+    owned = component_coords(array, "bc")
+    assert owned.data is array.data
+    assert owned.dims == ("nmeasure", "bc_state")
+    assert owned.indexes["bc_state"].names == ["bc_source", "bc_region"]
+    xr.testing.assert_identical(array, before)
+    registry = CoordRegistry()
+    registry.add(owned.coords, model_dims=owned.dims)
+    group = xr.Dataset({"bc": (("nmeasure", "bc_state"), owned.values)})
+    restored = restore_inferencedata_coords(make_trace(posterior=group), registry)
+    assert restored.posterior.indexes["bc_state"].equals(owned.indexes["bc_state"])
+    np.testing.assert_array_equal(restored.posterior["bc_origin"], array["origin"])
+    np.testing.assert_array_equal(restored.posterior["site"], array["site"])
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("key", ["rhime_component", "rhime_local_name"])
+def test_registry_rejects_conflicting_coordinate_ownership(key, reverse):
+    first = xr.DataArray([0, 1], dims="bc_region", name="bc_region")
+    first.attrs = {"rhime_component": "bc", "rhime_local_name": "region"}
+    second = first.copy(deep=True)
+    second.attrs[key] = "other"
+    registry = CoordRegistry()
+    coordinates = [first, second][::(-1 if reverse else 1)]
+    registry.add({"bc_region": coordinates[0]}, model_dims=("bc_region",))
+    with pytest.raises(ValueError, match=key + " ownership differs"):
+        registry.add({"bc_region": coordinates[1]}, model_dims=("bc_region",))
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("other_owner", ["bc_co2", None])
+def test_registry_rejects_ambiguous_component_prefixes(other_owner, reverse):
+    from openghg_inversions.models.coords import component_coords
+
+    first = component_coords(xr.DataArray([1, 2], dims="co2_x", coords={"co2_x": [0, 1]}), "bc")
+    local = "x" if other_owner else "bc_co2_x"
+    second = component_coords(xr.DataArray([1, 2], dims=local, coords={local: [0, 1]}), other_owner)
+    arrays = [first, second][::(-1 if reverse else 1)]
+    registry = CoordRegistry()
+    registry.add(arrays[0].coords, model_dims=arrays[0].dims)
+    with pytest.raises(ValueError, match="rhime_component ownership differs"):
+        registry.add(arrays[1].coords, model_dims=arrays[1].dims)
+
+
+def test_component_rejects_colliding_local_and_prefixed_coordinates():
+    from openghg_inversions.models.coords import component_coords
+
+    array = xr.DataArray([1, 2], dims="region", coords={
+        "region": [0, 1], "source": ("region", ["a", "b"]), "bc_source": ("region", ["a", "b"]),
+    })
+    with pytest.raises(ValueError, match="conflicting local and prefixed"):
+        component_coords(array, "bc")
