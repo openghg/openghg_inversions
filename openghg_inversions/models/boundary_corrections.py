@@ -147,10 +147,15 @@ def prepare_boundary_correction(
         operator = a.isel(bc_region=slice(0, 0))
     state = next(dim for dim in operator.dims if dim != row)
     # Flatten period-major, retaining explicit support labels without a second MultiIndex.
-    pattern = (indicator * operator).transpose(row, "bc_coefficient_period", state)
     labels = [f"p{p}:{j}" for p in periods for j in range(operator.sizes[state])]
+    if operator.sizes[state]:
+        pattern = (indicator * operator).transpose(row, "bc_coefficient_period", state)
+        pattern_data = pattern.data.reshape((observations.size, len(labels)))
+    else:
+        # Dask cannot merge the period dimension with a zero-length state axis.
+        pattern_data = operator.transpose(row, state).data
     pattern = xr.DataArray(
-        pattern.data.reshape((observations.size, len(labels))),
+        pattern_data,
         dims=(row, "bc_pattern_term"),
         coords={**dict(observations.coords), "bc_pattern_term": labels},
     )
