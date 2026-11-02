@@ -269,6 +269,22 @@ all means agreeing within two summed MCSEs. Net biosphere, the atmospheric
 scores and convergence checks do not show a corresponding discrepancy;
 these facts do not prove the TER discrepancy is exclusively Monte Carlo error.
 
+A read-only follow-up aligned all 258 multiplicative states by exact
+`(source, region_in_source)` labels: transport, arithmetic prior mean and
+covariance, centred BC patterns, centring weights, observations, measurement
+errors, OU site grouping and timescale match the archive exactly. Physical BC
+and centred affine differences are at most 2.26e-13 ppm. The state order itself
+differs, so the same seed produces different latent trajectories. This finds
+no systematic physical target mismatch, without proving the cause of the
+finite TER difference.
+
+Accepted TER chain means are 47569.44, 47549.02, 47413.94 and 47517.74;
+replay means are 47580.09, 47537.44, 47717.96 and 47702.20 Tg CO2/year.
+Chainwise MCSEs range from 50.06 to 66.01 Tg CO2/year. The discrepancy is
+concentrated in two replay chains and one lower archived chain. A separate
+independent-seed replication would be appropriate before making a stronger
+uniform-equivalence claim; it is not part of this completed replay.
+
 The full-support ordinary/cached normalized density and gradients agree at
 the tested nonzero state in every replay. Direct cached-likelihood gradient
 errors are at most 2.52e-11. Together with unchanged reviewed source hashes,
