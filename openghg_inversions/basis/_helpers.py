@@ -50,9 +50,12 @@ def bc_sensitivity(fp_and_data: dict, bc_basis: BoundaryBasis | None = None) -> 
     for site, ds in fp_and_data.items():
         if site.startswith("."):
             continue
-        site_basis = bc_basis(ds) if callable(bc_basis) else bc_basis
+        site_basis: xr.Dataset | None
         if callable(bc_basis):
+            site_basis = bc_basis(ds)
             site_basis = site_basis.rename({dv: str(dv).replace("basis_", "") for dv in site_basis.data_vars})
+        else:
+            site_basis = bc_basis
         representation = ds.attrs.get("boundary_representation")
         if representation is not None and representation != "centered-v1":
             raise ValueError(f"Unsupported boundary_representation {representation!r}.")
