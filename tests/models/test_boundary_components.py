@@ -6,8 +6,10 @@ import warnings
 from dask import array as da, delayed
 import numpy as np
 import pytest
+import xarray as xr
 
 from openghg_inversions.models.additive_boundary import warn_boundary_offset_confounding
+from openghg_inversions.models.coords import registered_model
 
 
 def test_prototype_concentration_record_name_remains_an_alias():
@@ -82,3 +84,27 @@ def test_existing_boundary_imports_are_aliases_of_shared_helpers(legacy_name, sh
     assert set(legacy.__all__) == set(names)
     for name in names:
         assert getattr(legacy, name) is getattr(shared, name)
+
+
+def test_legacy_additive_boundary_imports_support_level_only_prior():
+    from openghg_inversions.rhime.co2.co2_boundary import add_centered_boundary, prepare_centered_boundary
+
+    transport = xr.DataArray(
+        np.eye(2),
+        dims=("nmeasure", "bc_region"),
+        coords={"nmeasure": [0, 1], "bc_region": ["north", "south"]},
+        attrs={"units": "1"},
+    )
+    weights = transport.sum("nmeasure").assign_attrs(units="1")
+    reference = (400.0 * transport).assign_attrs(units="ppm")
+    mean_prior = {"pdf": "normal", "mu": 0.0, "sigma": 0.2}
+    prepared = prepare_centered_boundary(
+        reference, transport, weights, reference.sum("bc_region"), mean_prior, 0.0, None, None
+    )
+    assert prepared.basis.sizes["bc_contrast"] == 0
+    assert prepared.design.shape == (2, 1)
+    with registered_model() as model:
+        result = add_centered_boundary(prepared, mean_prior, 0.0)
+    assert [latent.name for latent in result.latents] == ["bc_mean_shift"]
+    assert [latent.name for latent in model.free_RVs] == ["bc_mean_shift"]
+    np.testing.assert_array_equal(model["bc_anomaly"].eval(), np.zeros(2))

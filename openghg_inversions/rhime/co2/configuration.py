@@ -358,9 +358,11 @@ def _model(value: object) -> dict[str, Any]:
             else None
         )
         anomaly_scale = (
-            _number(boundary.pop("anomaly_scale"), "model.boundary.anomaly_scale", positive=True)
+            _number(boundary.pop("anomaly_scale"), "model.boundary.anomaly_scale")
             if "anomaly_scale" in boundary else None
         )
+        if anomaly_scale is not None and anomaly_scale < 0:
+            raise ValueError("model.boundary.anomaly_scale must be non-negative.")
         if (mean_shift_prior is None) != (anomaly_scale is None):
             raise ValueError("model.boundary.mean_shift_prior and anomaly_scale must be supplied together.")
         if mean_shift_prior is not None and prior is not None:

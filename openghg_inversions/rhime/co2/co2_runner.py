@@ -389,8 +389,9 @@ def materialize_co2_inputs(
             centered ``H_bc_mass``, ``bc_centering_weights`` and
             ``bc_anomaly_scale``. Cannot be
             combined with multiplicative ``bc_prior`` or ``bc_state_activity``.
-        bc_anomaly_scale: Positive Gaussian standard deviation in observation
-            concentration units before subtracting the weighted boundary mean.
+        bc_anomaly_scale: Finite, nonnegative Gaussian standard deviation in
+            observation concentration units before weighted centring. Zero
+            retains only the common mean without sampled contrasts.
         offset_prior: Optional prior enabling concentration offsets.
         offset_args: Offset frequency, ``per_site`` and ``drop_first`` settings.
 

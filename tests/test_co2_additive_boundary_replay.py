@@ -20,7 +20,8 @@ from test_co2_affine_output import _prepared
 
 @pytest.mark.parametrize("cached", [False, True])
 @pytest.mark.parametrize("centered", [False, True])
-def test_additive_public_build_save_reload_and_reconstruction(tmp_path, cached, centered):
+@pytest.mark.parametrize("anomaly_scale", [0.0, 0.08])
+def test_additive_public_build_save_reload_and_reconstruction(tmp_path, cached, centered, anomaly_scale):
     prepared, _ = _prepared()
     inputs = prepared.inv_inputs.copy(deep=False)
     response = xr.DataArray(
@@ -55,7 +56,7 @@ def test_additive_public_build_save_reload_and_reconstruction(tmp_path, cached, 
     config = {
         "model": {"boundary": {"enabled": True, "mean_shift_prior": {
             "pdf": "normal", "mu": 0.0, "sigma": 0.15,
-        }, "anomaly_scale": 0.08}},
+        }, "anomaly_scale": anomaly_scale}},
         "likelihood": {"kind": "additive_sigma", "no_model_error": True},
     }
     if cached:
@@ -63,6 +64,10 @@ def test_additive_public_build_save_reload_and_reconstruction(tmp_path, cached, 
                                 "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.2}}
     options = Co2ModelConfig.from_params(config).model_arguments()
     built, cache = build_co2_inference(restored_prepared, options)
+    assert "bc_mean_shift" in built.model
+    assert ("bc_anomaly_latent" in built.model) == (anomaly_scale > 0)
+    if cache is not None:
+        assert ("bc_anomaly_latent" in {state.name for state in cache.states}) == (anomaly_scale > 0)
     with built.model:
         trace = pm.sample_prior_predictive(draws=8, random_seed=745)
     registry = get_coord_registry(built.model)
@@ -77,8 +82,11 @@ def test_additive_public_build_save_reload_and_reconstruction(tmp_path, cached, 
     components = reconstruct_co2_concentrations(replay, restored_prepared)
     roles = json.loads(replay.attrs["rhime_variable_roles"])
     assert "boundary_scale" not in roles
-    assert replay.constant_data.bc_anomaly_scale.item() == pytest.approx(0.08)
+    assert replay.constant_data.bc_anomaly_scale.item() == pytest.approx(anomaly_scale)
     assert replay.constant_data.bc_anomaly_scale.attrs["units"] == "ppm"
+    if anomaly_scale == 0:
+        np.testing.assert_array_equal(replay.prior.bc_anomaly, 0.0)
+        np.testing.assert_array_equal(replay.posterior.bc_anomaly, 0.0)
     assert np.abs(replay.prior_predictive.y - replay.prior.modelled_concentration).max() < 5.0
     for when in ("prior", "posterior"):
         np.testing.assert_allclose(
