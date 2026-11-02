@@ -82,7 +82,19 @@ and `ff10`, and variables `H`, `observations`, `observation_error`,
 `fixed_prior_contribution`, `prior_mean`, `prior_covariance`, `reference_flux`,
 `truth_scaling`, `wur_available`, `day_equal_count`, and `night_equal_count`.
 GPP's `reference_flux` is negative, while TER and FF are positive. The input owns
-the scientific identities, support, units, known noise and truth definitions.
+the scientific identities, support, known noise and truth definitions.
+`H`, `observations`, `observation_error` and `fixed_prior_contribution` must all
+contain concentration values in ppm and each must declare `attrs["units"] = "ppm"`.
+Missing or other units (including ppb) are rejected before model construction;
+convert all concentration arrays consistently when preparing the input. Thus
+`concentration_rmse_ppm` and `generative_mean_rmse_ppm` always report ppm.
+
+`reference_flux.attrs["units"]` is also required before fitting. Its attributes
+are copied to `functionals.nc`, including any supplied `scoring_domain` and
+`time_support`; include these to describe the flux functional independently of
+the receptor observation window. The runner imposes no July or full-domain
+restriction. Dataset-level scientific metadata are retained in the summary's
+`scientific_scope`, and `functional_units` records the reference-flux units.
 The runner uses fixed independent observation error and no aggregation error;
 it is not a replay of the full spatial production model.
 
