@@ -152,7 +152,7 @@ def full_run_files(tmp_path):
         prepared, native_mean, prepared_inputs_id=prepared_inputs_content_id(source),
     )
     save(artifact, reconstruction)
-    return prepared, source, reconstruction
+    return prepared, source, reconstruction, artifact
 
 
 @pytest.mark.parametrize("kind", ["preparation", "reconstruction"])
@@ -161,7 +161,7 @@ def full_run_files(tmp_path):
 def test_full_run_protects_consumed_files(full_run_files, tmp_path, monkeypatch, kind, output_kind, alias):
     from openghg_inversions.rhime.co2 import execution
 
-    _, source, reconstruction = full_run_files
+    _, source, reconstruction, _ = full_run_files
     artifact = source if kind == "preparation" else reconstruction
     destination = tmp_path / ("trace.nc" if output_kind == "trace" else f"rhime_basic_co2_{FACTS['domain']}_{FACTS['start_date']}.nc")
     if alias == "direct":
@@ -194,7 +194,7 @@ def test_full_run_protects_consumed_directories(full_run_files, tmp_path, monkey
     from openghg_inversions.basis.affine_flux_map_io import load, save
     from openghg_inversions.rhime.co2 import execution
 
-    _, source, reconstruction = full_run_files
+    _, source, reconstruction, affine = full_run_files
     artifact = source if kind == "preparation" else reconstruction
     trace = tmp_path / "trace.zarr"
     moved = trace / artifact.name if enclosing_trace else tmp_path / f"{kind}.zarr"
@@ -210,7 +210,7 @@ def test_full_run_protects_consumed_directories(full_run_files, tmp_path, monkey
     if kind == "preparation":
         source = moved
         from openghg_inversions.rhime.co2.co2_affine_output import prepared_inputs_content_id
-        save(replace(load(reconstruction), prepared_inputs_id=prepared_inputs_content_id(source)), reconstruction)
+        save(replace(affine, prepared_inputs_id=prepared_inputs_content_id(source)), reconstruction)
     else:
         reconstruction = moved
     def contents():
@@ -232,7 +232,7 @@ def test_full_run_protects_consumed_directories(full_run_files, tmp_path, monkey
 def test_full_run_guards_only_consumed_files_and_written_targets(full_run_files, monkeypatch, route):
     from openghg_inversions.rhime.co2 import execution
 
-    prepared, source, _ = full_run_files
+    prepared, source, _, _ = full_run_files
     request = {"prepared_inputs": {**FACTS, "path": str(source)},
                "likelihood": {"kind": "additive_sigma"},
                "outputs": {"save_trace": str(source), "output_format": "none" if route == "no_output" else "basic"}}
