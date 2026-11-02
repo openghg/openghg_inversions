@@ -113,6 +113,10 @@ def build_shared_co2_o2_model(
     Boundary and total outputs are absolute; the likelihood carries the small
     native centered BC expression plus reference*(mass_response-1), retaining
     precision without constructing and subtracting an O2 background.
+
+    Start Python with ``PYTENSOR_FLAGS=floatX=float64`` before imports,
+    preserving any other configured flags. Float64 inputs alone are insufficient;
+    see :ref:`linked-shared-baseline-precision`.
     """
     bound, prior, corrections, fixed, observations = _linked_inputs(prepared, observations)
     model = build_co2_o2_model(
@@ -130,7 +134,12 @@ def build_shared_co2_o2_cached_sigma_model(
     prepared: Mapping[str, xr.Dataset], *, observations, independent_error_sd,
     aggregation_error, tau_hours, site_amplitude_prior, initial_site_amplitudes=None,
 ):
-    """Build the same linked mean with the existing matched OU cache target."""
+    """Build the same linked mean with the existing matched OU cache target.
+
+    Start Python with ``PYTENSOR_FLAGS=floatX=float64`` before imports,
+    preserving any other configured flags. Float64 inputs alone are insufficient;
+    see :ref:`linked-shared-baseline-precision`.
+    """
     bound, prior, corrections, fixed, observations = _linked_inputs(prepared, observations)
     cached = build_co2_o2_cached_sigma_model(
         observations=observations, independent_error_sd=independent_error_sd,

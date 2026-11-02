@@ -14,8 +14,16 @@ Outer ocean stays fixed; inner ocean states retain their existing treatment.
 The prior, joint error covariance, fixed coherent affine contribution and
 paired tracer responses retain their scientific labels.
 
+.. _linked-shared-baseline-precision:
+
 Inputs and explicit preparation
 -------------------------------
+
+Start Python with ``PYTENSOR_FLAGS=floatX=float64`` before importing OpenGHG
+Inversions, PyMC or PyTensor. If other PyTensor flags are configured, preserve
+them and add or update only the ``floatX`` entry. Float64 input arrays alone do
+not select the runtime precision: the default float32 runtime is rejected by
+the native centred-boundary precision guard.
 
 Start with maintained ``Co2O2PreparedInputs`` scientific arrays. Acquisition
 and preparation own source selection, units, filtering and tracer alignment.
