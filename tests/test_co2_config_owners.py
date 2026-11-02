@@ -83,7 +83,8 @@ def test_saved_sampling_accepts_concrete_owner_without_reparsing(tmp_path, monke
                                                        "o2": {"units": "ppm", "independent_error_sd": .3}}})
              if linked else Co2ModelConfig.from_params({"likelihood": {"kind": "additive_sigma"}}))
     prepared = _prepared() if linked else _single_prepared()[0]
-    record = SimpleNamespace(prepared=prepared, payload=tmp_path / "payload.nc", affine_payload=None, generation="g")
+    record = SimpleNamespace(prepared=prepared, payload=tmp_path / "payload.nc", affine_payload=None,
+                             generation="g", inputs_id=None)
     monkeypatch.setattr(module, "load_preparation", lambda *a: record)
     monkeypatch.setattr(module, "check_checkpoint_targets", lambda *a, **kw: None)
     monkeypatch.setattr(module, "save_samples", lambda *a, **kw: tmp_path / "sample.json")

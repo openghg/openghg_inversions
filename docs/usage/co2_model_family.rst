@@ -426,6 +426,17 @@ sampler choices. Relative configuration paths use the invocation directory;
 manifest references use the declaring manifest's directory. Replacing a
 preparation invalidates samples associated with its previous generation.
 
+New linked preparation and sample manifests also record exact content identities
+for their numerical payloads. Loading rejects a changed prepared file, a swapped
+posterior, or a sample whose preparation bytes differ from those used when it
+was saved, even when labels and the recorded generation still match. NetCDF and
+Zarr use the same existing content-hash convention. Older manifests without
+content identities remain readable; they retain their original generation and
+scientific label checks.
+Direct callers of ``save_samples`` should pass both ``preparation_generation``
+and ``preparation_inputs_id`` from the loaded preparation. The normal ``sample``
+route forwards both, protecting a run if its input file changes during inference.
+
 Python callers can use
 :mod:`openghg_inversions.rhime.co2.co2_o2_handoffs` to save an in-memory
 preparation, sample from it, and replay products. ``load_samples`` and

@@ -40,6 +40,7 @@ from .co2_o2_outputs import (
     save_co2_o2_products, validate_co2_o2_trace,
 )
 from .co2_o2_preparation import Co2O2PreparedInputs
+from .co2_affine_output import prepared_inputs_content_id
 from .co2_o2_runner import annotate_co2_o2_trace, build_rhime_co2_o2
 from .co2_preparation import requested_co2_facts
 
@@ -48,9 +49,9 @@ from .co2_preparation import requested_co2_facts
 class Co2O2Preparation:
     """Joint prepared inputs and their original requested interval/domain.
 
-    ``payload`` locates the existing numerical artifact. Pass ``generation``
-    back to :func:`save_samples` so replacing preparation invalidates samples
-    from its previous generation.
+    ``payload`` locates the existing numerical artifact. Pass ``generation`` and
+    ``inputs_id`` back to :func:`save_samples` so replacing preparation invalidates
+    samples from its previous generation or numerical content.
     """
 
     prepared: Co2O2PreparedInputs
@@ -59,6 +60,7 @@ class Co2O2Preparation:
     end_date: str
     domain: str
     payload: Path
+    inputs_id: str | None = None
 
 
 def _preparation_record(manifest: str | Path) -> tuple[Path, dict[str, Any]]:
@@ -75,8 +77,17 @@ def _finish_preparation(destination: Path, *, payload: Path, facts: Mapping[str,
         "schema": "openghg_inversions.co2_o2.prepare", "schema_version": 1,
         "producer": "openghg_inversions", "stage": "prepare", "generation": uuid4().hex,
         "prepared_inputs": os.path.relpath(payload, destination), **facts,
+        "prepared_inputs_id": prepared_inputs_content_id(payload),
         "provenance": installed_ogi_provenance(),
     })
+
+
+def _check_saved_payload(path: Path, expected: str | None, *, name: str) -> str:
+    """Bind an explicit file-load boundary to the bytes recorded at serialization."""
+    actual = prepared_inputs_content_id(path)
+    if expected is not None and expected != actual:
+        raise ValueError(f"{name} content does not match its saved artifact identity: {path}")
+    return actual
 
 
 def save_preparation(
@@ -125,38 +136,52 @@ def prepare(
     return _finish_preparation(destination, payload=payload, facts=facts)
 
 
-def load_preparation(manifest: str | Path, *, expected_generation: str | None = None) -> Co2O2Preparation:
+def load_preparation(
+    manifest: str | Path, *, expected_generation: str | None = None, expected_inputs_id: str | None = None,
+) -> Co2O2Preparation:
     """Load a completed joint preparation and validate its original request facts.
 
     References resolve beside the manifest. Numerical loading validates labels,
     covariance, errors and ratio provenance. ``expected_generation`` rejects
-    a preparation replaced after sampling.
+    a preparation replaced after sampling. New records also pin exact payload
+    bytes; ``expected_inputs_id`` binds a sample to those bytes even if someone
+    replaces its preparation record. Older records without digests stay readable.
     """
     path, record = _preparation_record(manifest)
     if expected_generation is not None and record["generation"] != expected_generation:
         raise ValueError(f"Linked preparation {path} was replaced; samples require generation {expected_generation!r}.")
     payload = reference(path, record["prepared_inputs"])
+    actual_id = _check_saved_payload(payload, record.get("prepared_inputs_id"), name="Linked preparation")
+    if expected_inputs_id is not None and expected_inputs_id != actual_id:
+        raise ValueError(f"Sampled linked preparation content does not match its saved artifact identity: {payload}")
     prepared = Co2O2PreparedInputs.load(payload)
     validate_co2_o2_units(prepared)
     facts = requested_co2_facts(prepared, **{name: record[name] for name in ("start_date", "end_date", "domain")})
-    return Co2O2Preparation(prepared=prepared, generation=record["generation"], payload=payload, **facts)
+    return Co2O2Preparation(prepared=prepared, generation=record["generation"], payload=payload,
+                             inputs_id=actual_id, **facts)
 
 
 def save_samples(
     preparation_manifest: str | Path, trace: xr.DataTree, *, actual_inference: Mapping[str, Any],
     preparation_generation: str, output_dir: str | Path,
+    preparation_inputs_id: str | None = None,
 ) -> Path:
     """Write the annotated joint trace and record its preparation generation.
 
     The trace owns the sampled scientific roles and prior descriptions.
     Inference provenance is descriptive; current configuration is not a replay
-    gate. Completion is published only after posterior serialization succeeds.
+    gate. Pass ``preparation_inputs_id`` from the loaded preparation to reject
+    file replacement during inference, including legacy preparations. Completion
+    is published only after posterior serialization succeeds.
     """
     preparation_path, preparation = _preparation_record(preparation_manifest)
     if preparation["generation"] != preparation_generation:
         raise ValueError(f"Linked preparation {preparation_path} was replaced; samples require generation {preparation_generation!r}.")
     validate_co2_o2_trace(trace)
     payload = reference(preparation_path, preparation["prepared_inputs"])
+    prepared_id = _check_saved_payload(payload, preparation.get("prepared_inputs_id"), name="Linked preparation")
+    if preparation_inputs_id is not None and preparation_inputs_id != prepared_id:
+        raise ValueError(f"Linked preparation content changed after it was loaded for inference: {payload}")
     destination = start_checkpoint(
         output_dir, "sample", payloads=("posterior.nc",), referenced=(preparation_path, payload),
     )
@@ -166,6 +191,8 @@ def save_samples(
         "producer": "openghg_inversions", "stage": "sample", "inference_kind": "mcmc",
         "preparation": os.path.relpath(preparation_path, destination),
         "preparation_generation": preparation_generation, "posterior": "posterior.nc",
+        "prepared_inputs_id": prepared_id,
+        "posterior_id": prepared_inputs_content_id(destination / "posterior.nc"),
         "actual_inference": dict(actual_inference), "provenance": installed_ogi_provenance(),
     })
 
@@ -201,6 +228,7 @@ def sample(
     return save_samples(
         preparation_manifest, trace, actual_inference=active_sampler.describe(),
         preparation_generation=preparation.generation, output_dir=output_dir,
+        preparation_inputs_id=preparation.inputs_id,
     )
 
 
@@ -219,8 +247,11 @@ def load_samples(sample_manifest: str | Path) -> Co2O2Output:
     generation = record["preparation_generation"]
     if not isinstance(generation, str) or not generation:
         raise ValueError(f"Linked samples {path} require a nonempty preparation generation.")
-    preparation = load_preparation(reference(path, record["preparation"]), expected_generation=generation)
-    trace = load_trace(reference(path, record["posterior"]))
+    preparation = load_preparation(reference(path, record["preparation"]), expected_generation=generation,
+                                   expected_inputs_id=record.get("prepared_inputs_id"))
+    posterior = reference(path, record["posterior"])
+    _check_saved_payload(posterior, record.get("posterior_id"), name="Linked posterior")
+    trace = load_trace(posterior)
     return make_co2_o2_output(
         prepared=preparation.prepared, trace=trace, start_date=preparation.start_date,
         end_date=preparation.end_date, domain=preparation.domain,
