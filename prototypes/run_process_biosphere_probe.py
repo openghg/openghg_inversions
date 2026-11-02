@@ -26,7 +26,11 @@ ARMS = ("independent", "linked", "linked-net-matched", "hierarchical")
 
 
 def prior_settings(data: xr.Dataset, arm: str) -> tuple[str, float, np.ndarray]:
-    """Resolve the fixed whole-domain net-variance control before seeing data."""
+    """Resolve prior settings, matching net variance only for the control arm.
+
+    ``data.reference_flux`` integrates each template over the input's declared scoring
+    domain and period, in common flux units; it is not a concentration sensitivity.
+    """
     weights = data.reference_flux.values
     mode = "linked" if arm == "linked-net-matched" else arm
     log_sd = BASE_LOG_SD
@@ -58,6 +62,13 @@ def main() -> None:
     args = parser.parse_args()
     with xr.open_dataset(args.input) as opened:
         data = opened.load()
+    # Fitting accepts either dimension order; all later NumPy scores use this order.
+    data["H"] = data.H.transpose("nmeasure", "flux_state")
+    for name in ("observation_sd_ppm", "truth_definition"):
+        if name not in data.attrs:
+            raise ValueError(f"Input must declare dataset attribute {name!r} before fitting.")
+    if not data.reference_flux.attrs.get("units"):
+        raise ValueError("reference_flux must declare its functional units before fitting.")
     selected = data if args.support == "all_hours" else data.isel(
         nmeasure=np.flatnonzero(data[args.support].values)
     )

@@ -42,6 +42,42 @@ one fixed s is chosen before fitting to match the independent prior variance
 of the supplied signed net functional. It does not match other prior moments.
 The driver uses RhimeSampler/numpyro with four chains and 1000/1000 by default.
 
+The file must provide the following named dimensions and coordinates. Use
+unique indexed `nmeasure` and `flux_state` labels, a `scenario` coordinate
+containing the requested `--scenario`, and `source(flux_state)` /
+`group(flux_state)` coordinates. Source values are `GPP`, `Ra` or `Rh`, with
+unique `(source, group)` pairs; these labels determine process pairing.
+
+| Variable | Dimensions | Meaning |
+|---|---|---|
+| `H` | `nmeasure, flux_state` (either stored order) | Signed concentration sensitivity in ppm per unit multiplier; normalized to observation-by-state order on loading |
+| `observations` | `scenario, nmeasure` | Synthetic concentration values in ppm |
+| `truth_scaling` | `scenario, flux_state` | Positive dimensionless generating coefficients |
+| `fixed_prior_contribution` | `nmeasure` | Known additive concentration in ppm, not the complete prior prediction |
+| `reference_flux` | `flux_state` | Signed integrated template weights in common flux units: GPP negative, Ra/Rh positive |
+| Named support mask, e.g. `daytime` | `nmeasure` | Boolean mask: true includes that receptor row; at least one row must be selected |
+
+`--support all_hours` selects every row and requires no mask variable. Other
+support names identify a mask in the file. All concentration numbers must already
+be in ppm, consistently with the fixed error SD. Two dataset attributes and one
+variable attribute are mandatory and checked before model construction:
+
+```python
+data.attrs["observation_sd_ppm"] = 1.0  # finite positive total Gaussian SD
+# Describe the actual reference/truth, scoring domain and period, and rate/total convention.
+data.attrs["truth_definition"] = "Controlled scalings of the declared reference flux on the declared support"
+data.reference_flux.attrs["units"] = "mol s-1"  # use the actual functional units
+```
+
+The signed `reference_flux` weights define both recovery scores and the
+net-variance-matched prior control. They must describe the same component/state
+order as `H`; their spatial and temporal integration support must be stated in
+`truth_definition`. They are not unsigned gross magnitudes or receptor
+sensitivities. The concentration observation window need not equal the flux
+integration window. The runner copies dataset attributes to `scientific_scope`
+and writes the declared functional units/truth definition to `functionals.nc`.
+Input variable dimension order does not change the fitted or all-hour scores.
+
 Example (float64 and writable compilation caches must be configured):
 
 ```bash
