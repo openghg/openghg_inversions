@@ -565,6 +565,7 @@ def build_co2_o2_model(
     biosphere_prior: BiospherePrior | None = None,
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
+    prune_zero_flux_columns: bool = True,
     boundary_sensitivity: Mapping[str, xr.DataArray] | None = None,
     boundary_operands: Mapping[str, xr.Dataset] | None = None,
     boundary_correction: Mapping[str, xr.Dataset] | None = None,
@@ -641,6 +642,9 @@ def build_co2_o2_model(
             each observation row's native units.
         state_activity: Optional labelled policy fixing or activating retained
             states.
+        prune_zero_flux_columns: Remove exact-zero joint flux columns by default.
+            Disable when a transformed design has zero columns whose joint
+            physical prior must remain sampled.
         boundary_sensitivity: Optional co2/o2 mapping of H_bc on each
             native observation axis and one labelled boundary-state axis.
         boundary_operands: Raw centered-v1 H_bc_anomaly/H_bc_mass and scalar
@@ -796,6 +800,7 @@ def build_co2_o2_model(
     prepared_sensitivity = prepare_linear_sensitivity(
         joint_sensitivity,
         output_dim=output_dim,
+        prune_zero_columns=prune_zero_flux_columns,
     )
     activity = resolve_state_activity(prepared_sensitivity.removed, state_activity)
 
