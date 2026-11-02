@@ -96,12 +96,12 @@ def annotate_linked_shared_workflow(trace, *, built, prepared):
             continue
         group = trace[name].to_dataset()
         selected = group.flux_scaling
-        full = selected.reindex({state_dim: mean[state_dim]})
+        full, _ = xr.align(selected, mean, join="right", copy=False)
         # Removed outer states are fixed at their declared arithmetic prior mean.
         # Use bare mean coordinates here to avoid aligning selected auxiliaries.
         full = xr.where(mean[state_dim].isin(selected[state_dim]), full,
                         xr.DataArray(mean.data, dims=mean.dims, coords={state_dim: mean[state_dim]})).transpose(*selected.dims)
-        full = full.drop_vars([key for key in full.coords if key in mean.coords and key != state_dim])
+        full = full.drop_vars([key for key in full.coords if key in mean.coords])
         full = full.assign_coords({key: coord for key, coord in mean.coords.items()}).rename(rename)
         full.attrs.update(units="dimensionless flux scale", fixed_outer_policy="original arithmetic prior mean")
         group["full_physical_flux_scaling"] = full

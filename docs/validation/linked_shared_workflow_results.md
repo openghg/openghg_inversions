@@ -102,3 +102,20 @@ The implementation is ready for review and a separately scoped coherent
 real-input acceptance run. Shared-baseline PARIS export remains explicitly
 unsupported pending its scientific output mapping. No protected validation
 inputs or production campaign outputs were changed.
+
+## Gathered-state integration follow-up
+
+PR #1006 review identified a post-sampling label failure for gathered physical
+states. Full-state restoration now right-aligns the sampled array with the
+complete prior, retaining the gathered MultiIndex. Product reconstruction
+reverses every prefixed physical coordinate name, including arbitrary index
+levels such as `region_in_source`.
+
+The regression exercises real configured model construction and two prior
+predictive draws. A copy of those draws supplies a synthetic posterior solely
+for output validation; it is not a posterior inference result. The four cases
+combine removed/all-retained outer states with NetCDF/Zarr sample checkpoints.
+They check unchanged selected values, fixed outer arithmetic means, exact
+physical labels, graph-free replay and native-channel accounting. Supported
+Python validation is registered separately; these software checks do not extend
+the scientific campaign claims above.

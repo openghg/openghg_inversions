@@ -22,10 +22,11 @@ def physical_flux_scaling(trace: xr.DataTree, group: str) -> xr.DataArray:
     """Restore the original physical state labels beside selected sampled states."""
     value = _role(trace, "flux_scale", group)
     state_dim = trace["shared_baseline_co2"].attrs["state_dim"]
-    return value.rename({name: replacement for name, replacement in (
-        (trace.attrs.get("physical_state_dim", "physical_state"), state_dim), ("physical_source", "source"),
-        ("physical_tracer_scope", "tracer_scope"),
-    ) if name in value.dims or name in value.coords})
+    physical_dim = trace.attrs.get("physical_state_dim", "physical_state")
+    rename = {name: name.removeprefix("physical_") for name, coord in value.coords.items()
+              if physical_dim in coord.dims and name.startswith("physical_")}
+    rename[physical_dim] = state_dim
+    return value.rename(rename)
 
 
 def validate_shared_baseline_trace(trace: xr.DataTree, prepared: Co2O2PreparedInputs | None) -> None:

@@ -291,10 +291,8 @@ def test_explicit_preparation_rejects_missing_or_unsupported_inputs(native, faul
         prepare_linked_shared_inputs(native, **kwargs)
 
 
-@pytest.mark.parametrize("extension", ["nc", "zarr"])
-@pytest.mark.parametrize("empty_outer", [False, True])
-def test_gathered_shared_preparation_survives_repeated_save_load(native, tmp_path, extension, empty_outer):
-    import pandas as pd
+@pytest.fixture
+def gathered_native(native):
     from openghg_inversions.rhime.co2.co2_o2_preparation import prepare_co2_o2_inputs
     from test_rhime_co2_o2 import _inputs
 
@@ -306,7 +304,15 @@ def test_gathered_shared_preparation_survives_repeated_save_load(native, tmp_pat
             native.observations, key=channel, key_dim="species", ragged_dim="channel_observation",
             stack_dim="observation",
         ).rename(observation=row)
-    base = replace(prepare_co2_o2_inputs(**inputs), boundary_operands=native.boundary_operands)
+    return replace(prepare_co2_o2_inputs(**inputs), boundary_operands=native.boundary_operands)
+
+
+@pytest.mark.parametrize("extension", ["nc", "zarr"])
+@pytest.mark.parametrize("empty_outer", [False, True])
+def test_gathered_shared_preparation_survives_repeated_save_load(gathered_native, tmp_path, extension, empty_outer):
+    import pandas as pd
+
+    base = gathered_native
     kwargs = options(base)
     if empty_outer:
         kwargs.update(outer=base.retained_prior.mean.copy(data=np.zeros(5, dtype=bool)),
