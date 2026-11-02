@@ -185,16 +185,19 @@ def test_missing_observations_metadata_and_grid_are_rejected():
         _case(inner_support=mask)
 
 
-def test_observation_derived_pollution_scaling_excludes_offset():
+@pytest.mark.parametrize("offset", [0., 1.])
+def test_observation_derived_pollution_scaling_removes_full_baseline(offset):
     _, prepared, spec = _case()
     spec = replace(spec, add_offset=True, likelihood=PollutionEventSettings(
         pollution_events_from_obs=True, power=2., sigma_per_site=False,
     ))
     model = _build(prepared, spec).model
-    # Evaluation through RV replacement makes the offset independent of PEFO scaling.
-    epsilon = model["epsilon"].eval({model["sigma"]: np.array([[.2]], dtype=model["sigma"].dtype)})
+    epsilon = model["epsilon"].eval({
+        model["sigma"]: np.array([[.2]], dtype=model["sigma"].dtype),
+        model["offset"]: np.full(prepared.inv_inputs.sizes["nmeasure"], offset, dtype=model["offset"].dtype),
+    })
     np.testing.assert_allclose(epsilon, np.sqrt(prepared.inv_inputs.mf_error.values ** 2 +
-                                             ((prepared.inv_inputs.mf.values - 8) * .2) ** 2))
+                                             ((prepared.inv_inputs.mf.values - 8 - offset) * .2) ** 2))
 
 
 @pytest.mark.parametrize("array_name", ["inner_support", "native_response"])

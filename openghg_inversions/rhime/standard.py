@@ -398,7 +398,7 @@ def _build_independent_rhime_model(
         forward = ForwardModelTerms(
             total=modelled_mean,
             pollution=pollution_mean,
-            baseline=effective_baseline if "supplied_baseline" in model_inputs else baseline_mean,
+            baseline=baseline_mean,
         )
         add_rhime_likelihood(
             settings=model_spec.likelihood,
