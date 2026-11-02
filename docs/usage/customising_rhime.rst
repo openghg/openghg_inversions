@@ -251,10 +251,22 @@ The selected preparation determines which fields are required:
      - Generated basis weights; unnecessary with a saved operator or partition.
    * - ``bc_n``, ``bc_s``
      - ``height``, ``lon``, ``time``
-     - When boundary conditions are enabled.
+     - When ordinary boundary conditions are enabled.
    * - ``bc_e``, ``bc_w``
      - ``height``, ``lat``, ``time``
-     - When boundary conditions are enabled.
+     - When ordinary boundary conditions are enabled.
+   * - ``bc_anomaly_n/e/s/w``, ``bc_mass_n/e/s/w``
+     - Same native curtain axes as the corresponding ordinary contributions.
+     - With boundary conditions and ``boundary_representation="centered-v1"``.
+   * - ``bc_reference``
+     - Scalar
+     - With the centered anomaly/mass representation.
+
+Centered inputs retain their anomaly, dimensionless mass and concentration
+reference without reconstructing ordinary curtains. The schema checks their
+structure; boundary projection owns their unit and scientific checks. See the
+:ref:`surface-centered-boundary-contract` for that existing contract and the
+CO2-family model binding required to consume the prepared operands.
 
 The arrays accept real integer or floating dtypes and any permutation of the
 named dimensions. Indexed coordinates must be unique and contain no missing
@@ -265,7 +277,7 @@ own their existing missing-value policies. Extra variables, attributes and lazy
 auxiliary coordinates are allowed. Custom filters own any further requirements.
 
 All sites use the same concentration numerical scale. Absent units on error,
-response and directional-BC fields inherit that site's ``mf`` convention;
+response and ordinary directional-BC fields inherit that site's ``mf`` convention;
 explicit units must have the same scale. For example, ``umol/mol`` is accepted
 with ``ppm``, while ``ppb`` is rejected. Validation does not attach attributes
 or convert values. Native ``flux_data[source].flux`` separately requires

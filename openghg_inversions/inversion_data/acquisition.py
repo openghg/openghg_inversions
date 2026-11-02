@@ -154,13 +154,15 @@ class MergedData:
         """Validate acquired arrays for selected preparation without execution.
 
         Unlike acquisition-fact compatibility, this checks the per-site schema,
-        conditional responses/BCs/footprints and native inventory flux. Errors
+        conditional responses/BCs/footprints and native inventory flux. Centered
+        boundaries retain anomaly/mass/reference operands; their units and
+        scientific invariants remain with boundary projection. Errors
         identify ``site_data[site]`` or ``flux_data[source]`` and the offending
         variable. Dimension permutations, independent site time axes, empty
         sites, missing observations and arbitrary extension fields are allowed.
 
         ``mf`` needs explicit concentration units, shared in numerical scale
-        across sites. Absent error/response/BC units inherit that convention;
+        across sites. Absent error/response/ordinary-BC units inherit that convention;
         explicit units must match its scale. Native flux requires units with
         the scale of ``mol m-2 s-1``; the explicit surface route also accepts
         compatible scaled units for conversion by native flux resolution.
@@ -200,6 +202,7 @@ class MergedData:
                 split_by_sectors=split_by_sectors, require_footprints=require_footprints,
                 use_bc=use_bc, grid_dims=grid_dims,
                 concentration_units=reference_units, flux_sources=flux_sources,
+                boundary_representation=dataset.attrs.get("boundary_representation"),
             )
             validate_merged_dataset(schema, dataset, path=f"site_data[{site!r}]")
             if reference_units is None:

@@ -8667,13 +8667,15 @@ def test_retained_error_population_reaches_preparation_full_run_and_saved_inputs
     dataset["mf_repeatability"] = ("time", [1000.0, 0.0, 2.0])
     dataset["mf_variability"] = ("time", [0.0, 0.0, 0.0])
     dataset["release_lon"] = ("time", [0.0, 0.0, 0.0])
+    dataset["fp"] = xr.ones_like(dataset.fp_x_flux)
     if multisector:
         dataset["fp_x_flux_sectoral"] = dataset.fp_x_flux.expand_dims(source=list(sources))
     if lazy:
         dataset = dataset.chunk(time=1)
     original = dataset.copy(deep=True)
     spatial = _fake_basis_functions()
-    flux = spatial.flux.expand_dims(source=list(sources)) if multisector else spatial.flux
+    native_flux = spatial.flux.assign_attrs(units="mol m-2 s-1")
+    flux = native_flux.expand_dims(source=list(sources)) if multisector else native_flux
     basis = basis_functions_from_flat_basis(
         basis_flat={source: spatial.operator.basis_flat for source in sources} if multisector else spatial.operator.basis_flat,
         flux=flux,
@@ -8685,7 +8687,7 @@ def test_retained_error_population_reaches_preparation_full_run_and_saved_inputs
         mismatch_model="fixed_error",
     ), multisector=multisector)
     merged = MergedData(
-        site_data={"TAC": dataset}, flux_data={source: spatial.flux.to_dataset(name="flux") for source in sources},
+        site_data={"TAC": dataset}, flux_data={source: native_flux.to_dataset(name="flux") for source in sources},
         site_options=config.data.site_options, split_by_sectors=multisector,
     )
     monkeypatch.setattr(recipe, "prepare_basis", lambda **kwargs: basis)

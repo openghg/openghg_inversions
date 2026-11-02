@@ -49,11 +49,12 @@ def merged_site_schema(
     *, split_by_sectors: bool = False, require_footprints: bool = False,
     use_bc: bool = False, grid_dims: tuple[str, str] = ("lat", "lon"),
     concentration_units: str | None = None, flux_sources: Sequence[str] | None = None,
+    boundary_representation: str | None = None,
 ) -> DatasetSchema:
     """Describe one acquired site before errors, filtering and basis projection.
 
     Named dimension permutations and extra variables/attributes are accepted.
-    Missing error, response and directional-BC unit attributes inherit the mf
+    Missing error, response and ordinary-BC unit attributes inherit the mf
     numerical convention; explicit attributes must have the same scale. This
     checks metadata only, permits empty sites and missing payload values, and
     never supplies attributes or converts values. Grid order is latitude then
@@ -71,6 +72,9 @@ def merged_site_schema(
             site's units without comparing them to another site's scale.
         flux_sources: Optional authoritative set of sector response labels.
             None allows any valid source labels, retaining their order.
+        boundary_representation: Acquired boundary metadata. ``centered-v1``
+            selects directional anomaly/mass operands and a scalar reference.
+            Their unit and scientific checks remain with boundary projection.
 
     Returns:
         Metadata schema accepting extra variables, attributes and coordinates.
@@ -95,12 +99,16 @@ def merged_site_schema(
         data_vars["fp"] = DataArraySchema(dtype=_REAL_DTYPES, dims=DimsSchema((*grid_dims, "time"), ordered=False))
     if split_by_sectors:
         coordinate_schemas["source"] = DataArraySchema(dims=("source",))
+    centered_bc = use_bc and isinstance(boundary_representation, str) and boundary_representation == "centered-v1"
     if use_bc:
         for direction in "nesw":
             edge = grid_dims[1] if direction in "ns" else grid_dims[0]
-            data_vars[f"bc_{direction}"] = DataArraySchema(
-                dtype=_REAL_DTYPES, dims=DimsSchema((edge, "height", "time"), ordered=False),
-            )
+            for prefix in (("bc_anomaly", "bc_mass") if centered_bc else ("bc",)):
+                data_vars[f"{prefix}_{direction}"] = DataArraySchema(
+                    dtype=_REAL_DTYPES, dims=DimsSchema((edge, "height", "time"), ordered=False),
+                )
+        if centered_bc:
+            data_vars["bc_reference"] = DataArraySchema(dtype=_REAL_DTYPES, dims=())
         coordinate_schemas["height"] = DataArraySchema(dtype=_REAL_DTYPES, dims=("height",))
 
     def relationships(dataset: xr.Dataset) -> None:
@@ -116,7 +124,7 @@ def merged_site_schema(
                 raise ValueError("data_vars.mf.attrs.units must have a finite positive mole-fraction scale.")
             if concentration_units is not None:
                 _check_unit_scale(units, concentration_units, name="data_vars.mf")
-            for name in (*_UNCERTAINTIES, response, *((f"bc_{d}" for d in "nesw") if use_bc else ())):
+            for name in (*_UNCERTAINTIES, response, *((f"bc_{d}" for d in "nesw") if use_bc and not centered_bc else ())):
                 if name in dataset and "units" in dataset[name].attrs:
                     _check_unit_scale(dataset[name].attrs["units"], units, name=f"data_vars.{name}")
         if split_by_sectors and "source" in dataset.indexes:

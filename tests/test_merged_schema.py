@@ -162,6 +162,44 @@ def test_directional_bc_inputs_are_conditional_and_precede_H_bc():
     _validate(merged, use_bc=True)
 
 
+@pytest.mark.parametrize("sectoral", [False, True])
+@pytest.mark.parametrize("lazy", [False, True])
+def test_centered_public_preparation_preserves_boundary_operands(sectoral, lazy):
+    merged = _merged(sectoral=sectoral)
+    site = merged.site_data["TAC"].assign_coords(height=[500.])
+    site.attrs["boundary_representation"] = "centered-v1"
+    for direction in "nesw":
+        edge = "lon" if direction in "ns" else "lat"
+        site[f"bc_anomaly_{direction}"] = xr.DataArray(
+            np.full((2, 1, 2), .025), dims=(edge, "height", "time"), attrs={"units": "ppm"},
+        )
+        site[f"bc_mass_{direction}"] = xr.DataArray(
+            np.full((2, 1, 2), .125), dims=(edge, "height", "time"), attrs={"units": "1"},
+        )
+    site["bc_reference"] = xr.DataArray(400., attrs={"units": "ppm"})
+    site = site.chunk() if lazy else site.compute()
+    merged.site_data["TAC"] = site
+    borrowed = site.copy(deep=True)
+    payloads = {name: value.data for name, value in site.data_vars.items()}
+    with Callback(pretask=lambda *args: pytest.fail("Validation executed centered operands.")):
+        _validate(merged, use_bc=True)
+        merged.site_schema(use_bc=True, split_by_sectors=sectoral,
+                           boundary_representation="centered-v1").validate(site)
+    prepare = prepare_multisector if sectoral else prepare_standard
+    prepared = prepare(
+        merged, domain="EUROPE", start_date="2020-01-01", flux_sources=tuple(merged.flux_data),
+        averaging_error=True, filters=None, basis_algorithm=None, nbasis=1, fix_basis_outer_regions=False,
+        use_bc=True, basis_inputs={"basis_partition": xr.zeros_like(merged.flux_data["inventory"].flux, dtype=int)},
+    )
+    assert not any(f"bc_{direction}" in site for direction in "nesw")
+    assert all(site[name].data is payload for name, payload in payloads.items())
+    xr.testing.assert_identical(site, borrowed)
+    assert {"H_bc_anomaly", "H_bc_mass", "bc_reference"} <= set(prepared.inv_inputs)
+    np.testing.assert_allclose(prepared.inv_inputs.H_bc_anomaly.sum("bc_region"), .2)
+    np.testing.assert_allclose(prepared.inv_inputs.H_bc_mass.sum("bc_region"), 1.)
+    assert prepared.inv_inputs.bc_reference.item() == 400.
+
+
 @pytest.mark.parametrize("name", ["mf", "mf_error", "fp_x_flux"])
 @pytest.mark.parametrize("units", ["ppb", "kg", "", None, 1])
 def test_explicit_units_must_share_concentration_scale(name, units):
