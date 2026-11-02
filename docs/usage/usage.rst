@@ -16,6 +16,7 @@ Using OpenGHG Inversions
    surface_preparation
    centered_boundary_conditions
    boundary_pattern_priors
+   shared_baseline
    prepared_format_support
    running_and_validating
    shared_scientific_concepts

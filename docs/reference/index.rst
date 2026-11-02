@@ -311,6 +311,10 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.boundary.CenteredBoundaryResult
    openghg_inversions.models.boundary.add_centered_boundary
    openghg_inversions.models.boundary_corrections.prepare_boundary_correction
+   openghg_inversions.models.shared_baseline.prepare_shared_baseline
+   openghg_inversions.rhime.co2.shared_baseline_model.build_shared_co2_model
+   openghg_inversions.rhime.co2.shared_baseline_model.build_shared_co2_cached_sigma_model
+   openghg_inversions.rhime.co2.shared_baseline_model.annotate_shared_baseline_trace
    openghg_inversions.models.boundary_corrections.add_boundary_correction
    openghg_inversions.models.boundary_corrections.materialize_boundary_correction
    openghg_inversions.models.boundary_corrections.calibrate_pattern_width

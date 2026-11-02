@@ -8,6 +8,11 @@ It supplies physical coefficients with labelled support; it does not use the
 multiplicative ``bc`` variable. The multiplicative and existing weighted
 additive options retain their previous equations and defaults.
 
+For one atmospheric level shared with exterior-flux corrections, use the
+separate :doc:`shared-baseline recipe <shared_baseline>`. It freezes
+observation-space column means after BC period gating and preserves the
+prescribed complete baseline.
+
 Operators and units
 -------------------
 
