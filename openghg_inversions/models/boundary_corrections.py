@@ -150,7 +150,8 @@ def prepare_boundary_correction(
     pattern = (indicator * operator).transpose(row, "bc_coefficient_period", state)
     labels = [f"p{p}:{j}" for p in periods for j in range(operator.sizes[state])]
     pattern = xr.DataArray(
-        pattern.data.reshape((observations.size, len(labels))),
+        (pattern.data.reshape((observations.size, len(labels)))
+         if has_pattern else operator.transpose(row, state).data),
         dims=(row, "bc_pattern_term"),
         coords={**dict(observations.coords), "bc_pattern_term": labels},
     )

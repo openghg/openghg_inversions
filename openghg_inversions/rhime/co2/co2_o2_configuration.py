@@ -25,7 +25,7 @@ from .configuration import (
     Co2PreparationConfig,
     _sampling,
     _string,
-    _table,
+    _table, _artifact_path,
     _validate_boundary_periods,
     load_co2_family_config,
     resolve_co2_prior_seed,
@@ -83,7 +83,7 @@ def load_co2_o2_params(
 
 def _validate_co2_o2_option_names(*requests: Mapping[str, object]) -> None:
     """Check request names while deferring scientific and inactive values."""
-    allowed = {"format_version", "recipe", "variant", "prepared_inputs", "channels", "likelihood", "sampling", "outputs"}
+    allowed = {"format_version", "recipe", "variant", "prepared_inputs", "channels", "biosphere", "likelihood", "sampling", "outputs"}
     from .co2_o2_outputs import Co2O2OutputOptions
 
     channel_sections = {
@@ -95,6 +95,7 @@ def _validate_co2_o2_option_names(*requests: Mapping[str, object]) -> None:
     _validate_section_option_names(requests, {
         "": frozenset(allowed),
         "prepared_inputs": _PREPARATION_OPTION_NAMES,
+        "biosphere": frozenset({"path"}),
         "channels": frozenset({"co2", "o2"}),
         **{f"channels.{channel}" + (f".{path}" if path else ""): names
            for channel in ("co2", "o2") for path, names in channel_sections.items()},
@@ -207,6 +208,8 @@ class Co2O2ModelConfig:
     fixed_site_amplitudes: float | Mapping[str, float] | None = None
     bc_freq: str | None = None
     bc_anchor_time: str | None = None
+    boundary_correction_path: Mapping[str, Path] | None = None
+    biosphere_prior_path: Path | None = None
 
     def __post_init__(self) -> None:
         _validate_boundary_periods(self.bc_freq, self.bc_anchor_time)
@@ -223,6 +226,10 @@ class Co2O2ModelConfig:
         units: dict[str, str] = {}
         errors: dict[str, float] = {}
         model: dict[str, Any] = {}
+        if "biosphere" in options:
+            biosphere = _table(options["biosphere"], "biosphere")
+            model["biosphere_prior_path"] = _artifact_path(_take(biosphere, "path", "biosphere"), "biosphere.path")
+            _reject_unknown(biosphere, "biosphere")
         for name in ("co2", "o2"):
             channel = _table(_take(channels, name, "channels"), f"channels.{name}")
             units[name] = _string(_take(channel, "units", f"channels.{name}"), f"channels.{name}.units")
@@ -232,6 +239,8 @@ class Co2O2ModelConfig:
             selected = {key: channel.pop(key) for key in ("boundary", "offset") if key in channel}
             if "boundary" in selected:
                 boundary = _table(selected["boundary"], f"channels.{name}.boundary")
+                if "correction_path" in boundary and "activity" in boundary:
+                    raise ValueError("Frozen boundary corrections do not accept boundary activity.")
                 if "activity" in boundary:
                     activity = _table(boundary.pop("activity"), f"channels.{name}.boundary.activity")
                     active = _bool(activity.pop("active", True), f"channels.{name}.boundary.activity.active")
@@ -286,8 +295,24 @@ class Co2O2ModelConfig:
             if independent is None:
                 raise ValueError("Omitted channel independent_error_sd requires errors in the prepared artifact.")
         result = {item.name: getattr(self, item.name) for item in fields(self)
-                  if item.name not in {"co2_units", "o2_units", "independent_error_sd"} and getattr(self, item.name) is not None}
+                  if item.name not in {"co2_units", "o2_units", "independent_error_sd", "boundary_correction_path", "biosphere_prior_path"}
+                  and getattr(self, item.name) is not None}
+        from .prior_configuration import load_boundary_correction, load_biosphere_prior
+
+        if self.boundary_correction_path is not None:
+            result["boundary_correction"] = {
+                name: load_boundary_correction(path) for name, path in self.boundary_correction_path.items()
+            }
+        if self.biosphere_prior_path is not None:
+            result["biosphere_prior"] = load_biosphere_prior(self.biosphere_prior_path)
         return {**result, "independent_error_sd": independent}
+
+    def artifact_paths(self) -> tuple[Path, ...]:
+        """Identify independent correction and calibration files for write protection."""
+        paths = tuple((self.boundary_correction_path or {}).values())
+        if self.biosphere_prior_path is not None:
+            paths += (self.biosphere_prior_path,)
+        return tuple(Path(path).resolve() for path in paths)
 
 
 def resolve_co2_o2_sampler(config: Mapping[str, object], *, model: Co2O2ModelConfig) -> RhimeSampler:

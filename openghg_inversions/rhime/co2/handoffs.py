@@ -241,11 +241,10 @@ def sample(
     model_options = model_config.model_arguments()
     choices = _resolve_co2_sampling({"sampling": sampling if sampling is not None else {}}, model=model_options)
     preparation = load_preparation(preparation_manifest)
-    model_options = model_config.model_arguments()
     check_checkpoint_targets(
         Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),
         referenced=(Path(preparation_manifest).resolve(), preparation.payload)
-        + ((preparation.affine_payload,) if preparation.affine_payload else ()),
+        + ((preparation.affine_payload,) if preparation.affine_payload else ()) + model_config.artifact_paths(),
     )
     trace, actual = sample_co2_inference(
         preparation.prepared, model_options, choices.sampler,
@@ -335,7 +334,7 @@ def prior_predictive(
     check_checkpoint_targets(
         destination, stage=None, payloads=("prior-predictive.nc", str(report.relative_to(destination))),
         referenced=(Path(preparation_manifest).resolve(), preparation.payload)
-        + ((preparation.affine_payload,) if preparation.affine_payload else ()),
+        + ((preparation.affine_payload,) if preparation.affine_payload else ()) + model_config.artifact_paths(),
     )
     report.unlink(missing_ok=True)
     built, cached = build_co2_inference(preparation.prepared, model_options)

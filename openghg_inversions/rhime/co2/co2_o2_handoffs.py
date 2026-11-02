@@ -193,7 +193,7 @@ def sample(
         raise ValueError("Linked fixed-OU requires nuts_sampler='pymc'.")
     check_checkpoint_targets(
         Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),
-        referenced=(Path(preparation_manifest).resolve(), preparation.payload),
+        referenced=(Path(preparation_manifest).resolve(), preparation.payload) + model_config.artifact_paths(),
     )
     built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)
     trace = sample_rhime_model(built, active_sampler)
@@ -271,7 +271,7 @@ def prior_predictive(
     report = _output_path(destination, check_output, "prior-predictive-readiness.json")
     check_checkpoint_targets(
         destination, stage=None, payloads=("prior-predictive.nc", str(report.relative_to(destination))),
-        referenced=(Path(preparation_manifest).resolve(), preparation.payload),
+        referenced=(Path(preparation_manifest).resolve(), preparation.payload) + model_config.artifact_paths(),
     )
     report.unlink(missing_ok=True)
     built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)

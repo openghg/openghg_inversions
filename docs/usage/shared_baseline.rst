@@ -134,6 +134,10 @@ consume the same frozen mean. They retain existing observation-error and
 aggregation-error policies. This separate recipe currently supports CO2;
 linked CO2/O2 construction is outside its supported interface.
 
+The :doc:`configured saved-prior workflow <configured_co2_priors>` supplies
+explicit preparation choices, artifact save/load helpers and a builder using
+the existing CO2 likelihood configuration syntax.
+
 For ``multiplicative_shrunk``, additionally pass ``calibrated_prior``: a
 resolved positive ``BiospherePrior`` whose baseline mean and covariance match
 the supplied retained prior. Its biosphere selector must be contained in

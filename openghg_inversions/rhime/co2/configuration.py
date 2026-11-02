@@ -69,11 +69,12 @@ _PRIOR_OPTION_NAMES = frozenset({
     "pdf", "mu", "sigma", "lower", "upper", "nu", "alpha", "beta", "lam", "mean", "stdev", "reparameterise",
 })
 _MODEL_SECTION_OPTION_NAMES = {
-    "boundary": frozenset({"enabled", "prior", "frequency", "anchor_time", "mean_shift_prior", "anomaly_scale"}),
+    "boundary": frozenset({"enabled", "prior", "frequency", "anchor_time", "mean_shift_prior", "anomaly_scale", "correction_path"}),
     "boundary.mean_shift_prior": _PRIOR_OPTION_NAMES,
     "boundary.prior": _PRIOR_OPTION_NAMES,
     "offset": frozenset({"prior", "frequency", "per_site", "drop_first"}),
     "offset.prior": _PRIOR_OPTION_NAMES,
+    "biosphere": frozenset({"path"}),
 }
 
 
@@ -210,7 +211,7 @@ def _validate_co2_option_names(*requests: Mapping[str, object]) -> None:
     _validate_section_option_names(requests, {
         "": _CO2_REQUEST_OPTION_NAMES,
         "prepared_inputs": _PREPARATION_OPTION_NAMES,
-        "model": frozenset({"boundary", "offset"}),
+        "model": frozenset({"boundary", "offset", "biosphere"}),
         **{f"model.{path}": names for path, names in _MODEL_SECTION_OPTION_NAMES.items()},
         "likelihood": _LIKELIHOOD_OPTION_NAMES,
         "likelihood.sigma_prior": _PRIOR_OPTION_NAMES,
@@ -344,65 +345,92 @@ def _sampling(value: object) -> RhimeSampler:
 def _model(value: object) -> dict[str, Any]:
     options = _table(value, "model")
     result: dict[str, Any] = {}
+    if "biosphere" in options:
+        biosphere = _table(options.pop("biosphere"), "model.biosphere")
+        result["biosphere_prior_path"] = _artifact_path(_take(biosphere, "path", "model.biosphere"), "model.biosphere.path")
+        _reject_unknown(biosphere, "model.biosphere")
     if "boundary" in options:
         boundary = _table(options.pop("boundary"), "model.boundary")
-        enabled = _bool(boundary.pop("enabled", True), "model.boundary.enabled")
-        prior = (
-            _prior(boundary.pop("prior"), "model.boundary.prior")
-            if "prior" in boundary
-            else None
-        )
-        mean_shift_prior = (
-            _prior(boundary.pop("mean_shift_prior"), "model.boundary.mean_shift_prior")
-            if "mean_shift_prior" in boundary
-            else None
-        )
-        anomaly_scale = (
-            _number(boundary.pop("anomaly_scale"), "model.boundary.anomaly_scale")
-            if "anomaly_scale" in boundary else None
-        )
-        if anomaly_scale is not None and anomaly_scale < 0:
-            raise ValueError("model.boundary.anomaly_scale must be non-negative.")
-        if (mean_shift_prior is None) != (anomaly_scale is None):
-            raise ValueError("model.boundary.mean_shift_prior and anomaly_scale must be supplied together.")
-        if mean_shift_prior is not None and prior is not None:
-            raise ValueError("Centred boundary corrections cannot use model.boundary.prior.")
-        periods = {runner: boundary.pop(name) for name, runner in
-                   (("frequency", "bc_freq"), ("anchor_time", "bc_anchor_time")) if name in boundary}
-        _reject_unknown(boundary, "model.boundary")
-        if mean_shift_prior is not None:
-            if not enabled:
-                raise ValueError("model.boundary.mean_shift_prior requires model.boundary.enabled=true.")
-            result["bc_mean_shift_prior"] = mean_shift_prior
-            result["bc_anomaly_scale"] = anomaly_scale
-        if not enabled and prior is not None:
-            raise ValueError("model.boundary.prior requires model.boundary.enabled=true.")
-        result["use_bc"] = enabled
-        if prior is not None:
-            result["bc_prior"] = prior
-        if not enabled and any(value is not None for value in periods.values()):
-            raise ValueError("Boundary frequency and anchor_time require enabled=true.")
-        result.update(periods)
+        if "correction_path" in boundary:
+            result["boundary_correction_path"] = _artifact_path(boundary.pop("correction_path"), "model.boundary.correction_path")
+            if boundary:
+                raise ValueError("A frozen boundary correction owns its priors, reference and periods; omit other boundary options.")
+        else:
+            result.update(_boundary_model(boundary))
     if "offset" in options:
-        offset = _table(options.pop("offset"), "model.offset")
-        result["offset_prior"] = _prior(_take(offset, "prior", "model.offset"), "model.offset.prior")
-        offset_args: dict[str, Any] = {}
-        if "frequency" in offset:
-            frequency = offset.pop("frequency")
-            if frequency is not None:
-                frequency = _string(frequency, "model.offset.frequency")
-            offset_args["offset_freq"] = frequency
-        for config_name, runner_name in (("per_site", "per_site"), ("drop_first", "drop_first")):
-            if config_name in offset:
-                offset_args[runner_name] = _bool(offset.pop(config_name), f"model.offset.{config_name}")
-        _reject_unknown(offset, "model.offset")
-        if offset_args.get("per_site") is False:
-            if offset_args.get("offset_freq") is not None:
-                raise ValueError("A global model.offset does not accept frequency.")
-            if offset_args.get("drop_first") is True:
-                raise ValueError("A global model.offset does not support drop_first=true.")
-        result["offset_args"] = _frozen(offset_args)
+        result.update(_offset_model(options.pop("offset")))
     _reject_unknown(options, "model")
+    return result
+
+
+def _artifact_path(value: object, path: str) -> Path:
+    if not isinstance(value, Path):
+        value = _string(value, path)
+    return Path(value).expanduser().resolve()
+
+
+def _boundary_model(boundary: dict[str, object]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    enabled = _bool(boundary.pop("enabled", True), "model.boundary.enabled")
+    prior = (
+        _prior(boundary.pop("prior"), "model.boundary.prior")
+        if "prior" in boundary
+        else None
+    )
+    mean_shift_prior = (
+        _prior(boundary.pop("mean_shift_prior"), "model.boundary.mean_shift_prior")
+        if "mean_shift_prior" in boundary
+        else None
+    )
+    anomaly_scale = (
+        _number(boundary.pop("anomaly_scale"), "model.boundary.anomaly_scale")
+        if "anomaly_scale" in boundary else None
+    )
+    if anomaly_scale is not None and anomaly_scale < 0:
+        raise ValueError("model.boundary.anomaly_scale must be non-negative.")
+    if (mean_shift_prior is None) != (anomaly_scale is None):
+        raise ValueError("model.boundary.mean_shift_prior and anomaly_scale must be supplied together.")
+    if mean_shift_prior is not None and prior is not None:
+        raise ValueError("Centred boundary corrections cannot use model.boundary.prior.")
+    periods = {runner: boundary.pop(name) for name, runner in
+               (("frequency", "bc_freq"), ("anchor_time", "bc_anchor_time")) if name in boundary}
+    _reject_unknown(boundary, "model.boundary")
+    if mean_shift_prior is not None:
+        if not enabled:
+            raise ValueError("model.boundary.mean_shift_prior requires model.boundary.enabled=true.")
+        result["bc_mean_shift_prior"] = mean_shift_prior
+        result["bc_anomaly_scale"] = anomaly_scale
+    if not enabled and prior is not None:
+        raise ValueError("model.boundary.prior requires model.boundary.enabled=true.")
+    result["use_bc"] = enabled
+    if prior is not None:
+        result["bc_prior"] = prior
+    if not enabled and any(value is not None for value in periods.values()):
+        raise ValueError("Boundary frequency and anchor_time require enabled=true.")
+    result.update(periods)
+    return result
+
+
+def _offset_model(value: object) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    offset = _table(value, "model.offset")
+    result["offset_prior"] = _prior(_take(offset, "prior", "model.offset"), "model.offset.prior")
+    offset_args: dict[str, Any] = {}
+    if "frequency" in offset:
+        frequency = offset.pop("frequency")
+        if frequency is not None:
+            frequency = _string(frequency, "model.offset.frequency")
+        offset_args["offset_freq"] = frequency
+    for config_name, runner_name in (("per_site", "per_site"), ("drop_first", "drop_first")):
+        if config_name in offset:
+            offset_args[runner_name] = _bool(offset.pop(config_name), f"model.offset.{config_name}")
+    _reject_unknown(offset, "model.offset")
+    if offset_args.get("per_site") is False:
+        if offset_args.get("offset_freq") is not None:
+            raise ValueError("A global model.offset does not accept frequency.")
+        if offset_args.get("drop_first") is True:
+            raise ValueError("A global model.offset does not support drop_first=true.")
+    result["offset_args"] = _frozen(offset_args)
     return result
 
 
@@ -561,8 +589,14 @@ class Co2ModelConfig:
     likelihood_kwargs: Mapping[str, Any] | None = None
     bc_freq: str | None = None
     bc_anchor_time: str | None = None
+    boundary_correction_path: Path | None = None
+    biosphere_prior_path: Path | None = None
 
     def __post_init__(self) -> None:
+        if self.boundary_correction_path is not None and any(value is not None for value in (
+            self.use_bc, self.bc_prior, self.bc_mean_shift_prior, self.bc_anomaly_scale, self.bc_freq, self.bc_anchor_time,
+        )):
+            raise ValueError("A frozen boundary correction cannot override boundary choices.")
         _validate_boundary_periods(self.bc_freq, self.bc_anchor_time)
         if self.use_bc is False and (self.bc_freq is not None or self.bc_anchor_time is not None):
             raise ValueError("Boundary frequency and anchor_time require enabled=true.")
@@ -585,8 +619,21 @@ class Co2ModelConfig:
         return cls(**model, **likelihood)
 
     def model_arguments(self) -> dict[str, Any]:
-        """Bind these choices as keywords at the ordinary scientific boundary."""
-        return {item.name: getattr(self, item.name) for item in fields(self) if getattr(self, item.name) is not None}
+        """Open selected frozen artifacts and bind ordinary scientific keywords."""
+        from .prior_configuration import load_boundary_correction, load_biosphere_prior
+
+        result = {item.name: getattr(self, item.name) for item in fields(self)
+                  if not item.name.endswith("_path") and getattr(self, item.name) is not None}
+        if self.boundary_correction_path is not None:
+            result["boundary_correction"] = load_boundary_correction(self.boundary_correction_path)
+        if self.biosphere_prior_path is not None:
+            result["biosphere_prior"] = load_biosphere_prior(self.biosphere_prior_path)
+        return result
+
+    def artifact_paths(self) -> tuple[Path, ...]:
+        """Identify frozen inputs that checkpoint writers must not overwrite."""
+        return tuple(Path(path).resolve() for path in (self.boundary_correction_path, self.biosphere_prior_path)
+                     if path is not None)
 
 
 @dataclass(frozen=True)

@@ -144,8 +144,9 @@ on selected channels. Omit ``use_bc`` on those channels. Other channels may
 retain their existing boundary formulation.
 
 The prepared correction owns its boundary data, priors and frequency. Omit
-conflicting legacy boundary options. This change exposes a Python/data-artifact
-route; it does not add a TOML correction-prior configuration language. Store
+conflicting boundary options. The :doc:`configured saved-prior workflow
+<configured_co2_priors>` exposes the explicit family/reference/width choices
+and selects saved corrections through the CO2/linked TOML owners. Store
 the correction Dataset alongside the ordinary prepared inputs using
 ``encode_multiindexes_for_storage`` and restore it with
 ``restore_serialisation_multiindexes``. The model boundary checks exact row

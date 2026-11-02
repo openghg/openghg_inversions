@@ -41,7 +41,11 @@ class BiospherePrior:
 
     @classmethod
     def from_dataset(cls, data: xr.Dataset) -> BiospherePrior:
-        """Recompute and check a saved calibration; never trust cached moments."""
+        """Check the saved policy against its saved baseline and retain saved moments.
+
+        Recalculation validates integrity only: no current inputs or subset enter
+        calibration, and the serialized covariance remains the sampling target.
+        """
         if data.attrs.get("biosphere_prior_schema") != "openghg_inversions.biosphere_prior/v1":
             raise ValueError("Unsupported biosphere-prior schema.")
         baseline = CorrelatedLognormalPrior(
@@ -85,7 +89,11 @@ class BiospherePrior:
             atol=0,
         ):
             raise ValueError("Stored multiplier is inconsistent with the requested calibration.")
-        return result
+        positive = (
+            CorrelatedLognormalPrior(data.baseline_mean, data.covariance, covariance_dim=data.attrs["covariance_dim"])
+            if data.attrs["family"] == "lognormal" else None
+        )
+        return cls(baseline, data, positive)
 
     def lognormal_marginal(self, labels: xr.DataArray | list) -> CorrelatedLognormalPrior:
         """Select exact lognormal marginal moments, never a Schur complement.
