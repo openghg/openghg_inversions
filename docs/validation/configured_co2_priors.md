@@ -76,7 +76,7 @@ The shared recipe uses an explicit frozen Dataset/trace workflow. Generic CO2
 prepare/sample/product manifests and linked shared-baseline inference remain
 outside that entry point. Existing linked #996/#997 builders retain their
 supported routes. Archived experiments and shared production inputs were not
-modified. A full Sphinx site build has not been run.
+modified. At that stage, a full Sphinx site build had not been run.
 
 
 ## PR review follow-through
@@ -97,5 +97,16 @@ also passed. Focused Ruff and whitespace checks pass. The curated API landing
 now includes the seven public prior-configuration exports and the shared
 wrapper links directly to its labelled scientific input contract.
 
-Dual-Python CI-equivalent validation and a documentation build are submitted
-from the exact fix source, with completion recorded separately when available.
+Slurm job 19888660 completed with exit code 0 on the exact fix source
+`4ffddc60d501c6f8333232c77ff1dbe079a37a9d`: 315 tests passed on Python
+3.12.11 and 315 on Python 3.13.7, including all fourteen new rejection cases.
+The Sphinx HTML build also succeeded. Its ten warnings concern duplicate
+`SiteOptions` descriptions and ambiguous `PreparedInputs`/`DataConfig` links;
+none identifies the changed prior reference or wrapper link. Total job time was
+17 minutes 55 seconds. The log is
+`inversion_outputs/config-priors-review/slurm-19888660.out`, and the terminal
+ticket is `sw-20261102T212713Z-c1dd06702ae5`.
+
+The independent scoped re-review confirmed the pre-sampling protection and all
+three documentation/code findings as addressed. These are software and
+documentation checks; no new scientific recovery or convergence claim follows.
