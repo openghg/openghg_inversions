@@ -54,10 +54,21 @@ the CO2 inference fixture now uses a real prepared-input object with explicitly
 valid retained lognormal moments. The shared additive-sigma and example checks
 pass after correction. Heading lengths were also checked in the new RST pages.
 
-The complete new test module is being rerun on Python 3.12/3.13 through Slurm.
-Its results will be recorded after the terminal callback. The original broader
-log remains at `inversion_outputs/config-priors-validation/slurm-19885280.out`
-in the implementation worktree on BP1.
+Slurm job `19885522` completed successfully at scientific implementation commit
+`fa7386b77882db2a790a11dd39958f1855b0f050`. All 45 new configuration cases passed
+on both Python 3.12.11 and Python 3.13.7 through `py312-openghgCur` and
+`py313-openghgCur`, including the five corrected cases. Compiler/header
+preflights passed. No required targeted test remains failing: the first run
+covered all 254 existing regressions per interpreter, and the successful rerun
+covered the complete new module. The broad suite was not repeated after changes
+limited to the new configuration owner, fixture and example.
+
+Both logs remain under `inversion_outputs/config-priors-validation/` in the
+implementation worktree on BP1: `slurm-19885280.out` records the broader run,
+and `slurm-19885522.out` records the successful rerun. The terminal callback
+ticket is `sw-20261102T170920Z-45184f7cc32c`. Warnings concern the existing
+Numba object-mode/performance and PyTensor gradient APIs; no new test failed.
+Final focused Ruff, formatting and whitespace checks pass.
 This is implementation parity validation; no new full scientific sampling
 experiment or physical recovery claim is made.
 
