@@ -75,7 +75,7 @@ remain unchanged. [Usage](../usage/linked_shared_workflow.rst) describes the
 explicit direct-template assumption and the different physical/atmospheric
 accounting. Shared PARIS products remain explicitly unsupported.
 
-Final bounded validation passed 94 preparation/codec tests and 85 shared
+Final bounded validation passed 95 preparation/codec tests and 85 shared
 workflow, shared products, surface templates, legacy linked handoff and
 configuration-owner tests. Earlier acquisition/preparation coverage passed
 64 tests. A synthetic lazy surface → frozen preparation → NetCDF checkpoint →

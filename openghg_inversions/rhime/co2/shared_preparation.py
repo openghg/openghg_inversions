@@ -123,7 +123,9 @@ def prepare_linked_shared_inputs(
     return result
 
 
-def _same_array(left: xr.DataArray, right: xr.DataArray, name: str, *, materialize: bool) -> None:
+def _same_array(
+    left: xr.DataArray, right: xr.DataArray, name: str, *, materialize: bool, allow_roundoff: bool = False,
+) -> None:
     if left.dims != right.dims or left.sizes != right.sizes or any(
         (dim in left.indexes) != (dim in right.indexes)
         or (dim in left.indexes and not left.indexes[dim].equals(right.indexes[dim])) for dim in left.dims
@@ -133,7 +135,11 @@ def _same_array(left: xr.DataArray, right: xr.DataArray, name: str, *, materiali
         left, right = compute(left, right)
     if not isinstance(left.data, DaskArray) and not isinstance(right.data, DaskArray):
         if not left.variable.equals(right.variable):
-            raise ValueError(f"Shared baseline {name} values must match.")
+            # Dask and NumPy reductions may accumulate the same operands in a
+            # different order. Direct scientific input identities remain exact.
+            tolerance = 32 * np.finfo(np.float64).eps
+            if not allow_roundoff or not np.allclose(left.data, right.data, rtol=tolerance, atol=tolerance):
+                raise ValueError(f"Shared baseline {name} values must match.")
     for coordinate in right.coords:
         if coordinate not in left.coords:
             raise ValueError(f"Shared baseline {name} coordinate {coordinate} must match.")
@@ -194,7 +200,8 @@ def _validate_operator_identity(
     expected["physical_prior_baseline"] = fixed + anomaly + value.reference * mass + physical_outer
     expected["complete_prior_concentration"] = fixed + anomaly + value.reference * mass + xr.dot(h, prior.mean, dim=dim)
     for name, array in expected.items():
-        _same_array(value[name], array, name, materialize=False)
+        _same_array(value[name], array, name, materialize=False,
+                    allow_roundoff=name not in {"flux_sensitivity", "selected_outer_raw", "selected_outer_centered"})
 
 
 def _validate_shared_baseline(prepared: Co2O2PreparedInputs, *, materialize: bool) -> None:

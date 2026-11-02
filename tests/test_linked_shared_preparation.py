@@ -263,6 +263,19 @@ def test_subset_validation_reuses_frozen_whole_window_reference(native):
     )
 
 
+def test_surface_example_frozen_codec_accepts_dask_reduction_roundoff(tmp_path):
+    from pathlib import Path
+    import runpy
+
+    workflow = runpy.run_path(str(Path(__file__).parents[1] / "examples/shared_baseline/linked_workflow.py"))
+    prepared = workflow["prepare_control"]()
+    path = tmp_path / "surface-prepared.nc"
+    prepared.save(path)
+    restored = Co2O2PreparedInputs.load(path)
+    for channel in ("co2", "o2"):
+        xr.testing.assert_identical(restored.shared_baseline[channel], prepared.shared_baseline[channel].compute())
+
+
 @pytest.mark.parametrize("fault", ["missing_raw", "delta_vector", "delta_units", "additive"])
 def test_explicit_preparation_rejects_missing_or_unsupported_inputs(native, fault):
     kwargs = options(native)
