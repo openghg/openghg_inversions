@@ -92,7 +92,9 @@ Cached recipes separately express their supported scientific terms as a dense
 fixed contribution plus an active design times coefficients. This is the
 affine contract required by their sampler. Centered multiplicative boundaries
 use coefficients :math:`b-\mathbf1`; additive boundaries use the sampled
-common mean and anomaly coordinates. The concentration record alone does not
+common mean and Gaussian contrast coefficients, both in concentration units.
+A zero additive anomaly scale leaves only the mean coefficient; see
+:ref:`boundary-additive-corrections`. The concentration record alone does not
 provide or establish that affine decomposition.
 
 Handling beyond the linear options
@@ -109,13 +111,14 @@ Handling beyond the linear options
      - Anomaly, mass and reference acquisition; ``align_boundary_operands``
    * - State activity
      - Retained state with a correlated prior
-     - Resolved on the complete design :math:`A + cM`
+     - Multiplicative: resolved on :math:`A + cM`; additive: mean/contrast design
    * - Likelihood
      - Unresolved covariance added as aggregation error
      - Observation shift :math:`q`; ``floatX=float64`` required
    * - Cached lowering
      - Intercept plus fixed states; active :math:`H_\alpha`
-     - ``centered_concentration`` at the fixed baseline; active :math:`A + cM`
+     - Multiplicative: ``centered_concentration`` at the fixed baseline and active
+       :math:`A + cM`; additive: fixed baseline plus mean/contrast design
    * - Trace
      - None
      - ``restore_absolute_predictives`` adds :math:`q` back to ``y``
