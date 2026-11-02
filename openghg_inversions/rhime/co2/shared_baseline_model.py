@@ -45,11 +45,16 @@ def _model_inputs(prepared, observations):
     units = observations.attrs["units"]
     one = xr.ones_like(observations).assign_attrs(units="1")
     reference_shift = (one * prepared.reference).assign_attrs(units=units)
+    # Older CO2 v1 artifacts only stored physical BC. Their replay retains
+    # its historical precision; linked O2 explicitly requires native operands.
+    centered = (
+        prepared.bc_prescribed_centered + prepared.reference * (prepared.bc_mass_response - 1.0)
+        if {"bc_prescribed_centered", "bc_mass_response"} <= set(prepared)
+        else prepared.physical_bc_prior - reference_shift
+    )
     correction = xr.Dataset(
         {
-            "bc_prescribed_centered": (prepared.physical_bc_prior - reference_shift).assign_attrs(
-                units=units
-            ),
+            "bc_prescribed_centered": centered.assign_attrs(units=units),
             "bc_reference_shift": reference_shift,
             "bc_reference": prepared.reference.assign_attrs(units=units),
             "bc_mass_response": one,

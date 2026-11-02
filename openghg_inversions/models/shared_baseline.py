@@ -128,7 +128,7 @@ def prepare_shared_baseline(
         raise ValueError("Removing fixed outer states requires zero covariance with retained sampled states.")
     outer_mean = xr.dot(weights, h, dim=row)
     centered_h = h - outer_mean
-    transformed_h = xr.where(sampled_outer, centered_h, h) if multi else h
+    transformed_h = xr.where(sampled_outer, centered_h, h).transpose(row, dim) if multi else h
     physical_outer = xr.dot(h.where(outer, 0), mean, dim=dim)
     affine = fixed_prior_contribution + physical_outer
     if multi:
@@ -172,6 +172,9 @@ def prepare_shared_baseline(
             "bc_period_index": boundary_correction.bc_period_index,
             "bc_pattern_mean": bc_mean,
             "bc_pattern_centered": bc - bc_mean,
+            "bc_prescribed_centered": boundary_correction.bc_prescribed_centered,
+            "bc_reference_shift": boundary_correction.bc_reference_shift,
+            "bc_mass_response": boundary_correction.bc_mass_response,
             "physical_bc_prior": boundary_correction.bc_prescribed_centered
             + boundary_correction.bc_reference_shift,
             "reference": boundary_correction.bc_reference,
