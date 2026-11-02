@@ -111,9 +111,15 @@ def posterior_convergence_check(
         rhat, rhat_variable, unassessable_rhat = finite_extreme("r_hat", "max")
     bulk_ess, bulk_ess_variable, unassessable_bulk_ess = finite_extreme("ess_bulk", "min")
     tail_ess, tail_ess_variable, unassessable_tail_ess = finite_extreme("ess_tail", "min")
+    diverging = None
+    if sample_stats is not None:
+        for name in ("diverging", "sigma_nuts_diverging"):
+            if name in sample_stats:
+                flags = sample_stats[name].astype(bool)
+                diverging = flags if diverging is None else diverging | flags
     divergences_by_chain = (
-        np.asarray(sample_stats["diverging"].sum("draw").values, dtype=int).tolist()
-        if sample_stats is not None and "diverging" in sample_stats
+        np.asarray(diverging.sum("draw").values, dtype=int).tolist()
+        if diverging is not None
         else None
     )
     measured = {
