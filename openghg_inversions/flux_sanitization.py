@@ -8,22 +8,23 @@ basis workflows.
 The sanitation policy is stored in one namespaced xarray attribute as compact
 JSON. xarray attrs are the metadata channel that survives NetCDF-like
 serialisation, but they should contain simple serialisable values rather than
-Python objects. Keeping the metadata behind a small dataclass gives callers a
+Python objects. Keeping the metadata behind a small Pydantic model gives callers a
 typed interface without spreading many string attribute names through the code.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-import json
-from typing import Any, Literal, TypeVar
+from math import isclose
+from typing import Annotated, Any, Literal, TypeVar
 import warnings
 
 import numpy as np
 import xarray as xr
+from pydantic import Field, model_validator
 
+from openghg_inversions._record_schema import JsonFloat, Record, SchemaVersion
 from openghg_inversions.array_ops import to_dense
 
 FluxNonFiniteCheck = Literal["lazy", "count"]
@@ -42,14 +43,19 @@ class NonFiniteFluxWarning(UserWarning):
     """Warning emitted when non-finite flux values are replaced."""
 
 
-@dataclass(frozen=True, slots=True)
-class FluxNonFiniteMetadata:
+class FluxNonFiniteMetadata(Record):
     """Machine-readable metadata describing non-finite flux handling.
 
-    The dataclass is the in-memory representation used by this module. Its
+    The same Pydantic model validates in-memory and persisted metadata. Its
     serialised form is a JSON object stored under ``NONFINITE_METADATA_ATTR`` so
     the metadata can survive NetCDF/Zarr roundtrips without placing a Python
     object in ``DataArray.attrs``.
+
+    Computed evidence requires count, total and fraction, with count no larger
+    than total and fraction equal to their ratio within relative tolerance
+    ``1e-12``. Empty data has count and fraction zero. Uncounted evidence carries
+    none of these values. These relationships are validated without reading flux
+    data; generated JSON Schema describes the individual fields only.
 
     Attributes:
         schema_version: JSON metadata schema version.
@@ -66,15 +72,31 @@ class FluxNonFiniteMetadata:
         fraction: Exact non-finite fraction when ``checked`` is ``"computed"``.
     """
 
-    schema_version: int = 1
+    schema_version: SchemaVersion
     policy: str = NONFINITE_POLICY_ZERO_FILL
-    fill_value: float = 0.0
-    checked: str = NONFINITE_CHECKED_NOT_COUNTED
+    fill_value: JsonFloat = 0.0
+    checked: Literal["not_counted", "computed"] = NONFINITE_CHECKED_NOT_COUNTED
     context: str | None = None
     source: str | None = None
-    count: int | None = None
-    total: int | None = None
-    fraction: float | None = None
+    count: Annotated[int, Field(ge=0)] | None = None
+    total: Annotated[int, Field(ge=0)] | None = None
+    fraction: Annotated[JsonFloat, Field(ge=0, le=1)] | None = None
+
+    @model_validator(mode="after")
+    def validate_counts(self) -> "FluxNonFiniteMetadata":
+        """Keep counted evidence coherent without inspecting the flux array."""
+        if self.checked == NONFINITE_CHECKED_NOT_COUNTED:
+            if any(value is not None for value in (self.count, self.total, self.fraction)):
+                raise ValueError("Uncounted flux metadata cannot contain count, total or fraction.")
+            return self
+        if self.count is None or self.total is None or self.fraction is None:
+            raise ValueError("Computed flux metadata requires count, total and fraction.")
+        if self.count > self.total:
+            raise ValueError("Non-finite count cannot exceed the total cell count.")
+        expected = self.count / self.total if self.total else 0.0
+        if not isclose(self.fraction, expected, rel_tol=1e-12, abs_tol=0.0):
+            raise ValueError("Non-finite fraction must equal count / total (zero for empty data).")
+        return self
 
     @classmethod
     def from_attrs(cls, attrs: Mapping[Any, Any]) -> "FluxNonFiniteMetadata | None":
@@ -86,11 +108,12 @@ class FluxNonFiniteMetadata:
         Returns:
             Parsed metadata when local JSON metadata is present, otherwise
             ``None``.
+
+        Raises:
+            ValueError: If the attribute is present but malformed, including
+                a null value or missing/unsupported schema version.
         """
-        raw_metadata = attrs.get(NONFINITE_METADATA_ATTR)
-        if raw_metadata is not None:
-            return cls.from_json(raw_metadata)
-        return None
+        return cls.from_json(attrs[NONFINITE_METADATA_ATTR]) if NONFINITE_METADATA_ATTR in attrs else None
 
     @classmethod
     def from_json(cls, value: object) -> "FluxNonFiniteMetadata":
@@ -105,37 +128,7 @@ class FluxNonFiniteMetadata:
         Raises:
             ValueError: If the stored value is not valid metadata.
         """
-        if isinstance(value, bytes):
-            value = value.decode()
-        if isinstance(value, str):
-            try:
-                data = json.loads(value)
-            except json.JSONDecodeError as exc:
-                raise ValueError(f"Invalid non-finite flux metadata JSON: {value!r}") from exc
-        elif isinstance(value, Mapping):
-            data = dict(value)
-        else:
-            raise ValueError(f"Unsupported non-finite flux metadata value: {value!r}")
-
-        if not isinstance(data, Mapping):
-            raise ValueError(f"Non-finite flux metadata must be a JSON object: {value!r}")
-
-        context = data.get("context")
-        source = data.get("source")
-        count = data.get("count")
-        total = data.get("total")
-        fraction = data.get("fraction")
-        return cls(
-            schema_version=int(data.get("schema_version", 1)),
-            policy=str(data.get("policy", NONFINITE_POLICY_ZERO_FILL)),
-            fill_value=float(data.get("fill_value", 0.0)),
-            checked=str(data.get("checked", NONFINITE_CHECKED_NOT_COUNTED)),
-            context=None if context is None else str(context),
-            source=None if source is None else str(source),
-            count=None if count is None else int(str(count)),
-            total=None if total is None else int(str(total)),
-            fraction=None if fraction is None else float(str(fraction)),
-        )
+        return cls.model_validate_json(value) if isinstance(value, str | bytes) else cls.model_validate(value)
 
     def declares_zero_fill(self) -> bool:
         """Return whether this metadata declares a zero-fill policy.
@@ -153,7 +146,7 @@ class FluxNonFiniteMetadata:
             Dictionary containing only primitive or null values suitable for
             JSON encoding in xarray attrs.
         """
-        return asdict(self)
+        return self.model_dump(mode="json")
 
     def to_json(self) -> str:
         """Return compact JSON suitable for storing in xarray attrs.
@@ -161,7 +154,7 @@ class FluxNonFiniteMetadata:
         Returns:
             JSON object encoded as a compact string.
         """
-        return json.dumps(self.to_json_dict(), sort_keys=True, separators=(",", ":"))
+        return self.model_dump_json()
 
 
 def _history_entry(
@@ -247,7 +240,7 @@ def _with_nonfinite_attrs(
     result = flux.copy(deep=False)
     attrs = dict(flux.attrs)
     metadata = FluxNonFiniteMetadata(
-        checked=checked,
+        schema_version=1, checked=checked,
         context=context,
         source=source,
         count=count,

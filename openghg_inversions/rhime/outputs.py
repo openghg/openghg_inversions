@@ -305,8 +305,7 @@ def _make_inversion_output(
     for key in ("model_builder", "likelihood_builder", "likelihood_kwargs"):
         if key in result.output_metadata:
             builder_metadata[key] = result.output_metadata[key]
-    contract = replace(
-        contract,
+    contract = contract.with_updates(
         variable_roles=contract.variable_roles if variable_roles is None else variable_roles,
         state_dimension_mapping=(
             contract.state_dimension_mapping if state_dimension_mapping is None else state_dimension_mapping

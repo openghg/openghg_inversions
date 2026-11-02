@@ -10,3 +10,10 @@ openghg\_inversions.experimental
    :maxdepth: 4
 
    openghg_inversions.experimental.ramsden2022
+
+
+
+.. toctree::
+   :maxdepth: 4
+
+   openghg_inversions.experimental.metadata_records

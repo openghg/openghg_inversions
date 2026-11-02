@@ -44,6 +44,8 @@ dependencies = [
     "sparse",
     "flox",
     "opt_einsum",
+    "pydantic>=2.12,<3",
+    "xarray-validate==0.0.5",
 ]
 
 [project.optional-dependencies]
@@ -63,6 +65,10 @@ dev = [
   "pandas-stubs==2.3.3.*",
   "scipy-stubs==1.15.3.*",
   "towncrier>=24.8",
+]
+schema-prototype = [
+    "jsonschema>=4,<5",
+    "msgspec>=0.19,<1",
 ]
 
 [dependency-groups]

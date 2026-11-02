@@ -15,23 +15,59 @@ part of this model.
 
 from __future__ import annotations
 
-from typing import Any, cast
+from collections.abc import Mapping
+from dataclasses import field
+from typing import Any, Literal, cast
 
 import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
+from pydantic.dataclasses import dataclass
 
+from openghg_inversions._record_schema import Record
+from openghg_inversions.models._likelihood_settings import SETTINGS_CONFIG, LikelihoodSettings
 from openghg_inversions.models._gaussian_observation import (
     add_aggregation_error_data,
     add_gaussian_observation_likelihood,
 )
 from openghg_inversions.models.components import add_model_data
+from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.observation_error import (
     AggregationError,
     validate_observation_error_arrays,
 )
+
+
+@dataclass(frozen=True, config=SETTINGS_CONFIG)
+class FixedErrorSettings(LikelihoodSettings):
+    """Validated selection of reported observation error only."""
+
+    kind: Literal["fixed_error"] = field(default="fixed_error", kw_only=True)
+
+    @property
+    def required_prepared_inputs(self) -> tuple[str, ...]:
+        return ()
+
+    def to_record(self, *, priors: Mapping[str, PriorArgs]) -> FixedErrorRecord:
+        return FixedErrorRecord(kind=self.kind, options=FixedErrorOptions())
+
+
+class FixedErrorOptions(Record):
+    pass
+
+
+class FixedErrorRecord(Record):
+    kind: Literal["fixed_error"]
+    options: FixedErrorOptions
+
+    def for_postprocessing(self, *, trace: xr.DataTree | None = None) -> FixedErrorSettings:
+        """Describe this selection; there are no prior dependencies to restore."""
+        return FixedErrorSettings()
+
+    def to_runtime(self, *, trace: xr.DataTree | None = None) -> FixedErrorSettings:
+        return FixedErrorSettings()
 
 
 def add_fixed_error_likelihood(
@@ -97,4 +133,4 @@ def add_fixed_error_likelihood(
     )
 
 
-__all__ = ["add_fixed_error_likelihood"]
+__all__ = ["add_fixed_error_likelihood", "FixedErrorSettings", "FixedErrorOptions", "FixedErrorRecord"]

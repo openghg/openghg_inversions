@@ -7,7 +7,6 @@ loading a checkpoint before and saving one after.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
@@ -16,6 +15,7 @@ from typing import Any, Literal
 import xarray as xr
 
 from openghg_inversions._provenance import installed_ogi_provenance
+from openghg_inversions._serialization_codecs import _json_value
 from openghg_inversions._timing import timer_seconds, timer_start
 from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.inference.sampling import RhimeSampler, resolve_sampler
@@ -24,7 +24,7 @@ from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.serialization import load_trace, save_trace
 from openghg_inversions.models.priors import trace_prior_records
 
-from ._stage_artifacts import write_json as _write_json
+from ._manifest_records import PrepareManifest, SampleManifest
 from ._stage_checks import _check_draws, _check_stage, prior_predictive_check
 from .builders import RhimeLikelihoodBuilder, callable_metadata
 from .outputs import (
@@ -37,50 +37,6 @@ from .params import DataConfig, resolve_model_options, retained_run_spec
 from .preparation import acquire_merged_data, export_basis, resolve_basis_inputs
 from .sampling import sample_rhime_model
 from .specs import RhimeModelSpec, RhimeOutputSpec, RhimeRunSpec
-
-
-def _read_record(path: str | Path, *, stage: str) -> tuple[Path, dict[str, Any]]:
-    """Read the current standard format once, without ambient path discovery."""
-    path = Path(path).resolve()
-    record = json.loads(path.read_text(encoding="utf-8"))
-    expected = f"openghg_inversions.standard.{stage}"
-    if not isinstance(record, dict) or (
-        record.get("schema") != expected
-        or type(record.get("schema_version")) is not int
-        or record["schema_version"] != 1
-        or record.get("family") != "standard"
-    ):
-        found = {name: record.get(name) for name in ("schema", "schema_version", "family")} if isinstance(record, dict) else type(record).__name__
-        raise ValueError(f"{path} is not a {expected} version-1 manifest for the standard family; found {found!r}.")
-    required = (
-        ("prepared_inputs", "data") if stage == "prepare"
-        else ("preparation", "posterior", "output_contract", "model", "build_and_sample_seconds")
-    )
-    missing = [name for name in required if name not in record]
-    if missing:
-        raise ValueError(f"Standard {stage} manifest {path} is missing {missing!r}.")
-    if stage == "sample" and record.get("inference_kind") != "mcmc":
-        raise ValueError(
-            f"Standard sample manifest requires inference_kind='mcmc'; found {record.get('inference_kind')!r}."
-        )
-    return path, record
-
-
-def _reference(path: Path, name: str, value: Any) -> Path:
-    """Validate one manifest artifact reference and resolve it beside the manifest."""
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"Manifest {path} requires a nonempty `{name}` reference; found {value!r}.")
-    return (path.parent / value).resolve()
-
-
-def _save_record(destination: Path, *, stage: str, **contents: Any) -> Path:
-    """Write a completed manifest last, so its presence marks a finished stage."""
-    temporary = _write_json(destination / f".{stage}-manifest.tmp", {
-        "schema": f"openghg_inversions.standard.{stage}", "schema_version": 1,
-        "producer": "openghg_inversions", "family": "standard", "stage": stage,
-        **contents,
-    })
-    return temporary.replace(destination / f"{stage}-manifest.json")
 
 
 def _require_standard(data: DataConfig) -> None:
@@ -117,11 +73,14 @@ def save_preparation(prepared: RhimePreparedInputs, *, data: DataConfig, output_
 
 def _write_preparation(prepared: RhimePreparedInputs, *, data: DataConfig, destination: Path) -> Path:
     """Write prepared inputs, then the manifest that marks the preparation complete."""
-    prepared.save(destination / "prepared-inputs.nc")
-    return _save_record(
-        destination, stage="prepare", prepared_inputs="prepared-inputs.nc",
-        data=data.to_params(), basis_artifact_source=prepared.basis_artifact_source,
+    record = PrepareManifest(
+        schema="openghg_inversions.standard.prepare", schema_version=1,
+        producer="openghg_inversions", family="standard", stage="prepare",
+        prepared_inputs="prepared-inputs.nc", data=_json_value(data.to_params()),
+        basis_artifact_source=prepared.basis_artifact_source,
     )
+    prepared.save(destination / "prepared-inputs.nc")
+    return record.save(destination)
 
 
 def load_preparation(manifest: str | Path) -> tuple[RhimePreparedInputs, DataConfig]:
@@ -139,10 +98,11 @@ def load_preparation(manifest: str | Path) -> tuple[RhimePreparedInputs, DataCon
             recorded data choices are invalid.
         FileNotFoundError: If the referenced numerical file is missing.
     """
-    path, record = _read_record(manifest, stage="prepare")
-    data = DataConfig.from_params(record["data"])
+    path = Path(manifest).resolve()
+    record = PrepareManifest.load(path)
+    data = DataConfig.from_params(record.data)
     _require_standard(data)
-    return RhimePreparedInputs.load(_reference(path, "prepared_inputs", record["prepared_inputs"])), data
+    return RhimePreparedInputs.load((path.parent / record.prepared_inputs).resolve()), data
 
 
 def prepare(data: DataConfig, *, output_dir: str | Path, merged_data: RhimeMergedData | None = None) -> Path:
@@ -224,16 +184,18 @@ def save_samples(
             "Saved sample records cannot represent `state_activity`, `bc_state_activity` "
             "or `SectorSpec.state_activity`; run these models in memory."
         )
-    model_record = model.to_record(priors=trace_prior_records(posterior))
+    record = SampleManifest(
+        schema="openghg_inversions.standard.sample", schema_version=1,
+        producer="openghg_inversions", family="standard", stage="sample",
+        preparation=str(Path(preparation_manifest).resolve()), posterior="posterior.nc",
+        output_contract=output_contract.to_dict(), model=model.to_record(priors=trace_prior_records(posterior)),
+        inference_kind="mcmc", actual_inference=dict(actual_inference),
+        build_and_sample_seconds=build_and_sample_seconds, provenance=installed_ogi_provenance(),
+    )
     destination = Path(output_dir).resolve()
     destination.mkdir(parents=True, exist_ok=False)
     save_trace(posterior, destination / "posterior.nc")
-    return _save_record(
-        destination, stage="sample", preparation=str(Path(preparation_manifest).resolve()),
-        posterior="posterior.nc", output_contract=output_contract.to_dict(),
-        model=model_record, inference_kind="mcmc", actual_inference=dict(actual_inference),
-        build_and_sample_seconds=build_and_sample_seconds, provenance=installed_ogi_provenance(),
-    )
+    return record.save(destination)
 
 
 def _saved_run_spec(
@@ -317,13 +279,14 @@ def postprocess(sample_manifest: str | Path, *, output: RhimeOutputSpec) -> Rhim
     """
     from .standard import make_standard_rhime_result
 
-    path, record = _read_record(sample_manifest, stage="sample")
-    output_contract = OutputContract.from_dict(record["output_contract"])
+    path = Path(sample_manifest).resolve()
+    record = SampleManifest.load(path)
+    output_contract = record.output_contract
     output_contract.validate_requested_output(output.output_format)
     refuse_existing_output_destinations(output)
-    prepared, data = load_preparation(_reference(path, "preparation", record["preparation"]))
-    posterior = load_trace(_reference(path, "posterior", record["posterior"]))
-    model = RhimeModelSpec.from_record(record["model"], trace=posterior)
+    prepared, data = load_preparation((path.parent / record.preparation).resolve())
+    posterior = load_trace((path.parent / record.posterior).resolve())
+    model = record.model.for_postprocessing(trace=posterior)
     # The manifests are separate files; keep the sample bound to its preparation.
     conflicts = {name: (getattr(model, name), getattr(data, name))
                  for name in ("species", "domain") if getattr(model, name) != getattr(data, name)}
@@ -337,8 +300,8 @@ def postprocess(sample_manifest: str | Path, *, output: RhimeOutputSpec) -> Rhim
     result = make_standard_rhime_result(
         prepared=prepared, run_spec=retained_run_spec(data, prepared, model=model, output=output), sampler=None,
         output_contract=output_contract, idata=posterior,
-        build_and_sample_seconds=record["build_and_sample_seconds"],
-        sampler_metadata=record.get("actual_inference"), provenance=record.get("provenance", {}),
+        build_and_sample_seconds=record.build_and_sample_seconds,
+        sampler_metadata=record.actual_inference, provenance=record.provenance,
     )
     return make_standard_rhime_outputs(result=result, prepared=prepared)
 

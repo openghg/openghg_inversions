@@ -31,7 +31,7 @@ def _saved(tmp_path):
     ))
     sampled = stages.save_samples(
         preparation, posterior, model=config.model, actual_inference=config.sampler.describe(),
-        output_contract=OutputContract(variable_roles={"flux_scale": "x"},
+        output_contract=OutputContract.create(variable_roles={"flux_scale": "x"},
                                        supported_output_formats=("none", "inv_out")),
         build_and_sample_seconds=2.5, output_dir=tmp_path / "samples",
     )
@@ -224,7 +224,7 @@ def test_prior_readiness_requires_finite_declared_prediction(tmp_path, monkeypat
     from contextlib import nullcontext
     from types import SimpleNamespace
     preparation, _ = _saved(tmp_path)
-    contract = OutputContract(variable_roles={"concentration": "observations"})
+    contract = OutputContract.create(variable_roles={"concentration": "observations"})
     monkeypatch.setattr(standard, "build_standard", lambda *a, **k: SimpleNamespace(
         model=nullcontext(), output_contract=contract))
     group = "prior" if evidence == "missing" else "prior_predictive"
@@ -251,7 +251,7 @@ def test_prior_serialization_errors_propagate(tmp_path, monkeypatch, empty):
     from types import SimpleNamespace
     preparation, _ = _saved(tmp_path)
     monkeypatch.setattr(standard, "build_standard", lambda *a, **k: SimpleNamespace(
-        model=nullcontext(), output_contract=OutputContract(variable_roles={"concentration": "y"})))
+        model=nullcontext(), output_contract=OutputContract.create(variable_roles={"concentration": "y"})))
     prior = make_trace(prior_predictive=xr.Dataset({"y": (("chain", "draw"), [[1.]])}))
     if empty:
         prior = prior.isel(draw=slice(0, 0))
