@@ -24,9 +24,11 @@ def double_precision():
         yield
 
 
-def _model(cached, baseline, offsets):
+def _model(cached, baseline, offsets, scales=None):
     if baseline == "additive":
         kwargs = _additive_inputs(True)
+        for channel, scale in zip(("co2", "o2"), scales):
+            kwargs[f"bc_anomaly_scale_{channel}"] = scale
     elif baseline == "centered":
         prepared, _ = _prepared_boundaries(mixed=False)
         kwargs = _kwargs(prepared)
@@ -48,14 +50,20 @@ def _model(cached, baseline, offsets):
 
 @pytest.mark.parametrize("cached", [False, True])
 @pytest.mark.parametrize(
-    "baseline,offsets",
-    [("none", ()), ("centered", ("o2",)), ("additive", ("co2", "o2"))],
+    "baseline,offsets,scales",
+    [
+        ("none", (), None), ("centered", ("o2",), None),
+        ("additive", ("co2", "o2"), (0.04, 0.04)),
+        ("additive", ("co2", "o2"), (0.0, 0.04)),
+        ("additive", ("co2", "o2"), (0.04, 0.0)),
+        ("additive", ("co2", "o2"), (0.0, 0.0)),
+    ],
 )
 def test_compact_recording_restores_all_deterministics_at_identical_states(
-    monkeypatch, tmp_path, cached, baseline, offsets
+    monkeypatch, tmp_path, cached, baseline, offsets, scales
 ):
     """Use full graph prior draws as an oracle, without fitting another chain."""
-    model = _model(cached, baseline, offsets)
+    model = _model(cached, baseline, offsets, scales)
     with model:
         reference = pm.sample_prior_predictive(draws=4, random_seed=183)
     recorded = {}
@@ -88,6 +96,13 @@ def test_compact_recording_restores_all_deterministics_at_identical_states(
     for name in expected.data_vars:
         xr.testing.assert_allclose(trace.posterior[name], expected[name], rtol=1e-13, atol=1e-10)
         assert trace.posterior[name].dtype == expected[name].dtype
+    if scales is not None:
+        for channel, scale in zip(("co2", "o2"), scales):
+            assert (f"{channel}_bc_anomaly_latent" in trace.posterior) == (scale > 0)
+            assert f"{channel}_bc_mean_shift" in trace.posterior
+            if scale == 0:
+                np.testing.assert_array_equal(trace.posterior[f"{channel}_bc_anomaly"], 0.0)
+                np.testing.assert_array_equal(trace.posterior[f"{channel}_mu_bc_anomaly"], 0.0)
     if offsets == ("o2",):
         np.testing.assert_array_equal(trace.posterior.o2_offset, trace.posterior.offset_concentration)
     if baseline == "none":
@@ -114,7 +129,8 @@ def test_compact_recording_restores_all_deterministics_at_identical_states(
 
 
 @pytest.mark.parametrize("cached", [False, True])
-def test_compact_sampler_preserves_normalized_likelihood_and_absolute_products(tmp_path, cached):
+@pytest.mark.parametrize("scales", [(0.04, 0.04), (0.0, 0.04), (0.04, 0.0), (0.0, 0.0)])
+def test_compact_sampler_preserves_normalized_likelihood_and_absolute_products(tmp_path, cached, scales):
     """Exercise recording, return, prediction, and serialization on actual small chains."""
     from scipy.stats import multivariate_normal
 
@@ -123,12 +139,14 @@ def test_compact_sampler_preserves_normalized_likelihood_and_absolute_products(t
     from test_co2_o2_fixed_ou import _dense
 
     kwargs = _additive_inputs(True)
+    for channel, scale in zip(("co2", "o2"), scales):
+        kwargs[f"bc_anomaly_scale_{channel}"] = scale
     kwargs["offset_prior"] = {"o2": {"pdf": "normal", "mu": 0.0, "sigma": 0.1}}
     kwargs["offset_args"] = {"o2": {"per_site": True}}
     ou = {"tau_hours": 6.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.8}}
     built = (build_co2_o2_cached_sigma_model if cached else build_co2_o2_model)(**kwargs, **ou)
     model = built.model if cached else built
-    sampler = RhimeSampler(
+    sampler_options = dict(
         draws=3, tune=2, chains=1, burn=1,
         sample_kwargs={
             "cores": 1, "random_seed": 93, "progressbar": False,
@@ -136,11 +154,26 @@ def test_compact_sampler_preserves_normalized_likelihood_and_absolute_products(t
         },
         sample_posterior_predictive=True,
     )
+    sampler = RhimeSampler(**sampler_options)
     if cached:
         sampler = _sampler_for_cached_graph(
             sampler, cached_model=built, sigma_target_accept=0.8, state_target_accept=0.8,
         )
     trace = sampler.sample(model, recompute_deterministics=True)
+    original_observed = kwargs["observations"] - trace.constant_data.boundary_reference_shift
+    xr.testing.assert_allclose(trace.observed_data.y, original_observed)
+    reference_built = (build_co2_o2_cached_sigma_model if cached else build_co2_o2_model)(**kwargs, **ou)
+    reference_model = reference_built.model if cached else reference_built
+    reference_sampler = RhimeSampler(**sampler_options)
+    if cached:
+        reference_sampler = _sampler_for_cached_graph(
+            reference_sampler, cached_model=reference_built,
+            sigma_target_accept=0.8, state_target_accept=0.8,
+        )
+    reference_sampler.sample_kwargs["trace"] = pm.backends.NDArray(model=reference_model)
+    reference = reference_sampler.sample(reference_model)
+    for group in ("posterior", "prior", "log_likelihood", "posterior_predictive", "prior_predictive", "observed_data"):
+        xr.testing.assert_allclose(trace[group].to_dataset(), reference[group].to_dataset(), rtol=1e-12, atol=1e-9)
     assert set(trace.posterior.data_vars) == {
         variable.name for variable in model.free_RVs + model.deterministics
     }
@@ -155,12 +188,20 @@ def test_compact_sampler_preserves_normalized_likelihood_and_absolute_products(t
         np.testing.assert_allclose(trace.log_likelihood.y.values[0, draw], expected, atol=1e-7)
     assert trace.log_likelihood.y.dims == ("chain", "draw")
     restore_absolute_predictives(trace)
+    restore_absolute_predictives(reference)
     xr.testing.assert_allclose(trace.observed_data.y, kwargs["observations"])
+    xr.testing.assert_identical(trace.observed_data.y, reference.observed_data.y)
     assert trace.posterior_predictive.y.shape == (1, 2, 5)
     assert trace.prior_predictive.y.shape == (1, 2, 5)
     assert float(trace.posterior_predictive.y.isel(observation=slice(2, None)).min()) > 199900
     for group in ("posterior", "prior"):
         values = trace[group]
+        for channel, scale in zip(("co2", "o2"), scales):
+            assert (f"{channel}_bc_anomaly_latent" in values) == (scale > 0)
+            assert f"{channel}_bc_mean_shift" in values
+            if scale == 0:
+                np.testing.assert_array_equal(values[f"{channel}_bc_anomaly"], 0.0)
+                np.testing.assert_array_equal(values[f"{channel}_mu_bc_anomaly"], 0.0)
         np.testing.assert_array_equal(values.o2_offset, values.offset_concentration)
         np.testing.assert_allclose(
             values.modelled_concentration,
@@ -171,8 +212,12 @@ def test_compact_sampler_preserves_normalized_likelihood_and_absolute_products(t
     path = tmp_path / "linked-sampled.nc"
     save_trace(trace, path)
     restored = load_trace(path)
-    for group in ("posterior", "prior", "log_likelihood", "posterior_predictive", "prior_predictive"):
+    reference_path = tmp_path / "linked-sampled-ordinary.nc"
+    save_trace(reference, reference_path)
+    restored_reference = load_trace(reference_path)
+    for group in ("posterior", "prior", "log_likelihood", "posterior_predictive", "prior_predictive", "observed_data"):
         xr.testing.assert_identical(restored[group].dataset, trace[group].dataset)
+        xr.testing.assert_allclose(restored[group].to_dataset(), restored_reference[group].to_dataset(), rtol=1e-12, atol=1e-9)
 
 
 def test_restoration_borrows_free_states_and_preserves_input_metadata():
