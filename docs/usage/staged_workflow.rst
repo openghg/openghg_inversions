@@ -205,9 +205,12 @@ Both checks use the schema version 1 understood by ``openghg-run`` and producer
 .. _staged-convergence-check:
 
 ``sampler-convergence``
-  Assesses only sampled scientific latent variables; ``assessed_variables``
-  names them and deterministic posterior outputs are excluded. Reports
-  retained chain and draw counts, maximum R-hat and its variable,
+  ``measured_values.assessed_variables`` records the variables actually
+  assessed. New traces save the sampled latent-variable list in
+  ``sampler_convergence_variables`` and assess only those variables, excluding
+  deterministic posterior outputs. Older traces without that attribute fall
+  back to all posterior variables, including deterministics. Reports retained
+  chain and draw counts, maximum R-hat and its variable,
   minimum bulk ESS and its variable, minimum tail ESS and its variable, total
   divergences, divergences per chain, and labels for unassessable R-hat/ESS
   elements.  Defaults are maximum R-hat 1.01,

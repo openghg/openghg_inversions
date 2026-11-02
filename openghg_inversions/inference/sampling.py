@@ -222,6 +222,13 @@ class RhimeSampler:
                 role names. The historical default ``"y"`` resolves to the
                 explicit ``concentration`` role when a custom model has no
                 variable named ``y``.
+
+        Returns:
+            Sampled trace with requested predictive groups. Its
+            ``sampler_convergence`` and ``sampler_convergence_variables``
+            attributes contain JSON for the convergence CheckResult and its
+            assessed variable names. Assessment follows burn slicing and
+            registered-coordinate restoration.
         """
         sample_kwargs = dict(self.sample_kwargs or {})
         sample_kwargs.pop("return_inferencedata", None)

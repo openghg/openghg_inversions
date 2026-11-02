@@ -474,6 +474,42 @@ def test_diagnostics_emit_issue_667_convergence_signals(
     assert engines == [None]
 
 
+def test_older_trace_diagnostics_report_all_posterior_variables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy traces without a saved variable list assess deterministics too."""
+    trace = make_trace(
+        posterior=xr.Dataset(
+            {
+                "x": (("chain", "draw"), np.ones((2, 4))),
+                "epsilon": (("chain", "draw", "nmeasure"), np.ones((2, 4, 2))),
+            },
+            coords={"chain": range(2), "draw": range(4), "nmeasure": ["a", "b"]},
+        ),
+        sample_stats=xr.Dataset({"diverging": (("chain", "draw"), np.zeros((2, 4), dtype=bool))}),
+    )
+    assessed: list[list[str]] = []
+
+    def legacy_summary(posterior: xr.Dataset, **kwargs: Any) -> xr.Dataset:
+        assessed.append(list(posterior.data_vars))
+        assert "var_names" not in kwargs
+        return xr.Dataset(
+            {
+                "x": ("metric", [1.0, 800.0, 700.0]),
+                "epsilon": (("metric", "nmeasure"), [[np.nan, np.nan], [800.0, 800.0], [700.0, 700.0]]),
+            },
+            coords={"metric": ["r_hat", "ess_bulk", "ess_tail"], "nmeasure": ["a", "b"]},
+        )
+
+    monkeypatch.setattr(inference_diagnostics.az, "summary", legacy_summary)
+    _, result = posterior_convergence_check(trace)
+
+    assert assessed == [["x", "epsilon"]]
+    assert result["status"] == "unknown"
+    assert result["measured_values"]["assessed_variables"] == ["x", "epsilon"]
+    assert result["measured_values"]["unassessable_rhat"] == ["epsilon,nmeasure=a", "epsilon,nmeasure=b"]
+
+
 def test_diagnostics_preserve_threshold_edge_values(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
