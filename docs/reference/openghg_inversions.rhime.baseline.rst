@@ -12,8 +12,9 @@ prepared-input API implements
 In the single-sector standard recipe, ``o`` is an optional observation offset.
 A separately enabled sampled boundary component is added to the supplied
 background only when explicitly declared to be a correction. Independent
-multisector runs require no observation offset or sampled boundary correction. The supplied background already contains the
-boundary and exterior-flux contributions. Adding an ordinary sampled boundary
+multisector runs require no observation offset or sampled boundary correction.
+The supplied background already contains the boundary and exterior-flux
+contributions. Adding an ordinary sampled boundary
 again would double-count the background and is rejected.
 
 Preparing the inner model
@@ -168,8 +169,9 @@ receives the complete mean.
 ``mu_baseline`` stores that effective background; ``mu_bc`` remains the sampled
 correction when enabled. ``mu_inner`` contains inner linear flux plus the inner
 fixed term, and ``mu_total`` stores the absolute mean including any offset.
-Offsets remain separate and are excluded from observation-derived pollution
-scaling for supplied backgrounds. Concentration products select the effective
+Offsets remain separate in the output, but observation-derived pollution
+scaling removes the complete baseline, including any offset, as in the ordinary
+standard recipe. Concentration products select the effective
 baseline through the output-role contract, including for fixed-only runs;
 optional offset combination follows the product request. The builder declares
 ``baseline_includes_offset=False`` in the output contract. For other models,
