@@ -65,7 +65,8 @@ The existing CO2 TOML/JSON/Python model owner accepts:
 The full ``run_co2`` and saved ``handoffs.sample`` routes use those same
 arguments, for ordinary and cached inference. Before full-run inference, resolved
 trace and product targets are checked against selected boundary and biosphere
-artifacts, including symlink and hardlink aliases and overlapping directory stores. Saved traces carry the existing
+artifacts and preparation/reconstruction files actually loaded by the run,
+including symlink and hardlink aliases and overlapping directory stores. Saved traces carry the existing
 boundary/calibration groups, so output replay needs neither those input paths
 nor a newly calibrated prior. A different original retained prior fails at model
 construction. Omit the tables to preserve existing priors.

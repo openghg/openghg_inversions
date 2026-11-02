@@ -81,7 +81,8 @@ def run_co2(
     inputs and their coherent reduction are prepared together; an existing
     preparation is reused unchanged. Imported runs must supply requested dates
     and domain explicitly or retain them in preparation provenance. Selected prior
-    artifacts are protected from trace/product output aliases before sampling.
+    artifacts and consumed preparation/reconstruction files are protected from
+    trace/product output aliases before sampling.
 
     Returns:
         Scientific result containing the trace, concentration components and
@@ -108,12 +109,14 @@ def run_co2(
         raise ValueError("Pass prepared or canonical_inputs/reduction, not both.")
     source = preparation.prepared_path
     supplied_prepared = prepared is not None
+    consumed_paths: tuple[Path, ...] = ()
     if canonical_inputs is not None and reduction is not None:
         prepared = prepare_co2_inputs(canonical_inputs, reduction, aggregation_error_rank=aggregation_error_rank)
     elif prepared is None:
         if source is None:
             raise ValueError("Pass prepared inputs or configure prepared_inputs.path.")
         prepared = Co2PreparedInputs.load(source)
+        consumed_paths += (source,)
     facts = requested_co2_facts(
         prepared, start_date=start_date, end_date=end_date,
         recorded_facts={name: getattr(preparation, name) for name in ("start_date", "end_date", "domain")},
@@ -131,6 +134,7 @@ def run_co2(
         bound = _bind_affine_flux_map(
             load_affine(affine_path), prepared, prepared_inputs_id=prepared_inputs_content_id(source),
         )
+        consumed_paths += (affine_path,)
     countries = validate_co2_product_request(
         output, prepared=prepared, bound=bound, source_to_sector=output_choices["source_to_sector"],
     )
@@ -146,7 +150,7 @@ def run_co2(
     product_paths, trace_path = _co2_output_paths(
         output, domain=facts["domain"], start_date=facts["start_date"], product_names=product_names,
     )
-    protected = model_config.artifact_paths()
+    protected = model_config.artifact_paths() + consumed_paths
     targets = list(product_paths.values())
     if trace_path is not None:
         targets.append(trace_path)
