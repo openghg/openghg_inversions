@@ -631,7 +631,7 @@ class Co2ModelConfig:
         return result
 
     def artifact_paths(self) -> tuple[Path, ...]:
-        """Identify frozen inputs that checkpoint writers must not overwrite."""
+        """Identify frozen inputs that output writers must not overwrite."""
         return tuple(Path(path).resolve() for path in (self.boundary_correction_path, self.biosphere_prior_path)
                      if path is not None)
 
