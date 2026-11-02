@@ -1,5 +1,5 @@
 Shared atmospheric level with boundary and outer corrections
-===========================================================
+============================================================
 
 This opt-in Python recipe gives boundary-condition (BC) and exterior-flux
 corrections one shared atmospheric level. It starts from an existing coherent
@@ -12,7 +12,7 @@ the common mean from correction patterns also does not make their remaining
 patterns independent or remove their overlap.
 
 Frozen observation-space centring
---------------------------------
+---------------------------------
 
 Assign every retained site equal total weight, then distribute its weight
 uniformly among that site's retained observations. Let the resulting column
@@ -184,7 +184,7 @@ adjustment transports.
 Validation and scientific limits
 --------------------------------
 
-The :doc:`matched replay report </validation/shared_baseline_replay>` records
+The :download:`matched replay report <../validation/shared_baseline_replay.md>` records
 input identities, checks, sampling diagnostics and Monte Carlo uncertainty.
 Improving concentration fit alone does not establish better recovery of inner
 fluxes or identify the physical source of a baseline discrepancy. All replay
