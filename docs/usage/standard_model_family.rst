@@ -15,6 +15,7 @@ between these recipes.
    :maxdepth: 1
 
    rhime_standard_tutorial
+   rhime_standard_plotting_tutorial
    rhime_multisector_tutorial
    multisector_inversions
    concrete_rhime_model
