@@ -119,3 +119,38 @@ Reviewed source SHA256 values:
 
 The parent task records the final committed revision; later changes to these
 scientific owners require proportionate review and validation.
+
+## Centred-null physical-state correction and final validation
+
+The subsequent PR review found that a nonzero constant outer response can
+become zero after centring. Structural pruning then fixed its coefficient at
+one, losing physical prior uncertainty even though the centred concentration
+prediction still closed. Commit `37e8b29d` corrects this by retaining the full
+joint physical prior in both shared builders. General builders retain their
+existing pruning default and explicit activity policies.
+
+The regression uses an inner response `[2, 6]`, raw outer response `[4, 4]`,
+outer coefficient mean 1.5 and nonzero inner/outer covariance. It verifies the
+model-implied arithmetic prior moments, random physical response
+`4 * x_outer`, zero centred response, absolute prediction, normalized densities
+and ordinary/refreshed-cache gradients. This is a synthetic equation and
+uncertainty check; it does not score campaign flux recovery. The reviewer
+independently rechecked the source correction and found no residual defect in
+that scoped finding.
+
+Immutable source `d9d730bc505edb61c2ccd209e420d291db444074` passed all 238
+selected tests on each of Python 3.12.11 and 3.13.7 in Slurm array task
+`19888803_0` (exit `0:0`, 18m19s, batch MaxRSS 5,608,128 KiB). Coverage includes
+shared algebra and physical diagnostics, correlated state/activity, borrowed
+sensitivity, ordinary/cached inference and boundary priors. Both compiler/header
+preflights passed. The log SHA256 is
+`269d1acf4949baa04149e035d2f5da8bd540980aa99ec7d919ac59b23140afd6`.
+
+Repository lint and full Sphinx also passed on that immutable source in
+`19888806_0` (exit `0:0`). The fresh build reported ten warnings about existing
+SiteOptions aliases and ambiguous cross-references, with none in the changed
+guides or builders. The earlier incremental build recorded four warnings, so
+unchanged warning counts are not claimed. Rendered coefficient prose and its
+additive-boundary cross-link were checked. These are relevant regression and
+documentation checks, not a full-repository scientific test matrix or a new
+campaign replay.
