@@ -7,7 +7,7 @@ import pytest
 
 from openghg_inversions.cli import main
 from openghg_inversions.rhime.co2.execution import load_co2_params, resolve_co2_output
-from openghg_inversions.rhime.co2.configuration import resolve_co2_model, resolve_co2_preparation
+from openghg_inversions.rhime.co2.configuration import Co2ModelConfig, Co2PreparationConfig
 
 
 def test_inference_phase_ignores_inactive_resources_and_uses_current_sampler(tmp_path, monkeypatch, capsys):
@@ -31,7 +31,7 @@ def test_inference_phase_ignores_inactive_resources_and_uses_current_sampler(tmp
     main(["sample", "--model", "co2", "--params-file", str(choices),
           "--preparation-manifest", str(manifest), "--output-dir", str(tmp_path / "sample")])
     assert calls[0][0] == str(manifest)
-    assert calls[0][1]["likelihood"]["no_model_error"] is True
+    assert calls[0][1].no_model_error is True
     assert calls[0][2:] == (7, tmp_path / "sample")
     assert "sample-manifest.json" in capsys.readouterr().out
 
@@ -81,11 +81,11 @@ def test_configured_full_rejects_mismatched_country_grid_before_materialization(
 
 
 def test_co2_prior_choices_need_no_sampling_or_output_sections():
-    choices = resolve_co2_model({
+    choices = Co2ModelConfig.from_params({
         "likelihood": {"kind": "additive_sigma", "no_model_error": True},
         "sampling": {"draws": "invalid inactive value"},
         "outputs": {"output_format": "invalid inactive value"},
-    })
+    }).model_arguments()
     assert choices["no_model_error"] is True
 
 
@@ -105,7 +105,7 @@ def test_co2_file_and_override_paths_use_one_invocation_base(tmp_path, monkeypat
     invocation.mkdir()
     monkeypatch.chdir(invocation)
     options = load_co2_params(params_file=source, overrides={"outputs": {"country_file": "other.nc"}})
-    assert resolve_co2_preparation(options)["prepared_path"] == invocation / "prepared.nc"
+    assert Co2PreparationConfig.from_params(options).preparation_arguments()["prepared_path"] == invocation / "prepared.nc"
     assert resolve_co2_output(options)["output"].country_file == invocation / "other.nc"
 
 
@@ -164,7 +164,8 @@ def test_prior_cli_preserves_seed_without_resolving_inactive_mcmc_choices(tmp_pa
               "sampling": {"random_seed": 73, "draws": "inactive-invalid"},
           })])
     assert calls[0][1]["random_seed"] == 73
-    assert calls[0][1]["model"] == {"likelihood": {"kind": "additive_sigma", "no_model_error": True}}
+    assert isinstance(calls[0][1]["model"], Co2ModelConfig)
+    assert calls[0][1]["model"].no_model_error is True
 
 
 def test_unknown_co2_manifest_schema_fails_before_configuration_or_writes(tmp_path):

@@ -15,11 +15,13 @@ from openghg.standardise import (
     standardise_column,
 )
 import xarray as xr
-import zarr
+from zarr.storage import ZipStore
 
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_SOURCE_ATTR, BasisFunctions
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from tests.helpers import make_trace
+
+pytest_plugins = ["tests.surface_provider"]
 
 _raw_data_path = Path(__file__).resolve().parent / "data"
 _TEST_STORE_DIR_NAME = "openghg_inversions_testing_store"
@@ -55,10 +57,10 @@ def merged_data_dir(writable_data_path, merged_data_file_name):
 
     if not (merged_data_dir / (merged_data_file_name + ".zarr.zip")).exists():
         with xr.open_dataset(_raw_data_path / (merged_data_file_name + ".nc")) as ds:
-            with zarr.ZipStore(merged_data_dir / (merged_data_file_name + ".zarr.zip"), mode="w") as store:
-                ds.to_zarr(store)
+            with ZipStore(merged_data_dir / (merged_data_file_name + ".zarr.zip"), mode="w") as store:
+                ds.to_zarr(store, zarr_format=2)
 
-            ds.to_zarr(merged_data_dir / (merged_data_file_name + "no_zip" + ".zarr"))
+            ds.to_zarr(merged_data_dir / (merged_data_file_name + "no_zip" + ".zarr"), zarr_format=2)
 
     return merged_data_dir
 
@@ -395,6 +397,8 @@ tac_footprints_metadata = {
     "domain": "europe",
     "model": "name",
     "inlet": "185m",
+    # Bound temporary index arrays when the ACRG parser transposes the source.
+    "chunks": {"time": 24},
     # "metmodel": "ukv",
 }
 tac_footprints_data_path = _raw_data_path / "footprints_tac_europe_name_185m_2019-01-01_2019-01-07_data.nc"
@@ -520,13 +524,13 @@ def tac_ch4_data_args(openghg_test_store):
         "bc_store": "inversions_tests",
         "obs_store": "inversions_tests",
         "footprint_store": "inversions_tests",
-        "emissions_store": "inversions_tests",
+        "flux_store": "inversions_tests",
         "inlet": ["185m"],
         "instrument": ["picarro"],
         "domain": "EUROPE",
         "fp_height": ["185m"],
         "fp_model": "NAME",
-        "emissions_name": ["total-ukghg-edgar7"],
+        "flux_sources": ["total-ukghg-edgar7"],
         # "met_model": "ukv",
         "averaging_period": ["1h"],
     }
@@ -543,13 +547,13 @@ def mhd_and_tac_ch4_data_args(openghg_test_store):
         "bc_store": "inversions_tests",
         "obs_store": "inversions_tests",
         "footprint_store": "inversions_tests",
-        "emissions_store": "inversions_tests",
+        "flux_store": "inversions_tests",
         "inlet": ["10m", "185m"],
         "instrument": ["gcmd", "picarro"],
         "domain": "EUROPE",
         "fp_height": ["10m", "185m"],
         "fp_model": "NAME",
-        "emissions_name": ["total-ukghg-edgar7"],
+        "flux_sources": ["total-ukghg-edgar7"],
         # "met_model": "ukv",
         "averaging_period": ["1h", "1h"],
     }

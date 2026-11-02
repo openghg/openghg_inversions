@@ -321,6 +321,7 @@ def test_standard_recipes_accept_installed_fixed_ou_likelihood(
         model.named_vars
     )
     assert "sigma" not in model.named_vars
+    np.testing.assert_allclose(model["epsilon"].eval(), np.sqrt(0.2**2 + 0.5**2))
 
 
 def test_likelihood_trace_annotation_round_trips_identity_and_options(tmp_path) -> None:

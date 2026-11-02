@@ -39,17 +39,17 @@ from .co2_o2_runner import (
 from .co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
 from .co2_o2_cached_sigma_runner import run_rhime_co2_o2_cached_sigma_from_prepared_inputs
 from .configuration import (
-    Co2O2RunSetup,
+    Co2PreparationConfig, Co2ModelConfig,
     co2_config_templates,
     load_co2_family_config,
-    resolve_co2_family_config,
 )
+from .co2_o2_configuration import Co2O2PreparationConfig, Co2O2ModelConfig
 from .execution import run_co2
 from .co2_outputs import Co2Output
 from .co2_o2_outputs import Co2O2Output, Co2O2OutputOptions
 
 __all__ = [
-    "Co2O2RunSetup",
+    "Co2PreparationConfig", "Co2ModelConfig", "Co2O2PreparationConfig", "Co2O2ModelConfig",
     "Co2O2PreparedInputs",
     "Co2O2Output",
     "Co2O2OutputOptions",
@@ -80,7 +80,6 @@ __all__ = [
     "import_explicit_affine_flux_map",
     "prepared_inputs_content_id",
     "produce_bucket_affine_flux_map",
-    "resolve_co2_family_config",
     "run_co2",
     "run_rhime_co2_o2_from_prepared_inputs",
     "run_rhime_co2_o2_cached_sigma_from_prepared_inputs",

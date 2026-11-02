@@ -13,7 +13,7 @@ from openghg_inversions.rhime.co2 import (
 )
 from openghg_inversions.rhime.co2 import co2_cached_sigma_runner, co2_runner
 from openghg_inversions.rhime.co2.inference import build_co2_inference, annotate_co2_inference
-from openghg_inversions.rhime.co2.configuration import resolve_co2_model
+from openghg_inversions.rhime.co2.configuration import Co2ModelConfig
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.serialization import load_trace, save_trace
 
@@ -68,10 +68,10 @@ def test_unsampled_builders_and_correlated_cached_prior(monkeypatch: Any, tmp_pa
     inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, no_model_error=True)
     ordinary = build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, no_model_error=True)
     assert ordinary.output_contract.variable_roles["model_mean"] == "modelled_concentration"
-    options = resolve_co2_model({"likelihood": {
+    options = Co2ModelConfig.from_params({"likelihood": {
         "kind": "fixed_ou", "tau_hours": 4.0,
         "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.5},
-    }})
+    }}).model_arguments()
     built, cached = build_co2_inference(prepared, options)
     assert cached is not None
     with built.model:

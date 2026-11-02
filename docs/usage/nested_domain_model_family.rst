@@ -24,12 +24,12 @@ Current support
      - One emissions source represented by overlapping outer and inner
        footprint grids at different spatial resolutions.
    * - Public entry points
-     - :func:`openghg_inversions.rhime.run_rhime_nested` for a complete run,
+     - :func:`openghg_inversions.rhime.run_nested` for a complete run,
        and ``run_nested(config=config, prepared=nested)``
        for explicit prepared outer and inner inputs.
    * - Configuration and command line
      - Supports the RHIME INI schema and
-       ``openghg-inversions run-rhime-nested``. The generic staged commands do
+       ``rhime run --model nested``. The generic staged commands do
        not currently accept this family.
    * - Outputs
      - ``output_format="none"`` returns ``NestedOutput`` with separate outer

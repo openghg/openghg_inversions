@@ -103,7 +103,6 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "same-unit joint model" in workflow
     co2, linked = family.split("Linked boundary\n", 1)
     assert "rhime run --model co2" in co2
-    assert "``rhime run-co2`` remains an alias" in co2
     assert "run_co2" in co2
     for stage in ("prepare", "prior-predictive", "sample", "postprocess"):
         assert f"rhime {stage} --model co2" in co2
@@ -124,19 +123,19 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "Compose CO2 scientific operations" in recipes
     assert "Configure prepared-input execution from TOML" in recipes
     assert "load_co2_family_config" in recipes
-    assert "resolve_co2_family_config" in recipes
+    assert "Co2O2ModelConfig" in recipes
     assert "co2_fixed_ou.toml" in recipes
     assert "Relative values are interpreted from the process" in recipes
     assert "CO2 likelihood configuration" in recipes
     assert "Exactly one of ``fixed_site_amplitudes``" in recipes
     assert "Sampling configuration" in recipes
     assert "Non-negative integer strictly less than ``draws``" in recipes
-    assert "both linked OU routes default to and require PyMC" in recipes
+    assert "configured linked fixed OU defaults to and requires PyMC" in recipes
     assert "``[channels.co2]`` and ``[channels.o2]``" in recipes
     assert "standard deviations are 1 ppm\nand 2 ppm" in recipes
     assert "The resolver does not convert these values" in recipes
     assert "prepare_co2_o2_inputs(" in recipes
-    assert 'co2_units=setup.preparation_kwargs["co2_units"]' in recipes
+    assert 'co2_units=model.co2_units' in recipes
     assert "A runnable CO2 configuration and resolver are\ntracked" not in recipes
     assert "``co2_o2``" in recipes
     assert "heterogeneous ppm/per-meg" in recipes
@@ -170,7 +169,7 @@ def test_nested_reader_path_exposes_transport_grid_boundary() -> None:
         "co2_model_family",
     ]
     assert _toctree_entries("nested_domain_model_family.rst") == ["nested_domains"]
-    assert "run_rhime_nested" in family
+    assert "run_nested" in family
     assert "run_nested(config=config, prepared=nested)" in family
     assert "generic staged commands do" in family
     assert 'output_format="none"' in family

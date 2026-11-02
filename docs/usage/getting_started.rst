@@ -59,7 +59,7 @@ For an INI configuration, copy
 ``openghg_inversions/config/templates/rhime_template.ini`` and use the
 installed command::
 
-   openghg-inversions run-rhime \
+   rhime run \
        2019-01-01 2019-02-01 -c rhime.ini --output-path outputs
 
 The :doc:`RHIME reference <rhime>` describes vocabulary, likelihoods, outputs,
@@ -91,7 +91,7 @@ minimal batch script is::
    # Load the Python environment modules used by your cluster.
    source /path/to/venv/bin/activate
 
-   openghg-inversions run-rhime \
+   rhime run \
        2019-01-01 2019-02-01 \
        -c /path/to/rhime.ini \
        --output-path /path/to/outputs
@@ -108,10 +108,9 @@ Migrate an old fixedbasis workflow
 ----------------------------------
 
 The direct ``fixedbasisMCMC`` and ``inferpymc`` implementation has been
-removed. Existing supported fixedbasis-style INI files can temporarily use
-``python -m openghg_inversions.hbmcmc.run_hbmcmc``; the wrapper translates
-them and always runs RHIME. It does not support ``--legacy-fixedbasis`` or
-generate new legacy templates.
+removed, together with the complete HBMCMC namespace and transitional wrapper.
+Use canonical RHIME settings with ``rhime run``, or retain matching 0.7 software
+for historical execution.
 
 See :doc:`legacy_and_migration` for parameter mappings, batch-script changes,
 return types, legacy-format output, and interfaces with no current equivalent.

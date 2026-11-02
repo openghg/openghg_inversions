@@ -16,7 +16,7 @@ from openghg_inversions.models import StateActivity, restore_inferencedata_coord
 from openghg_inversions.rhime.co2 import (
     build_co2_o2_model,
     prepare_co2_o2_inputs,
-    resolve_co2_family_config,
+    Co2O2ModelConfig,
     run_rhime_co2_o2_from_prepared_inputs,
 )
 from openghg_inversions.rhime.co2 import co2_o2_runner
@@ -148,11 +148,10 @@ def test_independent_offsets_and_boundary_reconstruct_from_draws(per_site, frequ
 
 def test_configuration_and_runner_forward_same_channel_options(monkeypatch):
     prepared = _prepared(("co2",))
-    setup = resolve_co2_family_config(
+    setup = Co2O2ModelConfig.from_params(
         {
             "format_version": 1,
             "recipe": "co2_o2",
-            "variant": "linked",
             "channels": {
                 "co2": {
                     "units": "ppm",
@@ -171,7 +170,7 @@ def test_configuration_and_runner_forward_same_channel_options(monkeypatch):
             },
         }
     )
-    configured = dict(setup.runner_arguments(prepared))
+    configured = {"prepared_inputs": prepared, **setup.bind(prepared)}
     configured["sampler"] = RhimeSampler(draws=2, tune=0, chains=1, burn=0, nuts_sampler="pymc")
 
     def prior_sample(built, sampler):

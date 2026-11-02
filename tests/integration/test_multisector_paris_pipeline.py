@@ -16,7 +16,7 @@ from openghg_inversions.postprocessing.make_paris_outputs import (
     PARIS_LATEST_COUNTRIES,
     paris_template_files,
 )
-from openghg_inversions.rhime import run_rhime_multisector
+from openghg_inversions.rhime import run_multisector
 
 
 _CDL_VARIABLE = re.compile(
@@ -181,9 +181,8 @@ def test_multisector_rhime_pipeline_writes_latest_paris_flux_schema(
             "sample_kwargs": {"random_seed": 405, "compute_convergence_checks": False},
         }
     )
-    args.pop("emissions_name")
 
-    result = run_rhime_multisector(**args)
+    result = run_multisector(**args)
 
     assert result.basis_functions is not None
     xr.testing.assert_allclose(

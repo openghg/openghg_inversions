@@ -32,6 +32,7 @@ from dask import compute
 import numpy as np
 import pandas as pd
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
@@ -504,9 +505,9 @@ def add_correlated_lognormal_state(
     state_dim = prior.state_dim
     mean = prior.mean
     with np.errstate(over="ignore", under="ignore", invalid="ignore"):
-        backend_mean = np.asarray(pm.floatX(np.asarray(mean.values)))
-        backend_latent_mean = np.asarray(pm.floatX(np.asarray(prior.latent_mean.values)))
-        backend_cholesky = np.asarray(pm.floatX(np.asarray(prior.latent_cholesky.values)))
+        backend_mean = np.asarray(floatX(np.asarray(mean.values)))
+        backend_latent_mean = np.asarray(floatX(np.asarray(prior.latent_mean.values)))
+        backend_cholesky = np.asarray(floatX(np.asarray(prior.latent_cholesky.values)))
     if not np.isfinite(backend_mean).all() or (backend_mean <= 0).any():
         raise ValueError(
             "Correlated LogNormal arithmetic means must remain finite and positive in the model float dtype."

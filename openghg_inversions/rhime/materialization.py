@@ -10,14 +10,14 @@ import xarray as xr
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.array_ops import to_dense
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.models.priors import PriorArgs
 
 __all__ = ["materialize_pymc_inputs"]
 
 
 def materialize_pymc_inputs(
-    prepared: RhimePreparedInputs,
+    prepared: PreparedInputs,
     *,
     variable_names: Collection[str],
 ) -> xr.Dataset:
@@ -45,7 +45,7 @@ def materialize_pymc_inputs(
 
 
 def _materialize_pymc_inputs_and_priors(
-    prepared: RhimePreparedInputs,
+    prepared: PreparedInputs,
     *,
     variable_names: Collection[str],
     prior_parameters: Mapping[str, PriorArgs] | None = None,

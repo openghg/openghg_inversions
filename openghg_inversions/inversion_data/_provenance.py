@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import Any, cast
 
+import numpy as np
 import xarray as xr
 
 Identifier = str | int | tuple[str | int, ...]
@@ -133,8 +134,40 @@ def selected_provenance(
             result = getattr(value, "_uuid" if name == "uuid" else "_version", None)
         if name == "dataversion" and result is None and requested_version is not None:
             result = metadata.get("latest_version") if requested_version == "latest" else requested_version
+        if isinstance(result, np.integer):
+            result = int(result)
+        if isinstance(result, list | tuple):
+            result = tuple(int(item) if isinstance(item, np.integer) else item for item in result)
         if isinstance(result, list | tuple) and all(type(item) in (str, int) for item in result):
             selected[name] = tuple(result)
         else:
-            selected[name] = result if type(result) in (str, int) else "unknown"
+            selected[name] = cast(str | int, result) if type(result) in (str, int) else "unknown"
     return InputProvenance(**selected)
+
+
+def footprint_metadata(value: Any) -> dict[str, object]:
+    """Normalize footprint identity, preferring usable dataset attributes."""
+    attrs = value.attrs if isinstance(value, xr.Dataset) else value.data.attrs
+    metadata = getattr(value, "metadata", {})
+    result: dict[str, object] = {}
+    for name, aliases in {
+        "transport_model": ("model", "transport_model"),
+        "transport_model_version": ("transport_model_version", "model_version"),
+        "met_model": ("met_model", "metmodel"),
+    }.items():
+        for source in (attrs, metadata):
+            for key in aliases:
+                candidate = source.get(key)
+                if isinstance(candidate, str) and candidate.strip() and candidate.strip().lower() not in {
+                    "none", "not_set", "unknown"
+                }:
+                    result[name] = candidate.strip()
+                    break
+            if name in result:
+                break
+    for source in (attrs, metadata):
+        level = source.get("max_level")
+        if isinstance(level, (int, np.integer)) and not isinstance(level, (bool, np.bool_)):
+            result["max_level"] = int(level)
+            break
+    return result

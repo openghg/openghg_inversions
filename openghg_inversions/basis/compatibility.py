@@ -1,13 +1,13 @@
 """Deprecated basis discovery, artifact adaptation, and filename conventions."""
 
 from collections.abc import Mapping, Sequence
+from enum import Enum
 from pathlib import Path
+import warnings
 from typing import Any, Literal, cast
 
 import pandas as pd
 import xarray as xr
-
-from openghg_inversions._flux_options import UNSET, _Unset, resolve_deprecated_keyword
 
 from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.utils import read_netcdfs
@@ -26,6 +26,13 @@ from ._functions import (
 _VALID_BASIS_OUTPUT_FORMATS = ("legacy", "datatree")
 
 
+class _Unset(Enum):
+    TOKEN = 0
+
+
+_UNSET = _Unset.TOKEN
+
+
 def make_basis_functions(
     *,
     site_data: Mapping[str, xr.Dataset],
@@ -34,8 +41,8 @@ def make_basis_functions(
     species: str,
     domain: str,
     start_date: str,
-    flux_sources: Sequence[str] | None | _Unset = UNSET,
-    emissions_name: Sequence[str] | None | _Unset = UNSET,
+    flux_sources: Sequence[str] | None | _Unset = _UNSET,
+    emissions_name: Sequence[str] | None | _Unset = _UNSET,
     nbasis: int,
     basis_algorithm: str | None = None,
     fix_outer_regions: bool = False,
@@ -62,7 +69,7 @@ def make_basis_functions(
     """Translate historical basis keywords once, then call modern preparation.
 
     Calling this adapter emits DeprecationWarning. Directory/name output
-    conventions are deprecated in 0.9; legacy flat output remains explicitly
+    conventions are deprecated; legacy flat output remains explicitly
     available, with no automatic removal date. Prefer
     :func:`~openghg_inversions.basis.prepare_basis` for the shared generation
     arguments and scientific-map contracts.
@@ -87,17 +94,20 @@ def make_basis_functions(
     """
     from ._wrapper import prepare_basis
     from .support import resolve_basis_support_maps
-    import warnings
 
     warnings.warn(
         "make_basis_functions is deprecated; use prepare_basis with exact paths and resolved maps.",
         DeprecationWarning,
         stacklevel=2,
     )
-    flux_sources = cast(
-        Sequence[str] | None,
-        resolve_deprecated_keyword("emissions_name", "flux_sources", emissions_name, flux_sources),
-    )
+    if emissions_name is not _UNSET:
+        if flux_sources is not _UNSET:
+            raise ValueError("Supply only `flux_sources`; `emissions_name` and `flux_sources` cannot be supplied together.")
+        warnings.warn("`emissions_name` is deprecated; use `flux_sources` instead.", DeprecationWarning, stacklevel=2)
+        flux_sources = emissions_name
+    elif flux_sources is _UNSET:
+        flux_sources = None
+    flux_sources = cast(Sequence[str] | None, flux_sources)
     if basis_output_format not in _VALID_BASIS_OUTPUT_FORMATS:
         raise ValueError(f"Unknown basis_output_format {basis_output_format!r}.")
     if fp_basis_case is None and basis_algorithm is not None:
@@ -353,7 +363,6 @@ def resolve_legacy_basis_inputs(
     Emits DeprecationWarning on every call. Missing artifacts raise
     FileNotFoundError; multiple retained matches raise ValueError.
     """
-    import warnings
 
     warnings.warn(
         "Basis case/directory options are deprecated; select exact artifact and support-map paths.",

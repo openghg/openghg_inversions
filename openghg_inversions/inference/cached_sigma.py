@@ -22,8 +22,10 @@ from typing import Any, ClassVar, Literal, cast
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 import pymc as pm
+from pymc.step_methods import CompoundStep
 import pytensor
 import pytensor.tensor as pt
+from pytensor.compile.mode import Mode
 from pymc.blocking import PointType, StatsType
 from pymc.model import ValueGradFunction, modelcontext
 from pymc.step_methods.compound import BlockedStep, Competence, StepMethodState
@@ -87,13 +89,13 @@ class PytensorMarginalQuadraticCache:
 
 
 class _PytensorSigmaLikelihoodOp(Op):
-    """Exact sigma-conditional likelihood with a chain-local fixed residual."""
+    """Exact sigma conditional with a chain-local residual in prepared mode coordinates."""
 
     def __init__(self, target: FixedOuCachedSigmaTarget) -> None:
         self.target = target
         self.residual = pytensor.shared(
             np.zeros(target.n_obs, dtype=np.float64),
-            name="sigma_conditional_residual",
+            name="sigma_conditional_mode_residual",
         )
 
     def make_node(self, *inputs: Any) -> Apply:
@@ -118,14 +120,16 @@ class _PytensorSigmaLikelihoodOp(Op):
     ) -> None:
         del node
         sigma = np.asarray(inputs[0], dtype=np.float64)
-        residual = np.asarray(inputs[1], dtype=np.float64)
-        evaluation = self.target.evaluate_from_residual(residual, sigma)
+        transformed_residual = np.asarray(inputs[1], dtype=np.float64)
+        log_likelihood, gradient_amplitude = self.target._evaluate_from_transformed_residual(
+            transformed_residual, sigma,
+        )
         output_storage[0][0] = np.asarray(
-            evaluation.log_likelihood,
+            log_likelihood,
             dtype=np.float64,
         )
         output_storage[1][0] = np.asarray(
-            evaluation.gradient_site_amplitude,
+            gradient_amplitude,
             dtype=np.float64,
         )
 
@@ -153,8 +157,15 @@ class _PytensorSigmaLikelihoodOp(Op):
         return [(), input_shapes[0]]
 
     def install_residual(self, residual: ArrayLike) -> None:
-        """Set the exact residual used for the next conditional trajectory."""
-        self.residual.set_value(np.asarray(residual, dtype=np.float64))
+        """Transform the observation residual once for the next conditional trajectory."""
+        value = np.asarray(residual, dtype=np.float64)
+        if value.shape != (self.target.n_obs,):
+            raise ValueError(f"residual has shape {value.shape}, expected {(self.target.n_obs,)}.")
+        # Preserve nonfinite rejection without transforming invalid observations.
+        if np.isfinite(value).all():
+            with np.errstate(over="ignore", invalid="ignore"):
+                value = self.target.prepared.mode_transform @ value
+        self.residual.set_value(value)
 
 
 @dataclass_state
@@ -314,6 +325,9 @@ class PymcCachedSigmaNutsStep(BlockedStep):
             rng=nuts_rng,
             dtype=point_dtype.name,
             potential=potential,
+            # The numerical Op already runs in NumPy/SciPy. CVM avoids copying
+            # its captured target through Numba's object-mode callback per call.
+            compile_kwargs={"mode": Mode(linker="cvm", optimizer="fast_run")},
         )
 
     def _point_values(self, point: PointType) -> tuple[FloatArray, FloatArray]:
@@ -437,7 +451,7 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
     sigma_target_accept: float = 0.8,
     state_target_accept: float = 0.9,
     rng: RandomGenerator = None,
-) -> pm.CompoundStep:
+) -> CompoundStep:
     """Construct the required sigma-then-state stock PyMC compound sweep.
 
     At the start of each sweep, the sigma step evaluates ``modelled_mean`` at
@@ -469,7 +483,7 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
         rng=sigma_rng,
     )
     if not states:
-        return pm.CompoundStep([sigma_step])
+        return CompoundStep([sigma_step])
     state_function = None
     if cached_state_logp is not None:
         state_values = get_value_vars_from_user_vars(list(states), model)
@@ -497,7 +511,7 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
             rng=state_rng,
             logp_dlogp_func=state_function,
         )
-    return pm.CompoundStep([sigma_step, state_step])
+    return CompoundStep([sigma_step, state_step])
 
 
 __all__ = [

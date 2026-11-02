@@ -175,7 +175,7 @@ def test_shifted_europe_footprint_and_flux_generate_reconstructable_quadtree(foo
     prepared = _prepare_one_domain(
         aligned, domain="EUROPE", start_date="2019-01-01", flux_sources=("inventory",),
         basis_algorithm="quadtree", nbasis=4, fix_basis_outer_regions=False,
-        use_bc=False, bc_freq=None, min_error=0., min_error_options={"by_site": False},
+        use_bc=False,
         basis_inputs={},
     )
     basis = prepared.basis_functions
@@ -210,8 +210,7 @@ def test_corresponding_flux_uses_site_reference_lazily_with_metadata(domain):
 
 
 @pytest.mark.parametrize("domain, shift", [("EUROPE", 1e-7), ("EUROPE", .01), ("CUSTOM", 1e-7)])
-@pytest.mark.parametrize("plural", [False, True])
-def test_supplied_partition_reconstructs_on_normalized_runtime_grid(domain, shift, plural, tmp_path):
+def test_supplied_partition_reconstructs_on_normalized_runtime_grid(domain, shift, tmp_path):
     from contextlib import nullcontext
     from openghg.util import find_domain
     from openghg_inversions.rhime.nested import _prepare_one_domain
@@ -234,8 +233,7 @@ def test_supplied_partition_reconstructs_on_normalized_runtime_grid(domain, shif
     partition.expand_dims(time=[pd.Timestamp("2019-01-01")]).rename("basis").to_netcdf(path)
     config = DataConfig(domain=domain, start_date="2019-01-01", end_date="2019-01-02", species="ch4",
                         site_options=data.site_options, flux_sources=("inventory",),
-                        basis_partition_path=None if plural else path,
-                        basis_partition_paths=[path] if plural else None)
+                        basis_partition_path=path)
     basis_inputs = resolve_basis_inputs(config)
     borrowed = basis_inputs["basis_partition"].copy(deep=True)
     notice = pytest.warns(UserWarning, match="CUSTOM") if domain == "CUSTOM" else nullcontext()
@@ -244,7 +242,7 @@ def test_supplied_partition_reconstructs_on_normalized_runtime_grid(domain, shif
     prepared = _prepare_one_domain(
         aligned, domain=domain, start_date="2019-01-01", flux_sources=("inventory",),
         basis_algorithm=None, nbasis=1, fix_basis_outer_regions=False,
-        use_bc=False, bc_freq=None, min_error=0., min_error_options={"by_site": False},
+        use_bc=False,
         basis_inputs=basis_inputs,
     )
     basis = prepared.basis_functions
@@ -270,11 +268,11 @@ def test_supplied_partition_on_distinct_inventory_grid_reconstructs_without_doma
     partition = partition.assign_coords(lat=partition.lat + 1e-7, lon=partition.lon + 1e-7)
     # Observation projection is independent of native prior-flux reconstruction.
     monkeypatch.setattr(nested, "build_sensitivities", lambda *args, **kwargs: {})
-    monkeypatch.setattr(nested, "assemble_rhime_inputs", lambda sites, basis, **kwargs: basis)
+    monkeypatch.setattr(nested, "assemble_inputs", lambda sites, basis, **kwargs: basis)
     basis = nested._prepare_one_domain(
         data, domain="EUROPE", start_date="2019-01-01", flux_sources=("inventory",),
         basis_algorithm=None, nbasis=1, fix_basis_outer_regions=False,
-        use_bc=False, bc_freq=None, min_error=0., min_error_options={"by_site": False},
+        use_bc=False,
         basis_inputs={"basis_partition": partition},
     )
     reconstructed = basis.state_to_flux(xr.DataArray([1.], dims="region", coords={"region": [0]}))

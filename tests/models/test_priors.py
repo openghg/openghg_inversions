@@ -1,6 +1,7 @@
 import numpy as np
 import pymc as pm
 import pytest
+import pytensor
 import xarray as xr
 
 from openghg_inversions.models.priors import (
@@ -117,7 +118,11 @@ def test_uniform_aligns_lazy_bound_pairs_once_without_mutating_inputs(positive):
     with registered_model(coords={"region": ["a", "b"]}) as model:
         parse_prior("bounded", prior, positive=positive, dims="region")
     assert executions == [1]
-    np.testing.assert_array_equal(model["bounded_prior_lower"].get_value(), [0.1, 0.6])
+    np.testing.assert_array_equal(
+        model["bounded_prior_lower"].get_value(),
+        np.array([0.1, 0.6], dtype=pytensor.config.floatX),
+        strict=True,
+    )
     assert prior["lower"] is lower and isinstance(lower.data, da.Array)
     assert lower.region.values.tolist() == ["b", "a"]
 
@@ -154,7 +159,11 @@ def test_positive_uniform_accepts_sparse_bounds_without_mutating_inputs(labelled
     with pm.Model(coords={"region": ["a", "b"]}) as model:
         parse_prior("bounded", {"pdf": "uniform", "lower": lower, "upper": upper},
                     positive=True, dims="region")
-    np.testing.assert_array_equal(model["bounded_prior_lower"].get_value(), [0.0, 0.2])
+    np.testing.assert_array_equal(
+        model["bounded_prior_lower"].get_value(),
+        np.array([0.0, 0.2], dtype=pytensor.config.floatX),
+        strict=True,
+    )
     assert isinstance(lower.data if labelled else lower, sparse.COO)
     assert np.isfinite(model.compile_logp()(model.initial_point()))
 

@@ -87,6 +87,11 @@ def expand_site_boolean_option(
     return cast(tuple[bool | None, ...], values)
 
 
+def is_surface_platform(platform: object) -> bool:
+    """Return whether supplied metadata or a selector names continuous surface data."""
+    return str(platform).lower() in {"surface", "insitu", "in-situ", "continuous", "tower"}
+
+
 def is_column_observation(inlet: object, platform: object) -> bool:
     """Return whether one inlet/platform pair explicitly selects column data."""
     return (isinstance(inlet, str) and inlet.lower() == "column") or is_column_platform(platform)

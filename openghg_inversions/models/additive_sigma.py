@@ -20,6 +20,7 @@ from typing import Any, cast
 
 import numpy as np
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
@@ -45,7 +46,7 @@ def add_additive_sigma_likelihood(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: AggregationError | None = None,
     mean: TensorVariable,
     minimum_error_floor: xr.DataArray | None = None,
     fixed_model_mismatch: xr.DataArray | None = None,
@@ -67,7 +68,8 @@ def add_additive_sigma_likelihood(
     Args:
         observations: Observed mole fractions.
         observation_error: Reported observation-error standard deviations.
-        aggregation_error: Validated fixed aggregation-error representation.
+        aggregation_error: Validated fixed aggregation-error representation. Omit
+            or pass ``None`` for no fixed aggregation covariance.
         mean: Completed forward-model concentration aligned with
             ``output_dim``.
         minimum_error_floor: Optional minimum total-error standard deviations.
@@ -153,7 +155,7 @@ def add_additive_sigma_likelihood(
         dims=output_dim,
     )
     return add_gaussian_observation_likelihood(
-        observed=pm.floatX(observations.transpose(output_dim).compute().values),
+        observed=floatX(observations.transpose(output_dim).compute().values),
         mean=mean,
         independent_variance=independent_variance,
         aggregation_error=registered_aggregation_error,

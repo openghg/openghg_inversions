@@ -18,7 +18,7 @@ import xarray as xr
 
 from examples.rhime_customisation.likelihoods import likelihood_builder
 from openghg_inversions.basis import BasisFunctions
-from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
+from openghg_inversions.inversion_data import MergedData, SiteOptions
 from openghg_inversions.postprocessing.make_outputs import make_sector_flux_outputs
 from openghg_inversions.rhime import multisector_stages as handoffs
 from openghg_inversions.rhime.multisector import (
@@ -64,7 +64,7 @@ def synthetic_inputs(destination: Path) -> tuple:
     ).chunk()
     site.mf.attrs["units"] = "ppm"
     flux = {"inventory": inventory, "supplemental": supplemental}
-    merged = RhimeMergedData(
+    merged = MergedData(
         site_data={"TAC": site},
         flux_data={source: field.to_dataset(name="flux") for source, field in flux.items()},
         site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"),

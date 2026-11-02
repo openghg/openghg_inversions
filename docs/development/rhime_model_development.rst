@@ -21,19 +21,21 @@ A design recommendation is not evidence that an API implements it.
 Keep legacy dependencies one-way
 --------------------------------
 
-The delivered :download:`HBMCMC isolation contract
+The :download:`HBMCMC isolation and retirement contract
 <../../openspec/specs/hbmcmc-isolation-retirement/spec.md>`
-sets the boundary: HBMCMC may call modern APIs, while production code
-outside HBMCMC must not import, re-export or execute through it. Keep historical
-resource translation inside the legacy entry point. Retained RHIME spelling
-aliases belong to runner frontends, which translate and warn before constructing
-canonical configuration. ``RhimeConfig.from_params`` has no alias vocabulary,
-translation or deprecation warnings. Give retained modern behavior modern owners;
-small duplication inside HBMCMC is acceptable to preserve this direction.
-The separate contract owns the exact compatibility rules and 0.9 removal timing.
-The 0.8 isolation requirements are promoted in PR 869; complete 0.9 removal
-remains in the active retirement change. See :doc:`specifications` for delivery
-status.
+defines normal execution through supported modern interfaces without migration
+translation. Modern behavior must have modern owners;
+normal execution must not invoke migration tooling. Canonical configuration
+rejects unsupported options before scientific work, including every explicit
+``use_tracer`` occurrence.
+
+PR 869 delivered the earlier one-way isolation boundary. The current #719 branch
+removes the transitional namespace and adapters; completed revision-specific
+checks are recorded in the active change's tasks and PR #974. Specification
+synchronization and archival remain separate closeout work. The
+:doc:`development migration guide </usage/legacy_and_migration>` records removed
+interfaces and replacements. See :doc:`specifications` for capability ownership
+and the scientific amendments on this branch.
 
 Start with the scientific recipe
 --------------------------------
@@ -73,6 +75,12 @@ Preparation helpers should own an operation, policy, meaningful handoff, or
 necessary compatibility boundary. A uniform stage name, timing, or argument
 renaming alone does not justify a second forwarding signature. Keep shared
 indexing reusable and model-specific preparation policy beside its recipe.
+Call canonical ``prepare_basis`` directly with resolved arguments and use the
+actual sensitivity, selection and assembly implementations. Do not retain
+forwarding wrappers solely for uniform stage names, timing or keyword translation.
+Pass per-site datasets and aligned ``SiteOptions`` between preparation steps;
+acquired ``MergedData`` remains separate. Construct results from their scientific
+inputs rather than modifying the result after construction.
 Use :doc:`architecture_principles` to assess responsibilities and consumer
 interfaces, and :doc:`validation_and_xarray` to identify validation owners.
 
@@ -177,11 +185,14 @@ its syntax, apply raw overrides before normalization, and forward resolved
 values explicitly. A moderately long keyword-only signature can be clearer
 than an ambient context object or implicit forwarding through the pipeline.
 
-The current standard/multisector request and its compatibility adapters are
+The current standard/multisector requests are
 described in :doc:`/usage/rhime_configuration`. That reference and the reviewed
 :download:`configuration change
 <../../openspec/specs/rhime-configuration/spec.md>`
-own constructor and resolution details. The request precedes preparation;
+own requested choices and their resolution. Canonical prepared construction
+belongs to the :download:`scientific-input contract
+<../../openspec/specs/rhime-scientific-inputs/spec.md>`; persisted formats and replay
+belong to the prepared/sample handoff contracts. The request precedes preparation;
 retained-site execution facts become known later. Frozen records do not imply
 recursive immutability of borrowed arrays or caller-owned containers.
 
@@ -208,11 +219,39 @@ for another family.
 
 Moving a preparation equation, including observation-error derivation,
 minimum-error calculation, or boundary-period expansion, is a scientific
-change requiring its own parity evidence. The configuration contract records
-the current observation-error-before-filtering policy. Supported prepared-input
+change requiring evidence for unchanged behavior and explicit tests for agreed
+semantic changes. Model-owned minimum-error estimates use retained observations
+after invalid-row removal; historical pre-drop estimates are not a parity target.
+Observation-error imputation follows selection filters and uses only retained
+observations. These numerical rules belong to the
+:download:`scientific-inputs contract
+<../../openspec/specs/rhime-scientific-inputs/spec.md>`; configuration owns the
+accepted choices and phase resolution. Supported prepared-input
 contents and examples are in :doc:`/usage/rhime` and
 :doc:`/usage/customising_rhime`; checkpoint limitations are in
 :doc:`/usage/staged_workflow`.
+
+Standard and multisector preparation retains raw spatial BC inputs and operands
+for supported minimum-error choices. A compatible later model can change BC
+periods or floor policy without repeating spatial preparation. Saved samples
+retain the fitted alignment and floor operands; replay consumes those exact
+values without a new graph or calculation. The active
+:download:`prepared handoff contract
+<../../openspec/changes/replace-recipe-workflow-with-reusable-handoffs/specs/prepared-recipe-handoff/spec.md>`
+and :download:`sampled handoff contract
+<../../openspec/changes/replace-recipe-workflow-with-reusable-handoffs/specs/sampled-recipe-handoff/spec.md>`
+own those artifact guarantees. CO2's prior-dependent coherent preparations retain
+their separate reuse constraints. The :download:`#876 alignment change tasks
+<../../openspec/changes/move-alignments-to-model-boundary/tasks.md>` record
+revision-specific validation evidence and limits. Broader handoff programme
+acceptance remains pending.
+
+Keep one scientific sample codec owner for save/load and let replay consume its
+decoded result. Keep product/export saving in a nearby operational helper with
+shared naming/path policy, and normalize descriptive sampler provenance through
+a shared pure metadata operation. These are development recommendations; the behavioral
+contracts require scientific parity and artifact meaning without fixing internal
+helper names or call graphs.
 
 Source selection and state grouping should remain plainly named operations on
 labelled values and retained artifacts. Resolutions, partitions, sources, and

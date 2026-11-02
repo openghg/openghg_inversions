@@ -6,7 +6,7 @@ flux components independently. Surface-site and satellite inversions use the
 same public runner and model. They differ only in their observation and
 footprint acquisition options.
 
-Use :func:`openghg_inversions.rhime.run_rhime_multisector` when every flux
+Use :func:`openghg_inversions.rhime.run_multisector` when every flux
 component should have its own scaling prior within the full state. The
 ``flux_sources`` values are the OpenGHG ``source`` metadata used for retrieval. Optional
 ``sector_sources`` entries give those sources shorter model-facing names.
@@ -32,9 +32,9 @@ paths with values available in your OpenGHG installation.
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import run_rhime_multisector
+   from openghg_inversions.rhime import run_multisector
 
-   site_result = run_rhime_multisector(
+   site_result = run_multisector(
        species="ch4",
        sites=["TAC"],
        averaging_period=["1h"],
@@ -81,9 +81,9 @@ high-time-resolution footprints.
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import run_rhime_multisector
+   from openghg_inversions.rhime import run_multisector
 
-   satellite_result = run_rhime_multisector(
+   satellite_result = run_multisector(
        species="co2",
        sites=["OCO2-EASTASIA"],
        averaging_period=["1H"],
@@ -215,7 +215,7 @@ run it with the multisector command:
 
 .. code-block:: console
 
-   openghg-inversions run-rhime-multisector 2022-03-31T04:00:00 2022-04-01T04:08:10 \
+   rhime run --model multisector 2022-03-31T04:00:00 2022-04-01T04:08:10 \
        --config /path/to/oco2_multisector.ini
 
 See :doc:`cli` for scheduler and batch-script examples. Use

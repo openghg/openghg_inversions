@@ -73,7 +73,9 @@ def run_example(destination: Path, *, draws: int = 20) -> None:
     from openghg_inversions.rhime.co2 import co2_o2_handoffs as handoffs
     from openghg_inversions.rhime.co2.co2_o2_outputs import Co2O2OutputOptions
 
-    model = {"channels": {"co2": {"units": "ppm"}, "o2": {"units": "ppm"}}}
+    from openghg_inversions.rhime.co2 import Co2O2ModelConfig
+
+    model = Co2O2ModelConfig.from_params({"channels": {"co2": {"units": "ppm"}, "o2": {"units": "ppm"}}})
     preparation = handoffs.save_preparation(synthetic_inputs(), output_dir=destination / "prepare")
     handoffs.prior_predictive(preparation, model=model, output_dir=destination / "prior",
                              draws=draws, random_seed=19)

@@ -42,7 +42,8 @@ def test_sector_suffix_active_does_not_collide_with_another_active_prior_dimensi
     model = _build(h, priors, reverse=reverse)
     evaluate = pytensor.function([model["x_ff_active"], model["x_ff_active_active"]],
                                  [model["x"], model["mu"]])
-    state, mean = evaluate(np.array([2., 3.]), np.array([4.]))
+    state, mean = evaluate(np.array([2., 3.], dtype=pytensor.config.floatX),
+                           np.array([4.], dtype=pytensor.config.floatX))
     np.testing.assert_array_equal(state, [2., 3., 4.])
     np.testing.assert_array_equal(mean, h.to_numpy() @ state)
     np.testing.assert_array_equal(model["x_ff_prior_mu"].get_value(), [2., 3.])
@@ -67,7 +68,8 @@ def test_sector_suffix_active_keeps_native_multiindex_prior_and_active_levels_di
     model = _build(h, priors)
     evaluate = pytensor.function([model["x_ff_active"], model["x_ff_active_active"]],
                                  [model["x"], model["mu"]])
-    state, mean = evaluate(np.array([2.]), np.array([4., 5.]))
+    state, mean = evaluate(np.array([2.], dtype=pytensor.config.floatX),
+                           np.array([4., 5.], dtype=pytensor.config.floatX))
     np.testing.assert_array_equal(state, [2., 1., 4., 5.])
     np.testing.assert_array_equal(mean, [34., 54.])
     registry = get_coord_registry(model)

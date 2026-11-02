@@ -271,6 +271,20 @@ def test_source_serialization_coordinates_do_not_alias_component_state() -> None
     np.testing.assert_array_equal(component.latitude, original_latitude)
 
 
+def test_source_deserialization_accepts_variable_width_strings() -> None:
+    """Zarr 3 string arrays retain the same source covariance meaning."""
+    covariance, _ = _problem()
+    dataset = covariance.to_dataset()
+    encoded = dataset["class_label_encoded"]
+    dataset["class_label_encoded"] = encoded.copy(
+        data=np.asarray(encoded.values, dtype=np.dtypes.StringDType())
+    )
+
+    restored = IndependentSourceCovariance.from_dataset(dataset)
+
+    xr.testing.assert_identical(restored.to_dataset(), covariance.to_dataset())
+
+
 def test_source_deserialization_rejects_contradictory_implicit_length() -> None:
     """Fallback-derived source lengths must match their serialized fallback."""
     covariance, _ = _problem()

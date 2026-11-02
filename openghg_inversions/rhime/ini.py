@@ -2,7 +2,7 @@
 
 Section flattening, first-occurrence precedence and literal decoding belong to
 this frontend. Callers combine overrides and consume recipe-specific options
-before translating compatibility names and constructing configuration.
+before constructing canonical configuration.
 """
 
 from __future__ import annotations
@@ -23,6 +23,6 @@ def read_rhime_ini(path: str | Path) -> dict[str, Any]:
     Returns:
         A new dictionary of decoded file options. Names and external shorthand
         are preserved, including recipe-specific options. The reader does not
-        apply overrides, translate aliases, supply defaults or resolve a recipe.
+        apply overrides, supply defaults or resolve a recipe.
     """
     return dict(config.all_param(str(path), exclude_not_found=True, allow_new=True))

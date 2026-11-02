@@ -21,7 +21,7 @@ import xarray as xr
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load as load_affine, save as save_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.rhime._stage_artifacts import (
     _output_path, check_checkpoint_targets, finish_checkpoint, read_manifest,
@@ -31,6 +31,8 @@ from openghg_inversions.rhime._stage_checks import (
     PREPARATION_CHECK_NAME, _check_draws, _check_stage, _check_result,
 )
 from openghg_inversions.serialization import load_trace, save_trace
+
+from .execution import load_co2_params
 
 from .co2_affine_output import (
     _bind_affine_flux_map, load_and_bind_affine_flux_map, prepared_inputs_content_id,
@@ -45,7 +47,7 @@ from .co2_preparation import (
 from .inference import (
     annotate_co2_inference, build_co2_inference, sample_co2_inference, describe_co2_inference,
 )
-from .configuration import resolve_co2_model, _resolve_co2_sampling
+from .configuration import Co2ModelConfig, _resolve_co2_sampling
 
 
 @dataclass(frozen=True)
@@ -123,7 +125,7 @@ def save_preparation(
 def prepare(
     *, output_dir: str | Path, prepared_path: str | Path | None = None,
     start_date: str | None = None, end_date: str | None = None, domain: str | None = None,
-    canonical_inputs: RhimePreparedInputs | None = None,
+    canonical_inputs: PreparedInputs | None = None,
     reduction: CoherentGaussianReduction | None = None,
     aggregation_error_rank: int | None = 512,
     affine_artifact: AffineFluxMapArtifact | None = None, affine_path: str | Path | None = None,
@@ -225,7 +227,7 @@ def save_samples(
 
 
 def sample(
-    preparation_manifest: str | Path, *, model: Mapping[str, Any], output_dir: str | Path,
+    preparation_manifest: str | Path, *, model: Co2ModelConfig | Mapping[str, Any], output_dir: str | Path,
     sampling: Mapping[str, Any] | None = None,
 ) -> Path:
     """Build and sample CO2 using current science and its resolved sampler.
@@ -235,9 +237,11 @@ def sample(
     Full execution and saved sampling share the explicit build and sample owners.
     Current sampling choices select fresh model-matched defaults and tuning.
     """
-    model_options = resolve_co2_model(model)
+    model_config = model if isinstance(model, Co2ModelConfig) else Co2ModelConfig.from_params(load_co2_params(params=model))
+    model_options = model_config.model_arguments()
     choices = _resolve_co2_sampling({"sampling": sampling if sampling is not None else {}}, model=model_options)
     preparation = load_preparation(preparation_manifest)
+    model_options = model_config.model_arguments()
     check_checkpoint_targets(
         Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),
         referenced=(Path(preparation_manifest).resolve(), preparation.payload)
@@ -311,7 +315,7 @@ def postprocess(
 
 
 def prior_predictive(
-    preparation_manifest: str | Path, *, model: Mapping[str, Any], output_dir: str | Path,
+    preparation_manifest: str | Path, *, model: Co2ModelConfig | Mapping[str, Any], output_dir: str | Path,
     draws: int = 100, check_output: str | Path | None = None, stage: str = "prior-predictive",
     random_seed: int | None = None,
 ) -> dict[str, Any]:
@@ -323,8 +327,9 @@ def prior_predictive(
     """
     _check_draws(draws)
     stage = _check_stage(stage)
+    model_config = model if isinstance(model, Co2ModelConfig) else Co2ModelConfig.from_params(load_co2_params(params=model))
     preparation = load_preparation(preparation_manifest)
-    model_options = resolve_co2_model(model)
+    model_options = model_config.model_arguments()
     destination = Path(output_dir).resolve()
     report = _output_path(destination, check_output, "prior-predictive-readiness.json")
     check_checkpoint_targets(

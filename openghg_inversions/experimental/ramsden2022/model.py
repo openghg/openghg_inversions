@@ -2,7 +2,7 @@
 
 The implementation is deliberately prepared-input first. Each gas is supplied
 as a canonical RHIME-style :class:`xarray.Dataset`, normally obtained from a
-``RhimePreparedInputs.inv_inputs`` object. Data retrieval and postprocessing
+``PreparedInputs.inv_inputs`` object. Data retrieval and postprocessing
 remain outside this historical comparison module.
 
 For primary-gas sector ``s`` with state ``x_s`` the forward models are
@@ -23,25 +23,32 @@ sensitivities must have exactly matching labelled state coordinates. A ratio may
 be applied directly to a ratio-free tracer sensitivity, or interpreted as a
 multiplier when the sensitivity already includes an explicit reference ratio. Boundary states
 are optional and independent by gas. The caller is responsible for consistent
-units; this module performs no retrieval, conversion, or postprocessing.
+units for observations, errors, sensitivities, and prior scales. The shared
+residual-floor estimator converts modelled concentration operands to observation
+units. This module performs no retrieval or postprocessing.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
 from typing import Any, Literal
 
+from dask import is_dask_collection
 import numpy as np
 import pandas as pd
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytensor.tensor as pt
 from pytensor.tensor.variable import TensorVariable
 import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_inputs import DatetimeLike
+from openghg_inversions.model_error import (
+    MinErrorConfig, MinimumError, minimum_error_input_names, normalise_min_error, normalise_min_error_options,
+)
 from openghg_inversions.models._flux import (
     _namespace_sector_state_coords,
     _select_sector_design,
@@ -70,8 +77,8 @@ RatioResolution = Literal["scalar", "spatial"]
 class RamsdenPreparedInputs:
     """Canonical primary-gas and tracer inputs for one joint inversion.
 
-    Each dataset requires ``H``, ``mf``, ``mf_error``, ``min_error``, and
-    ``site_indicator`` on ``nmeasure``; ``H_bc`` is required when that
+    Each dataset requires ``H``, ``mf``, and ``mf_error`` on ``nmeasure``,
+    with observation-aligned ``site`` labels; ``H_bc`` is required when that
     channel's boundary component is enabled. Observation axes may differ.
     Coupled sector designs must have exactly matching labelled state
     coordinates and, for positional numeric labels, retained basis objects.
@@ -118,6 +125,13 @@ class RamsdenChannelSpec:
         sigma_frequency: Optional pandas-compatible frequency for model-error
             periods.
         sigma_frequency_anchor: Optional anchor for fixed-duration periods.
+        min_error: Minimum total-error floor in this channel's observation units:
+            a scalar, site mapping, ``"residual"``, or ``"percentile"``. ``None``
+            retains an explicitly supplied dataset ``min_error``, or uses zero
+            for the historical absolute-error likelihood when none is supplied.
+            An explicit setting overrides any dataset floor.
+        min_error_options: Options for calculated floors; ``by_site`` controls
+            residual estimation and defaults to ``False``.
         use_bc: Whether this channel has an independent boundary component.
         bc_prior: Prior mapping for the state that scales this channel's
             ``H_bc`` design.
@@ -131,6 +145,8 @@ class RamsdenChannelSpec:
     sigma_frequency_anchor: DatetimeLike | None = None
     use_bc: bool = False
     bc_prior: dict[str, Any] | None = None
+    min_error: MinErrorConfig = None
+    min_error_options: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -239,6 +255,8 @@ def _validate_channel_spec(spec: RamsdenChannelSpec, *, label: str) -> None:
             f"Ramsden {label} observation_units {spec.observation_units!r} are not a supported "
             "mole-fraction unit."
         )
+    normalise_min_error(spec.min_error)
+    normalise_min_error_options(spec.min_error_options)
     if spec.use_bc and spec.bc_prior is None:
         raise ValueError(f"Ramsden {label} bc_prior must be explicit when use_bc=True.")
 
@@ -390,7 +408,7 @@ def _validate_channel_data(
     label: str,
 ) -> None:
     """Validate canonical variables needed by one gas channel."""
-    required = {"H", "mf", "mf_error", "min_error", "site_indicator"}
+    required = {"H", "mf", "mf_error"}
     missing = sorted(required - set(data.data_vars))
     if missing:
         raise ValueError(f"Ramsden {label} inputs are missing required variable(s): {missing!r}.")
@@ -407,7 +425,7 @@ def _validate_channel_data(
     expected_scale = _mole_fraction_unit_scale(spec.observation_units)
     assert expected_scale is not None
     for name in ("mf", "mf_error", "min_error", "H", "H_bc"):
-        if name not in data:
+        if name not in data or (name == "min_error" and spec.min_error is not None):
             continue
         units = data[name].attrs.get("units")
         if units is None:
@@ -586,7 +604,7 @@ def _fixed_parameter(
     resolution: RatioResolution,
 ) -> TensorVariable:
     """Expose a fixed scalar or state-aligned parameter as a deterministic."""
-    scalar = pt.as_tensor_variable(pm.floatX(value))
+    scalar = pt.as_tensor_variable(floatX(value))
     if resolution == "spatial":
         return pm.Deterministic(name, pt.ones_like(state) * scalar, dims=state_dim)
     return pm.Deterministic(name, scalar)
@@ -624,7 +642,7 @@ def _ratio_tensors(
     assert sector.reference_ratio is not None
     emission_ratio = pm.Deterministic(
         f"emission_ratio_{variable_suffix}",
-        pm.floatX(sector.reference_ratio) * parameter,
+        floatX(sector.reference_ratio) * parameter,
         dims=prior_dims,
     )
     return parameter, emission_ratio
@@ -722,18 +740,33 @@ def _add_absolute_error_likelihood(
 ) -> None:
     """Add one namespaced Gaussian likelihood with absolute model error."""
     output_dim = f"nmeasure_{suffix}"
+    if spec.min_error is None and "min_error" in data:
+        floor = data["min_error"].transpose("nmeasure")
+    else:
+        if isinstance(spec.min_error, str):
+            operands = (*minimum_error_input_names(data, spec.min_error), "site")
+            if spec.min_error == "percentile":
+                operands += ("time",)
+            if any(is_dask_collection(data[name].data) for name in operands if name in data):
+                raise ValueError(
+                    "Ramsden minimum-error estimation requires eager observations; "
+                    "materialize the selected floor operands before building the model."
+                )
+        floor = MinimumError.from_observations(
+            data, spec.min_error, **normalise_min_error_options(spec.min_error_options),
+        ).values
     observations = add_model_data(_rename_observation_axis(data["mf"], suffix), f"Y_{suffix}")
     measurement_error = add_model_data(
         _rename_observation_axis(data["mf_error"], suffix),
         f"error_{suffix}",
     )
     min_error = add_model_data(
-        _rename_observation_axis(data["min_error"], suffix),
+        _rename_observation_axis(floor, suffix),
         f"min_error_{suffix}",
     )
 
-    alignment = SigmaAlignment.from_frequency(
-        data["site_indicator"],
+    alignment = SigmaAlignment.from_observations(
+        data["mf"],
         frequency=spec.sigma_frequency,
         per_site=spec.sigma_per_site,
         anchor_time=spec.sigma_frequency_anchor,
@@ -750,7 +783,7 @@ def _add_absolute_error_likelihood(
     period_dim = f"nsigma_period_{suffix}"
     add_coords(
         {
-            site_dim: np.arange(alignment.nsite),
+            site_dim: alignment.site_labels.values,
             period_dim: np.arange(alignment.nperiod),
         }
     )
@@ -785,8 +818,8 @@ def build_ramsden_model(
 
     Args:
         prepared_inputs: Two canonical gas datasets. Each requires ``H``,
-            ``mf``, ``mf_error``, ``min_error``, and ``site_indicator`` on
-            ``nmeasure``; ``H_bc`` is required for enabled boundary states.
+            ``mf``, and ``mf_error`` on ``nmeasure``, with observation-aligned
+            ``site`` labels; ``H_bc`` is required for enabled boundary states.
             Observation coordinates may differ, but coupled sector state
             coordinates must match exactly.
         model_spec: Shared-state, ratio, likelihood, unit, and boundary
@@ -804,9 +837,11 @@ def build_ramsden_model(
 
     Notes:
         This function builds a PyMC graph only. It performs no data retrieval,
-        sampling, unit conversion, or postprocessing. Observation, error,
-        sigma-prior, and forward-model values must already use each channel's
-        declared ``observation_units``.
+        sampling, or postprocessing. Observation, error, sigma-prior, and
+        forward-model values must already use each channel's declared
+        ``observation_units``. The residual-floor estimator converts ``mf_mod``
+        and ``bc_mod`` to observation units. Calculated minimum-error operands
+        must be eager; materialize them explicitly before calling this builder.
     """
     _validate_model_spec(model_spec)
     _validate_channel_data(prepared_inputs.primary, model_spec.primary, label="primary")
@@ -947,7 +982,9 @@ def run_ramsden_from_prepared_inputs(
 
     Notes:
         This function samples the model and may run multiple chains. It does
-        not retrieve data, convert units, or write postprocessed products.
+        not retrieve data or write postprocessed products. Observations, errors,
+        sensitivities, and priors must use the declared channel units; only
+        modelled concentration operands for residual floors are converted.
         Sampling exceptions raised by
         :class:`~openghg_inversions.inference.sampling.RhimeSampler` are
         propagated.

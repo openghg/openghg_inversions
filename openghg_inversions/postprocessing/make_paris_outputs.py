@@ -1527,7 +1527,7 @@ def paris_flux_output(
             .pipe(add_variable_attrs, emissions_attrs)
             .rename(inversion_grid_flux_rename_dict)
         )
-        result = result.merge(inversion_grid_flux_outs)
+        result = result.merge(inversion_grid_flux_outs, join="outer", compat="no_conflicts")
 
     result = result.transpose("time", "percentile", "country", "latitude", "longitude")
 
@@ -1715,6 +1715,7 @@ def paris_flux_output_latest(
                 align_sparse_lat_lon(cell_area, flux_outs),
             ],
             join="outer",
+            compat="no_conflicts",
         )
         .rename(dim_rename_dict)
         .pipe(_assign_flux_time_bounds, flux_frequency, inv_out.start_time, inv_out.end_time)
@@ -1747,7 +1748,7 @@ def paris_flux_output_latest(
             .rename(inversion_grid_flux_rename_dict)
             .pipe(add_variable_attrs, emissions_attrs)
         )
-        result = result.merge(inversion_grid_flux_outs)
+        result = result.merge(inversion_grid_flux_outs, join="outer", compat="no_conflicts")
 
     result = result.transpose(
         "percentile",

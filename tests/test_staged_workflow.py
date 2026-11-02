@@ -14,7 +14,7 @@ import xarray as xr
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.cli import build_parser
 from openghg_inversions.rhime.requests import load_params
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.inference import diagnostics as inference_diagnostics
 from openghg_inversions.rhime.stages import (
     CONVERGENCE_CHECK_NAME,
@@ -48,7 +48,7 @@ def _params(**overrides: Any) -> dict[str, Any]:
     return params
 
 
-def _prepared() -> RhimePreparedInputs:
+def _prepared() -> PreparedInputs:
     nmeasure = pd.MultiIndex.from_arrays(
         [["TAC", "TAC"], pd.to_datetime(["2019-01-01", "2019-01-02"])],
         names=["site", "time"],
@@ -80,7 +80,7 @@ def _prepared() -> RhimePreparedInputs:
         {"averaging_period": ("site", ["1h"])},
         coords={"site": ["TAC"]},
     )
-    return RhimePreparedInputs(inv_inputs=inputs, basis_functions=basis, site_metadata=metadata)
+    return PreparedInputs(inv_inputs=inputs, basis_functions=basis, site_metadata=metadata)
 
 
 
@@ -326,7 +326,7 @@ def test_diagnostics_accept_digest_free_sample_manifest(tmp_path: Path, model: s
     write_json(
         manifest_path,
         {
-            "schema_version": 1,
+            "schema_version": 1 if model == "co2" else 3,
             "producer": "openghg_inversions",
             "stage": "sample",
             "schema": f"openghg_inversions.{model}.sample",
@@ -378,7 +378,7 @@ def test_resource_origins_match_full_requests(tmp_path, monkeypatch, use_overrid
 
 def test_co2_stage_override_paths_use_invocation_directory(tmp_path, monkeypatch):
     from openghg_inversions.rhime.co2.execution import load_co2_params, resolve_co2_output
-    from openghg_inversions.rhime.co2.configuration import resolve_co2_preparation
+    from openghg_inversions.rhime.co2.configuration import Co2PreparationConfig
 
     source = tmp_path / "configs" / "co2.json"
     source.parent.mkdir()
@@ -387,7 +387,7 @@ def test_co2_stage_override_paths_use_invocation_directory(tmp_path, monkeypatch
     monkeypatch.chdir(tmp_path)
     overrides = {"prepared_inputs": {"path": "selected.nc"}}
     loaded = load_co2_params(params_file=source, overrides=overrides)
-    assert resolve_co2_preparation(loaded)["prepared_path"] == tmp_path / "selected.nc"
+    assert Co2PreparationConfig.from_params(loaded).preparation_arguments()["prepared_path"] == tmp_path / "selected.nc"
     assert resolve_co2_output(loaded)["output"].country_file == tmp_path / "country.nc"
     assert overrides["prepared_inputs"]["path"] == "selected.nc"
 
@@ -430,3 +430,18 @@ def test_diagnostics_count_any_nuts_divergence_and_strict_cli(
         assert caught.value.code == 1
     else:
         main(args)
+
+
+@pytest.mark.parametrize("model", ["standard", "multisector"])
+def test_diagnosis_rejects_old_sample_manifest_before_numerical_io(tmp_path, monkeypatch, model):
+    from openghg_inversions.rhime import _stage_checks
+    manifest = tmp_path / "sample-manifest.json"
+    manifest.write_text(json.dumps({
+        "schema": f"openghg_inversions.{model}.sample", "schema_version": 2,
+        "producer": "openghg_inversions", "stage": "sample",
+        "model": {"aggregation_error_mode": "none"}, "posterior": "missing.nc",
+    }))
+    monkeypatch.setattr(_stage_checks, "load_trace", lambda *a, **k: pytest.fail("loaded obsolete numerical payload"))
+    with pytest.raises(ValueError, match="unsupported schema_version.*Use the software version that wrote it or prepare and sample again"):
+        diagnose_rhime_stage(sample_manifest=manifest, output_dir=tmp_path / "diagnose")
+    assert not (tmp_path / "diagnose").exists()
