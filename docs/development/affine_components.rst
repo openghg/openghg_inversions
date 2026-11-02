@@ -91,11 +91,12 @@ state, activity and design information for lowering.
 Cached recipes separately express their supported scientific terms as a dense
 fixed contribution plus an active design times coefficients. This is the
 affine contract required by their sampler. Centered multiplicative boundaries
-use coefficients :math:`b-\mathbf1`; additive boundaries use the sampled
-common mean and Gaussian contrast coefficients, both in concentration units.
-A zero additive anomaly scale leaves only the mean coefficient; see
-:ref:`boundary-additive-corrections`. The concentration record alone does not
-provide or establish that affine decomposition.
+use coefficients :math:`b-\mathbf{1}`. The additive centered boundary instead
+uses its common mean and Gaussian contrast
+coefficients, both in concentration units; a zero anomaly scale leaves only
+the mean coefficient. See :ref:`boundary-additive-corrections`. The
+concentration record alone does not provide or establish that affine
+decomposition.
 
 Handling beyond the linear options
 ----------------------------------
