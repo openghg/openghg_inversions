@@ -155,12 +155,14 @@ BC delivery contains absolute baselines. No likelihood combines those unmatched
 quantities, no observation is altered, and no scientific sampling is claimed by
 that check. A coherent absolute UOB control is an acquisition/preparation task.
 
-The original #1003 replay remains separate, with its registered callbacks and
-four matched CO2 arms unchanged by this follow-up. Its original Python 3.12 and
-3.13 validation completed with 495 passing cases per interpreter. Those checks
-do not validate this follow-up's new source. Broader follow-up compatibility and
-documentation builds are recorded separately below when complete. Linked
-production sampling and acquisition-to-products acceptance remain outstanding.
+The original #1003 replay remains separate. All four matched CO2 arms
+completed at scientific revision `6c61837f`; its report and independent
+label-aligned target audit are recorded in documentation commit `bef3c486`.
+All convergence gates passed, with one multiplicative TER posterior-mean
+comparison explicitly flagged at 2.103 summed Monte Carlo standard errors.
+Its original Python 3.12/3.13 validation passed 495 cases per interpreter.
+These results do not validate this follow-up's new source. Its separate
+compatibility and documentation checks are recorded below.
 
 
 ### Repository lint and full documentation build
@@ -172,5 +174,50 @@ usage guide and generated API pages. Its ten existing warnings comprise seven
 duplicate `SiteOptions` descriptions and three ambiguous `PreparedInputs` /
 `DataConfig` cross-references; none originates in the new linked guide.
 The log is `inversion_outputs/linked-validation/tox-docs-19885984.out`.
-Supported-runtime scientific tox remains a separate registered job; this
-result makes no claim about its completion or the original four replay fits.
+The supported-runtime scientific result is recorded separately below; the
+documentation build does not establish sampling or campaign acceptance.
+
+
+### Supported-runtime scientific validation
+
+Slurm job `19885982` completed with exit code zero on 2026-11-02 in 37 minutes
+40 seconds against `3e8dac3da6fd01c6a3d8d0954b0dbe346648c5ad`. All **262 selected
+cases passed on Python 3.12.11 and all 262 passed on Python 3.13.7**. This is
+the relevant scientific compatibility matrix, not a full-repository test run.
+It covers linked and CO2-only shared preparation/review, BC and biosphere
+priors, existing linked baselines, ordinary/cached fixed-OU targets, additive
+boundary options and CO2/linked configuration. Compiler/header preflights
+passed on both interpreters. The 374 warnings per environment concern existing
+Numba dispatch/performance and future PyTensor, xarray and PyMC interfaces;
+none is a test failure. The log is
+`inversion_outputs/linked-validation/tox-scientific-19885982.out`.
+Later commits through this result only add documentation/API pages; the tested
+scientific owners remain unchanged. No additional fit or production width was
+introduced by this validation.
+
+### Separate workflow and coherent acceptance handoff
+
+Draft PR #1006 at `ac387295c208ea80daf81d221f9f646fe1be712f` integrates the
+reviewed scientific dependency `fe068ad1` with configured preparation, frozen
+v4 numerical save/reopen, exact manifests, maintained compact recording and
+graph-free basic physical/atmospheric products. Its independent owner reports
+430 cases passing on each supported Python version and ten completed
+zero/injected synthetic fits. The one-cell, one-site toy deliberately has zero
+aggregation covariance; it does not validate native coherent campaign inputs.
+Maximum atmospheric accounting error is 1.14e-13 ppm, with no divergences;
+two fits retain R-hat concerns (1.01915 and 1.01124), so a blanket convergence
+or coverage claim is inappropriate. Shared-baseline PARIS export remains
+explicitly unsupported pending its reviewed removed-mean mapping.
+
+The separately authorized single Verification Games task was submitted to an
+isolated BP1 worktree after the reviewed integration gate. Its remit is bounded
+coherent real-input acceptance, preserving full effective transport, affine
+terms and joint unresolved covariance with verified absolute UOB controls.
+Software target checks do not substitute for that acceptance. Additive
+net/gross versus positive gross-shrunk lognormal is a separate bounded research
+prototype within that task. One physical correction state can drive distinct
+tracer response operators; a collapsed CO2 net-only pattern is not the required
+representation for a linked additive model. No additive production family,
+guessed oxidative ratio, production calibration or publication is authorized
+by the comparison. Final coherent acceptance and the retain/defer research
+recommendation remain outstanding.
