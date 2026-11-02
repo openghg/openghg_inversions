@@ -207,6 +207,10 @@ it assessed:
    convergence = json.loads(result.idata.attrs["sampler_convergence"])
    convergence["measured_values"]["assessed_variables"]
 
+.. jupyter-output::
+
+   ['x', 'bc', 'sigma']
+
 Use ArviZ when you need the detailed per-variable table:
 
 .. jupyter-input::

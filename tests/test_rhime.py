@@ -4558,7 +4558,12 @@ def test_rhime_sampler_predictive_kwargs_override_names_before_role_resolution(
     expected: list[str],
 ) -> None:
     seen: dict[str, Any] = {}
-    trace = make_trace(posterior=xr.Dataset())
+    trace = make_trace(
+        posterior=xr.Dataset(
+            {"mu": (("chain", "draw"), np.random.default_rng(42).normal(size=(2, 20)))},
+            coords={"chain": range(2), "draw": range(20)},
+        )
+    )
     monkeypatch.setattr(inference_sampling.pm, "sample", lambda **kwargs: trace)
 
     def fake_predictive(trace: xr.DataTree, **kwargs: Any) -> xr.DataTree:
