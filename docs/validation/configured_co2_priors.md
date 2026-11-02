@@ -43,11 +43,21 @@ absolute predictions, normalized densities and gradients at nonzero states for
 ordinary/cached CO2, linked ordinary/cached builders, and shared CO2. They also
 save/reopen annotated absolute predictive traces and run the documented example.
 
-## Broader validation pending
+## Broader validation
 
-The Python 3.12/3.13 tox runs, including the new graph tests and relevant
-boundary, biosphere, configuration and handoff coverage, are submitted through
-the durable Slurm callback. Their results will be recorded here after completion.
+Slurm job `19885280` ran 299 cases per environment through the repository tox
+runner on Python 3.12 and 3.13. Each environment passed 294 and failed the same
+five new tests. The failures identified an incorrect `SigmaAlignment` import in
+the new shared configuration owner, an incomplete numerical preparation fixture
+and an unnamed fixed contribution in the documented example. These were fixed;
+the CO2 inference fixture now uses a real prepared-input object with explicitly
+valid retained lognormal moments. The shared additive-sigma and example checks
+pass after correction. Heading lengths were also checked in the new RST pages.
+
+The complete new test module is being rerun on Python 3.12/3.13 through Slurm.
+Its results will be recorded after the terminal callback. The original broader
+log remains at `inversion_outputs/config-priors-validation/slurm-19885280.out`
+in the implementation worktree on BP1.
 This is implementation parity validation; no new full scientific sampling
 experiment or physical recovery claim is made.
 

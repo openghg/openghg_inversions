@@ -296,7 +296,7 @@ def build_shared_co2_from_config(
         return build_shared_co2_cached_sigma_model(prepared, **inputs, **model["likelihood_kwargs"])
     no_model_error = model.pop("no_model_error", False)
     if "likelihood_builder" not in model and not no_model_error:
-        from openghg_inversions.models import SigmaAlignment
+        from openghg_inversions.sigma import SigmaAlignment
 
         model["sigma_alignment"] = SigmaAlignment.from_observations(observations)
     if "likelihood_kwargs" in model:

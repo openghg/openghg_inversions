@@ -112,7 +112,7 @@ def main():
     model = build_co2_model(
         sensitivity,
         retained_prior=baseline,
-        fixed_prior_contribution=xr.full_like(observations, 0.2),
+        fixed_prior_contribution=xr.full_like(observations, 0.2).rename("fixed_prior_contribution"),
         observations=observations,
         observation_error=xr.full_like(observations, 0.1),
         aggregation_error=resolve_aggregation_error(observations.to_dataset(name="mf"), "none"),

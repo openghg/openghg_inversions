@@ -1,6 +1,7 @@
 """Configured priors retain the explicit Python target and frozen replay values."""
 
 from types import SimpleNamespace
+from dataclasses import replace
 import tomllib
 
 from dask.callbacks import Callback
@@ -42,6 +43,7 @@ from test_biosphere_prior import case as bio_case
 from test_boundary_correction_priors import operands
 from test_co2_cached_sigma import _inputs
 from test_co2_o2_fixed_ou import _prepared, _kwargs
+from test_centered_handoffs import _ordinary
 from test_shared_baseline import case as shared_case
 
 
@@ -215,7 +217,13 @@ def _parity(left, right):
 
 @pytest.mark.parametrize("cached", [False, True])
 def test_configured_co2_inference_uses_same_bc_calibration_and_nonzero_target(tmp_path, cached):
-    inv = _inputs()
+    prepared = _ordinary()
+    inv = prepared.inv_inputs
+    inv = inv.assign(
+        alpha_prior_mean=inv.alpha_prior_mean.copy(data=np.ones(2)),
+        alpha_prior_covariance=inv.alpha_prior_covariance.copy(data=np.array([[0.08, 0.01], [0.01, 0.06]])),
+    )
+    prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inv))
     prior = CorrelatedLognormalPrior(
         inv.alpha_prior_mean, inv.alpha_prior_covariance, covariance_dim="region_cov"
     )
@@ -239,7 +247,6 @@ def test_configured_co2_inference_uses_same_bc_calibration_and_nonzero_target(tm
     bc = bc_config.prepare(operands(inv.mf), inv.mf)
     bio_config.save(bio, tmp_path / "bio.nc")
     bc_config.save(bc, tmp_path / "bc.nc")
-    inv = inv.assign(mf=(inv.mf + bc.bc_reference_shift).assign_attrs(units="ppm"))
     likelihood = (
         {"kind": "fixed_ou", "tau_hours": 5.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.75}}
         if cached
@@ -253,7 +260,7 @@ def test_configured_co2_inference_uses_same_bc_calibration_and_nonzero_target(tm
         "likelihood": likelihood,
     }
     choices = Co2ModelConfig.from_params(load_co2_params(params=request)).model_arguments()
-    built, _ = build_co2_inference(SimpleNamespace(inv_inputs=inv, aggregation_error_mode="dense"), choices)
+    built, _ = build_co2_inference(prepared, choices)
     if cached:
         expected = build_co2_model(
             inv.H,
@@ -262,16 +269,14 @@ def test_configured_co2_inference_uses_same_bc_calibration_and_nonzero_target(tm
             fixed_prior_contribution=inv.fixed_prior_contribution,
             observations=inv.mf,
             observation_error=inv.mf_error,
-            aggregation_error=resolve_aggregation_error(inv, "dense"),
+            aggregation_error=resolve_aggregation_error(inv, prepared.aggregation_error_mode),
             boundary_correction=bc,
             likelihood_builder=add_fixed_ou_gaussian_likelihood,
             likelihood_kwargs={k: v for k, v in likelihood.items() if k != "kind"},
         )
     else:
         python_choices = {**choices, "boundary_correction": bc, "biosphere_prior": bio}
-        expected = build_co2_inference(
-            SimpleNamespace(inv_inputs=inv, aggregation_error_mode="dense"), python_choices
-        )[0].model
+        expected = build_co2_inference(prepared, python_choices)[0].model
     _parity(built.model, expected)
 
 
@@ -370,7 +375,7 @@ def test_shared_configured_graph_matches_python_and_saves_absolute_trace(tmp_pat
 
 @pytest.mark.parametrize("no_model_error", [False, True])
 def test_shared_additive_sigma_keeps_configured_defaults_and_fixed_mismatch(no_model_error):
-    from openghg_inversions.models import SigmaAlignment
+    from openghg_inversions.sigma import SigmaAlignment
 
     obs, _, _, prepared = shared_case()
     inputs = dict(

@@ -1,5 +1,5 @@
 Configured CO2 priors and saved calibration
-==========================================
+===========================================
 
 Use this workflow to choose the :doc:`boundary_pattern_priors`,
 :doc:`biosphere_prior` or CO2-only :doc:`shared_baseline` options, freeze their
@@ -49,7 +49,7 @@ Reload verifies the policy against the saved baseline and retains the saved
 covariance; current inputs or subsets never enter that calculation.
 
 Select saved priors for ordinary or linked inference
----------------------------------------------------
+----------------------------------------------------
 
 The existing CO2 TOML/JSON/Python model owner accepts:
 
