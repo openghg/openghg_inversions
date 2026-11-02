@@ -342,7 +342,7 @@ def test_replay_materializes_payloads_and_auxiliary_units_in_one_graph(monkeypat
     if error_source in {"saved", "both"}:
         prepared.independent_error_sd = independent_error_sd.copy(deep=False)
     monkeypatch.setattr(co2_o2_runner, "build_co2_o2_model", lambda **_: pm.Model())
-    monkeypatch.setattr(co2_o2_runner, "sample_rhime_model", lambda *_: xr.DataTree())
+    monkeypatch.setattr(co2_o2_runner, "sample_rhime_model", lambda *_, **__: xr.DataTree())
     compute_graphs: list[object] = []
 
     with Callback(start=lambda graph: compute_graphs.append(graph)):

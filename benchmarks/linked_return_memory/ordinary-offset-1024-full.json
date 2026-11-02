@@ -1,0 +1,254 @@
+{
+  "options": {
+    "strategy": "full",
+    "rows": 1024,
+    "draws": 128,
+    "tune": 128,
+    "chains": 4,
+    "no_offsets": false,
+    "cached": false,
+    "output": "evidence/linked-return-memory/ordinary-offset-1024-full.json"
+  },
+  "pymc": "6.3.2",
+  "python": "3.13.7 (main, Aug 18 2025, 19:20:03) [Clang 20.1.4 ]",
+  "script_sha256": "e87c5d0bd3b2de577741606b885a1b18c866dd6f001d3f1b48c4033d16eab9cd",
+  "phases": {
+    "model_construction": {
+      "seconds": 0.2327,
+      "start_rss_mib": 288.613,
+      "end_rss_mib": 339.34,
+      "sampled_peak_rss_mib": 339.34,
+      "process_peak_rss_mib": 339.34
+    },
+    "backend_compile": {
+      "seconds": 1.7221,
+      "start_rss_mib": 339.34,
+      "end_rss_mib": 381.168,
+      "sampled_peak_rss_mib": 381.168,
+      "process_peak_rss_mib": 381.168
+    },
+    "backend_recording": {
+      "seconds": 0.1374,
+      "start_rss_mib": 381.168,
+      "end_rss_mib": 525.281,
+      "sampled_peak_rss_mib": 525.281,
+      "process_peak_rss_mib": 525.281
+    },
+    "retained_slice": {
+      "seconds": 0.0005,
+      "start_rss_mib": 525.281,
+      "end_rss_mib": 525.281,
+      "sampled_peak_rss_mib": 525.281,
+      "process_peak_rss_mib": 525.281
+    },
+    "xarray_conversion": {
+      "seconds": 0.0478,
+      "start_rss_mib": 525.281,
+      "end_rss_mib": 601.281,
+      "sampled_peak_rss_mib": 601.281,
+      "process_peak_rss_mib": 601.281
+    },
+    "log_likelihood": {
+      "seconds": 3.683,
+      "start_rss_mib": 601.281,
+      "end_rss_mib": 809.906,
+      "sampled_peak_rss_mib": 809.906,
+      "process_peak_rss_mib": 809.906
+    },
+    "pymc_convergence": {
+      "seconds": 0.0451,
+      "start_rss_mib": 809.906,
+      "end_rss_mib": 810.117,
+      "sampled_peak_rss_mib": 810.117,
+      "process_peak_rss_mib": 810.117
+    },
+    "backend_release": {
+      "seconds": 0.1897,
+      "start_rss_mib": 810.117,
+      "end_rss_mib": 783.734,
+      "sampled_peak_rss_mib": 810.137,
+      "process_peak_rss_mib": 810.137
+    },
+    "coordinate_restoration": {
+      "seconds": 0.035,
+      "start_rss_mib": 783.734,
+      "end_rss_mib": 783.734,
+      "sampled_peak_rss_mib": 783.734,
+      "process_peak_rss_mib": 810.137
+    },
+    "serialization": {
+      "seconds": 1.0362,
+      "start_rss_mib": 783.734,
+      "end_rss_mib": 791.051,
+      "sampled_peak_rss_mib": 791.051,
+      "process_peak_rss_mib": 810.137
+    },
+    "serialization_roundtrip": {
+      "seconds": 0.3709,
+      "start_rss_mib": 791.051,
+      "end_rss_mib": 791.402,
+      "sampled_peak_rss_mib": 791.402,
+      "process_peak_rss_mib": 810.137
+    },
+    "posterior_diagnostics": {
+      "seconds": 39.6117,
+      "start_rss_mib": 791.402,
+      "end_rss_mib": 791.426,
+      "sampled_peak_rss_mib": 791.43,
+      "process_peak_rss_mib": 810.137
+    }
+  },
+  "backend_bytes": 159735808,
+  "slice_borrows_backend": true,
+  "log_likelihood_sha256": "6a09fa11a7c2b830271972b5e53e75a473b9a0e58c90cc3186e3b4140e43470d",
+  "posterior_bytes": 79835136,
+  "posterior_variables": {
+    "baseline_concentration": {
+      "shape": [
+        4,
+        128,
+        2048
+      ],
+      "dtype": "float64",
+      "sha256": "eadd17f2f533a6a364fa548d40324b7b2789d7d1e888da74bb109ee457ddbd87"
+    },
+    "boundary_concentration": {
+      "shape": [
+        4,
+        128,
+        2048
+      ],
+      "dtype": "float64",
+      "sha256": "da6758d02ba1ffa7b9b355812c3cdb71dff5956089a07f8d7a426379f39abd24"
+    },
+    "co2_bc": {
+      "shape": [
+        4,
+        128,
+        4
+      ],
+      "dtype": "float64",
+      "sha256": "1e5a04136bcf778ac84bdecd522c1d2b64a6677fb189a15c6ab423990f67a127"
+    },
+    "co2_mu_bc": {
+      "shape": [
+        4,
+        128,
+        2048
+      ],
+      "dtype": "float64",
+      "sha256": "e8459762535df64cefc06a29236e2e3dda198937648584e2e9053a40612aaaf6"
+    },
+    "co2_o2_flux_contribution": {
+      "shape": [
+        4,
+        128,
+        2048
+      ],
+      "dtype": "float64",
+      "sha256": "017b2fc6a46d9b72335ec06b7bca6b64bda0e5167dd3bb297548c76ed0ae55d8"
+    },
+    "epsilon": {
+      "shape": [
+        4,
+        128,
+        2048
+      ],
+      "dtype": "float64",
+      "sha256": "3816dfdc4c37b92876f5c1664ac790c8e713f62dbbe1a4452fe424463621dfd5"
+    },
+    "flux_scaling": {
+      "shape": [
+        4,
+        128,
+        8
+      ],
+      "dtype": "float64",
+      "sha256": "abcf2629294a9530f50344561f0ace733d801e3423a62d3ccccd596d672d19a1"
+    },
+    "flux_scaling_latent": {
+      "shape": [
+        4,
+        128,
+        8
+      ],
+      "dtype": "float64",
+      "sha256": "eb428d478fd2a36d590843684f15ab201cbece0600577d282e1f487c828fac34"
+    },
+    "modelled_concentration": {
+      "shape": [
+        4,
+        128,
+        2048
+      ],
+      "dtype": "float64",
+      "sha256": "c0c07f7ce75d25ae6d4457e19e852947ff9b156e54aae020dc8379462f9db04c"
+    },
+    "o2_bc": {
+      "shape": [
+        4,
+        128,
+        4
+      ],
+      "dtype": "float64",
+      "sha256": "9055850740b9fc8ba4e65c90f4917b621d677b3af1d01f00890258896a9ce8ba"
+    },
+    "o2_mu_bc": {
+      "shape": [
+        4,
+        128,
+        2048
+      ],
+      "dtype": "float64",
+      "sha256": "1411e94f61ccc885e139b36071761fd869a203d787c0eaa4dced85edd96bcd70"
+    },
+    "o2_offset": {
+      "shape": [
+        4,
+        128,
+        2048
+      ],
+      "dtype": "float64",
+      "sha256": "7c50f5ed07b63eb42d00ee259aee0c8682d851086888cbf096590393335bb128"
+    },
+    "o2_offset_latent": {
+      "shape": [
+        4,
+        128,
+        3
+      ],
+      "dtype": "float64",
+      "sha256": "2f1483485a76a5996eccf39e4d5767f19b50554ce26dc5b14e489136be174283"
+    },
+    "o2_offset_native": {
+      "shape": [
+        4,
+        128,
+        1024
+      ],
+      "dtype": "float64",
+      "sha256": "1130be34279242ace00cbfc43fa8133d54df72b2ada411ab478e88dceda753e9"
+    },
+    "offset_concentration": {
+      "shape": [
+        4,
+        128,
+        2048
+      ],
+      "dtype": "float64",
+      "sha256": "7c50f5ed07b63eb42d00ee259aee0c8682d851086888cbf096590393335bb128"
+    },
+    "ou_site_amplitude": {
+      "shape": [
+        4,
+        128,
+        8
+      ],
+      "dtype": "float64",
+      "sha256": "46c51bd268e9a6d0887defd3128c995ff68846b5333263c402ac3e65a489fac6"
+    }
+  },
+  "serialized_bytes": 81223390,
+  "diagnostic_variables": 16,
+  "process_peak_rss_mib": 810.13671875
+}

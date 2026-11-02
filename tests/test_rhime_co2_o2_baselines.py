@@ -173,7 +173,8 @@ def test_configuration_and_runner_forward_same_channel_options(monkeypatch):
     configured = {"prepared_inputs": prepared, **setup.bind(prepared)}
     configured["sampler"] = RhimeSampler(draws=2, tune=0, chains=1, burn=0, nuts_sampler="pymc")
 
-    def prior_sample(built, sampler):
+    def prior_sample(built, sampler, *, recompute_deterministics=False):
+        assert recompute_deterministics is True
         with built.model:
             trace = pm.sample_prior_predictive(
                 draws=2,

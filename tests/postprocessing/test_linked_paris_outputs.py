@@ -283,7 +283,8 @@ def test_cached_joint_draws_with_baseline_emit_paris(tmp_path, native_multiindex
     from test_rhime_co2_o2 import _independent_error
     from test_rhime_co2_o2_baselines import _native_multiindex_inputs, _prepared
 
-    def graph_draws(built, sampler):
+    def graph_draws(built, sampler, *, recompute_deterministics=False):
+        assert recompute_deterministics is True
         # PARIS closure needs draws from the real graph; linked sampler
         # integration is covered in test_co2_o2_fixed_ou.py.
         with built.model:

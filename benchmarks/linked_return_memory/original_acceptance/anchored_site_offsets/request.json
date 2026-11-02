@@ -1,0 +1,81 @@
+{
+  "status": "sampling",
+  "arm": "anchored_site_offsets",
+  "diagnostic_only": true,
+  "purpose": "Public production recipe validation on frozen real NAME transport; exploratory O2 priors are not accepted production priors",
+  "observations": "Noiseless July 2021 UOB BASE x=1 synthetic control; no injected bias, no WUR fit",
+  "ogi_revision": "c5afe448e1eefea4014fe0144273d6425e6e376f",
+  "ogi_source": "/group/chem/acrg/brendan_for_codex/openghg_inversions/.codex-worktrees/linked-return-memory/.artifacts/linked-return-memory-validation/acceptance-source",
+  "script_sha256": "5bb6d0941840f2da0c0edce205cc11e2122230b65eb0b1fae8fb7f58fc9177dc",
+  "python": "/group/chem/acrg/verification_games_round_2/verification-games-work/sources/ope188-ogi-devel-20261028/.venv/bin/python",
+  "prepared_manifest": "/group/chem/acrg/verification_games_round_2/verification-games-work/ope188-20261028-matched-25site-v1/recovery-r1/prepared/2021-07/full/manifest.json",
+  "prepared_manifest_sha256": "9bf3a690cac458fa06f169b26368402368321a83acda7b3047550e86cdb85053",
+  "chains": 4,
+  "tune": 1000,
+  "draws": 1000,
+  "seed": 20261028,
+  "state_target_accept": 0.95,
+  "sigma_target_accept": 0.9,
+  "o2_common_mean_sd_ppm": 1.0465,
+  "o2_anomaly_pre_centering_sd_ppm": 2.093,
+  "o2_offset_sd_ppm": 0.5,
+  "offset_scope": "Independent O2 site constants over the whole July window",
+  "co2_bc_prior": {
+    "pdf": "truncatednormal",
+    "mu": 1.0,
+    "sigma": 0.01,
+    "lower": 0.0
+  },
+  "co2_offsets": false,
+  "tau_hours": 5.0,
+  "site_amplitude_prior": {
+    "pdf": "halfnormal",
+    "sigma": 0.75
+  },
+  "independent_error_sd_ppm": 1e-06,
+  "interpretation": "For normalized M1=1, free site offsets and global BC mean have a common likelihood direction; their separation depends on priors",
+  "site_order": [
+    "UTO",
+    "JFJ",
+    "OXK",
+    "CMN",
+    "HPB",
+    "PAL",
+    "RGL",
+    "GAT",
+    "SAC",
+    "STE",
+    "MHD",
+    "TOH",
+    "HTM",
+    "NOR",
+    "HEL",
+    "BSD",
+    "TAC",
+    "KRE",
+    "TRN",
+    "HUN",
+    "BIR",
+    "WES",
+    "CBW",
+    "OPE",
+    "LIN"
+  ],
+  "first_site_anchor": "UTO",
+  "shared_prepared": {
+    "path": "/group/chem/acrg/verification_games_round_2/verification-games-work/ope188-20261028-matched-25site-v1/recovery-r1/prepared/2021-07/full/shared_uob_base.nc",
+    "sha256": "25d2858334a1bf684d3175ca896f94228e5840cd655095d1cf0544ccd5395447"
+  },
+  "low_rank": {
+    "path": "/group/chem/acrg/verification_games_round_2/verification-games-work/ope188-20261028-matched-25site-v1/recovery-r1/prepared/2021-07/full/joint_low_rank.nc",
+    "sha256": "0ea5b389be1839a016e7b0c1fde8f42ff077db84f690aa5b01b6f0fa13f066b0"
+  },
+  "centering_weights": [
+    0.25,
+    0.25,
+    0.25,
+    0.25
+  ],
+  "centering_definition": "Equal NESW direction parameter mean, one whole-window delta; no area weighting",
+  "o2_numerical_reference_ppm": 209300.0
+}

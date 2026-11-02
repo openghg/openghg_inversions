@@ -58,7 +58,8 @@ def test_linked_cached_runner_restores_absolute_predictions_and_replay(tmp_path,
     aggregation_covariance = prepared.aggregation_error.covariance.copy(deep=True)
     captured = {}
 
-    def prior_prediction(built, sampler):
+    def prior_prediction(built, sampler, *, recompute_deterministics=False):
+        assert recompute_deterministics is True
         with built.model:
             trace = pm.sample_prior_predictive(draws=3, random_seed=73)
         trace = restore_inferencedata_coords(trace, get_coord_registry(built.model))

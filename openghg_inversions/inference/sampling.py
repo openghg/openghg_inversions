@@ -206,6 +206,34 @@ def _reset_retained_draws(trace: xr.DataTree, *, burn: int) -> xr.DataTree:
     return trace
 
 
+def _restore_deterministics(posterior: xr.Dataset, model: pm.Model) -> xr.Dataset:
+    """Evaluate the unchanged graph after sampling buffers have been released.
+
+    PyMC allocates the final arrays once and evaluates one state at a time;
+    merging borrows those arrays rather than copying the complete posterior.
+    """
+    if not model.deterministics:
+        return posterior
+    # Match ordinary recording's observed-value and transform conventions.
+    observed_values = {}
+    for rv in model.observed_RVs:
+        value = model.rvs_to_values[rv]
+        transform = model.rvs_to_transforms.get(rv)
+        if transform is not None:
+            value = transform.backward(value, *rv.owner.inputs)
+            value = rv.type.filter_variable(value, allow_convert=True)
+        observed_values[rv] = value
+    derived = cast(
+        xr.Dataset,
+        pm.compute_deterministics(
+            posterior, model=model, progressbar=False,
+            compile_kwargs={"givens": observed_values},
+        ),
+    )
+    derived = derived.assign_coords(chain=posterior.chain, draw=posterior.draw)
+    return xr.merge([posterior, derived], join="exact", compat="override")
+
+
 class RhimeSampler:
     """PyMC sampler configuration and execution for RHIME models.
 
@@ -344,6 +372,7 @@ class RhimeSampler:
         model: pm.Model,
         *,
         variable_roles: Mapping[str, str] | None = None,
+        recompute_deterministics: bool = False,
     ) -> xr.DataTree:
         """Sample a built RHIME model and append requested predictive groups.
 
@@ -354,12 +383,33 @@ class RhimeSampler:
                 role names. The historical default ``"y"`` resolves to the
                 explicit ``concentration`` role when a custom model has no
                 variable named ``y``.
+            recompute_deterministics: For the PyMC backend, record free random
+                variables and restore every deterministic from the unchanged
+                graph after sampling returns. Evaluation retains final output
+                arrays plus one state's intermediate values. Other backends,
+                explicit traces or callbacks, transformed-variable requests
+                and empty retained groups use the ordinary recording path.
         """
         _validate_idata_options(self.sample_kwargs, label="sample_kwargs")
         sample_kwargs = _copy_sampler_options(self.sample_kwargs or {})
         sample_kwargs.pop("return_inferencedata", None)
         idata_kwargs = dict(sample_kwargs.pop("idata_kwargs", {}))
         idata_kwargs.setdefault("log_likelihood", True)
+        compact = (
+            recompute_deterministics
+            and self.nuts_sampler == "pymc"
+            and not idata_kwargs.get("include_transformed", False)
+            and sample_kwargs.get("trace") is None
+            and sample_kwargs.get("callback") is None
+            and self.burn < self.draws
+            and (sample_kwargs.get("discard_tuned_samples", True) or self.burn < self.tune)
+        )
+        log_likelihood = idata_kwargs["log_likelihood"]
+        if compact:
+            sample_kwargs["var_names"] = [rv.name for rv in model.free_RVs]
+            # Conversion and automatic likelihood otherwise coexist with the
+            # warmup-plus-draw backend buffers inside pm.sample's return path.
+            idata_kwargs["log_likelihood"] = False
         sample_kwargs.setdefault("progressbar", self.progressbar)
         sample_kwargs.setdefault("cores", self.chains)
         if not isinstance(self.sample_prior_predictive, bool | int | np.integer) or self.sample_prior_predictive < 0:
@@ -411,6 +461,22 @@ class RhimeSampler:
         trace = raw_trace.isel(draw=slice(self.burn, None), missing_dims="ignore")
         trace = _reset_retained_draws(trace, burn=self.burn)
         log_timing("rhime.sampler.burn_slicing", timer_seconds(timing_start), burn=self.burn)
+
+        if compact:
+            if log_likelihood:
+                timing_start = timer_start()
+                pm.compute_log_likelihood(
+                    trace,
+                    model=model,
+                    var_names=None if log_likelihood is True else log_likelihood,
+                    progressbar=self.progressbar,
+                )
+                log_timing("rhime.sampler.log_likelihood", timer_seconds(timing_start))
+            timing_start = timer_start()
+            for group_name in ("posterior", "warmup_posterior"):
+                if group_name in trace.children:
+                    trace[group_name] = _restore_deterministics(trace[group_name].to_dataset(), model)
+            log_timing("rhime.sampler.deterministics", timer_seconds(timing_start))
 
         trace = self._extend_predictive(
             trace, model=model, prior_random_seed=prior_rng,

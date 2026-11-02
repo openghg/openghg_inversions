@@ -1,0 +1,147 @@
+cpu-bind=MASK - bp1-compute050, task  0  0 [3802996]: mask 0xc00000c000 set
+/group/chem/acrg/verification_games_round_2/verification-games-work/sources/ope188-ogi-devel-20261028/.venv/lib/python3.13/site-packages/pytensor/gradient.py:1327: FutureWarning: _PytensorSigmaLikelihoodOp should implement `pullback` instead of `L_op`/`grad`. Direct `L_op`/`grad` implementations are deprecated and will stop being called in a future version.
+  input_grads = node.op.pullback(inputs, node.outputs, new_output_grads)
+Multiprocess sampling (4 chains in 4 jobs)
+CompoundStep
+>PymcCachedSigmaNutsStep: [ou_site_amplitude]
+>NUTS: [flux_scaling_latent, co2_bc, o2_bc_mean_shift, o2_bc_anomaly_latent, o2_offset_latent]
+/group/chem/acrg/verification_games_round_2/verification-games-work/sources/ope188-ogi-devel-20261028/.venv/lib/python3.13/site-packages/pymc/sampling/mcmc.py:1178: FutureWarning: Passing `log_likelihood` via `idata_kwargs` is deprecated and will be removed in future versions. Call `pm.compute_log_likelihood(idata)` instead.
+  return _sample_return(
+Sampling 4 chains for 1_000 tune and 1_000 draw iterations (4_000 + 4_000 draws total) took 7168 seconds.
+TIMING rhime.sampler.pm_sample seconds=7168.789702 maxrss_kb=2147424 draws=1000 tune=1000 chains=4 nuts_sampler=pymc
+TIMING rhime.sampler.sample_stats seconds=0.000000 maxrss_kb=2147424 n_steps_mean=63.000000 n_steps_max=63.000000 tree_depth_mean=6.000000 tree_depth_max=6.000000 step_size_mean=0.058962 acceptance_rate_mean=0.947375 divergences=0
+TIMING rhime.sampler.burn_slicing seconds=0.005690 maxrss_kb=2147424 burn=0
+/group/chem/acrg/verification_games_round_2/verification-games-work/sources/ope188-ogi-devel-20261028/.venv/lib/python3.13/site-packages/pytensor/link/numba/dispatch/basic.py:234: UserWarning: Numba will use object mode to run _FixedOuLogpOp's perform method. Set `pytensor.config.compiler_verbose = True` to see more details.
+  warnings.warn(
+TIMING rhime.sampler.log_likelihood seconds=799.683022 maxrss_kb=2773224
+TIMING rhime.sampler.deterministics seconds=13.580702 maxrss_kb=6944996
+TIMING rhime.sampler.coord_restore seconds=0.078047 maxrss_kb=6945052 restored=true
+TIMING rhime.sampler_total seconds=7982.138482 maxrss_kb=6945052 draws=1000 burn=0 tune=1000 chains=4 nuts_sampler=pymc
+{
+  "status": "sampling_complete",
+  "arm": "anchored_site_offsets",
+  "diagnostic_only": true,
+  "purpose": "Public production recipe validation on frozen real NAME transport; exploratory O2 priors are not accepted production priors",
+  "observations": "Noiseless July 2021 UOB BASE x=1 synthetic control; no injected bias, no WUR fit",
+  "ogi_revision": "c5afe448e1eefea4014fe0144273d6425e6e376f",
+  "ogi_source": "/group/chem/acrg/brendan_for_codex/openghg_inversions/.codex-worktrees/linked-return-memory/.artifacts/linked-return-memory-validation/acceptance-source",
+  "script_sha256": "5bb6d0941840f2da0c0edce205cc11e2122230b65eb0b1fae8fb7f58fc9177dc",
+  "python": "/group/chem/acrg/verification_games_round_2/verification-games-work/sources/ope188-ogi-devel-20261028/.venv/bin/python",
+  "prepared_manifest": "/group/chem/acrg/verification_games_round_2/verification-games-work/ope188-20261028-matched-25site-v1/recovery-r1/prepared/2021-07/full/manifest.json",
+  "prepared_manifest_sha256": "9bf3a690cac458fa06f169b26368402368321a83acda7b3047550e86cdb85053",
+  "chains": 4,
+  "tune": 1000,
+  "draws": 1000,
+  "seed": 20261028,
+  "state_target_accept": 0.95,
+  "sigma_target_accept": 0.9,
+  "o2_common_mean_sd_ppm": 1.0465,
+  "o2_anomaly_pre_centering_sd_ppm": 2.093,
+  "o2_offset_sd_ppm": 0.5,
+  "offset_scope": "Independent O2 site constants over the whole July window",
+  "co2_bc_prior": {
+    "pdf": "truncatednormal",
+    "mu": 1.0,
+    "sigma": 0.01,
+    "lower": 0.0
+  },
+  "co2_offsets": false,
+  "tau_hours": 5.0,
+  "site_amplitude_prior": {
+    "pdf": "halfnormal",
+    "sigma": 0.75
+  },
+  "independent_error_sd_ppm": 1e-06,
+  "interpretation": "For normalized M1=1, free site offsets and global BC mean have a common likelihood direction; their separation depends on priors",
+  "site_order": [
+    "UTO",
+    "JFJ",
+    "OXK",
+    "CMN",
+    "HPB",
+    "PAL",
+    "RGL",
+    "GAT",
+    "SAC",
+    "STE",
+    "MHD",
+    "TOH",
+    "HTM",
+    "NOR",
+    "HEL",
+    "BSD",
+    "TAC",
+    "KRE",
+    "TRN",
+    "HUN",
+    "BIR",
+    "WES",
+    "CBW",
+    "OPE",
+    "LIN"
+  ],
+  "first_site_anchor": "UTO",
+  "shared_prepared": {
+    "path": "/group/chem/acrg/verification_games_round_2/verification-games-work/ope188-20261028-matched-25site-v1/recovery-r1/prepared/2021-07/full/shared_uob_base.nc",
+    "sha256": "25d2858334a1bf684d3175ca896f94228e5840cd655095d1cf0544ccd5395447"
+  },
+  "low_rank": {
+    "path": "/group/chem/acrg/verification_games_round_2/verification-games-work/ope188-20261028-matched-25site-v1/recovery-r1/prepared/2021-07/full/joint_low_rank.nc",
+    "sha256": "0ea5b389be1839a016e7b0c1fde8f42ff077db84f690aa5b01b6f0fa13f066b0"
+  },
+  "centering_weights": [
+    0.25,
+    0.25,
+    0.25,
+    0.25
+  ],
+  "centering_definition": "Equal NESW direction parameter mean, one whole-window delta; no area weighting",
+  "o2_numerical_reference_ppm": 209300.0,
+  "diagnostic_variables": [
+    "flux_scaling_latent",
+    "co2_bc",
+    "o2_bc_mean_shift",
+    "o2_bc_anomaly_latent",
+    "o2_offset_latent",
+    "ou_site_amplitude",
+    "flux_scaling",
+    "o2_bc_anomaly",
+    "o2_bc_correction"
+  ],
+  "max_rhat": 1.0063944148100237,
+  "min_bulk_ess": 590.0627877290087,
+  "diagnostics_finite": true,
+  "sampler_events": {
+    "sigma_nuts_diverging": 0,
+    "diverging": 0,
+    "reached_max_treedepth": 0,
+    "sigma_nuts_reached_max_treedepth": 0
+  },
+  "convergence_gate_passed": true,
+  "posterior_bytes": 4993550677,
+  "elapsed_seconds": 8096.969177480787,
+  "maxrss_kib": 6957648
+}
+	Command being timed: "/group/chem/acrg/verification_games_round_2/verification-games-work/sources/ope188-ogi-devel-20261028/.venv/bin/python -u /group/chem/acrg/brendan_for_codex/openghg_inversions/.codex-worktrees/linked-return-memory/.artifacts/linked-return-memory-validation/original-acceptance-harness/run_linked_options.py --arm anchored_site_offsets --out-root /group/chem/acrg/brendan_for_codex/openghg_inversions/.codex-worktrees/linked-return-memory/.artifacts/linked-return-memory-validation/original-acceptance-r1 --ogi-source /group/chem/acrg/brendan_for_codex/openghg_inversions/.codex-worktrees/linked-return-memory/.artifacts/linked-return-memory-validation/acceptance-source"
+	User time (seconds): 28693.38
+	System time (seconds): 2860.60
+	Percent of CPU this job got: 387%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 2:15:34
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 6957680
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 248128250
+	Voluntary context switches: 71677
+	Involuntary context switches: 216258
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 58328
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
