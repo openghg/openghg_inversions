@@ -44,7 +44,7 @@ def prepare_linked_shared_baseline(
         raise ValueError("Supply co2 and o2 fixed contributions, boundary corrections and physical delta SDs.")
     if "source" not in retained_prior.mean.coords:
         raise ValueError("Linked outer selection requires labelled source coordinates.")
-    ocean = retained_prior.mean.source.isin(["ocean", "co2_ocean", "o2_ocean"])
+    ocean = retained_prior.mean.source.str.lower().isin(["ocean", "co2_ocean", "o2_ocean"])
     if bool((ocean & sampled_outer).any()):
         raise ValueError("Outer ocean must remain fixed.")
     result = {}

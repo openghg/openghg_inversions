@@ -173,3 +173,24 @@ def test_saved_preparation_and_posterior_reconstruct_without_model(tmp_path):
             reconstructed[channel].outer_raw_correction - reconstructed[channel].outer_removed_mean,
             reconstructed[channel].outer_centered_correction, atol=1e-15,
         )
+
+
+@pytest.mark.parametrize("ocean_source", ["OCEAN", "CO2_OCEAN", "O2_OCEAN"])
+def test_uppercase_outer_ocean_cannot_be_sampled(ocean_source):
+    from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+
+    prepared, base, raw = case()
+    mean = base.retained_prior.mean.assign_coords(
+        source=("state", ["GPP", "TER", "FF", ocean_source, ocean_source])
+    )
+    prior = CorrelatedLognormalPrior(mean, base.retained_prior.arithmetic_covariance)
+    outer = mean.copy(data=[False, False, True, True, True])
+    sampled = mean.copy(data=[False, False, True, True, False])
+    # The ocean policy owns this rejection before binding channel operands.
+    with pytest.raises(ValueError, match="Outer ocean must remain fixed"):
+        prepare_linked_shared_baseline(
+            co2_sensitivity=raw["co2"], o2_sensitivity=raw["o2"], retained_prior=prior,
+            fixed_prior_contribution={c: p.fixed_prior_contribution for c, p in prepared.items()},
+            boundary_correction=prepared, outer=outer, sampled_outer=sampled,
+            mode="multiplicative", delta_sd={"co2": 2.0, "o2": 0.5},
+        )
