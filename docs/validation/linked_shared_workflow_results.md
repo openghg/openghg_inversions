@@ -116,6 +116,24 @@ predictive draws. A copy of those draws supplies a synthetic posterior solely
 for output validation; it is not a posterior inference result. The four cases
 combine removed/all-retained outer states with NetCDF/Zarr sample checkpoints.
 They check unchanged selected values, fixed outer arithmetic means, exact
-physical labels, graph-free replay and native-channel accounting. Supported
-Python validation is registered separately; these software checks do not extend
+physical labels, graph-free replay and native-channel accounting.
+
+Slurm job 19888811 completed with exit code 0 in 11 minutes 44 seconds against
+immutable integrated source `86f0a0c049d13d0654ac9975e47df3f92e5944ec`:
+182 tests passed on Python 3.12.11 and 182 on Python 3.13.7. All four new replay
+cases passed in both environments, along with the affected state activity,
+root/linked shared algebra, preparation, outputs, configuration and handoff
+coverage. The snapshot includes gathered-label fix `64a87d1e`, reviewed
+constant-column physical-prior fixes `37e8b29d`/`cdb55fd4` (integrated as
+`fb7dbebe`/`dd5ae51d`) and precision documentation `4821223d` (as `86f0a0c0`).
+Subsequent changes only record validation evidence. Independent scoped review
+also confirmed the original gathered-state reproduction and inverse naming.
+
+The raw log is `inversion_outputs/gathered-review/slurm-19888811.out` in the
+linked-workflow checkout on BP1; terminal ticket
+`sw-20261102T213714Z-4dba55f99e6a`. The first submission, 19888809, failed before
+tests because its tox command omitted the pytest argument separator; the
+successful retry used the same source with the corrected command. Warnings
+concern Numba/PyTensor APIs/performance and existing MultiIndex coordinate
+replacement in preparation/test fixtures. These software checks do not extend
 the scientific campaign claims above.
