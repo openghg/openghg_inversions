@@ -2,6 +2,11 @@
 
 Reviewed scientific implementation:
 `3e065f31c8e732c2f553827c7f3cb794f6762300`, on 2 November 2026.
+The additional source-label validation fix
+`4ac74b9707df249394500468e85fb343798a997f` was independently spot-reviewed
+the same day. It normalizes source names before the outer-ocean guard,
+matching the existing linked preparation's case-insensitive source handling.
+It changes no forward equation, prior or covariance operation.
 The bounded independent tests are in
 [`tests/test_linked_shared_baseline_review.py`](../../tests/test_linked_shared_baseline_review.py).
 This record supports the prepared-input model API handoff. It does not certify
@@ -83,6 +88,18 @@ git diff --check
 
 Known dependency warnings concern the fixed-OU custom operation's future
 PyTensor gradient interface and Numba object-mode dispatch; no check failed.
+
+The validation fix also passed its three focused regressions:
+
+```text
+python -m pytest tests/test_linked_shared_baseline.py -k uppercase_outer_ocean -q
+3 passed, 8 deselected
+```
+
+These cases reject sampled outer states labelled `OCEAN`, `CO2_OCEAN` and
+`O2_OCEAN`. The guard continues to act on `sampled_outer`; it does not force
+inner ocean states into the fixed outer set. The original numerical review
+and the prepared-input readiness verdict remain applicable.
 
 Verdict: the reviewed prepared-input scientific API is ready for the separate
 configuration integration. Initial support requires common concentration units
