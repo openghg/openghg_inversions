@@ -62,6 +62,10 @@ def validate_site_operands(combined, oracle, site):
     """Revalidate the full reduced artifact, including each species/policy slice."""
     expected_policies = [*POLICIES, "interval_containment"]
     expected_dims = ("species", "policy", "time", "bc_region")
+    if "endpoint_version" in combined.coords:
+        if combined.endpoint_version.ndim or combined.endpoint_version.item() != "repaired":
+            raise ValueError(f"Wrong endpoint version for {site}")
+        combined = combined.drop_vars("endpoint_version")
     if set(combined.data_vars) != {"mass", "anomaly"} or set(combined.coords) != set(expected_dims):
         raise ValueError(f"Incomplete reduced operand artifact for {site}")
     for name in ("mass", "anomaly"):
@@ -356,8 +360,10 @@ def self_check():
                                   np.broadcast_to(np.array([400., 209300.])[:, None, None], (2, 3, 2))),
     }, coords={**coords, "policy": ["midpoint_ffill", "linear_midpoints", "interval_containment"]})
     assert len(validate_site_operands(cached, oracle, "test")) == 8
+    assert len(validate_site_operands(cached.assign_coords(endpoint_version="repaired"), oracle, "test")) == 8
     for broken in (cached.isel(policy=slice(0, 3)), cached.assign(mass=cached.mass + .001),
-                   cached.transpose("policy", "species", "time", "bc_region")):
+                   cached.transpose("policy", "species", "time", "bc_region"),
+                   cached.assign_coords(endpoint_version="existing")):
         try:
             validate_site_operands(broken, oracle, "test")
         except (AssertionError, ValueError):
