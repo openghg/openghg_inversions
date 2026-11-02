@@ -86,7 +86,9 @@ def sample_sites(spec_path, output, sources):
             np.testing.assert_array_equal(np.diff(times), np.full(len(times) - 1, np.timedelta64(3, "h")))
             # Explicit sensitivity hypothesis from the archive, not producer metadata.
             bounds = np.column_stack([times - np.timedelta64(90, "m"), times + np.timedelta64(90, "m")])
-            native_fields[species] = native.assign(time_bounds=(("time", "bounds"), bounds))
+            native_fields[species] = native.assign(time_bounds=(("time", "bounds"), bounds)).assign_attrs(
+                time_period="3h"
+            )
         for site in spec["sites"]:
             name = site["site"]
             checked(Path(site["path"]) / ".zmetadata", site["zmetadata_sha256"], sources)
@@ -103,6 +105,15 @@ def sample_sites(spec_path, output, sources):
                     overlay_path = checked(site["overlay"]["path"], site["overlay"]["sha256"], sources)
                     overlay = stack.enter_context(xr.open_dataset(overlay_path))
                     fp = apply_endpoint_overlay(fp, overlay, parent_path=site["path"])
+                # The archived particle fractions use an empty dimensionless
+                # unit label; declare it explicitly for the production kernel.
+                if any(fp[f"particle_locations_{side}"].attrs.get("units", "") not in {"", "1", "dimensionless"}
+                       for side in "nesw"):
+                    raise ValueError("Unexpected particle-fraction units in the frozen archive")
+                fp = fp.assign({
+                    f"particle_locations_{side}": fp[f"particle_locations_{side}"].assign_attrs(units="1")
+                    for side in "nesw"
+                })
                 species_results = []
                 for species, reference in (("co2", 400.), ("o2", 209300.)):
                     native = native_fields[species]
@@ -294,6 +305,11 @@ def main():
     selected = replay_selected(args.selection, operands, sources)
     result = {"status": "passed", "native_oracle": native, "selected_replays": selected,
               "source_sha256": sources, "script_sha256": digest(__file__),
+              "diagnostic_input_contract": {
+                  "hold_time_period": "3h, checked against the complete native grid",
+                  "interval_bounds": "midpoint +/- 90 minutes, sensitivity hypothesis",
+                  "particle_units": "explicit dimensionless fractions (archived empty labels)",
+              },
               "limitations": ["Private July 2021 CORSO CO2/O2 evidence; producer time semantics unresolved",
                               "Frozen c, calibration, observation rows and posterior draws; no re-fitting",
                               "Nearest/interval equivalence is specific to this verified regular 3h grid",

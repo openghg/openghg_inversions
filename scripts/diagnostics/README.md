@@ -17,6 +17,12 @@ sampling and normalized contraction run before comparison. The only spatial
 adaptation is relabelling native coordinates after the independent oracle's
 producer-rounding tolerance checks.
 
+The diagnostic explicitly declares three-hour hold coverage after verifying
+the complete native grid, and dimensionless units for the archived particle
+fractions whose unit labels are empty. These owned metadata views satisfy the
+production input contract without modifying the archived files. The declarations
+are recorded in the output receipt and do not confirm the producer's time semantics.
+
 The selected replay uses every entry in authoritative `selection-r2.json`,
 including its replacement monthly midpoint-hold delta+A fit. The 15 cases span
 three timing hypotheses and multiplicative monthly/8-day, global level
