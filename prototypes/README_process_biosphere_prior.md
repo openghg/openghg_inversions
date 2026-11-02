@@ -78,10 +78,10 @@ integration window. The runner copies dataset attributes to `scientific_scope`
 and writes the declared functional units/truth definition to `functionals.nc`.
 Input variable dimension order does not change the fitted or all-hour scores.
 
-Example (float64 and writable compilation caches must be configured):
+Run from the checkout root (configure float64 and writable compilation caches):
 
 ```bash
-python prototypes/run_process_biosphere_probe.py --input probe_cases.nc \
+python -m prototypes.run_process_biosphere_probe --input probe_cases.nc \
   --output results --arm hierarchical --scenario base --support all_hours
 ```
 
