@@ -9,9 +9,10 @@ prepared-input API implements
 
    \mu = b_{supplied} + c_{inner,fixed} + H_{inner} x_{inner} + o.
 
-Here ``o`` is an optional observation offset. A separately enabled sampled
-boundary component is added to the supplied background only when explicitly
-declared to be a correction. The supplied background already contains the
+In the single-sector standard recipe, ``o`` is an optional observation offset.
+A separately enabled sampled boundary component is added to the supplied
+background only when explicitly declared to be a correction. Independent
+multisector runs require no observation offset or sampled boundary correction. The supplied background already contains the
 boundary and exterior-flux contributions. Adding an ordinary sampled boundary
 again would double-count the background and is rejected.
 
@@ -64,9 +65,10 @@ The inner affine term is mandatory; supply a labelled zero series when absent.
 It is not part of ``background``. Existing fixed inner flux states remain
 ordinary inner contributions through ``H @ x`` and must not also appear in
 ``inner_fixed_contribution``. The helper replaces ``H`` from the supplied
-native response, so callers with a coherently reduced operator must provide
-its appropriate inner response and affine term rather than assuming that
-masking commutes with coherent reduction.
+native response and rejects coherently reduced operators. For a coherent CO2
+preparation, use :func:`openghg_inversions.rhime.co2.prepare_co2_supplied_baseline`
+as described in :ref:`supplied-baseline-coherent-co2`; masking does not commute
+with coherent reduction.
 
 Observation and uncertainty contracts
 --------------------------------------
@@ -98,6 +100,8 @@ exterior treatment. The independent-state helper does not recompute that covaria
 correlated CO2 route below, inherited aggregation covariance is retained
 explicitly, including any unresolved exterior modes. A supplied mean does not
 remove every exterior uncertainty term.
+
+.. _supplied-baseline-coherent-co2:
 
 Correlated CO2 preparations and cached likelihoods
 -------------------------------------------------
