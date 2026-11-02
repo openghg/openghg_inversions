@@ -245,7 +245,12 @@ class SharedBaselineConfig:
         calibrated_prior: BiospherePrior | None = None,
         additive_density_sd: xr.DataArray | None = None,
     ) -> xr.Dataset:
-        """Freeze whole-support means and selectors using the reviewed preparation."""
+        """Freeze whole-support means and selectors.
+
+        The labelled-input contract of
+        :func:`openghg_inversions.models.shared_baseline.prepare_shared_baseline`
+        applies to selectors, additive inputs and resolved calibrated priors.
+        """
         return prepare_shared_baseline(
             flux_sensitivity,
             retained_prior,

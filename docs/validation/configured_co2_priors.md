@@ -76,4 +76,37 @@ The shared recipe uses an explicit frozen Dataset/trace workflow. Generic CO2
 prepare/sample/product manifests and linked shared-baseline inference remain
 outside that entry point. Existing linked #996/#997 builders retain their
 supported routes. Archived experiments and shared production inputs were not
-modified. A full Sphinx site build has not been run.
+modified. At that stage, a full Sphinx site build had not been run.
+
+
+## PR review follow-through
+
+The full configured `run_co2` route now resolves the writer's concrete product
+and trace paths before sampling and checks them against selected boundary and
+biosphere artifacts. The shared path checker rejects resolved aliases, hardlinks
+and ancestor/descendant directory overlaps. The containment rule is the same
+one already used by the child linked-workflow branch; this parent fix makes it
+available consistently without changing scientific defaults or naming.
+
+Fourteen new full-run regressions use real matching saved priors and require
+sampling to remain uncalled and input bytes unchanged. They cover direct,
+symlink and hardlink aliases for trace/basic outputs and both enclosing-Zarr
+trace writes and writes inside a selected prior store. All fourteen passed.
+Forty-five existing full/saved execution, output, CLI and stage-contract tests
+also passed. Focused Ruff and whitespace checks pass. The curated API landing
+now includes the seven public prior-configuration exports and the shared
+wrapper links directly to its labelled scientific input contract.
+
+Slurm job 19888660 completed with exit code 0 on the exact fix source
+`4ffddc60d501c6f8333232c77ff1dbe079a37a9d`: 315 tests passed on Python
+3.12.11 and 315 on Python 3.13.7, including all fourteen new rejection cases.
+The Sphinx HTML build also succeeded. Its ten warnings concern duplicate
+`SiteOptions` descriptions and ambiguous `PreparedInputs`/`DataConfig` links;
+none identifies the changed prior reference or wrapper link. Total job time was
+17 minutes 55 seconds. The log is
+`inversion_outputs/config-priors-review/slurm-19888660.out`, and the terminal
+ticket is `sw-20261102T212713Z-c1dd06702ae5`.
+
+The independent scoped re-review confirmed the pre-sampling protection and all
+three documentation/code findings as addressed. These are software and
+documentation checks; no new scientific recovery or convergence claim follows.
