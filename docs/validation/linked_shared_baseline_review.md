@@ -108,3 +108,39 @@ channel widths and references remain physical. No new allocation, oxidative
 ratio, width calibration, or heterogeneous-unit covariance conversion is
 inferred here. The review does not include long-chain convergence, a new
 end-to-end acquisition run, or a fresh full tox matrix.
+
+## Review follow-through and supported-runtime validation
+
+The later CO2 review exposed lost physical uncertainty when a constant raw
+outer response became zero after centring. The shared recipe must retain the
+complete correlated physical state even when a column has no centred
+likelihood response. The owning correction is `37e8b29d` in #1003; its linked
+propagation is `cdb55fd4` in #1007. General builders keep their existing pruning
+default and explicit activity policies. A regression checks constant raw outer
+responses in both tracers, a non-unit coefficient mean, inner/outer correlation
+and one shared physical draw, alongside ordinary/refreshed-cache density and
+gradient agreement. These are synthetic equation and uncertainty checks, not
+campaign flux-recovery evidence.
+
+Commit `4821223d` also documents the PyTensor runtime `floatX=float64`
+requirement in the guide and both public shared-builder docstrings. Float64
+input arrays alone do not establish the graph precision. The additive versus
+multiplicative coefficient prose correction from #989 is retained separately.
+
+Immutable source `cdb55fd46897db904113ea5794ca98ec47bad12d` passed all 292
+selected tests on each of Python 3.12.11 and 3.13.7 in Slurm array task
+`19888803_1` (exit `0:0`, 23m23s, batch MaxRSS 6,925,536 KiB). Coverage includes
+the CO2 shared, state/activity, correlated prior, borrowing, boundary and
+inference regressions plus linked shared algebra, recording and fixed-OU
+likelihood checks. Both compiler/header preflights passed. The log SHA256 is
+`9b1780b9e67368a0bf01d47eac200b5fd4ca8eb0d7cc4333e8fa26ea0bdf4167`.
+
+Repository lint and full Sphinx passed on that immutable source in
+`19888806_1` (exit `0:0`), with ten warnings about existing SiteOptions aliases
+and ambiguous cross-references, none in the changed guides or builders.
+Rendered precision guidance, both generated API links and the inherited
+coefficient prose were checked. Batch MaxRSS was 4,172,188 KiB, close to the
+4 GiB allocation; future fresh documentation builds need more margin. No
+rerun is needed to establish this completed check. The evidence is a relevant
+regression matrix, not full-repository coverage, campaign convergence or
+real-input predictive acceptance.
