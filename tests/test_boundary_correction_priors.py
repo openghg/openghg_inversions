@@ -2,12 +2,14 @@
 
 import dask.array as da
 from dask import delayed
+from dask.callbacks import Callback
 import numpy as np
 import pandas as pd
 import pymc as pm
 import pytensor
 import pytest
 from scipy.linalg import helmert
+import sparse
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
@@ -205,6 +207,39 @@ def test_preparation_preserves_laziness_and_shared_graph():
     assert calls == []
     materialize_boundary_correction(prepared, obs)
     assert calls == [1]
+
+
+@pytest.mark.parametrize("method", ["level", "curtain_contrasts"])
+@pytest.mark.parametrize("sparse_payload", [False, True])
+def test_lazy_empty_pattern_operator_with_period_levels(method, sparse_payload):
+    obs = _inputs().mf.set_index(nmeasure=["site", "time"])
+    raw = operands(obs)
+    kwargs = {"level_sd": 1.0, "frequency": "2h", "anchor_time": "2021-01-01", "level_by_period": True}
+    if method == "curtain_contrasts":
+        raw = raw.isel(bc_region=[0])
+        kwargs["pattern_sd"] = 0.2
+    lazy = raw.chunk({"nmeasure": 2})
+    if sparse_payload:
+        lazy = lazy.map(
+            lambda value: value.copy(data=value.data.map_blocks(sparse.COO.from_numpy)) if value.ndim else value,
+            keep_attrs=True,
+        )
+    tasks = []
+    with Callback(pretask=lambda *args: tasks.append(args[0])):
+        prepared = prepare_boundary_correction(lazy, obs, method=method, **kwargs)
+        assert tasks == []
+        assert isinstance(prepared.bc_pattern_operator.data, da.Array)
+        assert prepared.bc_pattern_operator.shape == (4, 0)
+        assert prepared.sizes["bc_level_term"] == 3
+        eager = materialize_boundary_correction(prepared, obs)
+    assert tasks
+    expected = materialize_boundary_correction(prepare_boundary_correction(raw, obs, method=method, **kwargs), obs)
+    xr.testing.assert_identical(eager, expected)
+    np.testing.assert_array_equal(eager.bc_period_index, [0, 1, 0, 2])
+    np.testing.assert_allclose(
+        eager.bc_level_operator,
+        raw.H_bc_mass.sum("bc_region").values[:, None] * np.eye(3)[[0, 1, 0, 2]],
+    )
 
 
 @pytest.mark.parametrize("method", ["level", "A", "curtain_contrasts"])
