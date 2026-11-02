@@ -1,9 +1,13 @@
 """Boundary-condition sensitivity helpers."""
 
+from collections.abc import Callable
+
 import xarray as xr
 
+BoundaryBasis = xr.Dataset | Callable[[xr.Dataset], xr.Dataset]
 
-def bc_sensitivity(fp_and_data: dict, bc_basis: xr.Dataset | None = None) -> dict:
+
+def bc_sensitivity(fp_and_data: dict, bc_basis: BoundaryBasis | None = None) -> dict:
     """Project absolute or centered directional boundary contributions.
 
     Absolute ``bc_n/e/s/w`` inputs produce ``H_bc``. Centered
@@ -21,7 +25,8 @@ def bc_sensitivity(fp_and_data: dict, bc_basis: xr.Dataset | None = None) -> dic
         bc_basis: Resolved labelled basis with ``bc_basis_<direction>`` variables
             and a ``region`` dimension. A singleton time applies to every
             observation; multiple times align by their labels. None uses the
-            acquired NESW contributions directly, without resource I/O.
+            acquired NESW contributions directly, without resource I/O. A callable
+            builds a basis from each site's spatial coordinates.
 
     Returns:
         New mapping and site datasets, sharing input storage where possible.
@@ -35,7 +40,7 @@ def bc_sensitivity(fp_and_data: dict, bc_basis: xr.Dataset | None = None) -> dic
             shape, units or basis alignment are invalid.
     """
     result = dict(fp_and_data)
-    if bc_basis is not None:
+    if bc_basis is not None and not callable(bc_basis):
         if bc_basis.sizes.get("time") == 1:
             bc_basis = bc_basis.squeeze("time")
         elif "time" in bc_basis.dims:
@@ -45,6 +50,9 @@ def bc_sensitivity(fp_and_data: dict, bc_basis: xr.Dataset | None = None) -> dic
     for site, ds in fp_and_data.items():
         if site.startswith("."):
             continue
+        site_basis = bc_basis(ds) if callable(bc_basis) else bc_basis
+        if callable(bc_basis):
+            site_basis = site_basis.rename({dv: str(dv).replace("basis_", "") for dv in site_basis.data_vars})
         representation = ds.attrs.get("boundary_representation")
         if representation is not None and representation != "centered-v1":
             raise ValueError(f"Unsupported boundary_representation {representation!r}.")
@@ -52,9 +60,15 @@ def bc_sensitivity(fp_and_data: dict, bc_basis: xr.Dataset | None = None) -> dic
             ds.attrs.get("boundary_representation") == "centered-v1"
         )
         if centered:
-            projected = _project_centered_boundaries(ds, bc_basis)
+            projected = _project_centered_boundaries(ds, site_basis)
         else:
-            projected = {"H_bc": _project_boundaries(ds[[f"bc_{d}" for d in "nesw"]], bc_basis)}
+            projected = {"H_bc": _project_boundaries(ds[[f"bc_{d}" for d in "nesw"]], site_basis)}
+            if site_basis is not None and site_basis.attrs.get("bc_basis_algorithm") == "twelve-region":
+                projected["H_bc"].attrs = dict(ds.bc_n.attrs)
+        if site_basis is not None:
+            for sensitivity in projected.values():
+                sensitivity.attrs.update({key: value for key, value in site_basis.attrs.items()
+                                          if key.startswith("bc_basis_")})
         result[site] = ds.assign(projected)
     return result
 

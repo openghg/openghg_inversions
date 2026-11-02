@@ -13,6 +13,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import MISSING, dataclass, fields
 from pathlib import Path
+import math
+from numbers import Real
 from typing import Any, get_args, get_type_hints
 
 from openghg_inversions.rhime._resources import resolve_resource_paths
@@ -68,6 +70,7 @@ class DataConfig:
     basis_partition_paths: tuple[Path, ...] | None = None
     bc_basis_paths: tuple[Path, ...] | None = None
     bc_basis_algorithm: str | None = "NESW"
+    bc_basis_split_height: float = 3000.0
     outer_regions_path: Path | None = None
     bc_input: str | None = None
     basis_algorithm: str | None = "weighted"
@@ -143,8 +146,13 @@ class DataConfig:
             raise ValueError(f"`basis_algorithm` must be one of {allowed!r}; got {basis_algorithm!r}.")
         bc_algorithm = remaining.get("bc_basis_algorithm", cls.bc_basis_algorithm)
         if (remaining.get("use_bc", cls.use_bc) and remaining.get("bc_basis_paths") is None
-                and (not isinstance(bc_algorithm, str) or bc_algorithm != "NESW")):
-            raise ValueError(f"`bc_basis_algorithm` must be 'NESW' without selected files; got {bc_algorithm!r}.")
+                and (not isinstance(bc_algorithm, str) or bc_algorithm not in ("NESW", "twelve-region"))):
+            raise ValueError(f"`bc_basis_algorithm` must be 'NESW' or 'twelve-region' without selected files; got {bc_algorithm!r}.")
+        if (remaining.get("use_bc", cls.use_bc) and remaining.get("bc_basis_paths") is None
+                and bc_algorithm == "twelve-region"):
+            split = remaining.get("bc_basis_split_height", cls.bc_basis_split_height)
+            if isinstance(split, bool) or not isinstance(split, Real) or not math.isfinite(split):
+                raise ValueError("`bc_basis_split_height` must be a finite native height-coordinate value.")
         remaining["sites"] = as_list(remaining["sites"])
         site_options = SiteOptions.from_inputs(**{
             f.name: remaining.pop(f.name) for f in fields(SiteOptions) if f.name in remaining

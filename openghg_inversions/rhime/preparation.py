@@ -33,7 +33,7 @@ import numpy as np
 import xarray as xr
 
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
-from openghg_inversions.basis._helpers import bc_sensitivity
+from openghg_inversions.basis._helpers import BoundaryBasis, bc_sensitivity
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR, BasisFunctions
 from openghg_inversions.boundary_sensitivity import scale_satellite_boundary_sensitivity_to_column_signal
 from openghg_inversions.filters import filtering
@@ -107,7 +107,7 @@ def build_sensitivities(
     *,
     flux_sources: Sequence[str],
     use_bc: bool = True,
-    bc_basis: xr.Dataset | None = None,
+    bc_basis: BoundaryBasis | None = None,
     multisector: bool,
 ) -> dict[str, xr.Dataset]:
     """Construct labelled flux and optional boundary-condition sensitivities.
@@ -121,7 +121,8 @@ def build_sensitivities(
         basis_functions: Retained basis and fluxes to project onto observations.
         flux_sources: Source names used to align the flux sensitivities.
         use_bc: Whether to construct boundary-condition sensitivities.
-        bc_basis: Loaded boundary basis; None uses acquired NESW directional
+        bc_basis: Loaded boundary basis or coordinate-based basis builder;
+            None uses acquired NESW directional
             contributions without a basis file. Ignored when BCs are disabled.
         multisector: Whether to retain separate source sensitivities instead
             of the standard single-source layout.
@@ -352,7 +353,7 @@ def _validate_multisector_sensitivity_sources(
 
 
 
-def resolve_bc_basis(data_config: Any) -> xr.Dataset | None:
+def resolve_bc_basis(data_config: Any) -> BoundaryBasis | None:
     """Load enabled exact BC resources, or select the built-in directional basis.
 
     Configuration owns algorithm validation. Exact files take precedence over
@@ -366,7 +367,8 @@ def resolve_bc_basis(data_config: Any) -> xr.Dataset | None:
         data_config: Resolved acquisition/preparation configuration.
 
     Returns:
-        Loaded labelled BC basis, or None for disabled BCs or built-in NESW.
+        Loaded labelled BC basis, coordinate-based twelve-region builder, or
+        None for disabled BCs or built-in NESW.
 
     Raises:
         ValueError: If the exact file selection is empty.
@@ -374,9 +376,16 @@ def resolve_bc_basis(data_config: Any) -> xr.Dataset | None:
     """
     from openghg_inversions.basis.support import load_bc_basis
 
-    if not data_config.use_bc or data_config.bc_basis_paths is None:
+    if not data_config.use_bc:
         return None
-    return load_bc_basis(data_config.bc_basis_paths)
+    if data_config.bc_basis_paths is not None:
+        return load_bc_basis(data_config.bc_basis_paths)
+    if data_config.bc_basis_algorithm == "twelve-region":
+        from functools import partial
+        from openghg_inversions.basis import twelve_region_basis
+
+        return partial(twelve_region_basis, split_height=data_config.bc_basis_split_height)
+    return None
 
 
 def resolve_basis_inputs(data_config: Any) -> dict[str, Any]:

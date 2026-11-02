@@ -47,7 +47,7 @@ def test_omitted_and_explicit_nesw_preserve_directional_labels_and_lazy_inputs(m
     xr.testing.assert_identical(site, before)
 
 
-@pytest.mark.parametrize("algorithm", [None, "unselected-algorithm"])
+@pytest.mark.parametrize("algorithm", [None, "unselected-algorithm", "twelve-region"])
 def test_files_override_inactive_algorithm_without_reinterpreting_time_alignment(tmp_path, algorithm):
     times = np.array(["2020-01-01", "2020-01-02"], dtype="datetime64[ns]")
     late, early = tmp_path / "a.nc", tmp_path / "z.nc"
@@ -71,7 +71,7 @@ def test_applicable_algorithm_is_validated_before_resource_work(algorithm):
         RhimeConfig.from_params(_params(use_bc=True, bc_basis_algorithm=algorithm), multisector=False)
 
 
-@pytest.mark.parametrize("algorithm", [None, "unknown", "NESW"])
+@pytest.mark.parametrize("algorithm", [None, "unknown", "NESW", "twelve-region"])
 def test_disabled_bc_does_not_load_selected_resources_or_activate_algorithm(monkeypatch, tmp_path, algorithm):
     monkeypatch.setattr(support, "load_bc_basis", lambda *a, **k: pytest.fail("disabled BC loaded files"))
     config = RhimeConfig.from_params(_params(
@@ -81,7 +81,8 @@ def test_disabled_bc_does_not_load_selected_resources_or_activate_algorithm(monk
 
 
 @pytest.mark.parametrize("multisector", [False, True])
-@pytest.mark.parametrize("selection", [{}, {"bc_basis_algorithm": "NESW"}, {"bc_basis_algorithm": None}])
+@pytest.mark.parametrize("selection", [{}, {"bc_basis_algorithm": "NESW"}, {"bc_basis_algorithm": None},
+                                        {"bc_basis_algorithm": "twelve-region", "bc_basis_split_height": 2500.}])
 def test_bc_selection_survives_preparation_manifest_roundtrip(tmp_path, multisector, selection):
     stage = import_module("openghg_inversions.rhime." + ("multisector_stages" if multisector else "_standard_stages"))
     sources = ["first", "second"] if multisector else ["synthetic-total"]
@@ -101,6 +102,7 @@ def test_bc_selection_survives_preparation_manifest_roundtrip(tmp_path, multisec
     loaded, data, _ = stage.load_preparation(manifest)
     assert data.bc_basis_algorithm == config.data.bc_basis_algorithm
     assert data.bc_basis_paths is None
+    assert data.bc_basis_split_height == config.data.bc_basis_split_height
     xr.testing.assert_identical(loaded.inv_inputs, prepared.inv_inputs)
 
 
