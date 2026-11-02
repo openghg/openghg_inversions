@@ -73,6 +73,7 @@ def build_co2_o2_cached_sigma_model(
     site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
+    prune_zero_flux_columns: bool = True,
     boundary_sensitivity: Mapping[str, xr.DataArray] | None = None,
     boundary_operands: Mapping[str, xr.Dataset] | None = None,
     boundary_correction: Mapping[str, xr.Dataset] | None = None,
@@ -107,6 +108,10 @@ def build_co2_o2_cached_sigma_model(
     Gaussian remains exact independently of that cache. Scientific initial
     values are returned separately for sampling; observations, designs,
     activity masks, and covariance stay fixed after construction.
+
+    ``prune_zero_flux_columns=False`` retains zero joint design columns whose
+    physical joint prior remains needed after a design transform. The default
+    removes exact-zero columns, as in :func:`build_co2_o2_model`.
 
     ``boundary_correction`` accepts independently prepared per-channel level and
     pattern corrections, replacing other boundary choices on those channels.
@@ -257,7 +262,9 @@ def build_co2_o2_cached_sigma_model(
     )
     joint = _gather_co2_o2_sensitivity(co2_sensitivity, o2_sensitivity, output_dim=output_dim)
     joint = joint.sel({output_dim: observations[output_dim]})
-    prepared_flux = prepare_linear_sensitivity(joint, output_dim=output_dim)
+    prepared_flux = prepare_linear_sensitivity(
+        joint, output_dim=output_dim, prune_zero_columns=prune_zero_flux_columns,
+    )
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
     prepared_flux, active_design, fixed_flux = _materialize_cached_linear_projection(
         prepared_flux,

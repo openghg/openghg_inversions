@@ -17,14 +17,19 @@ from test_co2_o2_fixed_ou import _prepared
 from test_rhime_co2_o2 import _independent_error
 
 
-def case(mode="multiplicative", cross=0.0):
+def case(mode="multiplicative", cross=0.0, constant_outer=False):
     base = _prepared()
     prior = base.retained_prior
-    if cross:
+    if cross or constant_outer:
         from openghg_inversions.correlated_state import CorrelatedLognormalPrior
         covariance = prior.arithmetic_covariance.copy()
         covariance.values[0, 2] = covariance.values[2, 0] = cross
-        prior = CorrelatedLognormalPrior(prior.mean, covariance)
+        mean = prior.mean
+        if constant_outer:
+            values = mean.values.copy()
+            values[2] = 1.5
+            mean = mean.copy(data=values)
+        prior = CorrelatedLognormalPrior(mean, covariance)
     fixed, corrections, raw = {}, {}, {}
     for channel in ("co2", "o2"):
         h = getattr(base, f"{channel}_sensitivity")
@@ -34,6 +39,10 @@ def case(mode="multiplicative", cross=0.0):
             stack_dim="observation",
         ).rename(observation=row).assign_attrs(units="ppm")
         h = h.assign_coords(site=obs.site, time=obs.time).assign_attrs(units="ppm")
+        if constant_outer:
+            values = h.values.copy()
+            values[:, 2] = 4.0 if channel == "co2" else -3.0
+            h = h.copy(data=values)
         raw[channel] = h
         fixed[channel] = xr.zeros_like(obs).assign_attrs(units="ppm")
         corrections[channel] = prepare_boundary_correction(
@@ -106,29 +115,7 @@ def test_linked_cached_density_gradient_and_refreshed_cache(mode):
     noise = dict(tau_hours=5.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75})
     ordinary = build_shared_co2_o2_model(p, **kwargs, **noise)
     cached = build_shared_co2_o2_cached_sigma_model(p, **kwargs, **noise)
-    point = ordinary.initial_point()
-    for name in point:
-        point[name] = np.linspace(0.1, 0.3, point[name].size).reshape(point[name].shape)
-    cp = cached.model.initial_point()
-    cp.update(point)
-    assert "co2_bc_level" in point and "o2_bc_level" in point
-    assert sum(v.name == "flux_scaling_latent" for v in ordinary.free_RVs) == 1
-    np.testing.assert_allclose(ordinary.compile_logp()(point), cached.model.compile_logp()(cp), atol=1e-7)
-    np.testing.assert_allclose(ordinary.compile_dlogp()(point), cached.model.compile_dlogp()(cp), atol=1e-6)
-    cached.shared_cache.update(cached.target.refresh(np.exp(cp["ou_site_amplitude_log__"])))
-    cached_likelihood = cached.model.replace_rvs_by_values([cached.cached_state_logp])[0]
-    values = [cached.model.rvs_to_values[rv] for rv in cached.states]
-    actual = cached.model.compile_fn(
-        [cached_likelihood, *pt.grad(cached_likelihood, values)], inputs=cached.model.value_vars,
-        on_unused_input="ignore",
-    )(cp)
-    likelihood = ordinary.logp(vars=ordinary.observed_RVs)
-    values = [ordinary.rvs_to_values[ordinary[rv.name]] for rv in cached.states]
-    expected = ordinary.compile_fn(
-        [likelihood, *pt.grad(likelihood, values)], inputs=ordinary.value_vars, on_unused_input="ignore",
-    )(point)
-    for a, e in zip(actual, expected):
-        np.testing.assert_allclose(a, e, rtol=1e-9, atol=1e-6)
+    _assert_linked_density_and_gradient_parity(ordinary, cached)
 
 
 def test_saved_preparation_and_posterior_reconstruct_without_model(tmp_path):
@@ -194,3 +181,81 @@ def test_uppercase_outer_ocean_cannot_be_sampled(ocean_source):
             boundary_correction=prepared, outer=outer, sampled_outer=sampled,
             mode="multiplicative", delta_sd={"co2": 2.0, "o2": 0.5},
         )
+
+
+def _assert_linked_density_and_gradient_parity(ordinary, cached):
+    point = ordinary.initial_point()
+    for name in point:
+        point[name] = np.linspace(0.1, 0.3, point[name].size).reshape(point[name].shape)
+    cp = cached.model.initial_point()
+    cp.update(point)
+    assert "co2_bc_level" in point and "o2_bc_level" in point
+    assert sum(v.name == "flux_scaling_latent" for v in ordinary.free_RVs) == 1
+    np.testing.assert_allclose(ordinary.compile_logp()(point), cached.model.compile_logp()(cp), atol=1e-7)
+    np.testing.assert_allclose(ordinary.compile_dlogp()(point), cached.model.compile_dlogp()(cp), atol=1e-6)
+    cached.shared_cache.update(cached.target.refresh(np.exp(cp["ou_site_amplitude_log__"])))
+    cached_likelihood = cached.model.replace_rvs_by_values([cached.cached_state_logp])[0]
+    values = [cached.model.rvs_to_values[rv] for rv in cached.states]
+    actual = cached.model.compile_fn(
+        [cached_likelihood, *pt.grad(cached_likelihood, values)], inputs=cached.model.value_vars,
+        on_unused_input="ignore",
+    )(cp)
+    likelihood = ordinary.logp(vars=ordinary.observed_RVs)
+    values = [ordinary.rvs_to_values[ordinary[rv.name]] for rv in cached.states]
+    expected = ordinary.compile_fn(
+        [likelihood, *pt.grad(likelihood, values)], inputs=ordinary.value_vars, on_unused_input="ignore",
+    )(point)
+    for a, e in zip(actual, expected):
+        np.testing.assert_allclose(a, e, rtol=1e-9, atol=1e-6)
+
+    return point
+
+
+def test_constant_outer_columns_preserve_one_joint_physical_draw_in_both_channels():
+    prepared, base, _ = case(cross=0.001, constant_outer=True)
+    for p in prepared.values():
+        np.testing.assert_array_equal(p.flux_sensitivity.isel(state=2), 0.0)
+    kwargs = dict(observations=base.observations, independent_error_sd=_independent_error(base),
+                  aggregation_error=base.aggregation_error)
+    noise = dict(tau_hours=5.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75})
+    ordinary = build_shared_co2_o2_model(prepared, **kwargs, **noise)
+    cached = build_shared_co2_o2_cached_sigma_model(prepared, **kwargs, **noise)
+    point = _assert_linked_density_and_gradient_parity(ordinary, cached)
+    for model in (ordinary, cached.model):
+        assert sum(rv.name == "flux_scaling_latent" for rv in model.free_RVs) == 1
+        names = ["flux_scaling"]
+        for channel in ("co2", "o2"):
+            names.extend(f"{channel}_{name}" for name in (
+                "outer_raw_correction", "outer_physical_contribution", "outer_centered_correction",
+            ))
+        evaluate = model.compile_fn(
+            model.replace_rvs_by_values([model[name] for name in names]),
+            inputs=model.value_vars, on_unused_input="ignore",
+        )
+        state_point = dict(point)
+        assert state_point["flux_scaling_latent"].shape == (3,)
+        log_states = []
+        for z in (np.zeros(3), *np.eye(3)):
+            state_point["flux_scaling_latent"] = z
+            state, *outputs = evaluate(state_point)
+            log_states.append(np.log(state))
+            for index, (channel, coefficient) in enumerate((("co2", 4.0), ("o2", -3.0))):
+                mask = base.observations.species.values == channel
+                raw, physical, centered = outputs[index * 3:index * 3 + 3]
+                np.testing.assert_allclose(raw[mask], coefficient * (state[2] - 1.5), atol=1e-14)
+                np.testing.assert_array_equal(raw[~mask], 0.0)
+                np.testing.assert_allclose(
+                    physical[mask], prepared[channel].physical_outer_prior + raw[mask], atol=1e-14,
+                )
+                np.testing.assert_array_equal(centered, 0.0)
+        # Derive exact moments from the sampled graph's Gaussian map, without Monte Carlo error.
+        location = log_states[0]
+        factor = np.column_stack([value - location for value in log_states[1:]])
+        covariance = factor @ factor.T
+        mean = np.exp(location + np.diag(covariance) / 2)
+        arithmetic_covariance = np.outer(mean, mean) * np.expm1(covariance)
+        np.testing.assert_allclose(mean, prepared["co2"].retained_mean, atol=1e-14)
+        np.testing.assert_allclose(arithmetic_covariance, prepared["co2"].retained_covariance, atol=1e-14)
+        assert mean[2] == pytest.approx(1.5)
+        assert arithmetic_covariance[2, 2] > 0
+        assert arithmetic_covariance[0, 2] > 0

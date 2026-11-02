@@ -122,6 +122,7 @@ def build_shared_co2_o2_model(
     model = build_co2_o2_model(
         observations=observations, independent_error_sd=independent_error_sd,
         aggregation_error=aggregation_error, retained_prior=prior,
+        prune_zero_flux_columns=False,
         co2_sensitivity=bound["co2"].flux_sensitivity, o2_sensitivity=bound["o2"].flux_sensitivity,
         fixed_prior_contribution=fixed, boundary_correction=corrections,
         tau_hours=tau_hours, fixed_site_amplitudes=fixed_site_amplitudes,
@@ -144,6 +145,7 @@ def build_shared_co2_o2_cached_sigma_model(
     cached = build_co2_o2_cached_sigma_model(
         observations=observations, independent_error_sd=independent_error_sd,
         aggregation_error=aggregation_error, retained_prior=prior,
+        prune_zero_flux_columns=False,
         co2_sensitivity=bound["co2"].flux_sensitivity, o2_sensitivity=bound["o2"].flux_sensitivity,
         fixed_prior_contribution=fixed, boundary_correction=corrections,
         tau_hours=tau_hours, site_amplitude_prior=site_amplitude_prior,
