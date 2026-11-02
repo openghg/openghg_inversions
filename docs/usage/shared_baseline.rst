@@ -79,6 +79,11 @@ The four matched choices are:
   :doc:`gross-biosphere calibration <biosphere_prior>` applied once to the
   retained prior.
 
+The shared builders retain the joint physical prior even when centring makes
+an outer sensitivity column exactly zero. Such a coefficient has no direct
+centred likelihood response, but its uncertainty and correlations still enter
+physical outer-flux diagnostics.
+
 Ocean remains fixed in the replay. Additive GPP and TER corrections on identical
 support can be replaced by one net correction with variance equal to the sum
 of their independent variances. Sampling both gross corrections would add an
