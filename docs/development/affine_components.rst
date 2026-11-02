@@ -84,9 +84,12 @@ boundary/baseline reports. Components retain their registered graph variables,
 state, activity and design information for lowering.
 
 Cached likelihoods lower each ``AffineTerm`` once more, to a dense fixed
-contribution plus an active design times coefficients. For a centered boundary
-the coefficients are :math:`b-\mathbf{1}`; for other terms they are the active
-states.
+contribution plus an active design times coefficients. For a multiplicative
+centered boundary the coefficients are :math:`b-\mathbf{1}`. The additive
+centered boundary instead uses its common mean and Gaussian contrast
+coefficients, both in concentration units; a zero anomaly scale leaves only
+the mean coefficient. See :ref:`boundary-additive-corrections`. Other terms
+use their active states.
 
 Handling beyond the linear options
 ----------------------------------
@@ -102,13 +105,14 @@ Handling beyond the linear options
      - Anomaly, mass and reference acquisition; ``align_boundary_operands``
    * - State activity
      - Retained state with a correlated prior
-     - Resolved on the complete design :math:`A + cM`
+     - Multiplicative: resolved on :math:`A + cM`; additive: mean/contrast design
    * - Likelihood
      - Unresolved covariance added as aggregation error
      - Observation shift :math:`q`; ``floatX=float64`` required
    * - Cached lowering
      - Intercept plus fixed states; active :math:`H_\alpha`
-     - ``centered_concentration`` at the fixed baseline; active :math:`A + cM`
+     - Multiplicative: ``centered_concentration`` at the fixed baseline and active
+       :math:`A + cM`; additive: fixed baseline plus mean/contrast design
    * - Trace
      - None
      - ``restore_absolute_predictives`` adds :math:`q` back to ``y``
