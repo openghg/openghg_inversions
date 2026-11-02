@@ -51,6 +51,7 @@ from .model_inputs import (
     resolve_model_inputs,
 )
 from .likelihood_inputs import likelihood_input_names
+from .baseline import supplied_baseline_input_names
 from .materialization import (
     _materialize_pymc_inputs_and_priors,
 )
@@ -198,7 +199,13 @@ def _multisector_input_names(
         _OBSERVATION_INPUT_NAMES,
         owner="Observation-error component",
     )
+    supplied_names = supplied_baseline_input_names(
+        model_inputs, species=model_spec.species, use_bc=model_spec.use_bc,
+    )
+    if supplied_names and (model_spec.use_bc or model_spec.add_offset):
+        raise ValueError("Supplied multisector baselines require use_bc=False and add_offset=False.")
     names = [
+        *supplied_names,
         *_MULTISECTOR_FLUX_INPUT_NAMES,
         *_OBSERVATION_INPUT_NAMES,
     ]

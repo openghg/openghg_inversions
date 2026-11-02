@@ -1,0 +1,1 @@
+Extend supplied deterministic backgrounds to independent multisector RHIME and ordinary/cached correlated CO2 routes, preserving inner affine contributions, marginal inner priors, and explicitly inherited aggregation uncertainty.

@@ -12,7 +12,7 @@ from .co2_affine_output import (
     prepared_inputs_content_id,
     produce_bucket_affine_flux_map,
 )
-from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs
+from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs, prepare_co2_supplied_baseline
 from .co2_runner import (
     annotate_co2_trace,
     materialize_co2_inputs,
@@ -49,6 +49,7 @@ from .co2_outputs import Co2Output
 from .co2_o2_outputs import Co2O2Output, Co2O2OutputOptions
 
 __all__ = [
+    "prepare_co2_supplied_baseline",
     "Co2PreparationConfig", "Co2ModelConfig", "Co2O2PreparationConfig", "Co2O2ModelConfig",
     "Co2O2PreparedInputs",
     "Co2O2Output",

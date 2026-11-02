@@ -24,7 +24,7 @@ from .builders import (
     RhimeLikelihoodBuilder,
     RhimeModelBuildResult,
 )
-from .co2 import build_co2_model, co2_model_input_names, run_co2
+from .co2 import build_co2_model, co2_model_input_names, prepare_co2_supplied_baseline, run_co2
 from openghg_inversions.inversion_data import MergedData, PreparedInputs, SiteOptions
 
 from .api import run
@@ -96,6 +96,7 @@ from .specs import (
 )
 
 __all__ = [
+    "prepare_co2_supplied_baseline",
     "prepare_supplied_baseline",
     "run",
     "run_standard",

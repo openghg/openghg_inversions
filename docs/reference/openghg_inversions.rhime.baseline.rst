@@ -1,8 +1,8 @@
 Supplied backgrounds and an inner flux domain
 ============================================
 
-The standard modern RHIME recipe accepts deterministic supplied backgrounds
-through :func:`openghg_inversions.rhime.prepare_supplied_baseline`. This Python
+The standard and independent multisector modern RHIME recipes accept
+deterministic supplied backgrounds through :func:`openghg_inversions.rhime.prepare_supplied_baseline`. This Python
 prepared-input API implements
 
 .. math::
@@ -18,8 +18,9 @@ again would double-count the background and is rejected.
 Preparing the inner model
 -------------------------
 
-Start with ordinary single-sector ``PreparedInputs`` and the native
-footprint-times-prior-flux response for the same retained observations.
+Start with ordinary ``PreparedInputs`` and the native footprint-times-prior-flux
+response for the same retained observations. Multisector responses also carry
+an indexed ``source`` dimension matching the retained source labels.
 Provide a Boolean ``inner_support`` mask on the exact basis grid. For example::
 
     from openghg_inversions.rhime import prepare_supplied_baseline
@@ -86,20 +87,80 @@ preserves each named constituent and their converted units alongside the total.
 Provenance, species, constituent names and uncertainty policy survive prepared
 NetCDF/Zarr and modern inversion-output serialization.
 
-Baseline uncertainty is omitted. Removing exterior states also removes their
-uncertainty and their dependence on inner states. The standard recipe uses its
+No additional uncertainty is assigned to the supplied baseline. Removing sampled
+exterior states removes their explicit state uncertainty and dependence on inner
+states; it does not remove exterior uncertainty already represented by a separate
+aggregation-error covariance. The standard recipe uses its
 usual independent inner-state priors; it does not condition a joint prior or
 marginalize exterior uncertainty. Any externally prepared aggregation-error
 covariance used by a custom likelihood must be appropriate for this fixed
-exterior treatment. The helper neither recomputes nor claims to preserve that
-covariance. Correlated-prior and CO2-family recipes are outside this bounded
-API. Their materializers reject these supplied inputs instead of ignoring them.
+exterior treatment. The independent-state helper does not recompute that covariance. For the
+correlated CO2 route below, inherited aggregation covariance is retained
+explicitly, including any unresolved exterior modes. A supplied mean does not
+remove every exterior uncertainty term.
+
+Correlated CO2 preparations and cached likelihoods
+-------------------------------------------------
+
+Use :func:`openghg_inversions.rhime.co2.prepare_co2_supplied_baseline` for an
+existing coherent-reduction ``Co2PreparedInputs`` artifact::
+
+    from openghg_inversions.rhime.co2 import prepare_co2_supplied_baseline
+
+    inner = prepare_co2_supplied_baseline(
+        full_preparation,
+        background,
+        inner_states=inner_state_mask,
+        inner_fixed_contribution=inner_affine,
+        inner_support=inner_native_mask,
+        baseline_site_metadata=background_site_metadata,
+        species="co2",
+        provenance="background product and averaging procedure",
+        constituents=("boundary", "exterior_flux"),
+        aggregation_error_policy="inherited",
+    )
+
+``inner_state_mask`` is an eager Boolean array with the exact complete state
+index. The helper selects coherent ``H`` columns verbatim; it never reprojects
+that operator through the bucket geometry. It selects the matching arithmetic
+prior mean and covariance principal block, giving the lognormal inner marginal.
+It does not condition the inner state on exterior coefficients fixed at one.
+The explicit inner affine replaces the full affine term. It must exclude the
+removed full-minus-inner fixed contribution. All boundary operands are removed.
+Native geometry is restricted separately for flux reporting. Regenerated bucket
+labels retain a lossless mapping through ``original_state_label`` or
+``original_region_in_source`` and the source labels. Selection preserves state
+order. Arrays remain borrowed and may be lazy; the labelled selection and
+whole-cell masks are explicit eager inputs.
+
+The sole covariance policy is ``inherited``: the original dense or low-rank
+aggregation payload is borrowed unchanged. It may still contain unresolved
+exterior modes. Do not replace it with covariance from a historical enhancement
+preparation merely because the inner means agree. Do not add the removed outer
+state prior covariance again. Re-deriving an inner-only unresolved covariance is
+a separate preparation operation. Report inherited aggregation covariance,
+reported errors and inferred mismatch terms separately.
+
+The ordinary CO2, cached fixed-OU and scalar-sigma routes consume the same
+supplied series. The cached target adds it once to its fixed intercept. These
+routes require ``use_bc=False`` and no observation offsets. Independent
+multisector supplied-background runs have the same restrictions; the existing
+single-sector standard recipe retains its explicit correction/offset options.
+Linked CO2/O2 supplied-background preparation is not supported by this API.
+
+CO2 traces retain ``supplied_baseline_contribution`` separately from
+``co2_flux_contribution``. The latter includes the inner affine term, while
+``modelled_concentration`` is their absolute sum. Scientific concentration
+products preserve the fixed baseline in both prior and posterior groups,
+including after serialization. The background must not be added again to
+these absolute predictions.
 
 Likelihoods and absolute outputs
 --------------------------------
 
-The shared baseline component composes the supplied and sampled terms once,
-before either a built-in or custom likelihood receives the complete mean.
+In the standard single-sector recipe, the shared baseline component composes
+supplied and sampled terms once, before either a built-in or custom likelihood
+receives the complete mean.
 ``mu_baseline`` stores that effective background; ``mu_bc`` remains the sampled
 correction when enabled. ``mu_inner`` contains inner linear flux plus the inner
 fixed term, and ``mu_total`` stores the absolute mean including any offset.
