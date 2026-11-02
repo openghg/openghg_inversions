@@ -32,20 +32,34 @@ jobs:
       checks: read
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
           fetch-depth: 0
       
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           version: "latest"
       
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
-          python-version: '3.11'
+          python-version: '3.12'
+
+      - name: Require a released OpenGHG dependency for publication
+        run: |
+          python - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          dependencies = tomllib.loads(Path("pyproject.toml").read_text())["project"]["dependencies"]
+          if any(value.startswith("openghg @ ") for value in dependencies):
+              raise SystemExit(
+                  "Replace the temporary OpenGHG Git dependency with a released minimum "
+                  "containing the Numba fp_x_flux algorithm before publishing OGI."
+              )
+          PY
 
       - name: Verify release metadata and CI
         id: release
@@ -152,4 +166,4 @@ jobs:
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           gh workflow run release-follow-up.yaml -f tag="$TAG"
-          gh workflow run docs.yaml --ref "$TAG"
+          gh workflow run docs.yaml --ref main -f docs_ref="$TAG"

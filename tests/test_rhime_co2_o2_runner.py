@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
-import arviz as az
 import dask.array as da
 from dask import delayed
 from dask.array import Array as DaskArray
@@ -16,11 +15,18 @@ import pymc as pm
 import pytest
 import xarray as xr
 
+from openghg_inversions.postprocessing.contracts import OutputContract
+
+from openghg_inversions.models.priors import parse_prior
+from openghg_inversions.models import get_coord_registry, restore_inferencedata_coords
+from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime import co2 as co2_public
-from openghg_inversions.rhime.co2 import co2_o2_runner
+from openghg_inversions.rhime.co2 import co2_o2_cached_sigma_runner, co2_o2_runner
 from openghg_inversions.rhime.co2.co2_o2_runner import (
     _CO2_O2_VARIABLE_ROLES,
     _materialize_co2_o2_pymc_inputs,
+    annotate_co2_o2_trace,
+    build_rhime_co2_o2,
     run_rhime_co2_o2_from_prepared_inputs,
 )
 
@@ -48,19 +54,60 @@ def test_trace_annotation_labels_total_marginal_error() -> None:
             "observation_units": ("observation", ["ppm", "per meg"]),
         },
     )
-    trace = az.InferenceData(posterior=posterior)
+    trace = xr.DataTree.from_dict({"posterior": posterior})
 
-    co2_o2_runner._annotate_co2_o2_trace(
-        trace,
-        built=SimpleNamespace(variable_roles=_CO2_O2_VARIABLE_ROLES, metadata={}),
+    with pm.Model() as model:
+        parse_prior("scale", {"pdf": "halfnormal", "sigma": 1.0})
+    built = RhimeModelBuildResult(
+        model=model,
+        output_contract=OutputContract(
+            variable_roles=_CO2_O2_VARIABLE_ROLES,
+        ),
     )
+    co2_o2_runner._annotate_co2_o2_trace(trace, built=built)
 
-    assert json.loads(trace.posterior["epsilon"].attrs["rhime_scientific_roles"]) == [
+    assert json.loads(trace.attrs["rhime_priors"]) == {"scale": {"pdf": "halfnormal", "sigma": 1.0}}
+    assert json.loads(trace["posterior"]["epsilon"].attrs["rhime_scientific_roles"]) == [
         "total_marginal_error"
     ]
-    assert trace.posterior["epsilon"].attrs["units"] == (
+    assert trace["posterior"]["epsilon"].attrs["units"] == (
         "mixed; see observation_units coordinate"
     )
+
+
+@pytest.mark.parametrize("fixed_ou", [False, True])
+def test_reusable_builder_and_annotation_support_native_prior_prediction(fixed_ou):
+    from test_co2_o2_fixed_ou import _prepared
+    from test_rhime_co2_o2 import _independent_error
+
+    prepared = _prepared()
+    options = {"tau_hours": 6, "fixed_site_amplitudes": 0.5} if fixed_ou else {}
+    built = build_rhime_co2_o2(
+        prepared_inputs=prepared, independent_error_sd=_independent_error(prepared), **options,
+    )
+    with built.model:
+        trace = pm.sample_prior_predictive(draws=3, random_seed=165)
+    trace = restore_inferencedata_coords(trace, get_coord_registry(built.model))
+    annotate_co2_o2_trace(trace, built=built)
+
+    assert trace.prior_predictive.y.shape == (1, 3, 5)
+    assert trace.prior_predictive.indexes["observation"].equals(prepared.observations.indexes["observation"])
+    assert trace.prior_predictive.y.attrs["units"] == "ppm"
+    assert trace.prior_predictive.y.attrs["rhime_predictive_scope"] == "joint_observation_vector"
+    assert json.loads(trace.attrs["rhime_variable_roles"])["modelled_concentration"] == "modelled_concentration"
+    assert json.loads(trace.attrs["rhime_model_metadata"])["o2_sensitivity_ratio"]["convention"] == "embedded_signed_o2_per_co2"
+    if fixed_ou:
+        assert trace.constant_data.ou_species.values.tolist() == ["co2", "o2", "o2"]
+        assert trace.constant_data.ou_tau_hours.attrs["units"] == "hours"
+
+
+def test_public_annotation_labels_joint_density_without_concentration_units():
+    trace = xr.DataTree.from_dict({"log_likelihood": xr.Dataset({"y": (("chain", "draw"), [[-4.0]])})})
+    built = RhimeModelBuildResult(model=pm.Model(), output_contract=OutputContract(variable_roles=_CO2_O2_VARIABLE_ROLES))
+    annotate_co2_o2_trace(trace, built=built)
+    assert trace.log_likelihood.y.attrs["rhime_likelihood_scope"] == "joint_observation_vector"
+    assert json.loads(trace.log_likelihood.y.attrs["rhime_scientific_roles"]) == ["joint_log_likelihood"]
+    assert "units" not in trace.log_likelihood.y.attrs
 
 
 def _prepared_stub(array: xr.DataArray) -> SimpleNamespace:
@@ -72,7 +119,92 @@ def _prepared_stub(array: xr.DataArray) -> SimpleNamespace:
         aggregation_error=None,
         retained_prior=None,
         provenance={},
+        independent_error_sd=None,
+        boundary_operands={},
     )
+
+
+def _replay(cached: bool):
+    """Select the linked runner and the graph boundary intercepted by tests."""
+    if cached:
+        return (
+            co2_o2_cached_sigma_runner,
+            co2_o2_cached_sigma_runner.run_rhime_co2_o2_cached_sigma_from_prepared_inputs,
+            "build_co2_o2_cached_sigma_model",
+            {"tau_hours": 24.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.0}},
+        )
+    return co2_o2_runner, run_rhime_co2_o2_from_prepared_inputs, "build_co2_o2_model", {}
+
+
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize("explicit", [False, True])
+def test_replay_uses_saved_errors_and_accepts_matching_explicit_errors(monkeypatch, cached, explicit) -> None:
+    """Both replay variants forward saved errors without changing the artifact."""
+    observations = xr.DataArray(
+        [400.0, -120.0],
+        dims="observation",
+        coords={
+            "observation": ["co2:a", "o2:a"],
+            "observation_units": ("observation", ["ppm", "ppm"]),
+        },
+    )
+    prepared = _prepared_stub(observations)
+    prepared.independent_error_sd = observations.copy(data=[0.5, 1.5])
+    original = prepared.independent_error_sd.copy(deep=True)
+    module, runner, builder, kwargs = _replay(cached)
+    captured = []
+
+    def capture_error(**arguments):
+        """Record the resolved errors and stop before constructing a graph."""
+        captured.append(arguments["independent_error_sd"])
+        raise RuntimeError("builder reached")
+
+    monkeypatch.setattr(module, builder, capture_error)
+    if explicit:
+        kwargs["independent_error_sd"] = original
+    with pytest.raises(RuntimeError, match="builder reached"):
+        runner(prepared_inputs=prepared, **kwargs)
+
+    xr.testing.assert_identical(captured[0], original)
+    xr.testing.assert_identical(prepared.independent_error_sd, original)
+
+
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize("mismatch", ["labels", "units", "values"])
+def test_replay_rejects_conflicting_saved_and_explicit_errors(monkeypatch, cached, mismatch) -> None:
+    """Disagreement with saved errors fails before either graph is constructed."""
+    observations = xr.DataArray(
+        [1.0],
+        dims="observation",
+        coords={"observation": [0], "observation_units": ("observation", ["ppm"])},
+    )
+    prepared = _prepared_stub(observations)
+    prepared.independent_error_sd = observations.copy(data=[0.5])
+    explicit = prepared.independent_error_sd.copy(deep=True)
+    if mismatch == "labels":
+        explicit = explicit.assign_coords(observation=[1])
+        message = "dimension and labels"
+    elif mismatch == "units":
+        explicit = explicit.assign_coords(observation_units=("observation", ["ppb"]))
+        message = "observation_units"
+    else:
+        explicit = explicit.copy(data=[0.75])
+        message = "match the prepared artifact values"
+    module, runner, builder, kwargs = _replay(cached)
+    monkeypatch.setattr(module, builder, lambda **_: pytest.fail("built with conflicting errors"))
+
+    with pytest.raises(ValueError, match=message):
+        runner(prepared_inputs=prepared, independent_error_sd=explicit, **kwargs)
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_replay_requires_saved_or_explicit_errors(cached) -> None:
+    """A replay cannot silently substitute an independent-error policy."""
+    observations = xr.DataArray([1.0], dims="observation", coords={"observation": [0]})
+    _, runner, _, kwargs = _replay(cached)
+
+    with pytest.raises(ValueError, match="explicitly or in the prepared artifact"):
+        runner(prepared_inputs=_prepared_stub(observations), **kwargs)
 
 
 def test_materializes_related_arrays_in_one_shared_graph_without_mutation() -> None:
@@ -176,7 +308,9 @@ def test_replay_rejects_stale_independent_error_multiindex_level_names() -> None
         )
 
 
-def test_replay_materializes_payloads_and_auxiliary_units_in_one_graph(monkeypatch) -> None:
+@pytest.mark.parametrize("error_source", ["explicit", "saved", "both"])
+def test_replay_materializes_payloads_and_auxiliary_units_in_one_graph(monkeypatch, error_source) -> None:
+    """Saved and explicit errors share computation with linked payloads and units."""
     executions: list[str] = []
 
     @delayed
@@ -205,14 +339,16 @@ def test_replay_materializes_payloads_and_auxiliary_units_in_one_graph(monkeypat
         {"status": "available"}
     )
     independent_error_sd = array.copy(deep=False, data=values)
+    if error_source in {"saved", "both"}:
+        prepared.independent_error_sd = independent_error_sd.copy(deep=False)
     monkeypatch.setattr(co2_o2_runner, "build_co2_o2_model", lambda **_: pm.Model())
-    monkeypatch.setattr(co2_o2_runner, "sample_rhime_model", lambda *_: az.InferenceData())
+    monkeypatch.setattr(co2_o2_runner, "sample_rhime_model", lambda *_: xr.DataTree())
     compute_graphs: list[object] = []
 
     with Callback(start=lambda graph: compute_graphs.append(graph)):
         trace = run_rhime_co2_o2_from_prepared_inputs(
             prepared_inputs=prepared,
-            independent_error_sd=independent_error_sd,
+            independent_error_sd=independent_error_sd if error_source != "saved" else None,
         )
 
     assert len(compute_graphs) == 1

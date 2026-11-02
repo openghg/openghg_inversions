@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-import arviz as az
 import numpy as np
 import pandas as pd
 import pymc as pm
@@ -14,7 +13,6 @@ import pytest
 import xarray as xr
 
 import openghg_inversions.rhime.multisector as rhime_multisector
-import openghg_inversions.rhime.prepared as rhime_prepared
 import openghg_inversions.rhime.standard as rhime_standard
 from openghg_inversions.basis.basis_functions import (
     BASIS_ARTIFACT_PATH_ATTR,
@@ -23,26 +21,51 @@ from openghg_inversions.basis.basis_functions import (
 )
 from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
+from openghg_inversions.inversion_data import MergedData, PreparedInputs, SiteOptions
+from openghg_inversions.rhime.params import DataConfig, RhimeConfig
+from openghg_inversions.inversion_data import acquisition
+from openghg_inversions.inversion_data import prepared_inputs as prepared_contract
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime import (
     PollutionEventSettings,
+    RhimeModelBuildResult,
     RhimeModelSpec,
     RhimeOutputSpec,
-    RhimeRunSpec,
     RhimeSampler,
     SectorSpec,
-    run_rhime_from_prepared_inputs,
 )
 from openghg_inversions.serialization import (
     MULTIINDEX_DIMS_ATTR,
     encode_multiindexes_for_storage,
-    inferencedata_from_datatree,
-    inferencedata_to_datatree,
-    load_inferencedata,
+    load_trace,
     normalise_declared_multiindex,
     restore_declared_multiindexes,
-    save_inferencedata,
+    save_datatree,
+    save_trace,
+    trace_from_datatree,
+    trace_to_datatree,
 )
+from tests.helpers import make_trace, prepare_inputs
+
+
+def test_data_contracts_preserve_canonical_imports_and_prepared_schema() -> None:
+    """Canonical entry points construct and reopen the durable scientific value."""
+    assert PreparedInputs is prepared_contract.PreparedInputs
+    assert MergedData is acquisition.MergedData
+    assert not hasattr(PreparedInputs, "from_legacy_inputs")
+    assert not hasattr(prepared_contract, "RHIME_PREPARED_INPUTS_SCHEMA")
+    assert not hasattr(prepared_contract, "RHIME_PREPARED_INPUTS_SCHEMA_VERSION")
+    assert prepared_contract.PREPARED_INPUTS_SCHEMA == "openghg_inversions.rhime_prepared_inputs"
+    prepared = _prepared_inputs()
+    artifact = prepared.to_datatree()
+    assert artifact.attrs["schema"] == prepared_contract.PREPARED_INPUTS_SCHEMA
+    assert artifact.attrs["schema_version"] == prepared_contract.PREPARED_INPUTS_SCHEMA_VERSION == 3
+    assert "site_indicator" not in artifact["inv_inputs"].data_vars
+    assert "site_names" not in artifact["inv_inputs"].data_vars
+
+    restored = prepared_contract.PreparedInputs.from_datatree(artifact)
+    xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)
+    xr.testing.assert_identical(restored.site_metadata, prepared.site_metadata)
 
 
 def _basis_functions() -> BasisFunctions:
@@ -81,7 +104,7 @@ def _site_metadata(
 def _prepared_inputs(
     *,
     basis_artifact_path: str | None = "/path/that/does/not/exist/basis.nc",
-) -> RhimePreparedInputs:
+) -> PreparedInputs:
     """Build canonical inputs with a site/time measurement MultiIndex."""
     nmeasure = pd.MultiIndex.from_arrays(
         [
@@ -108,80 +131,14 @@ def _prepared_inputs(
     basis_metadata = {BASIS_ARTIFACT_SOURCE_ATTR: "unit-test-generated"}
     if basis_artifact_path is not None:
         basis_metadata[BASIS_ARTIFACT_PATH_ATTR] = basis_artifact_path
-    return RhimePreparedInputs(
+    return PreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=_basis_functions().with_metadata(basis_metadata),
         site_metadata=_site_metadata(("TAC", "MHD"), ("1h", None)),
     )
 
 
-@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
-@pytest.mark.parametrize("representation", ["dense", "low_rank"])
-def test_structured_aggregation_error_survives_prepared_input_round_trip(
-    tmp_path: Path,
-    suffix: str,
-    representation: str,
-) -> None:
-    prepared = _prepared_inputs()
-    inv_inputs = prepared.inv_inputs.copy()
-    covariance = np.array([[0.5, 0.1], [0.1, 0.4]])
-    if representation == "dense":
-        inv_inputs["aggregation_error_covariance"] = (
-            ("nmeasure", "nmeasure_cov"),
-            covariance,
-        )
-    else:
-        factor = np.array([[0.5], [0.2]])
-        inv_inputs["low_rank_factor"] = (("nmeasure", "agg_rank"), factor)
-        inv_inputs["diagonal_residual_variance"] = (
-            "nmeasure",
-            np.diag(covariance) - np.sum(factor**2, axis=1),
-        )
-    structured = RhimePreparedInputs(
-        inv_inputs=inv_inputs,
-        basis_functions=prepared.basis_functions,
-        site_metadata=prepared.site_metadata,
-    )
-    path = tmp_path / f"structured-{representation}{suffix}"
-
-    structured.save(path)
-    loaded = RhimePreparedInputs.load(path)
-
-    xr.testing.assert_identical(loaded.inv_inputs, structured.inv_inputs)
-
-
-def test_derived_outputs_reject_aggregation_error_until_reconstruction_lands() -> None:
-    prepared = _prepared_inputs()
-    prepared.inv_inputs["aggregation_error_sd"] = ("nmeasure", [0.2, 0.3])
-    model_spec = RhimeModelSpec(
-        species="ch4",
-        domain="EUROPE",
-        likelihood=PollutionEventSettings(),
-        sectors=(
-            SectorSpec(
-                name="total",
-                flux_source="total",
-                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-                variable_suffix="total",
-            ),
-        ),
-        use_bc=False,
-        aggregation_error_mode="diagonal",
-    )
-    run_spec = RhimeRunSpec(
-        start_date="2019-01-01",
-        end_date="2019-01-02",
-        sites=prepared.sites,
-        averaging_period=prepared.averaging_period,
-        model=model_spec,
-        output=RhimeOutputSpec(output_format="basic", save_inversion_output=False),
-    )
-
-    with pytest.raises(ValueError, match="aggregation-error covariance.*output_format='basic'"):
-        run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
-
-
-def _multisource_prepared_inputs() -> RhimePreparedInputs:
+def _multisource_prepared_inputs() -> PreparedInputs:
     """Build prepared inputs whose retained basis has source order B, A."""
     coords = {"lat": [51.0], "lon": [-2.0, -1.0]}
     basis_b = xr.DataArray([[1, 2]], dims=("lat", "lon"), coords=coords, name="basis")
@@ -212,7 +169,7 @@ def _multisource_prepared_inputs() -> RhimePreparedInputs:
             **xr.Coordinates.from_pandas_multiindex(nmeasure, "nmeasure"),
         },
     )
-    return RhimePreparedInputs(
+    return PreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=basis_functions.with_metadata({BASIS_ARTIFACT_SOURCE_ATTR: "unit-test-generated"}),
         site_metadata=_site_metadata(("TAC",), ("1h",)),
@@ -224,7 +181,7 @@ def test_prepared_inputs_normalizes_h_to_basis_source_order() -> None:
     original = _multisource_prepared_inputs()
     reordered_h = original.inv_inputs.sel(source=["A", "B"])
 
-    prepared = RhimePreparedInputs(
+    prepared = PreparedInputs(
         inv_inputs=reordered_h,
         basis_functions=original.basis_functions,
         site_metadata=original.site_metadata,
@@ -260,8 +217,7 @@ def test_prepared_inputs_normalizes_gathered_state_covariance_to_basis_source_or
         ]
     )
     column_labels = [
-        json.dumps(label, ensure_ascii=False, separators=(",", ":"))
-        for label in state_index.tolist()
+        json.dumps(label, ensure_ascii=False, separators=(",", ":")) for label in state_index.tolist()
     ]
     inv_inputs["alpha_prior_covariance"] = (
         ("region", "region_cov"),
@@ -274,7 +230,7 @@ def test_prepared_inputs_normalizes_gathered_state_covariance_to_basis_source_or
     )
     inv_inputs = inv_inputs.assign_coords(region_cov_label=("region_cov", column_labels))
 
-    prepared = RhimePreparedInputs(
+    prepared = PreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=original.basis_functions,
         site_metadata=original.site_metadata,
@@ -312,7 +268,7 @@ def test_prepared_inputs_rejects_h_source_mismatch() -> None:
     mismatched = original.inv_inputs.assign_coords(source=["B", "C"])
 
     with pytest.raises(ValueError, match="source labels do not match"):
-        RhimePreparedInputs(
+        PreparedInputs(
             inv_inputs=mismatched,
             basis_functions=original.basis_functions,
             site_metadata=original.site_metadata,
@@ -327,7 +283,7 @@ def test_prepared_inputs_rejects_shared_basis_flux_h_source_mismatch() -> None:
     inv_inputs = original.inv_inputs.assign(H=original.inv_inputs["H"].expand_dims(source=["B", "C"]))
 
     with pytest.raises(ValueError, match="source labels do not match"):
-        RhimePreparedInputs(
+        PreparedInputs(
             inv_inputs=inv_inputs,
             basis_functions=basis_functions,
             site_metadata=original.site_metadata,
@@ -339,7 +295,7 @@ def test_prepared_inputs_drops_unused_site_metadata_label() -> None:
     original = _prepared_inputs()
     site_metadata = original.site_metadata.reindex(site=["TAC", "MHD", "UNUSED"])
 
-    prepared = RhimePreparedInputs(
+    prepared = PreparedInputs(
         inv_inputs=original.inv_inputs,
         basis_functions=original.basis_functions,
         site_metadata=site_metadata,
@@ -354,7 +310,7 @@ def test_prepared_inputs_normalizes_empty_averaging_period() -> None:
     site_metadata = original.site_metadata.copy()
     site_metadata["averaging_period"] = ("site", ["", None])
 
-    prepared = RhimePreparedInputs(
+    prepared = PreparedInputs(
         inv_inputs=original.inv_inputs,
         basis_functions=original.basis_functions,
         site_metadata=site_metadata,
@@ -363,19 +319,17 @@ def test_prepared_inputs_normalizes_empty_averaging_period() -> None:
     assert prepared.averaging_period == (None, None)
 
 
-def test_prepared_inputs_legacy_factory_normalizes_inputs() -> None:
-    """The legacy factory adapts positional fields without parallel state."""
+def test_prepared_inputs_constructs_with_labeled_metadata_and_observation_coordinates() -> None:
+    """Canonical construction retains explicit observation locations and site periods."""
     original = _prepared_inputs()
-
-    prepared = RhimePreparedInputs.from_legacy_inputs(
-        original.inv_inputs,
-        original.basis_functions,
-        original.sites,
-        original.averaging_period,
-        original.basis_artifact_source,
-        original.basis_artifact_path,
-        (51.0, 52.0),
-        (-2.0, -1.0),
+    inv_inputs = original.inv_inputs.assign_coords(
+        release_lat=("nmeasure", [51.0, 52.0], {"units": "degrees_north"}),
+        release_lon=("nmeasure", [-2.0, -1.0], {"units": "degrees_east"}),
+    )
+    prepared = PreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=original.basis_functions,
+        site_metadata=_site_metadata(original.sites, original.averaging_period),
     )
 
     xr.testing.assert_identical(prepared.site_metadata, original.site_metadata)
@@ -383,29 +337,29 @@ def test_prepared_inputs_legacy_factory_normalizes_inputs() -> None:
     np.testing.assert_array_equal(prepared.inv_inputs.release_lon, [-2.0, -1.0])
     assert prepared.inv_inputs.release_lat.dims == ("nmeasure",)
     assert prepared.inv_inputs.release_lon.dims == ("nmeasure",)
+    assert prepared.inv_inputs.release_lat.attrs["units"] == "degrees_north"
+    assert prepared.inv_inputs.release_lon.attrs["units"] == "degrees_east"
+    assert prepared.basis_artifact_source == original.basis_artifact_source
+    assert prepared.basis_artifact_path == original.basis_artifact_path
 
 
-def test_prepared_inputs_legacy_factory_preserves_observation_release_metadata() -> None:
-    """Legacy site scalars do not replace higher-fidelity observation arrays."""
+def test_prepared_inputs_preserves_observation_release_metadata() -> None:
+    """Canonical observation coordinates remain unchanged in the prepared value."""
     original = _prepared_inputs()
     inv_inputs = original.inv_inputs.assign_coords(
         release_lat=("nmeasure", [51.1, 52.2]),
         release_lon=("nmeasure", [-2.1, -1.2]),
     )
-
-    prepared = RhimePreparedInputs.from_legacy_inputs(
-        inv_inputs,
-        original.basis_functions,
-        original.sites,
-        original.averaging_period,
-        original.basis_artifact_source,
-        original.basis_artifact_path,
-        (0.0, 0.0),
-        (0.0, 0.0),
+    prepared = PreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=original.basis_functions,
+        site_metadata=original.site_metadata,
     )
 
     np.testing.assert_array_equal(prepared.inv_inputs.release_lat, [51.1, 52.2])
     np.testing.assert_array_equal(prepared.inv_inputs.release_lon, [-2.1, -1.2])
+    assert prepared.inv_inputs.release_lat.data is inv_inputs.release_lat.data
+    assert prepared.inv_inputs.release_lon.data is inv_inputs.release_lon.data
 
 
 def test_prepared_inputs_preserves_site_metadata_attrs() -> None:
@@ -414,20 +368,20 @@ def test_prepared_inputs_preserves_site_metadata_attrs() -> None:
     site_metadata = original.site_metadata.copy(deep=True)
     site_metadata["site"].attrs["long_name"] = "observation site"
     site_metadata["averaging_period"].attrs["long_name"] = "observation averaging period"
-    prepared = RhimePreparedInputs(
+    prepared = PreparedInputs(
         inv_inputs=original.inv_inputs,
         basis_functions=original.basis_functions,
         site_metadata=site_metadata,
     )
 
-    restored = RhimePreparedInputs.from_datatree(prepared.to_datatree())
+    restored = PreparedInputs.from_datatree(prepared.to_datatree())
 
     xr.testing.assert_identical(restored.site_metadata, site_metadata)
 
 
 def _assert_prepared_identical(
-    actual: RhimePreparedInputs,
-    expected: RhimePreparedInputs,
+    actual: PreparedInputs,
+    expected: PreparedInputs,
 ) -> None:
     """Assert all durable prepared-input fields round-trip."""
     xr.testing.assert_identical(actual.inv_inputs, expected.inv_inputs)
@@ -449,11 +403,10 @@ def _assert_prepared_identical(
 @pytest.fixture(scope="module")
 def prepared_from_real_route(
     tac_ch4_data_args: dict[str, Any],
-    default_bc_basis_directory: Path,
-) -> RhimePreparedInputs:
+) -> PreparedInputs:
     """Prepare durable inputs through the real RHIME route and test object store."""
     preparation_args = dict(tac_ch4_data_args)
-    flux_sources = preparation_args.pop("emissions_name")
+    flux_sources = preparation_args.pop("flux_sources")
     preparation_args.update(
         {
             "output_name": "serialisation_regression",
@@ -461,17 +414,16 @@ def prepared_from_real_route(
             "basis_algorithm": "quadtree",
             "nbasis": 4,
             "use_bc": True,
-            "bc_basis_directory": default_bc_basis_directory,
         }
     )
-    return prepare_rhime_inputs(**preparation_args)
+    return prepare_inputs(**preparation_args)
 
 
 def test_prepared_inputs_datatree_roundtrip_is_self_contained() -> None:
     """The DataTree embeds canonical inputs, basis geometry, flux, and metadata."""
     prepared = _prepared_inputs()
 
-    restored = RhimePreparedInputs.from_datatree(prepared.to_datatree())
+    restored = PreparedInputs.from_datatree(prepared.to_datatree())
 
     _assert_prepared_identical(restored, prepared)
     assert isinstance(restored.inv_inputs.indexes["nmeasure"], pd.MultiIndex)
@@ -482,10 +434,50 @@ def test_prepared_inputs_datatree_roundtrips_nullable_metadata() -> None:
     """Nullable periods and provenance round-trip."""
     prepared = _prepared_inputs(basis_artifact_path=None)
 
-    restored = RhimePreparedInputs.from_datatree(prepared.to_datatree())
+    restored = PreparedInputs.from_datatree(prepared.to_datatree())
 
     _assert_prepared_identical(restored, prepared)
     assert restored.averaging_period == ("1h", None)
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_prepared_inputs_disk_roundtrip_preserves_nullable_site_strings(tmp_path: Path, suffix: str) -> None:
+    """Missing site strings remain distinct from deliberately empty strings."""
+    original = _prepared_inputs()
+    sites = ("TAC", "MHD", "BSD")
+    inv_inputs = (
+        original.inv_inputs.reset_index("nmeasure")
+        .isel(nmeasure=[0, 1, 0])
+        .assign_coords(site=("nmeasure", list(sites)))
+        .set_index(nmeasure=["site", "time"])
+    )
+    metadata = _site_metadata(sites, ("1h", None, "2h")).assign(
+        instrument=("site", np.asarray(["picarro", None, ""], dtype=object)),
+        latitude=("site", [50.0, np.nan, 51.0]),
+    ).assign_coords(
+        network=("site", np.asarray(["", "null", None], dtype=object)),
+        contact=xr.Variable((), np.asarray(None, dtype=object)),
+    )
+    metadata.instrument.attrs["description"] = "instrument name"
+    prepared = PreparedInputs(inv_inputs, original.basis_functions, metadata)
+    before = prepared.site_metadata.copy(deep=True)
+    path = tmp_path / f"nullable-metadata{suffix}"
+
+    prepared.save(path)
+    restored = PreparedInputs.load(path)
+
+    xr.testing.assert_identical(restored.site_metadata, before)
+    xr.testing.assert_identical(prepared.site_metadata, before)
+    assert restored.site_metadata.instrument.values.tolist() == ["picarro", None, ""]
+
+
+@pytest.mark.parametrize("encoding, value", [("future", '"x"'), ("json_v1", "false"), ("json_v1", "invalid")])
+def test_nullable_site_strings_reject_invalid_encoding(encoding: str, value: str) -> None:
+    metadata = _site_metadata(("TAC",), ("1h",)).assign(instrument=("site", [value]))
+    metadata.instrument.attrs[prepared_contract._SITE_STRING_ENCODING] = encoding
+
+    with pytest.raises(ValueError, match="site metadata"):
+        prepared_contract._site_metadata_from_serialisation(metadata)
 
 
 def test_prepared_inputs_roundtrip_observation_aligned_release_metadata() -> None:
@@ -495,13 +487,13 @@ def test_prepared_inputs_roundtrip_observation_aligned_release_metadata() -> Non
         release_lat=("nmeasure", [51.0, 52.0]),
         release_lon=("nmeasure", [-2.0, -1.0]),
     )
-    prepared = RhimePreparedInputs(
+    prepared = PreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=original.basis_functions,
         site_metadata=original.site_metadata,
     )
 
-    restored = RhimePreparedInputs.from_datatree(prepared.to_datatree())
+    restored = PreparedInputs.from_datatree(prepared.to_datatree())
 
     assert restored.inv_inputs.release_lat.dims == ("nmeasure",)
     assert restored.inv_inputs.release_lon.dims == ("nmeasure",)
@@ -517,13 +509,13 @@ def test_site_indicator_is_derived_from_measurement_sites() -> None:
     original = _prepared_inputs()
     inv_inputs = original.inv_inputs.assign(site_indicator=("nmeasure", [1, 0]))
     site_metadata = original.site_metadata.sel(site=["MHD", "TAC"])
-    prepared = RhimePreparedInputs(
+    prepared = PreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=original.basis_functions,
         site_metadata=site_metadata,
     )
 
-    restored = RhimePreparedInputs.from_datatree(prepared.to_datatree())
+    restored = PreparedInputs.from_datatree(prepared.to_datatree())
 
     assert restored.sites == ("TAC", "MHD")
     assert restored.inv_inputs.site_indicator.values.tolist() == [0, 1]
@@ -536,7 +528,7 @@ def test_site_indicator_is_derived_from_measurement_sites() -> None:
 def test_real_prepared_inputs_save_load_and_run_without_repreparation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    prepared_from_real_route: RhimePreparedInputs,
+    prepared_from_real_route: PreparedInputs,
     suffix: str,
 ) -> None:
     """Freeze the labeled prepared-input round-trip and replay contract.
@@ -549,21 +541,23 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
     serialized = prepared.to_datatree()
     encoded_inputs = serialized["inv_inputs"].to_dataset()
     assert encoded_inputs["nmeasure"].attrs["compress"] == "site time"
-    assert encoded_inputs["bc_region"].attrs["compress"] == "bc_curtain bc_period"
+    assert "compress" not in encoded_inputs["bc_region"].attrs
+    assert encoded_inputs["H_bc"].attrs["boundary_sensitivity_preparation"] == "raw-spatial"
+    assert "min_error" not in encoded_inputs
     assert prepared.inv_inputs.release_lat.dims == ("nmeasure",)
     assert prepared.inv_inputs.release_lon.dims == ("nmeasure",)
 
     artifact_path = tmp_path / f"real-prepared{suffix}"
     prepared.save(artifact_path)
-    loaded = RhimePreparedInputs.load(artifact_path)
+    loaded = PreparedInputs.load(artifact_path)
 
     _assert_prepared_identical(loaded, prepared)
     loaded_index = loaded.inv_inputs.indexes["nmeasure"]
     assert isinstance(loaded_index, pd.MultiIndex)
     assert loaded_index.names == ["site", "time"]
     loaded_bc_index = loaded.inv_inputs.indexes["bc_region"]
-    assert isinstance(loaded_bc_index, pd.MultiIndex)
-    assert loaded_bc_index.names == ["bc_curtain", "bc_period"]
+    assert not isinstance(loaded_bc_index, pd.MultiIndex)
+    assert loaded_bc_index.equals(prepared.inv_inputs.indexes["bc_region"])
 
     model_spec = RhimeModelSpec(
         species="ch4",
@@ -579,65 +573,69 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         ),
         use_bc=True,
     )
-    run_spec = RhimeRunSpec(
-        start_date="2019-01-01",
-        end_date="2019-01-02",
-        sites=("stale",),
-        averaging_period=("stale",),
+    config = RhimeConfig(
+        data=DataConfig(
+            site_options=SiteOptions.from_inputs(sites=("stale",), averaging_period="1h"),
+            species=model_spec.species, domain=model_spec.domain,
+            start_date="2019-01-01", end_date="2019-01-02",
+            flux_sources=('total-ukghg-edgar7',), use_bc=True,
+        ),
         model=model_spec,
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
+        sampler=RhimeSampler(draws=1, tune=1, chains=1),
     )
-    sampled = az.InferenceData()
+    sampled = make_trace(posterior=xr.Dataset({
+        "x": (("chain", "draw", "region"), np.ones((1, 1, loaded.inv_inputs.sizes["region"]))),
+        "bc": (("chain", "draw", "bc_region"), np.ones((1, 1, loaded.inv_inputs.sizes["bc_region"]))),
+    }, coords={"region": loaded.inv_inputs.region, "bc_region": loaded.inv_inputs.bc_region}))
     observed: dict[str, object] = {}
-    original_builder = rhime_standard.build_standard_rhime_model
+    original_builder = rhime_standard.build_standard_model
 
     def fail_preparation(*args: object, **kwargs: object) -> None:
         """Fail if the loaded-input runner attempts data preparation."""
         raise AssertionError("loaded prepared inputs must bypass preparation")
 
     def fake_builder(
-        flux_sensitivity: xr.DataArray,
-        **kwargs: Any,
-    ) -> pm.Model:
-        """Record the loaded builder inputs and build the real canonical graph."""
+        model_inputs: xr.Dataset, spec: RhimeModelSpec, **kwargs: Any,
+    ):
+        """Record the materialized inputs passed to the common eager builder."""
         assert kwargs["likelihood_builder"] is None
-        assert kwargs["likelihood_settings"] is model_spec.likelihood
-        assert kwargs["preserve_legacy_likelihood"] is False
-        observed["builder_inputs"] = flux_sensitivity
-        observed["observations"] = kwargs["observations"]
-        return original_builder(flux_sensitivity, **kwargs)
+        assert spec.likelihood == model_spec.likelihood
+        observed["builder_inputs"] = model_inputs["H"]
+        observed["observations"] = model_inputs["mf"]
+        return original_builder(model_inputs, spec, **kwargs)
 
     def fake_sample(
         self: RhimeSampler,
         model: pm.Model,
         *,
         variable_roles: dict[str, str],
-    ) -> az.InferenceData:
+    ) -> xr.DataTree:
         """Record the model passed to sampling and return a sentinel trace."""
         observed["sample_model"] = model
         assert variable_roles["concentration"] == "y"
         return sampled
 
-    def fake_outputs(**kwargs: Any) -> None:
-        """Record the loaded object used for output construction."""
-        observed["output_prepared"] = kwargs["prepared"]
-        kwargs["result"].outputs["loaded"] = True
+    def fake_outputs(inv_out, output_spec):
+        """Record the scientific view passed to derived product construction."""
+        observed["output_prepared"] = inv_out
+        return {}
 
-    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_preparation)
-    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fake_builder)
+    monkeypatch.setattr(rhime_standard.MergedData, "from_options", fail_preparation)
+    monkeypatch.setattr(rhime_standard, "prepare_standard", fail_preparation)
+    monkeypatch.setattr(rhime_standard, "build_standard_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_prepared, "make_standard_rhime_outputs", fake_outputs)
+    monkeypatch.setattr(rhime_standard, "save_inversion_output", fake_outputs)
 
-    result = run_rhime_from_prepared_inputs(
-        prepared_inputs=loaded,
-        run_spec=run_spec,
-        sampler=RhimeSampler(draws=1, tune=1, chains=1),
+    result = rhime_standard.run_standard(
+        prepared=loaded,
+        config=config,
     )
 
     builder_inputs = observed["builder_inputs"]
     output_prepared = observed["output_prepared"]
     assert isinstance(builder_inputs, xr.DataArray)
-    assert isinstance(output_prepared, RhimePreparedInputs)
+    assert isinstance(output_prepared, InversionOutput)
     xr.testing.assert_identical(builder_inputs, loaded.inv_inputs["H"])
     xr.testing.assert_identical(observed["observations"], loaded.inv_inputs["mf"])
     assert "y" in observed["sample_model"].named_vars
@@ -645,36 +643,103 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
     assert result.basis_functions is output_prepared.basis_functions
     assert result.basis_functions.operator is loaded.basis_functions.operator
     xr.testing.assert_identical(result.basis_functions.flux, loaded.basis_functions.flux)
-    assert result.run_spec.sites == loaded.sites
-    assert result.run_spec.averaging_period == loaded.averaging_period
-    assert result.outputs == {"loaded": True}
+    assert tuple(result.run_metadata["sites"]) == loaded.sites
+    assert tuple(result.run_metadata["averaging_period"]) == loaded.averaging_period
+    assert result is output_prepared
 
 
-def test_inferencedata_datatree_roundtrip_preserves_root_attrs() -> None:
-    """Shared InferenceData conversion preserves artifact-level root attributes."""
-    idata = az.InferenceData(
-        posterior=xr.Dataset(
-            {"x": (("chain", "draw"), [[1.0]])},
-            coords={"chain": [0], "draw": [0]},
-        ),
-        attrs={"title": "root metadata", "schema_version": 3},
+def test_trace_datatree_roundtrip_preserves_attrs() -> None:
+    """Shared trace conversion preserves root, group, and variable attributes."""
+    trace = xr.DataTree.from_dict(
+        {
+            "/": xr.Dataset(attrs={"title": "root metadata", "schema_version": 3}),
+            "posterior": xr.Dataset(
+                {"x": (("chain", "draw"), [[1.0]], {"units": "1"})},
+                coords={"chain": [0], "draw": [0]},
+                attrs={"role": "samples"},
+            ),
+        }
     )
 
-    restored = inferencedata_from_datatree(inferencedata_to_datatree(idata))
+    restored = trace_from_datatree(trace_to_datatree(trace))
 
-    assert restored.attrs == idata.attrs
+    assert restored.attrs == trace.attrs
+    xr.testing.assert_identical(restored["posterior"].to_dataset(), trace["posterior"].to_dataset())
 
 
-def test_inferencedata_netcdf_roundtrip_uses_xarray_default_engine(
+def test_load_trace_rejects_complete_inversion_output(tmp_path: Path) -> None:
+    """The standalone trace loader rejects complete inversion artifacts."""
+    trace = make_trace(posterior=xr.Dataset({"x": (("chain", "draw"), [[1.0]])}))
+    inv_out = InversionOutput(
+        trace=trace,
+        inv_inputs=xr.Dataset(),
+        basis_functions=_basis_functions(),
+    )
+    path = tmp_path / "inversion-output.nc"
+    inv_out.save(path)
+
+    with pytest.raises(ValueError, match="complete InversionOutput artifact"):
+        load_trace(path)
+
+
+def test_load_trace_rejects_schema_less_complete_inversion_output(tmp_path: Path) -> None:
+    """A complete artifact cannot masquerade as a trace when its schema is absent."""
+    trace = make_trace(posterior=xr.Dataset({"x": (("chain", "draw"), [[1.0]])}))
+    inv_out = InversionOutput(
+        trace=trace,
+        inv_inputs=xr.Dataset(),
+        basis_functions=_basis_functions(),
+    )
+    tree = inv_out.to_datatree()
+    del tree.attrs["schema"]
+    path = tmp_path / "schema-less-inversion-output.nc"
+    save_datatree(tree, path)
+
+    with pytest.raises(ValueError, match="complete InversionOutput artifact"):
+        load_trace(path)
+
+
+def test_save_trace_rejects_reserved_schema_attribute(tmp_path: Path) -> None:
+    """A trace with an artifact schema cannot be saved as an unloadable file."""
+    trace = make_trace(posterior=xr.Dataset({"x": (("chain", "draw"), [[1.0]])}))
+    trace.attrs["schema"] = "custom.schema"
+    path = tmp_path / "trace.nc"
+
+    with pytest.raises(ValueError, match="root 'schema' attribute is reserved"):
+        save_trace(trace, path)
+
+    assert not path.exists()
+
+
+def test_load_trace_rejects_prepared_inputs(tmp_path: Path) -> None:
+    """The standalone trace loader rejects a prepared-input artifact."""
+    path = tmp_path / "prepared-inputs.nc"
+    _prepared_inputs().save(path)
+
+    with pytest.raises(ValueError, match="incompatible schema 'openghg_inversions.rhime_prepared_inputs'"):
+        load_trace(path)
+
+
+def test_inversion_output_rejects_standalone_trace() -> None:
+    """The complete artifact loader rejects standalone trace trees."""
+    trace = make_trace(posterior=xr.Dataset({"x": (("chain", "draw"), [[1.0]])}))
+
+    with pytest.raises(ValueError, match="standalone trace artifact"):
+        InversionOutput.from_datatree(trace)
+
+
+def test_trace_netcdf_roundtrip_uses_xarray_default_engine(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     """The shared boundary must not switch HDF5 bindings within a process."""
-    idata = az.InferenceData(
-        posterior=xr.Dataset(
-            {"x": (("chain", "draw"), [[1.0]])},
-            coords={"chain": [0], "draw": [0]},
-        )
+    trace = xr.DataTree.from_dict(
+        {
+            "posterior": xr.Dataset(
+                {"x": (("chain", "draw"), [[1.0]])},
+                coords={"chain": [0], "draw": [0]},
+            )
+        }
     )
     path = tmp_path / "trace.nc"
     write_engines: list[str | None] = []
@@ -693,15 +758,44 @@ def test_inferencedata_netcdf_roundtrip_uses_xarray_default_engine(
     monkeypatch.setattr(xr.DataTree, "to_netcdf", record_write)
     monkeypatch.setattr(xr, "open_datatree", record_open)
 
-    save_inferencedata(idata, path)
-    load_inferencedata(path)
+    save_trace(trace, path)
+    load_trace(path)
 
     assert write_engines == [None]
     assert read_engines == [None]
 
 
+def test_trace_zarr_roundtrip_selects_zarr_engine(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The shared boundary must not rely on backend guessing for Zarr stores."""
+    trace = xr.DataTree.from_dict(
+        {
+            "posterior": xr.Dataset(
+                {"x": (("chain", "draw"), [[1.0]])},
+                coords={"chain": [0], "draw": [0]},
+            )
+        }
+    )
+    path = tmp_path / "trace.zarr"
+    read_engines: list[str | None] = []
+    original_open = xr.open_datatree
+
+    def record_open(*args: Any, **kwargs: Any):
+        read_engines.append(kwargs.get("engine"))
+        return original_open(*args, **kwargs)
+
+    monkeypatch.setattr(xr, "open_datatree", record_open)
+
+    save_trace(trace, path)
+    load_trace(path)
+
+    assert read_engines == ["zarr"]
+
+
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])
-def test_supported_inferencedata_roundtrip_restores_multiindex(
+def test_supported_trace_roundtrip_restores_multiindex(
     tmp_path: Path,
     suffix: str,
 ) -> None:
@@ -718,17 +812,19 @@ def test_supported_inferencedata_roundtrip_restores_multiindex(
             **xr.Coordinates.from_pandas_multiindex(nmeasure, "nmeasure"),
         },
     )
-    idata = az.InferenceData(
-        posterior_predictive=posterior_predictive,
-        attrs={"title": "semantic trace"},
+    trace = xr.DataTree.from_dict(
+        {
+            "/": xr.Dataset(attrs={"title": "semantic trace"}),
+            "posterior_predictive": posterior_predictive,
+        }
     )
     path = tmp_path / f"trace{suffix}"
 
-    save_inferencedata(idata, path)
-    restored = load_inferencedata(path)
+    save_trace(trace, path)
+    restored = load_trace(path)
 
-    assert restored.attrs == idata.attrs
-    restored_index = restored.posterior_predictive.indexes["nmeasure"]
+    assert restored.attrs == trace.attrs
+    restored_index = restored["posterior_predictive"].indexes["nmeasure"]
     assert isinstance(restored_index, pd.MultiIndex)
     assert restored_index.equals(nmeasure)
 
@@ -832,7 +928,7 @@ def test_prepared_inputs_zarr_save_overwrites_existing_artifact(tmp_path: Path) 
 
     expected = _prepared_inputs()
     expected.save(artifact_path)
-    restored = RhimePreparedInputs.load(artifact_path)
+    restored = PreparedInputs.load(artifact_path)
 
     _assert_prepared_identical(restored, expected)
     assert "obsolete" not in restored.inv_inputs
@@ -844,7 +940,7 @@ def test_prepared_inputs_zarr_save_overwrites_existing_artifact(tmp_path: Path) 
         ("schema", None),
         ("schema", "not-the-prepared-input-schema"),
         ("schema_version", None),
-        ("schema_version", 2),
+        ("schema_version", 1),
         ("schema_version", "1"),
     ],
 )
@@ -860,7 +956,7 @@ def test_prepared_inputs_rejects_missing_or_wrong_schema(
         dt.attrs[attr] = value
 
     with pytest.raises((TypeError, ValueError)):
-        RhimePreparedInputs.from_datatree(dt)
+        PreparedInputs.from_datatree(dt)
 
 
 @pytest.mark.parametrize("missing_node", ["inv_inputs", "basis_functions", "site_metadata"])
@@ -872,7 +968,7 @@ def test_prepared_inputs_rejects_missing_required_nodes(missing_node: str) -> No
     dt.attrs = dict(original.attrs)
 
     with pytest.raises((KeyError, ValueError)):
-        RhimePreparedInputs.from_datatree(dt)
+        PreparedInputs.from_datatree(dt)
 
 
 def test_prepared_inputs_rejects_invalid_cf_measurement_encoding() -> None:
@@ -881,7 +977,7 @@ def test_prepared_inputs_rejects_invalid_cf_measurement_encoding() -> None:
     del dt["inv_inputs"]["nmeasure"].attrs["compress"]
 
     with pytest.raises(ValueError, match="CF gathered coordinate"):
-        RhimePreparedInputs.from_datatree(dt)
+        PreparedInputs.from_datatree(dt)
 
 
 def test_prepared_inputs_delegates_nested_basis_schema_to_basis_functions() -> None:
@@ -890,7 +986,7 @@ def test_prepared_inputs_delegates_nested_basis_schema_to_basis_functions() -> N
     del dt["basis_functions"].attrs["schema"]
     del dt["basis_functions"].attrs["schema_version"]
 
-    restored = RhimePreparedInputs.from_datatree(dt)
+    restored = PreparedInputs.from_datatree(dt)
 
     assert restored.basis_artifact_source == "unit-test-generated"
     assert restored.basis_artifact_path == "/path/that/does/not/exist/basis.nc"
@@ -902,7 +998,7 @@ def test_prepared_inputs_rejects_site_coordinate_missing_measurement_labels() ->
     dt["site_metadata"].ds = dt["site_metadata"].to_dataset().assign_coords(site=["WRONG", "LABELS"])
 
     with pytest.raises(ValueError, match="missing observed site labels"):
-        RhimePreparedInputs.from_datatree(dt)
+        PreparedInputs.from_datatree(dt)
 
 
 def test_validated_rechecks_mutable_xarray_contents() -> None:
@@ -931,7 +1027,7 @@ def test_prepared_inputs_rejects_non_site_metadata_variable() -> None:
     site_metadata = original.site_metadata.assign(extra=("other", [1]))
 
     with pytest.raises(ValueError, match="variables must each have only dimension 'site'"):
-        RhimePreparedInputs(
+        PreparedInputs(
             inv_inputs=original.inv_inputs,
             basis_functions=original.basis_functions,
             site_metadata=site_metadata,
@@ -944,7 +1040,7 @@ def test_prepared_inputs_rejects_non_site_metadata_coordinate() -> None:
     site_metadata = original.site_metadata.assign_coords(other=("other", [1]))
 
     with pytest.raises(ValueError, match="auxiliary coordinates must be scalar or site-aligned"):
-        RhimePreparedInputs(
+        PreparedInputs(
             inv_inputs=original.inv_inputs,
             basis_functions=original.basis_functions,
             site_metadata=site_metadata,
@@ -958,7 +1054,7 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
     """A loaded artifact reaches model building, sampling, and output unchanged."""
     artifact_path = tmp_path / "prepared.nc"
     _prepared_inputs().save(artifact_path)
-    loaded = RhimePreparedInputs.load(artifact_path)
+    loaded = PreparedInputs.load(artifact_path)
     model_spec = RhimeModelSpec(
         species="ch4",
         domain="EUROPE",
@@ -973,79 +1069,80 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         ),
         use_bc=False,
     )
-    run_spec = RhimeRunSpec(
-        start_date="2019-01-01",
-        end_date="2019-01-02",
-        sites=("stale",),
-        averaging_period=("stale",),
+    config = RhimeConfig(
+        data=DataConfig(
+            site_options=SiteOptions.from_inputs(sites=("stale",), averaging_period="1h"),
+            species=model_spec.species, domain=model_spec.domain,
+            start_date="2019-01-01", end_date="2019-01-02",
+            flux_sources=('total-inventory',), use_bc=False,
+        ),
         model=model_spec,
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
+        sampler=RhimeSampler(draws=1, tune=1, chains=1),
     )
-    sampled = az.InferenceData(
+    sampled = make_trace(
         posterior=xr.Dataset(
             {"x": (("chain", "draw", "region"), np.ones((1, 1, 2)))},
             coords={"chain": [0], "draw": [0], "region": [0, 1]},
         )
     )
     observed: dict[str, Any] = {}
-    original_builder = rhime_standard.build_standard_rhime_model
+    original_builder = rhime_standard.build_standard_model
 
     def fail_preparation(*args: object, **kwargs: object) -> None:
         """Fail if execution attempts to prepare inputs again."""
         raise AssertionError("prepared-input execution must not repeat preparation")
 
     def fake_builder(
-        flux_sensitivity: xr.DataArray,
-        **kwargs: Any,
-    ) -> pm.Model:
-        """Record model-builder inputs and build the real canonical graph."""
+        model_inputs: xr.Dataset, spec: RhimeModelSpec, **kwargs: Any,
+    ):
+        """Record the materialized inputs passed to the common eager builder."""
         assert kwargs["likelihood_builder"] is None
-        assert kwargs["likelihood_settings"] is model_spec.likelihood
-        assert kwargs["preserve_legacy_likelihood"] is False
-        observed["builder_inputs"] = flux_sensitivity
-        observed["observations"] = kwargs["observations"]
-        return original_builder(flux_sensitivity, **kwargs)
+        assert spec.likelihood == model_spec.likelihood
+        observed["builder_inputs"] = model_inputs["H"]
+        observed["observations"] = model_inputs["mf"]
+        return original_builder(model_inputs, spec, **kwargs)
 
     def fake_sample(
         self: RhimeSampler,
         model: pm.Model,
         *,
         variable_roles: dict[str, str],
-    ) -> az.InferenceData:
+    ) -> xr.DataTree:
         """Record the sampled model and return the sentinel posterior."""
         observed["sample_model"] = model
         assert variable_roles["concentration"] == "y"
         return sampled
 
-    def fake_outputs(**kwargs: Any) -> None:
-        """Record output inputs and attach a sentinel product."""
-        observed["output_prepared"] = kwargs["prepared"]
-        observed["output_idata"] = kwargs["result"].idata
-        kwargs["result"].outputs["loaded"] = True
+    def fake_outputs(inv_out, output_spec):
+        """Record the scientific view passed to derived product construction."""
+        observed["output_prepared"] = inv_out
+        observed["output_idata"] = inv_out.trace
+        return {}
 
-    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_preparation)
-    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fake_builder)
+    monkeypatch.setattr(rhime_standard.MergedData, "from_options", fail_preparation)
+    monkeypatch.setattr(rhime_standard, "prepare_standard", fail_preparation)
+    monkeypatch.setattr(rhime_standard, "build_standard_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_prepared, "make_standard_rhime_outputs", fake_outputs)
+    monkeypatch.setattr(rhime_standard, "save_inversion_output", fake_outputs)
 
-    result = run_rhime_from_prepared_inputs(
-        prepared_inputs=loaded,
-        run_spec=run_spec,
-        sampler=RhimeSampler(draws=1, tune=1, chains=1),
+    result = rhime_standard.run_standard(
+        prepared=loaded,
+        config=config,
     )
 
     builder_inputs = observed["builder_inputs"]
     output_prepared = observed["output_prepared"]
     assert isinstance(builder_inputs, xr.DataArray)
-    assert isinstance(output_prepared, RhimePreparedInputs)
+    assert isinstance(output_prepared, InversionOutput)
     xr.testing.assert_identical(builder_inputs, loaded.inv_inputs["H"])
     xr.testing.assert_identical(observed["observations"], loaded.inv_inputs["mf"])
     assert "y" in observed["sample_model"].named_vars
     assert observed["output_idata"] is sampled
     assert result.inv_inputs is output_prepared.inv_inputs
-    assert result.run_spec.sites == loaded.sites
-    assert result.run_spec.averaging_period == loaded.averaging_period
-    assert result.outputs == {"loaded": True}
+    assert tuple(result.run_metadata["sites"]) == loaded.sites
+    assert tuple(result.run_metadata["averaging_period"]) == loaded.averaging_period
+    assert result is output_prepared
 
 
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])
@@ -1069,7 +1166,7 @@ def test_multisource_order_survives_load_run_and_reconstruction(
     artifact_path = tmp_path / f"multisource{suffix}"
     original.save(artifact_path)
 
-    loaded = RhimePreparedInputs.load(artifact_path)
+    loaded = PreparedInputs.load(artifact_path)
     loaded_operator = loaded.basis_functions.operator
     assert isinstance(loaded_operator, MultiSourceBucketBasisOperator)
     assert list(loaded_operator.basis_flat) == ["B", "A"]
@@ -1095,65 +1192,53 @@ def test_multisource_order_survives_load_run_and_reconstruction(
         ),
         use_bc=False,
     )
-    run_spec = RhimeRunSpec(
-        start_date="2019-01-01",
-        end_date="2019-01-02",
-        sites=loaded.sites,
-        averaging_period=loaded.averaging_period,
+    config = RhimeConfig(
+        data=DataConfig(
+            site_options=SiteOptions.from_inputs(sites=loaded.sites, averaging_period=loaded.averaging_period),
+            species=model_spec.species, domain=model_spec.domain,
+            start_date="2019-01-01", end_date="2019-01-02",
+            flux_sources=("B", "A"), use_bc=False, split_by_sectors=True,
+        ),
         model=model_spec,
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
-        split_by_sectors=True,
+        sampler=RhimeSampler(draws=1, tune=1, chains=1),
     )
-    sampled = az.InferenceData()
+    sampled = make_trace()
     observed: dict[str, object] = {}
-    original_builder = rhime_multisector.build_multisector_rhime_model
+    original_builder = rhime_multisector.build_multisector_model
 
     def fake_builder(
-        flux_sensitivity: xr.DataArray,
+        model_inputs: xr.Dataset,
+        actual_spec: RhimeModelSpec,
         **kwargs: Any,
-    ) -> pm.Model:
+    ) -> RhimeModelBuildResult:
         """Record ordered builder inputs and build the real canonical graph."""
         assert kwargs["likelihood_builder"] is None
-        assert kwargs["likelihood_settings"] is model_spec.likelihood
-        observed["source_order"] = tuple(flux_sensitivity.source.values)
-        observed["sectors"] = kwargs["sectors"]
-        return original_builder(flux_sensitivity, **kwargs)
+        assert actual_spec.likelihood == model_spec.likelihood
+        observed["source_order"] = tuple(model_inputs["H"].source.values)
+        observed["sectors"] = actual_spec.sectors
+        return original_builder(model_inputs, actual_spec, **kwargs)
 
     def fake_sample(
         self: RhimeSampler,
         model: pm.Model,
         *,
         variable_roles: dict[str, str],
-    ) -> az.InferenceData:
+    ) -> xr.DataTree:
         """Return a sentinel trace for the multisource prepared run."""
         assert "y" in model.named_vars
         assert variable_roles["concentration"] == "y"
         return sampled
 
-    def fake_outputs(**kwargs: Any) -> None:
-        """Exercise postprocessing reconstruction on the loaded retained basis."""
-        output_prepared = kwargs["prepared"]
-        assert isinstance(output_prepared, RhimePreparedInputs)
-        output_operator = output_prepared.basis_functions.operator
-        assert isinstance(output_operator, MultiSourceBucketBasisOperator)
-        observed["output_order"] = tuple(output_operator.basis_flat)
-        xr.testing.assert_identical(
-            output_prepared.basis_functions.interpolate(state, flux=True),
-            expected_reconstruction,
-        )
-        kwargs["result"].outputs["postprocessed"] = True
-
-    monkeypatch.setattr(rhime_multisector, "build_multisector_rhime_model", fake_builder)
+    monkeypatch.setattr(rhime_multisector, "build_multisector_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_prepared, "make_multisector_rhime_outputs", fake_outputs)
 
-    result = run_rhime_from_prepared_inputs(
-        prepared_inputs=loaded,
-        run_spec=run_spec,
-        sampler=RhimeSampler(draws=1, tune=1, chains=1),
-    )
+    result = rhime_multisector.run_multisector(prepared=loaded, config=config)
 
     assert observed["source_order"] == ("B", "A")
-    assert observed["sectors"] is model_spec.sectors
-    assert observed["output_order"] == ("B", "A")
-    assert result.outputs == {"postprocessed": True}
+    assert observed["sectors"] == model_spec.sectors
+    assert isinstance(result, InversionOutput)
+    assert tuple(result.basis_functions.operator.basis_flat) == ("B", "A")
+    xr.testing.assert_identical(
+        result.basis_functions.interpolate(state, flux=True), expected_reconstruction,
+    )

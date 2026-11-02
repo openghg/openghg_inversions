@@ -4,6 +4,10 @@ These standalone experiments compare coordinates and one alternative prior for
 cancelling gross primary production (GPP) and total ecosystem respiration (TER)
 templates. They do not change a production recipe or default. Run them from a
 source checkout with its OpenGHG Inversions, PyMC, NumPyro and pytest dependencies.
+The current source uses PyMC 6 and ArviZ 1 with xarray DataTree sample output.
+The frozen 2026 campaign used PyMC 5 and ArviZ 0; its reported chains and
+timings remain evidence for that recorded environment. Compatibility checks on
+the current source do not rerun or replace that experiment.
 The model code follows the [RHIME model-development conventions](../docs/development/rhime_model_development.rst).
 
 ## Models and interpretation

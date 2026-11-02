@@ -24,7 +24,7 @@ logger = logging.Logger(__name__)
 
 
 # this dictionary will be populated by using the decorator `register_filter`
-filtering_functions = {}
+filtering_functions: dict[str, Callable] = {}
 
 
 def register_filter(filt: Callable) -> Callable:
@@ -59,7 +59,10 @@ def list_filters() -> None:
     for k, v in filtering_functions.items():
         # print function name and first line of docstring
         try:
-            first_line_of_docstring = v.__doc__.strip().split("\n")[0]
+            docstring = v.__doc__
+            first_line_of_docstring = (
+                docstring.strip().split("\n")[0] if docstring is not None else "No docstring"
+            )
         except AttributeError:
             first_line_of_docstring = "No docstring"
 
@@ -68,7 +71,7 @@ def list_filters() -> None:
 
 def filtering(
     datasets_in: dict,
-    filters: str | None | dict[str, list[str | None]] | list[str | None],
+    filters: str | None | dict[str, str | None | list[str | None]] | list[str | None],
     keep_missing: bool = False,
 ) -> dict:
     """Applies time filtering to all datasets in `datasets_in`.
@@ -77,16 +80,9 @@ def filtering(
     with site codes as keys, then the filters applied to each site depend on the list supplied
     for that site.
 
-    In any case, filters supplied in a list are applied in order.
-    For example, if you wanted a daily, daytime average, you could do this:
-
-        datasets_dictionary = filtering(datasets_dictionary,
-                                    ["daytime", "daily_median"])
-
-    The order of the filters reflects the order they are applied, so for
-    instance when applying the "daily_median" filter if you only wanted
-    to look at daytime values the filters list should be
-    ["daytime","daily_median"]
+    Filters supplied in a list are applied in order. For example, select
+    daytime observations with sufficiently high boundary-layer heights using
+    ``filtering(datasets_dictionary, ["daytime", "pblh_min"])``.
 
     If a site is `datasets_in` is not in `filters`, then no filters are applied to that site.
 
@@ -101,7 +97,7 @@ def filtering(
         dict in same format as datasets_in, with filters applied
 
     """
-    if not filters:
+    if filters is None or filters == [] or filters == {}:
         return datasets_in
 
     # Get list of sites
@@ -111,17 +107,26 @@ def filtering(
     if not isinstance(filters, dict):
         if not isinstance(filters, list):
             filters = [filters]  # type: ignore
+        for filt in filters:
+            if filt is None or filt not in filtering_functions:
+                raise KeyError(filt)
         filters = dict.fromkeys(sites, filters)  # type: ignore
     else:
         for site, filt in filters.items():
             if filt is not None and not isinstance(filt, list):
                 filters[site] = [filt]
 
-    filters = cast(dict[str, list[str | None]], filters)
+    filter_map = cast(dict[str, list[str | None] | None], filters)
+
+    # Validate active requests before a preceding filter can execute data.
+    for site in sites:
+        for filt in filter_map.get(site) or []:
+            if filt is None or filt not in filtering_functions:
+                raise KeyError(filt)
 
     # Check that filters are defined for all sites
     # TODO: just set filters for missing sites to None?
-    tmp = [(site in filters) for site in sites]
+    tmp = [(site in filter_map) for site in sites]
     if not all(tmp):
         msg = f"Missing entry for sites {np.array(sites)[~np.array(tmp)]} in filters."
         logger.warning(msg)
@@ -131,9 +136,9 @@ def filtering(
     # Apply filtering
     # NOTE: we only loop over sites that are in the filters dict
     # so not all sites must be specified
-    for site in filters:
-        if filters[site] is not None and site in sites:
-            for filt in filters[site]:
+    for site, site_filters in filter_map.items():
+        if site_filters is not None and site in sites:
+            for filt in site_filters:
                 n_nofilter = datasets[site].time.values.shape[0]
 
                 datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
@@ -149,16 +154,10 @@ def filtering(
 
 
 def _local_solar_time(dataset: xr.Dataset) -> list[int]:
-    """Returns hour of day as a function of local solar time relative to the Greenwich Meridian.
-
-    This function also modifies `dataset` by changing the time coordinates.
-
-    NOTE: This is not a filter; it is used by other filters.
-    TODO: do we want this to modify `dataset`? currently it changes the time coordinate
-    TODO: return np.ndarray and use vectorised filtering?
+    """Return local solar hours without modifying observation timestamps.
 
     Args:
-        dataset: dataset to extract hours of the day from; this dataset is modified in place
+        dataset: borrowed observations with timestamps and release longitude
 
     Returns:
         list of hours of the day for each time value in dataset.time
@@ -167,49 +166,14 @@ def _local_solar_time(dataset: xr.Dataset) -> list[int]:
     # convert lon to [-180,180], so time offset is negative west of 0 degrees
     if sitelon > 180:
         sitelon -= 360.0
-    dataset["time"] = dataset.time + pd.Timedelta(minutes=float(24 * 60 * sitelon / 360.0))
-    hours = dataset.time.to_pandas().index.hour
+    local_time = dataset.time + pd.Timedelta(minutes=float(24 * 60 * sitelon / 360.0))
+    hours = local_time.dt.hour.values
     return list(hours)
 
 
 @register_filter
-def daily_median(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Resample data to daily frequency and use daily median values.
-
-    Args:
-        dataset: dataset to filter
-        keep_missing: if True, drop time points removed by filter
-
-    Returns:
-        filtered dataset
-    """
-    if keep_missing:
-        return dataset.load().resample(indexer={"time": "1D"}).median()
-    else:
-        return dataset.load().resample(indexer={"time": "1D"}).median().dropna(dim="time")
-
-
-@register_filter
-def six_hr_mean(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Resample data to 6h frequency and use 6h mean values.
-
-    Args:
-        dataset: dataset to filter
-        keep_missing: if True, drop time points removed by filter
-
-    Returns:
-        filtered dataset
-
-    """
-    if keep_missing:
-        return dataset.resample(indexer={"time": "6h"}).mean()
-    else:
-        return dataset.resample(indexer={"time": "6h"}).mean().dropna(dim="time")
-
-
-@register_filter
 def daytime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Subset during daytime hours (11:00-15:00).
+    """Subset local solar hours 11 through 15, preserving observation timestamps.
 
     Args:
         dataset: dataset to filter
@@ -231,7 +195,7 @@ def daytime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def daytime9to5(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Subset during daytime hours (9:00-17:00).
+    """Subset local solar hours 9 through 17, preserving observation timestamps.
 
     Args:
         dataset: dataset to filter
@@ -253,7 +217,7 @@ def daytime9to5(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def nighttime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Subset during nighttime hours (23:00 - 03:00).
+    """Subset local solar hours 23 through 3, preserving observation timestamps.
 
     Args:
         dataset: dataset to filter
@@ -275,7 +239,7 @@ def nighttime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def noon(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Select only 12pm data.
+    """Select local solar hour 12, preserving observation timestamps.
 
     Args:
         dataset: dataset to filter

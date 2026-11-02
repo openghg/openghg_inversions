@@ -919,6 +919,7 @@ def _component_adjacencies(
         rows, columns = _node_indices(component)
         right_labels[rows, columns] = component_index
 
+    offsets: tuple[GridNode, ...]
     if connectivity == 1:
         offsets = ((-1, 0), (0, -1), (0, 1), (1, 0))
     else:
@@ -929,8 +930,8 @@ def _component_adjacencies(
             if row_offset != 0 or column_offset != 0
         )
 
-    left_adjacencies = [set() for _component in left_components]
-    right_adjacencies = [set() for _component in right_components]
+    left_adjacencies: list[set[int]] = [set() for _component in left_components]
+    right_adjacencies: list[set[int]] = [set() for _component in right_components]
     nrows, ncolumns = shape
     for left_index, component in enumerate(left_components):
         for row, column in component:

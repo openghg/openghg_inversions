@@ -21,21 +21,13 @@ persistence are intentionally deferred to the artifact-I/O layer.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-import sys
-from typing import Literal, NoReturn, Protocol
-
-if sys.version_info >= (3, 11):
-    from typing import assert_never
-else:
-
-    def assert_never(value: NoReturn) -> NoReturn:
-        """Backport typing.assert_never until Python 3.10 support is removed."""
-        raise AssertionError(f"Expected an unreachable value, got {value!r}")
+from typing import assert_never, Literal, Protocol
 
 from dask.base import compute
 import numpy as np
 from scipy.linalg import cho_factor, cho_solve
-from scipy.linalg.lapack import dpocon
+# scipy-stubs 1.15.3 omits the runtime LAPACK wrappers, including dpocon.
+from scipy.linalg.lapack import dpocon  # type: ignore[attr-defined]
 import xarray as xr
 
 from openghg_inversions._labelled_matrices import (

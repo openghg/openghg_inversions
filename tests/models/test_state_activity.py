@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 import pytest
+import sparse
 import xarray as xr
 
 from openghg_inversions.basis import project_basis_prior_stdev
@@ -29,13 +30,9 @@ from openghg_inversions.models import (
 )
 from openghg_inversions.models.components import add_linear_component, resolve_model_variable
 from openghg_inversions.models.components import add_state_vector
-from openghg_inversions.observation_error import resolve_aggregation_error
-from openghg_inversions.rhime.multisector import (
-    _prepare_multisector_flux_components,
-    build_multisector_rhime_model as _build_multisector_model,
-)
-from openghg_inversions.rhime.specs import FixedErrorSettings, PollutionEventSettings, SectorSpec
-from openghg_inversions.rhime.standard import build_standard_rhime_model as _build_standard_model
+from openghg_inversions.rhime.specs import FixedErrorSettings, PollutionEventSettings, RhimeModelSpec, SectorSpec
+from tests.multisector_model_helpers import build_multisector_graph
+from tests.standard_model_helpers import build_standard_graph as _build_standard_model
 from openghg_inversions.serialization import load_inferencedata, save_inferencedata
 from openghg_inversions.sigma import SigmaAlignment
 
@@ -84,21 +81,6 @@ def build_rhime_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
         inputs["H"],
         observations=inputs["mf"],
         observation_error=inputs["mf_error"],
-        aggregation_error=resolve_aggregation_error(inputs, "none"),
-        minimum_error=inputs.get("min_error"),
-        boundary_sensitivity=inputs.get("H_bc"),
-        **kwargs,
-    )
-
-
-def build_rhime_multisector_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
-    """Adapt test datasets to the multisector builder's named-array contract."""
-    _select_pollution_event_likelihood(inputs, kwargs)
-    return _build_multisector_model(
-        inputs["H"],
-        observations=inputs["mf"],
-        observation_error=inputs["mf_error"],
-        aggregation_error=resolve_aggregation_error(inputs, "none"),
         minimum_error=inputs.get("min_error"),
         boundary_sensitivity=inputs.get("H_bc"),
         **kwargs,
@@ -126,6 +108,43 @@ def test_detect_zero_sensitivity_validates_and_retains_state_metadata() -> None:
     np.testing.assert_array_equal(zero_sensitivity, [False, True, False, False])
     assert zero_sensitivity.dims == ("region",)
     np.testing.assert_array_equal(zero_sensitivity["basis_group"], ["inner", "inner", "outer", "inner"])
+
+
+@pytest.mark.parametrize("lazy", [False, True], ids=["sparse", "dask-sparse"])
+def test_sparse_sensitivity_pruning_preserves_payload_and_state_metadata(lazy: bool) -> None:
+    """Inspect sparse designs without densifying their retained matrix payload."""
+    dense = _sensitivity()
+    payload = sparse.COO.from_numpy(dense.to_numpy())
+    if lazy:
+        payload = da.from_array(payload, chunks=(1, 2))
+    sensitivity = dense.copy(data=payload)
+
+    xr.testing.assert_identical(detect_zero_sensitivity(sensitivity), detect_zero_sensitivity(dense))
+    prepared = prepare_linear_sensitivity(sensitivity)
+    expected = prepare_linear_sensitivity(dense)
+    xr.testing.assert_identical(prepared.removed, expected.removed)
+    np.testing.assert_array_equal(prepared.retained_indices, [0, 2, 3])
+    if lazy:
+        assert isinstance(prepared.sensitivity.data, da.Array)
+    assert isinstance(prepared.sensitivity.compute().data, sparse.COO)
+    np.testing.assert_array_equal(prepared.sensitivity.to_numpy(), expected.sensitivity.to_numpy())
+    assert resolve_state_activity(prepared.removed).n_active == 3
+
+
+@pytest.mark.parametrize("lazy", [False, True], ids=["sparse", "dask-sparse"])
+@pytest.mark.parametrize("invalid", [np.nan, np.inf, -np.inf])
+def test_sparse_sensitivity_rejects_nonfinite_values(lazy: bool, invalid: float) -> None:
+    """Reject nonfinite sparse entries with the same validation error as dense data."""
+    dense = _sensitivity()
+    values = dense.to_numpy().copy()
+    values[0, 0] = invalid
+    payload = sparse.COO.from_numpy(values)
+    if lazy:
+        payload = da.from_array(payload, chunks=(1, 2))
+    sensitivity = dense.copy(data=payload)
+
+    with pytest.raises(ValueError, match="Sensitivity must contain only finite values"):
+        prepare_linear_sensitivity(sensitivity)
 
 
 def test_detect_zero_sensitivity_requires_a_two_dimensional_output_design() -> None:
@@ -651,9 +670,9 @@ def test_multisector_rhime_can_freeze_a_sector_and_use_array_priors() -> None:
         coords={"region": ["inner-b", "outer-a", "zero", "inner-a"]},
     )
 
-    model = build_rhime_multisector_model(
-        inputs,
-        sigma_alignment=_sigma_alignment(inputs),
+    model_spec = RhimeModelSpec(
+        species="ch4",
+        domain="EUROPE",
         sectors=(
             SectorSpec(
                 name="FF",
@@ -670,20 +689,22 @@ def test_multisector_rhime_can_freeze_a_sector_and_use_array_priors() -> None:
             ),
         ),
         use_bc=False,
-        no_model_error=True,
+        likelihood=FixedErrorSettings(),
     )
+    model = build_multisector_graph(inputs, model_spec)
 
     assert "x_ff_active" not in model.named_vars
     assert "x_ocean_active" in model.named_vars
-    np.testing.assert_allclose(model.named_vars["x_ff"].eval(), np.ones(4))
-    assert model.named_vars["x_ocean"].eval().shape == (4,)
-    assert model.named_vars["mu_ff"].eval().shape == (2,)
-    assert model.named_vars["mu_ocean"].eval().shape == (2,)
-    assert "mu" not in model.named_vars
+    state, mean = pm.draw([model["x"], model["mu"]], random_seed=42)
+    np.testing.assert_allclose(state[:4], np.ones(4))
+    assert state.shape == (8,)
+    np.testing.assert_allclose(mean, h.values @ state[:4] + 2.0 * h.values @ state[4:])
+    np.testing.assert_allclose(model["x_ocean_prior_mu"].get_value(), [1.1, 1.2, 1.3, 1.4])
+    assert not {"mu_ff", "mu_ocean", "hx_ff", "hx_ocean"}.intersection(model.named_vars)
 
 
-def test_multisector_flux_preparation_applies_sector_override_and_shared_activity() -> None:
-    """Flux preparation applies an override and the shared fallback directly."""
+def test_multisector_model_applies_sector_override_and_shared_activity() -> None:
+    """The graph uses sector-specific fixed states and the shared fallback."""
     h = _sensitivity()
     multi_h = xr.concat(
         [h.expand_dims(source=["ff-source"]), (2.0 * h).expand_dims(source=["ocean-source"])],
@@ -705,17 +726,18 @@ def test_multisector_flux_preparation_applies_sector_override_and_shared_activit
         ),
     )
 
-    components = _prepare_multisector_flux_components(
-        multi_h,
-        sectors,
+    model_spec = RhimeModelSpec(
+        species="ch4",
+        domain="EUROPE",
+        sectors=sectors,
+        use_bc=False,
+        likelihood=FixedErrorSettings(),
         state_activity=StateActivity(active=False, fixed_value=3.0),
     )
+    model = build_multisector_graph(_model_inputs(multi_h), model_spec)
 
-    ff_sector, _, _, ff_activity = components[0]
-    ocean_sector, _, _, ocean_activity = components[1]
-    assert ff_sector is sectors[0]
-    assert ocean_sector is sectors[1]
-    assert not ff_activity.active.any()
-    assert not ocean_activity.active.any()
-    np.testing.assert_allclose(ff_activity.fixed_value, 2.0)
-    np.testing.assert_allclose(ocean_activity.fixed_value, 3.0)
+    assert not any(rv.name.startswith("x_") for rv in model.free_RVs)
+    state, mean = pm.draw([model["x"], model["mu"]], random_seed=42)
+    np.testing.assert_allclose(state[:4], 2.0)
+    np.testing.assert_allclose(state[4:], 3.0)
+    np.testing.assert_allclose(mean, h.values.sum(axis=1) * 8.0)

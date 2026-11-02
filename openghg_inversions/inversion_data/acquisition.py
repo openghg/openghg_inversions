@@ -1,0 +1,789 @@
+"""Retrieve RHIME observations, transport, flux and boundary data.
+
+Acquisition owns store access and consumes the complete site-aligned
+selection record. It returns a borrowed ``MergedData`` handoff for subsequent
+scientific filtering, basis construction and sensitivity preparation.
+"""
+
+from __future__ import annotations
+
+import logging
+import warnings
+from collections.abc import Iterator, Mapping, Sequence
+from copy import copy
+from dataclasses import asdict, dataclass, field, replace
+from typing import Any, Literal
+
+import pandas as pd
+import xarray as xr
+from openghg.dataobjects import BoundaryConditionsData, FluxData, FootprintData, ObsData
+from openghg.retrieve import get_bc, search_bc
+from openghg.types import SearchError
+from openghg.util import relative_time_offset
+
+from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
+from openghg_inversions.inversion_data import _site_options
+from openghg_inversions.inversion_data._provenance import (
+    InputProvenance, MergedDataProvenance, selected_provenance,
+)
+from openghg_inversions.inversion_data._site_options import (
+    is_column_observation, is_column_platform, is_satellite_platform, is_surface_platform,
+)
+from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
+from openghg_inversions.inversion_data.getters import get_flux_data, get_footprint_data, get_obs_data
+from openghg_inversions.inversion_data.scenario import merged_scenario_data
+from openghg_inversions.inversion_data.surface import (
+    TransportMode, _attach_surface_provenance, _dataset, _observation_roles,
+    _resolve_surface_observations, _surface_site_responses, _validate_platform,
+)
+from openghg_inversions.inversion_data._surface_support import _time_index, required_flux_support
+from openghg_inversions.inversion_data._surface_schema import _validate_surface_forcing, _validate_surface_transport
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class AcquisitionFacts:
+    """Known retrieval choices; absent values make no compatibility claim.
+
+    Metadata never copy or compute the borrowed scientific arrays.
+    """
+
+    species: str | None = None
+    domain: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    flux_domain: str | None = None
+    fp_model: str | None = None
+    fp_species: str | None = None
+    calibration_scale: str | None = None
+    use_bc: bool | None = None
+    bc_input: str | None = None
+    flux_non_finite_check: FluxNonFiniteCheck | None = None
+
+
+@dataclass
+class MergedData:
+    """Borrowed merged datasets, selectors and selected retrieval provenance.
+
+    Construction never computes or copies numerical arrays. Records carry
+    acquired or subsequently filtered data in memory. Callers own the lifetime
+    of any files backing the datasets they supply.
+
+    Attributes:
+        site_data: Merged observations and transport datasets keyed by retained
+            site name. Keys must match ``site_options.sites``. Datasets and
+            their potentially lazy arrays are borrowed.
+        flux_data: Flux datasets keyed by OpenGHG source label. Dataset
+            containers and numerical arrays are borrowed.
+        site_options: Complete retained acquisition selectors, including site
+            order and aligned averaging periods, inlets and other selectors.
+        boundary_data: Borrowed boundary-condition dataset, or ``None`` when
+            boundary conditions were not acquired.
+        split_by_sectors: Whether the acquired flux layout retains individual
+            sources for sector-resolved preparation.
+        provenance: A :class:`~openghg_inversions.inversion_data.MergedDataProvenance`
+            record of OpenGHG software identity and selected input store, UUID
+            and data-version identities. Missing input records default to
+            unknown identities; unexpected input labels are rejected. These
+            descriptions do not establish scientific compatibility.
+        acquisition: Known retrieval choices, checked by
+            :meth:`validate_for_preparation` when a caller supplies this record
+            to a runner. Missing facts remain unknown.
+    """
+
+    site_data: dict[str, xr.Dataset]
+    flux_data: dict[str, xr.Dataset]
+    site_options: _site_options.SiteOptions
+    boundary_data: xr.Dataset | None = None
+    split_by_sectors: bool = False
+    provenance: MergedDataProvenance = field(default_factory=MergedDataProvenance)
+    acquisition: AcquisitionFacts = field(default_factory=AcquisitionFacts)
+
+    def __post_init__(self) -> None:
+        if set(self.site_data) != set(self.site_options.sites):
+            raise ValueError("Site datasets must match retained SiteOptions labels.")
+        datasets = [*self.site_data.values(), *self.flux_data.values()]
+        if self.boundary_data is not None:
+            datasets.append(self.boundary_data)
+        if any(not isinstance(data, xr.Dataset) for data in datasets):
+            raise TypeError("MergedData accepts xarray datasets, not OpenGHG wrappers.")
+        if any(not isinstance(source, str) for source in self.flux_data):
+            raise TypeError("Flux source labels must be strings.")
+        if (
+            set(self.provenance.observations) - set(self.site_data)
+            or set(self.provenance.footprints) - set(self.site_data)
+            or set(self.provenance.flux) - set(self.flux_data)
+            or (self.provenance.boundary is not None and self.boundary_data is None)
+        ):
+            raise ValueError("Provenance identifies inputs absent from the merged data.")
+        self.provenance = replace(
+            self.provenance,
+            observations={site: self.provenance.observations.get(site, InputProvenance()) for site in self.site_data},
+            footprints={site: self.provenance.footprints.get(site, InputProvenance()) for site in self.site_data},
+            flux={source: self.provenance.flux.get(source, InputProvenance()) for source in self.flux_data},
+            boundary=(
+                self.provenance.boundary if self.provenance.boundary is not None else InputProvenance()
+            ) if self.boundary_data is not None else None,
+        )
+
+    @property
+    def sites(self) -> tuple[str, ...]:
+        """Retained site names."""
+        return self.site_options.sites
+
+    @property
+    def averaging_period(self) -> tuple[str | None, ...]:
+        """Retained averaging periods aligned to sites."""
+        return self.site_options.averaging_period
+
+    @property
+    def platform(self) -> tuple[str | None, ...]:
+        """Retained observation platforms aligned to sites."""
+        return self.site_options.platform
+
+    def validate_for_preparation(
+        self,
+        *,
+        species: str,
+        domain: str,
+        start_date: str,
+        end_date: str,
+        split_by_sectors: bool,
+    ) -> None:
+        """Reject supplied data with known facts conflicting with preparation.
+
+        Species and domain comparisons ignore case; date spellings may differ
+        when they identify the same instant; timezone-naive dates mean UTC.
+        Changing a known window requires
+        fresh acquisition: this operation neither slices nor relabels data.
+        Missing, ``None`` and ``"unknown"`` historical facts remain unknown.
+        Recorded selectors and unrelated model choices are not compared.
+        Validation reads metadata only and never computes borrowed arrays.
+
+        Args:
+            species: Requested species, compared without case when recorded.
+            domain: Requested transport domain, compared without case when recorded.
+            start_date: Requested start as a date/time string. Naive values mean UTC.
+            end_date: Requested end as a date/time string. Equivalent UTC instants
+                agree even when their string spellings differ.
+            split_by_sectors: Whether preparation expects separate flux sources.
+
+        Returns:
+            None. Compatible data and their borrowed arrays remain unchanged.
+
+        Raises:
+            ValueError: If a known fact or the source layout conflicts with the
+                requested preparation, or a compared recorded/requested date is invalid.
+        """
+        requested = {
+            "species": species,
+            "domain": domain,
+            "start_date": start_date,
+            "end_date": end_date,
+        }
+        for name, value in requested.items():
+            recorded = getattr(self.acquisition, name)
+            if recorded is None or recorded == "unknown":
+                continue
+            if name in {"start_date", "end_date"}:
+                compatible = pd.to_datetime(recorded, utc=True) == pd.to_datetime(value, utc=True)
+            else:
+                compatible = recorded.casefold() == value.casefold()
+            if not compatible:
+                raise ValueError(
+                    f"Merged data has incompatible {name}: acquired {recorded!r}, requested {value!r}. "
+                    "Acquire data for the requested species, domain and window."
+                )
+        if self.split_by_sectors != split_by_sectors:
+            raise ValueError("Merged data has an incompatible split_by_sectors layout.")
+
+    def with_site_data(
+        self,
+        site_data: Mapping[str, xr.Dataset],
+        *,
+        context: str = "Merged-data selection",
+    ) -> MergedData:
+        """Replace retained site datasets with their selectors and provenance.
+
+        Mapping order determines retained-site order. All sites must already
+        belong to this record.
+        The result owns new mappings and descriptive metadata; datasets and
+        numerical arrays remain borrowed, including any backing open files.
+
+        Raises:
+            ValueError: If retained sites are invalid.
+        """
+        site_options = self.site_options.retain_sites(tuple(site_data), context=context)
+        return MergedData(
+            site_data=dict(site_data),
+            flux_data=dict(self.flux_data),
+            boundary_data=self.boundary_data,
+            site_options=site_options,
+            split_by_sectors=self.split_by_sectors,
+            provenance=self.provenance.retain_sites(site_data),
+            acquisition=self.acquisition,
+        )
+
+    @classmethod
+    def from_options(
+        cls,
+        *,
+        species: str,
+        site_options: _site_options.SiteOptions,
+        domain: str,
+        start_date: str,
+        end_date: str,
+        flux_sources: Sequence[str] | None,
+        split_by_sectors: bool = False,
+        bc_store: str = "user",
+        obs_store: str = "user",
+        footprint_store: str = "user",
+        flux_store: str | None = "user",
+        flux_domain: str | None = None,
+        fp_model: str | None = None,
+        fp_species: str | None = None,
+        calibration_scale: str | None = None,
+        use_bc: bool = True,
+        bc_input: str | None = None,
+        flux_non_finite_check: FluxNonFiniteCheck = "lazy",
+        surface_transport: Mapping[str, TransportMode] | None = None,
+        boundary_representation: Literal["ordinary", "centered"] = "ordinary",
+        reference: float | None = None,
+        reference_units: str | None = None,
+        mass_tolerance: float | None = None,
+    ) -> MergedData:
+        """Acquire fresh merged data using complete aligned selectors.
+
+        Reads OpenGHG stores and retains all selector fields together when sites
+        are unavailable. Returned datasets may be lazy and remain borrowed by
+        later preparation. ``flux_sources`` names OpenGHG sources. Store,
+        selector and merge errors propagate. ``flux_store`` defaults to ``"user"``;
+        ``flux_domain`` selects the source flux dataset domain, defaulting to
+        the footprint ``domain``. It does not imply a nested inner domain.
+        ``surface_transport`` explicitly selects independent per-source surface
+        CO2/O2 convolution, bypassing ModelScenario. Ordinary boundaries use
+        OpenGHG baseline sensitivities with climatology disabled.
+        ``boundary_representation="centered"`` requires explicit ``mass_tolerance``,
+        ``reference`` and ``reference_units``. Reference values alone do not select centering. Resolved
+        transport requires time-resolved selectors and complete flux history
+        and residual months. Mixed native source axes are rejected until native
+        reporting can represent them; supplied-input preparation supports them.
+        """
+        if boundary_representation not in {"ordinary", "centered"}:
+            raise ValueError("boundary_representation must be ordinary or centered.")
+        if surface_transport is None:
+            if boundary_representation == "centered":
+                raise ValueError("Centered acquisition requires surface_transport and use_bc=True.")
+            acquired = _acquire_scenario_data(
+                species=species, site_options=site_options, domain=domain,
+                start_date=start_date, end_date=end_date, flux_sources=flux_sources,
+                split_by_sectors=split_by_sectors, bc_store=bc_store, obs_store=obs_store,
+                footprint_store=footprint_store, flux_store=flux_store, flux_domain=flux_domain,
+                fp_model=fp_model, fp_species=fp_species, calibration_scale=calibration_scale,
+                use_bc=use_bc, bc_input=bc_input, flux_non_finite_check=flux_non_finite_check,
+            )
+        else:
+            acquired = acquire_surface_data(
+                species=species, site_options=site_options, domain=domain,
+                start_date=start_date, end_date=end_date, flux_sources=flux_sources,
+                transport=surface_transport, split_by_sectors=split_by_sectors,
+                bc_store=bc_store, obs_store=obs_store, footprint_store=footprint_store,
+                flux_store=flux_store, flux_domain=flux_domain, fp_model=fp_model,
+                fp_species=fp_species, calibration_scale=calibration_scale,
+                use_bc=use_bc, bc_input=bc_input, flux_non_finite_check=flux_non_finite_check,
+                boundary_representation=boundary_representation, reference=reference,
+                reference_units=reference_units, mass_tolerance=mass_tolerance,
+            )
+        return cls(
+            site_data=acquired.site_data, flux_data=acquired.flux_data,
+            boundary_data=acquired.boundary_data, site_options=acquired.site_options,
+            split_by_sectors=acquired.split_by_sectors, provenance=acquired.provenance,
+            acquisition=acquired.acquisition,
+        )
+
+
+def _acquire_scenario_data(
+    *, species: str, site_options: _site_options.SiteOptions, domain: str,
+    start_date: str, end_date: str, flux_sources: Sequence[str] | None,
+    split_by_sectors: bool = False, bc_store: str = "user", obs_store: str = "user",
+    footprint_store: str = "user", flux_store: str | None = "user", flux_domain: str | None = None,
+    fp_model: str | None = None, fp_species: str | None = None,
+    calibration_scale: str | None = None, use_bc: bool = True, bc_input: str | None = None,
+    flux_non_finite_check: FluxNonFiniteCheck = "lazy",
+) -> MergedData:
+    """Acquire the ordinary ModelScenario recipe while retaining selectors and borrowed arrays."""
+    merged_sites: dict[str, xr.Dataset] = {}
+    observation_provenance = {}
+    footprint_provenance = {}
+
+    # Get flux data
+    if flux_sources is None:
+        raise ValueError("`flux_sources` must be specified")
+
+    flux_dict = get_flux_data(
+        sources=list(flux_sources),
+        species=species,
+        domain=flux_domain or domain,
+        start_date=start_date,
+        end_date=end_date,
+        store=flux_store,
+        flux_non_finite_check=flux_non_finite_check,
+    )
+    retained_flux_dict = flux_dict
+    flux_provenance = {source: selected_provenance(value, flux_store) for source, value in flux_dict.items()}
+
+    bc_data, boundary_provenance = _get_boundary_data(
+        use_bc=use_bc, species=species, domain=domain, bc_input=bc_input,
+        start_date=start_date, end_date=end_date, store=bc_store,
+    )
+
+    # get obs and footprints, and make scenarios for each site
+    site_indices_to_keep = []
+    output_units: str | None = None
+
+    for i, site_data, footprint_data in _get_site_inputs(
+        species=species, site_options=site_options, domain=domain,
+        start_date=start_date, end_date=end_date, obs_store=obs_store,
+        footprint_store=footprint_store, fp_model=fp_model, fp_species=fp_species,
+        calibration_scale=calibration_scale,
+    ):
+        site = site_options.sites[i]
+        site_platform = site_options.platform[i]
+        scenario_platform = (
+            "site-column"
+            if is_column_observation(site_options.inlet[i], site_platform) and not is_column_platform(site_platform)
+            else site_platform
+        )
+        scenario_flux_dict = (
+            interpolate_flux_to_footprint_grid(flux_dict, footprint_data)
+            if flux_domain is not None and flux_domain.lower() != domain.lower()
+            else flux_dict
+        )
+        if scenario_flux_dict is not flux_dict:
+            retained_flux_dict = scenario_flux_dict
+
+        try:
+            scenario_combined = merged_scenario_data(
+                site_data,
+                footprint_data,
+                scenario_flux_dict,
+                bc_data,
+                platform=scenario_platform,
+                max_level=site_options.max_level[i],
+                split_by_sectors=split_by_sectors,
+                output_units=output_units,
+            )
+        except (TypeError, ValueError) as exc:
+            if output_units is None:
+                raise
+            raise ValueError(
+                f"Could not merge site {site!r} using target observation units {output_units!r}."
+            ) from exc
+        if output_units is None:
+            scenario_units = scenario_combined["mf"].attrs.get("units")
+            if not isinstance(scenario_units, str) or not scenario_units:
+                raise ValueError(f"No observation units detected for the first retained site {site!r}.")
+            mole_fraction_unit_scale(
+                scenario_units,
+                context=f"site {site!r} variable 'mf'",
+            )
+            output_units = scenario_units
+        merged_sites[site] = scenario_combined
+        # Observation retrieval can combine UUIDs and discard their selected versions;
+        # never infer those versions from the remaining catalog metadata.
+        observation_provenance[site] = selected_provenance(site_data, obs_store)
+        footprint_provenance[site] = selected_provenance(
+            footprint_data, footprint_store, requested_version="latest"
+        )
+
+        site_indices_to_keep.append(i)
+    if len(site_indices_to_keep) == 0:
+        raise SearchError("No site data found. Exiting process.")
+
+    retained = site_options.select_indices(site_indices_to_keep)
+    for site, selector in zip(retained.sites, retained.time_resolved, strict=True):
+        merged_sites[site].attrs["openghg_inversions_time_resolved"] = str(selector).lower()
+
+    _warn_calibration_scales(merged_sites, retained)
+
+    return MergedData(
+        site_data=merged_sites,
+        flux_data={source: value.data for source, value in retained_flux_dict.items()},
+        boundary_data=bc_data.data if bc_data is not None else None,
+        site_options=retained,
+        split_by_sectors=split_by_sectors,
+        provenance=MergedDataProvenance.from_retrieval(
+            observations=observation_provenance,
+            footprints=footprint_provenance,
+            flux=flux_provenance,
+            boundary=boundary_provenance,
+        ),
+        acquisition=AcquisitionFacts(
+            species=species,
+            domain=domain,
+            start_date=start_date,
+            end_date=end_date,
+            flux_domain=flux_domain,
+            fp_model=fp_model,
+            fp_species=fp_species,
+            calibration_scale=calibration_scale,
+            use_bc=use_bc,
+            bc_input=bc_input,
+            flux_non_finite_check=flux_non_finite_check,
+        ),
+    )
+
+
+
+def _get_boundary_data(
+    *, use_bc: bool, species: str, domain: str, bc_input: str | None,
+    start_date: str, end_date: str, store: str,
+) -> tuple[BoundaryConditionsData | None, InputProvenance | None]:
+    """Retrieve optional curtains, retaining the interval governing the requested start."""
+    if not use_bc:
+        return None, None
+    try:
+        catalog = search_bc(
+            species=species, domain=domain, bc_input=bc_input,
+            start_date=start_date, end_date=end_date, store=store,
+        )
+        query_start = pd.Timestamp(start_date)
+        # Label slicing otherwise drops the governing interval, including off-anchor labels.
+        for period in catalog.results.get("time_period", pd.Series(dtype=object)).dropna().unique():
+            query_start = min(query_start, pd.Timestamp(start_date) - relative_time_offset(period=period))
+        selected_uuids = catalog.results.get("uuid", pd.Series(dtype=object)).dropna().tolist()
+        selection_kwargs: dict[str, Any] = {"uuid": selected_uuids} if selected_uuids else {}
+        boundary = get_bc(
+            species=species, domain=domain, bc_input=bc_input,
+            start_date=query_start, end_date=end_date, store=store,
+            # Widen label support without selecting an older, distinct product.
+            **selection_kwargs,
+        )
+    except SearchError as exc:
+        raise SearchError("Could not find matching boundary conditions.") from exc
+    return boundary, selected_provenance(boundary, store, requested_version="latest")
+
+
+def _warn_calibration_scales(site_data: Mapping[str, xr.Dataset], selectors: _site_options.SiteOptions) -> None:
+    """Warn when retained non-satellite sites carry different native calibration scales.
+
+    Individual getters own requested scale conversion. When no target is
+    requested, acquisition still needs this cross-site consistency check.
+    """
+    scales = {
+        site_data[site].scale
+        for site, platform in zip(selectors.sites, selectors.platform, strict=True)
+        if not is_satellite_platform(platform)
+    }
+    if len(scales) > 1:
+        logger.warning("Not all sites using the same calibration scale: %s scales found.", len(scales))
+
+
+def _with_selected_provenance[Data: ObsData | FootprintData | FluxData | BoundaryConditionsData](
+    value: Data, identity: InputProvenance
+) -> Data:
+    """Own selected wrapper metadata while borrowing its dataset and payloads."""
+    result = copy(value)
+    result.metadata = {**value.metadata, **asdict(identity)}
+    return result
+
+
+def _get_site_inputs(
+    *, species: str, site_options: _site_options.SiteOptions, domain: str,
+    start_date: str, end_date: str, obs_store: str, footprint_store: str,
+    fp_model: str | None, fp_species: str | None, calibration_scale: str | None,
+) -> Iterator[tuple[int, ObsData, FootprintData]]:
+    """Retrieve retained observation/footprint pairs with their original selector indices."""
+    keep_variables = [
+        f"{species}",
+        f"{species}_variability",
+        f"{species}_repeatability",
+        f"{species}_number_of_observations",
+        f"{species}_error",
+        "mf", "mf_error", "mf_repeatability", "mf_variability", "mf_number_of_observations",
+        "inlet",  # needed if multiple inlets combined
+        "inlet_height",  # sometimes needed if inlet='multiple' (may be outdated soon)
+    ]
+    warnings.warn(f"Dropping all variables besides {keep_variables}", stacklevel=2)
+    for i, site in enumerate(site_options.sites):
+        # Get observations data
+        site_platform = site_options.platform[i]
+        if isinstance(site_platform, str) and site_platform.lower() == "flask":
+            avg_period = None
+        else:
+            avg_period = site_options.averaging_period[i]
+
+        site_data = get_obs_data(
+            site=site,
+            species=species,
+            inlet=site_options.inlet[i],
+            start_date=start_date,
+            domain=domain,
+            platform=site_platform,
+            end_date=end_date,
+            data_level=site_options.obs_data_level[i],
+            average=avg_period,
+            instrument=site_options.instrument[i],
+            calibration_scale=calibration_scale,
+            max_level=site_options.max_level[i],
+            stores=obs_store,
+            keep_variables=keep_variables,
+        )
+
+        if site_data is None:
+            print(f"No obs. found, continuing model run without {site}.\n")
+            continue
+
+        # Get footprints data
+        footprint_data = get_footprint_data(
+            site=site,
+            domain=domain,
+            platform=site_platform,
+            fp_height=site_options.fp_height[i],
+            start_date=start_date,
+            end_date=end_date,
+            model=fp_model,
+            met_model=site_options.met_model[i],
+            fp_species=fp_species,
+            averaging_period=site_options.averaging_period[i],
+            time_resolved=site_options.time_resolved[i],
+            obs_data=site_data,
+            stores=footprint_store,
+        )
+        if footprint_data is None:
+            print(
+                f"\nNo footprint data found for {site} with inlet/height {site_options.fp_height[i]}, model {fp_model}, and domain {domain}.",
+                f"Check these values.\nContinuing model run without {site}.\n",
+            )
+            continue  # skip this site
+
+        yield i, site_data, footprint_data
+
+
+
+def acquire_surface_data(
+    *,
+    species: str,
+    site_options: _site_options.SiteOptions,
+    domain: str,
+    start_date: str,
+    end_date: str,
+    flux_sources: Sequence[str] | None,
+    transport: Mapping[str, TransportMode],
+    split_by_sectors: bool = False,
+    bc_store: str = "user",
+    obs_store: str = "user",
+    footprint_store: str = "user",
+    flux_store: str | None = "user",
+    flux_domain: str | None = None,
+    fp_model: str | None = None,
+    fp_species: str | None = None,
+    calibration_scale: str | None = None,
+    use_bc: bool = True,
+    bc_input: str | None = None,
+    flux_non_finite_check: FluxNonFiniteCheck = "lazy",
+    boundary_representation: Literal["ordinary", "centered"] = "ordinary",
+    reference: float | None = None,
+    reference_units: str | None = None,
+    mass_tolerance: float | None = None,
+) -> MergedData:
+    """Acquire surface inputs using retained native releases to plan flux support.
+
+    Shared selectors follow :meth:`MergedData.from_options`. ``transport`` must
+    specify exactly one integrated or time-resolved mode per flux source, for
+    continuous surface CO2/O2 mole fractions. Boundaries are ordinary by default;
+    explicit centered boundaries require reference, reference units and mass tolerance.
+
+    Retrieve observation/footprint pairs first, then the union of backward
+    histories and complete residual months. Missing sites are dropped together
+    with their selectors. The returned :class:`MergedData` retains full retrieved
+    native flux support and borrows datasets and lazy arrays; selected identities
+    own wrapper metadata. Older inventories and climatological years are never substituted.
+
+    Raises:
+        ValueError: Unsupported selectors, incompatible native source axes,
+            inadequate temporal support, or invalid surface/boundary inputs.
+        SearchError: No retained sites or requested flux/boundary data are available.
+    """
+    if flux_sources is None:
+        raise ValueError("`flux_sources` must be specified")
+    if species.lower() not in {"co2", "o2"}:
+        raise ValueError("Surface acquisition currently supports only CO2 and O2.")
+    if flux_domain is not None and flux_domain.lower() != domain.lower():
+        raise ValueError(
+            "Fresh surface acquisition requires matching flux and footprint domains "
+            "to retain native reporting axes; use prepare_surface_site for supplied inputs."
+        )
+    if not transport or set(transport) != set(flux_sources):
+        raise ValueError("surface_transport must specify exactly one mode per flux source.")
+    if any(mode not in {"integrated", "time_resolved"} for mode in transport.values()):
+        raise ValueError("Surface transport modes must be 'integrated' or 'time_resolved'.")
+    for inlet, platform in zip(site_options.inlet, site_options.platform, strict=True):
+        if is_column_observation(inlet, platform) or (
+            platform is not None and not is_surface_platform(platform)
+        ):
+            raise ValueError("Surface acquisition supports only continuous surface platforms.")
+    if boundary_representation not in {"ordinary", "centered"}:
+        raise ValueError("boundary_representation must be ordinary or centered.")
+    if boundary_representation == "centered":
+        if not use_bc:
+            raise ValueError("Centered acquisition requires surface_transport and use_bc=True.")
+        if mass_tolerance is None:
+            raise ValueError("Centered surface boundaries require mass_tolerance.")
+        if reference is None or reference_units is None:
+            raise ValueError("Centered surface boundaries require reference and reference_units.")
+    if "time_resolved" in transport.values() and not all(site_options.time_resolved):
+        raise ValueError("Time-resolved transport requires time_resolved=True site selectors.")
+
+    # Resolve each retained site's observation bins once, before planning flux support.
+    retained_inputs: list[tuple[int, ObsData, FootprintData]] = []
+    resolved_sites: dict[int, tuple[xr.Dataset, xr.Dataset, xr.Dataset]] = {}
+    output_units: str | None = None
+    for i, observations, footprint in _get_site_inputs(
+        species=species, site_options=site_options, domain=domain,
+        start_date=start_date, end_date=end_date, obs_store=obs_store,
+        footprint_store=footprint_store, fp_model=fp_model, fp_species=fp_species,
+        calibration_scale=calibration_scale,
+    ):
+        observations = _with_selected_provenance(observations, selected_provenance(observations, obs_store))
+        footprint = _with_selected_provenance(
+            footprint, selected_provenance(footprint, footprint_store, requested_version="latest")
+        )
+        site = site_options.sites[i]
+        try:
+            _validate_platform(observations)
+            obs_view, footprint_view = _dataset(observations), _dataset(footprint)
+            _time_index(obs_view, "Observations")
+            roles = _observation_roles(obs_view, species=species.lower(), observation_variable=None)
+            primary = next(name for name, role in roles.items() if role == "mf")
+            _validate_surface_transport(
+                obs_view, footprint_view, {source: footprint_view for source in transport},
+                species=species.lower(), transport=transport, particle_locations=use_bc,
+                observation_variable=primary,
+            )
+            resolved_sites[i] = _resolve_surface_observations(
+                obs_view, footprint_view, roles=roles, output_units=output_units,
+            )
+        except (TypeError, ValueError) as exc:
+            if output_units is None:
+                raise
+            raise ValueError(
+                f"Could not merge site {site!r} using target observation units {output_units!r}."
+            ) from exc
+        if output_units is None:
+            output_units = resolved_sites[i][0].mf.attrs["units"]
+        retained_inputs.append((i, observations, footprint))
+    if not retained_inputs:
+        raise SearchError("No site data found. Exiting process.")
+
+    # A shared footprint serves every source. Union sites and distinct modes
+    # directly, then retain the common native reporting window for all sources.
+    support = [
+        required_flux_support(native, mode=mode)
+        for _, _, native in resolved_sites.values()
+        for mode in set(transport.values())
+    ]
+    flux_first = min(first for first, _ in support)
+    flux_last = max(last for _, last in support)
+    # OpenGHG subtracts one second and then slices inclusively at the end.
+    query_end = flux_last + pd.Timedelta(seconds=1) - pd.Timedelta("1ns")
+    retrieved_flux = get_flux_data(
+        sources=list(flux_sources), species=species, domain=domain,
+        start_date=str(flux_first), end_date=str(query_end), store=flux_store,
+        flux_non_finite_check=flux_non_finite_check,
+        allow_older_flux=False, include_previous_interval=True,
+    )
+    flux_provenance = {source: selected_provenance(value, flux_store) for source, value in retrieved_flux.items()}
+    flux_dict = {
+        source: _with_selected_provenance(value, flux_provenance[source])
+        for source, value in retrieved_flux.items()
+    }
+    if len(flux_dict) > 1:
+        try:
+            xr.align(*(value.data.flux for value in flux_dict.values()), join="exact", copy=False)
+        except ValueError as exc:
+            raise ValueError(
+                "Surface native reporting cannot yet represent mixed native source axes; "
+                "use prepare_surface_site for source-wise supplied-input responses."
+            ) from exc
+
+    bc_data, boundary_provenance = _get_boundary_data(
+        use_bc=use_bc, species=species, domain=domain, bc_input=bc_input,
+        start_date=start_date, end_date=end_date, store=bc_store,
+    )
+    if bc_data is not None and boundary_provenance is not None:
+        bc_data = _with_selected_provenance(bc_data, boundary_provenance)
+
+    flux_views = {source: _dataset(value) for source, value in flux_dict.items()}
+    boundary_view = _dataset(bc_data) if bc_data is not None else None
+    _validate_surface_forcing(flux_views, boundary_data=boundary_view)
+
+    # Calculate with the already-resolved bins/native releases, then attach identities once.
+    merged_sites: dict[str, xr.Dataset] = {}
+    observation_provenance: dict[str, InputProvenance] = {}
+    footprint_provenance: dict[str, InputProvenance] = {}
+    for i, observations, footprint in retained_inputs:
+        site = site_options.sites[i]
+        aligned_obs, site_fp, native_fp = resolved_sites[i]
+        try:
+            prepared = _surface_site_responses(
+                aligned_obs, site_fp, native_fp, {source: native_fp for source in transport}, flux_views,
+                species=species.lower(), transport=transport, boundary_view=boundary_view,
+                boundary_representation=boundary_representation, boundary_reference=reference,
+                boundary_reference_units=reference_units, boundary_mass_tolerance=mass_tolerance,
+            )
+            prepared = _attach_surface_provenance(
+                prepared, site_footprint=footprint, source_footprints={source: footprint for source in transport},
+                flux_data=flux_dict, boundary_data=bc_data, transport=transport, site_footprint_selection="shared",
+            )
+        except (TypeError, ValueError) as exc:
+            if i == retained_inputs[0][0]:
+                raise
+            raise ValueError(
+                f"Could not merge site {site!r} using target observation units {output_units!r}."
+            ) from exc
+        prepared.attrs["openghg_inversions_time_resolved"] = str(site_options.time_resolved[i]).lower()
+        merged_sites[site] = prepared
+        observation_provenance[site] = selected_provenance(observations)
+        footprint_provenance[site] = selected_provenance(footprint)
+    retained = site_options.select_indices([i for i, _, _ in retained_inputs])
+    _warn_calibration_scales(merged_sites, retained)
+    return MergedData(
+        site_data=merged_sites,
+        flux_data={source: value.data for source, value in flux_dict.items()},
+        boundary_data=bc_data.data if bc_data is not None else None,
+        site_options=retained, split_by_sectors=split_by_sectors,
+        provenance=MergedDataProvenance.from_retrieval(
+            observations=observation_provenance, footprints=footprint_provenance,
+            flux=flux_provenance, boundary=boundary_provenance,
+        ),
+        acquisition=AcquisitionFacts(
+            species=species, domain=domain, start_date=start_date, end_date=end_date,
+            flux_domain=flux_domain, fp_model=fp_model, fp_species=fp_species,
+            calibration_scale=calibration_scale, use_bc=use_bc, bc_input=bc_input,
+            flux_non_finite_check=flux_non_finite_check,
+        ),
+    )
+
+
+def interpolate_flux_to_footprint_grid(
+    flux_dict: dict[str, FluxData],
+    footprint_data: Any,
+) -> dict[str, FluxData]:
+    """Interpolate flux density onto a footprint grid without mutating inputs."""
+    target = footprint_data.data["fp"]
+    interpolated: dict[str, FluxData] = {}
+    for source, flux_data in flux_dict.items():
+        flux = flux_data.data["flux"].interp(
+            lat=target["lat"],
+            lon=target["lon"],
+            method="nearest",
+        )
+        dataset = flux.to_dataset(name="flux")
+        dataset.attrs = dict(flux_data.data.attrs)
+        interpolated[source] = FluxData(
+            data=dataset,
+            metadata=dict(flux_data.metadata),
+        )
+    return interpolated

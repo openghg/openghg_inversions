@@ -16,7 +16,7 @@ from openghg_inversions.postprocessing.make_paris_outputs import (
     PARIS_LATEST_COUNTRIES,
     paris_template_files,
 )
-from openghg_inversions.rhime import run_rhime_multisector
+from openghg_inversions.rhime import run_multisector
 
 
 _CDL_VARIABLE = re.compile(
@@ -159,14 +159,13 @@ def test_multisector_rhime_pipeline_writes_latest_paris_flux_schema(
             "output_name": "multisector_paris_pipeline",
             "output_path": str(tmp_path),
             "basis_algorithm": "quadtree",
-            "basis_output_path": str(tmp_path),
-            "bc_basis_directory": default_bc_basis_directory,
+            "basis_output_path": str(tmp_path / "basis.nc"),
+            "bc_basis_paths": [default_bc_basis_directory / "EUROPE" / "NESW_EUROPE_2019.nc"],
             "nbasis": 4,
             "draws": 2,
             "burn": 0,
             "tune": 0,
             "chains": 1,
-            "reload_merged_data": False,
             "output_format": "paris",
             "save_inversion_output": False,
             "country_file": europe_country_file,
@@ -177,39 +176,39 @@ def test_multisector_rhime_pipeline_writes_latest_paris_flux_schema(
             },
             "x_prior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
             "bc_prior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+            "mismatch_model": "pollution_event",
             "sigma_prior": {"pdf": "uniform", "lower": 0.1, "upper": 10.0},
             "sample_kwargs": {"random_seed": 405, "compute_convergence_checks": False},
         }
     )
-    args.pop("emissions_name")
 
-    result = run_rhime_multisector(**args)
+    result = run_multisector(**args)
 
     assert result.basis_functions is not None
     xr.testing.assert_allclose(
         result.basis_functions.flux.sel(source=flux_sources[0], drop=True),
         result.basis_functions.flux.sel(source=flux_sources[1], drop=True),
     )
-    flux = result.outputs["paris_flux"]
-    for state in ("prior", "posterior"):
-        np.testing.assert_allclose(
-            flux[f"flux_total_{state}"],
-            flux[f"flux_ff_{state}"] + flux[f"flux_ocean_{state}"],
-            rtol=1e-6,
-        )
-
     expected_flux_path = tmp_path / "multisector_paris_pipeline_flux_ch4_EUROPE_2019-01-01.nc"
     expected_concentration_path = (
         tmp_path / "multisector_paris_pipeline_conc_ch4_EUROPE_2019-01-01.nc"
     )
     expected_diagnostics_path = tmp_path / "multisector_paris_pipeline2019-01-01_sector_flux_diagnostics.nc"
-    assert result.output_metadata["paris_flux_path"] == str(expected_flux_path)
-    assert result.output_metadata["paris_concentration_path"] == str(expected_concentration_path)
-    assert result.output_metadata["sector_flux_diagnostics_path"] == str(expected_diagnostics_path)
     assert expected_flux_path.is_file()
     assert expected_concentration_path.is_file()
     assert expected_diagnostics_path.is_file()
-    assert "inversion_output_path" not in result.output_metadata
+    assert not list(tmp_path.glob("*inversion_output.nc"))
+    assert result.run_metadata["start_date"] == "2019-01-01"
+    assert result.variable_roles["flux_scale"] == "x"
+    assert result.variable_roles["flux_contribution"] == "mu"
+    assert result.variable_roles["emissions_sensitivity"] == "hx"
+    with xr.open_dataset(expected_flux_path) as flux:
+        for state in ("prior", "posterior"):
+            np.testing.assert_allclose(
+                flux[f"flux_total_{state}"],
+                flux[f"flux_ff_{state}"] + flux[f"flux_ocean_{state}"],
+                rtol=1e-6,
+            )
 
     with xr.open_dataset(expected_concentration_path) as concentration:
         assert concentration.attrs["paris_concentration_template_version"] == "v04"

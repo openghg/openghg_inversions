@@ -21,13 +21,14 @@ import numpy as np
 from numpy.typing import NDArray
 import pandas as pd
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytensor.tensor as pt
 from pytensor.tensor.variable import TensorVariable
 import xarray as xr
 
 from openghg_inversions.array_ops import to_dense, validate_covariance_coordinates
 from openghg_inversions.models.components import add_model_data
-from openghg_inversions.models.priors import parse_prior, positive_prior_args
+from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.serialization import decode_cf_multiindexes, encode_cf_multiindexes
 
@@ -341,18 +342,18 @@ class ScalarSigmaEigenbasis:
         Returns:
             Scalar symbolic log density.
         """
-        vectors = pt.as_tensor_variable(pm.floatX(np.asarray(self.eigenvectors.values)))
-        values = pt.as_tensor_variable(pm.floatX(np.asarray(self.eigenvalues.values)))
+        vectors = pt.as_tensor_variable(floatX(np.asarray(self.eigenvectors.values)))
+        values = pt.as_tensor_variable(floatX(np.asarray(self.eigenvalues.values)))
         residual = pt.dot(vectors.T, value - mean)
         variance = values + pt.square(sigma)
         valid = pt.all(pt.gt(variance, 0.0))
         safe_variance = pt.where(valid, variance, pt.ones_like(variance))
-        density = -pm.floatX(0.5) * (
-            pm.floatX(self.n_observation * np.log(2.0 * np.pi))
+        density = -floatX(0.5) * (
+            floatX(self.n_observation * np.log(2.0 * np.pi))
             + pt.sum(pt.log(safe_variance))
             + pt.sum(pt.square(residual) / safe_variance)
         )
-        return cast(TensorVariable, pt.where(valid, density, pm.floatX(-np.inf)))
+        return cast(TensorVariable, pt.where(valid, density, floatX(-np.inf)))
 
     def logpdf(self, residual: NDArray[np.float64], *, sigma: float) -> float:
         """Evaluate the represented Gaussian log density with NumPy.
@@ -669,11 +670,11 @@ def add_scalar_sigma_eigen_likelihood(
     """
     observed = add_model_data(observations.transpose(output_dim), "Y")
     reported_error = add_model_data(observation_error.transpose(output_dim), "error")
-    sigma = parse_prior("sigma_global", positive_prior_args(sigma_prior))
+    sigma = parse_prior("sigma_global", sigma_prior, positive=True)
     pm.Deterministic(
         "epsilon",
         pt.sqrt(
-            reported_error**2 + pm.floatX(np.asarray(aggregation_error.marginal_variance)) + pt.square(sigma)
+            reported_error**2 + floatX(np.asarray(aggregation_error.marginal_variance)) + pt.square(sigma)
         ),
         dims=output_dim,
     )

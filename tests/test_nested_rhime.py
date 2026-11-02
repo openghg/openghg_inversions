@@ -1,0 +1,921 @@
+"""Focused tests for modern nested-domain RHIME composition."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import dask.array as da
+from dask.callbacks import Callback
+import numpy as np
+import pandas as pd
+import pytest
+import xarray as xr
+
+import openghg_inversions.rhime.nested as nested_module
+from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.cli import main
+from openghg_inversions.rhime._domain_support import rectangular_extent_mask, remove_domain_overlap
+from openghg_inversions.inversion_data import MergedData, PreparedInputs
+from openghg_inversions.inversion_data import SiteOptions
+from openghg_inversions.postprocessing.contracts import OutputContract
+from openghg_inversions.postprocessing.nested_paris_outputs import (
+    _regridded_inner_country_file,
+)
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing.make_outputs import make_flux_outputs
+from openghg_inversions.rhime.nested import (
+    NestedOutput,
+    _domain_variable_roles,
+    align_inner_merged_to_outer_observations,
+    build_nested_rhime_model,
+    materialize_nested_inputs,
+    combine_nested_rhime_inputs,
+    make_nested_inversion_outputs,
+    mask_outer_merged_for_inner_domain,
+)
+from openghg_inversions.rhime.materialization import materialize_pymc_inputs
+from openghg_inversions.models.priors import prior_records
+from openghg_inversions.rhime.outputs import annotate_sample_trace
+from openghg_inversions.rhime.params import RhimeConfig
+from openghg_inversions.rhime import params as rhime_params
+from openghg_inversions.rhime.sampling import RhimeSampler
+from openghg_inversions.rhime.specs import (
+    FixedErrorSettings,
+    RhimeModelSpec,
+    RhimeOutputSpec,
+    SectorSpec,
+)
+from tests.helpers import make_trace
+
+
+def _basis(lat: list[float], lon: list[float], labels: np.ndarray) -> BasisFunctions:
+    basis = xr.DataArray(
+        labels,
+        dims=("lat", "lon"),
+        coords={"lat": lat, "lon": lon},
+        name="basis",
+    )
+    flux = xr.ones_like(basis, dtype=float).rename("flux")
+    flux.attrs["units"] = "mol m-2 s-1"
+    return BasisFunctions.from_flat_basis(
+        basis,
+        flux,
+        operator_kwargs={"state_dim": "region"},
+    )
+
+
+def _prepared(
+    *,
+    times: list[str],
+    sensitivity: np.ndarray,
+    basis: BasisFunctions,
+) -> PreparedInputs:
+    nmeasure = pd.MultiIndex.from_arrays(
+        [["TAC"] * len(times), pd.to_datetime(times)],
+        names=("site", "time"),
+    )
+    inputs = xr.Dataset(
+        {
+            "H": (("region", "nmeasure"), sensitivity),
+            "mf": ("nmeasure", np.arange(len(times), dtype=float) + 10.0),
+            "mf_error": ("nmeasure", np.ones(len(times))),
+            "min_error": ("nmeasure", np.zeros(len(times))),
+            "site_indicator": ("nmeasure", np.zeros(len(times), dtype=int)),
+        },
+        coords={
+            "region": np.arange(sensitivity.shape[0]),
+            **xr.Coordinates.from_pandas_multiindex(nmeasure, "nmeasure"),
+        },
+    )
+    inputs["mf"].attrs["units"] = "ppm"
+    return PreparedInputs(
+        inputs,
+        basis,
+        xr.Dataset(
+            {"averaging_period": ("site", np.asarray(["1h"], dtype=object))},
+            coords={"site": ["TAC"]},
+        ),
+    )
+
+
+def _model_spec() -> RhimeModelSpec:
+    return RhimeModelSpec(
+        species="ch4",
+        domain="EUROPE",
+        sectors=(
+            SectorSpec(
+                name="total",
+                flux_source="inventory",
+                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                variable_suffix="total",
+            ),
+        ),
+        use_bc=False,
+        likelihood=FixedErrorSettings(),
+    )
+
+
+def test_combine_nested_inputs_retains_native_bases_and_aligns_nearest_time() -> None:
+    outer_basis = _basis([50.0], [-2.0, -1.0], np.array([[1, 2]]))
+    inner_basis = _basis([51.0, 51.5], [-1.5], np.array([[1], [2]]))
+    outer = _prepared(
+        times=["2019-01-01T00:00", "2019-01-01T01:00"],
+        sensitivity=np.array([[1.0, 2.0], [3.0, 4.0]]),
+        basis=outer_basis,
+    )
+    inner = _prepared(
+        times=["2019-01-01T00:10", "2019-01-01T01:10"],
+        sensitivity=np.array([[5.0, 6.0], [7.0, 8.0]]),
+        basis=inner_basis,
+    )
+
+    nested = combine_nested_rhime_inputs(
+        outer,
+        inner,
+        time_tolerance="15min",
+        outer_overlap_masked=True,
+    )
+
+    assert nested.outer.basis_functions is not nested.inner.basis_functions
+    assert nested.combined.basis_functions.operator is nested.outer.basis_functions.operator
+    assert nested.combined.inv_inputs["H_inner"].dims == ("inner_region", "nmeasure")
+    np.testing.assert_allclose(nested.combined.inv_inputs["H_inner"], [[5.0, 6.0], [7.0, 8.0]])
+    assert nested.combined.inv_inputs["H"].dims == ("region", "nmeasure")
+    # Revalidation must preserve the explicitly selected nearest-time policy.
+    nested.validated()
+
+
+def test_combine_nested_inputs_requires_explicitly_masked_outer_preparation() -> None:
+    """The public prepared-input boundary must not silently double-count overlap."""
+    basis = _basis([50.0], [-2.0], np.array([[1]]))
+    outer = _prepared(
+        times=["2019-01-01T00:00"],
+        sensitivity=np.array([[1.0]]),
+        basis=basis,
+    )
+    inner = _prepared(
+        times=["2019-01-01T00:00"],
+        sensitivity=np.array([[2.0]]),
+        basis=basis,
+    )
+
+    with pytest.raises(ValueError, match="outer_overlap_masked=True"):
+        combine_nested_rhime_inputs(outer, inner)
+
+
+def test_combine_nested_inputs_rejects_unmatched_time_instead_of_zero_filling() -> None:
+    basis = _basis([50.0], [-2.0], np.array([[1]]))
+    outer = _prepared(
+        times=["2019-01-01T00:00"],
+        sensitivity=np.array([[1.0]]),
+        basis=basis,
+    )
+    inner = _prepared(
+        times=["2019-01-01T02:00"],
+        sensitivity=np.array([[2.0]]),
+        basis=basis,
+    )
+
+    try:
+        combine_nested_rhime_inputs(
+            outer,
+            inner,
+            time_tolerance="15min",
+            outer_overlap_masked=True,
+        )
+    except ValueError as exc:
+        assert "cannot be aligned" in str(exc)
+    else:  # pragma: no cover - assertion helper without pytest dependency
+        raise AssertionError("Expected an unmatched nested observation to be rejected.")
+
+
+def test_combine_nested_inputs_rejects_reused_nearest_inner_footprint() -> None:
+    """Each prepared outer observation must select a distinct inner footprint."""
+    basis = _basis([50.0], [-2.0], np.array([[1]]))
+    outer = _prepared(
+        times=["2019-01-01T00:00", "2019-01-01T00:05"],
+        sensitivity=np.array([[1.0, 2.0]]),
+        basis=basis,
+    )
+    inner = _prepared(
+        times=["2019-01-01T00:02", "2019-01-01T00:09"],
+        sensitivity=np.array([[3.0, 4.0]]),
+        basis=basis,
+    )
+
+    with pytest.raises(ValueError, match=r"one-to-one.*reuse an inner footprint"):
+        combine_nested_rhime_inputs(
+            outer,
+            inner,
+            time_tolerance="5min",
+            outer_overlap_masked=True,
+        )
+
+
+def _site_options() -> SiteOptions:
+    return SiteOptions.from_inputs(
+        sites=["TAC"],
+        averaging_period=["1h"],
+        inlet=["100m"],
+        fp_height=["100m"],
+        instrument=[None],
+        platform=["surface"],
+        obs_data_level=[None],
+        met_model=[None],
+        max_level=[None],
+    )
+
+
+def test_mask_outer_merged_zeroes_overlap_lazily_without_mutating_inputs() -> None:
+    time = pd.date_range("2019-01-01", periods=1)
+    lat = [0.0, 1.0, 2.0]
+    lon = [0.0, 1.0, 2.0]
+    values = da.ones((1, 3, 3), chunks=(1, 3, 3))
+    outer_site = xr.Dataset(
+        {
+            "fp": (("time", "lat", "lon"), values),
+            "fp_x_flux": (("time", "lat", "lon"), values),
+        },
+        coords={"time": time, "lat": lat, "lon": lon},
+    )
+    outer_flux = xr.Dataset(
+        {"flux": (("time", "lat", "lon"), values)},
+        coords={"time": time, "lat": lat, "lon": lon},
+    )
+    inner_site = xr.Dataset(
+        {"fp": (("time", "lat", "lon"), np.ones((1, 1, 1)))},
+        coords={"time": time, "lat": [1.0], "lon": [1.0]},
+    )
+    outer = MergedData(flux_data={"inventory": outer_flux}, site_data={"TAC": outer_site}, site_options=_site_options())
+    inner = MergedData(site_data={"TAC": inner_site}, flux_data={}, site_options=_site_options())
+
+    masked = mask_outer_merged_for_inner_domain(outer, inner)
+
+    assert not isinstance(masked, type(outer))
+    assert masked.site_options is outer.site_options
+    assert isinstance(masked.site_data["TAC"]["fp"].data, da.Array)
+    assert isinstance(masked.flux_data["inventory"]["flux"].data, da.Array)
+    assert float(masked.site_data["TAC"]["fp"].isel(time=0, lat=1, lon=1).compute()) == 0.0
+    assert float(masked.site_data["TAC"]["fp"].isel(time=0, lat=0, lon=0).compute()) == 1.0
+    assert float(masked.flux_data["inventory"]["flux"].isel(time=0, lat=1, lon=1).compute()) == 0.0
+    assert float(outer.site_data["TAC"]["fp"].isel(time=0, lat=1, lon=1).compute()) == 1.0
+
+
+def test_domain_support_preserves_native_order_sources_and_lazy_payloads() -> None:
+    """A nonmatching inner grid removes only native cells within its rectangle."""
+    native = xr.DataArray(
+        da.ones((2, 3, 4), chunks=(1, 3, 2)),
+        dims=("source", "lat", "lon"),
+        coords={"source": ["a", "b"], "lat": [3.0, 0.0, 1.0], "lon": [4.0, 2.0, -1.0, 0.0]},
+        attrs={"units": "mol m-2 s-1"},
+    )
+    inner = xr.Dataset(coords={"lat": [1.5, 0.0], "lon": [0.0, 0.5, 2.5]})
+    tasks: list[object] = []
+    with Callback(pretask=lambda key, *_: tasks.append(key)):
+        mask = rectangular_extent_mask(inner, target_lat=native.lat, target_lon=native.lon)
+        masked = remove_domain_overlap(native, mask)
+
+    assert not tasks
+    assert isinstance(masked.data, da.Array)
+    assert masked.dims == native.dims
+    assert masked.attrs == native.attrs
+    xr.testing.assert_identical(masked.coords.to_dataset(), native.coords.to_dataset())
+    expected = np.array([[1, 1, 1, 1], [1, 0, 1, 0], [1, 0, 1, 0]])
+    np.testing.assert_array_equal(masked.compute(), np.broadcast_to(expected, (2, 3, 4)))
+    np.testing.assert_array_equal(native.compute(), np.ones((2, 3, 4)))
+
+
+def test_domain_support_rejects_misaligned_mask_instead_of_intersecting() -> None:
+    native = xr.DataArray([1.0, 2.0], dims="lat", coords={"lat": [0.0, 1.0]})
+    mask = xr.DataArray([True, False], dims="lat", coords={"lat": [1.0, 2.0]})
+    with pytest.raises(ValueError, match="align.*exact"):
+        remove_domain_overlap(native, mask)
+
+
+@pytest.mark.parametrize("inner", [xr.Dataset(), xr.Dataset(coords={"lat": [], "lon": [0.0]})])
+def test_domain_support_rejects_missing_or_empty_inner_grid(inner: xr.Dataset) -> None:
+    target = xr.Dataset(coords={"lat": [0.0], "lon": [0.0]})
+    with pytest.raises(ValueError, match="coordinates"):
+        rectangular_extent_mask(inner, target_lat=target.lat, target_lon=target.lon)
+
+
+def test_inner_merged_alignment_mirrors_filtered_outer_times_with_tolerance() -> None:
+    outer_times = pd.to_datetime(["2019-01-01T00:00", "2019-01-01T02:00"])
+    inner_times = pd.to_datetime(["2019-01-01T00:10", "2019-01-01T01:10", "2019-01-01T02:10"])
+    outer = MergedData(site_data={"TAC": xr.Dataset({"mf": ("time", [1.0, 2.0])}, coords={"time": outer_times})}, flux_data={}, site_options=_site_options())
+    inner = MergedData(site_data={"TAC": xr.Dataset(
+                {"fp": (("time", "lat", "lon"), np.arange(3.0).reshape(3, 1, 1))},
+                coords={"time": inner_times, "lat": [1.0], "lon": [1.0]},
+            )}, flux_data={}, site_options=_site_options())
+
+    aligned = align_inner_merged_to_outer_observations(
+        outer,
+        inner,
+        time_tolerance="15min",
+    )
+
+    np.testing.assert_array_equal(aligned.site_data["TAC"]["time"], outer_times)
+    np.testing.assert_allclose(aligned.site_data["TAC"]["fp"].values[:, 0, 0], [0.0, 2.0])
+    np.testing.assert_array_equal(inner.site_data["TAC"]["time"], inner_times)
+
+
+def test_inner_merged_alignment_rejects_reused_nearest_inner_footprint() -> None:
+    """Satellite-like nearby observations cannot reuse one inner footprint."""
+    outer_times = pd.to_datetime(["2019-01-01T00:00", "2019-01-01T00:05"])
+    inner_times = pd.to_datetime(["2019-01-01T00:02", "2019-01-01T00:09"])
+    outer = MergedData(site_data={"TAC": xr.Dataset({"mf": ("time", [1.0, 2.0])}, coords={"time": outer_times})}, flux_data={}, site_options=_site_options())
+    inner = MergedData(site_data={"TAC": xr.Dataset(
+                {"fp": (("time", "lat", "lon"), np.arange(2.0).reshape(2, 1, 1))},
+                coords={"time": inner_times, "lat": [1.0], "lon": [1.0]},
+            )}, flux_data={}, site_options=_site_options())
+
+    with pytest.raises(ValueError, match=r"one-to-one.*reuse an inner footprint"):
+        align_inner_merged_to_outer_observations(
+            outer,
+            inner,
+            time_tolerance="5min",
+        )
+
+
+def test_nested_model_uses_two_labelled_state_blocks_and_shared_likelihood() -> None:
+    outer_basis = _basis([50.0], [-2.0, -1.0], np.array([[1, 2]]))
+    inner_basis = _basis([51.0, 51.5], [-1.5], np.array([[1], [2]]))
+    outer = _prepared(
+        times=["2019-01-01T00:00", "2019-01-01T01:00"],
+        sensitivity=np.array([[1.0, 2.0], [3.0, 4.0]]),
+        basis=outer_basis,
+    )
+    inner = _prepared(
+        times=["2019-01-01T00:00", "2019-01-01T01:00"],
+        sensitivity=np.array([[5.0, 6.0], [7.0, 8.0]]),
+        basis=inner_basis,
+    )
+    prepared = combine_nested_rhime_inputs(outer, inner, outer_overlap_masked=True)
+    model_spec = _model_spec()
+
+    inputs, priors = materialize_nested_inputs(prepared.combined, model_spec)
+    result = build_nested_rhime_model(inputs, model_spec, priors=priors)
+    model = result.model
+    assert {"hx_outer", "hx_inner", "x_outer", "x_inner", "mu_outer", "mu_inner", "mu", "y"} <= set(
+        model.named_vars
+    )
+
+    assert result.output_contract.variable_roles["flux_scale:outer"] == "x_outer"
+    assert result.output_contract.variable_roles["flux_scale:inner"] == "x_inner"
+    assert result.output_contract.variable_roles["concentration"] == "y"
+    assert result.output_contract.supported_output_formats == ("none", "paris")
+
+
+def test_nested_materialization_computes_both_sensitivities_at_named_boundary() -> None:
+    basis = _basis([50.0], [-2.0], np.array([[1]]))
+    outer = _prepared(
+        times=["2019-01-01T00:00"],
+        sensitivity=np.array([[1.0]]),
+        basis=basis,
+    )
+    inner = _prepared(
+        times=["2019-01-01T00:00"],
+        sensitivity=np.array([[2.0]]),
+        basis=basis,
+    )
+    prepared = combine_nested_rhime_inputs(outer, inner, outer_overlap_masked=True)
+    lazy_outer = da.from_array(prepared.combined.inv_inputs["H"].values, chunks=(1, 1))
+    lazy_inner = da.from_array(prepared.combined.inv_inputs["H_inner"].values, chunks=(1, 1))
+    lazy_dataset = prepared.combined.inv_inputs.copy(deep=False)
+    lazy_dataset["H"] = xr.Variable(("region", "nmeasure"), lazy_outer)
+    lazy_dataset["H_inner"] = xr.Variable(("inner_region", "nmeasure"), lazy_inner)
+    lazy_prepared = PreparedInputs(
+        lazy_dataset,
+        prepared.combined.basis_functions,
+        prepared.combined.site_metadata,
+    )
+
+    materialized = materialize_pymc_inputs(
+        lazy_prepared,
+        variable_names=("H", "H_inner"),
+    )
+
+    assert not isinstance(materialized["H"].data, da.Array)
+    assert not isinstance(materialized["H_inner"].data, da.Array)
+    assert lazy_prepared.inv_inputs["H"].data is lazy_outer
+    assert lazy_prepared.inv_inputs["H_inner"].data is lazy_inner
+
+
+def test_cli_run_rhime_nested_passes_config(monkeypatch, tmp_path: Path) -> None:
+    config_file = tmp_path / "nested.ini"
+    config_file.write_text('[RHIME.OUTPUT]\noutput_name = "nested"\n', encoding="utf-8")
+    seen: dict[str, object] = {}
+
+    def fake_run_rhime_nested(*, config_file: str, **kwargs: object) -> None:
+        seen["config_file"] = config_file
+        seen["kwargs"] = kwargs
+
+    monkeypatch.setattr("openghg_inversions.rhime.nested.run_nested", fake_run_rhime_nested)
+
+    main(["run", "--model", "nested", "-c", str(config_file)])
+
+    assert seen == {"config_file": str(config_file), "kwargs": {}}
+
+
+@pytest.mark.parametrize("name", [
+    "inner_fp_basis_case", "inner_basis_directory", "inner_country_directory", "inner_unknown_option",
+])
+@pytest.mark.parametrize("value", [None, "unused"])
+def test_nested_rejects_unknown_inner_options_before_scientific_inputs(monkeypatch, name, value):
+    monkeypatch.setattr(
+        nested_module.MergedData, "from_options",
+        lambda **kwargs: pytest.fail("acquired inputs before rejecting unknown options"),
+    )
+    with pytest.raises(ValueError, match=f"Unsupported RHIME parameter.*{name}"):
+        nested_module.run_nested(inner_domain="inner", **{name: value})
+
+
+@pytest.mark.parametrize("output_format", ["none", "paris"])
+def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
+    monkeypatch, capsys, output_format, tmp_path,
+) -> None:
+    monkeypatch.setattr(nested_module, "get_domain_info", lambda: {})
+    basis = _basis([50.0], [-2.0], np.array([[1]]))
+    prepared = _prepared(
+        times=["2019-01-01T00:00"],
+        sensitivity=np.array([[1.0]]),
+        basis=basis,
+    )
+    merged = MergedData(site_data={"TAC": xr.Dataset(
+            {"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]),
+             "mf_variability": ("time", [0.0])},
+            coords={"lat": [50.0], "lon": [-2.0]},
+        )}, flux_data={}, site_options=_site_options())
+    country = tmp_path / "country.nc"
+    country.touch()
+    setup = RhimeConfig.from_params(params={
+            "species": "ch4",
+            "sites": ["TAC"],
+            "averaging_period": ["1h"],
+            "domain": "EUROPE",
+            "start_date": "2019-01-01",
+            "end_date": "2019-01-02",
+            "output_name": "nested-test",
+            "mismatch_model": "fixed_error",
+            "flux_sources": ["inventory"],
+            "use_bc": True,
+            "basis_algorithm": "weighted",
+            "nbasis": 100,
+            "output_format": output_format,
+            "country_file": country,
+            "output_path": tmp_path / "outputs",
+        }, multisector=False)
+    retrieval_args: list[dict[str, object]] = []
+    preparation_configs: list[dict[str, object]] = []
+
+    def fake_retrieve(**kwargs):
+        assert kwargs["split_by_sectors"] is False
+        retrieval_args.append(kwargs)
+        return merged
+
+    def fake_prepare(domain_merged, **choices):
+        assert domain_merged.sites == ("TAC",)
+        preparation_configs.append(choices)
+        return prepared
+
+    monkeypatch.setattr(nested_module.MergedData, "from_options", fake_retrieve)
+    monkeypatch.setattr(
+        nested_module, "filter_observations", lambda value, site_options, **kwargs: (value, site_options),
+    )
+    monkeypatch.setattr(
+        nested_module,
+        "align_inner_merged_to_outer_observations",
+        lambda outer, inner, time_tolerance: inner,
+    )
+    monkeypatch.setattr(nested_module, "_mask_outer_for_aligned_inner_domain", lambda outer, inner: outer)
+    monkeypatch.setattr(nested_module, "_prepare_one_domain", fake_prepare)
+
+    class BeforeSampling(Exception):
+        pass
+
+    def before_sampling(combined, *args, **kwargs):
+        assert combined.basis_artifact_path is None
+        raise BeforeSampling
+
+    monkeypatch.setattr(nested_module, "materialize_nested_inputs", before_sampling)
+    original_prepare = nested_module.prepare_nested_rhime_inputs
+    prepared_nested = []
+
+    def prepare(*args, **kwargs):
+        result = original_prepare(*args, **kwargs)
+        prepared_nested.append(result)
+        return result
+
+    monkeypatch.setattr(nested_module, "prepare_nested_rhime_inputs", prepare)
+    selectors = {"inner_flux_store": "inner-flux", "inner_flux_domain": "EUROPE"}
+    with pytest.raises(BeforeSampling):
+        nested_module.run_nested(
+            config=setup, inner_domain="6km", inner_footprint_store="inner-fp", inner_nbasis=40, **selectors
+        )
+
+    assert capsys.readouterr().out.count("TIMING rhime.prepare_inputs.merged_data ") == 2
+    assert len(retrieval_args) == 2
+    inner_args = retrieval_args[1]
+    assert inner_args["domain"] == "EUROPE-6km"
+    assert inner_args["footprint_store"] == "inner-fp"
+    assert inner_args["flux_store"] == "inner-flux"
+    assert inner_args["flux_domain"] == "EUROPE"
+    assert inner_args["use_bc"] is False
+    assert preparation_configs[1]["basis_algorithm"] == "quadtree"
+    assert preparation_configs[1]["domain"] == "EUROPE-6km"
+    assert preparation_configs[1]["use_bc"] is False
+    assert preparation_configs[1]["nbasis"] == 40
+    assert preparation_configs[0]["basis_algorithm"] == "weighted"
+    assert preparation_configs[1]["basis_algorithm"] == "quadtree"
+    assert preparation_configs[1]["basis_inputs"].get("basis_path") is None
+    assert preparation_configs[1]["basis_inputs"].get("basis_partition") is None
+    assert prepared_nested[0].outer_overlap_mask_policy == nested_module._RETRIEVAL_OVERLAP_MASK_POLICY
+
+    assert setup.data.nbasis == 100
+
+
+@pytest.mark.parametrize("output_format", ["none", "basic", "paris"])
+def test_inner_data_config_is_reusable_independently_of_reporting(tmp_path, output_format):
+    from tests.test_staged_workflow import _params
+
+    config = RhimeConfig.from_params(_params(output_format=output_format), multisector=False)
+    inner = nested_module.inner_data_config(config.data, inner_domain="6km")
+    assert inner.domain == "EUROPE-6km"
+    assert inner.footprint_store == config.data.footprint_store
+    assert inner.flux_store == config.data.flux_store
+    assert inner.nbasis == config.data.nbasis
+    assert inner.basis_algorithm == "quadtree"
+    assert inner.basis_path is None
+    assert inner.basis_partition_paths is None
+    assert inner.basis_output_path is None
+    assert inner.use_bc is False
+    assert inner.bc_input is None and inner.bc_basis_paths is None
+    explicit = nested_module.inner_data_config(
+        config.data, inner_domain="EUROPE-6km", inner_nbasis=40,
+        inner_basis_path=tmp_path / "inner.nc", inner_basis_output_path=tmp_path / "export.nc",
+    )
+    assert explicit.domain == inner.domain
+    assert explicit.nbasis == 40
+    assert explicit.basis_path == tmp_path / "inner.nc"
+    assert explicit.basis_output_path == tmp_path / "export.nc"
+
+
+def test_nested_automatic_basis_budget_uses_bounded_sensitivity_share() -> None:
+    time = pd.date_range("2019-01-01", periods=2)
+    lat = [0.0, 1.0]
+    lon = [0.0, 1.0]
+    outer_values = da.ones((2, 2, 2), chunks=(2, 2, 1))
+    inner_values = 3.0 * da.ones((2, 2, 2), chunks=(2, 2, 1))
+    outer = MergedData(site_data={"TAC": xr.Dataset(
+                {"fp_x_flux": (("lat", "lon", "time"), outer_values)},
+                coords={"lat": lat, "lon": lon, "time": time},
+            )}, flux_data={}, site_options=_site_options())
+    inner = MergedData(site_data={"TAC": xr.Dataset(
+                {"fp_x_flux": (("lat", "lon", "time"), inner_values)},
+                coords={"lat": lat, "lon": lon, "time": time},
+            )}, flux_data={}, site_options=_site_options())
+
+    outer_nbasis, inner_nbasis = nested_module._allocate_nested_nbasis(
+        outer,
+        inner,
+        total_nbasis=100,
+    )
+
+    assert (outer_nbasis, inner_nbasis) == (40, 60)
+    assert isinstance(outer.site_data["TAC"]["fp_x_flux"].data, da.Array)
+    assert isinstance(inner.site_data["TAC"]["fp_x_flux"].data, da.Array)
+
+
+def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
+    monkeypatch.setattr(nested_module, "get_domain_info", lambda: {})
+    basis = _basis([50.0], [-2.0], np.array([[1]]))
+    prepared = _prepared(
+        times=["2019-01-01T00:00"],
+        sensitivity=np.array([[1.0]]),
+        basis=basis,
+    )
+    setup = RhimeConfig.from_params(params={
+            "species": "ch4",
+            "sites": ["TAC"],
+            "averaging_period": ["1h"],
+            "domain": "EUROPE",
+            "start_date": "2019-01-01",
+            "end_date": "2019-01-02",
+            "output_name": "nested-test",
+            "mismatch_model": "fixed_error",
+            "flux_sources": ["inventory"],
+            "nbasis": 100,
+            "output_format": "none",
+        }, multisector=False)
+    preparation_configs: list[dict[str, object]] = []
+
+    def fake_retrieve(**kwargs):
+        assert kwargs["split_by_sectors"] is False
+        value = 9.0 if kwargs["domain"] == "EUROPE-6km" else 1.0
+        dataset = xr.Dataset(
+            {"fp_x_flux": (("time", "lat", "lon"), [[[value]]]), "mf_error": ("time", [0.1])},
+            coords={"time": pd.date_range("2019-01-01", periods=1), "lat": [50.0], "lon": [-2.0]},
+        )
+        return MergedData(site_data={"TAC": dataset}, flux_data={}, site_options=_site_options())
+
+    def fake_prepare(domain_merged, **choices):
+        preparation_configs.append(choices)
+        return prepared
+
+    monkeypatch.setattr(nested_module.MergedData, "from_options", fake_retrieve)
+    monkeypatch.setattr(
+        nested_module, "filter_observations", lambda value, site_options, **kwargs: (value, site_options),
+    )
+    monkeypatch.setattr(
+        nested_module,
+        "align_inner_merged_to_outer_observations",
+        lambda outer, inner, time_tolerance: inner,
+    )
+    monkeypatch.setattr(nested_module, "_mask_outer_for_aligned_inner_domain", lambda outer, inner: outer)
+    monkeypatch.setattr(nested_module, "_prepare_one_domain", fake_prepare)
+
+    class BeforeSampling(Exception):
+        pass
+
+    def before_sampling(*args, **kwargs):
+        raise BeforeSampling
+
+    monkeypatch.setattr(nested_module, "materialize_nested_inputs", before_sampling)
+    with pytest.raises(BeforeSampling):
+        nested_module.run_nested(config=setup, inner_domain="6km")
+
+    assert preparation_configs[0]["nbasis"] == 40
+    assert preparation_configs[1]["nbasis"] == 60
+
+    assert setup.data.nbasis == 100
+
+
+def test_retired_outer_region_definition_name_is_unsupported() -> None:
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*outer_region_definition_file"):
+        nested_module.run_nested(outer_region_definition_file="/data/EUHROB.nc")
+
+
+def test_outer_regions_path_routes_through_modern_rhime_setup() -> None:
+    setup = rhime_params.RhimeConfig.from_params(
+        params={
+            "species": "ch4",
+            "sites": ["TAC"],
+            "averaging_period": ["1h"],
+            "domain": "EUROPE",
+            "start_date": "2019-01-01",
+            "end_date": "2019-01-02",
+            "output_name": "nested",
+            "output_format": "none",
+            "flux_sources": ["inventory"],
+            "outer_regions_path": "/data/EUHROB.nc",
+        },
+        multisector=False,
+    )
+
+    assert setup.data.outer_regions_path == Path("/data/EUHROB.nc")
+
+
+def test_domain_variable_roles_strips_tag_and_keeps_shared_roles() -> None:
+    all_roles = {
+        "observation": "mf",
+        "concentration": "y",
+        "flux_scale:outer": "x_outer",
+        "emissions_sensitivity:outer": "hx_outer",
+        "flux_scale:inner": "x_inner",
+        "emissions_sensitivity:inner": "hx_inner",
+    }
+
+    outer_roles = _domain_variable_roles(all_roles, tag="outer")
+    inner_roles = _domain_variable_roles(all_roles, tag="inner")
+
+    assert outer_roles == {
+        "observation": "mf",
+        "concentration": "y",
+        "flux_scale": "x_outer",
+        "emissions_sensitivity": "hx_outer",
+    }
+    assert inner_roles == {
+        "observation": "mf",
+        "concentration": "y",
+        "flux_scale": "x_inner",
+        "emissions_sensitivity": "hx_inner",
+    }
+
+
+def test_regridded_inner_country_cache_uses_writable_identity_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The default cache keys named domains and source content, rebuilding changed grids."""
+    source_path = tmp_path / "country_source.nc"
+
+    def write_source(values: np.ndarray) -> None:
+        xr.Dataset(
+            {
+                "country": (("lat", "lon"), values),
+                "name": ("ncountries", ["OCEAN", "TEST"]),
+                "country_code": ("ncountries", ["OCEAN", "TST"]),
+            },
+            coords={"lat": [0.0, 1.0], "lon": [10.0, 11.0], "ncountries": [0, 1]},
+        ).to_netcdf(source_path)
+
+    write_source(np.array([[0, 1], [0, 1]]))
+    cache_root = tmp_path / "user-cache"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache_root))
+    lat = xr.DataArray([0.0, 0.5, 1.0], dims="lat")
+    lon = xr.DataArray([10.0, 11.0], dims="lon")
+
+    first = _regridded_inner_country_file(
+        country_file=source_path,
+        domain="TEST",
+        lat=lat,
+        lon=lon,
+        inner_domain_label="TEST-6km",
+        cache_dir=None,
+    )
+    first_mtime = first.stat().st_mtime_ns
+    repeated = _regridded_inner_country_file(
+        country_file=source_path,
+        domain="TEST",
+        lat=lat + 1e-8,
+        lon=lon + 1e-8,
+        inner_domain_label="TEST-6km",
+        cache_dir=None,
+    )
+    assert repeated.stat().st_mtime_ns == first_mtime
+    changed_grid = _regridded_inner_country_file(
+        country_file=source_path,
+        domain="TEST",
+        lat=lat,
+        lon=xr.DataArray([10.0, 10.5, 11.0], dims="lon"),
+        inner_domain_label="TEST-6km",
+        cache_dir=None,
+    )
+    write_source(np.array([[0, 0], [1, 1]]))
+    changed_source = _regridded_inner_country_file(
+        country_file=source_path,
+        domain="TEST",
+        lat=lat,
+        lon=lon,
+        inner_domain_label="TEST-6km",
+        cache_dir=None,
+    )
+
+    assert first == repeated
+    assert first.parent == cache_root / "openghg_inversions" / "country_grids"
+    assert changed_grid == first
+    assert changed_source != first
+    with xr.open_dataset(first) as cached:
+        assert cached.sizes["lat"] == 3
+        assert "nested_country_source_sha256" in cached.attrs
+        assert "nested_country_target_grid_sha256" not in cached.attrs
+
+
+def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
+    """Outer/inner InversionOutput views must read distinct bases and trace variables.
+
+    The two views exist so ordinary, single-grid PARIS/flux/country postprocessing
+    (which expects one basis and one bare "flux_scale" role) can run unmodified
+    against each nested domain -- see `nested_paris_outputs`.
+    """
+    outer_basis = _basis([50.0], [-2.0, -1.0], np.array([[1, 2]]))
+    inner_basis = _basis([51.0, 51.5], [-1.5], np.array([[0], [1]]))
+    outer = _prepared(
+        times=["2019-01-01T00:00", "2019-01-01T01:00"],
+        sensitivity=np.array([[1.0, 2.0], [3.0, 4.0]]),
+        basis=outer_basis,
+    )
+    inner = _prepared(
+        times=["2019-01-01T00:00", "2019-01-01T01:00"],
+        sensitivity=np.array([[5.0, 6.0], [7.0, 8.0]]),
+        basis=inner_basis,
+    )
+    prepared = combine_nested_rhime_inputs(
+        outer,
+        inner,
+        inner_domain_label="europe-6km",
+        outer_overlap_masked=True,
+        outer_overlap_mask_extent=(50.9, 51.4, -1.6, -1.4),
+    )
+    model_spec = _model_spec()
+
+    inputs, priors = materialize_nested_inputs(
+        prepared.combined, model_spec,
+        inner_x_prior={"pdf": "normal", "mu": 2.0, "sigma": 0.4},
+    )
+    build_result = build_nested_rhime_model(inputs, model_spec, priors=priors)
+    trace = make_trace(
+        posterior=xr.Dataset(
+            {
+                "x_outer": (("chain", "draw", "region"), np.broadcast_to([[[1]], [[3]]], (2, 2, 2))),
+                "x_inner": (("chain", "draw", "inner_region"), np.broadcast_to([[[2]], [[6]]], (2, 2, 2))),
+            },
+            coords={"chain": [0, 1], "draw": [0, 1], "region": [0, 1], "inner_region": [0, 1]},
+        ),
+    )
+    annotate_sample_trace(build_result, trace)
+    records = prior_records(build_result.model)
+    assert records["x_outer"]["mu"] == 1.0
+    assert records["x_inner"]["mu"] == 2.0
+    output = make_nested_inversion_outputs(
+        prepared=prepared, model_spec=model_spec, posterior=trace,
+        output_contract=OutputContract.from_dict(build_result.output_contract.to_dict()),
+        start_date="2019-01-01", end_date="2019-01-02",
+        actual_inference=RhimeSampler().describe(),
+    )
+    assert isinstance(output, NestedOutput)
+    outer_inv_out, inner_inv_out = output.outer, output.inner
+    assert outer_inv_out.model_metadata["sectors"][0]["x_prior"] == records["x_outer"]
+    assert inner_inv_out.model_metadata["sectors"][0]["x_prior"] == records["x_inner"]
+    assert inner_inv_out.model_metadata["constructed_priors"] == records
+
+    assert outer_inv_out.variable_name("flux_scale") == "x_outer"
+    assert inner_inv_out.variable_name("flux_scale") == "x_inner"
+    assert outer_inv_out.variable_name("emissions_sensitivity") == "hx_outer"
+    assert inner_inv_out.variable_name("emissions_sensitivity") == "hx_inner"
+    assert outer_inv_out.basis_functions is prepared.outer.basis_functions
+    assert inner_inv_out.basis_functions is prepared.inner.basis_functions
+    assert outer_inv_out.inv_inputs is prepared.outer.inv_inputs
+    assert inner_inv_out.inv_inputs is prepared.inner.inv_inputs
+    # Both views resolve to the *outer* domain name, so `country_regions="paris"`
+    # lookups and default country-file resolution behave identically for both;
+    # the inner grid's own resolution is carried separately.
+    assert outer_inv_out.domain == inner_inv_out.domain == "EUROPE"
+    assert prepared.inner_domain_label == "europe-6km"
+
+    assert outer_inv_out.state_dimension_mapping == {"trace": "region", "basis": "region"}
+    assert inner_inv_out.state_dimension_mapping == {"trace": "inner_region", "basis": "region"}
+    assert inner_inv_out.trace_dataset(var_roles="flux_scale").sizes["region"] == 2
+    assert "inner_region" not in inner_inv_out.trace_dataset(var_roles="flux_scale").dims
+    assert "inner_region" in trace.posterior["x_inner"].dims
+    assert outer_inv_out.trace.posterior.sizes["chain"] == inner_inv_out.trace.posterior.sizes["chain"] == 2
+    inner_flux = make_flux_outputs(inner_inv_out, stats=["mean"])
+    assert inner_flux["flux_posterior_mean"].dims == ("lat", "lon", "flux_time")
+    np.testing.assert_allclose(inner_flux["flux_posterior_mean"], 4.0)
+
+    outer_nested = outer_inv_out.output_metadata["nested_domain"]
+    inner_nested = inner_inv_out.output_metadata["nested_domain"]
+    assert outer_nested["view_domain"] == "EUROPE"
+    assert inner_nested["view_domain"] == "europe-6km"
+    assert outer_nested["outer_support"]["mask_policy"] == "caller_supplied_pre_masked_outer_sensitivity"
+    assert outer_nested["outer_support"]["inner_extent"] == {
+        "latitude": [50.9, 51.4], "longitude": [-1.6, -1.4],
+    }
+    assert outer_nested["outer_support"]["mask_extent_source"] == "caller_supplied"
+    assert "coordinate_sha256" not in inner_nested["inner_grid"]
+
+    reloaded_inner = InversionOutput.from_datatree(inner_inv_out.to_datatree())
+    assert reloaded_inner.model_metadata["constructed_priors"] == records
+    assert reloaded_inner.model_metadata["sectors"][0]["x_prior"] == records["x_inner"]
+    assert reloaded_inner.output_metadata["nested_domain"] == inner_nested
+    assert reloaded_inner.state_dimension_mapping == {"trace": "inner_region", "basis": "region"}
+
+
+def test_nested_latest_paris_output_writes_index_as_unlimited_dimension(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    europe_country_file: Path,
+) -> None:
+    """Nested latest concentration files preserve their index-based time axis."""
+    output_spec = RhimeOutputSpec(
+        output_format="paris",
+        country_file=str(europe_country_file),
+        output_path=str(tmp_path),
+        output_name="nested-test",
+        save_inversion_output=False,
+        paris_postprocessing_kwargs={"template_version": "latest"},
+    )
+    from types import SimpleNamespace
+    outer = SimpleNamespace(
+        domain="EUROPE", species="ch4",
+        run_metadata={"start_date": "2019-01-01", "averaging_period": ["1h"]},
+    )
+    inner = SimpleNamespace(output_metadata={"nested_domain": {"inner_domain": "EUROPE-6km"}})
+    output = NestedOutput(outer=outer, inner=inner)
+    concentration = xr.Dataset(
+        {"mf_observed": ("index", [1.0])},
+        coords={"time": ("index", pd.to_datetime(["2019-01-01"]))},
+    )
+    flux = xr.Dataset({"flux_total_prior": ("time", [1.0])}, coords={"time": ["2019-01-01"]})
+    monkeypatch.setattr(
+        "openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_products",
+        lambda *args, **kwargs: (flux, flux, concentration),
+    )
+
+    nested_module._write_nested_paris_outputs(output, output_spec)
+
+    path = next(tmp_path.glob("*conc*.nc"))
+    with xr.open_dataset(path) as saved:
+        assert saved.encoding["unlimited_dims"] == {"index"}
+        assert saved.time.dims == ("index",)
+
+
+@pytest.mark.parametrize(("old", "new"), [
+    ("inner_emissions_store", "inner_flux_store"),
+    ("inner_emissions_domain", "inner_flux_domain"),
+])
+@pytest.mark.parametrize("value", [None, "same"])
+def test_nested_runner_rejects_retired_flux_spellings(old, new, value):
+    """Retired names are rejected before configuration or retrieval."""
+    with pytest.raises(ValueError, match=f"Unsupported RHIME parameter.*{old}"):
+        nested_module.run_nested(inner_domain="6km", **{old: value, new: value})

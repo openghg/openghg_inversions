@@ -56,6 +56,25 @@ from xarray.core.common import DataWithCoords, is_chunked_array  # type: ignore
 DataSetOrArray = TypeVar("DataSetOrArray", bound=DataWithCoords)
 
 
+def require_unique_index(array: xr.DataArray, dim: str, *, name: str) -> pd.Index:
+    """Return an indexed dimension with unique labels, without reading payload data."""
+    if dim not in array.dims or dim not in array.indexes:
+        raise ValueError(f"{name} requires a labelled {dim!r} dimension.")
+    index = array.indexes[dim]
+    if not index.is_unique:
+        raise ValueError(f"{name} {dim!r} labels must be unique.")
+    return index
+
+
+def same_index(left: pd.Index, right: pd.Index) -> bool:
+    """Compare ordered labels and MultiIndex levels, ignoring ordinary Index names."""
+    if not left.equals(right):
+        return False
+    if isinstance(left, pd.MultiIndex) or isinstance(right, pd.MultiIndex):
+        return isinstance(left, pd.MultiIndex) and isinstance(right, pd.MultiIndex) and left.names == right.names
+    return True
+
+
 def expand_mapping(
     values: Mapping[Hashable, Any],
     coordinate: xr.DataArray,
@@ -138,25 +157,20 @@ def get_xr_dummies(
     cat_dim: str = "categories",
     return_sparse: bool = True,
 ) -> xr.DataArray:
-    """Create 0-1 dummy matrix from DataArray with values that correspond to categories.
+    """One-hot encode a DataArray while preserving its coordinates.
 
-    If the values of `da` are integers 0-N, then the result has N + 1 columns, and the (i, j) coordiante
-    of the result is 1 if `da[i] == j`, and is 0 otherwise.
-
-    This function works like the pandas function `get_dummies`, but preserves the coordinates of
-    the input data, and allowing the user to specify coordinates for the categories used to make the
-    "dummies" (or "one-hot encoding").
+    Pandas determines the encoded column order. ``categories`` labels those
+    columns in that order. Input values are converted eagerly to NumPy, so a
+    Dask-backed input is computed before encoding.
 
     Args:
         da: DataArray encoding categories.
-        categories: optional coordinates for categories.
-        cat_dim: dimension for categories coordinate
-        sparse: if True, store values in sparse.COO matrix
+        categories: Optional labels for the encoded columns.
+        cat_dim: Name of the new category dimension.
+        return_sparse: Whether to store the result in a sparse COO array.
 
     Returns:
-        Dummy matrix corresponding to the input vector. Its dimensions are the same as the
-            input DataArray, plus an additional "categories" dimension, which  has one value for each
-            distinct value in the input DataArray.
+        Zero-one array with the input dimensions and an additional ``cat_dim``.
     """
     # stack if `da` is not one dimensional
     stack_dim = ""
@@ -171,7 +185,7 @@ def get_xr_dummies(
     if categories is None:
         categories = np.arange(values.shape[1])
     coords = da.coords.merge({cat_dim: categories}).coords  # coords.merge returns Dataset, we want the coords
-    result = xr.DataArray(values, coords=coords)
+    result = xr.DataArray(values, coords=coords, dims=(*da.dims, cat_dim))
 
     # if we stacked `da`, unstack result before returning
     return result.unstack(stack_dim) if stack_dim else result
@@ -188,9 +202,9 @@ def sparse_xr_dot(da1: xr.DataArray, da2: xr.Dataset, dim: list[str] | None = No
 def sparse_xr_dot(
     da1: xr.DataArray, da2: xr.DataArray | xr.Dataset, dim: list[str] | None = None
 ) -> xr.DataArray | xr.Dataset:
-    """Compute the matrix "dot" of a tuple of DataArrays with sparse.COO values.
+    """Compute the matrix "dot" of a DataArray with a DataArray or Dataset.
 
-    This multiplies and sums over all common dimensions of the input DataArrays, and
+    This multiplies and sums over all common dimensions of the inputs, and
     preserves the coordinates and dimensions that are not summed over.
 
     Common dimensions are automatically selected by name. The input arrays must  have at
@@ -201,7 +215,8 @@ def sparse_xr_dot(
     2. da2 can be a Dataset, and current DataArray @ Dataset is not allowed by xarray
 
     Args:
-        da1, da2: xr.DataArrays to multiply and sum along common dimensions.
+        da1: DataArray on the left, which may contain sparse COO values.
+        da2: DataArray or Dataset on the right.
         dim: optional list of dimensions to sum over; if `None`, then all common
           dimensions are summed over.
 
@@ -260,7 +275,7 @@ def align_sparse_lat_lon(
 
 def _sparse_dask_to_dense(da: DaskArray) -> DaskArray:
     """Convert chunks of dask array from sparse to dense."""
-    return da.map_blocks(lambda arr: arr.todense())  # type: ignore
+    return da.map_blocks(lambda arr: arr.todense() if isinstance(arr, SparseArray) else arr)
 
 
 def to_dense(da: xr.DataArray) -> xr.DataArray:
@@ -269,7 +284,9 @@ def to_dense(da: xr.DataArray) -> xr.DataArray:
     For an eager sparse input, this returns an eager NumPy-backed DataArray. For
     a Dask array with sparse chunks, the outer Dask collection and its chunking
     are preserved while a lazy block operation converts each chunk to NumPy when
-    executed. An array whose Dask chunks are already dense is returned unchanged.
+    executed. Already dense chunk payloads under sparse metadata are retained.
+    An array with dense Dask chunk metadata is returned unchanged.
+    Coordinates retain their original backends and are not computed.
 
     Args:
         da: DataArray whose eager data or Dask chunk payloads may be sparse.
@@ -278,13 +295,27 @@ def to_dense(da: xr.DataArray) -> xr.DataArray:
         DataArray with dense NumPy data or lazily densified Dask chunks.
     """
     if not isinstance(da.data, DaskArray):  # type: ignore
-        return da.as_numpy()
+        return da.copy(deep=False, data=da.to_numpy())
 
     # check chunk types
     if isinstance(da.data._meta, SparseArray):
         # hack to apply the Sparse `todense()` method to chunks
         return xr.apply_ufunc(_sparse_dask_to_dense, da, dask="allowed")
 
+    return da
+
+
+def jax_to_numpy(da: xr.DataArray) -> xr.DataArray:
+    """Convert JAX-backed data to NumPy, leaving other backends unchanged.
+
+    Args:
+        da: DataArray whose data may be backed by a JAX array.
+
+    Returns:
+        NumPy-backed DataArray for JAX input; otherwise the original DataArray.
+    """
+    if type(da.data).__module__.split(".", 1)[0] in {"jax", "jaxlib"}:
+        return da.copy(data=np.asarray(da.data))
     return da
 
 
@@ -365,6 +396,16 @@ def concat_data_arrays(
     key_dim: str,
     **concat_kwargs,
 ) -> xr.DataArray:
+    """Concatenate DataArrays under a new dimension labelled by mapping keys.
+
+    Args:
+        da_dict: DataArrays keyed by labels for the new dimension.
+        key_dim: Name of the new dimension.
+        **concat_kwargs: Additional arguments passed to :func:`xarray.concat`.
+
+    Returns:
+        DataArray containing the inputs in mapping order.
+    """
     to_concat = [v.expand_dims({key_dim: [k]}) for k, v in da_dict.items()]
     return xr.concat(to_concat, dim=key_dim, **concat_kwargs)
 

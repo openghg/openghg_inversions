@@ -1,9 +1,9 @@
 """Shared serialization helpers for modern OpenGHG inversion artifacts.
 
 This module contains the storage mechanics shared by modern artifact
-containers. It saves and eagerly loads xarray ``DataTree`` objects, converts
-ArviZ ``InferenceData`` groups to and from trees, and expands pandas
-``MultiIndex`` coordinates into representations supported by NetCDF and Zarr.
+containers. It saves and eagerly loads xarray ``DataTree`` objects, prepares
+trace groups for storage, and expands pandas ``MultiIndex`` coordinates into
+representations supported by NetCDF and Zarr.
 
 Object-specific modules remain responsible for schema names, schema versions,
 required child nodes, and metadata validation. Prepared artifacts can use the
@@ -19,16 +19,24 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Iterable, Literal, cast
+from collections.abc import Iterable
+from typing import Literal, cast
 
-import arviz as az
 from cf_xarray.coding import decode_compress_to_multi_index, encode_multi_index_as_compress
+import numpy as np
 import pandas as pd
 import xarray as xr
+
+from openghg_inversions._serialization_codecs import (
+    _TAGGED_JSON_VALUE_ENCODING,
+    _decode_tagged_json_value,
+    _encode_tagged_json_value,
+)
 
 
 MULTIINDEX_DIMS_ATTR = "openghg_inversions:multiindex_dims"
 MULTIINDEX_SCHEMA_VERSION = 1
+CF_LABEL_ENCODING_ATTR = "openghg_inversions:label_encoding"
 
 
 def _validate_multiindex(
@@ -97,7 +105,11 @@ def normalise_declared_multiindex(
     # Install the index explicitly so xarray does not rely on deprecated
     # implicit pandas.MultiIndex promotion.
     result = ds.drop_vars(list(levels))
-    return result.assign_coords(xr.Coordinates.from_pandas_multiindex(multiindex, dim))
+    result = result.assign_coords(xr.Coordinates.from_pandas_multiindex(multiindex, dim))
+    for name in (dim, *levels):
+        if name in ds.coords:
+            result.coords[name].attrs = dict(ds.coords[name].attrs)
+    return result
 
 
 def _normalise_cf_multiindex_names(index_names: str | Iterable[str]) -> tuple[str, ...]:
@@ -118,7 +130,9 @@ def encode_cf_multiindexes(ds: xr.Dataset, index_names: str | Iterable[str]) -> 
     This codec is intended for versioned prepared-input artifacts. Unlike
     :func:`reset_serialisation_multiindexes`, it emits the interoperable CF
     ``compress`` attribute and requires callers to name every index they intend
-    to encode.
+    to encode. Mixed-type level labels use the shared tagged JSON codec so
+    NetCDF and Zarr preserve distinctions such as integer ``1`` and string
+    ``"1"``. Homogeneous level coordinates keep their ordinary representation.
 
     Args:
         ds: Dataset containing the MultiIndex dimensions.
@@ -157,7 +171,19 @@ def encode_cf_multiindexes(ds: xr.Dataset, index_names: str | Iterable[str]) -> 
             raise ValueError(f"MultiIndex {name!r} already has CF 'compress' metadata.")
 
     try:
-        return encode_multi_index_as_compress(ds, idxnames=names)
+        encoded = encode_multi_index_as_compress(ds, idxnames=names)
+        for level_name in all_level_names:
+            coordinate = encoded[level_name]
+            if pd.api.types.infer_dtype(coordinate.values).startswith("mixed"):
+                labels = np.asarray([_encode_tagged_json_value(value) for value in coordinate.values])
+                encoded = encoded.assign_coords(
+                    {
+                        level_name: coordinate.copy(data=labels).assign_attrs(
+                            {**coordinate.attrs, CF_LABEL_ENCODING_ATTR: _TAGGED_JSON_VALUE_ENCODING}
+                        )
+                    }
+                )
+        return encoded
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError(f"Could not encode CF MultiIndexes {names!r}: {exc}") from exc
 
@@ -233,6 +259,25 @@ def decode_cf_multiindexes(ds: xr.Dataset, index_names: str | Iterable[str]) -> 
             normalised[name].attrs = dict(normalised[name].attrs)
             normalised[name].attrs["compress"] = canonical_compress
 
+    for level_name in all_level_names:
+        coordinate = normalised[level_name]
+        label_encoding = coordinate.attrs.get(CF_LABEL_ENCODING_ATTR)
+        if label_encoding is None:
+            continue
+        if label_encoding != _TAGGED_JSON_VALUE_ENCODING:
+            raise ValueError(f"CF level coordinate {level_name!r} has unsupported label encoding.")
+        labels = np.empty(coordinate.size, dtype=object)
+        try:
+            labels[:] = [_decode_tagged_json_value(value) for value in coordinate.values]
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Could not decode labels for CF level coordinate {level_name!r}: {exc}"
+            ) from exc
+        attrs = {key: value for key, value in coordinate.attrs.items() if key != CF_LABEL_ENCODING_ATTR}
+        restored = coordinate.copy(data=labels)
+        restored.attrs = attrs
+        normalised = normalised.assign_coords({level_name: restored})
+
     try:
         decoded = decode_compress_to_multi_index(normalised, idxnames=names)
     except (AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:
@@ -264,7 +309,10 @@ def save_datatree(
 
     This writes the tree, replacing an existing destination artifact. NetCDF
     uses xarray's default engine so callers that already loaded NetCDF inputs
-    do not switch HDF5 bindings at the serialization boundary.
+    do not switch HDF5 bindings at the serialization boundary. Zarr artifacts
+    use format 2 with either Zarr 2 or Zarr 3 packages. Zarr writes
+    lazily rechunk arrays to their encoded storage chunks, or regular chunks
+    sized to the largest existing chunk on each axis. Inputs are not mutated.
 
     Args:
         dt: DataTree to persist.
@@ -272,7 +320,8 @@ def save_datatree(
             supplied, the matching ``.nc`` or ``.zarr`` suffix is added or
             replaces an existing suffix as needed.
         output_format: Storage format. When omitted, infer the format from an
-            existing ``.nc`` or ``.zarr`` suffix.
+            existing ``.nc`` or ``.zarr`` suffix, case-insensitively. Matching
+            suffixes retain their requested spelling.
 
     Raises:
         ValueError: If the format cannot be inferred or is unsupported.
@@ -281,20 +330,35 @@ def save_datatree(
 
     if output_format is None:
         try:
-            output_format = {".nc": "netcdf", ".zarr": "zarr"}[output_path.suffix]  # type: ignore[assignment]
+            output_format = {".nc": "netcdf", ".zarr": "zarr"}[output_path.suffix.lower()]  # type: ignore[assignment]
         except KeyError:
             raise ValueError(
                 f"Output file {output_path} does not end in '.nc' or '.zarr'; please specify `output_format`."
             ) from None
 
     if output_format == "netcdf":
-        if output_path.suffix != ".nc":
+        if output_path.suffix.lower() != ".nc":
             output_path = output_path.with_suffix(".nc")
         dt.to_netcdf(output_path)
     elif output_format == "zarr":
-        if output_path.suffix != ".zarr":
+        if output_path.suffix.lower() != ".zarr":
             output_path = output_path.with_suffix(".zarr")
-        dt.to_zarr(output_path, mode="w")
+        dt = dt.map_over_datasets(
+            lambda dataset: dataset.assign(
+                {
+                    name: variable.copy(
+                        deep=False,
+                        data=variable.data.rechunk(
+                            variable.encoding.get("chunks")
+                            or tuple(max(axis) for axis in variable.chunks)
+                        ),
+                    )
+                    for name, variable in dataset.variables.items()
+                    if variable.chunks is not None
+                }
+            )
+        )
+        dt.to_zarr(output_path, mode="w", zarr_format=2)
     else:
         raise ValueError(f"Unsupported output_format: {output_format!r}")
 
@@ -318,75 +382,127 @@ def open_datatree_loaded(file_path: str | Path) -> xr.DataTree:
         RuntimeError: If opening fails due to a backend runtime error.
         ValueError: If no backend can interpret the artifact.
     """
-    with xr.open_datatree(file_path) as dt:
+    engine = "zarr" if Path(file_path).suffix.lower() == ".zarr" else None
+    with xr.open_datatree(file_path, engine=engine) as dt:
         return dt.load()
 
 
-def inferencedata_to_datatree(idata: az.InferenceData) -> xr.DataTree:
-    """Convert ArviZ InferenceData groups to a serializable DataTree.
+def trace_to_datatree(trace: xr.DataTree) -> xr.DataTree:
+    """Prepare a native trace DataTree for serialization.
 
     Args:
-        idata: InferenceData whose root attributes and groups should become
-            the tree root and child nodes.
+        trace: Trace whose root dataset and direct child groups should be
+            retained. MultiIndexes in child datasets are expanded into the
+            project storage representation.
 
     Returns:
-        DataTree containing the InferenceData root attributes and one child
-        dataset per group.
+        A serialization copy with the same direct-root group layout.
     """
     return xr.DataTree.from_dict(
         {
-            "/": xr.Dataset(attrs=dict(idata.attrs)),
-            **{group: reset_serialisation_multiindexes(idata[group]) for group in idata.groups()},
+            "/": trace.to_dataset(),
+            **{
+                group: reset_serialisation_multiindexes(child.to_dataset())
+                for group, child in trace.children.items()
+            },
         }
     )
 
 
-def inferencedata_from_datatree(dt: xr.DataTree) -> az.InferenceData:
-    """Reconstruct ArviZ InferenceData from a group DataTree.
+def trace_from_datatree(dt: xr.DataTree) -> xr.DataTree:
+    """Restore a native trace DataTree from its serialization form.
 
     Args:
-        dt: DataTree containing root attributes and one child dataset per
-            InferenceData group.
+        dt: DataTree containing trace groups directly below the root.
 
     Returns:
-        Reconstructed InferenceData with root attributes and valid serialized
-        MultiIndexes restored.
+        A trace DataTree with root and group attributes retained and valid
+        serialized MultiIndexes restored.
     """
-    return cast(Any, az.InferenceData)(
-        attrs=dict(dt.attrs),
-        **{group: restore_serialisation_multiindexes(child.to_dataset()) for group, child in dt.items()},
+    return xr.DataTree.from_dict(
+        {
+            "/": dt.to_dataset(),
+            **{
+                group: restore_serialisation_multiindexes(child.to_dataset())
+                for group, child in dt.children.items()
+            },
+        }
     )
 
 
-def save_inferencedata(
-    idata: az.InferenceData,
+def save_trace(
+    trace: xr.DataTree,
     output_file: str | Path,
     output_format: Literal["netcdf", "zarr"] | None = None,
 ) -> None:
-    """Save InferenceData through the declared MultiIndex boundary.
+    """Save a native trace through the declared MultiIndex boundary.
 
     Args:
-        idata: InferenceData whose groups and root attributes should be saved.
+        trace: Trace whose groups and root dataset should be saved.
         output_file: Destination NetCDF file or Zarr store.
         output_format: Explicit backend, or ``None`` to infer it from the path.
+
+    Raises:
+        ValueError: If the trace uses the reserved root ``schema`` attribute.
     """
-    save_datatree(inferencedata_to_datatree(idata), output_file, output_format)
+    if "schema" in trace.attrs:
+        raise ValueError("The trace root 'schema' attribute is reserved for artifact identification.")
+    save_datatree(trace_to_datatree(trace), output_file, output_format)
 
 
-def load_inferencedata(file_path: str | Path) -> az.InferenceData:
-    """Load InferenceData and restore every valid declared MultiIndex.
+def load_trace(file_path: str | Path) -> xr.DataTree:
+    """Load a native trace and restore every valid declared MultiIndex.
 
     Malformed declarations are removed and left expanded rather than guessed,
     matching :func:`restore_declared_multiindexes`' forgiving default.
 
     Args:
-        file_path: NetCDF file or Zarr store written by
-            :func:`save_inferencedata`.
+        file_path: NetCDF file or Zarr store written by :func:`save_trace`.
 
     Returns:
-        Fully loaded InferenceData with valid semantic indexes reconstructed.
+        Fully loaded trace with valid semantic indexes reconstructed.
+
+    Raises:
+        ValueError: If the artifact has an incompatible schema or complete-artifact structure.
     """
-    return inferencedata_from_datatree(open_datatree_loaded(file_path))
+    dt = open_datatree_loaded(file_path)
+    schema = dt.attrs.get("schema")
+    complete_artifact_groups = {"trace", "inv_inputs", "basis_functions"}
+    if schema == "openghg_inversions.inversion_output" or complete_artifact_groups.issubset(dt.children):
+        raise ValueError(
+            "Expected a standalone trace artifact, but received a complete "
+            "InversionOutput artifact; use InversionOutput.load() instead."
+        )
+    if schema is not None:
+        raise ValueError(f"Expected a standalone trace artifact, got incompatible schema {schema!r}.")
+    return trace_from_datatree(dt)
+
+
+def save_inferencedata(
+    trace: xr.DataTree,
+    output_file: str | Path,
+    output_format: Literal["netcdf", "zarr"] | None = None,
+) -> None:
+    """Forward the former trace-writer name to :func:`save_trace`.
+
+    Args:
+        trace: Native trace DataTree to save.
+        output_file: Destination NetCDF file or Zarr store.
+        output_format: Explicit backend, or ``None`` to infer it from the path.
+    """
+    save_trace(trace, output_file, output_format)
+
+
+def load_inferencedata(file_path: str | Path) -> xr.DataTree:
+    """Forward the former trace-loader name to :func:`load_trace`.
+
+    Args:
+        file_path: NetCDF file or Zarr store written by :func:`save_trace`.
+
+    Returns:
+        Fully loaded native trace DataTree.
+    """
+    return load_trace(file_path)
 
 
 def encode_multiindexes_for_storage(ds: xr.Dataset) -> xr.Dataset:
@@ -411,6 +527,10 @@ def encode_multiindexes_for_storage(ds: xr.Dataset) -> xr.Dataset:
         dim_name = str(dim)
         level_names = _validate_multiindex(index, dim=dim_name)
         result = result.reset_index(dim)
+        if ds.coords[dim].attrs:
+            result = result.assign_coords({
+                dim: xr.DataArray(np.arange(ds.sizes[dim]), dims=dim, attrs=dict(ds.coords[dim].attrs)),
+            })
         records.append(
             {
                 "dim": dim_name,

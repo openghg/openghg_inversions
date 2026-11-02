@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Profile the gathered MultiIndex operations investigated by OPE-121."""
 
 from __future__ import annotations
@@ -104,7 +103,7 @@ def sensitivity_pr651(operator: MultiSourceBucketBasisOperator, fp_x_flux: xr.Da
 def sensitivity_native(operator: MultiSourceBucketBasisOperator, fp_x_flux: xr.DataArray) -> xr.DataArray:
     native_source_dim = "native_source"
     fp_native = fp_x_flux.rename({operator.source_dim: native_source_dim})
-    prolongation = operator.native_prolongation(
+    prolongation = operator._native_prolongation(
         fp_native,
         native_dims=(native_source_dim, *operator.meta.grid_dims),
     )

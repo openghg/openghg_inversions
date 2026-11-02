@@ -24,19 +24,24 @@ Model components derive frequency indicators from observation coordinates with
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, cast
 
+from dask import compute
 import numpy as np
 import pandas as pd
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.array_ops import select_gathered_data_array
 from openghg_inversions.inversion_inputs import make_freq_indicator, make_site_indicator
-from openghg_inversions.models.coords import add_coords
+from openghg_inversions.models.coords import add_coords, add_model_data as add_model_data, component_coords
+from openghg_inversions.models._flux import _namespace_sector_state_coords
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.models.state_activity import (
     PreparedLinearSensitivity,
@@ -141,33 +146,6 @@ def resolve_model_variable(model: pm.Model, base_name: str) -> TensorVariable | 
     return None
 
 
-def add_model_data(data: xr.DataArray, name: str | None = None) -> TensorVariable:
-    """Add labelled xarray data to the active PyMC model.
-
-    Args:
-        data: Xarray data to register as ``pm.Data``.
-        name: Optional PyMC variable name. If omitted, ``data.name`` is used.
-
-    Returns:
-        The registered ``pm.Data`` tensor for ``data``.
-
-    Raises:
-        ValueError: If no name can be determined for the data variable.
-    """
-    name = name or (str(data.name) if data.name is not None else None)
-    if name is None:
-        raise ValueError("Data must have a name if a name is not provided.")
-
-    model = pm.modelcontext(None)
-    if name in model:
-        return model[name]
-
-    materialized = data.compute()
-    dims = tuple(str(dim) for dim in materialized.dims)
-    add_coords(materialized.coords, model_dims=dims)
-    return cast(TensorVariable, pm.Data(name, materialized.values, dims=dims))
-
-
 def add_linear_component(
     prepared: PreparedLinearSensitivity,
     /,
@@ -178,6 +156,7 @@ def add_linear_component(
     state_activity: StateActivity | None = None,
     output_dim: str = "nmeasure",
     compute_deterministic: bool = True,
+    coordinate_owner: str | None = None,
 ) -> LinearComponentResult:
     """Add one independent labelled linear component.
 
@@ -191,6 +170,8 @@ def add_linear_component(
         output_dim: Observation/output dimension name.
         compute_deterministic: Whether to wrap the aligned output in
             ``pm.Deterministic``.
+        coordinate_owner: Explicit namespace for registered state coordinates;
+            scientific inputs and activity policies retain their local names.
 
         state_activity: Optional active/fixed policy over the full scientific
             state. ``None`` samples every retained column.
@@ -206,13 +187,16 @@ def add_linear_component(
             f"not {output_dim!r}."
         )
     activity = resolve_state_activity(prepared.removed, state_activity)
-    vector = add_state_vector(activity, prior_args=prior_args, var_name=var_name)
+    vector = add_state_vector(
+        activity, prior_args=prior_args, var_name=var_name, coordinate_owner=coordinate_owner,
+    )
     output = apply_linear_sensitivity(
         prepared,
         vector.state,
         data_name=data_name,
         output_name=output_name,
         compute_deterministic=compute_deterministic,
+        coordinate_owner=coordinate_owner,
     )
     data = cast(TensorVariable, pm.modelcontext(None)[data_name])
     return LinearComponentResult(
@@ -232,9 +216,12 @@ def apply_linear_sensitivity(
     data_name: str,
     output_name: str,
     compute_deterministic: bool = True,
+    coordinate_owner: str | None = None,
 ) -> TensorVariable:
-    """Apply a prepared sensitivity to an already-built full state vector."""
-    h = add_model_data(prepared.sensitivity, data_name)
+    """Apply a prepared sensitivity using its state's explicit coordinate owner."""
+    h = add_model_data(component_coords(
+        prepared.sensitivity, coordinate_owner, observation_dim=prepared.output_dim,
+    ), data_name)
     output = pt.dot(h, state[prepared.retained_indices])
     if compute_deterministic:
         output = pm.Deterministic(output_name, output, dims=prepared.output_dim)
@@ -310,11 +297,26 @@ def add_coherent_affine_component(
     return pm.Deterministic(output_name, fixed + linear_signal, dims=fixed_contribution.dims)
 
 
+def _active_state_coords(
+    coordinate: xr.DataArray,
+    active_indices: np.ndarray,
+    namespace: str,
+) -> tuple[str, xr.Coordinates | dict[str, Any]]:
+    """Select active labels and namespace their dimension and MultiIndex levels."""
+    active_dim = f"{coordinate.dims[0]}_{namespace}"
+    active_index = coordinate.to_index()[active_indices]
+    if isinstance(active_index, pd.MultiIndex):
+        active_index = active_index.set_names([f"{name}_{namespace}" for name in active_index.names])
+        return active_dim, xr.Coordinates.from_pandas_multiindex(active_index, active_dim)
+    return active_dim, {active_dim: active_index.to_numpy()}
+
+
 def add_state_vector(
     activity: ResolvedStateActivity,
     /,
     prior_args: dict[str, Any],
     var_name: str,
+    coordinate_owner: str | None = None,
 ) -> StateVectorResult:
     """Construct an active/fixed state graph from a resolved activity contract.
 
@@ -330,6 +332,7 @@ def add_state_vector(
         prior_args: Prior specification. Distribution parameters may be scalar,
             full-state arrays, or labelled state ``DataArray`` objects.
         var_name: Name of the full user-facing state vector.
+        coordinate_owner: Optional namespace for registered state coordinates.
 
     Returns:
         The effective latent, full state vector, and supplied activity.
@@ -347,13 +350,17 @@ def add_state_vector(
         would not rebuild the latent state layout. Call this helper inside an
         active ``pm.Model`` context.
     """
-    state_dim = activity.state_dim
-    state_coord = activity.zero_sensitivity.coords[state_dim]
-    add_coords(activity.zero_sensitivity.coords, model_dims=(state_dim,))
-    parsed_prior_args = active_prior_args(prior_args, activity)
+    owned_zero = component_coords(activity.zero_sensitivity, coordinate_owner)
+    state_dim = str(owned_zero.dims[0])
+    state_coord = owned_zero.coords[state_dim]
+    add_coords(owned_zero.coords, model_dims=(state_dim,))
+    parameters = {
+        name: component_coords(value, coordinate_owner) if isinstance(value, xr.DataArray) else value
+        for name, value in active_prior_args(prior_args, activity, select_active=False).items()
+    }
 
     if activity.n_active == activity.n_state:
-        state = parse_prior(var_name, parsed_prior_args, dims=state_dim)
+        state = parse_prior(var_name, parameters, dims=state_dim)
         return StateVectorResult(
             latent=get_model_latent(state, var_name),
             state=state,
@@ -361,31 +368,25 @@ def add_state_vector(
         )
 
     add_model_data(
-        activity.active.rename(f"{var_name}_is_active"),
+        component_coords(activity.active, coordinate_owner).rename(f"{var_name}_is_active"),
         f"{var_name}_is_active",
     )
     fixed_value = add_model_data(
-        activity.fixed_value.rename(f"{var_name}_fixed_value"),
+        component_coords(activity.fixed_value, coordinate_owner).rename(f"{var_name}_fixed_value"),
         f"{var_name}_fixed_value",
     )
     active_indices = activity.active_indices
     latent: TensorVariable | None = None
     active_state: TensorVariable | None = None
     if activity.n_active:
-        active_dim = f"{state_dim}_{var_name}_active"
-        active_index = state_coord.to_index()[active_indices]
-        if isinstance(active_index, pd.MultiIndex):
-            active_index = active_index.set_names(
-                [f"{name}_{var_name}_active" for name in active_index.names]
-            )
-            active_coords = xr.Coordinates.from_pandas_multiindex(active_index, active_dim)
-        else:
-            active_coords = {active_dim: active_index.to_numpy()}
+        active_dim, active_coords = _active_state_coords(state_coord, active_indices, f"{var_name}_active")
         add_coords(active_coords, model_dims=(active_dim,))
         active_state = parse_prior(
             f"{var_name}_active",
-            parsed_prior_args,
+            parameters,
             dims=active_dim,
+            active_indices=active_indices,
+            record_name=var_name,
         )
         latent = get_model_latent(active_state, f"{var_name}_active")
 
@@ -394,6 +395,75 @@ def add_state_vector(
         full_state = pt.set_subtensor(full_state[active_indices], active_state)
     state = pm.Deterministic(var_name, full_state, dims=state_dim)
     return StateVectorResult(latent=latent, state=state, activity=activity)
+
+
+def _add_multisource_state_vector(
+    zero_sensitivity: xr.DataArray,
+    prior_blocks: Mapping[str, tuple[str, dict[str, Any], StateActivity | None]],
+    *,
+    local_state_dim: str,
+    var_name: str,
+) -> TensorVariable:
+    """Insert independent source-prior draws into one ordered full state.
+
+    Each block owns its prior family, source-local labelled parameters and
+    activity policy. Private prior dimensions may differ in size; the physical
+    state and zero-sensitivity mask use the complete gathered coordinate.
+    Block keys cover the source layout, as validated by the owning recipe.
+    """
+    state_dim = str(zero_sensitivity.dims[0])
+    state_index = zero_sensitivity.get_index(state_dim)
+    region_level = next(str(name) for name in state_index.names if name != "source")
+    add_coords(zero_sensitivity.coords, model_dims=(state_dim,))
+    active = np.zeros(len(state_index), dtype=bool)
+    fixed_values = np.empty(len(state_index), dtype=float)
+    draws = []
+    for source, (record_name, prior, policy) in prior_blocks.items():
+        positions = np.flatnonzero(state_index.get_level_values("source") == source)
+        local_zero = select_gathered_data_array(
+            zero_sensitivity, key=source, key_dim="source",
+            ragged_dim=region_level, stack_dim=state_dim,
+        )
+        if state_dim != local_state_dim:
+            local_zero = local_zero.rename({state_dim: local_state_dim})
+        activity = resolve_state_activity(local_zero, policy)
+        aligned_prior = active_prior_args(dict(prior), activity, select_active=False)
+        active[positions] = activity.active.to_numpy()
+        fixed_values[positions] = activity.fixed_value.to_numpy()
+        if not activity.n_active:
+            continue
+
+        prior_namespace = f"prior_{record_name}"
+        block_zero = _namespace_sector_state_coords(
+            local_zero, variable_suffix=prior_namespace, namespace_state_dim=True,
+        )
+        block_dim = str(block_zero.dims[0])
+        add_coords(block_zero.coords, model_dims=(block_dim,))
+        parameters = {
+            name: _namespace_sector_state_coords(
+                value, variable_suffix=prior_namespace, namespace_state_dim=True,
+            ) if isinstance(value, xr.DataArray) and value.ndim else value
+            for name, value in aligned_prior.items()
+        }
+        active_indices = activity.active_indices
+        active_dim, active_coords = _active_state_coords(
+            local_zero.coords[local_state_dim], active_indices, f"active_{record_name}",
+        )
+        add_coords(active_coords, model_dims=(active_dim,))
+        draw = parse_prior(
+            f"{record_name}_active", parameters, dims=active_dim,
+            active_indices=active_indices, record_name=record_name,
+        )
+        draws.append((positions[active_indices], draw))
+
+    if active.all():
+        state = pt.zeros(len(state_index))
+    else:
+        add_model_data(zero_sensitivity.copy(data=active).rename(f"{var_name}_is_active"))
+        state = add_model_data(zero_sensitivity.copy(data=fixed_values).rename(f"{var_name}_fixed_value"))
+    for positions, draw in draws:
+        state = pt.set_subtensor(state[positions], draw)
+    return cast(TensorVariable, pm.Deterministic(var_name, state, dims=state_dim))
 
 
 def add_correlated_lognormal_state(
@@ -435,9 +505,9 @@ def add_correlated_lognormal_state(
     state_dim = prior.state_dim
     mean = prior.mean
     with np.errstate(over="ignore", under="ignore", invalid="ignore"):
-        backend_mean = np.asarray(pm.floatX(np.asarray(mean.values)))
-        backend_latent_mean = np.asarray(pm.floatX(np.asarray(prior.latent_mean.values)))
-        backend_cholesky = np.asarray(pm.floatX(np.asarray(prior.latent_cholesky.values)))
+        backend_mean = np.asarray(floatX(np.asarray(mean.values)))
+        backend_latent_mean = np.asarray(floatX(np.asarray(prior.latent_mean.values)))
+        backend_cholesky = np.asarray(floatX(np.asarray(prior.latent_cholesky.values)))
     if not np.isfinite(backend_mean).all() or (backend_mean <= 0).any():
         raise ValueError(
             "Correlated LogNormal arithmetic means must remain finite and positive in the model float dtype."
@@ -563,7 +633,12 @@ def prepare_active_correlated_lognormal_prior(
     *,
     var_name: str,
 ) -> CorrelatedLognormalPrior | None:
-    """Align and subset one correlated prior for active-state construction."""
+    """Align and subset one correlated prior for active-state construction.
+
+    This eager graph-construction boundary materializes the prior and activity
+    coordinate datasets together before comparing auxiliary labels. Borrowed
+    inputs remain unchanged and shared Dask coordinate tasks run once.
+    """
     state_dim = activity.state_dim
     if prior.state_dim != state_dim:
         raise ValueError(
@@ -576,21 +651,17 @@ def prepare_active_correlated_lognormal_prior(
         raise ValueError(
             "Correlated LogNormal prior labels must exactly match state-activity labels in the same order."
         )
+    prior_coords, activity_coords = compute(
+        mean.coords.to_dataset(), activity.zero_sensitivity.coords.to_dataset(),
+    )
+    xr.merge([prior_coords, activity_coords], join="exact", compat="equals")
     if activity.n_active == 0:
         return None
     if activity.n_active == activity.n_state:
         return prior
 
     active_indices = activity.active_indices
-    active_dim = f"{state_dim}_{var_name}_active"
-    active_index = mean.coords[state_dim].to_index()[active_indices]
-    if isinstance(active_index, pd.MultiIndex):
-        active_index = active_index.set_names(
-            [f"{name}_{var_name}_active" for name in active_index.names]
-        )
-        active_coords = xr.Coordinates.from_pandas_multiindex(active_index, active_dim)
-    else:
-        active_coords = {active_dim: active_index.to_numpy()}
+    active_dim, active_coords = _active_state_coords(mean.coords[state_dim], active_indices, f"{var_name}_active")
     active_mean = xr.DataArray(
         mean.isel({state_dim: active_indices}).values,
         dims=(active_dim,),
@@ -648,10 +719,19 @@ def _add_offset_component_result(
     output_dim: str = "nmeasure",
     drop_first: bool = False,
     per_site: bool = True,
+    namespace: str = "",
 ) -> OffsetComponentResult:
     """Build one offset component and return its labelled design and graph terms."""
     output_dim = str(output_dim)
     output_coord = observations.coords[output_dim]
+    if namespace:
+        output_index = observations.indexes.get(output_dim)
+        if isinstance(output_index, pd.MultiIndex):
+            output_coord = xr.Coordinates.from_pandas_multiindex(
+                output_index.set_names([f"{namespace}{name}" for name in output_index.names]), output_dim
+            )[output_dim]
+        add_coords({output_dim: output_coord})
+    term_dim = f"{namespace}offset_term"
     if not per_site:
         if offset_freq is not None:
             raise ValueError("Global offsets do not accept an offset frequency.")
@@ -659,8 +739,8 @@ def _add_offset_component_result(
             raise ValueError("Global offsets do not support `drop_first=True`.")
         design = xr.DataArray(
             np.ones((observations.sizes[output_dim], 1), dtype=np.float64),
-            dims=(output_dim, "offset_term"),
-            coords={output_dim: output_coord, "offset_term": ["global"]},
+            dims=(output_dim, term_dim),
+            coords={output_dim: output_coord, term_dim: ["global"]},
             name="offset_design",
         )
         coefficient = parse_prior(var_name, prior_args)
@@ -684,7 +764,7 @@ def _add_offset_component_result(
     if bool(pd.isna(observations.coords["site"].values).any()):
         raise ValueError("Offset observations must have non-missing site labels.")
     site_indicator = make_site_indicator(observations.coords["site"])
-    site_indicator = site_indicator.rename("site_indicator").transpose(output_dim)
+    site_indicator = site_indicator.rename(f"{namespace}site_indicator").transpose(output_dim)
     indicator = None
     if offset_freq is not None:
         time_coord = observations.coords.get("time")
@@ -696,7 +776,7 @@ def _add_offset_component_result(
         if bool(pd.isna(time_coord.values).any()):
             raise ValueError("Offset frequencies require complete observation timestamps.")
         indicator = make_freq_indicator(time_coord, offset_freq).rename(
-            "offset_freq_indicator"
+            f"{namespace}offset_freq_indicator"
         )
 
     site_codes = np.asarray(site_indicator.values, dtype=int)
@@ -705,6 +785,7 @@ def _add_offset_component_result(
     if selected_sites.size == 0:
         raise ValueError("drop_first removes the only available offset site.")
     site_matrix = (site_codes[:, None] == selected_sites[None, :]).astype(int)
+    term_coords: xr.Coordinates | dict[str, Any]
     if indicator is not None:
         if bool(pd.isna(indicator.values).any()):
             raise ValueError("Offset frequency indicators must have non-missing labels.")
@@ -716,34 +797,49 @@ def _add_offset_component_result(
         )
         term_index = pd.MultiIndex.from_product(
             [site_labels[selected_sites], period_labels],
-            names=("offset_site", "offset_period"),
+            names=(f"{namespace}offset_site", f"{namespace}offset_period"),
         )
         term_coords = xr.Coordinates.from_pandas_multiindex(
             term_index,
-            "offset_term",
+            term_dim,
         )
     else:
         design_matrix = site_matrix
         selected_labels = site_labels[selected_sites]
         term_coords = {
-            "offset_term": selected_labels,
-            "offset_site": ("offset_term", selected_labels),
+            term_dim: selected_labels,
+            f"{namespace}offset_site": (term_dim, selected_labels),
         }
 
     design = xr.DataArray(
         design_matrix,
-        dims=(output_dim, "offset_term"),
+        dims=(output_dim, term_dim),
         coords={
             output_dim: output_coord,
             **term_coords,
         },
         name="offset_design",
     )
+    if namespace:
+        if isinstance(observations.indexes.get(output_dim), pd.MultiIndex):
+            site_indicator = site_indicator.reset_index(output_dim, drop=True).assign_coords(
+                {output_dim: output_coord}
+            )
+            if indicator is not None:
+                indicator = indicator.reset_index(output_dim, drop=True).assign_coords({output_dim: output_coord})
+        else:
+            site_indicator = site_indicator.rename({
+                name: f"{namespace}{name}" for name in site_indicator.coords if name != output_dim
+            })
+            if indicator is not None:
+                indicator = indicator.rename({
+                    name: f"{namespace}{name}" for name in indicator.coords if name != output_dim
+                })
     add_model_data(site_indicator, str(site_indicator.name))
     if indicator is not None:
         add_model_data(indicator.transpose(output_dim), str(indicator.name))
     design_data = add_model_data(design, f"{output_name}_design")
-    coefficient = parse_prior(var_name, prior_args, dims="offset_term")
+    coefficient = parse_prior(var_name, prior_args, dims=term_dim)
     coefficients = pt.atleast_1d(coefficient)
     aligned = pt.dot(design_data, coefficients)
     output = pm.Deterministic(
@@ -769,6 +865,7 @@ def add_offset_component(
     output_dim: str = "nmeasure",
     drop_first: bool = False,
     per_site: bool = True,
+    namespace: str = "",
 ) -> TensorVariable:
     """Add a global, site-only, or site-by-period offset component.
 
@@ -784,6 +881,8 @@ def add_offset_component(
         drop_first: Whether to omit the first site indicator column.
         per_site: Whether to create site-specific terms. If false, create one
             global scalar latent offset and broadcast it over observations.
+        namespace: Optional prefix for component coordinates and indicator data
+            when several independent offset components share one model.
 
     Returns:
         The aligned offset deterministic variable.
@@ -801,82 +900,5 @@ def add_offset_component(
         output_dim=output_dim,
         drop_first=drop_first,
         per_site=per_site,
+        namespace=namespace,
     ).output
-
-
-def add_inferpymc_likelihood_component(
-    data: xr.Dataset,
-    /,
-    mu: TensorVariable,
-    mu_bc: TensorVariable | None,
-    sigprior: dict,
-    sigma_alignment: SigmaAlignment,
-    offset: TensorVariable | None = None,
-    power: dict | float = 1.99,
-    pollution_events_from_obs: bool = False,
-    no_model_error: bool = False,
-    output_dim: str = "nmeasure",
-) -> TensorVariable:
-    """Add the inferpymc observation model.
-
-    ``mu`` is the non-baseline forward-model contribution. ``mu_bc`` is the
-    baseline contribution, usually ``H_bc @ bc``, plus offset if applicable.
-
-    Args:
-        data: Canonical inferpymc input dataset.
-        mu: Non-baseline forward-model contribution.
-        mu_bc: Baseline contribution, if present.
-        sigprior: Prior specification for sigma.
-        sigma_alignment: Backend-neutral site and period alignment for sigma.
-        offset: Optional aligned offset term.
-        power: Scalar or prior specification controlling pollution-event
-            scaling.
-        pollution_events_from_obs: Whether to derive pollution events from the
-            observations instead of ``mu``.
-        no_model_error: Whether to bypass the model-error term.
-        output_dim: Observation/output dimension name.
-
-    Returns:
-        The ``epsilon`` deterministic variable used by the observation model.
-    """
-    y_data = add_model_data(data["mf"].transpose(output_dim), "Y")
-    error_data = add_model_data(data["mf_error"].transpose(output_dim), "error")
-    min_error_data = add_model_data(data["min_error"].transpose(output_dim), "min_error")
-
-    sigma = add_sigma_component(
-        sigma_alignment,
-        prior_args=sigprior,
-    )
-
-    if pollution_events_from_obs is True:
-        if mu_bc is not None:
-            pollution_event = pt.abs(y_data - mu_bc)
-        else:
-            pollution_event = pt.abs(y_data) + 1e-6 * pt.mean(y_data)
-    else:
-        pollution_event = pt.abs(mu)
-
-    pollution_event_scaled_error = pollution_event * sigma
-
-    if no_model_error is True:
-        mean_obs = np.nanmean(data["mf"].values)
-        small_amount = pm.floatX(1e-12 * mean_obs)
-        eps = cast(Any, pt.maximum)(pt.abs(error_data), small_amount)
-    else:
-        power0 = parse_prior("power", power) if isinstance(power, dict) else power
-        eps = cast(Any, pt.maximum)(
-            pt.sqrt(error_data**2 + pt.pow(pollution_event_scaled_error, power0)),
-            min_error_data,
-        )
-
-    # TODO: this calculation should probably happen separately
-    # e.g. using a add_linear_component_sum function.
-    total_mu = mu
-    if mu_bc is not None:
-        total_mu = total_mu + mu_bc
-    if offset is not None:
-        total_mu = total_mu + offset
-
-    epsilon = pm.Deterministic("epsilon", eps, dims=output_dim)
-    pm.Normal("y", mu=total_mu, sigma=epsilon, observed=y_data, dims=output_dim)
-    return epsilon

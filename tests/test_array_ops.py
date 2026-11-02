@@ -1,6 +1,7 @@
 import warnings
 
 import dask.array as da
+from dask import delayed
 import numpy as np
 import pandas as pd
 import pytest
@@ -13,10 +14,130 @@ from openghg_inversions.array_ops import (
     concat_gather_datatree,
     concat_gather_datasets,
     expand_mapping,
+    get_xr_dummies,
     iter_multi_index_level_slices,
+    jax_to_numpy,
+    require_unique_index,
+    same_index,
     select_gathered_data_array,
+    to_dense,
     validate_covariance_coordinates,
 )
+
+
+@pytest.mark.parametrize("sparse_payload", [False, True])
+def test_to_dense_preserves_lazy_auxiliary_coordinates(sparse_payload: bool) -> None:
+    """Densifying eager payloads must not execute borrowed coordinate graphs."""
+    executions = []
+
+    @delayed
+    def auxiliary_values() -> np.ndarray:
+        executions.append("coordinate")
+        return np.array([3.0, 4.0])
+
+    values = np.array([1.0, 2.0])
+    payload = sparse.COO.from_numpy(values) if sparse_payload else values
+    auxiliary = da.from_delayed(auxiliary_values(), shape=(2,), dtype=float)
+    array = xr.DataArray(
+        payload,
+        dims="observation",
+        coords={"observation": [0, 1], "auxiliary": ("observation", auxiliary)},
+        attrs={"units": "ppm"},
+    )
+    array.encoding = {"dtype": np.dtype("float64")}
+    original_auxiliary = array.auxiliary.data
+
+    result = to_dense(array)
+
+    assert executions == []
+    assert isinstance(result.data, np.ndarray)
+    np.testing.assert_array_equal(result.data, values)
+    assert result.auxiliary.data is original_auxiliary
+    assert array.auxiliary.data is original_auxiliary
+    assert array.data is payload
+    assert result.attrs == array.attrs
+    assert result.encoding == array.encoding
+
+
+def test_jax_to_numpy_preserves_dataarray_metadata() -> None:
+    """Convert only JAX payloads while preserving xarray metadata and inputs."""
+    jnp = pytest.importorskip("jax.numpy")
+    array = xr.DataArray(
+        jnp.array([1.0, 2.0]),
+        dims="state",
+        coords={"state": ["north", "south"]},
+        name="flux",
+        attrs={"units": "kg"},
+    )
+    original_data = array.data
+
+    result = jax_to_numpy(array)
+
+    assert isinstance(result.data, np.ndarray)
+    assert result.dims == array.dims
+    assert result.name == array.name
+    assert result.attrs == array.attrs
+    np.testing.assert_array_equal(result.state, ["north", "south"])
+    np.testing.assert_array_equal(result.data, [1.0, 2.0])
+    assert array.data is original_data
+
+
+@pytest.mark.parametrize("return_sparse", [False, True])
+def test_get_xr_dummies_accepts_unlabelled_dimension(return_sparse: bool) -> None:
+    values = xr.DataArray([0, 1, 0], dims="observation")
+
+    result = get_xr_dummies(values, cat_dim="category", return_sparse=return_sparse)
+
+    assert result.dims == ("observation", "category")
+    assert "observation" not in result.coords
+    np.testing.assert_array_equal(result.category, [0, 1])
+    data = result.data.todense() if return_sparse else result.data
+    np.testing.assert_array_equal(data, [[1, 0], [0, 1], [1, 0]])
+
+
+def test_to_dense_accepts_mixed_payloads_under_sparse_dask_metadata() -> None:
+    """Sparse metadata may describe either sparse or already dense delayed chunks."""
+    executions = []
+
+    @delayed
+    def chunk(sparse_payload: bool) -> np.ndarray | sparse.COO:
+        executions.append(sparse_payload)
+        values = np.asarray([0, 2], dtype="float32")
+        return sparse.COO.from_numpy(values) if sparse_payload else values
+
+    meta = sparse.COO.from_numpy(np.empty(0, dtype="float32"))
+    payload = da.concatenate([
+        da.from_delayed(chunk(sparse_payload), shape=(2,), dtype="float32", meta=meta)
+        for sparse_payload in (False, True)
+    ])
+    array = xr.DataArray(payload, dims="state", coords={"state": [4, 5, 6, 7]})
+
+    result = to_dense(array)
+
+    assert executions == []
+    assert array.data is payload
+    assert isinstance(array.data._meta, sparse.COO)
+    assert isinstance(result.data._meta, np.ndarray)
+    assert result.chunks == array.chunks == ((2, 2),)
+    assert result.dtype == np.dtype("float32")
+    xr.testing.assert_identical(result.state, array.state)
+    np.testing.assert_array_equal(result.compute().data, np.asarray([0, 2, 0, 2], dtype="float32"))
+    assert sorted(executions) == [False, True]
+    assert array.data is payload
+
+
+def test_unique_index_and_co2_index_comparison_semantics() -> None:
+    """Ordinary Index names are ignored; gathered MultiIndex level names are not."""
+    from openghg_inversions.rhime.co2.co2_o2_preparation import _same_index as co2_o2_same_index
+
+    array = xr.DataArray([1, 2], dims="state", coords={"state": ["a", "b"]})
+    ordinary = require_unique_index(array, "state", name="state")
+    other_name = pd.Index(["a", "b"], name="other")
+    assert same_index(ordinary, other_name)
+    assert not co2_o2_same_index(ordinary, other_name)
+    left = pd.MultiIndex.from_tuples([("bio", 1)], names=["source", "region"])
+    right = pd.MultiIndex.from_tuples([("bio", 1)], names=["sector", "region"])
+    assert not same_index(left, right)
 
 
 def test_expand_mapping_uses_labelled_vectorized_indexing() -> None:
@@ -106,13 +227,6 @@ def _concat_with_policy(
         stack_dim="nmeasure",
         missing_data_vars=missing_data_vars,
     )
-
-
-def test_transpose():
-    dums = pd.get_dummies([0] * 3 + [1] * 4 + [2] * 5, dtype=int, sparse=True)
-    sparse_dums = sparse.COO.from_scipy_sparse(dums.sparse.to_coo())
-    da = xr.DataArray(sparse_dums)
-    da.transpose()
 
 
 def test_align_to_multi_index_level_values_broadcasts_source_to_state():

@@ -2,18 +2,14 @@
 
 from importlib.resources import files
 from pathlib import Path
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover - Python 3.10
-    import tomli as tomllib
+import tomllib
 
 
 _CONFIG_DIRECTORY = files("openghg_inversions.rhime").joinpath("config")
 _EXPECTED_TEMPLATES = {
-    "co2.toml": ("co2", "ordinary"),
-    "co2_cached_sigma.toml": ("co2", "cached_fixed_ou"),
-    "co2_o2.toml": ("co2_o2", "linked"),
+    "co2.toml": ("co2", None),
+    "co2_fixed_ou.toml": ("co2", None),
+    "co2_o2.toml": ("co2_o2", None),
 }
 
 
@@ -31,7 +27,10 @@ def test_co2_family_templates_are_discoverable_and_parseable() -> None:
             config = tomllib.load(stream)
         assert config["format_version"] == 1
         assert config["recipe"] == recipe
-        assert config["variant"] == variant
+        assert config.get("variant") == variant
+        if recipe == "co2":
+            assert "variant" not in config
+            assert "nuts_sampler" not in config["sampling"]
 
 
 def test_co2_family_templates_are_declared_as_package_data() -> None:
@@ -43,4 +42,4 @@ def test_co2_family_templates_are_declared_as_package_data() -> None:
     assert "rhime/config/*.toml" in project["tool"]["setuptools"]["package-data"][
         "openghg_inversions"
     ]
-    assert "tomli>=2; python_version < '3.11'" in project["project"]["dependencies"]
+    assert not any(dependency.startswith("tomli") for dependency in project["project"]["dependencies"])

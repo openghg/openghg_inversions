@@ -47,7 +47,8 @@ from __future__ import annotations
 
 import inspect
 import json
-from typing import Callable, Protocol, cast
+from collections.abc import Callable
+from typing import Protocol, cast
 
 import numpy as np
 from scipy.linalg import cho_factor, cho_solve  # type: ignore[import-untyped]
@@ -60,7 +61,7 @@ from openghg_inversions._serialization_codecs import (
     _decode_serialized_bool,
     _decode_tagged_json_value,
     _encode_tagged_json_value,
-    _numpy_scalar_json_default,
+    _json_value,
 )
 
 _CG_RELATIVE_TOLERANCE = "rtol" if "rtol" in inspect.signature(cg).parameters else "tol"
@@ -376,15 +377,15 @@ class SeparableExponentialCovariance:
                 "class_labels_attrs": "{}"
                 if self._class_labels is None
                 else json.dumps(
-                    self._class_labels.attrs,
+                    _json_value(self._class_labels.attrs),
                     sort_keys=True,
-                    default=_numpy_scalar_json_default,
                 ),
             },
         )
         if self._class_labels is not None:
             encoded = np.frompyfunc(_encode_tagged_json_value, 1, 1)(self._class_labels.values)
             dataset["class_label_encoded"] = self._class_labels.copy(data=np.asarray(encoded, dtype=str))
+            dataset["class_label_encoded"].attrs = {}
         return dataset
 
     @classmethod
@@ -545,7 +546,8 @@ class SeparableExponentialCovariance:
             native = vector.reshape(n_lat, n_lon, 1)
             return self._apply_matrix(native).reshape(native_size)
 
-        operator = LinearOperator(
+        # scipy-stubs 1.15.3 omits the public shape/matvec factory overload.
+        operator = LinearOperator(  # type: ignore[call-overload]
             (native_size, native_size),
             matvec,
         )

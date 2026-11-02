@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openghg_inversions"
-version = "0.7.2"
+version = "0.7.4"
 
 authors = [
   {name = "OpenGHG Inversions contributors"},
@@ -18,29 +18,33 @@ description = "Regional hierarchical atmospheric inversion modelling software"
 license = {file = "LICENSE"}
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "numpy>=2.0",
     # Explicit lower bound: prevents uv backtracking to numba 0.53 / llvmlite 0.36
     # due to NumPy 2.x + sparse metadata lag
     "numba>=0.59",
-    "pymc<6",
-    "arviz<1",
+    "pymc>=6,<7",
+    "arviz>=1.1,<2",
     "numpyro[cpu]",
-    "xarray>=2025.06.0",
+    "xarray>=2025.08.0",
     "pandas<3.0",
     "matplotlib",
     "scipy",
-    "openghg",
+    # Temporary until a release includes the Numba fp_x_flux algorithm.
+    "openghg @ git+https://github.com/openghg/openghg.git@b9a9d1f21f22d2f8dcca714283eb936c22338c57",
+    "openghg-defs!=0.0.13",
     "cf_xarray>=0.10.6",
     "sparse",
     "flox",
     "opt_einsum",
-    "tomli>=2; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
@@ -51,11 +55,14 @@ jupyter = [
   "nbformat",
 ]
 dev = [
+  "h5py<3.15",
   "pytest",
   "pytest-xdist",
   "ruff==0.16.0",
   "pyright",
   "mypy",
+  "pandas-stubs==2.3.3.*",
+  "scipy-stubs==1.15.3.*",
   "towncrier>=24.8",
 ]
 
@@ -64,8 +71,13 @@ dev = [
 # worktrees. Broader developer tools remain available explicitly through
 # ``uv_dev`` and the Slurm tox runner.
 local = [
+  "h5py<3.15",
   "pytest",
   "ruff==0.16.0",
+]
+test = [
+  "pytest",
+  "pytest-xdist",
 ]
 uv_dev = [
   "openghg_inversions[jupyter,dev]",
@@ -82,7 +94,7 @@ uv_dev = [
 "DOI" = "https://doi.org/10.5281/zenodo.10650595"
 
 [project.scripts]
-openghg-inversions = "openghg_inversions.cli:main"
+rhime = "openghg_inversions.cli:rhime_main"
 
 [tool.pixi.workspace]
 channels = ["conda-forge"]
@@ -90,25 +102,25 @@ platforms = ["linux-64", "osx-64", "osx-arm64"]
 
 [tool.pixi.dependencies]
 # Use the CI Python version for the reproducible Pixi development environment.
-python = "3.10.*"
+python = "3.12.*"
 pip = "*"
 
 # Keep the compiled scientific and HDF5/NetCDF stack on conda-forge. These
 # entries override matching PyPI dependencies from this project and OpenGHG.
 numpy = ">=2.0"
 numba = ">=0.59"
-pymc = "<6"
+pymc = ">=6,<7"
 pytensor = "*"
-arviz = "<1"
-xarray = ">=2025.06.0"
+arviz = ">=1.1,<2"
+xarray = ">=2025.08.0"
 pandas = "<3.0"
 matplotlib = "*"
 scipy = "*"
 sparse = "*"
 flox = "*"
 opt_einsum = "*"
-zarr = "==2.18.3"
-numcodecs = "<0.16"
+zarr = ">=2.18.3,<4"
+numcodecs = "<0.17"
 hdf5 = "*"
 h5netcdf = ">=1.0.0,<=1.8.1"
 h5py = "<3.15"
@@ -151,7 +163,6 @@ openghg_inversions = [
     "config/templates/*.ini",
     "rhime/config/*.ini",
     "rhime/config/*.toml",
-    "hbmcmc/config/*.ini",
 ]
 
 [tool.uv]
@@ -162,12 +173,13 @@ line-length = 110
 
 [tool.ruff.lint]
 # Preserve the pre-0.16 baseline by preventing default rule expansion; adopt broader rules separately.
-select = ["E4", "E7", "E9", "F"]
+select = ["E4", "E7", "E9", "F", "B006", "B010", "B028", "B904", "EXE001", "EXE002", "SIM115", "RUF012", "RUF021", "RUF059", "UP035"]
 
 [tool.pytest.ini_options]
 minversion = "6.0"
 testpaths = ["tests"]
 markers = [
+  "compiled_backend: graph, predictive and sampler checks also run with the Numba linker on request",
   "create_frozen: tests that generate/update frozen regression outputs (not run by default)",
   "country_file_smoke: optional real country-file HDF5 backend smoke tests",
   "rhime_contract: current public RHIME workflow compatibility contracts",

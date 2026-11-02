@@ -4,7 +4,6 @@ import json
 import sys
 from types import SimpleNamespace
 
-import arviz as az
 import numpy as np
 import pytest
 import xarray as xr
@@ -69,15 +68,22 @@ def test_exports_input_flux_support_and_correct_ppm_scores(monkeypatch, tmp_path
     draws -= draws.mean(axis=(0, 1))
     estimate = np.array([1.1, .9, 1.2])
     draws += estimate
-    trace = az.from_dict(
-        posterior={"flux_scaling": draws},
-        sample_stats={"diverging": np.zeros((4, 32), dtype=bool),
-                      "tree_depth": np.full((4, 32), 2), "n_steps": np.full((4, 32), 3)},
-        coords={"flux_state": data.flux_state.values}, dims={"flux_scaling": ["flux_state"]},
-    )
+    trace = xr.DataTree.from_dict({
+        "posterior": xr.Dataset(
+            {"flux_scaling": (("chain", "draw", "flux_state"), draws)},
+            coords={"chain": range(4), "draw": range(32), "flux_state": data.flux_state.values},
+        ),
+        "sample_stats": xr.Dataset({
+            "diverging": (("chain", "draw"), np.zeros((4, 32), dtype=bool)),
+            "tree_depth": (("chain", "draw"), np.full((4, 32), 2)),
+            "n_steps": (("chain", "draw"), np.full((4, 32), 3)),
+        }),
+    })
     monkeypatch.setattr(runner, "RhimeSampler", lambda **kw: SimpleNamespace(sample=lambda m: trace))
     runner.main()
     out = tmp_path / "out/base/all_hours/lognormal"
+    with xr.open_datatree(out / "posterior.nc") as saved:
+        xr.testing.assert_equal(saved["posterior"].to_dataset(), trace["posterior"].to_dataset())
     summary = json.loads((out / "summary.json").read_text())
     expected = data.H.values @ estimate
     observed = data.observations.sel(scenario="base").values

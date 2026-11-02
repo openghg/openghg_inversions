@@ -4,7 +4,6 @@ openghg\_inversions.models
 .. automodule:: openghg_inversions.models
    :members:
    :show-inheritance:
-   :undoc-members:
 
 
 
@@ -12,6 +11,13 @@ openghg\_inversions.models
    :maxdepth: 4
 
    openghg_inversions.models.additive_sigma
+   openghg_inversions.models.cached_sigma
+   openghg_inversions.models.components
+   openghg_inversions.models.coords
+   openghg_inversions.models.fixed_error
+   openghg_inversions.models.fixed_ou
    openghg_inversions.models.pollution_event
+   openghg_inversions.models.priors
    openghg_inversions.models.scalar_sigma
+   openghg_inversions.models.site_sigma
    openghg_inversions.models.state_activity

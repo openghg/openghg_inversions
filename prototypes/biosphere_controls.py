@@ -17,6 +17,7 @@ import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
+from pymc.pytensorf import floatX
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.additive_sigma import add_additive_sigma_likelihood
@@ -123,7 +124,7 @@ def add_biosphere_state(
     prior_mean_latent = np.linalg.solve(log_cholesky, np.log(mean) - log_mean)
     if parameterization == "lognormal":
         result = add_correlated_lognormal_state(prior, var_name="flux_scaling")
-        pm.modelcontext(None).set_initval(result.latent, pm.floatX(prior_mean_latent))
+        pm.modelcontext(None).set_initval(result.latent, floatX(prior_mean_latent))
         return result.state
 
     if parameterization == "rotated-lognormal":
@@ -139,7 +140,7 @@ def add_biosphere_state(
             0.0,
             1.0,
             dims=prior.state_dim,
-            initval=pm.floatX(rotation.T @ prior_mean_latent),
+            initval=floatX(rotation.T @ prior_mean_latent),
         )
         return pm.Deterministic(
             "flux_scaling",
@@ -171,7 +172,7 @@ def add_biosphere_state(
         coordinate = pm.Flat(
             "net_gross_coordinates",
             dims=prior.state_dim,
-            initval=pm.floatX(
+            initval=floatX(
                 net_gross_coordinates(prior, mean, pair=pair, gross_flux_weights=gross_flux_weights)
             ),
         )
@@ -199,7 +200,7 @@ def add_biosphere_state(
             0.0,
             1.0,
             dims=prior.state_dim,
-            initval=pm.floatX(np.zeros(nstate)),
+            initval=floatX(np.zeros(nstate)),
         )
         control = control_mean + np.linalg.cholesky(control_covariance) @ latent[list(pair)]
         coefficients = np.linalg.inv(transform) @ control
@@ -210,7 +211,7 @@ def add_biosphere_state(
             state = pt.set_subtensor(state[other], pt.exp(log_mean[other] + other_cholesky @ latent[other]))
             initial = np.zeros(nstate)
             initial[other] = np.linalg.solve(other_cholesky, np.log(mean[other]) - log_mean[other])
-            pm.modelcontext(None).set_initval(latent, pm.floatX(initial))
+            pm.modelcontext(None).set_initval(latent, floatX(initial))
         net, shape_amplitude = control[0], control[1]
     pm.Deterministic("biosphere_net", net)
     pm.Deterministic("biosphere_shape_amplitude", shape_amplitude)

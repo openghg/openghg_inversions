@@ -86,17 +86,19 @@ def _eigenbasis(covariance: np.ndarray) -> ScalarSigmaEigenbasis:
 
 
 def test_eigen_logp_and_gradient_match_dense_covariance() -> None:
-    """The eigen target and gradient equal the materialized Gaussian."""
+    """The eigen target and gradient match the Gaussian at graph precision."""
     covariance = np.array([[1.8, 0.4, 0.1], [0.4, 1.2, 0.2], [0.1, 0.2, 0.7]])
     basis = _eigenbasis(covariance)
     residual_value = np.array([0.3, -0.8, 0.5])
     sigma_value = 0.25
-    residual = pt.vector("residual", dtype="float64")
-    sigma = pt.scalar("sigma", dtype="float64")
+    dtype = pytensor.config.floatX
+    residual = pt.vector("residual", dtype=dtype)
+    sigma = pt.scalar("sigma", dtype=dtype)
     logp = basis.logp(residual, pt.zeros_like(residual), sigma)
-    evaluate = pytensor.function([residual, sigma], [logp, pt.grad(logp, sigma)])
+    logp_gradient = pt.grad(logp, sigma)
+    evaluate = pytensor.function([residual, sigma], [logp, logp_gradient])
 
-    actual, gradient = evaluate(residual_value, sigma_value)
+    actual, gradient = evaluate(residual_value.astype(dtype), np.asarray(sigma_value, dtype=dtype))
     complete = covariance + np.eye(3) * sigma_value**2
     expected = multivariate_normal.logpdf(residual_value, mean=np.zeros(3), cov=complete)
     inverse = np.linalg.inv(complete)
@@ -104,8 +106,14 @@ def test_eigen_logp_and_gradient_match_dense_covariance() -> None:
         residual_value @ inverse @ inverse @ residual_value - np.trace(inverse)
     )
 
-    assert float(actual) == pytest.approx(expected, abs=2.0e-12)
-    assert float(gradient) == pytest.approx(expected_gradient, abs=2.0e-11)
+    assert logp.dtype == dtype
+    assert logp_gradient.dtype == dtype
+    # The likelihood casts its prepared eigenbasis to the process graph dtype.
+    logp_tolerance, gradient_tolerance = (
+        (1.0e-6, 2.0e-7) if dtype == "float32" else (2.0e-12, 2.0e-11)
+    )
+    assert float(actual) == pytest.approx(expected, abs=logp_tolerance, rel=0)
+    assert float(gradient) == pytest.approx(expected_gradient, abs=gradient_tolerance, rel=0)
 
 
 def test_positive_sigma_rescues_a_zero_base_mode() -> None:

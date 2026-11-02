@@ -11,8 +11,8 @@ from scipy.stats import multivariate_normal
 
 from openghg_inversions.models.coords import get_coord_registry, registered_model
 from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
-from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
-from openghg_inversions.rhime.standard import build_standard_rhime_model
+from openghg_inversions.observation_error import AggregationError
+from tests.standard_model_helpers import build_standard_graph
 
 
 SITE_LABELS = np.array(["A", "B", "A"])
@@ -83,7 +83,7 @@ def _aggregation_error(
                 coords={"nmeasure": np.arange(nmeasure)},
             ),
         )
-    return AggregationError(mode="none", marginal_variance=np.zeros(nmeasure))
+    raise ValueError(f"Unsupported test covariance mode: {mode}")
 
 
 def _build_model(
@@ -97,7 +97,6 @@ def _build_model(
     """Build the core likelihood around a fixed mean for direct logp tests."""
     observations = _observations() if observations is None else observations
     observation_error = np.array([0.3, 0.4, 0.2]) if observation_error is None else observation_error
-    aggregation_error = _aggregation_error("none") if aggregation_error is None else aggregation_error
     error = xr.DataArray(
         observation_error,
         dims="nmeasure",
@@ -167,7 +166,10 @@ def test_aggregation_covariance_and_reported_error_are_counted_once(mode: str) -
     )
 
     assert _likelihood_logp(model) == pytest.approx(expected, rel=1e-6)
-    np.testing.assert_allclose(model["epsilon"].eval() ** 2, np.diag(expected_covariance))
+    epsilon_squared = model["epsilon"].eval() ** 2
+    # The labelled PyMC graph uses the configured float dtype.
+    rtol = 5e-7 if epsilon_squared.dtype == np.float32 else 1e-7
+    np.testing.assert_allclose(epsilon_squared, np.diag(expected_covariance), rtol=rtol)
 
 
 def test_low_rank_logp_matches_the_four_row_reference_fixture() -> None:
@@ -259,7 +261,6 @@ def test_stock_pymc_samples_state_and_site_sigma_together() -> None:
         add_site_sigma_gaussian_likelihood(
             observations=observations,
             observation_error=error,
-            aggregation_error=_aggregation_error("none"),
             mean=mean,
             site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
         )
@@ -334,11 +335,10 @@ def test_standard_recipe_accepts_site_sigma_through_public_likelihood_seam() -> 
         coords={"nmeasure": observations.nmeasure, "region": ["r1"]},
     )
 
-    model = build_standard_rhime_model(
+    model = build_standard_graph(
         design,
         observations=data["mf"],
         observation_error=data["mf_error"],
-        aggregation_error=resolve_aggregation_error(data, "none"),
         use_bc=False,
         x_prior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
         likelihood_builder=add_site_sigma_gaussian_likelihood,
@@ -347,6 +347,7 @@ def test_standard_recipe_accepts_site_sigma_through_public_likelihood_seam() -> 
 
     assert {"y", "epsilon", "sigma_site", "sigma_site_index"} <= set(model.named_vars)
     assert "sigma" not in model.named_vars
+    np.testing.assert_allclose(model["epsilon"].eval(), np.sqrt(np.array([0.3, 0.4, 0.2])**2 + np.array([0.5, 1.0, 0.5])**2))
 
 
 def test_fixed_mapping_requires_each_observation_site() -> None:

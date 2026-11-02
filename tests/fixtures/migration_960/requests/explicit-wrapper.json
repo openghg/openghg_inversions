@@ -1,0 +1,18 @@
+{
+  "nit": 7,
+  "draws": 9,
+  "burn": 2,
+  "tune": 3,
+  "nchain": 2,
+  "verbose": true,
+  "sampler_kwargs": {"target_accept": 0.91},
+  "xprior": {"pdf": "lognormal", "mean": 1.0, "stdev": 0.5},
+  "bcprior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+  "sigprior": {"pdf": "uniform", "lower": 0.01, "upper": 0.2},
+  "reparameterise_log_normal": true,
+  "sigma_freq": "8D",
+  "sigma_per_site": false,
+  "pollution_events_from_obs": true,
+  "power": 2.0,
+  "calculate_min_error": "percentile"
+}

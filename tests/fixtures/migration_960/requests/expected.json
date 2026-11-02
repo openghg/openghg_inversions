@@ -1,0 +1,40 @@
+{
+  "source_revision": "0a32d73a5c4a72be0505a4ed682472e1613e49e9",
+  "status": "Manually transcribed source expectations; runtime observations are checked separately.",
+  "default_sampler": {"draws": 1000, "burn": 0, "tune": 1000, "chains": 4, "nuts_sampler": "pymc", "progressbar": false},
+  "default_data": {"basis_algorithm": "weighted", "nbasis": 100, "use_bc": true, "averaging_error": true, "bc_freq": null, "min_error": 0.0},
+  "default_science": {
+    "x_prior": {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0, "reparameterise": true},
+    "bc_prior": {"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.05, "lower": 0.0},
+    "sigma_prior": {"pdf": "uniform", "lower": 0.0, "upper": 0.1},
+    "sigma_freq": null, "sigma_per_site": true, "sigma_freq_anchor": "2019-01-01",
+    "pollution_events_from_obs": false, "power": 1.99, "add_offset": false,
+    "aggregation_error_mode": "none"
+  },
+  "modern_output": {"output_format": "inv_out", "save_trace": false, "save_inversion_output": true, "output_filename_convention": "rhime"},
+  "wrapper_output": {"output_format": "legacy", "save_trace": false, "save_inversion_output": false, "output_filename_convention": "legacy"},
+  "explicit_wrapper": {
+    "sampler": {"draws": 9, "burn": 2, "tune": 3, "chains": 2, "nuts_sampler": "pymc", "progressbar": true, "sample_kwargs": {"target_accept": 0.91}},
+    "x_prior": {"pdf": "lognormal", "mean": 1.0, "stdev": 0.5, "reparameterise": true},
+    "bc_prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+    "sigma_prior": {"pdf": "uniform", "lower": 0.01, "upper": 0.2},
+    "sigma_freq": "8D", "sigma_per_site": false, "sigma_freq_anchor": "2019-01-01",
+    "pollution_events_from_obs": true, "power": 2.0, "min_error": "percentile"
+  },
+  "decoded": {
+    "outputname": "first", "OutputName": "case is preserved", "draws": "7", "integer": 7,
+    "fraction": 0.25, "expression": 3, "enabled": true, "missing": null, "items": ["TAC", "MHD"],
+    "prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.2}, "bare": "EUROPE"
+  },
+  "filenames": {"rhime": "migration_ch4_EUROPE_2019-01-01.nc", "legacy": "CH4_EUROPE_migration_2019-01-01.nc"},
+  "justification": {
+    "default_sampler": "inference/sampling.py RhimeSampler.__init__ signature, not the HBMCMC translator",
+    "default_data": "rhime/params.py DataConfig field defaults",
+    "default_science": "rhime/specs.py DEFAULT_X_PRIOR, DEFAULT_BC_PRIOR, DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR, PollutionEventSettings and RhimeModelSpec; params.py resolve_model_options and _make_model_spec",
+    "modern_output": "rhime/specs.py RhimeOutputSpec.from_params and field defaults",
+    "wrapper_output": "hbmcmc/compatibility.py _normalise_legacy_output_format and fixedbasis_params_to_rhime; ordinary run_hbmcmc.main selects pollution_event",
+    "explicit_wrapper": "Original explicit-wrapper.json values plus compatibility.py alias loop (canonical draws beats nit), selective lognormal prior copy and min-error translation; sigma anchor from specs.py make_likelihood_settings",
+    "decoded": "config/config.py open_config preserves case/comments; extract_params retains the first section occurrence; convert/eval_check decodes Python values",
+    "filenames": "rhime/outputs.py _define_output_filename format strings"
+  }
+}

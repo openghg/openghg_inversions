@@ -1,0 +1,70 @@
+# Design
+
+## Context
+
+See proposal.md for motivation and the accepted #876 amendments. Before this change, scientific assembly expanded BC periods and calculated minimum error before invalid rows were removed. Revision `751dedd6` implements reusable raw preparation and model-time resolution. The accepted 23 October follow-up localizes floor policy and changes observation-error imputation to use the population retained by selection filters. Standard and multisector share the independent-state recipe; nested shares preparation and requested configuration. CO2 has concrete independent configuration owners and ongoing BC work in #957.
+
+## Goals / Non-Goals
+
+Deliver model-owned choices with one explicit numerical boundary, retained-population observation-error and floor estimates, compatible current replay and clear older-format rejection. Do not retain historical pre-drop estimator populations, add baked-value adapters, invent new missing-component/NaN or resampling uncertainty rules, implement centered BC arithmetic, or redesign output storage. The 23 October amendment supersedes the earlier exclusion of observation-error ordering changes.
+
+## Decisions
+
+- Keep raw H_bc and related labelled variables in preparation. Temporal expansion must replace only the model's selected operand, preserving the borrowed prepared dataset and avoiding destructive dimension-wide drops.
+- Move bc_freq and its anchor to the model specification; configure omitted anchors from the requested start date. Place floor choices on the likelihoods that consume them. DataConfig retains BC input availability but no temporal/floor policy.
+- Jointly materialize selected raw operands, enabled priors and auxiliary coordinates, then construct eager BC/floor values using ordinary functions. Fixed/custom/no-floor likelihoods do not select estimator operands. Concrete builders remain eager.
+- Calculate residual/percentile estimates from retained gathered observations. Historical pre-drop numerical parity is intentionally not required. Preserve units, site alignment, scalar/mapping validation and the intended likelihood equations.
+- Keep the floor estimator and its required operands/options together; keep likelihood-specific enablement, preparation and validation with likelihood-input preparation. The model-input coordinator visibly composes those operations with BC resolution. Numerical materialization remains an execution boundary, without a likelihood catalogue.
+- Apply observation-selection filters before observation-error derivation/imputation. Nested preparation first selects common outer observations and aligns the inner observations, then prepares each retained domain's errors. Historical retrieval without selection filters keeps its own returned-population boundary; independently supplied final errors are not re-estimated.
+- Distinguish resampling, which defines observations and propagates uncertainty, from selection and imputation. Only supported selection filters execute; unsupported active names receive ordinary registry validation. No replacement aggregation statistic or new resampling algorithm is part of this design.
+- Use exact registered trace constants for fitted operands during replay. Keep raw preparation separate; do not rebuild the graph or repeat scientific calculations when loading samples.
+- Introduce new prepared and standard/multisector handoff versions, rejecting incompatible historical records with guidance. Retain independent modern InversionOutput/legacy product codecs.
+- Preserve raw BC-related variables for #957. Its future A/M/reference representation will extend the same temporal operation; this change makes no claim of centered support.
+
+## Behavioral contract ownership
+
+- `rhime-configuration` owns option names/defaults, phase groups, use_bc inheritance,
+  repeated prepared-fact checks, BC/floor group ownership and configured omitted
+  anchor resolution. Its averaging_error scenario concerns changing preparation
+  policy on supplied data without reacquisition, independently of nested alignment.
+- `rhime-scientific-inputs` owns retained numerical inputs, selection-before-error
+  imputation, separate nested site-intersection and aligned-population guarantees,
+  shared nested spatial support, temporal BC labels/units/borrowing, retained-row
+  floors, unused-operand laziness and conflicting supplied resolved policies.
+- `prepared-recipe-handoff` and `sampled-recipe-handoff` own raw durable inputs,
+  explicit incompatible-format rejection, independent modern output support and
+  exact fitted operand replay. `recipe-execution` references those handoffs.
+- Generic supported-filter validation follows the #954 prerequisite. Canonical
+  option validation follows #719; this change adds no historical-name mapping or
+  special tracer handling. Historical aggregation evidence is pinned in Git,
+  rather than retained as fixtures or calculations in the current test tree.
+- Concrete helper placement, calls and wrapper choices in these design decisions
+  are development guidance, not public behavioral requirements. Existing public
+  preparation removals, acquisition signatures/returns and selector-helper promises
+  remain explicit interface contracts.
+
+## Risks / Trade-offs
+
+- Named floors can change after row dropping: document and test that intended population directly.
+- Observation-error fallback values intentionally change when selection rejects influential observations: verify retained-only estimates with rejected-outlier tests while preserving custom errors and existing missing-data rules.
+- Replacing a BC state axis can align away or delete unrelated variables: use an explicit selected model view or separate derived axis and test extension preservation.
+- Removing DataConfig fields affects nested/direct/xarray/saved callers: migrate concrete callers together and run relevant broader coverage.
+- Artifact formats have separate owners: version affected envelopes explicitly without silently changing unrelated codec versions.
+
+## Migration Plan
+
+Canonical requests place periods under model and floors under their likelihood. Older incompatible preparations/samples must be reopened with matching software or regenerated. Maintained 0.7 and release readiness remain #944 responsibilities. No release number is selected here.
+
+## 26 October 2026 restack and optional centered coordination
+
+PR #964 is restacked after #974 and #971. Canonical construction, provenance,
+BC basis selection and generic supported-filter validation remain prerequisite
+behavior; this change retains selection-first errors and model-time ordinary
+BC/floor resolution. Prepared schema version 2 remains strictly ordinary raw
+inputs. Version 1 is retired.
+
+The maintainer provisionally agreed a future version 3 for an optional explicitly
+marked centered representation with complete operands. PR #965 must preserve the
+ordinary alternative; centered BCs are not required for every model. This change
+implements no centered representation or migration. Identifier migration and the
+final version decision remain subject to #976 review.
