@@ -32,5 +32,6 @@ openghg\_inversions.rhime.co2
    openghg_inversions.rhime.co2.execution
    openghg_inversions.rhime.co2.handoffs
    openghg_inversions.rhime.co2.inference
+   openghg_inversions.rhime.co2.linked_shared_baseline_model
    openghg_inversions.rhime.co2.prior_configuration
    openghg_inversions.rhime.co2.shared_baseline_model
