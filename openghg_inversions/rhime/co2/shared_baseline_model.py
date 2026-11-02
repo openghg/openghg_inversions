@@ -146,6 +146,7 @@ def build_shared_co2_model(
     model = build_co2_model(
         flux_sensitivity=prepared.flux_sensitivity,
         retained_prior=prior,
+        prune_zero_flux_columns=False,
         fixed_prior_contribution=prepared.fixed_prior_contribution,
         boundary_correction=correction,
         observations=observations,
@@ -175,6 +176,7 @@ def build_shared_co2_cached_sigma_model(
     cached = build_co2_cached_sigma_model(
         flux_sensitivity=prepared.flux_sensitivity,
         retained_prior=prior,
+        prune_zero_flux_columns=False,
         fixed_prior_contribution=prepared.fixed_prior_contribution,
         boundary_correction=correction,
         observations=observations,

@@ -121,6 +121,7 @@ def build_co2_model(
     sigma_prior: PriorArgs | None = None,
     fixed_model_mismatch: float | xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
+    prune_zero_flux_columns: bool = True,
     boundary_sensitivity: xr.DataArray | None = None,
     boundary_operands: xr.Dataset | None = None,
     boundary_correction: xr.Dataset | None = None,
@@ -138,7 +139,7 @@ def build_co2_model(
     """Build the CO2 coherent-reduction model from explicit scientific arrays.
 
     ``flux_sensitivity`` is prepared once as the reduced operator ``H_alpha``:
-    exact-zero columns are omitted from the backend ``co2_sensitivity`` while
+    exact-zero columns are omitted by default from the backend ``co2_sensitivity`` while
     ``flux_scaling`` retains the complete labelled scientific state.
     ``fixed_prior_contribution`` is then added with the shared coherent-affine
     component to produce the complete ``co2_flux_contribution``. Optional
@@ -198,6 +199,9 @@ def build_co2_model(
             standard deviation.
         state_activity: Optional labelled activity policy for retained flux
             states.
+        prune_zero_flux_columns: Remove exact-zero flux columns by default.
+            Disable when a transformed design has zero columns whose joint
+            physical prior must remain sampled.
         boundary_sensitivity: Optional atmospheric boundary-condition
             sensitivity on spatial states. Raw states are expanded using the
             model's periods; already expanded states cannot accept overrides.
@@ -332,7 +336,9 @@ def build_co2_model(
         offset_prior = dict(offset_prior)
     offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
-    prepared_flux = prepare_linear_sensitivity(flux_sensitivity, output_dim="nmeasure")
+    prepared_flux = prepare_linear_sensitivity(
+        flux_sensitivity, output_dim="nmeasure", prune_zero_columns=prune_zero_flux_columns,
+    )
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
 
     with registered_model() as model:
