@@ -161,3 +161,16 @@ four matched CO2 arms unchanged by this follow-up. Its original Python 3.12 and
 do not validate this follow-up's new source. Broader follow-up compatibility and
 documentation builds are recorded separately below when complete. Linked
 production sampling and acquisition-to-products acceptance remain outstanding.
+
+
+### Repository lint and full documentation build
+
+Slurm job `19885984` completed with exit code zero on 2026-11-02 against
+`3e8dac3da6fd01c6a3d8d0954b0dbe346648c5ad`. Both tox environments,
+`lint` and `docs-full`, passed. The full Sphinx build includes the linked
+usage guide and generated API pages. Its ten existing warnings comprise seven
+duplicate `SiteOptions` descriptions and three ambiguous `PreparedInputs` /
+`DataConfig` cross-references; none originates in the new linked guide.
+The log is `inversion_outputs/linked-validation/tox-docs-19885984.out`.
+Supported-runtime scientific tox remains a separate registered job; this
+result makes no claim about its completion or the original four replay fits.
