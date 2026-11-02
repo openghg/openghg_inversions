@@ -26,7 +26,7 @@ from openghg.util import (  # pyright: ignore[reportPrivateImportUsage, reportAt
 from openghg_inversions._serialization_codecs import _copy_json_mapping, _decode_json_mapping
 from openghg_inversions.array_ops import require_unique_index, same_index, validate_covariance_coordinates
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_COVARIANCE,
@@ -38,9 +38,11 @@ from openghg_inversions.observation_error import (
 )
 from openghg_inversions.serialization import open_datatree_loaded, save_datatree
 
+from .co2_o2_preparation import Co2O2PreparedInputs
+
 
 CO2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_prepared_inputs"
-CO2_PREPARED_INPUTS_SCHEMA_VERSION = 1
+CO2_PREPARED_INPUTS_SCHEMA_VERSION = 2
 Co2AggregationErrorMode = Literal["dense", "low_rank"]
 _AGGREGATION_PAYLOAD_NAMES = (
     AGGREGATION_ERROR_COVARIANCE,
@@ -167,6 +169,9 @@ def _require_equivalent_units(actual: Any, expected: str, *, name: str) -> None:
 
 def _validate_co2_dataset(inputs: xr.Dataset) -> None:
     """Validate the scientific layout owned by the CO2 artifact."""
+    from openghg_inversions.boundary_sensitivity import validate_boundary_operands
+
+    validate_boundary_operands(inputs)
     required = (
         "H",
         "alpha_prior_mean",
@@ -269,7 +274,7 @@ class Co2PreparedInputs:
             artifacts include approximation diagnostics.
     """
 
-    rhime_inputs: RhimePreparedInputs
+    rhime_inputs: PreparedInputs
     aggregation_error_mode: Co2AggregationErrorMode
     provenance: Mapping[str, Any] = field(default_factory=dict)
 
@@ -374,7 +379,7 @@ class Co2PreparedInputs:
                 DIAGONAL_RESIDUAL_VARIANCE
             ].copy(deep=False, data=aggregation_error.diagonal_variance.data)
         serializable_inputs = self.inv_inputs._replace(variables=variables)
-        serializable = RhimePreparedInputs(
+        serializable = PreparedInputs(
             inv_inputs=serializable_inputs,
             basis_functions=self.basis_functions,
             site_metadata=self.site_metadata,
@@ -382,7 +387,7 @@ class Co2PreparedInputs:
         tree = xr.DataTree.from_dict({"rhime_inputs": serializable.to_datatree()})
         tree.attrs = {
             "schema": CO2_PREPARED_INPUTS_SCHEMA,
-            "schema_version": CO2_PREPARED_INPUTS_SCHEMA_VERSION,
+            "schema_version": CO2_PREPARED_INPUTS_SCHEMA_VERSION if "H_bc_anomaly" in self.inv_inputs else 1,
             "aggregation_error_mode": self.aggregation_error_mode,
             "provenance_json": json.dumps(dict(self.provenance), sort_keys=True, allow_nan=False),
         }
@@ -390,7 +395,7 @@ class Co2PreparedInputs:
 
     @classmethod
     def from_datatree(cls, tree: xr.DataTree) -> Self:
-        """Restore CO2 inputs from the dedicated version-1 schema.
+        """Restore absolute or centered CO2 inputs from the dedicated schema.
 
         Args:
             tree: In-memory tree using the CO2 prepared-input schema.
@@ -409,10 +414,9 @@ class Co2PreparedInputs:
                 f"got {tree.attrs.get('schema')!r}."
             )
         version = tree.attrs.get("schema_version")
-        if isinstance(version, bool) or not isinstance(version, Integral) or version != 1:
+        if isinstance(version, bool) or not isinstance(version, Integral) or version not in (1, 2):
             raise ValueError(
-                f"Expected Co2PreparedInputs schema_version "
-                f"{CO2_PREPARED_INPUTS_SCHEMA_VERSION}, got {version!r}."
+                f"Expected Co2PreparedInputs schema_version 1 or 2, got {version!r}."
             )
         if "rhime_inputs" not in tree.children:
             raise KeyError("Missing required Co2PreparedInputs node 'rhime_inputs'.")
@@ -423,10 +427,12 @@ class Co2PreparedInputs:
             tree.attrs.get("provenance_json", "{}"), "Serialized CO2 provenance"
         )
         prepared = cls(
-            RhimePreparedInputs.from_datatree(cast(xr.DataTree, tree["rhime_inputs"])),
+            PreparedInputs.from_datatree(cast(xr.DataTree, tree["rhime_inputs"])),
             aggregation_error_mode=cast(Co2AggregationErrorMode, mode),
             provenance=provenance,
         )
+        if version == 1 and "H_bc_anomaly" in prepared.inv_inputs:
+            raise ValueError("Centered boundary operands require CO2 prepared schema version 2.")
         resolve_aggregation_error(prepared.inv_inputs, prepared.aggregation_error_mode)
         return prepared
 
@@ -465,7 +471,7 @@ class Co2PreparedInputs:
 
 
 def requested_co2_facts(
-    prepared: Co2PreparedInputs, *, start_date: str | None = None,
+    prepared: Co2PreparedInputs | Co2O2PreparedInputs, *, start_date: str | None = None,
     end_date: str | None = None, domain: str | None = None,
     recorded_facts: Mapping[str, object] | None = None,
 ) -> dict[str, str]:
@@ -508,7 +514,7 @@ def requested_co2_facts(
 
 
 def prepare_co2_inputs(
-    canonical_inputs: RhimePreparedInputs,
+    canonical_inputs: PreparedInputs,
     reduction: CoherentGaussianReduction,
     *,
     aggregation_error_rank: int | None = 512,
@@ -742,7 +748,7 @@ def prepare_co2_inputs(
     if approximation is not None:
         metadata["aggregation_error"] = dict(approximation.diagnostics)
     return Co2PreparedInputs(
-        RhimePreparedInputs(
+        PreparedInputs(
             inv_inputs=mapped,
             basis_functions=canonical.basis_functions,
             site_metadata=canonical.site_metadata,

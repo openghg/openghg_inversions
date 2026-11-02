@@ -3,25 +3,48 @@
 import pytest
 
 from openghg_inversions.cli import build_parser, main, rhime_main
-from openghg_inversions.inversion_data import MergedData, PreparedInputs, RhimeMergedData, RhimePreparedInputs
+from openghg_inversions.inversion_data import MergedData, PreparedInputs
 from openghg_inversions.rhime import (
     RhimeConfig,
     assemble_inputs,
-    assemble_rhime_inputs,
     run,
     run_multisector,
     run_nested,
-    run_rhime_multisector,
-    run_rhime_nested,
 )
 
 
-def test_established_imports_are_same_implementations():
-    assert run_rhime_multisector is run_multisector
-    assert run_rhime_nested is run_nested
-    assert RhimeMergedData is MergedData
-    assert RhimePreparedInputs is PreparedInputs
-    assert assemble_rhime_inputs is assemble_inputs
+def test_canonical_imports_are_owned_implementations():
+    from openghg_inversions.inversion_data import acquisition, prepared_inputs
+    from openghg_inversions.rhime import multisector, nested, preparation
+
+    assert run_multisector is multisector.run_multisector
+    assert run_nested is nested.run_nested
+    assert MergedData is acquisition.MergedData
+    assert PreparedInputs is prepared_inputs.PreparedInputs
+    assert assemble_inputs is preparation.assemble_inputs
+
+
+@pytest.mark.parametrize("module_name,alias", [
+    ("openghg_inversions.rhime", "run_rhime_multisector"),
+    ("openghg_inversions.rhime.multisector", "run_rhime_multisector"),
+    ("openghg_inversions.rhime", "run_rhime_nested"),
+    ("openghg_inversions.rhime.nested", "run_rhime_nested"),
+    ("openghg_inversions.rhime", "RhimeMergedData"),
+    ("openghg_inversions.inversion_data", "RhimeMergedData"),
+    ("openghg_inversions.inversion_data.acquisition", "RhimeMergedData"),
+    ("openghg_inversions.inversion_data", "RhimePreparedInputs"),
+    ("openghg_inversions.inversion_data.prepared_inputs", "RhimePreparedInputs"),
+    ("openghg_inversions.rhime", "assemble_rhime_inputs"),
+    ("openghg_inversions.rhime.preparation", "assemble_rhime_inputs"),
+])
+def test_retired_python_alias_is_absent(module_name, alias):
+    import importlib
+
+    module = importlib.import_module(module_name)
+    assert not hasattr(module, alias)
+    assert alias not in getattr(module, "__all__", [])
+
+
 
 
 def test_unknown_model_rejected():
@@ -29,7 +52,7 @@ def test_unknown_model_rejected():
         run(model="missing")
 
 
-@pytest.mark.parametrize("model", ["co2_cached_sigma", "co2_o2", "co2_o2_cached_sigma"])
+@pytest.mark.parametrize("model", ["co2_o2", "co2_o2_cached_sigma"])
 def test_carbon_recipes_require_their_actual_prepared_inputs(model):
     with pytest.raises(TypeError, match="prepared_inputs"):
         run(model=model)
@@ -52,7 +75,7 @@ def test_selector_preserves_real_recipe_configuration_validation(model):
 
 @pytest.mark.parametrize("entrypoint", [main, rhime_main])
 @pytest.mark.parametrize("model", ["standard", "multisector", "nested"])
-def test_both_executables_select_models_and_preserve_overrides(monkeypatch, entrypoint, model):
+def test_cli_selects_models_and_preserves_overrides(monkeypatch, entrypoint, model):
     calls = []
     monkeypatch.setattr("openghg_inversions.rhime.run", lambda **kw: calls.append(kw))
     entrypoint(["run", "2020-01-01", "2020-02-01", "-c", "run.ini", "--model", model,
@@ -62,7 +85,7 @@ def test_both_executables_select_models_and_preserve_overrides(monkeypatch, entr
 
 
 @pytest.mark.parametrize("entrypoint", [main, rhime_main])
-@pytest.mark.parametrize("command", [["run", "--model", "co2"], ["run-co2"]])
+@pytest.mark.parametrize("command", [["run", "--model", "co2"]])
 def test_configured_co2_cli_preserves_sections_and_run_overrides(monkeypatch, entrypoint, command):
     calls = []
     monkeypatch.setattr("openghg_inversions.rhime.co2.run_co2", lambda **kw: calls.append(kw))
@@ -99,7 +122,7 @@ def test_removed_ordinary_runner_names_have_no_compatibility_aliases():
     from openghg_inversions.rhime import co2
     from openghg_inversions import rhime
 
-    for name in ("run_rhime_co2", "build_rhime_co2", "run_co2_from_config"):
+    for name in ("run_rhime_co2", "build_rhime_co2", "run_co2_from_config", "run_rhime_co2_cached_sigma", "Co2RunSetup", "sample_co2_cached_prior_predictive"):
         assert not hasattr(co2, name)
         assert not hasattr(rhime, name)
 
@@ -111,3 +134,8 @@ def test_retired_run_envelopes_and_site_helpers_have_no_public_exports():
         assert not hasattr(rhime, name)
         assert name not in rhime.__all__
     assert not hasattr(RhimeConfig, "retained_run_spec")
+
+
+def test_retired_cached_selector_has_no_compatibility_alias():
+    with pytest.raises(ValueError, match="Unknown model 'co2_cached_sigma'"):
+        run(model="co2_cached_sigma")

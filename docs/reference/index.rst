@@ -28,10 +28,9 @@ runner.
    openghg_inversions.rhime.run_standard
    openghg_inversions.rhime.run_multisector
    openghg_inversions.rhime.run_nested
-   openghg_inversions.rhime.run_rhime_multisector
-   openghg_inversions.rhime.run_rhime_nested
+   openghg_inversions.rhime.run_multisector
+   openghg_inversions.rhime.run_nested
    openghg_inversions.rhime.co2.run_co2
-   openghg_inversions.rhime.co2.run_rhime_co2_cached_sigma
    openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs
    openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs
 
@@ -44,7 +43,9 @@ recipe-specific options, then construct canonical ``RhimeConfig.from_params``.
 Pass the result to the corresponding
 runner's ``config`` argument to reuse the resolved choices. The
 :doc:`configuration guide </usage/rhime_configuration>` explains requested site selectors,
-retained execution metadata and compatibility helpers.
+retained execution metadata and compatibility helpers. For artifact-only CO2
+and linked CO2/O2 requests, load the file and apply overrides, then construct the
+preparation and model owners below; see :doc:`CO2 configuration </usage/co2_models>`.
 
 .. autosummary::
    :nosignatures:
@@ -55,6 +56,10 @@ retained execution metadata and compatibility helpers.
    openghg_inversions.rhime.DataConfig
    openghg_inversions.rhime.DataConfig.from_params
    openghg_inversions.rhime.DataConfig.select
+   openghg_inversions.rhime.co2.Co2PreparationConfig
+   openghg_inversions.rhime.co2.Co2ModelConfig
+   openghg_inversions.rhime.co2.Co2O2PreparationConfig
+   openghg_inversions.rhime.co2.Co2O2ModelConfig
    openghg_inversions.inversion_data.SiteOptions
 
 Reuse standard and multisector preparation and samples
@@ -94,8 +99,8 @@ Run specifications and results
 ------------------------------
 
 Standard and multisector runners return ``InversionOutput``, including prepared
-execution and graph-free saved replay. Ordinary and cached CO2 postprocessing
-use ``Co2Output``. Nested execution returns ``NestedOutput``
+execution and graph-free saved replay. CO2 postprocessing uses
+``Co2Output``; linked saved replay uses ``Co2O2Output``. Nested execution returns ``NestedOutput``
 with two native ``InversionOutput`` views borrowing one trace. Model choices,
 inference and output policy have separate owners.
 The sampler's former ``rhime`` imports remain compatible; its implementation is
@@ -125,8 +130,13 @@ before a separate model run. The
 :doc:`RHIME terminology and prepared-input reference </usage/rhime>`
 documents the expected variables, dimensions, and coordinates. Acquisition
 mechanics live in ``inversion_data.acquisition``; the prepared
-value and its unchanged version-1 schema live in
-``inversion_data.prepared_inputs``. Import both values from ``openghg_inversions.inversion_data``.
+value and its versioned raw-input schema live in
+``inversion_data.prepared_inputs``. The current format supports ordinary and
+explicitly centered representations; see :doc:`the format support map </usage/prepared_format_support>`.
+Import both values from
+``openghg_inversions.inversion_data``. See the
+:ref:`centered boundary contract <surface-centered-boundary-contract>` for
+operands and supported model routes.
 
 .. autosummary::
    :nosignatures:
@@ -138,16 +148,20 @@ value and its unchanged version-1 schema live in
    openghg_inversions.inversion_data.MergedDataProvenance
    openghg_inversions.inversion_data.PreparedInputs
    openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray
+   openghg_inversions.inversion_data.prepare_surface_site
+   openghg_inversions.inversion_data.acquire_surface_data
    openghg_inversions.inversion_data.MergedData.from_options
    openghg_inversions.inversion_data.MergedData.validate_for_preparation
    openghg_inversions.inversion_data.MergedData.site_schema
    openghg_inversions.inversion_data.MergedData.validate_scientific_inputs
    openghg_inversions.inversion_data.MergedData.with_site_data
    openghg_inversions.rhime.preparation.resolve_basis_inputs
+   openghg_inversions.rhime.preparation.resolve_bc_basis
    openghg_inversions.rhime.preparation.acquire_merged_data
    openghg_inversions.rhime.preparation.export_basis
    openghg_inversions.rhime.standard.build_standard_model
    openghg_inversions.rhime.standard.materialize_standard_inputs
+   openghg_inversions.rhime.resolve_model_inputs
    openghg_inversions.rhime.standard.prepare_standard
    openghg_inversions.rhime.postprocess_standard_outputs
    openghg_inversions.rhime.annotate_sample_trace
@@ -167,8 +181,17 @@ value and its unchanged version-1 schema live in
    openghg_inversions.rhime.co2.load_and_bind_affine_flux_map
    openghg_inversions.rhime.co2.prepared_inputs_content_id
    openghg_inversions.rhime.co2.Co2O2PreparedInputs
+   openghg_inversions.rhime.co2.co2_o2_outputs.Co2O2Output
+   openghg_inversions.rhime.co2.co2_o2_outputs.Co2O2OutputOptions
+   openghg_inversions.rhime.co2.co2_o2_handoffs.prepare
+   openghg_inversions.rhime.co2.co2_o2_handoffs.save_preparation
+   openghg_inversions.rhime.co2.co2_o2_handoffs.load_preparation
+   openghg_inversions.rhime.co2.co2_o2_handoffs.sample
+   openghg_inversions.rhime.co2.co2_o2_handoffs.save_samples
+   openghg_inversions.rhime.co2.co2_o2_handoffs.load_samples
+   openghg_inversions.rhime.co2.co2_o2_handoffs.prior_predictive
+   openghg_inversions.rhime.co2.co2_o2_handoffs.postprocess
    openghg_inversions.rhime.co2.prepare_co2_inputs
-   openghg_inversions.rhime.co2.stages.prepare_co2_stage
    openghg_inversions.rhime.co2.handoffs.prepare
    openghg_inversions.rhime.co2.handoffs.save_preparation
    openghg_inversions.rhime.co2.handoffs.load_preparation
@@ -181,7 +204,6 @@ value and its unchanged version-1 schema live in
    openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized
    openghg_inversions.rhime.co2.co2_outputs.validate_co2_product_request
    openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma
-   openghg_inversions.rhime.co2.sample_co2_cached_prior_predictive
    openghg_inversions.rhime.co2.prepare_co2_o2_inputs
 
 Basis construction and state geometry
@@ -272,6 +294,8 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.parse_prior
    openghg_inversions.models.add_model_data
    openghg_inversions.models.add_linear_component
+   openghg_inversions.rhime.co2.centered_boundary.CenteredBoundaryResult
+   openghg_inversions.rhime.co2.centered_boundary.add_centered_boundary
    openghg_inversions.models.add_linked_linear_component
    openghg_inversions.models.add_correlated_lognormal_state
    openghg_inversions.models.add_offset_component
@@ -337,10 +361,8 @@ Legacy compatibility APIs
 
 The direct fixed-basis and hierarchical Bayesian Markov chain Monte Carlo
 (HBMCMC) Python APIs were removed in 0.8. Existing fixedbasis-style INI files
-can use the transitional :doc:`HBMCMC compatibility wrapper
-<openghg_inversions.hbmcmc.run_hbmcmc>`, which translates supported options
-and calls RHIME. See :doc:`legacy interfaces and migration
-</usage/legacy_and_migration>` for replacements and unsupported interfaces.
+must migrate to canonical RHIME settings or retain matching older software.
+See :doc:`/usage/legacy_and_migration` for the retired namespace and aliases.
 
 Detailed module reference
 -------------------------

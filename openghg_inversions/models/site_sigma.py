@@ -25,6 +25,7 @@ from typing import Any
 
 import numpy as np
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
@@ -36,7 +37,7 @@ from openghg_inversions.models._gaussian_observation import (
 )
 from openghg_inversions.models.components import add_model_data
 from openghg_inversions.models.coords import add_coords
-from openghg_inversions.models.priors import parse_prior, positive_prior_args
+from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.observation_error import (
     AggregationError,
     validate_observation_error_arrays,
@@ -54,7 +55,7 @@ def add_site_sigma_gaussian_likelihood(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: AggregationError | None = None,
     mean: TensorVariable,
     fixed_site_amplitudes: Mapping[str, float] | None = None,
     site_amplitude_prior: Mapping[str, Any] | None = None,
@@ -78,7 +79,8 @@ def add_site_sigma_gaussian_likelihood(
             observation order as ``observations``.
         aggregation_error: Validated fixed aggregation-error representation
             for the same observation order. Its diagonal, dense, or low-rank
-            covariance is included exactly once.
+            covariance is included exactly once. Omit or pass ``None`` for
+            no fixed aggregation covariance.
         mean: Completed one-dimensional forward-model concentration tensor
             aligned with ``output_dim`` and ``observations``.
         fixed_site_amplitudes: Fixed amplitudes keyed by site label, in the same
@@ -144,7 +146,7 @@ def add_site_sigma_gaussian_likelihood(
         fixed_independent_variance = (
             np.square(np.asarray(observation_error.values, dtype=np.float64)) + aligned_variance
         )
-        if aggregation_error.mode == "low_rank":
+        if aggregation_error is not None and aggregation_error.mode == "low_rank":
             assert aggregation_error.diagonal_variance is not None
             low_rank_diagonal = fixed_independent_variance + np.asarray(
                 aggregation_error.diagonal_variance.values,
@@ -171,7 +173,8 @@ def add_site_sigma_gaussian_likelihood(
         add_coords({SITE_SIGMA_DIM: site_coord})
         sigma_site = parse_prior(
             SITE_SIGMA,
-            positive_prior_args(site_amplitude_prior),
+            site_amplitude_prior,
+            positive=True,
             dims=SITE_SIGMA_DIM,
         )
 
@@ -187,7 +190,7 @@ def add_site_sigma_gaussian_likelihood(
         dims=output_dim,
     )
     return add_gaussian_observation_likelihood(
-        observed=pm.floatX(observations.compute().values),
+        observed=floatX(observations.compute().values),
         mean=mean,
         independent_variance=independent_variance,
         aggregation_error=registered_aggregation_error,

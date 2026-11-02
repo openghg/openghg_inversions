@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -14,6 +15,7 @@ from openghg_inversions.postprocessing.inversion_output import InversionOutput
 import pymc
 
 from openghg_inversions import serialization
+from openghg_inversions.inference.sampling import RhimeSampler
 from openghg_inversions.rhime import _standard_stages as stages, standard
 from openghg_inversions.rhime.params import RhimeConfig
 from openghg_inversions.rhime.requests import load_params
@@ -50,6 +52,96 @@ def _contract(sampled):
     return OutputContract.from_dict(json.loads(sampled.read_text())["output_contract"])
 
 
+def test_saved_sampling_forwards_scientific_objects_and_persists_returned_trace(tmp_path, monkeypatch):
+    config = RhimeConfig.from_params(_params(), multisector=False)
+    preparation = stages.save_preparation(_prepared(), data_config=config.data, output_dir=tmp_path / "prepared")
+    posterior = make_trace(posterior=xr.Dataset(
+        {"x": (("chain", "draw", "region"), [[[0.75], [1.25]]])},
+        coords={"chain": [4], "draw": [6, 8], "region": [0]},
+        attrs={"units": "dimensionless"},
+    ))
+    posterior.attrs["sampler_reference"] = "controlled trace"
+    constructed_priors = {"x": {"pdf": "normal", "mu": 0.75, "sigma": 0.125}}
+    contract = OutputContract(
+        variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "inv_out"),
+        metadata={"construction_reference": "standard adapter"},
+    )
+    built = SimpleNamespace(model=SimpleNamespace(_openghg_prior_records=constructed_priors), output_contract=contract)
+    sampler = RhimeSampler(draws=2, tune=7, chains=1, sample_prior_predictive=False,
+                           sample_posterior_predictive=False)
+    inference = sampler.describe()
+    provenance = {"version": "recorded version", "revision": "recorded revision", "dirty": False}
+    loaded = []
+    resolved = []
+    load = stages._load_preparation
+    resolve = stages.resolve_model_options
+    model_inputs = xr.Dataset({"eager_reference": ("region", [3.0])})
+    priors = {"x_prior": constructed_priors["x"]}
+
+    def likelihood_builder(**kwargs):
+        pytest.fail("adapter executed likelihood instead of forwarding it")
+
+    likelihood_kwargs = {"scale": 0.25}
+
+    def load_preparation(*args, **kwargs):
+        result = load(*args, **kwargs)
+        loaded.append(result)
+        return result
+
+    def resolve_model(options, *, data_config):
+        assert data_config == loaded[0][1]
+        result = resolve(options, data_config=data_config)
+        resolved.append(result)
+        return result
+
+    def materialize(prepared, model):
+        assert prepared is loaded[0][0] and model == resolved[0]
+        return model_inputs, priors
+
+    def build(inputs, model, **kwargs):
+        assert inputs is model_inputs and model == resolved[0]
+        assert kwargs["priors"] == priors
+        assert kwargs["likelihood_builder"] is likelihood_builder
+        assert kwargs["likelihood_kwargs"] == likelihood_kwargs
+        return built
+
+    def sample(actual_sampler, model, *, variable_roles):
+        assert actual_sampler.describe() == inference
+        assert model is built.model and variable_roles == contract.variable_roles
+        return posterior
+
+    monkeypatch.setattr(stages, "_load_preparation", load_preparation)
+    monkeypatch.setattr(stages, "resolve_model_options", resolve_model)
+    monkeypatch.setattr(stages, "materialize_standard_inputs", materialize)
+    monkeypatch.setattr(stages, "build_standard_model", build)
+    monkeypatch.setattr(RhimeSampler, "sample", sample)
+    monkeypatch.setattr(stages, "installed_ogi_provenance", lambda: provenance)
+    sampled = stages.sample(
+        preparation, model={"mismatch_model": None}, sampler=sampler, output_dir=tmp_path / "samples",
+        likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs,
+    )
+    record = json.loads(sampled.read_text())
+    assert sampler.describe() == inference
+    assert record["preparation_generation"] == loaded[0][2]
+    assert record["output_contract"] == contract.to_dict()
+    assert record["actual_inference"] == inference
+    assert record["provenance"] == provenance
+    assert record["model"]["sectors"][0]["x_prior"] == constructed_priors["x"]
+    assert json.loads(posterior.attrs["rhime_likelihood_kwargs"]) == likelihood_kwargs
+    assert json.loads(posterior.attrs["rhime_likelihood_builder"]) == {
+        "module": likelihood_builder.__module__, "qualname": likelihood_builder.__qualname__,
+    }
+    monkeypatch.setattr(stages, "resolve_sampler", lambda *a, **k: pytest.fail("fresh sampler"))
+    monkeypatch.setattr(stages, "build_standard_model", lambda *a, **k: pytest.fail("built graph"))
+    monkeypatch.setattr(stages, "materialize_standard_inputs", lambda *a, **k: pytest.fail("materialized model inputs"))
+    monkeypatch.setattr(RhimeSampler, "sample", lambda *a, **k: pytest.fail("inference"))
+    monkeypatch.setattr(stages, "installed_ogi_provenance", lambda: pytest.fail("replaced recorded provenance"))
+    restored = stages.load_samples(sampled)
+    xr.testing.assert_identical(restored.trace, posterior)
+    assert restored.provenance == provenance
+    assert restored.output_metadata["sampler"] == inference
+
+
 def test_manifest_relative_and_absolute_references_preserve_inputs(tmp_path, monkeypatch):
     preparation, _ = _saved(tmp_path)
     record = json.loads(preparation.read_text())
@@ -70,7 +162,7 @@ def test_conflicting_recorded_layout_fails_before_numerical_loading(tmp_path, mo
     record = json.loads(preparation.read_text())
     record["data"]["split_by_sectors"] = True
     preparation.write_text(json.dumps(record))
-    monkeypatch.setattr(stages.RhimePreparedInputs, "load", lambda *a, **k: pytest.fail("loaded numerical data"))
+    monkeypatch.setattr(stages.PreparedInputs, "load", lambda *a, **k: pytest.fail("loaded numerical data"))
     with pytest.raises(ValueError, match="split_by_sectors=True.*multisector=False"):
         stages.load_preparation(preparation)
 
@@ -81,7 +173,7 @@ def test_reused_destinations_and_manifest_last(tmp_path, monkeypatch):
     assert stages.save_preparation(_prepared(), data_config=config.data, output_dir=preparation.parent) == preparation
     def fail(*args, **kwargs):
         raise OSError("disk full")
-    monkeypatch.setattr(stages.RhimePreparedInputs, "save", fail)
+    monkeypatch.setattr(stages.PreparedInputs, "save", fail)
     with pytest.raises(OSError, match="disk full"):
         stages.save_preparation(_prepared(), data_config=config.data, output_dir=preparation.parent)
     assert not preparation.exists()
@@ -100,7 +192,7 @@ def forbidden(*args, **kwargs):
     raise AssertionError("replay performed acquisition, graph construction or inference")
 standard.build_standard_model = forbidden
 standard.materialize_standard_inputs = forbidden
-stages.RhimeMergedData.from_options = forbidden
+stages.MergedData.from_options = forbidden
 RhimeSampler.sample = forbidden
 stages.resolve_sampler = forbidden
 result = stages.postprocess(root / "samples/sample-manifest.json", output=RhimeOutputSpec(
@@ -138,12 +230,24 @@ def test_bad_records_fail_without_graph_or_products(tmp_path, monkeypatch, corru
     assert not (tmp_path / "products").exists()
 
 
-def test_changed_preparation_policy_fails_before_sampling(tmp_path, monkeypatch):
+def test_saved_preparation_reuses_model_owned_floor_and_boundary_choices(tmp_path):
+    from openghg_inversions.rhime.params import resolve_model_options
+
     preparation, _ = _saved(tmp_path)
-    monkeypatch.setattr(stages, "sample_rhime_model", lambda *a, **k: pytest.fail("inference"))
-    with pytest.raises(ValueError, match="conflicts with data"):
-        stages.sample(preparation, model={"bc_freq": "monthly"}, output_dir=tmp_path / "new-samples")
-    assert not (tmp_path / "new-samples").exists()
+    prepared, data, generation = stages.load_preparation(preparation)
+    assert "min_error" not in prepared.inv_inputs
+    for floor, frequency in ((0.25, None), (0.5, "monthly")):
+        model = resolve_model_options(
+            {"bc_freq": frequency, "mismatch_model": "pollution_event", "min_error": floor},
+            data_config=data,
+        )
+        inputs, priors = standard.materialize_standard_inputs(prepared, model)
+        np.testing.assert_allclose(inputs.min_error, floor)
+        assert model.bc_freq == frequency
+        built = standard.build_standard_model(inputs, model, priors=priors)
+        np.testing.assert_allclose(built.model["min_error"].get_value(), floor)
+    assert "min_error" not in prepared.inv_inputs
+    assert stages.load_preparation(preparation)[2] == generation
 
 
 def test_prior_readiness_catches_graph_failure_but_not_save_failure(tmp_path, monkeypatch):
@@ -212,7 +316,7 @@ def test_prepare_preserves_exact_basis_export(tmp_path, monkeypatch, export):
     destination = tmp_path / "prepared"
     target = tmp_path / export
     config = replace(config, basis_output_path=target)
-    monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda **kwargs: object())
+    monkeypatch.setattr(stages.MergedData, "from_options", lambda **kwargs: object())
     monkeypatch.setattr(stages, "prepare_standard", lambda *args, **kwargs: _prepared())
     manifest = stages.prepare(config, output_dir=destination)
     assert manifest.is_file()
@@ -338,35 +442,57 @@ def test_explicit_latent_only_trace_cannot_complete_handoff_or_replay(tmp_path):
 
 @pytest.mark.parametrize("grouped_override", [False, True])
 @pytest.mark.parametrize("canonical_file", [False, True])
-def test_grouped_loader_merges_raw_aliases_before_translation(tmp_path, monkeypatch, grouped_override, canonical_file):
-    config_dir = tmp_path / "config"
-    invocation = tmp_path / "invocation"
-    config_dir.mkdir()
-    invocation.mkdir()
-    source = config_dir / "choices.json"
+def test_grouped_loader_rejects_retired_alias_in_file_or_override(
+    tmp_path, monkeypatch, grouped_override, canonical_file,
+):
+    source = tmp_path / "choices.json"
     source.write_text(json.dumps({"output": {
         "output_path" if canonical_file else "outputpath": "file-products",
     }, "data": {"basis_path": "basis.nc"}}))
     overrides = {"outputpath": "override-products"}
     if grouped_override:
         overrides = {"output": overrides}
+    monkeypatch.setattr(
+        "openghg_inversions.rhime.requests.resolve_resource_paths",
+        lambda *a, **k: pytest.fail("resolved resources before rejecting retired alias"),
+    )
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*outputpath"):
+        load_params(params_file=source, overrides=overrides)
+
+
+@pytest.mark.parametrize("grouped_override", [False, True])
+@pytest.mark.parametrize("grouped_file", [False, True])
+def test_canonical_loader_overrides_file_values_before_resolving_invocation_paths(
+    tmp_path, monkeypatch, grouped_override, grouped_file,
+):
+    config_dir = tmp_path / "config"
+    invocation = tmp_path / "invocation"
+    config_dir.mkdir()
+    invocation.mkdir()
+    source = config_dir / "choices.json"
+    file_output = {"output_path": "file-products"}
+    source.write_text(json.dumps({
+        **({"output": file_output} if grouped_file else file_output),
+        "data": {"basis_path": "basis.nc"},
+    }))
+    overrides = {"output_path": "override-products"}
+    if grouped_override:
+        overrides = {"output": overrides}
     monkeypatch.chdir(invocation)
-    with pytest.warns(DeprecationWarning, match="Ignoring" if canonical_file else "deprecated"):
-        loaded = load_params(params_file=source, overrides=overrides)
-    expected = invocation / ("file-products" if canonical_file else "override-products")
-    assert loaded["output"]["output_path"] == expected
+    loaded = load_params(params_file=source, overrides=overrides)
+    assert loaded["output"]["output_path"] == invocation / "override-products"
     assert loaded["data"]["basis_path"] == invocation / "basis.nc"
 
 
-def test_grouped_loader_flat_canonical_override_wins_file_alias(tmp_path, monkeypatch):
-    invocation = tmp_path / "invocation"
-    invocation.mkdir()
+def test_grouped_loader_rejects_file_alias_even_with_canonical_override(tmp_path, monkeypatch):
     source = tmp_path / "choices.json"
     source.write_text(json.dumps({"output": {"outputpath": "file-products"}}))
-    monkeypatch.chdir(invocation)
-    with pytest.warns(DeprecationWarning, match="Ignoring"):
-        loaded = load_params(params_file=source, overrides={"output_path": "products"})
-    assert loaded["output"]["output_path"] == invocation / "products"
+    monkeypatch.setattr(
+        "openghg_inversions.rhime.requests.resolve_resource_paths",
+        lambda *a, **k: pytest.fail("resolved resources before rejecting retired alias"),
+    )
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*output.outputpath"):
+        load_params(params_file=source, overrides={"output_path": "products"})
 
 
 def test_saving_samples_ignores_unused_configured_lazy_priors(tmp_path):
@@ -432,11 +558,11 @@ def test_failed_acquisition_leaves_destination_free_for_retry(tmp_path, monkeypa
     config = RhimeConfig.from_params(_params(), multisector=False).data
     def unavailable(**kwargs):
         raise OSError("object store unavailable")
-    monkeypatch.setattr(standard.RhimeMergedData, "from_options", unavailable)
+    monkeypatch.setattr(standard.MergedData, "from_options", unavailable)
     with pytest.raises(OSError, match="unavailable"):
         stages.prepare(config, output_dir=tmp_path / "prepared")
     assert not (tmp_path / "prepared").exists()
-    monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda **kwargs: object())
+    monkeypatch.setattr(stages.MergedData, "from_options", lambda **kwargs: object())
     monkeypatch.setattr(stages, "prepare_standard", lambda *args, **kwargs: _prepared())
     assert stages.prepare(config, output_dir=tmp_path / "prepared").is_file()
 
@@ -694,3 +820,18 @@ def test_supplied_preparation_skips_resources_and_acquisition(monkeypatch):
     monkeypatch.setattr(standard, "materialize_standard_inputs", materialize)
     with pytest.raises(RuntimeError, match="materialization reached"):
         standard.run_standard(config=config, prepared=prepared)
+
+
+def test_sample_version_rejects_retired_model_record_before_payload_loading(tmp_path, monkeypatch):
+    preparation, sampled = _saved(tmp_path)
+    record = json.loads(sampled.read_text())
+    assert json.loads(preparation.read_text())["schema_version"] == 2
+    assert record["schema_version"] == 3
+    assert isinstance(stages.load_samples(sampled), InversionOutput)
+    record["schema_version"] = 2
+    record["model"]["aggregation_error_mode"] = "none"
+    sampled.write_text(json.dumps(record))
+    monkeypatch.setattr(stages, "_load_preparation", lambda *a, **k: pytest.fail("loaded obsolete sample payload"))
+
+    with pytest.raises(ValueError, match="version-3 manifest.*Use the software version that wrote it or prepare and sample again"):
+        stages.load_samples(sampled)

@@ -1,20 +1,16 @@
 # RHIME model selection
 
-> Status: Current supported behavior at `42a32f62`; documentation baseline,
-> no runtime change. Future recipe renaming and workflow proposals are outside
-> this specification.
-
 ## Purpose
 
-Define how the current Python selector, installed run commands, and established
-aliases reach concrete recipes without changing their input contracts.
+Define canonical Python recipe selection and installed commands, their scientific
+input/result boundaries and supported operations.
 
 ## Requirements
 
 ### Requirement: Select a concrete Python recipe
 
 `openghg_inversions.rhime.run` SHALL default to `model="standard"` and accept
-`standard`, `multisector`, `nested`, `co2`, `co2_cached_sigma`, `co2_o2`, and
+`standard`, `multisector`, `nested`, `co2`, `co2_o2`, and
 `co2_o2_cached_sigma`. It SHALL forward the supplied recipe arguments unchanged
 and return that recipe's result. An unsupported model name SHALL raise
 `ValueError`.
@@ -32,82 +28,99 @@ and return that recipe's result. An unsupported model name SHALL raise
 
 ### Requirement: Preserve the CO2 prepared-input boundary
 
-Selection of any of the four CO2-family models SHALL use that recipe's existing
-prepared-input interface. Selection SHALL NOT supply an acquisition route or
-accept `config_file` on behalf of those prepared-input recipes.
+Ordinary `co2` selection SHALL accept the configured `run_co2` product request
+with supplied `prepared` inputs, a configured prepared-input path, or explicit
+canonical inputs and a coherent reduction. It SHALL consume the configured
+model, sampling and output choices and return `Co2Output` with its complete
+annotated trace. It SHALL NOT acquire data or infer native covariance or
+projection choices.
 
-#### Scenario: Select CO2 without compatible arguments
+Linked `co2_o2` and `co2_o2_cached_sigma` selection SHALL retain their
+`prepared_inputs` scientific interfaces and inference DataTree returns.
+Selection SHALL NOT accept `config_file` or add acquisition on their behalf.
+The ordinary `co2_cached_sigma` selector SHALL be unsupported; matched inference
+is selected through ordinary CO2's scientific model choices.
 
-- **WHEN** a CO2-family model is selected without its required `prepared_inputs`
-- **THEN** the selected recipe raises `TypeError`
-- **AND WHEN** `config_file` is supplied to that selected recipe
-- **THEN** it raises `TypeError` rather than interpreting an INI file
+#### Scenario: Select configured ordinary CO2
+
+- **WHEN** `model="co2"` receives a supported configured request and one of its supported coherent input routes
+- **THEN** execution returns the configured scientific result and requested products without acquisition
+- **AND** the complete trace and reconstruction preserve that route's scientific meaning
+
+#### Scenario: Select linked CO2 without compatible arguments
+
+- **WHEN** a linked CO2/O2 model is selected without its required `prepared_inputs`, or with `config_file`
+- **THEN** selection rejects the incompatible arguments rather than adding configuration-driven acquisition
 
 ### Requirement: Preserve installed run-command selection
 
-The `rhime` and `openghg-inversions` executables SHALL expose `run --model` for
-`standard`, `multisector`, and `nested`, defaulting to `standard`. Their run
-commands SHALL forward the selected model, configuration path, effective date
-bounds, and noncolliding decoded keyword overrides to the Python selector.
-JSON `start_date` and `end_date` overrides SHALL take precedence over positional
-dates. CO2-family models SHALL remain outside this configuration-driven CLI
-selector.
+The canonical `rhime` executable SHALL expose `run --model` for
+`standard`, `multisector`, `nested` and configured `co2`, defaulting to `standard`.
+For standard, multisector and nested, its run command SHALL forward the selected
+model, configuration path, effective date
+bounds, and noncolliding decoded keyword overrides to the selected scientific recipe.
+For those three recipes, JSON `start_date` and `end_date` overrides SHALL take precedence over positional
+dates. Configured CO2 execution SHALL preserve its own configuration,
+date/output override and component-section override behavior through
+`rhime run --model co2`; command-name retirement SHALL NOT change that recipe's
+prepared-input or product contract. Cached and linked CO2-family choices SHALL
+remain outside this configuration-driven CLI selector.
 
-Current reserved-key limitation: JSON `model` or `config_file` entries collide
-with separately supplied keywords and raise `TypeError` before selection runs.
-They are not supported override keys.
+For standard, multisector and nested, `model` and `config_file` SHALL NOT be
+supported JSON override keys. A request containing either SHALL fail with
+`TypeError` before scientific execution rather than override recipe selection
+or the separately supplied configuration path.
 
-#### Scenario: Select a recipe through either executable
+#### Scenario: Select a recipe through the canonical executable
 
-- **WHEN** either executable receives an allowed model, explicit dates, an INI
+- **WHEN** `rhime run` receives standard, multisector or nested, explicit dates, an INI
   path, and noncolliding keyword overrides such as `draws`
-- **THEN** it passes those values and the selected model to `rhime.run`
-- **AND** its parser rejects a CO2-family `--model` choice
+- **THEN** it executes the selected scientific recipe with those effective inputs
+- **AND** its parser rejects cached or linked CO2-family `--model` choices
 
 #### Scenario: Override positional date bounds
 
-- **WHEN** a run command supplies positional dates and JSON `start_date` or
+- **WHEN** a standard, multisector or nested run command supplies positional dates and JSON `start_date` or
   `end_date` overrides
 - **THEN** it forwards the JSON values for the overridden dates
 - **AND** positional values remain effective for dates without a JSON override
 
-### Requirement: Retain established public aliases
+### Requirement: Canonical installed commands
 
-During the documented compatibility period through the 0.9 cycle, the established
-runner aliases SHALL refer to their current implementations, except for the
-explicit 0.8 removal of Python `run_rhime` with import guidance to `run_standard`.
-This supersedes the earlier alias-preservation promise for that name.
-`run_rhime_multisector` SHALL refer to `run_multisector`, and
-`run_rhime_nested` to `run_nested`. The corresponding shared aliases SHALL remain
-`RhimeMergedData` to `MergedData`, `RhimePreparedInputs` to `PreparedInputs`,
-`assemble_rhime_inputs` to `assemble_inputs`. The 0.8 retirement of `RhimeRunSpec`
-also removes `with_prepared_sites` and `with_prepared_rhime_sites`; this supersedes
-their alias-preservation promise. Retained sites belong to the prepared handoff.
+`rhime` SHALL be the sole installed executable. Its canonical full-run routes
+SHALL be `run --model standard` (also `run`), `run --model multisector`,
+`run --model nested` and configured `run --model co2`. Supported staged and
+product operations SHALL remain available under `rhime`.
 
-#### Scenario: Removed standard Python alias
+These routes SHALL preserve effective configuration, current positional dates,
+`--kwargs`, recipe-specific date/output override precedence, scientific execution,
+result contents, written outputs, export defaults, logging and artifact contracts.
+Positional dates and `--kwargs` remain open to separately agreed argument-syntax
+revision; command names SHALL NOT prescribe that future design. The Python
+package, distribution and installation commands SHALL retain their names.
 
-- **WHEN** a caller imports `run_rhime` in 0.8
-- **THEN** it receives a helpful import error directing it to `run_standard`
-- **AND** the `run-rhime` CLI command preserves its written files and logging
+#### Scenario: Execute through a canonical command
 
-#### Scenario: Import a retained established public name
+- **WHEN** a caller selects a supported full, staged or product route under `rhime`
+- **THEN** it executes the selected scientific operation with its effective configuration and overrides
+- **AND** scientific results, written outputs and artifact meanings retain their declared contracts
 
-- **WHEN** a caller imports one of these established names and its current name
-- **THEN** both names refer to the same implementation or handoff type
+### Requirement: Canonical public Python interfaces
 
-## Source and test evidence
+Standard, multisector and nested execution SHALL use `run_standard`,
+`run_multisector` and `run_nested` respectively. Canonical acquired and prepared
+scientific values SHALL use `MergedData` and `PreparedInputs`; input assembly
+SHALL use `assemble_inputs`. Their arguments, constructor behavior, scientific
+results and borrowed-array/execution guarantees SHALL follow their owning
+configuration, scientific-input and model contracts.
 
-- `openghg_inversions/rhime/api.py`: `run` and its compatibility-period docstring;
-  `openghg_inversions/rhime/__init__.py` and
-  `openghg_inversions/inversion_data/__init__.py`: public exports.
-- `openghg_inversions/cli.py`: `build_parser`, `_command_kwargs`,
-  `_run_command`, `main`, and `rhime_main`. The CLI test below covers noncolliding
-  overrides; date precedence and reserved-key collisions follow directly from
-  `_command_kwargs` and `_run_command`.
-- `tests/test_public_run_api.py`:
-  `test_established_imports_are_same_implementations`,
-  `test_unknown_model_rejected`,
-  `test_carbon_recipes_require_their_actual_prepared_inputs`,
-  `test_selector_preserves_real_recipe_configuration_validation`,
-  `test_both_executables_select_models_and_preserve_overrides`, and
-  `test_cli_default_and_prepared_only_model_boundary`.
+Python names SHALL NOT by themselves require changes to serialized fields,
+coordinates, scientific variables or artifact meaning. Supported artifact formats
+and versions, including explicit conversion or rejection of unsupported data,
+SHALL follow their persistence contracts rather than public Python vocabulary.
+
+#### Scenario: Use the canonical scientific interface
+
+- **WHEN** a caller constructs canonical acquired/prepared inputs and selects a supported Python recipe
+- **THEN** it uses the declared scientific arguments and result contents
+- **AND** Python naming alone does not establish stored-format compatibility or freeze a schema identifier

@@ -14,7 +14,7 @@ from openghg_inversions.basis.affine_flux_map import AffineFluxMap
 from openghg_inversions.basis.affine_flux_map_io import save
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.basis.operators import BucketBasisOperator, MultiSourceBucketBasisOperator
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.rhime.co2.co2_affine_output import (
     _bind_affine_flux_map,
     import_explicit_affine_flux_map,
@@ -64,7 +64,7 @@ def _prepared() -> tuple[Co2PreparedInputs, xr.DataArray]:
     inputs["diagonal_residual_variance"].attrs["units"] = "ppm**2"
     site_metadata = xr.Dataset({"averaging_period": ("site", ["1h"])}, coords={"site": ["MHD"]})
     prepared = Co2PreparedInputs(
-        RhimePreparedInputs(inputs, basis, site_metadata),
+        PreparedInputs(inputs, basis, site_metadata),
         aggregation_error_mode="low_rank",
         provenance={"projection_strategy": "fixture-restriction"},
     )
@@ -126,7 +126,7 @@ def _multisource_prepared() -> tuple[Co2PreparedInputs, xr.DataArray]:
         inputs[name].attrs["units"] = "ppm"
     inputs["diagonal_residual_variance"].attrs["units"] = "ppm**2"
     prepared = Co2PreparedInputs(
-        RhimePreparedInputs(
+        PreparedInputs(
             inputs,
             basis,
             xr.Dataset({"averaging_period": ("site", ["1h"])}, coords={"site": ["MHD"]}),
@@ -301,7 +301,7 @@ def test_public_load_and_bind_checks_saved_prepared_content(tmp_path, suffix: st
     changed_inputs = prepared.inv_inputs.copy(deep=True)
     changed_inputs["mf"].data[0] = 402.0
     changed = Co2PreparedInputs(
-        RhimePreparedInputs(changed_inputs, prepared.basis_functions, prepared.site_metadata),
+        PreparedInputs(changed_inputs, prepared.basis_functions, prepared.site_metadata),
         prepared.aggregation_error_mode,
         prepared.provenance,
     )

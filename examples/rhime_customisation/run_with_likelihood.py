@@ -43,8 +43,8 @@ def run_with_likelihood(
     Raises:
         TypeError: If the likelihood builder does not return a PyTensor
             variable.
-        ValueError: If required options are missing, aggregation error is
-            unsupported, or the likelihood omits canonical ``y`` or
+        ValueError: If required options are missing or the likelihood omits
+            canonical ``y`` or
             ``epsilon`` variables.
 
     Notes:

@@ -11,12 +11,12 @@ from .contracts import OutputContract
 from .inversion_output import InversionOutput
 
 if TYPE_CHECKING:
-    from openghg_inversions.inversion_data import RhimePreparedInputs
+    from openghg_inversions.inversion_data import PreparedInputs
 
 
 def make_inversion_output(
     *,
-    prepared: RhimePreparedInputs,
+    prepared: PreparedInputs,
     trace: xr.DataTree,
     contract: OutputContract,
     run_metadata: Mapping[str, Any],

@@ -15,4 +15,5 @@ openghg\_inversions.inversion\_data
    openghg_inversions.inversion_data.observation_errors
    openghg_inversions.inversion_data.prepared_inputs
    openghg_inversions.inversion_data.scenario
+   openghg_inversions.inversion_data.surface
    openghg_inversions.inversion_data.xarray_adapter

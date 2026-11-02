@@ -7,43 +7,39 @@ combined with configured built-in mismatch/likelihood settings before acquisitio
 in ordinary runners or materialization in prepared-input execution. Their eager
 builders `build_standard_model` and `build_multisector_model` SHALL take numerical
 inputs, `RhimeModelSpec` and materialized prior parameters without output
-configuration and SHALL NOT accept `model_builder`. Materialization SHALL be an
-explicit runner/caller operation; selected related inputs and enabled priors MAY
-be computed jointly to preserve shared Dask execution. Construction SHALL NOT
-compute lazy payloads or introduce lazy/eager builder variants or another saved
-workflow phase.
+configuration and SHALL NOT accept `model_builder`.
 
-`run_standard(prepared=...)` and `run_multisector(prepared=..., config=...)` SHALL
-use their respective acquired-data and saved-execution scientific operations
-without a complete-model-builder hook. The superseded
-`run_rhime_from_prepared_inputs` entry point and multisector
-`build_multisector_rhime_model_result` adapter SHALL be removed with their
-consumers. Whole-model customization SHALL directly compose scientific functions
-with explicit inputs rather than use a run-specification context. The superseded
-raw `build_multisector_rhime_model` function SHALL be removed; the single eager
-`build_multisector_model` SHALL construct its scientific graph directly rather
-than forward into a second public builder. The optional `sigma_alignment`
-argument SHALL remain available, as in the standard eager builder.
+Materialization SHALL be an explicit runner/caller operation. Selected related
+inputs and enabled priors SHALL preserve shared Dask execution at that named
+boundary. Construction SHALL NOT compute lazy payloads or require a separate
+lazy/eager builder variant or saved-workflow phase. The optional `sigma_alignment`
+argument SHALL remain available on the canonical eager builders.
+
+`run_standard(prepared=..., config=...)` and
+`run_multisector(prepared=..., config=...)` SHALL use the same scientific
+operations as acquired-data and saved execution without a complete-model-builder
+hook. Whole-model customization SHALL directly compose scientific functions with
+explicit inputs, materialization, sampling and compatible output operations.
+`run_rhime_from_prepared_inputs`, `build_multisector_rhime_model_result` and
+`build_multisector_rhime_model` SHALL be unavailable; no run-specification context
+or forwarding adapter SHALL preserve those interfaces.
 
 #### Scenario: Reject competing likelihood selections
 
-- **WHEN** ordinary or prepared-input standard/multisector execution supplies a
-  custom likelihood alongside a configured built-in selection
+- **WHEN** an ordinary or prepared-input standard/multisector run supplies a custom likelihood alongside a configured built-in selection
 - **THEN** it raises `ValueError` before acquisition or model-input materialization
 
-#### Scenario: Direct complete-model composition
+#### Scenario: Reject a complete-model runner hook
 
-- **WHEN** a caller needs a complete graph beyond the built-in recipe
-- **THEN** the caller directly composes its scientific construction function,
-  materialization, sampling and compatible output operations without a runner
-  builder hook or output-bearing context
+- **WHEN** a standard or multisector runner receives `model_builder`, with or without `likelihood_builder`
+- **THEN** it rejects that unsupported option before constructing a model or invoking a likelihood
+- **AND** whole-model callers can directly compose the supported scientific operations
 
-#### Scenario: Reject competing builder ownership
+#### Scenario: Construct an eager multisector model
 
-- **WHEN** a standard or multisector runner receives `model_builder`, with or
-  without `likelihood_builder`
-- **THEN** it rejects the unsupported runner option before constructing a model
-  or invoking a likelihood; complete-model functions are composed directly
+- **WHEN** a caller supplies eager numerical inputs, resolved `RhimeModelSpec` and materialized priors to `build_multisector_model`
+- **THEN** it constructs the scientific model without output configuration or an intermediate compatibility builder
+- **AND** supported explicit `sigma_alignment` is preserved
 
 ## ADDED Requirements
 

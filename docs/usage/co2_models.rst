@@ -58,7 +58,7 @@ observations' concentration units unless ``sigma_prior`` overrides it. Override
 ``sigma_prior`` when that scale is inappropriate for the observation units or
 scientific application. Set ``no_model_error=True`` to disable this inferred
 term.
-Configured ordinary execution selects these options through the ``likelihood``
+Configured execution selects these options through the ``likelihood``
 section, including ``sigma_prior`` and ``no_model_error``.
 
 The CO₂ runner does not consume ``min_error`` or apply a minimum-error floor.
@@ -72,8 +72,9 @@ installed staged commands and supported outputs; broader scientific acceptance
 remains tracked in `OPE-79 <https://linear.app/openghg-inversions/issue/OPE-79>`_.
 
 For the matched fixed-tau Ornstein--Uhlenbeck (OU) likelihood with independently
-inferred site amplitudes, use :ref:`the package-supported cached-sigma CO2 runner
-<co2-cached-sigma-recipe>`.
+inferred site amplitudes, configure ``likelihood.kind = "fixed_ou"`` and
+``site_amplitude_prior``. ``run_co2`` automatically selects the
+:ref:`matched cached implementation <co2-cached-sigma-recipe>`.
 
 .. _co2-grouped-states:
 
@@ -130,7 +131,7 @@ conditions, offsets, and outer flux remain distinct scientific terms. Sector
 combinations are likewise a general state-grouping choice rather than an
 outer-region model option.
 
-Compose ordinary CO2 scientific operations
+Compose CO2 scientific operations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The concrete model builder accepts explicit scientific arrays. For durable
@@ -171,35 +172,49 @@ Configure prepared-input execution from TOML
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The CO2 family provides three installed TOML templates:
-``co2.toml``, ``co2_cached_sigma.toml``, and ``co2_o2.toml``. Use
+``co2.toml``, ``co2_fixed_ou.toml``, and ``co2_o2.toml``. Use
 :func:`openghg_inversions.rhime.co2.co2_config_templates` to discover their
 installed paths. Copy the closest template for a run; do not edit the installed
 resource. The templates configure the existing prepared-input Python seams.
+``co2_fixed_ou.toml`` configures ``run_co2`` with inferred fixed-OU amplitudes
+and sampling-owned tuning controls.
 The CO2-only templates also underpin ``--model co2`` staged commands; see
 :doc:`co2_model_family` for the staged output table and complete command
-sequence. Linked CO2/O2 templates remain Python-only.
+sequence, including :ref:`linked saved phases <linked-staged-commands>`.
+The packaged linked template and concrete linked configuration use the same
+scientific choices without a ``variant`` selector.
 
-:func:`openghg_inversions.rhime.co2.load_co2_family_config` reads TOML. Ordinary
+:func:`openghg_inversions.rhime.co2.load_co2_family_config` reads TOML.
 CO₂ uses :func:`~openghg_inversions.rhime.co2.run_co2` or the Python/CLI model
 selector. Preparation, model, sampler and output values are resolved at their
-concrete owners; saved sampling accepts decoded model/likelihood choices and one
-separate sampler. Native-resolution acquisition and coherent-reduction construction
+concrete owners; saved sampling accepts decoded model/likelihood choices and a
+separate ``sampling`` mapping. The model selects the backend and update.
+Native-resolution acquisition and coherent-reduction construction
 are separate from this configured prepared-input route.
 
-Cached and linked recipes retain
-:func:`openghg_inversions.rhime.co2.resolve_co2_family_config`, which accepts a
-mapping and returns :class:`~openghg_inversions.rhime.co2.Co2RunSetup` or
-:class:`~openghg_inversions.rhime.co2.Co2O2RunSetup`. Those setups retain their
-explicit runner binding. For linked data, ``setup.runner_arguments(prepared)``
-expands configured independent errors over the joint observation axis and checks
-species/unit labels. The ordinary branch of that resolver is retired; use
-``run_co2`` or the concrete scientific operations above.
+Ordinary preparation and science use
+:class:`~openghg_inversions.rhime.co2.Co2PreparationConfig` and
+:class:`~openghg_inversions.rhime.co2.Co2ModelConfig`; linked execution uses
+:class:`~openghg_inversions.rhime.co2.Co2O2PreparationConfig` and
+:class:`~openghg_inversions.rhime.co2.Co2O2ModelConfig`.
+Construct these with ``from_params`` after file loading and overrides. Each
+owner reads only its active sections, owns ordinary containers, and borrows
+numerical objects without copying or computing them. Parsing opens no scientific
+artifacts and constructs neither a model nor a sampler.
 
-For example, the ordinary TOML settings::
+``model.model_arguments()`` supplies ordinary scientific keywords;
+``linked_model.bind(prepared)`` checks channel units and expands configured
+independent errors over the joint observation axis at the scientific boundary.
+Saved sampling and prior prediction also accept the concrete model owners.
+Prior prediction reads only its science and optional random seed; unused MCMC
+controls are ignored. Replay reads output choices and saved scientific meaning
+without parsing current science or sampling controls. The former
+``Co2O2RunSetup`` and ``resolve_co2_family_config`` interfaces have been removed.
+
+For example, the CO2 TOML settings::
 
    format_version = 1
    recipe = "co2"
-   variant = "ordinary"
 
    [prepared_inputs]
    path = "co2-coherent-dense.zarr"
@@ -215,7 +230,6 @@ For example, the ordinary TOML settings::
    draws = 1000
    tune = 1000
    chains = 4
-   nuts_sampler = "numpyro"
 
 can execute through the canonical configured runner::
 
@@ -224,14 +238,71 @@ can execute through the canonical configured runner::
    result = run_co2(config_file="my-co2.toml")
    idata = result.idata  # The complete annotated inference DataTree.
 
+Configured CO₂ selects inference from the resolved scientific model using this
+automatic policy:
+
+.. list-table:: CO2 inference policy
+   :header-rows: 1
+   :widths: 25 30 45
+
+   * - Likelihood
+     - Backend and update
+     - Reason
+   * - ``additive_sigma``
+     - NumPyro NUTS
+     - All steps are NUTS and the model runs under JAX via NumPyro.
+   * - ``site_sigma`` (fixed or inferred amplitudes)
+     - PyMC NUTS
+     - Conservative default; this likelihood does not inherently require PyMC.
+   * - ``scalar_sigma``
+     - PyMC NUTS
+     - Conservative default; this likelihood does not inherently require PyMC.
+   * - ``fixed_ou`` with fixed amplitudes
+     - PyMC NUTS
+     - The custom likelihood operation has no JAX implementation.
+   * - ``fixed_ou`` with inferred amplitudes
+     - PyMC cached amplitude update, then state NUTS when states exist
+     - Requires the matched cache and ordered amplitude/state update.
+
+The inferred-amplitude OU path needs its custom cached amplitude update, and
+an ordered compound step when states exist. These require PyMC; NumPyro cannot
+execute the matched custom step.
+Timing evidence does not cover PyMC's Numba mode or nutpie and does not establish
+NumPyro as the fastest backend. Site/scalar choices remain conservative policy
+choices. Configured execution exposes no backend selector.
+
+This is a new explicit policy. Previously the packaged template selected NumPyro
+regardless of a subsequent likelihood edit, while omitting the backend selected
+PyMC. Configured CO₂ now rejects ``sampling.nuts_sampler``; remove that option
+when migrating. ``draws``, ``tune``, ``chains`` and ``random_seed`` remain
+configurable. Inferred OU uses ``sampling.sigma_target_accept`` (default 0.8)
+and ``sampling.state_target_accept`` (default 0.9), each strictly between zero
+and one. These tuning controls are not likelihood options.
+For example, replace the likelihood section with:
+
+.. code-block:: toml
+
+   [likelihood]
+   kind = "fixed_ou"
+   tau_hours = { MHD = 24.0, TAC = 18.0 }
+   site_amplitude_prior = { pdf = "gamma", alpha = 2.0, beta = 3.0 }
+
+The model can infer amplitudes even when every flux and baseline coefficient
+is fixed. In that case the matched update has no state NUTS step.
+Fixed flux with an active boundary or offset still requires the state step.
+The trace and sample manifest record the actual algorithm and explicit
+target-accept values alongside the sampling counts and backend. With ordinary
+sampling, an omitted ``target_accept`` is passed through to ``pm.sample``; the
+record stores ``target_accept_source="pm.sample_default"`` without inventing a
+numeric value. Product replay retains that record without constructing a sampler.
+
 Equivalently, ``rhime.run(model="co2", config_file="my-co2.toml")`` selects the
 same runner. Output choices remain separate from the scientific trace.
 ``prepared_inputs.path``, ``prepared_inputs.reconstruction_path`` and
 ``likelihood.eigenbasis_path`` become ordinary ``pathlib.Path`` values.
 Relative values are interpreted from the process working directory, not the
-directory containing the ordinary TOML file. Use absolute paths when the run
-may start from another directory. The retained cached staged interface keeps its
-existing configuration-file-relative path behavior.
+directory containing the TOML file. Use absolute paths when the run
+may start from another directory.
 
 Configuration deliberately supports a closed matrix rather than arbitrary
 callable imports:
@@ -245,33 +316,29 @@ callable imports:
      - Runner
      - Configuration boundary
    * - ``co2``
-     - ``ordinary``
+     - Not used
      - ``run_co2``
      - ``additive_sigma``, ``site_sigma``, ``fixed_ou``, or ``scalar_sigma``
        likelihood; boundary conditions and offsets are available.
-   * - ``co2``
-     - ``cached_fixed_ou``
-     - ``run_rhime_co2_cached_sigma``
-     - Fixed positive OU timescales and HalfNormal site amplitudes, using the
-       runner-owned PyMC sampler.
    * - ``co2_o2``
-     - ``linked``
+     - Not used
      - ``run_rhime_co2_o2_from_prepared_inputs``
-     - Fixed independent error, or ``fixed_ou`` with fixed or inferred
-       species/site amplitudes; one shared channel-unit label.
-   * - ``co2_o2``
-     - ``cached_fixed_ou``
-     - ``run_rhime_co2_o2_cached_sigma_from_prepared_inputs``
-     - Fixed OU timescales and HalfNormal species/site amplitudes, using the
-       runner-owned PyMC sampler; one shared channel-unit label.
+     - Fixed independent error, or ``fixed_ou`` with fixed species/site
+       amplitudes; one shared channel-unit label.
 
-For ``variant = "ordinary"``, the ``[likelihood]`` table accepts these closed
+Configured linked inferred OU remains separate work. The direct
+``run_rhime_co2_o2_cached_sigma_from_prepared_inputs`` scientific API remains
+available with explicit Python arguments. This artifact-only configuration
+refactor adds no linked covariance-rank selection or rank-256 preparation;
+existing represented aggregation covariance is preserved unchanged.
+
+For ``recipe = "co2"``, the ``[likelihood]`` table accepts these closed
 forms. Scalar-or-site-map values use one number or an inline table such as
 ``{ MHD = 24.0, TAC = 12.0 }``; the component-specific sign constraints are below.
 Site maps validate every supplied value, including entries for dropped sites,
 require retained-site coverage, then select retained labels.
 
-.. list-table:: Ordinary CO2 likelihood configuration
+.. list-table:: CO2 likelihood configuration
    :header-rows: 1
    :widths: 18 34 48
 
@@ -309,31 +376,37 @@ HalfStudentT, Gamma, Exponential, Uniform with a non-negative lower bound, or
 LogNormal.
 
 Optional model components belong in their own tables. ``[model.boundary]``
-accepts boolean ``enabled`` (default true) and ``prior``; a disabled boundary
-cannot specify a prior. ``[model.offset]`` requires ``prior`` and optionally
+accepts boolean ``enabled`` (default true), ``prior``, ``frequency``, and
+``anchor_time``. A disabled boundary cannot specify a prior or period choices.
+For raw reusable inputs, omitting ``frequency`` selects one period;
+``"monthly"`` selects calendar months, and a positive fixed duration such as
+``"2D"`` selects fixed-duration periods. ``anchor_time`` is accepted only with
+a fixed duration, never with monthly or omitted frequency. Linked CO2/O2
+channels share one frequency and anchor choice. See the
+:ref:`raw versus expanded boundary rules <surface-centered-boundary-contract>`
+for preparation reuse and period overrides.
+
+``[model.offset]`` requires ``prior`` and optionally
 accepts ``frequency``, ``per_site`` (default true), and ``drop_first`` (default
 false). A global offset (``per_site = false``) cannot set a frequency or use
 ``drop_first = true``.
 
-For ``variant = "cached_fixed_ou"``, ``[likelihood]`` requires
-``kind = "fixed_ou"``, positive scalar-or-site-map ``tau_hours`` (species/site
-keys such as ``"co2:MHD"`` for the linked recipe), and positive
-``site_amplitude_prior_scale``. It optionally accepts positive
-``initial_site_amplitudes`` and the zero-to-one controls
-``sigma_target_accept`` and ``state_target_accept``. Its ``[sampling]`` table
-must use ``nuts_sampler = "pymc"``; posterior-predictive name lists may contain
-only ``y`` or ``concentration``.
+CO2 fixed OU with inferred amplitudes also accepts positive
+``initial_site_amplitudes`` in ``[likelihood]``. The zero-to-one controls
+``sigma_target_accept`` and ``state_target_accept`` belong in ``[sampling]``.
+Posterior-predictive name lists may contain only ``y`` or ``concentration``.
+The implementation selects the matched cached sampler automatically.
 
 The optional ``[sampling]`` table is shared by the supported setups.
 Defaults below apply when an option is omitted; linked fixed-error sampling
-uses NumPyro, while both linked OU routes default to and require PyMC.
+uses NumPyro, while configured linked fixed OU defaults to and requires PyMC.
 
 .. list-table:: Sampling configuration
    :header-rows: 1
    :widths: 23 18 19 40
 
    * - Option
-     - Ordinary/cached default
+     - CO2 default
      - Linked default
      - Accepted value and constraint
    * - ``draws``
@@ -353,10 +426,10 @@ uses NumPyro, while both linked OU routes default to and require PyMC.
      - ``4``
      - Positive integer.
    * - ``nuts_sampler``
-     - ``"pymc"``
+     - Chosen from the likelihood
      - ``"numpyro"`` for fixed error; ``"pymc"`` for OU
-     - One of ``"pymc"``, ``"nutpie"``, ``"numpyro"``, or ``"blackjax"``;
-       cached variants and linked ``fixed_ou`` require ``"pymc"``.
+     - Configured ``run_co2`` rejects this option. Linked configuration accepts supported
+       backends, with ``"pymc"`` required for ``fixed_ou``.
    * - ``progressbar``
      - ``false``
      - ``false``
@@ -368,13 +441,21 @@ uses NumPyro, while both linked OU routes default to and require PyMC.
    * - ``sample_posterior_predictive``
      - ``["y"]``
      - ``["y"]``
-     - Boolean or list of non-empty variable names. For the cached variant,
+     - Boolean or list of non-empty variable names. For inferred fixed OU,
        listed names are restricted to ``"y"`` and ``"concentration"``.
    * - ``target_accept``
-     - Not set
+     - ``0.8`` for ordinary NUTS
      - ``0.95``
-     - Number strictly between zero and one. It is not accepted for the cached
-       variant; use the two likelihood target-accept controls described above.
+     - Number strictly between zero and one. Inferred fixed-OU amplitudes use
+       the separate controls below instead.
+   * - ``sigma_target_accept``
+     - ``0.8``
+     - Not available
+     - CO2 inferred fixed-OU only; number strictly between zero and one.
+   * - ``state_target_accept``
+     - ``0.9``
+     - Not available
+     - CO2 inferred fixed-OU only; used when flux, boundary or offset states exist.
    * - ``random_seed``
      - Not set
      - Not set
@@ -445,8 +526,7 @@ error still enter the single joint likelihood once.
 Standalone O2, arbitrary Python callables, and additional recipe or variant
 names are rejected. Linked likelihood selection supports the fixed-error
 default and ``fixed_ou``; it rejects ``additive_sigma``, ``site_sigma``,
-``scalar_sigma``, and unequal CO2 and O2 unit labels. The linked
-``cached_fixed_ou`` variant uses the matched cached sampler. The lower-level
+``scalar_sigma``, inferred OU amplitudes, and unequal CO2 and O2 unit labels. The lower-level
 linked fixed-error API continues to represent row-specific mixed units;
 configuring a heterogeneous ppm/per-meg
 run is deferred until the scaling contract tracked in `OPE-86
@@ -456,23 +536,26 @@ The linked :class:`~openghg_inversions.rhime.co2.Co2O2PreparedInputs` artifact
 supports NetCDF and Zarr save/load at the prepared-input Python boundary.
 Construct it through the documented preparation boundary or restore it before
 binding the configured runner arguments; see :ref:`linked-prepared-replay`.
-These methods do not add linked staged CLI routing.
+The installed linked phases consume the same artifact; see
+:ref:`linked-staged-commands`.
 
-The linked template therefore follows a prepare, bind, and run sequence. The
-scientific array names below are the labelled inputs documented by
+The concrete linked configuration follows a prepare, bind, and run
+sequence. The scientific array names below are the labelled inputs documented by
 :func:`~openghg_inversions.rhime.co2.prepare_co2_o2_inputs`; replace them with
 the products from one coherent reduction. Exactly one of
 ``o2_co2_flux_ratio`` and ``o2_co2_flux_ratio_unavailable_reason`` must be
 non-null::
 
    from openghg_inversions.rhime.co2 import (
-       load_co2_family_config,
        prepare_co2_o2_inputs,
-       resolve_co2_family_config,
+       Co2O2ModelConfig,
+       run_rhime_co2_o2_from_prepared_inputs,
    )
 
-   config = load_co2_family_config("my-co2-o2.toml")
-   setup = resolve_co2_family_config(config)
+   config = {"format_version": 1, "recipe": "co2_o2",
+             "channels": {"co2": {"units": "ppm", "independent_error_sd": 1.0},
+                          "o2": {"units": "ppm", "independent_error_sd": 1.0}}}
+   model = Co2O2ModelConfig.from_params(config)
 
    prepared = prepare_co2_o2_inputs(
        co2_observations=co2_observations,
@@ -488,12 +571,15 @@ non-null::
        o2_aggregation_covariance=o2_aggregation_covariance,
        retained_prior=retained_prior,
        boundary_sensitivity={"co2": H_bc_co2},
-       co2_units=setup.preparation_kwargs["co2_units"],
-       o2_units=setup.preparation_kwargs["o2_units"],
+       co2_units=model.co2_units,
+       o2_units=model.o2_units,
    )
-   idata = setup.runner(**setup.runner_arguments(prepared))
+   idata = run_rhime_co2_o2_from_prepared_inputs(
+       prepared_inputs=prepared, **model.bind(prepared),
+   )
 
-Unknown or unused keys are errors, reported by their dotted path. Resolution
+Unknown or unused keys in active sections are errors, reported by their dotted
+path. Resolution
 also rejects incompatible component choices before an artifact is loaded or a
 model is built. This section defines the local CO2-family configuration
 surface, not the cross-family configuration and CLI catalogue. That reference
@@ -509,14 +595,14 @@ native covariance products.
 Pass ``aggregation_error_rank=None`` to keep the reduction's exact dense
 unresolved covariance::
 
-   from openghg_inversions.inversion_data import RhimePreparedInputs
+   from openghg_inversions.inversion_data import PreparedInputs
    from openghg_inversions.rhime.co2 import prepare_co2_inputs
    from openghg_inversions.rhime.co2.co2_runner import (
        annotate_co2_trace, materialize_co2_inputs, build_co2_from_materialized,
    )
    from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
-   canonical_inputs = RhimePreparedInputs.load("base-prepared-inputs.zarr")
+   canonical_inputs = PreparedInputs.load("base-prepared-inputs.zarr")
    prepared = prepare_co2_inputs(
        canonical_inputs,
        reduction,
@@ -879,7 +965,8 @@ Separate linked PARIS products
 projects one linked posterior into separate CO2 and O2 products. It supports
 ``template_version="latest"``: concentration v04 and native flux v03. The
 adapter operates after sampling, using the prepared inputs and restored trace;
-it does not add a staged model route::
+the staged linked route also exposes these products through
+``output_format="paris"`` (see :ref:`linked-staged-commands`). Direct callers can use::
 
    from openghg_inversions.postprocessing.linked_paris_outputs import (
        make_co2_o2_paris_outputs,
@@ -969,12 +1056,11 @@ ratio. That future CO2/O2 coupling work is tracked in `OPE-118
 
 .. _co2-cached-sigma-recipe:
 
-Run the package-supported cached-sigma CO2 runner
--------------------------------------------------
+Fixed OU with inferred site amplitudes
+--------------------------------------
 
-``run_rhime_co2_cached_sigma`` is the package-supported cached-sigma runner at
-the prepared-input boundary for the fixed-tau OU likelihood with independently
-inferred site amplitudes. It owns the matched PyMC graph and sampler: the
+``run_co2`` selects the matched cached implementation for fixed-tau OU with
+independently inferred site amplitudes. It owns the PyMC graph and sampler: the
 sigma-only No-U-Turn Sampler (NUTS) step runs first against
 the exact conditional likelihood. The sampler then rebuilds the
 state-likelihood quadratic for the site amplitudes returned by that transition,
@@ -996,17 +1082,24 @@ The observation array must also have observation-aligned ``site`` and ``time``
 coordinates. Times must be finite and unique within each site, although rows
 may be interleaved or unsorted. Datetime coordinates are converted to elapsed
 hours; numeric time coordinates are interpreted directly as hours. If
-``tau_hours`` is a mapping, its keys must exactly match every observed site
-label.
+``tau_hours`` is a mapping, it must cover every retained site label; all supplied values are validated,
+including entries for dropped sites.
 
-Boundary and offset selection uses the same prepared-input contract as the
-ordinary runner. Set ``use_bc=True`` to select a prepared ``H_bc``;
-``bc_prior`` and ``bc_state_activity`` configure its labelled scaling state.
-Supplying ``offset_prior`` adds the offset described by ``offset_args``.
+Boundary and offset selection uses ``[model.boundary]`` and
+``[model.offset]`` as for other CO2 likelihoods. The numerical builder also
+accepts ``use_bc``, ``bc_prior``, ``bc_state_activity``, ``offset_prior`` and
+``offset_args`` for direct scientific composition.
 Its location and scale parameters use the observations' concentration units.
 These coefficients join the flux coefficients only inside the private cached
 likelihood calculation; their public scientific variables and contributions
 remain separate.
+
+Centered boundary operands are supported with the matched cached sampler for
+CO₂ and linked CO₂/O₂, with PyTensor ``floatX=float64``. The likelihood and
+amplitude update use directly composed centered means, while public BC states,
+priors and concentration outputs retain their physical meaning. See the
+:ref:`centered boundary contract <surface-centered-boundary-contract>` for
+period alignment, fixed states, restoration and persistence limits.
 
 :doc:`coherent_reduction` describes the linked retained prior, effective
 operator, affine contribution, and unresolved covariance.
@@ -1042,45 +1135,38 @@ other retained-spectrum and reconstruction diagnostics.
 
 For example::
 
-   from openghg_inversions.rhime import RhimeSampler
-   from openghg_inversions.rhime.co2 import (
-       Co2PreparedInputs,
-       run_rhime_co2_cached_sigma,
-   )
+   from openghg_inversions.rhime.co2 import run_co2
 
-   prepared = Co2PreparedInputs.load("co2-coherent-low-rank.zarr")
-   idata = run_rhime_co2_cached_sigma(
-       prepared_inputs=prepared,
-       tau_hours={"BSD": 24.0, "TAC": 18.0},
-       site_amplitude_prior_scale=0.75,  # concentration units
-       use_bc=True,
-       bc_prior={
-           "pdf": "truncatednormal",
-           "mu": 1.0,
-           "sigma": 0.05,
-           "lower": 0.0,
+   result = run_co2(params={
+       "recipe": "co2",
+       "prepared_inputs": {
+           "path": "co2-coherent-low-rank.zarr",
+           "start_date": "2020-01-01", "end_date": "2020-02-01",
+           "domain": "EUROPE",
        },
-       offset_prior={"pdf": "normal", "mu": 0.0, "sigma": 0.1},
-       offset_args={"per_site": False},
-       sigma_target_accept=0.9,
-       state_target_accept=0.9,
-       sampler=RhimeSampler(
-           draws=1000,
-           tune=1000,
-           chains=4,
-           nuts_sampler="pymc",
-           sample_kwargs={"random_seed": 20260913},
-           sample_prior_predictive=False,
-       ),
-   )
+       "likelihood": {
+           "kind": "fixed_ou", "tau_hours": {"BSD": 24.0, "TAC": 18.0},
+           "site_amplitude_prior": {"pdf": "gamma", "alpha": 2.0, "beta": 3.0},
+       },
+       "model": {
+           "boundary": {"enabled": True, "prior": {
+               "pdf": "truncatednormal", "mu": 1.0, "sigma": 0.05, "lower": 0.0,
+           }},
+           "offset": {"prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.1},
+                      "per_site": False},
+       },
+       "sampling": {"draws": 1000, "tune": 1000, "chains": 4,
+                    "random_seed": 20260913},
+       "outputs": {"output_format": "none"},
+   })
+   idata = result.idata
 
-The runner constructs the required ``site amplitude -> state`` ``CompoundStep`` and
-uses process spawning for multiple chains. Do not pass another step method in
-``sample_kwargs``. Set ``sigma_target_accept`` and ``state_target_accept`` on
-the runner rather than putting a generic ``target_accept`` in
-``RhimeSampler.sample_kwargs``. The state-likelihood quadratic cache and
-fixed-OU generalized eigenbasis are runtime numerical state derived from the
-materialized prepared inputs; they are not external cache artifacts.
+The runner updates site amplitudes before any active state coefficients
+and uses process spawning for multiple chains. Optional ``sigma_target_accept``
+and ``state_target_accept`` belong in ``[sampling]``; a generic
+``sampling.target_accept`` is rejected for this model. The state-likelihood
+quadratic cache and fixed-OU generalized eigenbasis are runtime numerical state
+derived from materialized prepared inputs, not external cache artifacts.
 
 The graph exposes one exact observed ``y`` distribution. Native
 ``pm.sample_prior_predictive``, ``pm.sample_posterior_predictive`` and
@@ -1095,31 +1181,40 @@ masks must remain fixed; rebuild the recipe to replace them.
 the complete observation vector. Its ``rhime_likelihood_scope`` is
 ``joint_observation_vector``; it is unsuitable for pointwise LOO or WAIC.
 Both predictive groups contain complete correlated observation vectors and
-carry the same joint scope and concentration units. Set
-``sample_kwargs={"idata_kwargs": {"log_likelihood": False}}`` to omit density
-output. Prediction can be disabled independently.
+carry the same joint scope and concentration units. Prediction can be disabled
+independently through the sampling configuration.
 
 The shared sampler derives separate prior and posterior prediction streams
-from ``sample_kwargs["random_seed"]``. Toggling prior prediction does not
-change posterior prediction or MCMC. An explicit predictive ``random_seed``
+from ``sampling.random_seed``. Toggling prior prediction does not
+change posterior prediction or MCMC. For low-level ``RhimeSampler`` callers, an explicit predictive ``random_seed``
 overrides the posterior stream, including ``None`` for an unseeded draw.
-Cached runners accept posterior names ``y`` and ``concentration`` (the same
+The matched implementation accepts posterior names ``y`` and ``concentration`` (the same
 observation variable), or a boolean; an empty sequence disables prediction.
 Only ``random_seed`` is supported in ``posterior_predictive_kwargs``.
 
 The builder returns ``initial_values`` containing physical amplitude defaults
-and any boundary/offset prior start strategies. The runner merges caller
+from the prior's PyMC support point and any boundary/offset prior start strategies.
+Explicit ``initial_site_amplitudes`` must lie strictly inside the prior support
+and have finite transformed values. Low-level ``RhimeSampler`` callers may merge
 ``sample_kwargs["initvals"]`` over these defaults, including transformed keys
 and per-chain mappings. For direct low-level sampling, pass this mapping as
 ``initvals`` and construct the matched step with ``cached_state_logp`` and an
 initial point resolved from those defaults. The public graph carries no custom
 initial-value metadata, so generic log-likelihood computation works directly.
 
-This route deliberately supports only independent HalfNormal site-amplitude
-priors and fixed positive OU timescales. Sampled tau and alternative amplitude
-priors are separate extensions. The route is PyMC-only because it constructs
-and owns a PyMC ``CompoundStep``. The ordinary stock-PyMC fixed-OU likelihood
-above remains the log-density/gradient oracle and fallback.
+This route supports independent HalfNormal, HalfStudentT, Exponential, Gamma,
+LogNormal and Uniform amplitude priors with non-negative support, and fixed
+positive OU timescales. The conditional amplitude update derives its prior density
+and transform Jacobian from the scientific graph, including the interval transform
+for a bounded Uniform prior. The matched sampler uses a direct LogNormal variable
+and warns when an explicit ``reparameterise = true`` request is normalized to
+that construction; the physical distribution is unchanged.
+Sampled tau and hierarchical amplitude priors are not supported.
+The route is PyMC-only because it constructs and owns a PyMC ``CompoundStep``.
+The ordinary stock-PyMC fixed-OU likelihood above remains an independent
+log-density/gradient reference.
+For the covariance transform, cached quadratic, numerical routing and cache
+lifecycle, see :doc:`../development/fixed_ou_likelihood`.
 
 The exponential within-site covariance follows the stationary process of
 `Uhlenbeck and Ornstein (1930)
@@ -1166,29 +1261,27 @@ For example, the ordinary linked configuration can include:
 .. code-block:: toml
 
    recipe = "co2_o2"
-   variant = "linked"
-
    [likelihood]
    kind = "fixed_ou"
    tau_hours = { "co2:MHD" = 6.0, "o2:MHD" = 8.0 }
    fixed_site_amplitudes = { "co2:MHD" = 0.4, "o2:MHD" = 0.7 }
 
-Replace ``fixed_site_amplitudes`` with a ``site_amplitude_prior`` table to infer
+In direct Python calls to the linked prepared-input runner, replace the
+``fixed_site_amplitudes`` argument with ``site_amplitude_prior`` to infer
 amplitudes with stock PyMC. The optimized runner
 :func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs`
-uses independent HalfNormal amplitude priors and the existing CO2
+uses independent positive amplitude priors and the existing CO2
 sigma-then-state ``CompoundStep``. It refreshes the exact state quadratic only
 when returned amplitude values change, then updates all active flux, boundary,
 and offset coefficients against that cache. Its builder is
 :func:`openghg_inversions.rhime.co2.build_co2_o2_cached_sigma_model`.
 
-Select ``variant = "cached_fixed_ou"`` and supply ``site_amplitude_prior_scale``
-in ``[likelihood]`` in place of fixed amplitudes. Optional
-``initial_site_amplitudes`` accepts the same scalar or species/site mapping.
-Sampler options match the CO2 cached recipe, including separate
-``sigma_target_accept`` and ``state_target_accept`` controls. Both linked OU
-routes require ``nuts_sampler = "pymc"`` and select it by default; the ordinary
-fixed-error linked default remains NumPyro.
+For inferred linked amplitudes, use the direct Python scientific APIs with
+explicit ``site_amplitude_prior``, ``tau_hours`` and optional
+``initial_site_amplitudes`` arguments. The cached runner also accepts separate
+``sigma_target_accept`` and ``state_target_accept`` controls. Both direct OU
+routes require ``nuts_sampler="pymc"``. Concrete linked configuration and
+installed saved phases currently accept fixed amplitudes only.
 
 Both routes retain species and native channel identity in the trace. The
 ``ou_site`` coordinate uses the species/site labels, with ``ou_species`` and

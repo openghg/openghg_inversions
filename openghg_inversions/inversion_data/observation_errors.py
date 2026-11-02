@@ -1,4 +1,4 @@
-"""Prepare reported observation errors before temporal filtering."""
+"""Prepare reported observation errors on retained observation populations."""
 
 from __future__ import annotations
 
@@ -14,21 +14,21 @@ logger = logging.getLogger(__name__)
 def prepare_observation_errors(
     site_data: Mapping[str, xr.Dataset], *, averaging_error: bool = True,
 ) -> dict[str, xr.Dataset]:
-    """Derive missing ``mf_error`` on owned datasets before temporal filtering.
+    """Derive missing ``mf_error`` from retained per-site observation populations.
 
     Combine repeatability and variability in quadrature when ``averaging_error``
     is true. Otherwise use repeatability, falling back to variability if absent.
     Missing components become zero; both absent is an error when ``mf_error``
-    is absent. The historical
-    zero-error replacement uses the larger of the nonzero error median and the
-    concentration standard deviation over the complete acquired population.
+    is absent. The historical zero-error replacement uses the larger of the
+    nonzero error median and concentration standard deviation over the retained
+    observation population.
     NaN errors keep the existing missing-value policy.
 
     Args:
-        site_data: Borrowed acquired per-site datasets before filtering
-            or temporal aggregation. Existing custom ``mf_error`` is retained
-            unchanged, including its labels and metadata. Missing diagnostic
-            components are supplied as zero arrays for gathered assembly.
+        site_data: Borrowed per-site datasets after observation selection.
+            Existing custom ``mf_error`` is retained unchanged, including its
+            labels and metadata. Missing diagnostic components are supplied as
+            zero arrays for gathered assembly.
         averaging_error: Whether variability contributes to derived errors.
 
     Returns:

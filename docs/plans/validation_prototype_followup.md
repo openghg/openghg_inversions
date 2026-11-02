@@ -15,6 +15,13 @@ Maintained guidance is [validation and xarray](../development/validation_and_xar
 [numerical array ownership](../development/numerical_array_ownership.rst) and
 [RHIME model development](../development/rhime_model_development.rst).
 
+The #905 comparison refresh integrates `devel` at `80782dd41b3e3ee36c7338115af7e0ba6195edf3`.
+The baseline and issue map below remain dated research. Current public handoffs
+are `MergedData` and `PreparedInputs`; retired names are not restored. Native
+flux validation preserves the explicit surface route's compatible-unit conversion
+in `resolve_runtime_flux`, while the legacy route keeps its canonical-scale
+requirement. This integration does not adopt the prototype for production.
+
 ## Landed baseline
 
 The baseline includes merged PRs [#887](https://github.com/openghg/openghg_inversions/pull/887),

@@ -22,6 +22,7 @@ from typing import Any, cast
 
 import numpy as np
 import pymc as pm
+from pymc.pytensorf import floatX
 import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
@@ -55,7 +56,7 @@ def _build_pollution_event_error(
     observations: xr.DataArray,
     observation_error: xr.DataArray,
     minimum_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: AggregationError | None = None,
     pollution_mean: TensorVariable,
     pollution_event_baseline: TensorVariable | None,
     sigma_alignment: SigmaAlignment | None,
@@ -75,7 +76,8 @@ def _build_pollution_event_error(
         observations: Observed mole fractions.
         observation_error: Reported observation-error standard deviations.
         minimum_error: Minimum total-error standard deviations.
-        aggregation_error: Validated fixed aggregation-error representation.
+        aggregation_error: Validated fixed aggregation-error representation. Omit
+            or pass ``None`` for no fixed aggregation covariance.
         pollution_mean: Modelled pollution contribution used when mismatch
             scaling follows the forward model.
         pollution_event_baseline: Baseline removed when mismatch scaling uses
@@ -122,7 +124,7 @@ def _build_pollution_event_error(
 
     if no_model_error:
         mean_observation = np.nanmean(observations.values)
-        small_amount = pm.floatX(1e-12 * mean_observation)
+        small_amount = floatX(1e-12 * mean_observation)
         # Preserve the exact historical expression before converting it to a
         # variance for covariance-aware observation distributions.
         independent_scale = cast(Any, pt.maximum)(pt.abs(reported_error), small_amount)
@@ -175,7 +177,7 @@ def add_pollution_event_likelihood(
     observations: xr.DataArray,
     observation_error: xr.DataArray,
     minimum_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: AggregationError | None = None,
     mean: TensorVariable,
     pollution_mean: TensorVariable,
     pollution_event_baseline: TensorVariable | None,
@@ -192,7 +194,8 @@ def add_pollution_event_likelihood(
         observations: Observed mole fractions.
         observation_error: Reported observation-error standard deviations.
         minimum_error: Minimum total-error standard deviations.
-        aggregation_error: Validated fixed aggregation-error representation.
+        aggregation_error: Validated fixed aggregation-error representation. Omit
+            or pass ``None`` for no fixed aggregation covariance.
         mean: Completed modelled concentration, including the full baseline.
         pollution_mean: Modelled pollution contribution used for mismatch
             scaling when ``pollution_events_from_obs`` is false.

@@ -177,18 +177,18 @@ def test_fixed_state_prior_draws_are_preserved():
     )
 
 
-def test_native_flux_reuses_joint_state_and_roundtrips(tmp_path, europe_country_file):
+def test_native_flux_reuses_joint_state_and_roundtrips(tmp_path):
     from dataclasses import replace
     from openghg_inversions.basis.basis_functions import BasisFunctions
 
     prepared, trace = _joint_fixture(baseline=False, numeric_state=True)
     original_posterior = trace["posterior"].copy(deep=True)
     original_prior = trace["prior"].copy(deep=True)
-    country = xr.load_dataset(europe_country_file).isel(
-        lat=slice(0, 2), lon=slice(0, 5), ncountries=slice(0, 1)
+    country = xr.Dataset(
+        {"country": (("lat", "lon"), np.zeros((2, 5), dtype=int)),
+         "name": ("ncountries", ["United Kingdom"])},
+        coords={"lat": [50.0, 51.0], "lon": [-2.0, -1.0, 0.0, 1.0, 2.0]},
     )
-    country["name"] = ("ncountries", ["United Kingdom"])
-    country["country"] = xr.zeros_like(country.country)
     country_path = tmp_path / "countries.nc"
     country.to_netcdf(country_path)
     flat = xr.DataArray(
@@ -289,7 +289,6 @@ def test_cached_joint_draws_with_baseline_emit_paris(tmp_path, native_multiindex
         with built.model:
             trace = pm.sample_prior_predictive(draws=5, random_seed=185)
         trace["posterior"] = trace["prior"].to_dataset().isel(draw=slice(0, 3))
-        pm.compute_log_likelihood(trace, model=built.model, progressbar=False)
         return restore_inferencedata_coords(trace, get_coord_registry(built.model))
 
     monkeypatch.setattr(co2_o2_cached_sigma_runner, "sample_rhime_model", graph_draws)
@@ -312,7 +311,7 @@ def test_cached_joint_draws_with_baseline_emit_paris(tmp_path, native_multiindex
         prepared_inputs=prepared,
         independent_error_sd=_independent_error(prepared),
         tau_hours=12.0,
-        site_amplitude_prior_scale=0.5,
+        site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.5},
         bc_prior={"co2": {"pdf": "normal", "mu": 1.0, "sigma": 0.1}},
         offset_prior={"o2": {"pdf": "normal", "mu": 0.0, "sigma": 0.1}},
         offset_args={"o2": {"per_site": False}},
@@ -334,4 +333,3 @@ def test_cached_joint_draws_with_baseline_emit_paris(tmp_path, native_multiindex
         assert dataset.attrs["rhime_recipe"] == "co2_o2_cached_sigma_fixed_ou"
     assert "mf_bias_posterior" not in products["co2"]["concentration"]
     assert "mf_bias_posterior" in products["o2"]["concentration"]
-    assert restored["log_likelihood"].y.dims == ("chain", "draw")

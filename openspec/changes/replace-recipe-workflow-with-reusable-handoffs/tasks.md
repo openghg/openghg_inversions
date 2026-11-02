@@ -1,5 +1,65 @@
 # Tasks
 
+Positional dates and `--kwargs` remain open for a separate argument-design
+discussion and revision; this command-name amendment does not finalize them.
+
+## Outcome-contract follow-up — 23 October 2026
+
+The approved target removes transitional runtime behavior; the specification is
+not a claim that the inspected source already implements that target. Keep the
+existing pinned evidence and per-PR checklist. The implementation slice must:
+
+- [ ] Make the retired executable, subcommands, five aliases and obsolete adapters
+  unavailable, port callers to canonical routes, and check imports/parser/package contents.
+- [ ] Replace old identity/translation/warning tests with canonical-input behavior
+  and ordinary unsupported-input checks; historical witnesses remain in Git/PR history.
+- [ ] Validate scientific parity, selected export paths/provenance and borrowed-array
+  execution outcomes; private helper identity/count is not an acceptance condition.
+- [ ] Reconcile focused scientific-input delivery with provider averaging first,
+  selection and nested retained alignment before missing-error derivation, and
+  independent format-version acceptance or rejection. Do not restore historical
+  aggregation-filter ordering or infer old-file support from an unchanged identifier.
+
+Helper reuse, procedural call order and saving choices remain in design. Existing
+checked tasks retain their dated evidence, not a renewed compatibility promise;
+this reconciliation completes no runtime task or release gate.
+
+## Development-boundary amendment — 23 October 2026
+
+#944/#961 permit bounded retirement only of the HBMCMC namespace, its
+wrappers/dictionary adapters and the temporary parameter/output/flux translation
+enumerated in the [retirement delivery checklist](../isolate-and-retire-hbmcmc/tasks.md#migration-evidence-checklist-and-delivery-order).
+There is no general public signature/result-wrapper exception. Existing named
+API migrations (including Python `run_rhime`, `RhimeRunSpec` and `RhimeResult`)
+retain their scoped contracts. The separately approved
+[five-name Python alias map](../isolate-and-retire-hbmcmc/tasks.md#named-python-alias-amendment--23-october-2026)
+permits removing only those implemented assignments without naming-only forwarders;
+canonical callable/class behavior, constructors, result contents and persisted
+scientific artifact meanings remain; persistence owns supported versions. Other Python names retain their contracts.
+Each affected removal/change preserves the durable
+[evidence guarantees](../../specs/hbmcmc-isolation-retirement/spec.md#requirement-development-removals-require-affected-migration-evidence)
+and follows the checklist's concrete pinned #960 comparison, per-PR evidence,
+scientific regression migration and owner recording. Finished converters/launchers
+remain M2 release gates. Public aliases
+and independent basis decisions stay with #945/#951; scientific, execution and
+codec contracts remain supported. Checked tasks below preserve dated evidence,
+not a renewed compatibility schedule. This amendment completes no task.
+
+The separately accepted [CLI command-name map](../isolate-and-retire-hbmcmc/tasks.md#cli-command-name-amendment--23-october-2026)
+permits one installed `rhime` executable and retirement of `openghg-inversions`
+plus `run-rhime`, `run-rhime-multisector`, `run-rhime-nested` and `run-co2`.
+Use canonical `rhime run --model ...` and the same saved-phase subcommands.
+Its checklist covers R1/R2 source comparisons and preservation of positional
+dates, `--kwargs`, effective configuration/overrides, science, outputs and artifacts.
+No argument redesign or package/distribution/install rename follows. Removal is
+pending; checked historical command evidence below records its original revision.
+Broader Python replacements require explicit maps under #663/#945 and a #776 revival.
+
+#876's agreed contract placement and retained-population scientific amendment
+will be delivered by their owning PRs. Complete #719 before #964; #971 is a separate
+prerequisite for #964, not a development-retirement gate for #719. Do not preserve
+the superseded pre-filter imputation population to satisfy historical tests.
+
 The maintainer approved this plan for implementation on 11 October 2026. These
 are implementation tasks, all unchecked until their acceptance evidence exists.
 Start with a bounded implementation PR stacked on #841. This planning change
@@ -713,10 +773,30 @@ included. Nothing is merged.
 
 ## 4. Cached CO2 reusable-handoff adoption
 
+20 October 2026 implementation stack (not merged): OPE-219 / [#904](https://github.com/openghg/openghg_inversions/pull/904)
+generalizes positive amplitude priors; OPE-220 / [#910](https://github.com/openghg/openghg_inversions/pull/910)
+selects matched inference from model configuration; OPE-221 adopts the shared CLI
+handoffs and retires redundant cached entry points. Full and saved execution are
+checked for additive and Gamma fixed-OU likelihoods with new/imported affine pairs,
+original request dates, independent density references, unequal prior/posterior
+axes, and graph-free products. Merge and final validation evidence remain pending;
+these changes do not complete the wider programme or linked staging.
+
+- [ ] 4.0 OPE-219: replace HalfNormal-only amplitude scale arguments with the
+  existing independent positive-prior specification. Derive the conditional
+  density/Jacobian and physical amplitude transform from the scientific model;
+  preserve sigma-then-state ordering, accepted-cache updates and prediction.
+  Cover all supported positive families, bounded initialization/transforms,
+  independent conditional density/gradient references, representative posterior
+  moments and linked numerical callers. Deliver affected tests, docs and release note.
 - [ ] 4.1 Connect the ordinary CO2 handoff/result conventions to the matched cached
   construction/inference operation. Verify required backend, sigma-then-state step
   order and accepted-cache lifecycle; reject unsupported generic sampler/tuning
-  substitutions before expensive work. Preserve the existing direct cached runner.
+  substitutions before expensive work. OPE-220 makes scientific model choices
+  select inference automatically and unifies configured execution through
+  `run_co2`/`Co2Output`. OPE-221 adopts the shared saved handoffs and removes the
+  redundant cached public selectors/runners together with their dependent stage
+  callers, without compatibility aliases.
 - [ ] 4.2 Validate cached per-site initialization and OU time scales as positive,
   requiring retained coverage after checking all supplied values. Verify compatible
   mismatch changes reuse numerical preparation while dependent runtime caches are
@@ -752,6 +832,8 @@ outside this change, with runner follow-up assigned to existing #408.
 
 - [ ] 5.1 Reconcile all four family deliveries against the three new capability specs and the configuration/resource-I/O capabilities
   while preserving the current model-selection and model-composition baselines;
+  apply the development evidence gate above to affected compatibility changes,
+  leaving unresolved public aliases and basis choices with their owners;
   record merged PRs, commands/results and justified numerical tolerances. Run
   relevant broader scientific, configuration, CLI, staged/replay, builder and output
   coverage; run Ruff on changed Python paths and `git diff --check`. Submit required

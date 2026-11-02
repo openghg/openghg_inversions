@@ -14,6 +14,8 @@ from openghg.dataobjects import BoundaryConditionsData, FluxData, FootprintData,
 
 from openghg_inversions.inversion_data._site_options import is_column_platform
 
+from ._provenance import footprint_metadata
+
 logger = logging.getLogger(__name__)
 
 
@@ -113,7 +115,7 @@ def merged_scenario_data(
             bc=bc_data,
         )
 
-    footprint_max_level = footprint_data.data.attrs.get("max_level")
+    footprint_identity = footprint_metadata(footprint_data)
     scenario_combined = model_scenario.footprints_data_merge(
         platform=platform,
         calc_fp_x_flux=True,
@@ -122,31 +124,8 @@ def merged_scenario_data(
         cache=False,
         output_units=output_units,
     )
-    # ``footprints_data_merge`` prefers observation attributes. Keep the
-    # footprint extent separately so later compatibility transforms do not
-    # mistake the observation level for footprint provenance.
-    if footprint_max_level is not None:
-        scenario_combined.attrs["footprint_max_level"] = footprint_max_level
-
-    # The merged scenario may inherit observation attrs; preserve these from
-    # the footprint object before the source metadata is lost.
-    for output_name, source_names in {
-        "transport_model": ("model", "transport_model"),
-        "transport_model_version": ("transport_model_version", "model_version"),
-        "met_model": ("met_model", "metmodel"),
-    }.items():
-        value = next(
-            (
-                source[key]
-                for source in (footprint_data.data.attrs, getattr(footprint_data, "metadata", {}))
-                for key in source_names
-                if isinstance(source.get(key), str)
-                and source[key].strip()
-                and source[key].strip().lower() not in {"none", "not_set"}
-            ),
-            None,
-        )
-        if value is not None:
-            scenario_combined.attrs[f"footprint_{output_name}"] = value
+    # Merged scenario attributes may come from observations rather than transport.
+    for name, value in footprint_identity.items():
+        scenario_combined.attrs[f"footprint_{name}"] = value
 
     return scenario_combined

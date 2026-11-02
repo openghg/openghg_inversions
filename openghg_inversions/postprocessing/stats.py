@@ -724,6 +724,6 @@ def _calculate_stats(ds: xr.Dataset, stats: Sequence[str], *, _sample_chunks=Non
                         dimensions = (dimensions,)
                     data, markers = _retain_dimensions(data, ds, dimensions)
                 outputs.append(function.func(data, **options).drop_vars(markers, errors="ignore"))
-    result = xr.merge(outputs).map(jax_to_numpy, keep_attrs=True)
+    result = xr.merge(outputs, join="outer", compat="no_conflicts").map(jax_to_numpy, keep_attrs=True)
     result.attrs = {**ds.attrs, **result.attrs}
     return result

@@ -5,7 +5,6 @@ from dataclasses import fields
 import pytest
 
 from openghg_inversions.inversion_data import SiteOptions, _site_options, acquisition
-from openghg_inversions.hbmcmc import legacy_data
 
 
 def _site_inputs():
@@ -50,8 +49,9 @@ def test_public_site_shorthand_expands_once_before_retrieval(monkeypatch):
     monkeypatch.setattr(acquisition, "get_flux_data", stop)
     kwargs = {**_site_inputs(), **_data_inputs()}
     with pytest.raises(RuntimeError, match="retrieval reached"):
-        kwargs["emissions_name"] = kwargs.pop("flux_sources")
-        legacy_data.retrieve_inversion_data(**kwargs)
+        site_values = {name: kwargs.pop(name) for name in _site_inputs()}
+        options = SiteOptions.from_inputs(**site_values)
+        acquisition.MergedData.from_options(site_options=options, **kwargs)
     assert len(resolved) == 1
     assert resolved[0].sites == ("TAC", "MHD")
     assert resolved[0].averaging_period == ("1h", "1h")
@@ -71,7 +71,7 @@ def test_canonical_acquisition_and_retrieval_never_expand_selectors(monkeypatch)
     monkeypatch.setattr(_site_options, "expand_site_option", fail)
     monkeypatch.setattr(acquisition, "get_flux_data", stop)
     with pytest.raises(RuntimeError, match="retrieval reached"):
-        acquisition.RhimeMergedData.from_options(site_options=options, **_data_inputs())
+        acquisition.MergedData.from_options(site_options=options, **_data_inputs())
 
 
 def test_site_options_public_factory_resolved_constructor_and_selection():

@@ -15,8 +15,8 @@ _REAL_DTYPES = (np.integer, np.floating)
 _UNCERTAINTIES = ("mf_error", "mf_repeatability", "mf_variability")
 
 
-def _same_unit_scale(actual: object, expected: str, *, name: str) -> None:
-    """Accept equal-scale expressions without converting borrowed values."""
+def _check_unit_scale(actual: object, expected: str, *, name: str, allow_scaled_units: bool = False) -> None:
+    """Check unit metadata without converting borrowed values."""
     if not isinstance(actual, str) or not actual.strip():
         raise ValueError(f"{name}.attrs.units must be a nonempty string.")
     try:
@@ -27,7 +27,9 @@ def _same_unit_scale(actual: object, expected: str, *, name: str) -> None:
         scale = float(quantity.to(reference.units).magnitude / reference.magnitude)
     except Exception as error:
         raise ValueError(f"{name}.attrs.units is incompatible with {expected!r}.") from error
-    if not np.isclose(scale, 1.0, rtol=1e-12, atol=0):
+    if not np.isfinite(scale) or scale <= 0:
+        raise ValueError(f"{name}.attrs.units must have a finite positive scale.")
+    if not allow_scaled_units and not np.isclose(scale, 1.0, rtol=1e-12, atol=0):
         raise ValueError(f"{name}.attrs.units must have the same numeric scale as {expected!r}.")
 
 
@@ -113,10 +115,10 @@ def merged_site_schema(
             if not np.isfinite(scale) or scale <= 0:
                 raise ValueError("data_vars.mf.attrs.units must have a finite positive mole-fraction scale.")
             if concentration_units is not None:
-                _same_unit_scale(units, concentration_units, name="data_vars.mf")
+                _check_unit_scale(units, concentration_units, name="data_vars.mf")
             for name in (*_UNCERTAINTIES, response, *((f"bc_{d}" for d in "nesw") if use_bc else ())):
                 if name in dataset and "units" in dataset[name].attrs:
-                    _same_unit_scale(dataset[name].attrs["units"], units, name=f"data_vars.{name}")
+                    _check_unit_scale(dataset[name].attrs["units"], units, name=f"data_vars.{name}")
         if split_by_sectors and "source" in dataset.indexes:
             labels = tuple(dataset.indexes["source"])
             if any(not isinstance(label, str) or not label for label in labels):
@@ -127,8 +129,14 @@ def merged_site_schema(
     return DatasetSchema(data_vars=data_vars, coords=CoordsSchema(coordinate_schemas), checks=[relationships])
 
 
-def merged_flux_schema(*, timed: bool, grid_dims: tuple[str, str] = ("lat", "lon")) -> DatasetSchema:
-    """Describe native inventory flux, independent of observation times."""
+def merged_flux_schema(
+    *, timed: bool, grid_dims: tuple[str, str] = ("lat", "lon"), allow_scaled_units: bool = False,
+) -> DatasetSchema:
+    """Describe native inventory flux, independent of observation times.
+
+    The explicit surface route allows compatible scaled units because native
+    flux resolution owns their conversion. Other routes require canonical scale.
+    """
     dims = (*grid_dims, *(("time",) if timed else ()))
     coords = {dim: DataArraySchema(dtype=_REAL_DTYPES, dims=(dim,)) for dim in grid_dims}
     if timed:
@@ -137,7 +145,10 @@ def merged_flux_schema(*, timed: bool, grid_dims: tuple[str, str] = ("lat", "lon
     def units(dataset: xr.Dataset) -> None:
         _indexed_coordinates(dataset, tuple(coords))
         if "flux" in dataset:
-            _same_unit_scale(dataset.flux.attrs.get("units"), "mol m-2 s-1", name="data_vars.flux")
+            _check_unit_scale(
+                dataset.flux.attrs.get("units"), "mol m-2 s-1", name="data_vars.flux",
+                allow_scaled_units=allow_scaled_units,
+            )
 
     return DatasetSchema(
         data_vars={"flux": DataArraySchema(dtype=_REAL_DTYPES, dims=DimsSchema(dims, ordered=False))},

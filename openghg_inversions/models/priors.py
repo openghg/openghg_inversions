@@ -103,9 +103,10 @@ def positive_prior_args(prior_params: Mapping[str, Any]) -> PriorArgs:
 
 
 def parse_prior(
-    name: str, prior_params: PriorArgs, *,
+    name: str, prior_params: Mapping[str, Any], *,
     active_indices: np.ndarray | None = None,
     record_name: str | None = None,
+    positive: bool = False,
     **kwargs,
 ) -> TensorVariable:
     """Create a continuous PyMC prior from a prior-parameter dictionary.
@@ -116,6 +117,8 @@ def parse_prior(
             parameters accepted by the chosen PyMC distribution.
         active_indices: Optional graph selection from canonical registered arrays.
         record_name: Scientific variable name owning an active-only prior record.
+        positive: Require a prior with non-negative support after materializing
+            its parameters together.
         **kwargs: Additional keyword arguments forwarded to the created PyMC
             variable, such as ``dims``.
 
@@ -141,8 +144,10 @@ def parse_prior(
     """
     pdf_dict = {cd.lower(): cd for cd in continuous.__all__}
 
-    params = prior_params.copy()
+    params = dict(prior_params)
     pdf = str(params.pop("pdf")).lower()
+    if positive:
+        pdf = positive_prior_args({"pdf": pdf})["pdf"]
 
     try:
         dist = getattr(continuous, pdf_dict[pdf])
@@ -205,6 +210,28 @@ def parse_prior(
     # Compute whole labelled arrays together, including lazy auxiliaries.
     values = compute(*params.values())
     params = dict(zip(params, values, strict=True))
+    if positive:
+        params = positive_prior_args({"pdf": pdf, **params})
+        params.pop("pdf")
+    if pdf == "uniform":
+        lower, upper = params.get("lower", 0.0), params.get("upper", 1.0)
+        for bound in (lower, upper):
+            if not isinstance(bound, Variable) and not np.isfinite(bound).all():
+                raise ValueError("Uniform prior bounds must be finite.")
+        if not isinstance(lower, Variable) and not isinstance(upper, Variable):
+            bounds = []
+            for bound in (lower, upper):
+                if isinstance(bound, xr.DataArray):
+                    if active_indices is not None and bound.ndim:
+                        bound = bound.to_numpy()[active_indices]
+                    elif dims and set(bound.dims).issubset(dims):
+                        bound = bound.transpose(*(dim for dim in dims if dim in bound.dims))
+                        bound = bound.to_numpy().reshape(tuple(bound.sizes.get(dim, 1) for dim in dims))
+                    else:
+                        bound = bound.to_numpy()
+                bounds.append(bound)
+            if not np.all(bounds[0] < bounds[1]):
+                raise ValueError("Uniform prior lower bound must be less than upper bound.")
     record: PriorArgs = {"pdf": pdf}
     for key, value in params.items():
         if key == "reparameterise":

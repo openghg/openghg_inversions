@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from openghg_inversions.inversion_data import MergedData, RhimePreparedInputs, SiteOptions
+from openghg_inversions.inversion_data import MergedData, PreparedInputs, SiteOptions
 from openghg_inversions.rhime import preparation
 from openghg_inversions.rhime.multisector import prepare_multisector
 from openghg_inversions.rhime.standard import prepare_standard
@@ -229,6 +229,36 @@ def test_native_flux_units_have_the_canonical_numeric_scale():
         _validate(merged)
 
 
+@pytest.mark.parametrize("sectoral", [False, True])
+def test_surface_flux_conversion_remains_with_native_flux_owner(sectoral):
+    from openghg_inversions.native_flux import resolve_runtime_flux
+
+    merged = _merged(sectoral=sectoral)
+    merged.site_data["TAC"].attrs["surface_transport"] = '{"inventory": "integrated"}'
+    merged.flux_data["other"] = merged.flux_data["inventory"].copy(deep=False)
+    merged.flux_data["other"].flux.attrs = {"units": "umol m-2 s-1"}
+    original = merged.flux_data["other"].flux.data
+    with Callback(pretask=lambda *args: pytest.fail("Validation executed flux payloads.")):
+        _validate(merged)
+        resolved = resolve_runtime_flux(merged.flux_data, split_by_sectors=sectoral, explicit_surface=True)
+    expected = np.full((2, 2), 1.000001)
+    if sectoral:
+        expected = np.stack([np.ones((2, 2)), np.full((2, 2), 1e-6)])
+    np.testing.assert_allclose(resolved.compute(), expected)
+    assert merged.flux_data["other"].flux.data is original
+    assert merged.flux_data["other"].flux.attrs["units"] == "umol m-2 s-1"
+
+
+@pytest.mark.parametrize("units", ["kg", "", None])
+def test_surface_flux_still_rejects_invalid_units_before_execution(units):
+    merged = _merged()
+    merged.site_data["TAC"].attrs["surface_transport"] = "{}"
+    merged.flux_data["inventory"].flux.attrs["units"] = units
+    with Callback(pretask=lambda *args: pytest.fail("Validation executed flux payloads.")):
+        with pytest.raises(ValueError, match=r"flux_data\['inventory'\].*flux.attrs.units"):
+            _validate(merged)
+
+
 def test_sector_sources_must_be_complete_but_may_arrive_in_different_order():
     merged = _merged(sectoral=True)
     merged.site_data["TAC"] = merged.site_data["TAC"].sel(source=["other", "inventory"])
@@ -249,7 +279,7 @@ def test_public_preparation_and_disk_roundtrip_keep_values_and_borrowed_inputs(t
     prepared = prepare(
         merged, domain="EUROPE", start_date="2020-01-01", flux_sources=tuple(merged.flux_data),
         averaging_error=True, filters=None, basis_algorithm=None, nbasis=1, fix_basis_outer_regions=False,
-        use_bc=False, bc_freq=None, min_error=0., min_error_options={"by_site": False},
+        use_bc=False,
         basis_inputs={"basis_partition": labels},
     )
     assert "fp" not in site
@@ -264,7 +294,7 @@ def test_public_preparation_and_disk_roundtrip_keep_values_and_borrowed_inputs(t
         np.testing.assert_array_equal(prepared.inv_inputs.H, [[4., 4.]])
     path = tmp_path / f"prepared{suffix}"
     prepared.save(path)
-    reopened = RhimePreparedInputs.load(path)
+    reopened = PreparedInputs.load(path)
     xr.testing.assert_identical(reopened.inv_inputs, prepared.inv_inputs)
 
 
@@ -278,7 +308,7 @@ def test_public_prepare_rejects_bad_inputs_before_error_derivation(prepare, monk
     with pytest.raises(ValueError, match=response):
         prepare(merged, domain="EUROPE", start_date="2020-01-01", flux_sources=tuple(merged.flux_data),
                 averaging_error=True, filters=None, basis_algorithm=None, nbasis=1, fix_basis_outer_regions=False,
-                use_bc=False, bc_freq=None, min_error=0., min_error_options={}, basis_inputs={"basis_path": "unused"})
+                use_bc=False, basis_inputs={"basis_path": "unused"})
 
 
 def test_filter_valueerror_is_propagated_once_without_computing_all_sites(monkeypatch):

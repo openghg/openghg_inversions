@@ -24,12 +24,12 @@ Current support
      - One emissions source represented by overlapping outer and inner
        footprint grids at different spatial resolutions.
    * - Public entry points
-     - :func:`openghg_inversions.rhime.run_rhime_nested` for a complete run,
+     - :func:`openghg_inversions.rhime.run_nested` for a complete run,
        and ``run_nested(config=config, prepared=nested)``
        for explicit prepared outer and inner inputs.
    * - Configuration and command line
      - Supports the RHIME INI schema and
-       ``openghg-inversions run-rhime-nested``. The generic staged commands do
+       ``rhime run --model nested``. The generic staged commands do
        not currently accept this family.
    * - Outputs
      - ``output_format="none"`` returns ``NestedOutput`` with separate outer
@@ -42,6 +42,11 @@ Current support
      - One standard flux sector. When boundary conditions are enabled, their
        contribution comes from the outer domain; multisector nested runs and a
        second inner boundary condition are not supported.
+   * - Shared spatial support
+     - Every retained site has both domains, with the same indexed outer grid
+       and the same indexed inner grid across sites. Outer-only sites remain
+       deferred in GitHub issue #897 pending a scientific decision about their
+       interior emissions states and output interpretation.
 
 Continue with the nested-domain guide for configuration, basis construction,
 time alignment, prepared inputs, and output details.

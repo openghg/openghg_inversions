@@ -34,7 +34,9 @@ This tutorial uses the staged ``standard`` recipe; the same workflow also
 supports ``multisector``. The :doc:`CO₂ model family <co2_model_family>` has
 a separate staged prepared-input route for CO₂-only models. Both cached-sigma
 CO₂ and linked CO₂/O₂ models expose an observed distribution for native PyMC
-prior and posterior prediction. Linked CO₂/O₂ staging remains unavailable.
+prior and posterior prediction. The linked ``--model co2_o2`` route also supports
+native joint prior checks with unequal channel axes and cross-channel covariance; see
+:ref:`linked-staged-commands`.
 
 Prerequisites
 -------------
@@ -65,7 +67,7 @@ Run the preparation stage:
 
 .. code-block:: bash
 
-   openghg-inversions prepare \
+   rhime prepare \
      --config "$CONFIG" \
      --model standard \
      --output-dir "$RUN/prepare"
@@ -126,7 +128,7 @@ tails:
 
 .. code-block:: bash
 
-   openghg-inversions prior-predictive \
+   rhime prior-predictive \
      --config "$CONFIG" \
      --model standard \
      --preparation-manifest "$RUN/prepare/prepare-manifest.json" \
@@ -172,10 +174,10 @@ Load the result and inspect its groups and variable names before plotting:
 .. jupyter-input::
 
    from openghg_inversions.serialization import load_trace
-   from openghg_inversions.inversion_data import RhimePreparedInputs
+   from openghg_inversions.inversion_data import PreparedInputs
 
    prior = load_trace(run / "prior-predictive/prior-predictive.nc")
-   prepared = RhimePreparedInputs.load(prepared_path)
+   prepared = PreparedInputs.load(prepared_path)
    observations = prepared.inv_inputs["mf"]
    concentration_units = observations.attrs.get("units", "mole fraction")
    {
@@ -382,7 +384,7 @@ sensitivities, or other baked preparation policies require new preparation.
 
 .. code-block:: bash
 
-   openghg-inversions sample \
+   rhime sample \
      --config "$CONFIG" \
      --model standard \
      --preparation-manifest "$RUN/prepare/prepare-manifest.json" \
@@ -413,7 +415,7 @@ Next run the staged convergence check:
 
 .. code-block:: bash
 
-   openghg-inversions diagnose \
+   rhime diagnose \
      --posterior "$RUN/sample/posterior.nc" \
      --sample-manifest "$RUN/sample/sample-manifest.json" \
      --output-dir "$RUN/diagnose"

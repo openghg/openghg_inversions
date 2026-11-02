@@ -14,7 +14,7 @@ from openghg_inversions.basis.affine_flux_map import AffineFluxMap
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, save
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.postprocessing import co2_flux_outputs, stats
 from openghg_inversions.postprocessing._basis_products import bounded_affine_flux_map
 from openghg_inversions.postprocessing.co2_flux_outputs import (
@@ -277,7 +277,8 @@ def test_state_labels_and_country_grid_must_match_exactly(group):
         co2_country_flux_outputs(trace, bound, countries)
 
 
-def test_missing_prior_role_and_linked_recipe_fail_explicitly():
+@pytest.mark.parametrize("recipe", ["co2_o2", "co2_cached_sigma_fixed_ou"])
+def test_missing_prior_role_and_unsupported_recipe_fail_explicitly(recipe):
     bound, trace, _ = _fixture()
     del trace["prior"]
     with pytest.raises(ValueError, match="prior"):
@@ -287,7 +288,7 @@ def test_missing_prior_role_and_linked_recipe_fail_explicitly():
     with pytest.raises(ValueError, match="flux_scale|absent"):
         co2_native_flux_outputs(trace, bound)
     _, trace, _ = _fixture()
-    trace.attrs["rhime_model_metadata"] = json.dumps({"recipe": "co2_o2"})
+    trace.attrs["rhime_model_metadata"] = json.dumps({"recipe": recipe})
     with pytest.raises(ValueError, match="co2_o2|CO2.O2|recipe"):
         co2_native_flux_outputs(trace, bound)
 
@@ -349,7 +350,7 @@ def test_saved_multisource_bucket_preserves_time_and_matches_dense_oracle(tmp_pa
     )
     prepared = replace(
         prepared,
-        rhime_inputs=RhimePreparedInputs(prepared.inv_inputs, basis, prepared.rhime_inputs.site_metadata),
+        rhime_inputs=PreparedInputs(prepared.inv_inputs, basis, prepared.rhime_inputs.site_metadata),
     )
     prepared_path, affine_path = tmp_path / "prepared.nc", tmp_path / "affine.nc"
     prepared.save(prepared_path)

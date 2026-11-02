@@ -16,6 +16,9 @@ See :doc:`specifications` for their ownership and delivery status.
    validation_and_xarray
    documentation
    observation_uncertainty
+   fixed_ou_likelihood
+   fixed_ou_evidence
+   migration_960
    releasing
 
 Scientific notation in prose

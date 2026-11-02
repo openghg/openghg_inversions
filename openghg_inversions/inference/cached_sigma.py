@@ -22,8 +22,10 @@ from typing import Any, ClassVar, Literal, cast
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 import pymc as pm
+from pymc.step_methods import CompoundStep
 import pytensor
 import pytensor.tensor as pt
+from pytensor.compile.mode import Mode
 from pymc.blocking import PointType, StatsType
 from pymc.model import ValueGradFunction, modelcontext
 from pymc.step_methods.compound import BlockedStep, Competence, StepMethodState
@@ -33,6 +35,8 @@ from pymc.util import RandomGenerator, get_random_generator, get_value_vars_from
 from pytensor.gradient import DisconnectedType, grad_not_implemented
 from pytensor.graph.basic import Apply, Variable
 from pytensor.graph.op import Op, OutputStorageType
+from pytensor.graph.replace import clone_replace
+from pytensor.graph.traversal import graph_inputs
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.models.cached_sigma import (
@@ -85,13 +89,13 @@ class PytensorMarginalQuadraticCache:
 
 
 class _PytensorSigmaLikelihoodOp(Op):
-    """Exact sigma-conditional likelihood with a chain-local fixed residual."""
+    """Exact sigma conditional with a chain-local residual in prepared mode coordinates."""
 
     def __init__(self, target: FixedOuCachedSigmaTarget) -> None:
         self.target = target
         self.residual = pytensor.shared(
             np.zeros(target.n_obs, dtype=np.float64),
-            name="sigma_conditional_residual",
+            name="sigma_conditional_mode_residual",
         )
 
     def make_node(self, *inputs: Any) -> Apply:
@@ -116,14 +120,16 @@ class _PytensorSigmaLikelihoodOp(Op):
     ) -> None:
         del node
         sigma = np.asarray(inputs[0], dtype=np.float64)
-        residual = np.asarray(inputs[1], dtype=np.float64)
-        evaluation = self.target.evaluate_from_residual(residual, sigma)
+        transformed_residual = np.asarray(inputs[1], dtype=np.float64)
+        log_likelihood, gradient_amplitude = self.target._evaluate_from_transformed_residual(
+            transformed_residual, sigma,
+        )
         output_storage[0][0] = np.asarray(
-            evaluation.log_likelihood,
+            log_likelihood,
             dtype=np.float64,
         )
         output_storage[1][0] = np.asarray(
-            evaluation.gradient_site_amplitude,
+            gradient_amplitude,
             dtype=np.float64,
         )
 
@@ -151,8 +157,15 @@ class _PytensorSigmaLikelihoodOp(Op):
         return [(), input_shapes[0]]
 
     def install_residual(self, residual: ArrayLike) -> None:
-        """Set the exact residual used for the next conditional trajectory."""
-        self.residual.set_value(np.asarray(residual, dtype=np.float64))
+        """Transform the observation residual once for the next conditional trajectory."""
+        value = np.asarray(residual, dtype=np.float64)
+        if value.shape != (self.target.n_obs,):
+            raise ValueError(f"residual has shape {value.shape}, expected {(self.target.n_obs,)}.")
+        # Preserve nonfinite rejection without transforming invalid observations.
+        if np.isfinite(value).all():
+            with np.errstate(over="ignore", invalid="ignore"):
+                value = self.target.prepared.mode_transform @ value
+        self.residual.set_value(value)
 
 
 @dataclass_state
@@ -192,7 +205,6 @@ class PymcCachedSigmaNutsStep(BlockedStep):
         shared_cache: PytensorMarginalQuadraticCache,
         initial_cache: MarginalQuadraticCache,
         modelled_mean: TensorVariable,
-        prior_scale: ArrayLike | float,
         target_accept: float = 0.8,
         max_treedepth: int = 10,
         early_max_treedepth: int = 8,
@@ -232,13 +244,18 @@ class PymcCachedSigmaNutsStep(BlockedStep):
                 f"Initial transformed sigma has shape {initial_eta.shape}, "
                 f"expected {(target.n_group,)}."
             )
-        scale = np.asarray(prior_scale, dtype=np.float64)
-        if scale.ndim > 1 or (
-            scale.ndim == 1 and scale.shape != (target.n_group,)
-        ):
-            raise ValueError("prior_scale must be scalar or contain one value per site.")
-        if not np.isfinite(scale).all() or np.any(scale <= 0.0):
-            raise ValueError("prior_scale must contain only finite positive values.")
+        outer_sigma_rv = outer_model.values_to_rvs[value_vars[0]]
+        # The conditional density needs the physical prior and its transform Jacobian.
+        prior_logp = outer_model.logp(vars=[outer_sigma_rv], jacobian=True)
+        # Reuse PyMC's inverse transform for both log and bounded interval coordinates.
+        physical_sigma = outer_model.replace_rvs_by_values([sigma])[0]
+        dependencies = set(graph_inputs([prior_logp, physical_sigma]))
+        if any(value in dependencies for value in outer_model.value_vars if value is not value_vars[0]):
+            raise ValueError("Cached amplitudes require independent priors without other free variables.")
+        self.physical_sigma_fn = pytensor.function([value_vars[0]], physical_sigma)
+        prior_logp_fn = pytensor.function([value_vars[0]], prior_logp)
+        if not np.isfinite(initial_eta).all() or not np.isfinite(prior_logp_fn(initial_eta)):
+            raise ValueError("Initial site amplitudes require a finite transformed point and prior density.")
 
         self.vars = value_vars
         self.blocked = blocked
@@ -259,7 +276,9 @@ class PymcCachedSigmaNutsStep(BlockedStep):
                 f"{initial_mean.shape}, expected {(target.n_obs,)}."
             )
         self.tune = True
-        initial_sigma = np.exp(initial_eta.astype(np.float64))
+        initial_sigma = self.physical_sigma_fn(initial_eta)
+        if not np.isfinite(initial_sigma).all() or np.any(initial_sigma <= 0.0):
+            raise ValueError("Initial site amplitudes must be finite and strictly positive.")
         tolerance = 8.0 * np.finfo(initial_eta.dtype).eps
         if not np.allclose(initial_cache.sigma, initial_sigma, rtol=tolerance, atol=0.0):
             raise ValueError("Initial cache and transformed sigma point do not match.")
@@ -267,32 +286,21 @@ class PymcCachedSigmaNutsStep(BlockedStep):
         self.current_eta = initial_eta.astype(np.float64)
 
         point_dtype = initial_eta.dtype
-        outer_sigma_rv = outer_model.values_to_rvs[value_vars[0]]
-        sigma_rv_name = cast(str | None, outer_sigma_rv.name)
-        if not sigma_rv_name:
-            raise ValueError("The grouped sigma random variable must have a name.")
         self.likelihood_op = _PytensorSigmaLikelihoodOp(target)
+        # Isolate amplitude NUTS from the outer state graph and observed likelihood.
         with pm.Model(model=None) as conditional_model:
-            conditional_sigma = pm.HalfNormal(
-                sigma_rv_name,
-                sigma=scale,
-                shape=target.n_group,
-                dtype=point_dtype.name,
+            conditional_sigma = pm.Flat(
+                sigma_value_name, shape=target.n_group, dtype=point_dtype.name,
             )
-            likelihood, _ = self.likelihood_op(
-                conditional_sigma,
-                self.likelihood_op.residual,
+            conditional_prior, conditional_physical = clone_replace(
+                [prior_logp, physical_sigma],
+                replace={value_vars[0]: conditional_model.rvs_to_values[conditional_sigma]},
             )
-            pm.Potential("sigma_conditional_likelihood", likelihood)
-        conditional_value_name = cast(
-            str | None,
-            conditional_model.rvs_to_values[conditional_sigma].name,
-        )
-        if conditional_value_name != sigma_value_name:
-            raise ValueError(
-                "Conditional and outer sigma transformed names differ: "
-                f"{conditional_value_name!r} and {sigma_value_name!r}."
+            likelihood, _ = cast(
+                list[TensorVariable],
+                self.likelihood_op(conditional_physical, self.likelihood_op.residual),
             )
+            pm.Potential("sigma_conditional_likelihood", likelihood + conditional_prior)
         conditional_initial = conditional_model.initial_point()
         conditional_initial[sigma_value_name] = initial_eta.copy()
         nuts_rng, potential_rng = self.rng.spawn(2)
@@ -317,6 +325,9 @@ class PymcCachedSigmaNutsStep(BlockedStep):
             rng=nuts_rng,
             dtype=point_dtype.name,
             potential=potential,
+            # The numerical Op already runs in NumPy/SciPy. CVM avoids copying
+            # its captured target through Numba's object-mode callback per call.
+            compile_kwargs={"mode": Mode(linker="cvm", optimizer="fast_run")},
         )
 
     def _point_values(self, point: PointType) -> tuple[FloatArray, FloatArray]:
@@ -331,7 +342,7 @@ class PymcCachedSigmaNutsStep(BlockedStep):
     def _ensure_cache_matches(self, eta: FloatArray) -> int:
         if np.array_equal(eta, self.current_eta):
             return 0
-        self.current_cache = self.target.refresh(np.exp(eta))
+        self.current_cache = self.target.refresh(self.physical_sigma_fn(eta.astype(self.vars[0].dtype)))
         self.shared_cache.update(self.current_cache)
         self.current_eta = eta.copy()
         return 1
@@ -355,7 +366,7 @@ class PymcCachedSigmaNutsStep(BlockedStep):
         eta_next = eta_next_point.astype(np.float64)
         changed = not np.array_equal(eta_next, eta_initial)
         if changed:
-            cache = self.target.refresh(np.exp(eta_next))
+            cache = self.target.refresh(self.physical_sigma_fn(eta_next_point))
             self.current_cache = cache
             self.shared_cache.update(cache)
             self.current_eta = eta_next.copy()
@@ -435,19 +446,19 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
     target: FixedOuCachedSigmaTarget,
     shared_cache: PytensorMarginalQuadraticCache,
     initial_cache: MarginalQuadraticCache,
-    prior_scale: ArrayLike | float,
     cached_state_logp: TensorVariable | None = None,
     initial_point: PointType | None = None,
     sigma_target_accept: float = 0.8,
     state_target_accept: float = 0.9,
     rng: RandomGenerator = None,
-) -> pm.CompoundStep:
+) -> CompoundStep:
     """Construct the required sigma-then-state stock PyMC compound sweep.
 
     At the start of each sweep, the sigma step evaluates ``modelled_mean`` at
     the current state point. It then updates sigma and refreshes the quadratic
     for the value returned by that transition before the following stock NUTS
-    step jointly updates ``states``.
+    step jointly updates ``states``. With no active states, the sweep contains
+    only the amplitude step.
 
     Observed models require an explicit ``cached_state_logp`` expression. The
     state function combines this quadratic with the model's free-variable
@@ -466,12 +477,13 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
         shared_cache=shared_cache,
         initial_cache=initial_cache,
         modelled_mean=modelled_mean,
-        prior_scale=prior_scale,
         target_accept=sigma_target_accept,
         initial_point=point,
         model=model,
         rng=sigma_rng,
     )
+    if not states:
+        return CompoundStep([sigma_step])
     state_function = None
     if cached_state_logp is not None:
         state_values = get_value_vars_from_user_vars(list(states), model)
@@ -499,7 +511,7 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
             rng=state_rng,
             logp_dlogp_func=state_function,
         )
-    return pm.CompoundStep([sigma_step, state_step])
+    return CompoundStep([sigma_step, state_step])
 
 
 __all__ = [
