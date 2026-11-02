@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from math import inf
 from typing import Annotated, Literal, TYPE_CHECKING
 
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from openghg_inversions._record_schema import JsonFloat, Record
 
@@ -41,12 +43,28 @@ class PriorDescription(Record):
 
     Distribution-specific parameters stay open for scientific extensions. Each
     value must be a finite JSON scalar or a declared reference; array payloads
-    belong to the trace's registered ``constant_data`` group.
+    belong to the trace's registered ``constant_data`` group. Unbounded
+    TruncatedNormal endpoints are described as null, including when reading
+    older descriptions containing explicit outward infinities.
     """
 
     model_config = ConfigDict(extra="allow")
     __pydantic_extra__: dict[str, PriorParameter] = Field(init=False)
     pdf: Name
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_unbounded_endpoints(cls, value: object) -> object:
+        if not isinstance(value, Mapping) or not isinstance(value.get("pdf"), str):
+            return value
+        if value["pdf"].lower() != "truncatednormal":
+            return value
+        result = dict(value)
+        for parameter, endpoint in (("lower", -inf), ("upper", inf)):
+            bound = result.get(parameter)
+            if type(bound) is float and bound == endpoint:
+                result[parameter] = None
+        return result
 
     def validate_references(self, trace: xr.DataTree) -> None:
         """Check registered names without reading or computing their payloads."""

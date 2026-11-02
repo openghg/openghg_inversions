@@ -11,15 +11,79 @@ import xarray as xr
 from jsonschema import Draft202012Validator
 from pydantic import TypeAdapter, ValidationError
 from pydantic_core import PydanticSerializationError
+from pytensor.tensor import get_underlying_scalar_constant_value
 
 from openghg_inversions.models._prior_records import PriorDescription
+from openghg_inversions.models.priors import prior_records, trace_prior_records
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime import _standard_stages as stages
 from openghg_inversions.rhime._model_records import ModelDescription
 from openghg_inversions.rhime.params import RhimeConfig
 from openghg_inversions.rhime.specs import RhimeModelSpec
+from openghg_inversions.rhime.outputs import annotate_sample_trace, make_model_output
+from openghg_inversions.rhime.standard import build_standard_model, materialize_standard_inputs
 from tests.helpers import make_trace
 from tests.test_staged_workflow import _params, _prepared
+
+
+@pytest.mark.parametrize("lower,upper", [(0., np.inf), (-np.inf, 2.), (-np.inf, np.inf)])
+def test_unbounded_prior_builds_and_returns_in_memory_output(lower, upper):
+    prior = {"pdf": "truncatednormal", "mu": 1., "sigma": .2, "lower": lower, "upper": upper}
+    config = RhimeConfig.from_params(_params(
+        x_prior=prior, output_format="none", save_inversion_output=False,
+    ), multisector=False)
+    prepared = _prepared()
+    inputs, priors = materialize_standard_inputs(prepared, config.model)
+    built = build_standard_model(inputs, config.model, priors=priors)
+    posterior = make_trace(posterior=xr.Dataset(
+        {"x": (("chain", "draw", "region"), [[[1.], [1.]]])},
+        coords={"chain": [0], "draw": [0, 1], "region": [0]},
+    ))
+    annotate_sample_trace(built, posterior)
+    output = make_model_output(
+        prepared=prepared, model_spec=config.model, posterior=posterior,
+        output_contract=built.output_contract, start_date=config.data.start_date,
+        end_date=config.data.end_date, split_by_sectors=False,
+    )
+    expected = dict(prior, lower=None if lower == -np.inf else lower,
+                    upper=None if upper == np.inf else upper)
+    assert output.trace is posterior
+    assert output.model_metadata["constructed_priors"]["x"] == expected
+    assert output.model_metadata["sectors"][0]["x_prior"] == expected
+    assert prior_records(built.model)["x"] == expected
+    assert json.loads(json.dumps(prior_records(built.model), allow_nan=False))["x"] == expected
+    assert config.model.sectors[0].x_prior == prior
+    # Check the actual graph endpoints, without sampling or changing the distribution arguments.
+    assert get_underlying_scalar_constant_value(built.model["x"].owner.inputs[-2]) == lower
+    assert get_underlying_scalar_constant_value(built.model["x"].owner.inputs[-1]) == upper
+
+
+def test_older_trace_unbounded_endpoints_normalize_without_mutating_the_trace():
+    old = {"x": {"pdf": "truncatednormal", "lower": -np.inf, "upper": np.inf, "mu": 1., "sigma": .2}}
+    trace = make_trace()
+    encoded = json.dumps(old)
+    trace.attrs["rhime_priors"] = encoded
+    assert trace_prior_records(trace) == {"x": dict(old["x"], lower=None, upper=None)}
+    assert trace.attrs["rhime_priors"] == encoded
+
+
+@pytest.mark.parametrize("pdf,parameter,value", [
+    ("truncatednormal", "lower", np.inf),
+    ("truncatednormal", "upper", -np.inf),
+    ("truncatednormal", "lower", np.nan),
+    ("truncatednormal", "upper", np.nan),
+    ("truncatednormal", "mu", np.inf),
+    ("truncatednormal", "sigma", np.inf),
+    ("normal", "upper", np.inf),
+])
+def test_nonfinite_prior_parameters_are_not_normalized_into_valid_descriptions(pdf, parameter, value):
+    prior = {"pdf": pdf, "mu": 1., "sigma": .2, parameter: value}
+    with pytest.raises(ValidationError):
+        PriorDescription.model_validate(prior)
+    trace = make_trace()
+    trace.attrs["rhime_priors"] = json.dumps({"x": prior})
+    with pytest.raises(ValueError, match="valid prior descriptions"):
+        trace_prior_records(trace)
 
 
 @pytest.mark.parametrize("priors", [

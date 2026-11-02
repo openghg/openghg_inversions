@@ -128,7 +128,8 @@ def parse_prior(
     Raises:
         ValueError: If ``prior_params["pdf"]`` does not name a supported PyMC
             continuous distribution, or parameter labels, dimensions or fixed
-            array values are incompatible.
+            array values are incompatible, or the constructed description
+            contains unsupported or nonfinite parameters.
 
     This helper must be called inside an active ``pm.Model`` context because it
     registers the created variable with the current model.
@@ -138,6 +139,8 @@ def parse_prior(
     and broadcast by dimension; positional parameters use trailing model axes.
     Arrays become named model data, while resolved numerical scalars stay inline
     in construction metadata. Symbolic parameters retain their dependencies.
+    Unbounded TruncatedNormal endpoints are recorded as null without changing
+    their executable distribution arguments.
     ``registered_model`` supplies scientific-coordinate restoration; ordinary
     ``pm.Model`` contexts retain their existing numerical construction support.
     RHIME-resolved defaults are captured; implicit PyMC defaults remain implicit.
@@ -233,6 +236,8 @@ def parse_prior(
             elif dims and set(value.dims).issubset(dims):
                 tensor = tensor.dimshuffle(*(value.dims.index(dim) if dim in value.dims else "x" for dim in dims))
             params[key] = tensor
+
+    record = PriorDescription.model_validate(record).model_dump(mode="json")
 
     if pdf == "lognormal":
         _update_log_normal_prior(params)

@@ -129,6 +129,14 @@ dependencies remain descriptions. Saved output readers validate them and bind
 the preparation facts directly to ``InversionOutput`` without reconstructing
 executable model settings, a model graph or a live sampler.
 
+Prior descriptions retain finite scalars, nulls and declared references.
+For a TruncatedNormal, an explicitly unbounded ``lower=-inf`` or ``upper=inf``
+is recorded as a null bound, matching PyMC's unbounded-endpoint meaning.
+The executable distribution arguments stay unchanged. Readers normalize the
+same endpoints in older trace descriptions without mutating the trace.
+NaN, reversed infinite bounds and nonfinite values in other parameters remain
+invalid descriptions.
+
 Native sources and sector identities stay distinct. Multisector descriptions
 retain their explicit source routing, while the posterior retains one labelled
 flux state. Array loaders, coordinate registration and product reconstruction
