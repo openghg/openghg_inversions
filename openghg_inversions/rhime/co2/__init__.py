@@ -4,6 +4,9 @@ The package exposes CO2-only and separate linked CO2/O2
 recipes while reusing canonical RHIME inputs through explicit composition.
 """
 
+from .shared_baseline_model import (
+    build_shared_co2_model, build_shared_co2_cached_sigma_model, annotate_shared_baseline_trace,
+)
 from .co2_model import build_co2_model
 from .co2_affine_output import (
     BoundCo2AffineFluxMap,
@@ -54,6 +57,9 @@ __all__ = [
     "Co2O2Output",
     "Co2O2OutputOptions",
     "Co2PreparedInputs",
+    "build_shared_co2_model",
+    "build_shared_co2_cached_sigma_model",
+    "annotate_shared_baseline_trace",
     "BoundCo2AffineFluxMap",
     "Co2CachedSigmaModel",
     "Co2Output",
