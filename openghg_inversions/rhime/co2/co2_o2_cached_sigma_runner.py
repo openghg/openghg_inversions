@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 import xarray as xr
 
+from openghg_inversions.biosphere_prior import BiospherePrior
 from openghg_inversions.postprocessing.contracts import OutputContract
 
 from openghg_inversions.inversion_inputs import DatetimeLike
@@ -35,6 +36,7 @@ from .co2_o2_runner import (
 
 def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     *,
+    biosphere_prior: BiospherePrior | None = None,
     prepared_inputs: Co2O2PreparedInputs,
     independent_error_sd: xr.DataArray | None = None,
     tau_hours: float | Mapping[str, float],
@@ -77,6 +79,8 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     :ref:`centered boundary contract <surface-centered-boundary-contract>`.
 
     Args:
+        biosphere_prior: Optional explicit calibration against the existing retained prior;
+            omission preserves existing behavior.
         prepared_inputs: Linked handoff containing joint labelled observations,
             native-channel sensitivities, affine contribution, retained prior,
             joint aggregation covariance, ratio provenance, and optional
@@ -251,6 +255,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         o2_sensitivity=o2,
         aggregation_error=prepared.aggregation_error,
         retained_prior=prepared.retained_prior,
+        biosphere_prior=biosphere_prior,
         independent_error_sd=error,
         tau_hours=tau_hours,
         site_amplitude_prior=site_amplitude_prior,
@@ -277,6 +282,8 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     metadata = _co2_o2_metadata(prepared, observations=observations)
     if boundary_correction:
         metadata.update(boundary_representation="centered-v1", independent_boundary_channels=list(boundary_correction))
+    if biosphere_prior is not None:
+        metadata["prior"] = biosphere_prior.data.attrs["family"]
     metadata.update(
         recipe="co2_o2_cached_sigma_fixed_ou",
         likelihood="joint Gaussian with fixed OU blocks by (species, site)",

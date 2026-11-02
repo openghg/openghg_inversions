@@ -12,6 +12,7 @@ Using OpenGHG Inversions
    standard_model_family
    nested_domain_model_family
    co2_model_family
+   biosphere_prior
    surface_preparation
    centered_boundary_conditions
    boundary_pattern_priors

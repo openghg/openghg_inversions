@@ -17,6 +17,8 @@ import xarray as xr
 from dask.array import Array
 from dask.base import unpack_collections
 
+from openghg_inversions.biosphere_prior import BiospherePrior
+from openghg_inversions.models.biosphere import annotate_biosphere_prior
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions._serialization_codecs import _json_value
 from openghg_inversions.postprocessing.contracts import OutputContract
@@ -182,7 +184,7 @@ def annotate_co2_trace(
                 variable.attrs["units"] = "1"
             elif concentration_units is not None and name in concentration_variables:
                 variable.attrs["units"] = concentration_units
-    return annotate_boundary_correction_trace(trace)
+    return annotate_biosphere_prior(annotate_boundary_correction_trace(trace), getattr(built.model, "biosphere_prior", None))
 
 
 def _state_activity_from_inputs(model_inputs: xr.Dataset) -> StateActivity | None:
@@ -485,6 +487,7 @@ def materialize_co2_inputs(
 def build_co2_from_materialized(
     model_inputs: xr.Dataset,
     *,
+    biosphere_prior: BiospherePrior | None = None,
     prepared_inputs: Co2PreparedInputs,
     priors: Mapping[str, PriorArgs],
     sigma_alignment: SigmaAlignment | None = None,
@@ -518,6 +521,8 @@ def build_co2_from_materialized(
 
     Args:
         model_inputs: Selected scientific arrays already materialized together.
+        biosphere_prior: Optional explicit calibration against the existing retained prior;
+            omission preserves existing behavior.
         prepared_inputs: Preparation supplying aggregation mode and provenance.
         priors: Materialized prior parameters under their concrete graph names.
         boundary_correction: Independent physical correction Dataset. It owns
@@ -585,6 +590,7 @@ def build_co2_from_materialized(
     model = build_co2_model(
         model_inputs["H"],
         retained_prior=retained_prior,
+        biosphere_prior=biosphere_prior,
         fixed_prior_contribution=model_inputs["fixed_prior_contribution"],
         observations=model_inputs["mf"],
         observation_error=model_inputs["mf_error"],
@@ -674,7 +680,7 @@ def build_co2_from_materialized(
             metadata={
                 "recipe": "co2",
                 "kind": "builtin",
-                "prior": "correlated arithmetic-moment lognormal",
+                "prior": biosphere_prior.data.attrs["family"] if biosphere_prior is not None else "correlated arithmetic-moment lognormal",
                 "no_model_error": no_model_error,
                 "use_bc": use_bc,
                 "boundary_formulation": "independent_correction" if boundary_correction is not None else "additive" if bc_mean_shift_prior is not None else "multiplicative" if use_bc else None,
