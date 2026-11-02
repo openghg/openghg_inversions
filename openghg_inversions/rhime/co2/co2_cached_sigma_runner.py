@@ -8,7 +8,6 @@ and coordinates the compound sampler for site amplitudes and model states.
 from __future__ import annotations
 
 from openghg_inversions.biosphere_prior import BiospherePrior
-from openghg_inversions.boundary_sensitivity import bind_boundary_sensitivity
 from openghg_inversions.inversion_inputs import DatetimeLike
 
 from dataclasses import replace
