@@ -104,10 +104,11 @@ arrays or recalibrate widths on reload or subsets.
 The review does not select production uncertainty defaults, validate a fresh
 native reduction, or establish that concentration fit improves flux recovery.
 The accepted `results-r3` prototype was read as experimental evidence, not as
-proof that the new implementation has completed its four-arm replay. Full
+proof that the new implementation has completed its four-arm replay. The parent validation run has since completed full
 matched sampling, Monte Carlo uncertainty assessment, broader compatibility
-tests and Slurm CI-equivalent checks remain owned by the parent validation run;
-see [the replay record](shared_baseline_replay.md).
+tests and Slurm CI-equivalent checks; see [the replay record](shared_baseline_replay.md)
+for final outcomes and the explicit multiplicative TER comparison exception.
+That evidence supplements this API review without changing its scientific scope.
 
 Reviewed source SHA256 values:
 
