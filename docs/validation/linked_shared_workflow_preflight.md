@@ -171,3 +171,11 @@ Retest evidence and new manifests are in the worktree's
 `inversion_outputs/linked-codec-fix/retest.json` and `cycle-{0,1,2}/`.
 This is a codec check. The selected artifact's zeroed outer sensitivities remain
 a separate scientific-input concern owned by the VG worker and model lead.
+
+The immutable codec-fix commit `4fb0ac9a6045e7870f3adbf09ac3cef18faa2911`
+completed CI-equivalent validation in Slurm job 19886351: 231 tests passed on
+Python 3.12 and 231 on Python 3.13, exit code 0, elapsed 3 minutes 37 seconds,
+batch MaxRSS 3808672 KiB (about 3.6 GiB). Logs are retained at
+`inversion_outputs/linked-codec-fix/slurm-19886351.out`. Together with the exact
+1302-row repeated-roundtrip retest above, this closes the production codec
+validation. It does not resolve the separately owned scientific-input issue.
