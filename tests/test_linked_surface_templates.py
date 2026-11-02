@@ -191,3 +191,91 @@ def test_shared_control_targets_use_frozen_atmospheric_recipe(mode):
                                    rtol=0, atol=1e-10)
         np.testing.assert_allclose(native(injected.observations) - native(zero.observations), delta,
                                    rtol=0, atol=1e-10)
+
+
+@pytest.mark.parametrize("extension", ["nc", "zarr"])
+def test_declared_boundary_policy_survives_saved_product_replay(inputs, tmp_path, monkeypatch, extension):
+    import json
+    import pymc as pm
+    import pytensor
+    from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
+    from openghg_inversions.rhime.co2.co2_o2_configuration import Co2O2ModelConfig
+    from openghg_inversions.rhime.co2.co2_o2_outputs import (
+        Co2O2OutputOptions, calculate_co2_o2_products, make_co2_o2_output, save_co2_o2_products,
+    )
+    from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs
+    from openghg_inversions.rhime.co2.shared_workflow import (
+        annotate_linked_shared_workflow, build_linked_shared_workflow,
+    )
+    from openghg_inversions.serialization import load_trace, save_trace
+
+    channels, _ = inputs
+    declared = {}
+    copied = []
+    original_attrs = [dict(channel.site_data["SYNTH"].attrs) for channel in channels]
+    for name, channel in zip(("co2", "o2"), channels, strict=True):
+        method = "nearest" if name == "o2" else ("linear" if extension == "nc" else "interval")
+        attrs = {"boundary_temporal_policy": method,
+                 "boundary_input_semantics": "interval_mean" if method == "interval" else "point",
+                 "boundary_retrieval_padding": "0 days 06:00:00",
+                 "boundary_temporal_policy_revision": "native-fields-v1"}
+        if method == "interval":
+            attrs["boundary_temporal_bounds"] = "native_time_bounds"
+        else:
+            attrs["boundary_temporal_max_gap"] = "0 days 06:00:00"
+        if method == "nearest":
+            attrs["boundary_temporal_nearest_tie"] = "later"
+        declared[name] = attrs
+        site = channel.site_data["SYNTH"].assign_attrs({**channel.site_data["SYNTH"].attrs, **attrs})
+        copied.append(replace(channel, site_data={"SYNTH": site}))
+    monkeypatch.setattr(_example, "synthetic_surface_inputs", lambda **kwargs: tuple(copied))
+    with pytensor.config.change_flags(floatX="float64"):
+        prepared = _example.prepare_control()
+        config = Co2O2ModelConfig.from_params({
+            "recipe": "co2_o2_shared_baseline", "channels": {
+                name: {"units": "ppm", "independent_error_sd": .05} for name in ("co2", "o2")},
+        })
+        built, _ = build_linked_shared_workflow(prepared, **config.bind(prepared))
+        with built.model:
+            trace = pm.sample_prior_predictive(2, random_seed=12)
+    trace = restore_inferencedata_coords(trace, get_coord_registry(built.model))
+    # Synthetic replay draws test metadata, not posterior scientific acceptance.
+    trace["posterior"] = xr.DataTree(trace.prior.to_dataset())
+    trace = annotate_linked_shared_workflow(trace, built=built, prepared=prepared)
+    expected = prepared.provenance["surface_template_recipe"]
+    for name in ("co2", "o2"):
+        record = expected[name]["sites"]["SYNTH"]
+        assert record["boundary_temporal_provenance"] == declared[name]
+        assert record["selected_surface_inputs"]["sources"].keys() == _example.SOURCE_STATE[name].keys()
+    path = tmp_path / f"prepared.{extension}"
+    prepared.save(path)
+    restored = Co2O2PreparedInputs.load(path)
+    assert restored.provenance == prepared.provenance
+    trace_path = tmp_path / f"trace.{extension}"
+    save_trace(trace, trace_path)
+    reopened = load_trace(trace_path)
+    assert json.loads(reopened.attrs["rhime_model_metadata"])["provenance"] == prepared.provenance
+    monkeypatch.setattr(pm.Model, "__init__", lambda *a, **kw: pytest.fail("replay constructed model"))
+    monkeypatch.setattr(pm, "sample", lambda *a, **kw: pytest.fail("replay sampled"))
+    result = make_co2_o2_output(prepared=restored, trace=reopened, start_date="2020-01-01",
+                               end_date="2020-01-02", domain="SYNTHETIC")
+    output = Co2O2OutputOptions(output_path=tmp_path / "products", save_concentrations=True)
+    calculate_co2_o2_products(result=result, output=output)
+    save_co2_o2_products(result, output=output)
+    for name, product in result.outputs.items():
+        assert json.loads(product.attrs["linked_preparation_provenance"]) == prepared.provenance
+        with xr.open_dataset(result.output_metadata[f"{name}_path"]) as saved:
+            assert json.loads(saved.attrs["linked_preparation_provenance"]) == prepared.provenance
+    legacy_channels = []
+    for channel in channels:
+        site = channel.site_data["SYNTH"].copy(deep=False)
+        site.attrs = {name: value for name, value in site.attrs.items() if name not in {
+            "boundary_temporal_policy", "boundary_temporal_policy_revision",
+            "boundary_temporal_nearest_tie", "boundary_input_semantics",
+            "boundary_temporal_max_gap", "boundary_temporal_bounds", "boundary_retrieval_padding",
+        }}
+        legacy_channels.append(replace(channel, site_data={"SYNTH": site}))
+    legacy = assemble(legacy_channels, inputs[1]).provenance["surface_template_recipe"]
+    for channel, attrs in zip(channels, original_attrs, strict=True):
+        assert channel.site_data["SYNTH"].attrs == attrs
+        assert "boundary_temporal_provenance" not in legacy[channel.acquisition.species]["sites"]["SYNTH"]

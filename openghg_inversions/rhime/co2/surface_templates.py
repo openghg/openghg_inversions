@@ -120,6 +120,13 @@ def _channel_templates(
                          "bc_reference": ds.bc_reference.item(), "bc_reference_units": ds.bc_reference.attrs.get("units"),
                          "selected_surface_inputs": selected,
                          "input_variable_units": {name: array.attrs.get("units") for name, array in ds.data_vars.items()}}
+        temporal = {name: ds.attrs[name] for name in (
+            "boundary_temporal_policy", "boundary_temporal_policy_revision",
+            "boundary_temporal_nearest_tie", "boundary_input_semantics",
+            "boundary_temporal_max_gap", "boundary_temporal_bounds", "boundary_retrieval_padding",
+        ) if name in ds.attrs}
+        if temporal:
+            records[site]["boundary_temporal_provenance"] = temporal
     boundary = xr.concat(boundaries, dim=dim, join="exact").rename({dim: "nmeasure"})
     boundary["bc_reference"] = reference
     boundary.attrs["boundary_representation"] = "centered-v1"
@@ -150,6 +157,8 @@ def prepare_linked_surface_templates(
     Supply dense aggregation covariance on the gathered (species,
     channel_observation) MultiIndex in CO2-then-O2 order; column level names
     have suffix ``_cov``. Both observation_units coordinates must already be ppm.
+    Declared boundary temporal-policy attributes are retained per channel/site
+    beside selected input identities; absent attributes are not inferred.
     The covariance validation boundary may compute covariance and the opposite
     ocean columns; other borrowed numerical payloads retain their lazy graphs.
     """

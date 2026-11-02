@@ -26,7 +26,10 @@ Native observations require measurement errors and centered boundary operands
 O2 may retain different rows and sites. Missing endpoint data remains missing;
 preparation must select usable native rows explicitly. The template adapter
 records the acquisition windows, sites, inlets, selected sources and its model
-assumption. Caller provenance should identify additional overlays and catalog
+assumption. Declared native boundary temporal-policy attributes are retained
+per channel/site beside selected input identities and carried through saved
+preparations, trace metadata and product provenance. Missing attributes are not
+inferred. Caller provenance should identify additional overlays and catalog
 lineage explicitly.
 
 Call ``prepare_linked_shared_inputs`` with the linked preparation, separate
