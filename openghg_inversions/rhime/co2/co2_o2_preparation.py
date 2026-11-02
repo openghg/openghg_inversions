@@ -44,7 +44,7 @@ from openghg_inversions.serialization import (
 
 
 CO2_O2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_o2_prepared_inputs"
-CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION = 3
+CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION = 4
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -99,6 +99,9 @@ class Co2O2PreparedInputs:
         independent_error_sd: Optional positive independent-error standard
             deviations on the joint observation axis, with matching row units.
             The borrowed payload may remain lazy.
+        shared_baseline: Optional co2/o2 mapping of frozen native-channel
+            shared atmospheric baselines, including original and selected
+            priors, selectors, full-support means and resolved calibration.
     """
 
     observations: xr.DataArray
@@ -115,6 +118,7 @@ class Co2O2PreparedInputs:
     boundary_operands: Mapping[str, xr.Dataset] = field(default_factory=dict)
     boundary_correction_sensitivity: Mapping[str, xr.DataArray] = field(default_factory=dict)
     bc_centering_weights: Mapping[str, xr.DataArray] = field(default_factory=dict)
+    shared_baseline: Mapping[str, xr.Dataset] = field(default_factory=dict)
 
     def to_datatree(self) -> xr.DataTree:
         """Build a versioned tree without writing or materializing payloads.
@@ -129,6 +133,9 @@ class Co2O2PreparedInputs:
             ValueError: If dense aggregation covariance is absent, boundary
                 channels or operands are invalid, or metadata cannot be serialized.
         """
+        from .shared_preparation import _validate_shared_baseline
+
+        _validate_shared_baseline(self, materialize=False)
         _validate_boundary_corrections(
             self.boundary_correction_sensitivity, self.bc_centering_weights,
             self.boundary_sensitivity, self.boundary_operands, materialize=False,
@@ -168,6 +175,8 @@ class Co2O2PreparedInputs:
         for channel, correction in self.boundary_correction_sensitivity.items():
             arrays[f"{channel}_boundary_correction"] = {"G_bc": correction}
             arrays[f"{channel}_boundary_weights"] = {"bc_centering_weights": self.bc_centering_weights[channel]}
+        for channel, baseline in self.shared_baseline.items():
+            arrays[f"shared_baseline_{channel}"] = dict(baseline.data_vars)
         datasets: dict[str, xr.Dataset] = {}
         for name, variables in arrays.items():
             dataset = xr.Dataset(variables)
@@ -178,6 +187,8 @@ class Co2O2PreparedInputs:
                 dataset = encode_cf_multiindexes(dataset, indexes)
             if name.endswith("_boundary_operands"):
                 dataset = dataset.assign_attrs(self.boundary_operands[name.removesuffix("_boundary_operands")].attrs)
+            if name.startswith("shared_baseline_"):
+                dataset = dataset.assign_attrs(self.shared_baseline[name.removeprefix("shared_baseline_")].attrs)
             datasets[name] = dataset.assign_attrs(
                 multiindex_dims_json=json.dumps(indexes),
                 array_names_json=json.dumps({variable: array.name for variable, array in variables.items()}),
@@ -188,7 +199,8 @@ class Co2O2PreparedInputs:
         tree = xr.DataTree.from_dict(datasets)
         tree.attrs = {
             "schema": CO2_O2_PREPARED_INPUTS_SCHEMA,
-            "schema_version": (CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION if self.boundary_correction_sensitivity
+            "schema_version": (CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION if self.shared_baseline else
+                               3 if self.boundary_correction_sensitivity
                                else 2 if self.boundary_operands else 1),
             "provenance_json": json.dumps(dict(self.provenance), sort_keys=True, allow_nan=False),
             "o2_co2_flux_ratio_unavailable_reason": self.o2_co2_flux_ratio_unavailable_reason or "",
@@ -203,13 +215,16 @@ class Co2O2PreparedInputs:
             tree: Tree using the dedicated CO2/O2 prepared-input schema.
                 Version 1 supports absolute boundaries; version 2 additionally
                 supports centered boundary operands; version 3 also retains additive
-                correction responses and explicit centring weights.
+                correction responses and explicit centring weights. Version 4
+                additionally retains frozen shared atmospheric baselines.
 
         Returns:
             Validated scientific inputs. Observations, fixed intercept, dense
             covariance, prior moments, ocean-loading slices, available ratio
             values, and independent error are materialized for validation;
-            sensitivity payloads may otherwise remain lazy.
+            shared artifacts additionally materialize native operators and BC
+            operands together to bind their frozen scientific identities.
+            Other sensitivity payloads may remain lazy.
 
         Raises:
             KeyError: If a required node or scientific variable is absent.
@@ -218,8 +233,13 @@ class Co2O2PreparedInputs:
         if tree.attrs.get("schema") != CO2_O2_PREPARED_INPUTS_SCHEMA:
             raise ValueError(f"Expected Co2O2PreparedInputs schema {CO2_O2_PREPARED_INPUTS_SCHEMA!r}.")
         version = tree.attrs.get("schema_version")
-        if isinstance(version, bool) or not isinstance(version, Integral) or version not in (1, 2, 3):
-            raise ValueError(f"Expected Co2O2PreparedInputs schema_version 1, 2 or 3; got {version!r}.")
+        if isinstance(version, bool) or not isinstance(version, Integral) or version not in (1, 2, 3, 4):
+            raise ValueError(f"Expected Co2O2PreparedInputs schema_version 1, 2, 3 or 4; got {version!r}.")
+        shared_nodes = {name for name in tree.children if name.startswith("shared_baseline_")}
+        if shared_nodes and (version < 4 or shared_nodes != {"shared_baseline_co2", "shared_baseline_o2"}):
+            raise ValueError("Both shared baseline nodes require CO2/O2 prepared schema version 4.")
+        if version == 4 and not shared_nodes:
+            raise ValueError("CO2/O2 prepared schema version 4 requires both shared baseline nodes.")
         if version == 1 and any(name.endswith("_boundary_operands") for name in tree.children):
             raise ValueError("Centered boundary operands require CO2/O2 prepared schema version 2.")
         if version < 3 and any(name.endswith(("_boundary_correction", "_boundary_weights")) for name in tree.children):
@@ -248,6 +268,13 @@ class Co2O2PreparedInputs:
             if set(indexes) != compressed or len(indexes) != len(compressed):
                 raise ValueError(f"Declared MultiIndexes do not match CF coordinates in node {name!r}.")
             datasets[name] = decode_cf_multiindexes(dataset, indexes) if indexes else dataset
+            if name.startswith("shared_baseline_"):
+                decoded = datasets[name]
+                variables = {variable: _stored_array(decoded, variable) for variable in decoded.data_vars}
+                datasets[name] = xr.Dataset(variables, attrs={
+                    key: value for key, value in decoded.attrs.items()
+                    if key not in {"array_names_json", "multiindex_dims_json"}
+                })
         provenance = _decode_json_mapping(tree.attrs.get("provenance_json"), "Serialized CO2/O2 provenance")
         prior_data = datasets["retained_prior"]
         prior = CorrelatedLognormalPrior(
@@ -301,6 +328,10 @@ class Co2O2PreparedInputs:
             bc_centering_weights={
                 channel: _stored_array(datasets[f"{channel}_boundary_weights"], "bc_centering_weights")
                 for channel in ("co2", "o2") if f"{channel}_boundary_weights" in datasets
+            },
+            shared_baseline={
+                channel: datasets[f"shared_baseline_{channel}"]
+                for channel in ("co2", "o2") if f"shared_baseline_{channel}" in datasets
             },
             independent_error_sd=(
                 _stored_array(datasets["independent_error"], "independent_error_sd")
@@ -469,6 +500,8 @@ def _validate_prepared_inputs(prepared: Co2O2PreparedInputs) -> None:
         payloads are computed together for finite real-number checks. Ocean
         slices, available ratios, independent error, and auxiliary units are
         materialized explicitly for their remaining scientific checks.
+        Shared artifacts additionally validate the full frozen/native operator
+        identities at this external loading boundary without refitting means.
     """
     observations = prepared.observations
     _axis(observations, "Joint observations")
@@ -570,6 +603,9 @@ def _validate_prepared_inputs(prepared: Co2O2PreparedInputs) -> None:
         prepared.boundary_sensitivity, prepared.boundary_operands, materialize=True,
     )
     _validate_independent_error(observations, prepared.independent_error_sd, materialize=True)
+    from .shared_preparation import _validate_shared_baseline
+
+    _validate_shared_baseline(prepared, materialize=True)
 
 
 def _ratio_record(

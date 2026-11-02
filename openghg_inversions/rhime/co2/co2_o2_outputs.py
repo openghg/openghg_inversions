@@ -131,7 +131,14 @@ def validate_co2_o2_trace(trace: xr.DataTree, prepared: Co2O2PreparedInputs | No
     """
     from openghg_inversions.postprocessing.linked_paris_outputs import _role
 
-    if trace.attrs.get("rhime_recipe") not in {"co2_o2", "co2_o2_cached_sigma_fixed_ou"}:
+    from .shared_outputs import SHARED_RECIPE, physical_flux_scaling, validate_shared_baseline_trace
+
+    shared = trace.attrs.get("rhime_recipe") == SHARED_RECIPE
+    if prepared is not None and bool(prepared.shared_baseline) != shared:
+        raise ValueError("Linked trace recipe and shared-baseline preparation must match.")
+    if shared:
+        validate_shared_baseline_trace(trace, prepared)
+    if trace.attrs.get("rhime_recipe") not in {"co2_o2", "co2_o2_cached_sigma_fixed_ou", SHARED_RECIPE}:
         raise ValueError("Linked outputs require one joint co2_o2 posterior.")
     roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
     if not isinstance(roles, dict) or any(not isinstance(value, str) or not value for value in roles.values()):
@@ -147,7 +154,8 @@ def validate_co2_o2_trace(trace: xr.DataTree, prepared: Co2O2PreparedInputs | No
         needed = {"flux_scale"} if group == "prior" else required
         needed = needed | ({"boundary_concentration", "offset_concentration"} & roles.keys())
         for role in needed:
-            value = _role(trace, role, group)
+            value = (physical_flux_scaling(trace, group) if shared and role == "flux_scale"
+                     else _role(trace, role, group))
             sample_dims = {f"prior_{dim}" if group == "prior" else dim for dim in ("chain", "draw")}
             if role in {"flux_scale", "modelled_concentration"} and not sample_dims.issubset(value.dims):
                 raise ValueError(f"Linked role {role!r} in {group} requires chain/draw dimensions.")
@@ -187,6 +195,11 @@ def validate_co2_o2_product_request(
     if output.output_format == "none":
         return {}
     validate_co2_o2_units(prepared)
+    if prepared.shared_baseline and output.output_format == "paris":
+        raise ValueError(
+            "Linked shared-baseline PARIS products require a reviewed mapping for removed-mean atmospheric "
+            "corrections; use output_format='basic'."
+        )
     bases = {}
     for species, value in (output.native_flux_bases or {}).items():
         basis = BasisFunctions.load(value) if isinstance(value, str | Path) else value
@@ -233,7 +246,11 @@ def calculate_co2_o2_products(*, result: Co2O2Output, output: Co2O2OutputOptions
         result.outputs.clear()
         return
     bases = validate_co2_o2_product_request(output, result.prepared)
-    components = reconstruct_co2_o2_concentrations(result.idata, result.prepared, require_prior=False)
+    from .shared_outputs import SHARED_RECIPE, physical_flux_scaling, reconstruct_shared_concentrations
+
+    shared = result.idata.attrs.get("rhime_recipe") == SHARED_RECIPE
+    components = (reconstruct_shared_concentrations(result.idata, result.prepared) if shared else
+                  reconstruct_co2_o2_concentrations(result.idata, result.prepared, require_prior=False))
     metadata = {
         "rhime_variable_roles": result.idata.attrs["rhime_variable_roles"],
         "rhime_model_metadata": result.idata.attrs.get("rhime_model_metadata", "{}"),
@@ -244,6 +261,12 @@ def calculate_co2_o2_products(*, result: Co2O2Output, output: Co2O2OutputOptions
     products = {}
     for species, values in components.items():
         rows = result.prepared.observations.species.values == species
+        # Shared components already retain the reviewed native-channel accounting.
+        if shared:
+            values.attrs.update(metadata)
+            products[f"{species}_concentration_components"] = values
+            products[f"{species}_basic"] = _summaries(values)
+            continue
         for when in ("prior", "posterior"):
             if when not in result.idata.children:
                 continue
@@ -272,7 +295,8 @@ def calculate_co2_o2_products(*, result: Co2O2Output, output: Co2O2OutputOptions
         values.attrs.update(metadata)
         products[f"{species}_concentration_components"] = values
         products[f"{species}_basic"] = _summaries(values)
-    states = xr.Dataset({f"flux_scale_{group}": _role(result.idata, "flux_scale", group)
+    states = xr.Dataset({f"flux_scale_{group}": (physical_flux_scaling(result.idata, group) if shared
+                                                else _role(result.idata, "flux_scale", group))
                          for group in ("prior", "posterior") if group in result.idata.children})
     states.attrs.update(metadata, units="dimensionless flux scale")
     products["state_scaling"] = states

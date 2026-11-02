@@ -18,6 +18,7 @@ Using OpenGHG Inversions
    boundary_pattern_priors
    shared_baseline
    linked_shared_baseline
+   linked_shared_workflow
    configured_co2_priors
    prepared_format_support
    running_and_validating

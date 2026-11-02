@@ -38,7 +38,8 @@ def load_co2_o2_params(
 ) -> dict[str, Any]:
     """Load one TOML, JSON or Python request without resolving phase choices.
 
-    Headers select format version 1 and recipe ``co2_o2`` when omitted. There
+    Headers select format version 1 and recipe ``co2_o2`` when omitted.
+    Explicit ``co2_o2_shared_baseline`` selects a frozen shared preparation. There
     is no inference-implementation selector. Overrides update owned sections,
     including individual channel choices, before their phase resolves them.
     Paths belong to their consuming phase and use the invocation directory.
@@ -74,8 +75,8 @@ def load_co2_o2_params(
             options[name] = value
     if type(options.get("format_version", 1)) is not int or options.get("format_version", 1) != 1:
         raise ValueError("config.format_version must be the integer 1.")
-    if options.get("recipe", "co2_o2") != "co2_o2":
-        raise ValueError("config.recipe must be 'co2_o2' for linked execution.")
+    if options.get("recipe", "co2_o2") not in {"co2_o2", "co2_o2_shared_baseline"}:
+        raise ValueError("config.recipe must be 'co2_o2' or 'co2_o2_shared_baseline'.")
     if "variant" in options:
         raise ValueError("Linked CO2/O2 configuration has no variant selector; select the scientific likelihood.")
     return options
@@ -100,7 +101,7 @@ def _validate_co2_o2_option_names(*requests: Mapping[str, object]) -> None:
         **{f"channels.{channel}" + (f".{path}" if path else ""): names
            for channel in ("co2", "o2") for path, names in channel_sections.items()},
         "likelihood": frozenset({"kind", "tau_hours", "fixed_site_amplitudes", "site_amplitude_prior",
-                                 "site_amplitude_prior_scale"}),
+                                 "site_amplitude_prior_scale", "initial_site_amplitudes"}),
         "likelihood.site_amplitude_prior": _PRIOR_OPTION_NAMES,
         "sampling": _SAMPLING_OPTION_NAMES,
         "outputs": frozenset(Co2O2OutputOptions.__dataclass_fields__),
@@ -186,8 +187,9 @@ class Co2O2ModelConfig:
 
     Both channels require identical mole-fraction units. Error overrides must
     be supplied for both channels or omitted for both to use saved errors.
-    Fixed independent error and fixed-amplitude OU are supported; inferred OU
-    and per-meg transformations remain separate work.
+    Fixed independent error and fixed-amplitude OU are supported. The explicit
+    shared-baseline recipe also supports inferred OU amplitudes through the
+    maintained matched cache. Per-meg transformations remain separate work.
     Boundary frequency and anchor choices apply to all enabled raw boundary
     channels; choices supplied under both channels must agree.
     """
@@ -210,6 +212,9 @@ class Co2O2ModelConfig:
     bc_anchor_time: str | None = None
     boundary_correction_path: Mapping[str, Path] | None = None
     biosphere_prior_path: Path | None = None
+    recipe: str = "co2_o2"
+    site_amplitude_prior: Mapping[str, Any] | None = None
+    initial_site_amplitudes: float | Mapping[str, float] | None = None
 
     def __post_init__(self) -> None:
         _validate_boundary_periods(self.bc_freq, self.bc_anchor_time)
@@ -222,10 +227,16 @@ class Co2O2ModelConfig:
     def from_params(cls, config: Mapping[str, object]) -> Co2O2ModelConfig:
         """Parse active channel/likelihood choices without touching arrays."""
         options = _table(config, "config")
+        recipe = options.get("recipe", "co2_o2")
+        if recipe not in {"co2_o2", "co2_o2_shared_baseline"}:
+            raise ValueError("Unsupported linked recipe.")
+        shared = recipe == "co2_o2_shared_baseline"
         channels = _table(options.get("channels", {}), "channels")
         units: dict[str, str] = {}
         errors: dict[str, float] = {}
         model: dict[str, Any] = {}
+        if shared and "biosphere" in options:
+            raise ValueError("Shared baseline calibration belongs to the frozen preparation.")
         if "biosphere" in options:
             biosphere = _table(options["biosphere"], "biosphere")
             model["biosphere_prior_path"] = _artifact_path(_take(biosphere, "path", "biosphere"), "biosphere.path")
@@ -237,6 +248,8 @@ class Co2O2ModelConfig:
             if "independent_error_sd" in channel:
                 errors[name] = _number(channel.pop("independent_error_sd"), f"channels.{name}.independent_error_sd", positive=True)
             selected = {key: channel.pop(key) for key in ("boundary", "offset") if key in channel}
+            if shared and selected:
+                raise ValueError("Shared baseline boundary and offset choices belong to the frozen preparation.")
             if "boundary" in selected:
                 boundary = _table(selected["boundary"], f"channels.{name}.boundary")
                 if "correction_path" in boundary and "activity" in boundary:
@@ -268,9 +281,13 @@ class Co2O2ModelConfig:
             raise ValueError("Configure independent_error_sd for both linked channels or omit it for both.")
         if units["co2"] != units["o2"]:
             raise ValueError("The linked configuration currently requires identical CO2 and O2 channel units.")
-        likelihood = _likelihood(options)
-        kwargs = {} if likelihood is None else _co2_likelihood(likelihood)["likelihood_kwargs"]
-        return cls(units["co2"], units["o2"], _frozen(errors), **_frozen(model), **kwargs)
+        likelihood = (_table(options.get("likelihood", {}), "likelihood") if shared else _likelihood(options))
+        if shared and likelihood.get("kind", "fixed_independent") == "fixed_independent":
+            likelihood.pop("kind", None)
+            _reject_unknown(likelihood, "likelihood")
+            likelihood = None
+        kwargs = {} if likelihood is None else _co2_likelihood(likelihood, matched_ou=shared)["likelihood_kwargs"]
+        return cls(units["co2"], units["o2"], _frozen(errors), recipe=recipe, **_frozen(model), **kwargs)
 
     def bind(self, prepared: Co2O2PreparedInputs) -> dict[str, Any]:
         """Bind channel errors and check units at the scientific array boundary.
@@ -279,6 +296,9 @@ class Co2O2ModelConfig:
         expand over labelled observations; agreement with saved errors is checked
         by model construction at its materialization boundary.
         """
+        shared = bool(getattr(prepared, "shared_baseline", {}))
+        if shared != (self.recipe == "co2_o2_shared_baseline"):
+            raise ValueError("Configured linked recipe does not match the frozen preparation.")
         unit = validate_co2_o2_units(prepared)
         if unit != self.co2_units or unit != self.o2_units:
             raise ValueError("Configured channels.co2/o2.units do not match prepared observation_units.")
@@ -295,7 +315,7 @@ class Co2O2ModelConfig:
             if independent is None:
                 raise ValueError("Omitted channel independent_error_sd requires errors in the prepared artifact.")
         result = {item.name: getattr(self, item.name) for item in fields(self)
-                  if item.name not in {"co2_units", "o2_units", "independent_error_sd", "boundary_correction_path", "biosphere_prior_path"}
+                  if item.name not in {"co2_units", "o2_units", "independent_error_sd", "boundary_correction_path", "biosphere_prior_path", "recipe"}
                   and getattr(self, item.name) is not None}
         from .prior_configuration import load_boundary_correction, load_biosphere_prior
 
@@ -325,7 +345,11 @@ def resolve_co2_o2_sampler(config: Mapping[str, object], *, model: Co2O2ModelCon
     fixed_ou = model.tau_hours is not None
     sampling = _table(options.get("sampling", {}), "sampling")
     sampling.setdefault("nuts_sampler", "pymc" if fixed_ou else "numpyro")
-    sampling.setdefault("target_accept", 0.95)
+    if model.recipe == "co2_o2_shared_baseline" and model.site_amplitude_prior is not None:
+        if "target_accept" in sampling:
+            raise ValueError("Shared inferred OU uses the matched sampler tuning; omit sampling.target_accept.")
+    else:
+        sampling.setdefault("target_accept", 0.95)
     sampler = _sampling(sampling)
     if fixed_ou and sampler.nuts_sampler != "pymc":
         raise ValueError("Linked fixed-OU requires sampling.nuts_sampler='pymc'.")

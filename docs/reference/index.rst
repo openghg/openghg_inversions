@@ -313,6 +313,9 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.boundary_corrections.prepare_boundary_correction
    openghg_inversions.models.shared_baseline.prepare_shared_baseline
    openghg_inversions.models.linked_shared_baseline.prepare_linked_shared_baseline
+   openghg_inversions.rhime.co2.shared_preparation.prepare_linked_shared_inputs
+   openghg_inversions.rhime.co2.surface_templates.prepare_linked_surface_templates
+   openghg_inversions.rhime.co2.shared_workflow.sample_linked_shared_workflow
    openghg_inversions.rhime.co2.linked_shared_baseline_model.build_shared_co2_o2_model
    openghg_inversions.rhime.co2.linked_shared_baseline_model.build_shared_co2_o2_cached_sigma_model
    openghg_inversions.rhime.co2.linked_shared_baseline_model.annotate_linked_shared_baseline_trace

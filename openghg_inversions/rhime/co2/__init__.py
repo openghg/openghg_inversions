@@ -108,3 +108,9 @@ __all__ = [
     "run_rhime_co2_o2_from_prepared_inputs",
     "run_rhime_co2_o2_cached_sigma_from_prepared_inputs",
 ]
+
+from .shared_preparation import prepare_linked_shared_inputs
+from .surface_templates import prepare_linked_surface_templates
+from .shared_workflow import sample_linked_shared_workflow
+
+__all__ += ["prepare_linked_shared_inputs", "prepare_linked_surface_templates", "sample_linked_shared_workflow"]

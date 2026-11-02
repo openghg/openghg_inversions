@@ -11,6 +11,13 @@ explicit source transport and centered stable-BC operands for additive-Gaussian
 recipes and the matched cached fixed-OU samplers. Centered construction requires
 PyTensor ``floatX=float64``. Coherent-reduction construction remains explicit.
 
+The explicit :doc:`linked shared-baseline workflow <linked_shared_workflow>`
+adds a frozen atmospheric delta per tracer and centered outer adjustments to
+linked saved phases. It supports basic native-channel products, with physical
+source contributions and removed-mean accounting kept separately. Its surface
+template adapter consumes two maintained ``MergedData`` acquisitions and an
+explicit state mapping and joint covariance; coherent reduction remains explicit.
+
 Current support
 ---------------
 

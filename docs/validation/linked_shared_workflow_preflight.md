@@ -61,3 +61,34 @@ signature, additive O2 effective ratio or linked model mathematics was guessed.
 The planned real-input synthetic-target replay is not launched. Native timing
 choices will consume reviewed #1002; archived delivery timing is not silently
 reinterpreted. No shared production data, campaign output or issue state changed.
+
+## Reviewed model integration follow-up
+
+The prerequisite-only description above records the initial checkpoint at
+`2b6be2be`. The integration now consumes reviewed model API #1007 at
+`fe068ad135876db993bc86fdc6322cac2621cfe4` and maintained compact recording #992
+at `44c1ff7601a20050d469cca643d60cc07e4effba` as local branch dependencies.
+It adds explicit `co2_o2_shared_baseline` recipe selection, frozen v4 numerical
+preparation, ordinary/matched cached inference, graph-free native basic products,
+and the direct-template surface acquisition adapter. Existing recipe defaults
+remain unchanged. [Usage](../usage/linked_shared_workflow.rst) describes the
+explicit direct-template assumption and the different physical/atmospheric
+accounting. Shared PARIS products remain explicitly unsupported.
+
+Final bounded validation passed 94 preparation/codec tests and 85 shared
+workflow, shared products, surface templates, legacy linked handoff and
+configuration-owner tests. Earlier acquisition/preparation coverage passed
+64 tests. A synthetic lazy surface → frozen preparation → NetCDF checkpoint →
+load → configured prior-predictive run produced two finite joint draws.
+
+Independent review found and prompted fixes for codec-envelope identity,
+matched-sampler default tuning, repeated lazy transport materialization,
+configuration/preparation recipe mismatch, and frozen/native operator identity.
+The final regression suite and zero/injected sampling controls are submitted to
+Slurm from an immutable source snapshot. Their terminal evidence will be added
+when available. No real-data campaign acceptance is claimed by this record.
+
+The earlier configuration validation job 19885280 failed five tests due to
+obsolete test doubles/imports. Its corrective job 19885522 passed all 45 affected
+tests on Python 3.12 and 3.13. The prerequisite job 19885936 is tracked separately;
+it precedes the complete integration and is not a substitute for final checks.
