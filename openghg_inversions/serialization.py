@@ -357,6 +357,7 @@ def save_datatree(
     elif output_format == "zarr":
         if output_path.suffix.lower() != ".zarr":
             output_path = output_path.with_suffix(".zarr")
+
         def storage_chunks(dataset: xr.Dataset) -> xr.Dataset:
             variables = {}
             for name, variable in dataset.variables.items():
@@ -366,8 +367,10 @@ def save_datatree(
                 stored = variable.copy(deep=False, data=variable.data.rechunk(chunks))
                 if 0 in variable.shape and not isinstance(chunks, (int, np.integer)) and 0 in chunks:
                     # Empty Dask axes have chunk 0; Zarr storage chunks must be positive.
-                    storage_shape = tuple(1 if n == 0 and length == 0 else n
-                                          for n, length in zip(chunks, variable.shape, strict=True))
+                    storage_shape = tuple(
+                        1 if n == 0 and length == 0 else n
+                        for n, length in zip(chunks, variable.shape, strict=True)
+                    )
                     stored.encoding = {**variable.encoding, "chunks": storage_shape}
                 variables[name] = stored
             return dataset.assign(variables)

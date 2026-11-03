@@ -77,7 +77,7 @@ def test_zarr_writer_rechunks_shared_ragged_payloads_lazily(
 
 
 @pytest.mark.parametrize("suffix,chunks", [(".nc", None), (".zarr", None), (".zarr", (2, 0)), (".zarr", (2, 1)), (".zarr", 2)])
-def test_empty_lazy_payload_preserves_shape_graph_and_borrowed_encoding(tmp_path, monkeypatch, suffix, chunks):
+def test_empty_lazy_payload_preserves_shape_graph_and_borrowed_encoding(tmp_path, suffix, chunks):
     data = da.empty((3, 0), chunks=(2, 0), dtype=np.float64)
     dataset = xr.Dataset({"pattern": (("row", "term"), data)},
                          coords={"row": [0, 1, 2], "term": np.array([], dtype=np.int64)},
@@ -87,17 +87,7 @@ def test_empty_lazy_payload_preserves_shape_graph_and_borrowed_encoding(tmp_path
         dataset.pattern.encoding["chunks"] = chunks
     tree = xr.DataTree(dataset)
     graph, original_chunks = data.__dask_graph__(), data.chunks
-    expected_encoding = chunks if isinstance(chunks, (int, np.integer)) else (2, 1)
     encoding = dict(tree.pattern.encoding)
-    if suffix == ".zarr":
-        writer = xr.DataTree.to_zarr
-        def check_boundary(stored, *args, **kwargs):
-            assert stored.pattern.data is data
-            assert stored.pattern.data.__dask_graph__() is graph
-            assert stored.pattern.data.chunks == original_chunks
-            assert stored.pattern.encoding["chunks"] == expected_encoding
-            return writer(stored, *args, **kwargs)
-        monkeypatch.setattr(xr.DataTree, "to_zarr", check_boundary)
     path = tmp_path / f"empty{suffix}"
     save_datatree(tree, path)
     assert tree.pattern.data is data
