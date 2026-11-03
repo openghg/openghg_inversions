@@ -351,6 +351,53 @@ def test_one_chain_diagnostics_explicitly_report_between_chain_limit(
     assert "Between-chain convergence is not assessable" in result["message"]
 
 
+@pytest.mark.parametrize("metric_variables", [False, True])
+def test_diagnostics_label_multidimensional_extremes_and_nonfinite_entries(metric_variables: bool) -> None:
+    """Both summary layouts retain coordinate labels for worst and unavailable values."""
+    trace = make_trace(
+        posterior=xr.Dataset({"x": (("chain", "draw"), np.ones((2, 4)))}),
+        sample_stats=xr.Dataset({"diverging": (("chain", "draw"), np.zeros((2, 4), dtype=bool))}),
+    )
+    summary = xr.Dataset(
+        {
+            "x": (
+                ("metric", "region", "season"),
+                [
+                    [[1.0, np.nan], [1.02, np.inf]],
+                    [[800.0, 500.0], [300.0, np.nan]],
+                    [[700.0, 200.0], [600.0, 500.0]],
+                ],
+            )
+        },
+        coords={
+            "metric": ["r_hat", "ess_bulk", "ess_tail"],
+            "region": ["north", "south"],
+            "season": ["winter", "summer"],
+        },
+    )
+    if metric_variables:
+        summary = summary["x"].to_dataset(dim="metric")
+
+    returned_summary, result = posterior_convergence_check(trace, summary=summary)
+
+    assert returned_summary is summary
+    assert result["status"] == "fail"
+    measured = result["measured_values"]
+    for key, metric, value, label in (
+        ("max_rhat", "r_hat", 1.02, "region=south,season=winter"),
+        ("min_bulk_ess", "ess_bulk", 300.0, "region=south,season=winter"),
+        ("min_tail_ess", "ess_tail", 200.0, "region=north,season=summer"),
+    ):
+        variable = metric if metric_variables else "x"
+        assert measured[key] == value
+        assert measured[f"{key}_variable"] == f"{variable},{label}"
+    variable = "r_hat" if metric_variables else "x"
+    assert measured["unassessable_rhat"] == [
+        f"{variable},region=north,season=summer",
+        f"{variable},region=south,season=summer",
+    ]
+
+
 def test_healthy_diagnostics_pass_with_identified_extremes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
