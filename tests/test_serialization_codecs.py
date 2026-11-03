@@ -76,6 +76,42 @@ def test_zarr_writer_rechunks_shared_ragged_payloads_lazily(
         assert stored.attrs == tree.attrs
 
 
+@pytest.mark.parametrize("suffix,chunks", [(".nc", None), (".zarr", None), (".zarr", (2, 0)), (".zarr", (2, 1)), (".zarr", 2)])
+def test_empty_lazy_payload_preserves_shape_graph_and_borrowed_encoding(tmp_path, monkeypatch, suffix, chunks):
+    data = da.empty((3, 0), chunks=(2, 0), dtype=np.float64)
+    dataset = xr.Dataset({"pattern": (("row", "term"), data)},
+                         coords={"row": [0, 1, 2], "term": np.array([], dtype=np.int64)},
+                         attrs={"meaning": "level-only boundary has no pattern coefficients"})
+    dataset.pattern.attrs["units"] = "ppm"
+    if chunks is not None:
+        dataset.pattern.encoding["chunks"] = chunks
+    tree = xr.DataTree(dataset)
+    graph, original_chunks = data.__dask_graph__(), data.chunks
+    expected_encoding = chunks if isinstance(chunks, (int, np.integer)) else (2, 1)
+    encoding = dict(tree.pattern.encoding)
+    if suffix == ".zarr":
+        writer = xr.DataTree.to_zarr
+        def check_boundary(stored, *args, **kwargs):
+            assert stored.pattern.data is data
+            assert stored.pattern.data.__dask_graph__() is graph
+            assert stored.pattern.data.chunks == original_chunks
+            assert stored.pattern.encoding["chunks"] == expected_encoding
+            return writer(stored, *args, **kwargs)
+        monkeypatch.setattr(xr.DataTree, "to_zarr", check_boundary)
+    path = tmp_path / f"empty{suffix}"
+    save_datatree(tree, path)
+    assert tree.pattern.data is data
+    assert data.__dask_graph__() is graph
+    assert data.chunks == original_chunks
+    assert tree.pattern.encoding == encoding
+    with xr.open_datatree(path, engine="zarr" if suffix == ".zarr" else None) as restored:
+        xr.testing.assert_identical(restored.to_dataset().compute(), dataset.compute())
+    if suffix == ".zarr":
+        assert json.loads((path / "pattern" / ".zarray").read_text())["shape"] == [3, 0]
+        expected_chunks = [int(chunks), int(chunks)] if isinstance(chunks, (int, np.integer)) else [2, 1]
+        assert json.loads((path / "pattern" / ".zarray").read_text())["chunks"] == expected_chunks
+
+
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])
 def test_cf_mixed_level_labels_roundtrip_real_file(tmp_path: Path, suffix: str) -> None:
     """Real storage preserves integer/string identity alongside ordinary levels."""
@@ -366,3 +402,39 @@ def test_trace_multiindex_coordinate_attributes_survive_storage(tmp_path: Path, 
     restored = load_trace(path).posterior.to_dataset()
     xr.testing.assert_identical(restored, original)
     xr.testing.assert_identical(original, before)
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+@pytest.mark.parametrize("empty_domains", [False, True])
+def test_cf_empty_gather_repeated_file_roundtrip(tmp_path, suffix, empty_domains):
+    levels = [pd.Index([], dtype=str), pd.Index([], dtype=int)] if empty_domains else [
+        pd.Index(["gpp", "ocean"]), pd.Index([0, 1]),
+    ]
+    index = pd.MultiIndex(levels=levels, codes=[[], []], names=["source", "region"])
+    original = xr.Dataset({"h": (("row", "outer"), np.empty((2, 0)))},
+                          coords=xr.Coordinates.from_pandas_multiindex(index, "outer"))
+    original.outer.attrs["long_name"] = "selected outer state"
+    original.source.attrs["long_name"] = "physical source"
+    original.region.attrs["long_name"] = "native region"
+    actual = original
+    for generation in range(3):
+        encoded = encode_cf_multiindexes(actual, "outer")
+        path = tmp_path / f"empty-{generation}{suffix}"
+        if suffix == ".nc":
+            encoded.to_netcdf(path)
+            actual = xr.load_dataset(path)
+        else:
+            encoded.to_zarr(path, mode="w")
+            actual = xr.load_dataset(path, engine="zarr")
+        actual = decode_cf_multiindexes(actual, "outer")
+        xr.testing.assert_identical(actual, original)
+        for expected_level, level in zip(index.levels, actual.indexes["outer"].levels, strict=True):
+            np.testing.assert_array_equal(level, expected_level)
+        assert actual.indexes["outer"].names == ["source", "region"]
+
+
+def test_cf_nonempty_gather_rejects_empty_level_domain():
+    encoded = xr.Dataset(coords={"state": ("state", [0], {"compress": "source region"}),
+                                 "source": ("source", np.array([], dtype=str)), "region": [0]})
+    with pytest.raises(ValueError, match="CF level coordinate 'source' cannot be empty"):
+        decode_cf_multiindexes(encoded, "state")

@@ -194,7 +194,8 @@ def decode_cf_multiindexes(ds: xr.Dataset, index_names: str | Iterable[str]) -> 
     The requested coordinates and their ``compress`` metadata are validated
     before calling ``cf_xarray``. Names are always explicit: this deliberately
     avoids ``cf_xarray``'s auto-detection path, which can drop unrelated
-    coordinates when no compressed indexes are present.
+    coordinates when no compressed indexes are present. Empty gathered dimensions
+    retain their declared level domains, including unused labels and empty levels.
 
     Args:
         ds: Dataset containing CF compression-by-gathering coordinates.
@@ -249,7 +250,7 @@ def decode_cf_multiindexes(ds: xr.Dataset, index_names: str | Iterable[str]) -> 
                 raise ValueError(
                     f"CF level coordinate {level_name!r} must be one-dimensional on its own dimension."
                 )
-            if ds.sizes[level_name] == 0:
+            if ds.sizes[level_name] == 0 and coordinate.size:
                 raise ValueError(f"CF level coordinate {level_name!r} cannot be empty.")
 
         canonical_compress = " ".join(level_names)
@@ -288,6 +289,19 @@ def decode_cf_multiindexes(ds: xr.Dataset, index_names: str | Iterable[str]) -> 
         if not isinstance(index, pd.MultiIndex):
             raise ValueError(f"Decoded CF coordinate {name!r} is not a pandas MultiIndex.")
         compress = normalised[name].attrs["compress"]
+        if normalised.sizes[name] == 0:
+            # Empty gathers carry no rows from which cf_xarray can recover unused
+            # level labels. Retain their declared domains across repeated saves.
+            levels = compress.split()
+            index = pd.MultiIndex(
+                levels=[normalised[level].to_index() for level in levels],
+                codes=[[] for _ in levels], names=levels,
+            )
+            coordinates = xr.Coordinates.from_pandas_multiindex(index, name)
+            for key in coordinates:
+                coordinates[key].attrs = dict(decoded[key].attrs)
+                coordinates[key].encoding = dict(decoded[key].encoding)
+            decoded = decoded.drop_vars([name, *levels]).assign_coords(coordinates)
         _validate_multiindex(index, dim=name, level_names=compress.split())
 
     missing_coords = {
@@ -343,21 +357,22 @@ def save_datatree(
     elif output_format == "zarr":
         if output_path.suffix.lower() != ".zarr":
             output_path = output_path.with_suffix(".zarr")
-        dt = dt.map_over_datasets(
-            lambda dataset: dataset.assign(
-                {
-                    name: variable.copy(
-                        deep=False,
-                        data=variable.data.rechunk(
-                            variable.encoding.get("chunks")
-                            or tuple(max(axis) for axis in variable.chunks)
-                        ),
-                    )
-                    for name, variable in dataset.variables.items()
-                    if variable.chunks is not None
-                }
-            )
-        )
+        def storage_chunks(dataset: xr.Dataset) -> xr.Dataset:
+            variables = {}
+            for name, variable in dataset.variables.items():
+                if variable.chunks is None:
+                    continue
+                chunks = variable.encoding.get("chunks") or tuple(max(axis) for axis in variable.chunks)
+                stored = variable.copy(deep=False, data=variable.data.rechunk(chunks))
+                if 0 in variable.shape and not isinstance(chunks, (int, np.integer)) and 0 in chunks:
+                    # Empty Dask axes have chunk 0; Zarr storage chunks must be positive.
+                    storage_shape = tuple(1 if n == 0 and length == 0 else n
+                                          for n, length in zip(chunks, variable.shape, strict=True))
+                    stored.encoding = {**variable.encoding, "chunks": storage_shape}
+                variables[name] = stored
+            return dataset.assign(variables)
+
+        dt = dt.map_over_datasets(storage_chunks)
         dt.to_zarr(output_path, mode="w", zarr_format=2)
     else:
         raise ValueError(f"Unsupported output_format: {output_format!r}")
