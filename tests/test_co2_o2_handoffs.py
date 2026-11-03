@@ -128,7 +128,7 @@ def test_sample_cannot_overwrite_referenced_preparation(tmp_path, joint_trace):
     source = prep.parent / "prepared-inputs.nc"
     original = source.read_bytes()
     (prep.parent / "posterior.nc").symlink_to(source)
-    with pytest.raises(ValueError, match="overwrite"):
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         handoffs.save_samples(prep, joint_trace, actual_inference={"draws": 4},
                               preparation_generation=handoffs.load_preparation(prep).generation,
                               output_dir=prep.parent)
