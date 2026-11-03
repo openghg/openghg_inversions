@@ -291,8 +291,6 @@ def save_co2_o2_products(
     for path in targets:
         check_checkpoint_targets(path.parent, stage=None, payloads=(path.name,), referenced=protected)
         target = path.resolve()
-        if any(target.is_relative_to(artifact) or artifact.is_relative_to(target) for artifact in protected):
-            raise ValueError(f"Linked output target {target} would overlap another input or output artifact.")
         protected += (target,)
     for name, path in paths.items():
         path.parent.mkdir(parents=True, exist_ok=True)
