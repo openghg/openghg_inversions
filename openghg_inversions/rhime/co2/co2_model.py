@@ -143,7 +143,10 @@ def build_co2_model(
 
     With centered ``boundary_operands``, raw PyMC observed and predictive
     ``y`` values are centered; BC and total concentration deterministics remain
-    absolute.
+    absolute. Custom likelihood components receive the centered observations
+    and mean with unchanged observation-error and aggregation-error operands.
+    A custom density depending on absolute concentration must handle the known
+    fixed translation and any captured physical reference context explicitly.
     After restoring sample coordinates, direct callers must restore absolute
     ``y`` with
     :func:`~openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives`

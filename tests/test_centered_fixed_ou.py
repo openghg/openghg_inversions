@@ -134,3 +134,40 @@ def test_direct_custom_likelihood_receives_centered_observations_and_mean():
     mean, absolute = model.compile_fn(model.replace_rvs_by_values([seen["mean"], model["modelled_concentration"]]),
                                       inputs=model.value_vars, on_unused_input="ignore")(model.initial_point())
     np.testing.assert_allclose(mean + 209300., absolute, rtol=1e-14)
+
+
+@pytest.mark.parametrize("reference", [400., 209300.])
+def test_fixed_amplitude_absolute_and_centered_density_full_gradient(reference):
+    """Fixed amplitudes need an ordinary oracle, with non-unit fixed states."""
+    inputs = _inputs()
+    operands = _operands(inputs.mf, reference)
+    bound = bind_boundary_operands(operands, inputs.mf)
+    options = dict(
+        retained_prior=CorrelatedLognormalPrior(inputs.alpha_prior_mean, inputs.alpha_prior_covariance,
+                                               covariance_dim="region_cov"),
+        fixed_prior_contribution=inputs.fixed_prior_contribution,
+        observations=(inputs.mf + reference).assign_attrs(units="ppm"),
+        observation_error=inputs.mf_error, aggregation_error=resolve_aggregation_error(inputs, "dense"),
+        state_activity=StateActivity(active=[True, False], fixed_value=1.1),
+        bc_prior={"pdf": "normal", "mu": 1., "sigma": .01},
+        bc_state_activity=StateActivity(active=[True, False], fixed_value=1.00003),
+        likelihood_builder=add_fixed_ou_gaussian_likelihood,
+        likelihood_kwargs={"tau_hours": {"AAA": 3., "BBB": 7.}, "fixed_site_amplitudes": {"AAA": .3, "BBB": .4}},
+    )
+    stock = build_co2_model(inputs.H, boundary_sensitivity=bound.H_bc_anomaly + reference * bound.H_bc_mass, **options)
+    centered = build_co2_model(inputs.H, boundary_operands=operands, **options)
+    point = stock.initial_point()
+    assert set(point) == set(centered.initial_point())
+    for name in point:
+        point[name] = np.asarray(point[name]) + (.00003 if "bc" in name else .013)
+    np.testing.assert_allclose(centered.compile_logp()(point), stock.compile_logp()(point), rtol=2e-10, atol=1e-8)
+    gradients, means = [], []
+    for model in (stock, centered):
+        variables = sorted(model.value_vars, key=lambda value: value.name)
+        gradients.append(model.compile_fn(pt.grad(model.logp(), variables), inputs=model.value_vars,
+                                          on_unused_input="ignore")(point))
+        means.append(model.compile_fn(model.replace_rvs_by_values([model["modelled_concentration"]]),
+                                      inputs=model.value_vars, on_unused_input="ignore")(point)[0])
+    for actual, expected in zip(gradients[1], gradients[0], strict=True):
+        np.testing.assert_allclose(actual, expected, rtol=2e-10, atol=1e-8)
+    np.testing.assert_allclose(means[1], means[0], rtol=1e-14, atol=1e-10)

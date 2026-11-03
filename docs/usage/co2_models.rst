@@ -1103,8 +1103,11 @@ priors and concentration outputs retain their physical meaning. See the
 :ref:`centered boundary contract <surface-centered-boundary-contract>` for
 period alignment, fixed states, restoration and persistence limits. Direct
 scientific builders also forward centered observations and means to ordinary
-likelihood callables; runner replay accepts the built-in fixed-OU callable by
-identity because custom predictive replay requires its own output contract.
+likelihood callables. A custom density that depends on absolute concentration
+must handle the known fixed translation explicitly, including any captured
+physical reference context. Prepared-input runner replay supports the built-in
+additive-Gaussian and fixed-OU likelihoods; direct custom callers own their
+predictive-restoration and output contract.
 
 :doc:`coherent_reduction` describes the linked retained prior, effective
 operator, affine contribution, and unresolved covariance.
