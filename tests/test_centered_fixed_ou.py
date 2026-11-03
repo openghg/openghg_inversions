@@ -1,6 +1,7 @@
 """Centered fixed-OU likelihoods preserve absolute means, densities and gradients."""
 
 import numpy as np
+import pytensor
 import pytensor.tensor as pt
 import pytest
 import xarray as xr
@@ -13,6 +14,12 @@ from openghg_inversions.rhime.co2 import build_co2_model, build_co2_cached_sigma
 from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands
 from test_co2_cached_sigma import _inputs
 from test_co2_o2_fixed_ou import _prepared, _kwargs
+
+
+@pytest.fixture(autouse=True)
+def double_precision():
+    with pytensor.config.change_flags(floatX="float64"):
+        yield
 
 
 def _operands(rows, reference):

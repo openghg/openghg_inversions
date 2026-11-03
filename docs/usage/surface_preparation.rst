@@ -284,11 +284,13 @@ Native observation labels select boundary rows. When observations carry a
 boundary timestamps. Boundary times that also serve as indexed row labels must
 agree with the observation timestamps; conflicting values raise an error.
 
-Centered inference supports the additive-Gaussian recipe and fixed-OU recipes
-with inferred amplitudes using the matched cached sampler. Configure PyTensor
-``floatX=float64`` before model construction; these routes reject an explicit
-float32 choice. Fixed-amplitude OU and custom likelihood routes still reject
-centered inputs. Standard and multisector model builders also reject them;
+Centered inference supports the additive-Gaussian recipe, ordinary fixed-OU
+likelihoods with fixed or inferred amplitudes, and the matched cached sampler
+for inferred amplitudes. Configure PyTensor ``floatX=float64`` before model
+construction; these routes reject an explicit float32 choice. Direct scientific
+builders forward centered inputs to custom likelihood callables; runner replay
+supports the built-in fixed-OU callable and rejects custom callbacks. Standard
+and multisector model builders also reject centered operands;
 their preparation operations can still produce the reusable canonical handoff
 shown above.
 
