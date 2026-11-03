@@ -381,8 +381,8 @@ def materialize_co2_inputs(
         )
     prepared = prepared_inputs
     if use_bc and "H_bc_anomaly" in prepared.inv_inputs:
-        if likelihood_builder is not None:
-            raise ValueError("Centered boundaries do not support custom or fixed-OU likelihoods.")
+        if likelihood_builder is not None and likelihood_builder is not add_fixed_ou_gaussian_likelihood:
+            raise ValueError("Centered runner replay supports the built-in fixed-OU likelihood, not custom callbacks.")
         require_centered_precision()
     names = co2_model_input_names(
         prepared,
@@ -462,8 +462,8 @@ def build_co2_from_materialized(
     """
     prepared = prepared_inputs
     if use_bc and "H_bc_anomaly" in prepared.inv_inputs:
-        if likelihood_builder is not None:
-            raise ValueError("Centered boundaries do not support custom or fixed-OU likelihoods.")
+        if likelihood_builder is not None and likelihood_builder is not add_fixed_ou_gaussian_likelihood:
+            raise ValueError("Centered runner replay supports the built-in fixed-OU likelihood, not custom callbacks.")
         require_centered_precision()
     names = co2_model_input_names(
         prepared, use_bc=use_bc,

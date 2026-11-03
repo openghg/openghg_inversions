@@ -321,8 +321,6 @@ def build_rhime_co2_o2(
                 boundaries.pop(channel, None)
                 operands.pop(channel, None)
     if operands:
-        if tau_hours is not None:
-            raise ValueError("Centered boundaries do not support fixed-OU likelihoods.")
         require_centered_precision()
     _validate_channel_baseline_options(boundaries, bc_prior, bc_state_activity, offset_prior, offset_args, operands)
     materialized, boundaries, operands = _materialize_co2_o2_replay_inputs(

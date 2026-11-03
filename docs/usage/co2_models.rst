@@ -1094,12 +1094,20 @@ These coefficients join the flux coefficients only inside the private cached
 likelihood calculation; their public scientific variables and contributions
 remain separate.
 
-Centered boundary operands are supported with the matched cached sampler for
-CO₂ and linked CO₂/O₂, with PyTensor ``floatX=float64``. The likelihood and
+Centered multiplicative boundary operands are supported by the ordinary
+stock-PyMC fixed-OU likelihood and the matched cached sampler for CO₂ and linked
+CO₂/O₂, with PyTensor ``floatX=float64``. The single-channel runner selects the
+ordinary route with ``likelihood_builder=add_fixed_ou_gaussian_likelihood``. The likelihood and
 amplitude update use directly composed centered means, while public BC states,
 priors and concentration outputs retain their physical meaning. See the
 :ref:`centered boundary contract <surface-centered-boundary-contract>` for
-period alignment, fixed states, restoration and persistence limits.
+period alignment, fixed states, restoration and persistence limits. Direct
+scientific builders also forward centered observations and means to ordinary
+likelihood callables. A custom density that depends on absolute concentration
+must handle the known fixed translation explicitly, including any captured
+physical reference context. Prepared-input runner replay supports the built-in
+additive-Gaussian and fixed-OU likelihoods; direct custom callers own their
+predictive-restoration and output contract.
 
 :doc:`coherent_reduction` describes the linked retained prior, effective
 operator, affine contribution, and unresolved covariance.

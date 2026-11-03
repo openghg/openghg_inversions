@@ -138,11 +138,15 @@ def build_co2_model(
 
     Direct custom callers are responsible for supplying scientifically
     coherent arrays from one preparation and for their positional semantics
-    when labels are absent.
+    when labels are absent. Centered observations and model means are forwarded
+    explicitly to the selected likelihood, including custom callables.
 
     With centered ``boundary_operands``, raw PyMC observed and predictive
     ``y`` values are centered; BC and total concentration deterministics remain
-    absolute.
+    absolute. Custom likelihood components receive the centered observations
+    and mean with unchanged observation-error and aggregation-error operands.
+    A custom density depending on absolute concentration must handle the known
+    fixed translation and any captured physical reference context explicitly.
     After restoring sample coordinates, direct callers must restore absolute
     ``y`` with
     :func:`~openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives`
@@ -207,8 +211,6 @@ def build_co2_model(
     if boundary_operands is not None:
         if boundary_sensitivity is not None:
             raise ValueError("Supply boundary_operands or boundary_sensitivity, not both.")
-        if likelihood_builder is not None:
-            raise ValueError("Centered boundaries do not support custom or fixed-OU likelihoods.")
         boundary_operands = bind_boundary_operands(
             boundary_operands, observations, frequency=bc_freq, anchor_time=bc_anchor_time,
         )
