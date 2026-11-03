@@ -1,4 +1,4 @@
-"""Resolved temporal weights retain calendar meaning without changing their prior."""
+"""Boundary state labels carry calendar meaning before numerical execution."""
 
 from dataclasses import replace
 
@@ -10,14 +10,12 @@ import pytensor
 import pytest
 import xarray as xr
 
-from openghg_inversions.models.additive_boundary import prepare_additive_boundary
-from openghg_inversions.models.boundary import bind_boundary_operands
-from openghg_inversions.rhime.co2.co2_preparation import _independent_boundary_weights
+from openghg_inversions.models.boundary import prepare_boundary
 from openghg_inversions.serialization import (
     decode_cf_multiindexes,
     encode_cf_multiindexes,
-    save_datatree,
     open_datatree_loaded,
+    save_datatree,
 )
 
 
@@ -30,26 +28,17 @@ def precision():
 def native(times=("2020-01-01", "2020-01-20", "2020-02-01", "2020-02-20")):
     rows = np.arange(len(times))
     observations = xr.DataArray(
-        np.zeros(len(rows)),
-        dims="nmeasure",
-        coords={
-            "nmeasure": rows,
-            "time": ("nmeasure", pd.to_datetime(times)),
-        },
+        np.zeros(len(rows)), dims="nmeasure",
+        coords={"nmeasure": rows, "time": ("nmeasure", pd.to_datetime(times))},
         attrs={"units": "ppm"},
     )
     mass = xr.DataArray(
-        np.tile([0.7, 0.3], (len(rows), 1)),
-        dims=("nmeasure", "bc_region"),
-        coords={"nmeasure": rows, "bc_region": ["north", "south"]},
-        attrs={"units": "1"},
+        np.tile([0.7, 0.3], (len(rows), 1)), dims=("nmeasure", "bc_region"),
+        coords={"nmeasure": rows, "bc_region": ["north", "south"]}, attrs={"units": "1"},
     )
     operands = xr.Dataset(
-        {
-            "H_bc_anomaly": (mass * 0.2).assign_attrs(units="ppm"),
-            "H_bc_mass": mass,
-            "bc_reference": xr.DataArray(400.0, attrs={"units": "ppm"}),
-        },
+        {"H_bc_anomaly": (mass * 0.2).assign_attrs(units="ppm"),
+         "H_bc_mass": mass, "bc_reference": xr.DataArray(400.0, attrs={"units": "ppm"})},
         attrs={"boundary_representation": "centered-v1"},
     )
     return operands, observations
@@ -58,243 +47,144 @@ def native(times=("2020-01-01", "2020-01-20", "2020-02-01", "2020-02-20")):
 def weights(bound):
     # Full-state weights are deliberately nonseparable across curtain and period.
     return xr.DataArray(
-        [1.0, 4.0, 9.0, 2.0],
-        dims="bc_region",
-        coords=bound.bc_region.coords,
-        attrs={"units": "1"},
-        name="bc_centering_weights",
+        [1.0, 4.0, 9.0, 2.0], dims="bc_region", coords=bound.bc_region.coords,
+        attrs={"units": "1"}, name="bc_centering_weights",
     )
 
 
-def prepare(bound, weight, observations):
-    return prepare_additive_boundary(
-        bound, weight, observations, {"pdf": "uniform", "lower": -0.5, "upper": 0.5}, 0.04, None, None
+def prepare(raw, weight, observations, frequency=None, anchor=None):
+    return prepare_boundary(
+        observations, boundary_operands=raw, bc_frequency=frequency, bc_anchor_time=anchor,
+        bc_mean_shift_prior={"pdf": "uniform", "lower": -0.5, "upper": 0.5},
+        bc_anomaly_scale=0.04, bc_centering_weights=weight,
     )
+
+
+def calendar(raw, observations, frequency):
+    return prepare_boundary(
+        observations, boundary_operands=raw, bc_frequency=frequency,
+        bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+    ).data
 
 
 def never_compute(array):
     @delayed
     def fail():
         raise AssertionError("Mismatch evaluated a borrowed numerical payload")
-
     return array.copy(data=da.from_delayed(fail(), shape=array.shape, dtype=array.dtype))
 
 
-@pytest.mark.parametrize("mismatch", ["frequency", "anchor", "window", "missing_identity"])
+@pytest.mark.parametrize("mismatch", ["frequency", "anchor", "window"])
 def test_calendar_mismatch_rejected_before_mass_or_observation_compute(mismatch):
     raw, obs = native()
     if mismatch == "anchor":
         raw, obs = native(("2020-01-10", "2020-01-20", "2020-02-10", "2020-02-20"))
-    original_frequency = "monthly" if mismatch != "anchor" else "45D"
-    original = bind_boundary_operands(
-        raw, obs, frequency=original_frequency, anchor_time="2020-01-01" if mismatch == "anchor" else None
-    )
-    weight = weights(original)
-    frequency, anchor = original_frequency, None
+    frequency = "45D" if mismatch == "anchor" else "monthly"
+    anchor = "2020-01-01" if mismatch == "anchor" else None
+    original = prepare_boundary(
+        obs, boundary_operands=raw, bc_frequency=frequency, bc_anchor_time=anchor,
+        bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+    ).data
+    weight = never_compute(weights(original))
     if mismatch == "frequency":
         frequency, anchor = "45D", "2020-01-01"
     elif mismatch == "anchor":
         anchor = "2020-01-02"
-    elif mismatch == "window":
-        obs = obs.assign_coords(time=("nmeasure", obs.time.values + np.timedelta64(31, "D")))
     else:
-        weight.bc_region.attrs = {}
-    bound = bind_boundary_operands(raw, obs, frequency=frequency, anchor_time=anchor)
-    assert bound.indexes["bc_region"].equals(original.indexes["bc_region"])
-    if mismatch == "frequency":
-        assert not bound.H_bc_mass.equals(original.H_bc_mass)
-    bound = bound.assign(
-        H_bc_mass=never_compute(bound.H_bc_mass), H_bc_anomaly=never_compute(bound.H_bc_anomaly)
+        obs = obs.assign_coords(time=("nmeasure", obs.time.values + np.timedelta64(31, "D")))
+    raw = raw.assign(
+        H_bc_mass=never_compute(raw.H_bc_mass), H_bc_anomaly=never_compute(raw.H_bc_anomaly)
     )
-    with pytest.raises(ValueError, match="period identity"):
-        prepare(bound, weight, never_compute(obs))
+    with pytest.raises(ValueError, match="align|index"):
+        prepare(raw, weight, never_compute(obs), frequency, anchor)
 
 
 def test_equivalent_duration_and_resolved_origin_preserve_nonseparable_prior():
     raw, obs = native()
-    first = bind_boundary_operands(raw, obs, frequency="45D")
-    second = bind_boundary_operands(raw, obs, frequency="1080h", anchor_time="2020-01-01")
-    result = prepare(second, weights(first), obs)
-    np.testing.assert_allclose(result.weights, np.array([1.0, 4.0, 9.0, 2.0]) / 16)
-    np.testing.assert_allclose(result.weights @ result.basis, 0.0, atol=2e-16)
-    expected_projection = np.eye(4) - np.ones((4, 1)) @ result.weights.values[None, :]
-    np.testing.assert_allclose(
-        result.basis.values @ result.basis.values.T, expected_projection @ expected_projection.T, atol=3e-16
+    # One state has no transport, but its independently supplied weight remains.
+    mass = raw.H_bc_mass.where(~((raw.nmeasure < 3) & (raw.bc_region == "north")), 0.0)
+    raw = raw.assign(H_bc_mass=mass.assign_attrs(units="1"))
+    first = calendar(raw, obs, "45D")
+    selected = weights(first)
+    result = prepare(raw, selected, obs, "1080h", "2020-01-01")
+    xr.testing.assert_identical(result.data.bc_centering_weights, selected)
+    np.testing.assert_array_equal(result.data.bc_period, first.bc_period)
+    assert result.data.sizes["bc_region"] == 4
+    assert float(result.data.H_bc_mass.isel(bc_region=0).sum()) == 0.0
+    assert np.linalg.det(selected.values.reshape(2, 2)) != 0.0
+    assert result.mean_prior == {"pdf": "uniform", "lower": -0.5, "upper": 0.5}
+    assert result.anomaly_scale == 0.04
+
+
+def test_single_temporal_period_requires_period_labels_before_payload_compute():
+    raw, obs = native(("2020-01-01", "2020-01-20"))
+    curtain_weights = xr.DataArray(
+        [1.0, 3.0], dims="bc_curtain", coords={"bc_curtain": ["north", "south"]},
+        attrs={"units": "1"},
     )
+    bound = prepare(raw, curtain_weights, obs)
+    np.testing.assert_array_equal(bound.data.bc_centering_weights, [1.0, 3.0])
+    raw = raw.assign(H_bc_mass=never_compute(raw.H_bc_mass))
+    with pytest.raises(ValueError, match="period|bc_region|dimension"):
+        prepare(raw, never_compute(curtain_weights), never_compute(obs), "monthly")
 
 
 @pytest.mark.parametrize("extension", ["nc", "zarr"])
-def test_independent_storage_axis_restores_calendar_identity_and_frozen_prior(tmp_path, extension):
+def test_first_class_calendar_labels_roundtrip_without_identity_metadata(tmp_path, extension):
     raw, obs = native()
-    bound = bind_boundary_operands(raw, obs, frequency="monthly")
-    expected = prepare(bound, weights(bound), obs)
-    stored = _independent_boundary_weights(weights(bound)).to_dataset(name="bc_centering_weights")
+    bound = calendar(raw, obs, "monthly")
+    expected = prepare(raw, weights(bound), obs, "monthly")
     path = tmp_path / f"weights.{extension}"
-    save_datatree(xr.DataTree(encode_cf_multiindexes(stored, "bc_centering_state")), path)
+    save_datatree(xr.DataTree(encode_cf_multiindexes(weights(bound).to_dataset(), "bc_region")), path)
     loaded = open_datatree_loaded(path).to_dataset()
-    restored = decode_cf_multiindexes(loaded, "bc_centering_state").bc_centering_weights.rename(
-        {
-            "bc_centering_state": "bc_region",
-            "bc_centering_curtain": "bc_curtain",
-            "bc_centering_period": "bc_period",
-        }
-    )
-    assert restored.bc_region.attrs == weights(bound).bc_region.attrs
-    actual = prepare(bound, restored, obs)
-    xr.testing.assert_identical(actual.weights, expected.weights)
-    np.testing.assert_array_equal(actual.basis, expected.basis)
-    # Frozen reuse on a subset does not reselect temporal weights or their mean.
-    subset = prepare(bound.isel(nmeasure=[0, 3]), restored, obs.isel(nmeasure=[0, 3]))
-    xr.testing.assert_identical(subset.weights, expected.weights)
-    np.testing.assert_array_equal(subset.basis, expected.basis)
-
-
-def linked_inputs():
-    from test_co2_o2_fixed_ou import _prepared
-
-    initial = _prepared()
-    observations = initial.observations
-    times = observations.time.values
-    operands, selected_weights = {}, {}
-    for channel in ("co2", "o2"):
-        positions = np.flatnonzero(observations.species.values == channel)
-        raw, obs = native(times[positions])
-        native_sensitivity = getattr(initial, f"{channel}_sensitivity")
-        labels = native_sensitivity[native_sensitivity.dims[0]].values
-        raw = raw.assign_coords(nmeasure=labels)
-        obs = obs.assign_coords(nmeasure=labels)
-        operands[channel] = raw
-        bound = bind_boundary_operands(raw, obs, frequency="2h")
-        selected_weights[channel] = xr.DataArray(
-            np.arange(1, bound.sizes["bc_region"] + 1, dtype=float),
-            dims="bc_region",
-            coords=bound.bc_region.coords,
-            attrs={"units": "1"},
-            name="bc_centering_weights",
-        )
-    prepared = replace(
-        initial, observations=observations, boundary_operands=operands, bc_centering_weights=selected_weights
-    )
-    return prepared
+    restored = decode_cf_multiindexes(loaded, "bc_region").bc_centering_weights
+    assert "boundary_period_identity" not in restored.bc_region.attrs
+    np.testing.assert_array_equal(restored.bc_period, pd.to_datetime(["2020-01-01", "2020-02-01"] * 2))
+    actual = prepare(raw, restored, obs, "monthly")
+    xr.testing.assert_identical(actual.data, expected.data)
+    subset = prepare(raw, restored, obs.isel(nmeasure=[0, 3]), "monthly")
+    xr.testing.assert_identical(subset.data.bc_centering_weights, expected.data.bc_centering_weights)
+    xr.testing.assert_identical(subset.data.H_bc_mass, expected.data.H_bc_mass.isel(nmeasure=[0, 3]))
 
 
 @pytest.mark.parametrize("extension", ["nc", "zarr"])
 def test_linked_prepared_weights_preserve_period_identity(tmp_path, extension):
+    from test_co2_o2_fixed_ou import _prepared
     from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs
 
-    prepared = linked_inputs()
-    selected_weights = prepared.bc_centering_weights
+    initial = _prepared()
+    operands, selected_weights, observations = {}, {}, {}
+    for channel, scale in (("co2", 1.0), ("o2", 10.0)):
+        times = initial.observations.time.values[initial.observations.species.values == channel]
+        raw, obs = native(times)
+        sensitivity = getattr(initial, f"{channel}_sensitivity")
+        labels = sensitivity[sensitivity.dims[0]].values
+        raw = raw.assign_coords(nmeasure=labels).reindex(bc_region=["north", "south", "unused"], fill_value=0)
+        observations[channel] = obs.assign_coords(nmeasure=labels)
+        operands[channel] = raw
+        hours = [0, 4] if channel == "co2" else [0, 2, 4]
+        periods = np.datetime64("2021-01-01T00", "ns") + np.array(hours).astype("timedelta64[h]")
+        values = scale * np.arange(1, 3 * len(periods) + 1, dtype=float).reshape(3, len(periods))
+        selected_weights[channel] = xr.DataArray(
+            values, dims=("bc_curtain", "bc_period"),
+            coords={"bc_curtain": ["north", "south", "unused"], "bc_period": periods},
+            attrs={"units": "1"}, name="bc_centering_weights",
+        )
+        assert np.linalg.matrix_rank(values) == 2
+
+    prepared = replace(initial, boundary_operands=operands, bc_centering_weights=selected_weights)
     path = tmp_path / f"linked.{extension}"
     prepared.save(path)
     loaded = Co2O2PreparedInputs.load(path)
+    assert set(loaded.bc_centering_weights) == {"co2", "o2"}
     for channel in ("co2", "o2"):
-        xr.testing.assert_identical(loaded.bc_centering_weights[channel], selected_weights[channel])
-
-
-def test_metadata_free_whole_window_spatial_weights_remain_valid():
-    raw, obs = native()
-    bound = bind_boundary_operands(raw, obs)
-    spatial = xr.DataArray(
-        [1.0, 3.0], dims="bc_region", coords={"bc_region": ["north", "south"]}, attrs={"units": "1"}
-    )
-    result = prepare(bound, spatial, obs)
-    np.testing.assert_allclose(result.weights, [0.25, 0.75])
-
-
-@pytest.mark.parametrize("cached", [False, True])
-def test_single_direct_builders_reject_period_mismatch_before_payloads(cached):
-    from test_co2_cached_sigma import _inputs, _build
-    from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-    from openghg_inversions.rhime.co2.co2_model import build_co2_model
-    from openghg_inversions.observation_error import resolve_aggregation_error
-
-    raw, obs = native()
-    weight = weights(bind_boundary_operands(raw, obs, frequency="monthly"))
-    raw = raw.assign(H_bc_mass=never_compute(raw.H_bc_mass))
-    inputs = _inputs()
-    inputs["mf"] = never_compute(obs)
-    options = dict(
-        boundary_operands=raw,
-        bc_centering_weights=weight,
-        bc_freq="45D",
-        bc_anchor_time="2020-01-01",
-        bc_mean_shift_prior={"pdf": "normal", "mu": 0.0, "sigma": 0.1},
-        bc_anomaly_scale=0.04,
-    )
-    with pytest.raises(ValueError, match="period identity"):
-        if cached:
-            _build(inputs=inputs, **options)
-        else:
-            build_co2_model(
-                inputs.H,
-                retained_prior=CorrelatedLognormalPrior(
-                    inputs.alpha_prior_mean, inputs.alpha_prior_covariance, covariance_dim="region_cov"
-                ),
-                fixed_prior_contribution=inputs.fixed_prior_contribution,
-                observations=inputs.mf,
-                observation_error=inputs.mf_error,
-                aggregation_error=resolve_aggregation_error(inputs, "dense"),
-                **options,
-            )
-
-
-@pytest.mark.parametrize("cached", [False, True])
-def test_linked_direct_builders_reject_period_mismatch_before_payloads(cached):
-    from test_co2_o2_fixed_ou import _kwargs
-    from openghg_inversions.rhime.co2.co2_o2_model import build_co2_o2_model
-    from openghg_inversions.rhime.co2.co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
-
-    prepared = linked_inputs()
-    kwargs = _kwargs(prepared)
-    kwargs["observations"] = never_compute(kwargs["observations"])
-    operands = {
-        channel: raw.assign(H_bc_mass=never_compute(raw.H_bc_mass))
-        for channel, raw in prepared.boundary_operands.items()
-    }
-    kwargs.update(
-        boundary_operands=operands,
-        bc_centering_weights=prepared.bc_centering_weights,
-        bc_mean_shift_prior={channel: {"pdf": "normal", "mu": 0.0, "sigma": 0.1} for channel in operands},
-        bc_anomaly_scale={channel: 0.04 for channel in operands},
-        bc_freq="3h",
-    )
-    with pytest.raises(ValueError, match="period identity"):
-        if cached:
-            build_co2_o2_cached_sigma_model(
-                **kwargs, tau_hours=4.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.1}
-            )
-        else:
-            build_co2_o2_model(**kwargs)
-
-
-@pytest.mark.parametrize("cached", [False, True])
-def test_single_public_materialization_rejects_weights_before_payloads(cached):
-    from types import SimpleNamespace
-    from test_co2_cached_sigma import _inputs
-    from openghg_inversions.rhime.co2.co2_runner import materialize_co2_inputs
-
-    raw, obs = native()
-    weight = weights(bind_boundary_operands(raw, obs, frequency="monthly"))
-    inputs = _inputs().assign(raw.data_vars).assign_coords(time=obs.time)
-    inputs.attrs.update(raw.attrs)
-    inputs["mf"] = never_compute(obs)
-    inputs["H_bc_mass"] = never_compute(inputs.H_bc_mass)
-    inputs["bc_centering_weights"] = _independent_boundary_weights(weight)
-    prepared = SimpleNamespace(inv_inputs=inputs, rhime_inputs=None)
-    from openghg_inversions.rhime.co2.co2_cached_sigma_runner import build_rhime_co2_cached_sigma
-
-    options = dict(
-        prepared_inputs=prepared,
-        use_bc=True,
-        bc_mean_shift_prior={"pdf": "normal", "mu": 0.0, "sigma": 0.1},
-        bc_anomaly_scale=0.04,
-        bc_freq="45D",
-        bc_anchor_time="2020-01-01",
-    )
-    with pytest.raises(ValueError, match="period identity"):
-        if cached:
-            build_rhime_co2_cached_sigma(
-                **options, tau_hours=4.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.1}
-            )
-        else:
-            materialize_co2_inputs(**options)
+        actual = loaded.bc_centering_weights[channel]
+        expected = selected_weights[channel]
+        xr.testing.assert_identical(actual, expected)
+        assert isinstance(actual.indexes["bc_period"], pd.DatetimeIndex)
+        np.testing.assert_array_equal(actual.sel(bc_curtain="unused"), expected.sel(bc_curtain="unused"))
+        bound = prepare(loaded.boundary_operands[channel], actual, observations[channel], "2h")
+        xr.testing.assert_identical(bound.data.bc_centering_weights.unstack("bc_region"), expected)
+        np.testing.assert_array_equal(
+            bound.data.H_bc_mass.unstack("bc_region").sel(bc_curtain="unused"), 0.0
+        )

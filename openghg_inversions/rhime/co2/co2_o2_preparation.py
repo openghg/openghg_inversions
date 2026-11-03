@@ -44,7 +44,7 @@ from openghg_inversions.serialization import (
 
 
 CO2_O2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_o2_prepared_inputs"
-CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION = 3
+CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION = 4
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -195,9 +195,7 @@ class Co2O2PreparedInputs:
 
         Args:
             tree: Tree using the dedicated CO2/O2 prepared-input schema.
-                Version 1 supports absolute boundaries; version 2 additionally
-                supports centered boundary operands; version 3 also retains additive
-                correction responses and explicit centring weights.
+                Only the current format is accepted; prepare older inputs again.
 
         Returns:
             Validated scientific inputs. Observations, fixed intercept, dense
@@ -212,12 +210,11 @@ class Co2O2PreparedInputs:
         if tree.attrs.get("schema") != CO2_O2_PREPARED_INPUTS_SCHEMA:
             raise ValueError(f"Expected Co2O2PreparedInputs schema {CO2_O2_PREPARED_INPUTS_SCHEMA!r}.")
         version = tree.attrs.get("schema_version")
-        if isinstance(version, bool) or not isinstance(version, Integral) or version not in (1, 2, 3):
-            raise ValueError(f"Expected Co2O2PreparedInputs schema_version 1, 2 or 3; got {version!r}.")
-        if version == 1 and any(name.endswith("_boundary_operands") for name in tree.children):
-            raise ValueError("Centered boundary operands require CO2/O2 prepared schema version 2.")
-        if version < 3 and any(name.endswith("_boundary_weights") for name in tree.children):
-            raise ValueError("Additive boundary corrections require CO2/O2 prepared schema version 3.")
+        if isinstance(version, bool) or not isinstance(version, Integral) or version != CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION:
+            raise ValueError(
+                f"Expected Co2O2PreparedInputs schema_version {CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION}; "
+                f"got {version!r}; prepare again."
+            )
         unexpected_boundaries = {
             name
             for name in tree.children
@@ -919,17 +916,12 @@ def prepare_co2_o2_inputs(
                 )
             boundary, _ = xr.align(boundary, observations, join="exact", copy=False)
             declared_units = boundary.attrs.get("units")
-            if declared_units is not None and declared_units not in (
-                co2_units,
-                f"{co2_units} per dimensionless boundary scale",
-            ):
+            if declared_units is not None and declared_units != co2_units:
                 raise ValueError(f"{channel} boundary sensitivity units must match its channel units.")
             state_dim = boundary.dims[1]
             if state_dim not in boundary.indexes or not boundary.indexes[state_dim].is_unique:
                 raise ValueError(f"{channel} boundary states require unique labels.")
-            boundary_sensitivity[channel] = boundary.assign_attrs(
-                units=f"{co2_units} per dimensionless boundary scale"
-            )
+            boundary_sensitivity[channel] = boundary.assign_attrs(units=co2_units)
 
     co2_dim = _axis(co2_observations, "CO2 observations")
     o2_dim = _axis(o2_observations, "O2 observations")
@@ -1117,8 +1109,12 @@ def _validate_boundary_corrections(
     if materialize:
         arrays = dask_compute(*(to_dense(array) for array in arrays))
     for channel, array in zip(weights, arrays):
-        if array.ndim != 1 or array.dims[0] not in array.indexes or not array.indexes[array.dims[0]].is_unique:
-            raise ValueError(f"{channel} boundary centering weights require one uniquely labelled state dimension.")
+        if array.dims != ("bc_curtain", "bc_period"):
+            raise ValueError(f"{channel} boundary weights require dimensions ('bc_curtain', 'bc_period').")
+        if any(dim not in array.indexes or not array.indexes[dim].is_unique for dim in array.dims):
+            raise ValueError(f"{channel} boundary weights require unique curtain and period labels.")
+        if not isinstance(array.indexes["bc_period"], pd.DatetimeIndex):
+            raise ValueError(f"{channel} boundary weight bc_period labels must be interval start times.")
         if array.attrs.get("units") != "1":
             raise ValueError(f"{channel} bc_centering_weights requires dimensionless units '1'.")
         if not isinstance(array.data, DaskArray):

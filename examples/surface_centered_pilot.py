@@ -138,8 +138,8 @@ def prepare_pilot(site, fluxes):
 def prior_prediction(prepared):
     """Bind saved centered operands and return absolute concentration draws."""
     options = dict(use_bc=True, no_model_error=True, bc_prior={"pdf": "normal", "mu": 1., "sigma": .01})
-    inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, **options)
-    built = build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, **options)
+    inputs, priors, boundary = materialize_co2_inputs(prepared_inputs=prepared, **options)
+    built = build_co2_from_materialized(inputs, boundary=boundary, prepared_inputs=prepared, priors=priors, **options)
     with built.model:
         trace = pm.sample_prior_predictive(draws=2, random_seed=957)
     trace = restore_inferencedata_coords(trace, get_coord_registry(built.model))

@@ -71,6 +71,7 @@ def _components_fixture():
     datasets["/"] = xr.Dataset(
         attrs={
             "rhime_variable_roles": json.dumps(roles),
+            "rhime_boundary_format_version": 1,
             "rhime_model_metadata": json.dumps({"recipe": "co2"}),
         }
     )
@@ -338,7 +339,7 @@ def test_reporting_country_selection_accepts_iterables_and_preserves_none(
     assert list(countries.matrix.country.values) == (names[:2] if select_countries else names)
 
 
-def test_legacy_centered_anomaly_transport_role_is_not_a_sampled_correction():
+def test_centered_anomaly_transport_role_is_not_a_sampled_correction():
     prepared, trace = _components_fixture()
     roles = json.loads(trace.attrs["rhime_variable_roles"])
     roles["boundary_anomaly"] = "H_bc_anomaly"
@@ -347,3 +348,14 @@ def test_legacy_centered_anomaly_transport_role_is_not_a_sampled_correction():
     components = reconstruct_co2_concentrations(trace, prepared)
     assert "boundary_anomaly_posterior" not in components
     np.testing.assert_allclose(components.boundary_posterior, trace.posterior.bc_custom)
+
+
+@pytest.mark.parametrize("version", [None, 0, 2, True])
+def test_boundary_reconstruction_rejects_old_saved_format_with_repreparation_message(version):
+    prepared, trace = _components_fixture()
+    if version is None:
+        del trace.attrs["rhime_boundary_format_version"]
+    else:
+        trace.attrs["rhime_boundary_format_version"] = version
+    with pytest.raises(ValueError, match="prepare again"):
+        reconstruct_co2_concentrations(trace, prepared)

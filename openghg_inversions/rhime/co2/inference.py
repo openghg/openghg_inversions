@@ -1,15 +1,15 @@
 """Concrete CO2 construction and inference selected by the scientific likelihood."""
 
+import json
 from collections.abc import Mapping
 from typing import Any
-import json
 
 import xarray as xr
 
+from openghg_inversions.inference.sampling import describe_recorded_sampler
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
-from openghg_inversions.inference.sampling import describe_recorded_sampler
 
 from .co2_cached_sigma_model import Co2CachedSigmaModel
 from .co2_cached_sigma_runner import (
@@ -49,7 +49,7 @@ def build_co2_inference(
         return co2_cached_sigma_build_result(
             cached, prepared, bc_freq=options.get("bc_freq"), bc_anchor_time=options.get("bc_anchor_time"),
         ), cached
-    inputs, priors = materialize_co2_inputs(
+    inputs, priors, boundary = materialize_co2_inputs(
         prepared_inputs=prepared,
         sigma_alignment=model.get("sigma_alignment"),
         sigma_prior=model.get("sigma_prior"),
@@ -62,11 +62,12 @@ def build_co2_inference(
         bc_mean_shift_prior=model.get("bc_mean_shift_prior"),
         bc_anomaly_scale=model.get("bc_anomaly_scale"),
         bc_state_activity=model.get("bc_state_activity"),
+        bc_freq=model.get("bc_freq"), bc_anchor_time=model.get("bc_anchor_time"),
         offset_prior=model.get("offset_prior"),
         offset_args=model.get("offset_args"),
     )
     return build_co2_from_materialized(
-        inputs, prepared_inputs=prepared, priors=priors,
+        inputs, prepared_inputs=prepared, priors=priors, boundary=boundary,
         sigma_alignment=model.get("sigma_alignment"),
         sigma_prior=model.get("sigma_prior"),
         fixed_model_mismatch=model.get("fixed_model_mismatch"),

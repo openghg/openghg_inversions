@@ -9,8 +9,31 @@ import xarray as xr
 from dask import array as da
 from dask.callbacks import Callback
 
-from openghg_inversions.inversion_inputs import make_inv_inputs
+from openghg_inversions.inversion_inputs import make_freq_indicator, make_inv_inputs, make_period_calendar
 from openghg_inversions.model_error import MinimumError, percentile_error_method
+
+
+@pytest.mark.parametrize(
+    ("frequency", "anchor", "times", "ordinals", "starts"),
+    [
+        ("monthly", None, ["2020-03-20", "2019-12-31", "2020-03-01"], [3, 0, 3],
+         ["2020-03-01", "2019-12-01", "2020-03-01"]),
+        ("10D", "2020-01-01", ["2020-02-25", "2020-02-03", "2020-02-04"], [2, 0, 0],
+         ["2020-02-20", "2020-01-31", "2020-01-31"]),
+        ("10D", "2020-02-10", ["2020-02-25", "2020-02-03", "2020-02-04"], [2, 0, 0],
+         ["2020-02-20", "2020-01-31", "2020-01-31"]),
+        (None, None, ["2020-02-25", "2020-02-03"], [0, 0], ["2020-02-03", "2020-02-03"]),
+    ],
+)
+def test_period_calendar_shares_ordinal_membership_and_actual_interval_starts(
+    frequency, anchor, times, ordinals, starts
+):
+    time = xr.DataArray(pd.to_datetime(times), dims="nmeasure", coords={"nmeasure": np.arange(len(times))})
+    indicator, interval_starts = make_period_calendar(time, frequency, anchor_time=anchor)
+    np.testing.assert_array_equal(indicator, ordinals)
+    np.testing.assert_array_equal(interval_starts, np.array(starts, dtype="datetime64[ns]"))
+    if frequency is not None:
+        xr.testing.assert_identical(indicator, make_freq_indicator(time, frequency, anchor_time=anchor))
 
 
 def test_make_inv_inputs_preserves_requested_order_and_column_factors() -> None:

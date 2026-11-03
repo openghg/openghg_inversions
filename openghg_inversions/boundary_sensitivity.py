@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-import json
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
 from openghg_inversions.array_ops import get_xr_dummies
-from openghg_inversions.inversion_inputs import DatetimeLike, make_freq_indicator, normalise_frequency
+from openghg_inversions.inversion_inputs import DatetimeLike, make_period_calendar, normalise_frequency
 
 __all__ = [
     "BoundaryAlignment",
@@ -27,7 +26,9 @@ class BoundaryAlignment:
 
     Args:
         data: Prepared ``H_bc`` with a ``bc_region`` MultiIndex whose levels
-            are ``bc_curtain`` and ``bc_period``, plus one observation axis.
+            are ``bc_curtain`` and interval-start ``bc_period``, plus one
+            observation axis. Timestamp-free whole-window inputs use the
+            explicit period label ``'whole_window'``.
 
     Raises:
         ValueError: If the resolved boundary-state labels are invalid.
@@ -87,60 +88,26 @@ def _expand_boundary_periods(
     observation_labels: xr.DataArray | None,
 ) -> xr.Dataset:
     """Select scientific rows and apply one period mask to all boundary operands."""
-    resolved_frequency = normalise_frequency(frequency)
+    normalise_frequency(frequency)
     if observation_labels is not None:
         raw = raw.sel({observation_dim: observation_labels.transpose(observation_dim)})
-    if frequency is None:
-        period = xr.zeros_like(raw[observation_dim], dtype=int)
-    else:
-        if "time" not in raw.coords or raw.time.dims != (observation_dim,) or raw.time.dtype.kind != "M":
+    has_time = "time" in raw.coords and raw.time.dims == (observation_dim,) and raw.time.dtype.kind == "M"
+    if not has_time:
+        if frequency is not None:
             raise ValueError("Frequency-based boundary expansion requires a datetime time coordinate along observations.")
+        period = xr.full_like(raw[observation_dim], "whole_window", dtype="U12")
+    else:
         time = raw.time
         if hasattr(time.data, "__dask_graph__"):
             time = time.compute()
             raw = raw.assign_coords(time=(observation_dim, time.data))
-        period = make_freq_indicator(time, frequency, anchor_time=anchor_time)
-    mask = get_xr_dummies(period.rename("bc_period"), return_sparse=False, cat_dim="bc_period")
+        _, period = make_period_calendar(time, frequency, anchor_time=anchor_time)
+    mask = get_xr_dummies(
+        period, categories=np.unique(period.data), return_sparse=False, cat_dim="bc_period"
+    )
     result = (raw.rename(bc_region="bc_curtain") * mask).stack(
         bc_region=("bc_curtain", "bc_period")
     ).transpose("bc_region", observation_dim)
-    # The ordinal index alone cannot distinguish different calendar partitions.
-    # Keep its public labels and carry their resolved meaning on the coordinate.
-    periods = mask.bc_period.values
-    if resolved_frequency is None:
-        identity = {"frequency": "whole_window", "origin": None, "intervals": [[0, None, None]]}
-    else:
-        first_time = pd.Timestamp(time.values.min())
-        if resolved_frequency == "monthly":
-            origin = first_time.to_period("M").start_time
-            intervals = [
-                [
-                    int(period),
-                    (origin + pd.DateOffset(months=int(period))).isoformat(),
-                    (origin + pd.DateOffset(months=int(period) + 1)).isoformat(),
-                ]
-                for period in periods
-            ]
-        else:
-            anchor = pd.Timestamp(anchor_time) if anchor_time is not None else first_time
-            # make_freq_indicator labels the earliest occupied interval zero.
-            origin = anchor + ((first_time - anchor) // resolved_frequency) * resolved_frequency
-            intervals = [
-                [
-                    int(period),
-                    (origin + int(period) * resolved_frequency).isoformat(),
-                    (origin + (int(period) + 1) * resolved_frequency).isoformat(),
-                ]
-                for period in periods
-            ]
-        identity = {
-            "frequency": str(resolved_frequency),
-            "origin": origin.isoformat(),
-            "intervals": intervals,
-        }
-    result.bc_region.attrs["boundary_period_identity"] = json.dumps(
-        identity, sort_keys=True, separators=(",", ":")
-    )
     result.attrs = dict(raw.attrs)
     for name in raw.data_vars:
         result[name].attrs = dict(raw[name].attrs)
@@ -154,37 +121,6 @@ def _expand_boundary_periods(
             ),
         )
     return result
-
-
-def _validate_boundary_weight_periods(bound: xr.Dataset, weights: xr.DataArray) -> None:
-    """Check resolved weight calendar meaning before any numerical execution.
-
-    A metadata-free whole-window field remains unambiguous. Temporal weights
-    must inherit ``bound.bc_region`` when constructed; identical ordinal labels
-    are insufficient evidence that their calendar intervals agree.
-    """
-    expected = bound.bc_region.attrs.get("boundary_period_identity")
-    actual = weights.coords[weights.dims[0]].attrs.get("boundary_period_identity")
-    try:
-        expected = json.loads(expected) if expected is not None else None
-        actual = json.loads(actual) if actual is not None else None
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Boundary centering weights have invalid period identity.") from exc
-    if any(value is not None and not isinstance(value, dict) for value in (actual, expected)):
-        raise ValueError("Boundary centering weights have invalid period identity.")
-    if actual is None:
-        if expected is not None and expected.get("frequency") == "whole_window":
-            return
-        index = bound.indexes["bc_region"]
-        if expected is None and (
-            not isinstance(index, pd.MultiIndex) or len(index.get_level_values("bc_period").unique()) == 1
-        ):
-            return
-        raise ValueError(
-            "Temporal boundary centering weights require resolved period identity from bound.bc_region."
-        )
-    if actual != expected:
-        raise ValueError("Boundary centering weights do not match the resolved boundary period identity.")
 
 
 def _select_native_boundary(
@@ -373,11 +309,11 @@ def align_boundary_operands(
     Returns:
         New dataset with ``H_bc_anomaly`` and ``H_bc_mass`` on ``bc_region``
         and the original observation dimension. The ``bc_region`` MultiIndex
-        contains ``bc_curtain`` and ``bc_period``. Units, representation and
+        contains ``bc_curtain`` and interval-start ``bc_period``. Units, representation and
         scalar ``bc_reference`` are preserved. Outputs are marked expanded and
         must not be passed through raw validation or expansion again. Borrowed
-        payloads stay lazy and unchanged; frequency-based expansion materializes
-        a lazy auxiliary time coordinate once to construct the period mask.
+        payloads stay lazy and unchanged; expansion materializes a lazy auxiliary
+        time coordinate once to construct the period mask and start labels.
 
     Raises:
         ValueError: If raw operands or period settings are invalid, or required

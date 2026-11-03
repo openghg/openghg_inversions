@@ -27,6 +27,7 @@ from openghg_inversions.rhime._stage_artifacts import _validate_filename_compone
 from openghg_inversions.serialization import reset_serialisation_multiindexes, save_datatree, save_trace
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
+from .boundary_output import decode_boundary_facts, reconstruct_boundary
 from .co2_affine_output import BoundCo2AffineFluxMap
 from .co2_preparation import Co2PreparedInputs, _require_equivalent_units
 
@@ -54,42 +55,6 @@ class Co2Output:
     output_metadata: dict = field(default_factory=dict)
 
 
-def _zero_boundary_anomaly_draws(
-    trace: xr.DataTree, group: str, *, channel: str | None = None, observation_space: bool = False,
-) -> xr.DataArray | None:
-    """Reconstruct intentionally omitted zero draws from validated saved facts."""
-    prefix = "" if channel is None else f"{channel}_"
-    roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
-    constants = trace_group(trace, "constant_data") if "constant_data" in trace.children else xr.Dataset()
-    scale_name, weights_name = f"{prefix}bc_anomaly_scale", f"{prefix}bc_centering_weights"
-    if scale_name not in constants and weights_name not in constants:
-        if f"{prefix}boundary_correction" in roles:
-            raise ValueError("Boundary anomalies require saved scale and weights.")
-        return None
-    try:
-        scale, weights = constants[scale_name], constants[weights_name]
-    except KeyError as exc:
-        raise ValueError("Boundary anomalies require saved scale and weights.") from exc
-    if (scale.ndim != 0 or not np.isfinite(scale.item()) or scale.item() < 0
-            or weights.ndim != 1 or weights.size == 0
-            or not np.isfinite(weights.values).all() or not (weights.values > 0).all()):
-        raise ValueError("Saved zero boundary anomaly policy conflicts with its scale or weights.")
-    dataset = trace_group(trace, group)
-    if scale.item() > 0 and weights.size > 1:
-        for active_role in (f"{prefix}boundary_correction_anomaly", f"{prefix}boundary_anomaly_concentration"):
-            if roles.get(active_role) not in dataset:
-                raise ValueError("Active boundary anomalies require saved sampled state and concentration contributions.")
-        return None
-    role = f"{prefix}boundary_mean_shift_concentration" if observation_space else f"{prefix}boundary_correction"
-    if roles.get(role) not in dataset:
-        raise ValueError(f"Zero boundary anomaly reconstruction requires role {role!r}.")
-    correction_role = f"{prefix}boundary_correction"
-    if roles.get(correction_role) not in dataset:
-        raise ValueError("Zero boundary anomalies require saved boundary corrections.")
-    xr.align(dataset[roles[correction_role]], weights, join="exact", copy=False)
-    return xr.zeros_like(dataset[roles[role]])
-
-
 def validate_co2_trace(trace: xr.DataTree, prepared: Co2PreparedInputs | None = None) -> None:
     """Validate saved output roles and labelled reconstruction without computing draws."""
     roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
@@ -101,11 +66,13 @@ def validate_co2_trace(trace: xr.DataTree, prepared: Co2PreparedInputs | None = 
         raise ValueError(f"CO2 trace lacks scientific role(s): {sorted(missing)!r}.")
     if "posterior" not in trace.children:
         raise ValueError("CO2 samples require posterior draws.")
+    boundary_facts = decode_boundary_facts(trace, roles=roles)
     for group in ("prior", "posterior"):
         if group not in trace.children:
             continue
-        dataset = trace[group].to_dataset()
-        _zero_boundary_anomaly_draws(trace, group)
+        dataset = trace_group(trace, group)
+        if "" in boundary_facts:
+            reconstruct_boundary(boundary_facts[""], dataset)
         for role in required | ({"boundary_concentration", "offset_concentration", "model_error"} & roles.keys()):
             if roles[role] not in dataset:
                 raise ValueError(f"CO2 scientific outputs require role {role!r} in {group}.")
@@ -302,22 +269,22 @@ def reconstruct_co2_concentrations(trace: xr.DataTree, prepared: Co2PreparedInpu
     observations = prepared.inv_inputs["mf"]
     fixed = prepared.inv_inputs["fixed_prior_contribution"]
     result = {"observed": observations, "affine": fixed}
+    boundary_facts = decode_boundary_facts(trace, roles=roles)
     component_roles = {
         "modelled": "model_mean",
         "pollution": "pollution_concentration",
-        "boundary": "boundary_concentration",
         "offset": "offset_concentration",
         "flux_scale": "flux_scale",
         "active_flux_scale": "active_flux_scale",
-        "boundary_scale": "boundary_scale",
-        "boundary_mean_shift": "boundary_mean_shift",
-        "boundary_anomaly": "boundary_correction_anomaly",
-        "boundary_correction": "boundary_correction",
-        "boundary_reference": "boundary_reference_concentration",
-        "boundary_mean_contribution": "boundary_mean_shift_concentration",
-        "boundary_anomaly_contribution": "boundary_anomaly_concentration",
         "offset_coefficient": "offset_coefficient",
         "total_error": "model_error",
+    }
+    boundary_quantities = {
+        "concentration": "boundary", "scale": "boundary_scale",
+        "mean_shift": "boundary_mean_shift", "anomaly": "boundary_anomaly",
+        "correction": "boundary_correction", "reference": "boundary_reference",
+        "mean_contribution": "boundary_mean_contribution",
+        "anomaly_contribution": "boundary_anomaly_contribution",
     }
     for group in ("prior", "posterior"):
         if group not in trace.children:
@@ -329,14 +296,6 @@ def reconstruct_co2_concentrations(trace: xr.DataTree, prepared: Co2PreparedInpu
             name = roles.get(role)
             if name in dataset:
                 value = dataset[name]
-            elif component_name in {"boundary_anomaly", "boundary_anomaly_contribution"} and role not in roles:
-                value = _zero_boundary_anomaly_draws(
-                    trace, group, observation_space=component_name == "boundary_anomaly_contribution"
-                )
-                if value is None:
-                    continue
-            elif component_name in {"boundary_prescribed", "boundary_reference"} and "constant_data" in trace.children and name in trace.constant_data:
-                value = trace.constant_data[name].broadcast_like(dataset[roles["model_mean"]])
             elif component_name in {"boundary", "offset"} and role not in roles:
                 value = xr.zeros_like(dataset[roles["model_mean"]])
             elif component_name in {"modelled", "pollution", "flux_scale"} or role in roles:
@@ -347,6 +306,15 @@ def reconstruct_co2_concentrations(trace: xr.DataTree, prepared: Co2PreparedInpu
             if group == "prior":
                 value = value.rename({dim: f"prior_{dim}" for dim in ("chain", "draw") if dim in value.dims})
             result[f"{component_name}_{group}"] = value
+        quantities = (
+            reconstruct_boundary(boundary_facts[""], dataset) if "" in boundary_facts
+            else {"concentration": xr.zeros_like(dataset[roles["model_mean"]])}
+        )
+        for quantity, value in quantities.items():
+            value, _ = xr.align(value, observations, join="exact", copy=False)
+            if group == "prior":
+                value = value.rename({dim: f"prior_{dim}" for dim in ("chain", "draw") if dim in value.dims})
+            result[f"{boundary_quantities[quantity]}_{group}"] = value
         result[f"residual_{group}"] = observations - result[f"modelled_{group}"]
         predictive_group = f"{group}_predictive"
         if predictive_group in trace.children:
@@ -398,7 +366,12 @@ def _basic_product(components: xr.Dataset) -> xr.Dataset:
     return result
 
 
-def _affine_products(trace, bound, countries, source_to_sector):
+def _affine_products(
+    trace: xr.DataTree,
+    bound: BoundCo2AffineFluxMap,
+    countries: Countries | None,
+    source_to_sector: Mapping[str, str] | None,
+) -> tuple[xr.Dataset, xr.Dataset | None]:
     """Apply reporting source combinations before statistics, using signed draws."""
     native = co2_native_flux_outputs(trace, bound)
     country = co2_country_flux_outputs(trace, bound, countries) if countries is not None else None
@@ -440,7 +413,16 @@ def _affine_products(trace, bound, countries, source_to_sector):
     return native, country
 
 
-def _paris_products(components, native, country, countries, result, source_to_sector, *, output):
+def _paris_products(
+    components: xr.Dataset,
+    native: xr.Dataset,
+    country: xr.Dataset,
+    countries: Countries,
+    result: Co2Output,
+    source_to_sector: Mapping[str, str] | None,
+    *,
+    output: Co2OutputOptions,
+) -> tuple[xr.Dataset, xr.Dataset]:
     """Adapt conditional signed summaries directly to latest PARIS templates."""
     from openghg_inversions.postprocessing.linked_paris_outputs import _concentration_product
     from openghg_inversions.postprocessing.make_paris_outputs import (
@@ -591,6 +573,7 @@ def calculate_co2_products(
             products["country_flux"] = country
         result.output_metadata["uncertainty_scope"] = bound.affine_map.uncertainty_scope
         if output.output_format == "paris":
+            assert country is not None and countries is not None, "PARIS reporting requires preflight countries."
             conc, flux = _paris_products(components, native, country, countries, result, source_to_sector, output=output)
             products.update(paris_concentration=conc, paris_flux=flux)
     result.outputs.clear()

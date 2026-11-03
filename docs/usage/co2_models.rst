@@ -171,27 +171,46 @@ concentration units.
 Common boundary mean and centred additive anomalies
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-For temporal weights, first resolve raw operands with
-``bind_boundary_operands(operands, observations, frequency=..., anchor_time=...)``.
-Construct the complete state field using ``coords=bound.bc_region.coords``::
+Store the complete averaging weights on ``(bc_curtain, bc_period)`` with
+units ``"1"``. Period labels are the actual interval start timestamps returned
+by the same calendar that constructs the transport mask. For example::
 
-    weights = xr.DataArray(values, dims="bc_region",
-                           coords=bound.bc_region.coords, attrs={"units": "1"})
+    weights = xr.DataArray(
+        values,
+        dims=("bc_curtain", "bc_period"),
+        coords={"bc_curtain": curtains, "bc_period": period_starts},
+        attrs={"units": "1"},
+    )
 
-This preserves the calendar identity of the ordinal curtain/period labels.
-Dictionary-style MultiIndex coordinate construction can discard that metadata.
 Keep every curtain/period weight, including unobserved states; unequal,
-nonseparable weights are supported. A different frequency, resolved origin or
-calendar interval requires freshly prepared weights. The model rejects mismatches
-before evaluating numerical payloads. Metadata-free whole-window spatial weights
-remain unambiguous. Saved preparations retain this identity independently of raw
-spatial operands.
+nonseparable weights are supported. Raw spatial preparation stays independent
+of fit periods. ``prepare_boundary`` binds raw operands and stacks the weights
+once per channel and fit. Exact labelled alignment rejects a different calendar
+before evaluating numerical payloads. Builders receive this bound record as
+``boundary`` (a channel mapping for linked recipes), including the resolved
+prior and anomaly scale. They do not bind periods again.
 
-To subset a complete fitted period support, bind operands on the full support
-first, then select observation rows from those resolved operators while retaining
-``bc_region``. Pass them and the original weights to ``prepare_additive_boundary``.
-Rebinding raw inputs on a smaller window can remove complete periods and cannot
-implicitly reassign full-support weights to the new ordinal axis.
+To subset a complete fitted period support, keep the bound record and select
+only its observation rows. The full boundary-state support and resolved prior
+remain on that record::
+
+    from dataclasses import replace
+    from openghg_inversions.models import prepare_boundary
+
+    bound = prepare_boundary(
+        observations,
+        boundary_operands=raw_operands,
+        bc_mean_shift_prior=mean_prior,
+        bc_anomaly_scale=anomaly_scale,
+        bc_centering_weights=weights,
+        bc_frequency="monthly",
+    )
+    subset = replace(bound, data=bound.data.isel(nmeasure=selected_rows))
+
+Pass ``subset`` as the builder's ``boundary`` alongside the same observation
+row selection. ``prepare_boundary`` binds raw operands only; do not pass
+already expanded transport to it again. Rebinding raw inputs on a smaller
+window can remove complete periods and requires matching weights.
 
 We define the transport operators and the
 :ref:`additive boundary formulation <boundary-additive-corrections>` in
@@ -276,12 +295,10 @@ Use the native dimensionless transport ``H_bc_mass`` described in the
 Additive models require native centered boundary operands, including the
 scalar ``bc_reference`` and signed ``H_bc_anomaly``. The prior choice leaves
 these prepared quantities unchanged. Pass
-``bc_centering_weights`` with dimension ``("bc_region",)`` (or
-``("bc_centering_state",)``), labels matching the states after the configured
-period expansion, and units ``"1"``. The CO2 artifact stores these weights on
-``bc_centering_state`` so resolved period labels stay independent of reusable
-raw spatial states. Selecting another frequency requires matching explicit
-weights for that state partition:
+``bc_centering_weights`` on ``("bc_curtain", "bc_period")`` with interval-start
+period labels and units ``"1"``. The CO2 artifact retains this unstacked array,
+separate from reusable spatial transport. Selecting another frequency requires
+matching explicit weights for that state partition:
 
 .. code-block:: python
 
@@ -300,9 +317,9 @@ weights for that state partition:
        bc_mean_shift_prior={"pdf": "normal", "mu": 0.0, "sigma": 0.5},
        bc_anomaly_scale=0.2,
    )
-   inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, **model)
+   inputs, priors, boundary = materialize_co2_inputs(prepared_inputs=prepared, **model)
    built = build_co2_from_materialized(
-       inputs, prepared_inputs=prepared, priors=priors, **model,
+       inputs, boundary=boundary, prepared_inputs=prepared, priors=priors, **model,
    )
    trace = sample_rhime_model(built, RhimeSampler())
    trace = annotate_co2_trace(trace, built, concentration_units=prepared.inv_inputs.mf.attrs["units"])
@@ -875,8 +892,8 @@ unresolved covariance::
        offset_prior={"pdf": "normal", "mu": 0.0, "sigma": 0.1},
        offset_args={"per_site": False},
    )
-   inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, **model)
-   built = build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, **model)
+   inputs, priors, boundary = materialize_co2_inputs(prepared_inputs=prepared, **model)
+   built = build_co2_from_materialized(inputs, boundary=boundary, prepared_inputs=prepared, priors=priors, **model)
    idata = sample_rhime_model(built, RhimeSampler())
    annotate_co2_trace(idata, built, concentration_units=prepared.inv_inputs["mf"].attrs["units"])
 
@@ -947,8 +964,8 @@ Select the package likelihood through the scientific operations::
            "sigma_prior": {"pdf": "halfnormal", "sigma": 0.75},
        },
    )
-   inputs, priors = materialize_co2_inputs(prepared_inputs=prepared, **model)
-   built = build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, **model)
+   inputs, priors, boundary = materialize_co2_inputs(prepared_inputs=prepared, **model)
+   built = build_co2_from_materialized(inputs, boundary=boundary, prepared_inputs=prepared, priors=priors, **model)
    trace = sample_rhime_model(built, RhimeSampler())
    annotate_co2_trace(
        trace, built, concentration_units=prepared.inv_inputs["mf"].attrs["units"],

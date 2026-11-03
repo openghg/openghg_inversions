@@ -23,6 +23,7 @@ from openghg_inversions.rhime.co2 import co2_o2_runner
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.serialization import save_trace, load_trace
 from test_rhime_co2_o2 import _inputs, _independent_error
+from boundary_test_utils import bound_linked_model_arguments
 
 
 def _prepared(channels=()):
@@ -51,16 +52,20 @@ def _prepared(channels=()):
 
 def _model(prepared, **kwargs):
     return build_co2_o2_model(
-        observations=prepared.observations,
-        fixed_prior_contribution=prepared.fixed_prior_contribution,
-        co2_sensitivity=prepared.co2_sensitivity,
-        o2_sensitivity=prepared.o2_sensitivity,
-        aggregation_error=prepared.aggregation_error,
-        retained_prior=prepared.retained_prior,
-        independent_error_sd=_independent_error(prepared),
-        boundary_sensitivity=prepared.boundary_sensitivity,
-        state_activity=StateActivity(active=False),
-        **kwargs,
+        **bound_linked_model_arguments(
+            {
+                "observations": prepared.observations,
+                "fixed_prior_contribution": prepared.fixed_prior_contribution,
+                "co2_sensitivity": prepared.co2_sensitivity,
+                "o2_sensitivity": prepared.o2_sensitivity,
+                "aggregation_error": prepared.aggregation_error,
+                "retained_prior": prepared.retained_prior,
+                "independent_error_sd": _independent_error(prepared),
+                "boundary_sensitivity": prepared.boundary_sensitivity,
+                "state_activity": StateActivity(active=False),
+                **kwargs,
+            }
+        )
     )
 
 
@@ -188,7 +193,7 @@ def test_configuration_and_runner_forward_same_channel_options(monkeypatch):
     assert roles["co2_boundary_concentration"] == "co2_mu_bc"
     assert roles["o2_offset_concentration"] == "o2_offset"
     np.testing.assert_array_equal(trace.prior.co2_bc, 1.25)
-    assert trace.prior.co2_bc.attrs["units"] == "dimensionless boundary scale"
+    assert trace.prior.co2_bc.attrs["units"] == "1"
     assert trace.prior.co2_mu_bc.attrs["tracer"] == "co2"
     assert trace.prior.o2_offset.attrs["units"] == "ppm"
 
@@ -203,7 +208,10 @@ def test_configuration_and_runner_forward_same_channel_options(monkeypatch):
 )
 def test_unused_or_unknown_channel_options_fail(options, match):
     with pytest.raises(ValueError, match=match):
-        _model(_prepared(), **options)
+        prepared = _prepared()
+        co2_o2_runner.build_rhime_co2_o2(
+            prepared_inputs=prepared, independent_error_sd=_independent_error(prepared), **options,
+        )
 
 
 def _native_multiindex_inputs(*, extra_level=False, co2_dim="co2_measure"):

@@ -327,6 +327,38 @@ class ConcentrationTerm:
         return cls(output, output)
 
 
+@dataclass(frozen=True)
+class AffineBlock:
+    """One labelled two-dimensional design and its physical coefficient vector.
+
+    Rows follow the observation labels. Columns follow the matching one-
+    dimensional physical coefficient expression in exactly that order. Each
+    block retains its own design/coefficient units; blocks with different
+    physical units remain separate until the numerical consumer lowers them.
+    """
+
+    design: xr.DataArray
+    coefficients: TensorVariable
+
+
+@dataclass(frozen=True)
+class AffineConcentrationTerm:
+    """Affine likelihood contribution, preserving physical blocks and sampled RVs.
+
+    Fixed contribution plus design/coefficient products equals the term's
+    likelihood contribution. The fixed contribution is a labelled concentration
+    vector in observation-row order. Physical coefficients may be transformed sampled
+    variables; ``sampled_rvs`` contains the underlying sampled variables,
+    distinct from those physical coefficient expressions. Numerical consumers
+    concatenate blocks at their own boundary.
+    """
+
+    term: ConcentrationTerm
+    fixed_contribution: xr.DataArray
+    blocks: tuple[AffineBlock, ...]
+    sampled_rvs: tuple[TensorVariable, ...]
+
+
 def likelihood_representation(
     terms: Sequence[ConcentrationTerm],
     observations: xr.DataArray,

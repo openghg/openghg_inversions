@@ -4,7 +4,6 @@ from dataclasses import replace
 import json
 
 import numpy as np
-import pandas as pd
 import pymc as pm
 import pytest
 import xarray as xr
@@ -28,14 +27,10 @@ def test_additive_public_build_save_reload_and_reconstruction(tmp_path, cached, 
         coords={**inputs.mf.coords, "bc_region": ["north", "south", "east"]},
         attrs={"units": "1"},
     )
-    weight_coords = xr.Coordinates.from_pandas_multiindex(
-        pd.MultiIndex.from_product(
-            [response.bc_region.values, [0]], names=["bc_curtain", "bc_period"],
-        ), "bc_centering_state",
-    )
     inputs["bc_centering_weights"] = xr.DataArray(
-        [2.0, 1.0, 3.0], dims="bc_centering_state",
-        coords=weight_coords, attrs={"units": "1"},
+        [[2.0], [1.0], [3.0]], dims=("bc_curtain", "bc_period"),
+        coords={"bc_curtain": response.bc_region.values,
+                "bc_period": [inputs.time.values.min()]}, attrs={"units": "1"},
     )
     inputs["H_bc_mass"] = response
     inputs["H_bc_anomaly"] = (response * np.array([0.2, -0.1, 0.0])).assign_attrs(units="ppm")
@@ -45,7 +40,7 @@ def test_additive_public_build_save_reload_and_reconstruction(tmp_path, cached, 
     payload = tmp_path / "prepared.nc"
     prepared.save(payload)
     restored_prepared = Co2PreparedInputs.load(payload)
-    np.testing.assert_allclose(restored_prepared.inv_inputs.bc_centering_weights, [2, 1, 3])
+    np.testing.assert_allclose(restored_prepared.inv_inputs.bc_centering_weights.values.ravel(), [2, 1, 3])
     config = {
         "model": {"boundary": {"enabled": True, "mean_shift_prior": {
             "pdf": "normal", "mu": 0.0, "sigma": 0.15,

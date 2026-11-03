@@ -18,13 +18,13 @@ import xarray as xr
 from openghg_inversions.postprocessing.contracts import OutputContract
 
 from openghg_inversions.models.priors import parse_prior
+from openghg_inversions.rhime.co2.co2_model import _materialize_model_boundaries
 from openghg_inversions.models import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime import co2 as co2_public
 from openghg_inversions.rhime.co2 import co2_o2_cached_sigma_runner, co2_o2_runner
 from openghg_inversions.rhime.co2.co2_o2_runner import (
     _CO2_O2_VARIABLE_ROLES,
-    _materialize_co2_o2_pymc_inputs,
     annotate_co2_o2_trace,
     build_rhime_co2_o2,
     run_rhime_co2_o2_from_prepared_inputs,
@@ -225,7 +225,7 @@ def test_materializes_related_arrays_in_one_shared_graph_without_mutation() -> N
     compute_graphs: list[object] = []
 
     with Callback(start=lambda graph: compute_graphs.append(graph)):
-        materialized = _materialize_co2_o2_pymc_inputs(*borrowed)
+        materialized = _materialize_model_boundaries(borrowed, {}, priors={})[0]
 
     assert len(compute_graphs) == 1
     assert executions == ["shared"]

@@ -94,8 +94,7 @@ def test_linked_cached_runner_restores_absolute_predictions_and_replay(tmp_path,
         raw = raw.sel(bc_region=xr.DataArray(curtains, dims="state"))
         matrix = (raw.H_bc_anomaly + raw.bc_reference * raw.H_bc_mass).transpose("nmeasure", "state").values
         times = raw.time.values.astype("datetime64[ns]")
-        row_periods = ((times - np.datetime64(anchor)) // np.timedelta64(3, "h")).astype(int)
-        row_periods -= row_periods.min()
+        row_periods = np.datetime64(anchor) + ((times - np.datetime64(anchor)) // np.timedelta64(3, "h")) * np.timedelta64(3, "h")
         matrix *= row_periods[:, None] == periods[None, :]
         expected = np.zeros_like(expected_total)
         selected = prepared.observations.species.values == channel
@@ -137,8 +136,8 @@ def test_linked_cached_precision_guard_runs_after_selection_before_materializati
     class ReachedMaterialization(Exception):
         pass
 
-    def materialize(prepared, error, boundaries, operands, weights):
-        assert not operands
+    def materialize(prepared, error, boundary, *, prior_parameters):
+        assert "co2" not in boundary
         raise ReachedMaterialization
 
     monkeypatch.setattr(runner, "_materialize_co2_o2_replay_inputs", materialize)

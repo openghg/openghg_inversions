@@ -15,6 +15,8 @@ from openghg_inversions._pymc_config import configure_pytensor
 configure_pytensor()
 
 from openghg_inversions.models.components import (
+    AffineBlock,
+    AffineConcentrationTerm,
     ConcentrationTerm,
     CorrelatedStateResult,
     LinearComponentResult,
@@ -29,6 +31,11 @@ from openghg_inversions.models.components import (
     add_sigma_component,
     likelihood_representation,
 )
+from openghg_inversions.models.boundary import (
+    BoundBoundary, MultiplicativeBoundary, add_boundary, prepare_boundary,
+    boundary_payload, replace_boundary_payload, boundary_output_roles, boundary_output_units,
+)
+from openghg_inversions.models.additive_boundary import AdditiveBoundary
 from openghg_inversions.models.cached_sigma import (
     FixedOuCachedSigmaTarget,
     MarginalQuadraticCache,
@@ -87,6 +94,17 @@ __all__ = [
     "add_model_data",
     "add_correlated_lognormal_state",
     "add_correlated_lognormal_state_with_activity",
+    "AffineBlock",
+    "AffineConcentrationTerm",
+    "BoundBoundary",
+    "MultiplicativeBoundary",
+    "AdditiveBoundary",
+    "boundary_payload",
+    "replace_boundary_payload",
+    "boundary_output_roles",
+    "boundary_output_units",
+    "prepare_boundary",
+    "add_boundary",
     "ConcentrationTerm",
     "add_coherent_affine_component",
     "likelihood_representation",

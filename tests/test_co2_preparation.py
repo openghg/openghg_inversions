@@ -516,11 +516,11 @@ def test_standard_runner_uses_real_co2_prepared_inputs(monkeypatch: pytest.Monke
     monkeypatch.setattr(co2_runner, "build_co2_model", build_model)
 
     with pytest.raises(ModelBoundaryReached):
-        inputs, priors = co2_runner.materialize_co2_inputs(
+        inputs, priors, boundary = co2_runner.materialize_co2_inputs(
             prepared_inputs=prepared, fixed_model_mismatch=0.0, no_model_error=True,
         )
         co2_runner.build_co2_from_materialized(
-            inputs, prepared_inputs=prepared, priors=priors,
+            inputs, boundary=boundary, prepared_inputs=prepared, priors=priors,
             fixed_model_mismatch=0.0, no_model_error=True,
         )
 
@@ -572,11 +572,11 @@ def test_standard_runner_materializes_aggregation_payload_once(
     monkeypatch.setattr(co2_runner, "build_co2_model", build_model)
 
     with pytest.raises(ModelBoundaryReached):
-        inputs, priors = co2_runner.materialize_co2_inputs(
+        inputs, priors, boundary = co2_runner.materialize_co2_inputs(
             prepared_inputs=prepared, fixed_model_mismatch=0.0, no_model_error=True,
         )
         co2_runner.build_co2_from_materialized(
-            inputs, prepared_inputs=prepared, priors=priors,
+            inputs, boundary=boundary, prepared_inputs=prepared, priors=priors,
             fixed_model_mismatch=0.0, no_model_error=True,
         )
 
@@ -598,7 +598,7 @@ def test_centered_co2_envelope_embeds_current_generic_representation(tmp_path: P
     canonical = PreparedInputs(inputs, canonical.basis_functions, canonical.site_metadata)
     prepared = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=None)
     tree = prepared.to_datatree()
-    assert tree.attrs["schema_version"] == 2
+    assert tree.attrs["schema_version"] == 3
     assert tree["rhime_inputs"].attrs["schema_version"] == 3
     assert tree["rhime_inputs"].attrs["representation"] == "centered"
     path = tmp_path / f"centered-co2{suffix}"
@@ -623,7 +623,7 @@ def test_boundary_mean_shift_response_survives_preparation_and_round_trip(tmp_pa
         attrs={"units": "1"},
     )
     weights = xr.DataArray(
-        [1.0, 2.0], dims="bc_region", coords={"bc_region": ["north", "east"]}, attrs={"units": "1"}
+        [[1.0], [2.0]], dims=("bc_curtain", "bc_period"), coords={"bc_curtain": ["north", "east"], "bc_period": [canonical.inv_inputs.time.values.min()]}, attrs={"units": "1"}
     )
     canonical.inv_inputs["H_bc_mass"] = response.transpose("bc_region", "nmeasure")
     canonical.inv_inputs["H_bc_anomaly"] = (response * 0.01).transpose("bc_region", "nmeasure").assign_attrs(units="ppm")
@@ -640,7 +640,7 @@ def test_boundary_mean_shift_response_survives_preparation_and_round_trip(tmp_pa
     prepared.save(path)
     loaded = Co2PreparedInputs.load(path)
     xr.testing.assert_identical(loaded.inv_inputs.H_bc_mass, response.transpose("bc_region", "nmeasure").rename("H_bc_mass").compute())
-    xr.testing.assert_identical(loaded.inv_inputs.bc_centering_weights, weights.rename({"bc_region": "bc_centering_state"}).rename("bc_centering_weights"))
+    xr.testing.assert_identical(loaded.inv_inputs.bc_centering_weights, weights.rename("bc_centering_weights"))
     for select in (co2_runner.co2_model_input_names, co2_cached_sigma_runner.co2_cached_sigma_input_names):
         extra = (
             {"preserve_prepared_fixed_mismatch": False} if select is co2_runner.co2_model_input_names else {}
@@ -657,7 +657,7 @@ def test_boundary_mean_shift_response_survives_preparation_and_round_trip(tmp_pa
         prepare_co2_inputs(broken, _reduction(canonical), aggregation_error_rank=None)
 
 
-@pytest.mark.parametrize("shared_consumer", [None, "data_variable", "multidimensional_coordinate"])
+@pytest.mark.parametrize("shared_consumer", [None, "data_variable", "auxiliary_coordinate", "multidimensional_coordinate"])
 def test_centered_unit_response_and_resolved_weights_keep_independent_states(tmp_path, shared_consumer):
     """Re-preparation replaces owned weights without changing shared inputs."""
     from openghg_inversions.boundary_sensitivity import BoundaryAlignment
@@ -676,22 +676,26 @@ def test_centered_unit_response_and_resolved_weights_keep_independent_states(tmp
     inputs.attrs["boundary_representation"] = "centered-v1"
     canonical = replace(canonical, inv_inputs=inputs)
     single_period = BoundaryAlignment.prepare(inputs.H_bc_mass).data
-    initial_weights = xr.ones_like(single_period.isel(nmeasure=0, drop=True)).assign_attrs(units="1")
+    initial_weights = xr.ones_like(single_period.isel(nmeasure=0, drop=True)).unstack("bc_region").assign_attrs(units="1")
     initial = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=None,
                                 bc_centering_weights=initial_weights)
     borrowed = initial.rhime_inputs
-    assert borrowed.inv_inputs.sizes["bc_centering_state"] == 2
+    assert borrowed.inv_inputs.sizes["bc_curtain"] == 2
+    assert borrowed.inv_inputs.sizes["bc_period"] == 1
     if shared_consumer == "data_variable":
         borrowed.inv_inputs["shared_weights_axis"] = xr.ones_like(borrowed.inv_inputs.bc_centering_weights)
+    elif shared_consumer == "auxiliary_coordinate":
+        borrowed.inv_inputs.coords["shared_weights_axis"] = ("bc_period", [7.0])
     elif shared_consumer == "multidimensional_coordinate":
         borrowed.inv_inputs.coords["shared_weights_axis"] = (
-            ("bc_centering_state", "region"), np.ones((2, 2))
+            ("bc_period", "region"), np.ones((1, 2))
         )
     original = borrowed.inv_inputs.copy(deep=True)
     resolved = BoundaryAlignment.prepare(inputs.H_bc_mass, frequency="1D").data
-    weights = xr.ones_like(resolved.isel(nmeasure=0, drop=True)).assign_attrs(units="1")
+    weights = xr.ones_like(resolved.isel(nmeasure=0, drop=True)).unstack("bc_region").assign_attrs(units="1")
+    weights = weights.copy(data=np.array([[1., 2., 7.], [3., 11., 5.]]))
     if shared_consumer is not None:
-        with pytest.raises(ValueError, match="bc_centering_state.*shared_weights_axis"):
+        with pytest.raises(ValueError, match="bc_(curtain|period).*shared_weights_axis"):
             prepare_co2_inputs(borrowed, _reduction(canonical), aggregation_error_rank=None,
                                bc_centering_weights=weights)
         xr.testing.assert_identical(borrowed.inv_inputs, original)
@@ -699,15 +703,24 @@ def test_centered_unit_response_and_resolved_weights_keep_independent_states(tmp
     prepared = prepare_co2_inputs(borrowed, _reduction(canonical), aggregation_error_rank=None,
                                  bc_centering_weights=weights)
     xr.testing.assert_identical(borrowed.inv_inputs, original)
-    expected_labels = resolved.indexes["bc_region"].set_names(["bc_centering_curtain", "bc_centering_period"])
-    assert prepared.inv_inputs.indexes["bc_centering_state"].equals(expected_labels)
+    xr.testing.assert_identical(prepared.inv_inputs.bc_centering_weights, weights.rename("bc_centering_weights"))
     assert prepared.inv_inputs.sizes["bc_region"] == 2
-    assert prepared.inv_inputs.sizes["bc_centering_state"] == 6
+    assert prepared.inv_inputs.sizes["bc_period"] == 3
     assert isinstance(prepared.inv_inputs.H_bc_mass.data, da.Array)
     xr.testing.assert_equal(prepared.inv_inputs.H_bc_mass, inputs.H_bc_mass.rename("H_bc_mass"))
     path = tmp_path / "resolved-weights.nc"
     prepared.save(path)
     loaded = Co2PreparedInputs.load(path)
     assert loaded.inv_inputs.sizes["bc_region"] == 2
-    assert loaded.inv_inputs.sizes["bc_centering_state"] == 6
-    assert loaded.inv_inputs.bc_centering_state.attrs == resolved.bc_region.attrs
+    assert loaded.inv_inputs.sizes["bc_period"] == 3
+    xr.testing.assert_identical(loaded.inv_inputs.bc_centering_weights, weights.rename("bc_centering_weights"))
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_co2_rejects_old_prepared_formats_with_repreparation_message(version):
+    canonical = _canonical_inputs()
+    prepared = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=None)
+    tree = prepared.to_datatree()
+    tree.attrs["schema_version"] = version
+    with pytest.raises(ValueError, match="[Pp]repare.*again"):
+        Co2PreparedInputs.from_datatree(tree)

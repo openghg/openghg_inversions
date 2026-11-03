@@ -257,7 +257,9 @@ constraints are needed to distinguish them in that case.
    we know that :math:`M\mathbf1=\mathbf1`.
    A global observation offset, or unrestricted site offsets, therefore
    duplicates the boundary mean's constant direction. Model construction
-   warns for this combination. Fixing one site's offset or constraining site
+   warns for this combination when the supplied mass response is approximately
+   one. This narrow warning covers normalized surface preparation; it is not a
+   general rank or identifiability test for arbitrary transport. Fixing one site's offset or constraining site
    offsets to contrasts removes that one redundancy; BC anomalies can still
    reproduce site contrasts. See :doc:`../development/boundary_offset_identifiability`
    for examples and the distinction between relative site effects and physical
@@ -377,7 +379,10 @@ There is one period without a frequency; otherwise calendar-month or
 fixed-duration rules determine membership. The current mask is binary.
 It uses observation time rather than a particle's boundary-exit time.
 The resulting ``bc_region`` MultiIndex has ``bc_curtain`` and ``bc_period``
-levels, so four spatial regions and three periods give :math:`K=12` states.
+levels. ``bc_period`` contains each interval's start timestamp, including the
+single interval when frequency is omitted. The labels and mask come from one
+calendar; ordinary nonboundary period indicators retain ordinal labels.
+Four spatial regions and three periods give :math:`K=12` states.
 
 For this implementation we can write the basis in observation-row form.
 Let :math:`q` label a curtain cell, :math:`S_{iqk}` be the supplied spatial

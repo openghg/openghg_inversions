@@ -2,38 +2,41 @@
 
 from __future__ import annotations
 
-from openghg_inversions.boundary_sensitivity import _validate_boundary_weight_periods
-
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
-from typing import Any, cast
+from dataclasses import dataclass, field, replace
+from typing import Any
 from warnings import warn
 
-from dask import compute as dask_compute
 import numpy as np
-from numpy.typing import NDArray
 import pymc as pm
-from pymc.pytensorf import floatX
 import pytensor.tensor as pt
 import xarray as xr
+from pymc.pytensorf import floatX
 from pytensor.graph.traversal import graph_inputs
 from pytensor.tensor.variable import TensorVariable
 
-from openghg_inversions.array_ops import to_dense
-from openghg_inversions.boundary_sensitivity import bind_boundary_sensitivity
-from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.inference.cached_sigma import PytensorMarginalQuadraticCache
+from openghg_inversions.models.additive_boundary import warn_boundary_offset_confounding
+from openghg_inversions.models.boundary import (
+    AdditiveBoundary,
+    BoundBoundary,
+    add_boundary,
+    boundary_output_roles,
+    boundary_output_units,
+)
 from openghg_inversions.models.cached_sigma import (
     FixedOuCachedSigmaTarget,
     MarginalQuadraticCache,
 )
 from openghg_inversions.models.components import (
+    AffineBlock,
+    AffineConcentrationTerm,
     ConcentrationTerm,
     _add_offset_component_result,
     _add_prepared_correlated_lognormal_state_with_activity,
-    add_model_data,
-    add_state_vector,
     add_coherent_affine_component,
+    add_model_data,
     apply_linear_sensitivity,
     likelihood_representation,
     prepare_active_correlated_lognormal_prior,
@@ -42,6 +45,8 @@ from openghg_inversions.models.coords import add_coords, registered_model
 from openghg_inversions.models.fixed_ou import (
     FixedOuLowRank,
     prepare_fixed_ou_low_rank,
+)
+from openghg_inversions.models.fixed_ou import (
     _site_values as fixed_ou_site_values,
 )
 from openghg_inversions.models.priors import PriorArgs, parse_prior
@@ -57,24 +62,9 @@ from openghg_inversions.observation_error import (
     aggregation_error_as_low_rank,
     validate_observation_error_arrays,
 )
-from openghg_inversions.inference.cached_sigma import PytensorMarginalQuadraticCache
-from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
 
-from openghg_inversions.models.additive_boundary import (
-    add_additive_boundary,
-    prepare_additive_boundary,
-    warn_boundary_offset_confounding,
-)
-
-from openghg_inversions.models.boundary import (
-    centered_boundary_expression,
-    CenteredBoundaryResult,
-    add_centered_boundary as add_multiplicative_centered_boundary,
-    bind_boundary_operands,
-    require_centered_precision,
-)
-
+from .co2_model import _materialize_model_boundary
 
 OU_SITE_DIM = "ou_site"
 OU_SITE_INDEX = "ou_site_index"
@@ -86,7 +76,7 @@ class Co2CachedSigmaModel:
     """Observed graph, cached state expression, and scientific starting values.
 
     ``modelled_mean`` is the likelihood and amplitude-sampler mean, centered
-    when boundary operands are centered; the named concentration output stays absolute.
+    when the bound boundary is centered; the named concentration output stays absolute.
     ``initial_values`` contains untransformed sampling overrides or PyMC
     initialization strategies, lifted from graph metadata. The matched runner
     resolves them separately for construction and each sampling chain.
@@ -101,23 +91,8 @@ class Co2CachedSigmaModel:
     modelled_mean: TensorVariable
     cached_state_logp: TensorVariable
     initial_values: dict[str, Any]
-
-
-@dataclass(frozen=True)
-class _CachedAffineTerm:
-    """One scientific affine term and its dense cached lowering.
-
-    The likelihood contribution equals ``fixed_contribution + active_design @
-    coefficients``. Shifted boundaries lower their centered contribution:
-    multiplicative coefficients are ``b - 1``; additive coefficients are the
-    mean and Gaussian contrasts. Unshifted terms lower their absolute output.
-    """
-
-    term: ConcentrationTerm
-    fixed_contribution: NDArray[np.float64]
-    active_design: NDArray[np.float64]
-    coefficients: TensorVariable | None
-    sampled_rvs: tuple[TensorVariable, ...]
+    boundary_roles: dict[str, str] = field(default_factory=dict)
+    boundary_units: dict[str, str] = field(default_factory=dict)
 
 
 def _materialize_cached_linear_projection(
@@ -127,8 +102,8 @@ def _materialize_cached_linear_projection(
     output_dim: str,
 ) -> tuple[
     PreparedLinearSensitivity,
-    NDArray[np.float64],
-    NDArray[np.float64],
+    xr.DataArray,
+    xr.DataArray,
 ]:
     """Materialize one cached linear design and split its affine projection."""
     retained_indices = prepared.retained_indices
@@ -145,34 +120,9 @@ def _materialize_cached_linear_projection(
     )[retained_indices]
     return (
         replace(prepared, sensitivity=sensitivity),
-        design[:, retained_active],
-        design[:, ~retained_active] @ fixed_values[~retained_active],
-    )
-
-
-def _centered_cached_term(centered: CenteredBoundaryResult, *, output_dim: str) -> _CachedAffineTerm:
-    """Lower full centered operands before pruning any inactive design columns."""
-    operands = centered.operands
-    anomaly = np.asarray(
-        operands.H_bc_anomaly.transpose(output_dim, "bc_region").values,
-        dtype=np.float64,
-    )
-    mass = np.asarray(operands.H_bc_mass.transpose(output_dim, "bc_region").values, dtype=np.float64)
-    reference = float(operands.bc_reference.values)
-    result = centered.component
-    active = np.asarray(result.activity.active.values, dtype=bool)
-    # The baseline b0 is one for active states and the actual value for fixed states.
-    # fixed = A b0 + c M (b0 - 1); the active design multiplies physical b_active - 1.
-    # Form the fixed term before pruning: zero absolute sensitivity A + c M can
-    # still have a nonzero anomaly A that contributes at unit boundary scaling.
-    baseline = np.where(active, 1.0, result.activity.fixed_value.values)
-    indices = result.activity.active_indices
-    return _CachedAffineTerm(
-        term=centered.term,
-        fixed_contribution=centered_boundary_expression(anomaly, mass, reference, baseline),
-        active_design=(anomaly + reference * mass)[:, active],
-        coefficients=result.state[indices] - 1.0 if indices.size else None,
-        sampled_rvs=(result.latent,) if result.latent is not None else (),
+        sensitivity.transpose(output_dim, retained_dim).isel({retained_dim: retained_active}),
+        xr.DataArray(design[:, ~retained_active] @ fixed_values[~retained_active],
+                     dims=output_dim, coords={output_dim: sensitivity[output_dim]}),
     )
 
 
@@ -207,7 +157,7 @@ def _site_values(
 
 
 def _add_cached_likelihood(
-    terms: tuple[_CachedAffineTerm, ...],
+    terms: tuple[AffineConcentrationTerm, ...],
     *,
     covariance: FixedOuLowRank,
     modelled_mean: TensorVariable,
@@ -220,7 +170,17 @@ def _add_cached_likelihood(
     output_dim: str,
 ) -> Co2CachedSigmaModel:
     """Lower ordered scientific terms once at the cached-likelihood boundary."""
-    active_terms = tuple(term for term in terms if term.coefficients is not None)
+    blocks = tuple(block for term in terms for block in term.blocks)
+    fixed = [
+        xr.align(term.fixed_contribution, observations, join="exact", copy=False,
+                 exclude=set(term.fixed_contribution.dims) - {output_dim})[0]
+        for term in terms
+    ]
+    designs = [
+        xr.align(block.design, observations, join="exact", copy=False,
+                 exclude=set(block.design.dims) - {output_dim})[0]
+        for block in blocks
+    ]
     target = FixedOuCachedSigmaTarget(
         prepared=covariance,
         observations=np.asarray(
@@ -228,12 +188,12 @@ def _add_cached_likelihood(
             dtype=np.float64,
         ),
         fixed_contribution=np.sum(
-            [term.fixed_contribution for term in terms],
+            [value.transpose(output_dim).values for value in fixed],
             axis=0,
         ),
         design=(
-            np.column_stack([term.active_design for term in active_terms])
-            if active_terms
+            np.column_stack([design.transpose(output_dim, ...).values for design in designs])
+            if blocks
             else np.empty((observations.size, 0))
         ),
     )
@@ -296,8 +256,8 @@ def _add_cached_likelihood(
         dims=output_dim,
     )
     coefficients = (
-        pt.concatenate([cast(TensorVariable, term.coefficients) for term in active_terms])
-        if active_terms
+        pt.concatenate([block.coefficients for block in blocks])
+        if blocks
         else pt.as_tensor_variable(np.empty(0, dtype=amplitude.dtype))
     )
     cached_state_logp = shared_cache.log_likelihood(coefficients)
@@ -345,15 +305,7 @@ def build_co2_cached_sigma_model(
     site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
-    boundary_sensitivity: xr.DataArray | None = None,
-    boundary_operands: xr.Dataset | None = None,
-    bc_freq: str | None = None,
-    bc_anchor_time: DatetimeLike | None = None,
-    bc_prior: PriorArgs | None = None,
-    bc_state_activity: StateActivity | None = None,
-    bc_mean_shift_prior: PriorArgs | None = None,
-    bc_anomaly_scale: float | None = None,
-    bc_centering_weights: xr.DataArray | None = None,
+    boundary: BoundBoundary | None = None,
     offset_prior: PriorArgs | None = None,
     offset_freq: str | None = None,
     offset_drop_first: bool = False,
@@ -368,9 +320,8 @@ def build_co2_cached_sigma_model(
     likelihood is one normalized observed joint Gaussian with exact density
     and random callbacks. A separate cached quadratic over the active flux,
     boundary, and offset coefficients supplies efficient state trajectories.
-    Centered boundary operands require explicit PyTensor float64. Their raw
-    spatial operands are aligned and period-expanded here, then materialized
-    together with the selected arrays without modifying the inputs. Physical
+    Centered boundaries require explicit PyTensor float64. Bound payloads and
+    selected core arrays are materialized together without modifying inputs. Physical
     boundary priors and absolute concentration deterministics are preserved;
     the observed Gaussian and sampler use directly centered residuals. Raw
     predictive ``y`` requires ``restore_absolute_predictives`` for absolute output.
@@ -402,32 +353,7 @@ def build_co2_cached_sigma_model(
             observed site. Defaults to the prior support point.
         state_activity: Optional labelled active/fixed policy for retained flux
             states. Fixed values are dimensionless flux scalings.
-        boundary_sensitivity: Optional atmospheric boundary-condition
-            sensitivity, in concentration units per unit dimensionless
-            boundary scaling.
-        boundary_operands: Optional raw centered-v1 anomaly, mass and reference
-            dataset; mutually exclusive with ``boundary_sensitivity``.
-        bc_freq: Optional model-owned period for raw boundary inputs.
-        bc_anchor_time: Optional origin for fixed-duration boundary periods.
-        bc_prior: Optional prior for dimensionless boundary-scaling
-            coefficients. Requires a selected boundary representation; when omitted for
-            a selected boundary component, the default boundary prior is used.
-        bc_state_activity: Optional labelled active/fixed policy for boundary
-            scalings. Requires a selected boundary representation.
-        bc_mean_shift_prior: Prior for one common additive boundary correction
-            over the inversion window, in concentration units. Selects centred
-            additive boundaries instead of sampled multiplicative scales;
-            cannot be combined with ``bc_prior`` or ``bc_state_activity``.
-        bc_anomaly_scale: Finite, nonnegative Gaussian scale before weighted
-            centring, in concentration units. Required in additive mode; zero
-            retains only the common mean without sampled contrasts.
-        bc_centering_weights: Positive dimensionless ``bc_region`` weights
-            defining the mean across the complete expanded curtain/period
-            states. Normalized within
-            the model; the weighted mean of additive anomalies is exactly zero.
-            Required in additive mode. See the centred-boundary explanation in
-            :doc:`/usage/co2_models` and Stan's parameterizing-centred-vectors
-            discussion for the constraint and its prior covariance.
+        boundary: Resolved boundary component bound to this fit.
         offset_prior: Optional prior for additive offsets. Its location and
             scale parameters use the observations' concentration units. When
             omitted, no offset is added.
@@ -444,7 +370,7 @@ def build_co2_cached_sigma_model(
     Returns:
         The registered model, fixed-OU target and caches, ordered sampler
         states, and completed likelihood mean. The latter is centered when
-        boundary operands are supplied; ``modelled_concentration`` stays absolute.
+        a centered boundary is supplied; ``modelled_concentration`` stays absolute.
 
     Raises:
         ValueError: If scientific arrays, coordinates, covariance inputs,
@@ -453,72 +379,13 @@ def build_co2_cached_sigma_model(
             offset options are supplied without ``offset_prior``. Also raised
             for incompatible global-offset options.
     """
-    if boundary_sensitivity is not None:
-        boundary_sensitivity = bind_boundary_sensitivity(
-            boundary_sensitivity,
-            observations,
-            frequency=bc_freq,
-            anchor_time=bc_anchor_time,
+    (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, priors = (
+        _materialize_model_boundary(
+            (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary,
+            priors={"amplitude": site_amplitude_prior, "offset": offset_prior},
         )
-    elif boundary_operands is None and (bc_freq is not None or bc_anchor_time is not None):
-        raise ValueError("Boundary period choices require boundary inputs.")
-    if boundary_operands is not None:
-        require_centered_precision()
-        if boundary_sensitivity is not None:
-            raise ValueError("Supply boundary_operands or boundary_sensitivity, not both.")
-        boundary_operands = bind_boundary_operands(
-            boundary_operands,
-            observations,
-            frequency=bc_freq,
-            anchor_time=bc_anchor_time,
-        )
-        if bc_mean_shift_prior is not None and bc_centering_weights is not None:
-            _validate_boundary_weight_periods(boundary_operands, bc_centering_weights)
-        # One named eager boundary preserves shared graphs and sparse chunk payloads.
-        (
-            flux_sensitivity,
-            fixed_prior_contribution,
-            observations,
-            observation_error,
-            boundary_operands,
-        ) = dask_compute(
-            to_dense(flux_sensitivity),
-            to_dense(fixed_prior_contribution),
-            to_dense(observations),
-            to_dense(observation_error),
-            xr.Dataset(
-                {
-                    name: to_dense(value).astype(np.float64)
-                    for name, value in boundary_operands.data_vars.items()
-                }
-            ),
-        )
-    if bc_centering_weights is not None and "bc_centering_state" in bc_centering_weights.dims:
-        weight_coordinates = {"bc_centering_state": "bc_region"}
-        weight_coordinates.update(
-            {
-                str(coord): str(coord).replace("bc_centering_", "bc_", 1)
-                for coord in bc_centering_weights.coords
-                if str(coord).startswith("bc_centering_") and coord != "bc_centering_state"
-            }
-        )
-        bc_centering_weights = bc_centering_weights.rename(weight_coordinates)
-    additive_boundary = prepare_additive_boundary(
-        boundary_operands,
-        bc_centering_weights,
-        observations,
-        bc_mean_shift_prior,
-        bc_anomaly_scale,
-        bc_prior,
-        bc_state_activity,
-        output_dim=output_dim,
     )
-    if (
-        boundary_sensitivity is None
-        and boundary_operands is None
-        and (bc_prior is not None or bc_state_activity is not None)
-    ):
-        raise ValueError("bc_prior and bc_state_activity require boundary_sensitivity.")
+    site_amplitude_prior, offset_prior = priors["amplitude"], priors["offset"]
     if offset_prior is None and (offset_freq is not None or offset_drop_first or not offset_per_site):
         raise ValueError("Non-default offset options require offset_prior.")
     validate_observation_error_arrays(
@@ -558,29 +425,6 @@ def build_co2_cached_sigma_model(
     )
 
     fixed_prior_data = fixed_prior_contribution.transpose(output_dim).compute()
-    fixed_prior = np.asarray(fixed_prior_data.values, dtype=np.float64)
-    prepared_boundary = None
-    boundary_activity = None
-    boundary_active_design = None
-    boundary_fixed_contribution = None
-    if boundary_sensitivity is not None and additive_boundary is None:
-        prepared_boundary = prepare_linear_sensitivity(
-            boundary_sensitivity,
-            output_dim=output_dim,
-        )
-        boundary_activity = resolve_state_activity(
-            prepared_boundary.removed,
-            bc_state_activity,
-        )
-        (
-            prepared_boundary,
-            boundary_active_design,
-            boundary_fixed_contribution,
-        ) = _materialize_cached_linear_projection(
-            prepared_boundary,
-            boundary_activity,
-            output_dim=output_dim,
-        )
     factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation_error)
     covariance = prepare_fixed_ou_low_rank(
         factor,
@@ -621,67 +465,20 @@ def build_co2_cached_sigma_model(
             output_name="co2_flux_contribution",
         )
         terms = [
-            _CachedAffineTerm(
+            AffineConcentrationTerm(
                 term=ConcentrationTerm.absolute(co2_flux_mean),
-                fixed_contribution=fixed_prior + flux_fixed_contribution,
-                active_design=flux_active_design,
-                coefficients=(state_result.state[activity.active_indices] if activity.n_active else None),
+                fixed_contribution=fixed_prior_data + flux_fixed_contribution,
+                blocks=(AffineBlock(
+                    flux_active_design,
+                    state_result.state[activity.active_indices],
+                ),) if activity.n_active else (),
                 sampled_rvs=((state_result.latent,) if state_result.latent is not None else ()),
             )
         ]
-        if boundary_operands is not None and additive_boundary is None:
-            centered = add_multiplicative_centered_boundary(
-                boundary_operands,
-                prior=dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior),
-                activity=bc_state_activity,
-                output_dim=output_dim,
-            )
-            terms.append(_centered_cached_term(centered, output_dim=output_dim))
-        if prepared_boundary is not None:
-            assert boundary_activity is not None
-            assert boundary_active_design is not None
-            assert boundary_fixed_contribution is not None
-            boundary_result = add_state_vector(
-                boundary_activity,
-                prior_args=dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior),
-                var_name="bc",
-                coordinate_owner="bc",
-            )
-            boundary_output = apply_linear_sensitivity(
-                prepared_boundary,
-                boundary_result.state,
-                data_name="hbc",
-                output_name="mu_bc",
-                coordinate_owner="bc",
-                compute_deterministic=True,
-            )
-            boundary_active = boundary_result.activity.active_indices
-            terms.append(
-                _CachedAffineTerm(
-                    term=ConcentrationTerm.absolute(boundary_output),
-                    fixed_contribution=boundary_fixed_contribution,
-                    active_design=boundary_active_design,
-                    coefficients=(boundary_result.state[boundary_active] if boundary_active.size else None),
-                    sampled_rvs=((boundary_result.latent,) if boundary_result.latent is not None else ()),
-                )
-            )
-        if additive_boundary is not None:
-            assert bc_mean_shift_prior is not None and bc_anomaly_scale is not None
-            additive_result = add_additive_boundary(
-                additive_boundary,
-                bc_mean_shift_prior,
-                bc_anomaly_scale,
-                output_dim=output_dim,
-            )
-            terms.append(
-                _CachedAffineTerm(
-                    fixed_contribution=additive_boundary.operands.H_bc_anomaly.values.sum(axis=1),
-                    active_design=additive_boundary.design,
-                    coefficients=additive_result.coefficients,
-                    sampled_rvs=additive_result.latents,
-                    term=additive_result.term,
-                )
-            )
+        boundary_result = None
+        if boundary is not None:
+            boundary_result = add_boundary(boundary, output_dim=output_dim)
+            terms.append(boundary_result)
         if offset_prior is not None:
             offset_result = _add_offset_component_result(
                 observations,
@@ -692,19 +489,16 @@ def build_co2_cached_sigma_model(
                 drop_first=offset_drop_first,
                 per_site=offset_per_site,
             )
-            if additive_boundary is not None:
+            if boundary_result is not None and isinstance(boundary, AdditiveBoundary):
                 warn_boundary_offset_confounding(
-                    additive_boundary.design[:, 0], drop_first=offset_drop_first,
+                    boundary_result.blocks[0].design.isel({boundary_result.blocks[0].design.dims[1]: 0}).values,
+                    drop_first=offset_drop_first,
                 )
             terms.append(
-                _CachedAffineTerm(
+                AffineConcentrationTerm(
                     term=ConcentrationTerm.absolute(offset_result.output),
-                    fixed_contribution=np.zeros(observations.sizes[output_dim]),
-                    active_design=np.asarray(
-                        offset_result.design.transpose(output_dim, "offset_term").values,
-                        dtype=np.float64,
-                    ),
-                    coefficients=offset_result.coefficients,
+                    fixed_contribution=xr.zeros_like(observations),
+                    blocks=(AffineBlock(offset_result.design, offset_result.coefficients),),
                     sampled_rvs=(offset_result.latent,),
                 )
             )
@@ -721,7 +515,7 @@ def build_co2_cached_sigma_model(
         )
         if shift is not None:
             add_model_data(shift.rename("boundary_reference_shift"))
-        return _add_cached_likelihood(
+        cached = _add_cached_likelihood(
             tuple(terms),
             covariance=covariance,
             modelled_mean=likelihood_mean,
@@ -733,6 +527,12 @@ def build_co2_cached_sigma_model(
             site_amplitude_prior=site_amplitude_prior,
             output_dim=output_dim,
         )
+        return replace(
+            cached,
+            boundary_roles=boundary_output_roles(boundary) if boundary is not None else {},
+            boundary_units=boundary_output_units(boundary) if boundary is not None else {},
+        )
+
 
 
 __all__ = [

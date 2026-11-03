@@ -7,28 +7,27 @@ from typing import Any, Literal
 
 import xarray as xr
 
-from openghg_inversions.postprocessing.contracts import OutputContract
-
+from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
-from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
 from .co2_cached_sigma_runner import (
     _sampler_for_cached_graph,
 )
-from openghg_inversions.models.boundary import require_centered_precision
 from .co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
-from .co2_o2_model import _validate_channel_baseline_options
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .co2_o2_runner import (
     _CO2_O2_VARIABLE_ROLES,
-    _add_additive_boundary_roles,
-    annotate_co2_o2_trace,
+    _add_linked_boundary_metadata,
     _co2_o2_metadata,
     _materialize_co2_o2_replay_inputs,
+    _prepare_co2_o2_boundaries,
+    _validate_channel_baseline_options,
+    annotate_co2_o2_trace,
 )
 
 
@@ -180,12 +179,18 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         weights = (bc_centering_weights or {}).get(channel, prepared_weights.get(channel))
         if weights is not None:
             selected_weights[channel] = weights
-    if operands:
-        require_centered_precision()
-    materialized, boundaries, operands, bc_centering_weights = _materialize_co2_o2_replay_inputs(
-        prepared, independent_error_sd, boundaries, operands, selected_weights,
-        bc_freq=bc_freq, bc_anchor_time=bc_anchor_time,
+    boundary = _prepare_co2_o2_boundaries(
+        prepared, boundaries, operands, selected_weights,
+        bc_freq=bc_freq, bc_anchor_time=bc_anchor_time, bc_prior=bc_prior,
+        bc_state_activity=bc_state_activity, bc_mean_shift_prior=bc_mean_shift_prior,
+        bc_anomaly_scale=bc_anomaly_scale,
     )
+    materialized, boundary, eager_priors = _materialize_co2_o2_replay_inputs(
+        prepared, independent_error_sd, boundary,
+        prior_parameters={"offset": offset_prior or {}, "amplitude": site_amplitude_prior},
+    )
+    offset_prior = eager_priors["offset"]
+    site_amplitude_prior = eager_priors["amplitude"]
     observations, fixed, co2, o2, error = materialized
     cached = build_co2_o2_cached_sigma_model(
         observations=observations,
@@ -199,15 +204,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         site_amplitude_prior=site_amplitude_prior,
         initial_site_amplitudes=initial_site_amplitudes,
         state_activity=state_activity,
-        boundary_sensitivity=boundaries,
-        boundary_operands=operands,
-        bc_freq=bc_freq,
-        bc_anchor_time=bc_anchor_time,
-        bc_mean_shift_prior=bc_mean_shift_prior,
-        bc_anomaly_scale=bc_anomaly_scale,
-        bc_centering_weights=bc_centering_weights,
-        bc_prior=bc_prior,
-        bc_state_activity=bc_state_activity,
+        boundary=boundary,
         offset_prior=offset_prior,
         offset_args=offset_args,
     )
@@ -223,22 +220,10 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         observation_to_fixed_ou_site_index="ou_site_index",
         fixed_ou_timescale="ou_tau_hours",
     )
-    for channel in ("co2", "o2"):
-        if channel in boundaries or channel in operands:
-            roles.update(
-                {
-                    f"{channel}_boundary_concentration": f"{channel}_mu_bc",
-                    f"{channel}_boundary_scale": f"{channel}_bc",
-                    f"{channel}_boundary_sensitivity": f"{channel}_hbc",
-                }
-            )
-        if channel in (offset_prior or {}):
-            roles[f"{channel}_offset_concentration"] = f"{channel}_offset"
-    for channel in operands:
-        roles.pop(f"{channel}_boundary_sensitivity", None)
-        roles[f"{channel}_boundary_anomaly"] = f"{channel}_H_bc_anomaly"
-        roles[f"{channel}_boundary_mass"] = f"{channel}_H_bc_mass"
-        roles[f"{channel}_boundary_reference"] = f"{channel}_bc_reference"
+    roles.update(cached.boundary_roles)
+    metadata["boundary_units"] = cached.boundary_units
+    for channel in (offset_prior or {}):
+        roles[f"{channel}_offset_concentration"] = f"{channel}_offset"
     if operands:
         metadata.update(
             boundary_representation="centered-v1",
@@ -251,13 +236,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         roles["offset_concentration"] = "offset_concentration"
     if boundaries or operands or offset_prior:
         roles["baseline_concentration"] = "baseline_concentration"
-    _add_additive_boundary_roles(
-        roles,
-        metadata,
-        co2_prior=(bc_mean_shift_prior or {}).get("co2"),
-        o2_prior=(bc_mean_shift_prior or {}).get("o2"),
-        model_variables=cached.model.named_vars,
-    )
+    _add_linked_boundary_metadata(roles, metadata)
     built = RhimeModelBuildResult(
         model=cached.model,
         output_contract=OutputContract(
