@@ -367,6 +367,7 @@ def build_co2_o2_model(
     alignment, row-unit consistency, coherent covariance provenance, and the
     embedded-ratio contract before calling this lower-level builder.
 
+    Centered boundaries support both additive-sigma and fixed-OU likelihoods.
     With centered ``boundary_operands``, raw PyMC observed and predictive
     ``y`` values are centered; BC and total concentration deterministics remain
     absolute.
@@ -440,8 +441,6 @@ def build_co2_o2_model(
             )
         boundary_sensitivity = aligned_boundaries
     if boundary_operands:
-        if tau_hours is not None:
-            raise ValueError("Centered boundaries do not support fixed-OU likelihoods.")
         _validate_channel_baseline_options(boundary_sensitivity, bc_prior, bc_state_activity, offset_prior, offset_args, boundary_operands)
         aligned_operands = {}
         for channel, operands in boundary_operands.items():
