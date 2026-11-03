@@ -130,7 +130,7 @@ def check_checkpoint_targets(
         if any(target.is_relative_to(path) or path.is_relative_to(target)
                or (target.exists() and path.exists() and target.samefile(path))
                for path in protected):
-            raise ValueError(f"Checkpoint target {target} would overwrite another checkpoint artifact.")
+            raise ValueError(f"Checkpoint target {target} overlaps an input or output artifact.")
         protected.append(target)
 
 
