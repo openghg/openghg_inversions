@@ -95,7 +95,8 @@ def test_saved_raw_periods_prior_predictive_save_reopen(tmp_path, linked, center
     xr.testing.assert_allclose(trace.observed_data.y, observed)
     if centered:
         assert trace.prior_predictive.y.attrs["concentration_representation"] == "absolute-v1"
-    # Prediction noise is small on the absolute concentration scale, even when q is hundreds of ppm.
+    # atol=5 checks restoration of the large reference, allowing predictive noise.
+    # Tight density/full-gradient precision is tested in test_centered_fixed_ou.
     np.testing.assert_allclose(trace.prior_predictive.y, trace.prior.modelled_concentration, atol=5, rtol=0)
     channels = ("co2", "o2") if linked else (None,)
     for channel in channels:
@@ -255,6 +256,8 @@ def test_saved_centered_periods_support_fixed_ou(tmp_path, linked):
     observed = prepared.observations if linked else prepared.inv_inputs.mf
     xr.testing.assert_allclose(trace.observed_data.y, observed)
     assert trace.prior_predictive.y.attrs["concentration_representation"] == "absolute-v1"
+    # atol=5 tests reference restoration only; independent density/gradient
+    # oracles in test_centered_fixed_ou retain their tight tolerances.
     np.testing.assert_allclose(trace.prior_predictive.y, trace.prior.modelled_concentration, atol=5, rtol=0)
     # Native linked channel calendars cover different numbers of 2-day periods.
     expected_states = {"co2_": 2, "o2_": 4} if linked else {"": 4}
@@ -300,6 +303,8 @@ def test_saved_centered_cached_ou_prior_predictions_remain_absolute(tmp_path):
     ).transpose(output_dim, ...).values
     expected_boundary = np.einsum("...j,ij->...i", trace.prior.bc.values, absolute_design)
     np.testing.assert_allclose(trace.prior.mu_bc, expected_boundary)
+    # This noisy predictive check detects missing large-reference restoration.
+    # Separate full-gradient oracles establish numerical precision.
     np.testing.assert_allclose(
         trace.prior_predictive.y, trace.prior.modelled_concentration, atol=5, rtol=0,
     )
