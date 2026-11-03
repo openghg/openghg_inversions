@@ -122,14 +122,15 @@ def reference(manifest: Path, value: Any) -> Path:
 def check_checkpoint_targets(
     destination: Path, *, stage: str | None, payloads: tuple[str, ...], referenced: tuple[Path, ...] = (),
 ) -> None:
-    """Protect concrete writes from redirects and dependency aliases."""
-    protected = list(referenced)
+    """Protect concrete writes from redirects and overlapping input/output artifacts."""
+    protected = [path.resolve() for path in referenced]
     targets = payloads if stage is None else (*payloads, f".{stage}-manifest.tmp", f"{stage}-manifest.json")
     for name in targets:
         target = _output_path(destination, None, name)
-        if any(target == path or (target.exists() and path.exists() and target.samefile(path))
+        if any(target.is_relative_to(path) or path.is_relative_to(target)
+               or (target.exists() and path.exists() and target.samefile(path))
                for path in protected):
-            raise ValueError(f"Checkpoint target {target} would overwrite another checkpoint artifact.")
+            raise ValueError(f"Checkpoint target {target} overlaps an input or output artifact.")
         protected.append(target)
 
 

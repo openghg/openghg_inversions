@@ -229,7 +229,7 @@ def test_sample_checkpoint_cannot_overwrite_its_preparation(tmp_path):
     generation = handoffs.load_preparation(prep).generation
     # Sample payload redirects onto the numerical preparation.
     (prep.parent / "posterior.nc").symlink_to(prep.parent / "prepared-inputs.nc")
-    with pytest.raises(ValueError, match="overwrite"):
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         handoffs.save_samples(prep, trace, actual_inference=RhimeSampler(draws=4, chains=1).describe(), preparation_generation=generation, output_dir=prep.parent)
 
 
