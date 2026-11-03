@@ -187,17 +187,24 @@ array position. The complete role and model-variable contract is described in
 
 Inspect diagnostics before interpreting any posterior quantity:
 
-Every completed ``RhimeSampler`` NUTS run calculates a compact
-``sampler-convergence`` check after burn slicing.  The check is reported in
+Every completed ``RhimeSampler`` NUTS run assesses retained samples with
+``arviz.diagnose`` after burn slicing. The compact assessment is reported in
 the timing log and preserved as JSON in
-``result.trace.attrs["sampler_convergence"]``.  It records chain and retained
-draw counts, the worst R-hat and effective sample sizes with their variables,
-and divergences by chain. It assesses only
-sampled latent variables, names them in ``assessed_variables``, and excludes
-deterministic posterior outputs. One-chain output explicitly reports that
-between-chain convergence is not assessable.
+``result.trace.attrs["sampler_convergence"]``. It records chain and retained
+draw counts, the ArviZ version and error flag, total divergences, and reasons
+why assessment is incomplete. It assesses sampled latent variables, names them
+in ``measured_values.assessed_variables``, and excludes deterministic posterior
+outputs. One-chain output explicitly reports that between-chain convergence
+is not assessable. ArviZ also checks tree depth and energy diagnostics when
+those sampler statistics are available. PyMC's separate pre-burn convergence
+checks default to disabled; set ``sample_kwargs={"compute_convergence_checks": True}``
+when you also want those warnings.
 
-Parse the preserved JSON to inspect the compact check and the latent variables
+The saved assessment is plain diagnostic JSON. For an ``openghg-run``
+CheckResult envelope, use staged :ref:`diagnose <staged-convergence-check>`
+on the saved trace. That reference also describes ArviZ's threshold policy.
+
+Parse the preserved JSON to inspect the assessment and the latent variables
 it assessed:
 
 .. jupyter-input::

@@ -4441,9 +4441,11 @@ def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
     assert calls == [(result, registry, ["posterior", "prior", "posterior_predictive"])]
 
 
+@pytest.mark.parametrize("pymc_checks", [None, True])
 def test_rhime_sampler_diagnoses_free_variables_after_restoring_coords(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    pymc_checks: bool | None,
 ) -> None:
     """Automatic diagnostics use latent names and restored scientific labels."""
     trace = make_trace(
@@ -4457,15 +4459,10 @@ def test_rhime_sampler_diagnoses_free_variables_after_restoring_coords(
     )
     seen: dict[str, Any] = {}
     convergence = {
-        "schema_version": 1,
-        "name": "sampler-convergence",
         "status": "pass",
-        "producer": "openghg_inversions",
         "measured_values": {"assessed_variables": ["x"], "chains": 2, "draws_per_chain": 4},
-        "thresholds": {},
-        "message": "healthy",
-        "artifact_paths": [],
-        "stage": "posterior",
+        "thresholds": {"policy": "arviz.diagnose defaults"},
+        "message": "ArviZ detected no sampling problems.",
     }
 
     def capture_diagnostics(trace: xr.DataTree, *, variable_names: list[str]):
@@ -4473,7 +4470,11 @@ def test_rhime_sampler_diagnoses_free_variables_after_restoring_coords(
         seen["variable_names"] = variable_names
         return xr.Dataset(), convergence
 
-    monkeypatch.setattr(inference_sampling.pm, "sample", lambda **kwargs: trace)
+    def sample(**kwargs):
+        seen["pymc_checks"] = kwargs["compute_convergence_checks"]
+        return trace
+
+    monkeypatch.setattr(inference_sampling.pm, "sample", sample)
     monkeypatch.setattr(inference_sampling, "posterior_convergence_check", capture_diagnostics)
     monkeypatch.setattr(inference_sampling, "log_timing", lambda *args, **kwargs: None)
     with pm.Model(coords={"region": range(2)}) as model:
@@ -4489,9 +4490,13 @@ def test_rhime_sampler_diagnoses_free_variables_after_restoring_coords(
         tune=0,
         sample_prior_predictive=False,
         sample_posterior_predictive=False,
+        sample_kwargs={} if pymc_checks is None else {"compute_convergence_checks": pymc_checks},
     ).sample(model)
 
-    assert seen == {"region": ["north", "south"], "variable_names": ["x"]}
+    assert seen == {
+        "region": ["north", "south"], "variable_names": ["x"],
+        "pymc_checks": False if pymc_checks is None else pymc_checks,
+    }
     assert json.loads(result.attrs["sampler_convergence_variables"]) == ["x"]
     assert json.loads(result.attrs["sampler_convergence"]) == convergence
 

@@ -26,7 +26,7 @@ from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.postprocessing.contracts import resolve_predictive_names
 
-from .diagnostics import posterior_convergence_check
+from .convergence import posterior_convergence_check
 
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
 
@@ -220,6 +220,9 @@ class RhimeSampler:
         nuts_sampler: PyMC NUTS backend name.
         progressbar: Whether PyMC progress output should be shown.
         sample_kwargs: Extra keyword arguments forwarded to ``pm.sample``.
+            ``compute_convergence_checks`` defaults to ``False`` because the
+            sampler assesses retained draws after burn slicing. Set it to
+            ``True`` to also run PyMC's convergence checks.
             Nested containers and NumPy option arrays are copied; opaque
             runtime objects and xarray/Dask values are borrowed.
             Posterior ``var_names`` overrides are invalid because sampling
@@ -359,17 +362,22 @@ class RhimeSampler:
                 variable named ``y``.
 
         Returns:
-            Sampled trace with requested predictive groups. Its
-            ``sampler_convergence`` and ``sampler_convergence_variables``
-            attributes contain JSON for the convergence CheckResult and its
-            assessed variable names. Assessment follows burn slicing and
-            registered-coordinate restoration.
+            Sampled trace with requested predictive groups, after burn slicing
+            and registered-coordinate restoration. Its ``sampler_convergence``
+            attribute contains a JSON convergence report from
+            :func:`~openghg_inversions.inference.convergence.posterior_convergence_check`
+            using ArviZ's default thresholds. The report assesses the model's free
+            random variables, whose names are saved as JSON in
+            ``sampler_convergence_variables``. Assessment is eager; a failed or
+            incomplete convergence report does not prevent returning the trace.
         """
         _validate_idata_options(self.sample_kwargs, label="sample_kwargs")
         sample_kwargs = _copy_sampler_options(self.sample_kwargs or {})
         sample_kwargs.pop("return_inferencedata", None)
         idata_kwargs = dict(sample_kwargs.pop("idata_kwargs", {}))
         idata_kwargs.setdefault("log_likelihood", True)
+        # Assess the retained samples after burn slicing instead of repeating PyMC's pre-burn checks.
+        sample_kwargs.setdefault("compute_convergence_checks", False)
         sample_kwargs.setdefault("progressbar", self.progressbar)
         sample_kwargs.setdefault("cores", self.chains)
         if not isinstance(self.sample_prior_predictive, bool | int | np.integer) or self.sample_prior_predictive < 0:

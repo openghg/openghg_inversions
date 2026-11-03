@@ -7,11 +7,7 @@ from pathlib import Path
 from typing import Any
 from collections.abc import Callable, Mapping
 
-from openghg_inversions.inference.diagnostics import (
-    CHECK_SCHEMA_VERSION,
-    CONVERGENCE_CHECK_NAME,
-    posterior_convergence_check,
-)
+from openghg_inversions.inference.convergence import posterior_convergence_check
 import numpy as np
 
 from openghg_inversions.serialization import load_trace, reset_serialisation_multiindexes
@@ -25,6 +21,8 @@ from ._stage_artifacts import (
 )
 from ._stage_authentication import _load_stage_manifest
 
+CHECK_SCHEMA_VERSION = 1
+CONVERGENCE_CHECK_NAME = "sampler-convergence"
 PREPARATION_CHECK_NAME = "prior-predictive-readiness"
 
 __all__ = [
@@ -137,28 +135,16 @@ def _check_stage(stage: str) -> str:
     return stage.strip()
 
 
-def _validate_diagnostic_thresholds(
-    *,
-    max_rhat: float,
-    min_bulk_ess: float,
-    min_tail_ess: float,
-    max_divergences: int,
-) -> None:
-    """Reject thresholds that cannot define a valid convergence policy."""
-    for name, value, minimum in (
-        ("max_rhat", max_rhat, 1.0),
-        ("min_bulk_ess", min_bulk_ess, 0.0),
-        ("min_tail_ess", min_tail_ess, 0.0),
-    ):
-        if (
-            isinstance(value, bool)
-            or not isinstance(value, Real)
-            or not np.isfinite(value)
-            or value < minimum
-        ):
+def _validate_diagnostic_thresholds(**thresholds: float | int | None) -> None:
+    """Reject non-finite or invalid ArviZ threshold overrides before loading samples."""
+    for name, value in thresholds.items():
+        if value is None:
+            continue
+        minimum = 1.0 if name == "rhat_max" else 0.0
+        if isinstance(value, bool) or not isinstance(value, Real) or not np.isfinite(value) or value < minimum:
             raise ValueError(f"Diagnostic threshold {name} must be finite and at least {minimum:g}.")
-    if isinstance(max_divergences, bool) or not isinstance(max_divergences, Integral) or max_divergences < 0:
-        raise ValueError("Diagnostic threshold max_divergences must be a non-negative integer.")
+        if name == "ess_threshold" and not isinstance(value, Integral):
+            raise ValueError("Diagnostic threshold ess_threshold must be an integer.")
 
 
 def diagnose_rhime_stage(
@@ -167,27 +153,60 @@ def diagnose_rhime_stage(
     output_dir: str | Path,
     sample_manifest: str | Path | None = None,
     check_output: str | Path | None = None,
-    max_rhat: float = 1.01,
-    min_bulk_ess: float = 400,
-    min_tail_ess: float = 400,
-    max_divergences: int = 0,
+    rhat_max: float | None = None,
+    ess_min_ratio: float | None = None,
+    ess_threshold: int | None = None,
+    bfmi_threshold: float | None = None,
     stage: str = "posterior",
 ) -> dict[str, Any]:
-    """Calculate convergence from a posterior path or current sample manifest.
+    """Assess saved posterior samples and write convergence evidence and a report.
 
-    An optional sample manifest supplies descriptive run context, without
-    authenticating the posterior file. When ``posterior`` is omitted, resolve
-    its reference beside the sample manifest. Diagnosis needs no preparation,
-    model construction or inference; explicit posterior paths take precedence.
-    A draw diverges when either its ordinary or cached-amplitude NUTS flag is
-    true. Missing both flags leaves divergence assessment unknown.
+    Diagnosis loads samples without constructing or sampling a model. An optional
+    sample manifest supplies a posterior reference without authenticating its
+    contents; an explicit posterior path takes precedence.
+
+    Args:
+        posterior: Posterior trace file. Required unless ``sample_manifest``
+            supplies its reference, resolved relative to the manifest directory.
+        output_dir: Directory created for the diagnostic artifacts. Existing
+            symlinks within it are rejected.
+        sample_manifest: Current sample-stage manifest, validated when supplied
+            even if ``posterior`` is explicit.
+        check_output: JSON report path beneath ``output_dir``, relative to that
+            directory unless absolute. Defaults to ``sampler-convergence.json``.
+        rhat_max: Maximum acceptable R-hat, finite and at least one.
+            ``None`` uses the ArviZ default.
+        ess_min_ratio: Minimum acceptable ratio of the smaller bulk/tail effective
+            sample size (ESS) to total retained samples across chains. Must be
+            finite and non-negative; ``None`` uses the ArviZ default.
+        ess_threshold: Minimum acceptable bulk ESS, independently of the ratio
+            check. Must be a non-negative integer; ``None`` uses ArviZ's default
+            of 100 times the number of chains.
+        bfmi_threshold: Minimum acceptable energy Bayesian fraction of missing
+            information (E-BFMI). Must be finite and non-negative; ``None`` uses
+            the ArviZ default.
+        stage: Non-empty label recorded in the check, with whitespace stripped.
+
+    Returns:
+        The CheckResult dictionary written to the JSON report, with the plain
+        assessment from
+        :func:`~openghg_inversions.inference.convergence.posterior_convergence_check`
+        wrapped in the versioned staged-check envelope. Its artifact path refers
+        to ``posterior-diagnostics.nc``, the detailed ArviZ summary written under
+        ``output_dir``. Existing artifact/report files are replaced. Failed or
+        incomplete assessments are returned and written without raising.
+
+    Raises:
+        ValueError: If inputs, threshold overrides, the manifest, stage label or
+            output paths are invalid, including when no posterior is provided.
+        OSError: If reading the trace or writing diagnostic artifacts fails.
     """
     stage = _check_stage(stage)
     _validate_diagnostic_thresholds(
-        max_rhat=max_rhat,
-        min_bulk_ess=min_bulk_ess,
-        min_tail_ess=min_tail_ess,
-        max_divergences=max_divergences,
+        rhat_max=rhat_max,
+        ess_min_ratio=ess_min_ratio,
+        ess_threshold=ess_threshold,
+        bfmi_threshold=bfmi_threshold,
     )
     sample_contract = None
     if sample_manifest is not None:
@@ -200,14 +219,16 @@ def diagnose_rhime_stage(
     idata = load_trace(posterior_path)
     destination = _stage_output_directory(output_dir)
     summary_path = _output_path(destination, None, "posterior-diagnostics.nc")
-    summary, result = posterior_convergence_check(
+    summary, assessment = posterior_convergence_check(
         idata,
-        max_rhat=max_rhat,
-        min_bulk_ess=min_bulk_ess,
-        min_tail_ess=min_tail_ess,
-        max_divergences=max_divergences,
-        stage=stage,
-        artifact_paths=[_artifact_path(summary_path)],
+        rhat_max=rhat_max,
+        ess_min_ratio=ess_min_ratio,
+        ess_threshold=ess_threshold,
+        bfmi_threshold=bfmi_threshold,
+    )
+    result = _check_result(
+        name=CONVERGENCE_CHECK_NAME, **assessment,
+        stage=stage, artifact_paths=[_artifact_path(summary_path)],
     )
     reset_serialisation_multiindexes(summary).to_netcdf(summary_path)
     _write_json(_output_path(destination, check_output, "sampler-convergence.json"), result)
