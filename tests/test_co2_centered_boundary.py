@@ -1,0 +1,431 @@
+"""Scientific invariants of additive, centred boundary corrections."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import numpy as np
+import pandas as pd
+import pymc as pm
+import pytensor.tensor as pt
+import pytest
+from scipy.stats import multivariate_normal
+import xarray as xr
+
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.models.state_activity import StateActivity
+from openghg_inversions.observation_error import resolve_aggregation_error
+from openghg_inversions.rhime.co2 import build_co2_cached_sigma_model, build_co2_model
+
+
+def _inputs(n_boundary: int = 3) -> xr.Dataset:
+    response = np.array([[0.2, 0.3, 0.1], [0.0, 0.5, 0.0], [0.0, 0.0, 0.0], [0.3, 0.0, 0.5]])
+    response = response[:, :n_boundary]
+    boundary = response * np.array([400.0, 410.0, 390.0])[:n_boundary]
+    inputs = xr.Dataset(
+        {
+            "H": (("nmeasure", "region"), np.ones((4, 1))),
+            "alpha_prior_mean": ("region", [1.0]),
+            "alpha_prior_covariance": (("region", "region_cov"), [[0.04]]),
+            "fixed_prior_contribution": ("nmeasure", np.full(4, 0.1)),
+            "mf": ("nmeasure", boundary.sum(axis=1) + np.array([1.15, 1.06, 1.12, 1.07])),
+            "mf_error": ("nmeasure", np.full(4, 0.1)),
+            "aggregation_error_covariance": (("nmeasure", "nmeasure_cov"), np.eye(4) * 0.02),
+            "H_bc": (("nmeasure", "bc_region"), boundary),
+            "H_bc_mass": (("nmeasure", "bc_region"), response),
+            "bc_centering_weights": ("bc_region", np.array([1.0, 2.0, 4.0])[:n_boundary]),
+        },
+        coords={
+            "nmeasure": np.arange(4),
+            "region": ["flux"],
+            "bc_region": ["north", "east", "west"][:n_boundary],
+            "site": ("nmeasure", ["AAA", "AAA", "BBB", "BBB"]),
+            "time": (
+                "nmeasure",
+                np.array(
+                    ["2021-01-01T00", "2021-01-01T03", "2021-01-01T01", "2021-01-01T05"],
+                    dtype="datetime64[h]",
+                ),
+            ),
+        },
+    )
+    for name in ("mf", "mf_error", "H_bc", "fixed_prior_contribution"):
+        inputs[name].attrs["units"] = "ppm"
+    for name in ("H_bc_mass", "bc_centering_weights"):
+        inputs[name].attrs["units"] = "1"
+    return inputs
+
+
+def _kwargs(inputs: xr.Dataset) -> dict[str, Any]:
+    return dict(
+        retained_prior=CorrelatedLognormalPrior(
+            inputs.alpha_prior_mean, inputs.alpha_prior_covariance, covariance_dim="region_cov"
+        ),
+        fixed_prior_contribution=inputs.fixed_prior_contribution,
+        observations=inputs.mf,
+        observation_error=inputs.mf_error,
+        aggregation_error=resolve_aggregation_error(inputs, "dense"),
+        state_activity=StateActivity(active=np.zeros(1, dtype=bool), fixed_value=1.0),
+        boundary_operands=xr.Dataset({
+            "H_bc_anomaly": (inputs.H_bc - 400.0 * inputs.H_bc_mass).assign_attrs(units="ppm"),
+            "H_bc_mass": inputs.H_bc_mass,
+            "bc_reference": xr.DataArray(400.0, attrs={"units": "ppm"}),
+        }, attrs={"boundary_representation": "centered-v1"}),
+        bc_centering_weights=inputs.bc_centering_weights.assign_coords(
+            xr.Coordinates.from_pandas_multiindex(
+                pd.MultiIndex.from_product([inputs.bc_region.values, [0]], names=["bc_curtain", "bc_period"]),
+                "bc_region",
+            )
+        ),
+        bc_mean_shift_prior={"pdf": "normal", "mu": 0.0, "sigma": 0.5},
+        bc_anomaly_scale=0.3,
+    )
+
+
+def _anomaly_rv(model: pm.Model) -> Any:
+    return next(rv for rv in model.free_RVs if rv.name != "bc_mean_shift" and "sigma" not in rv.name)
+
+
+def _anomaly_design(model: pm.Model) -> np.ndarray:
+    anomaly = model.replace_rvs_by_values([model["bc_anomaly"]])[0]
+    coefficients = model.rvs_to_values[_anomaly_rv(model)]
+    jacobian = pt.jacobian(anomaly, coefficients)
+    evaluate = model.compile_fn(jacobian, inputs=model.value_vars, on_unused_input="ignore")
+    return np.asarray(evaluate(model.initial_point()))
+
+
+def test_weighted_anomaly_prior_preserves_contrasts_and_permutation() -> None:
+    inputs = _inputs()
+    model = build_co2_model(inputs.H, **_kwargs(inputs))
+    assert "bc" not in model.named_vars
+    assert len(model.free_RVs) == 2
+    design = _anomaly_design(model)
+    latent = _anomaly_rv(model)
+    point = model.initial_point()
+    point[model.rvs_to_values[latent].name] = np.array([0.2, -0.4])
+    prior_logp = model.compile_fn(
+        model.logp(vars=[latent]), inputs=model.value_vars, on_unused_input="ignore"
+    )
+    assert prior_logp(point) == pytest.approx(
+        multivariate_normal.logpdf([0.2, -0.4], mean=np.zeros(2), cov=np.eye(2) * 0.3**2)
+    )
+    weights = inputs.bc_centering_weights.values / inputs.bc_centering_weights.sum().item()
+    projection = np.eye(3) - np.ones((3, 1)) * weights
+    np.testing.assert_allclose(weights @ design, 0.0, atol=1e-15)
+    np.testing.assert_allclose(design @ design.T, projection @ projection.T, atol=1e-14)
+    contrasts = design[[0, 0, 1]] - design[[1, 2, 2]]
+    np.testing.assert_allclose(np.sum(contrasts**2, axis=1), 2.0)
+
+    order = np.array([2, 0, 1])
+    permuted = inputs.isel(bc_region=order)
+    other = build_co2_model(permuted.H, **_kwargs(permuted))
+    other_design = _anomaly_design(other)
+    np.testing.assert_allclose(
+        other_design @ other_design.T, (design @ design.T)[np.ix_(order, order)], atol=1e-14
+    )
+
+
+@pytest.mark.parametrize("n_boundary", [1, 3])
+@pytest.mark.parametrize("anomaly_scale", [0.0, 0.3])
+def test_forward_equations_and_cached_likelihood_gradient(n_boundary: int, anomaly_scale: float) -> None:
+    inputs = _inputs(n_boundary)
+    kwargs = _kwargs(inputs)
+    kwargs["bc_anomaly_scale"] = anomaly_scale
+    ordinary = build_co2_model(inputs.H, **kwargs)
+    cached = build_co2_cached_sigma_model(
+        inputs.H,
+        **kwargs,
+        tau_hours={"AAA": 3.0, "BBB": 7.0},
+        site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
+        initial_site_amplitudes=0.4,
+    )
+    has_contrasts = n_boundary > 1 and anomaly_scale > 0
+    assert cached.target.design.shape == (4, n_boundary if has_contrasts else 1)
+    assert [state.name for state in cached.states] == (
+        ["bc_mean_shift", "bc_anomaly_latent"] if has_contrasts else ["bc_mean_shift"]
+    )
+    covariance = np.eye(4) * 0.03
+    for rows, lag, tau in (([0, 1], 3.0, 3.0), ([2, 3], 4.0, 7.0)):
+        covariance[np.ix_(rows, rows)] += 0.16 * np.array(
+            [[1.0, np.exp(-lag / tau)], [np.exp(-lag / tau), 1.0]]
+        )
+    predictions = []
+    for model in (ordinary, cached.model):
+        assert "bc" not in model.named_vars
+        if not has_contrasts:
+            assert not any("anomaly" in rv.name for rv in model.free_RVs)
+            assert "bc_anomaly_latent" not in model.named_vars
+            assert "bc_anomaly_basis" not in model.named_vars
+            assert "bc_anomaly" not in model.named_vars
+            assert "mu_bc_anomaly" not in model.named_vars
+        point = model.initial_point()
+        if model is cached.model:
+            point["ou_site_amplitude_log__"] = np.log(np.full(2, 0.4))
+        point["bc_mean_shift"] = np.asarray(0.7)
+        if has_contrasts:
+            rv = _anomaly_rv(model)
+            point[model.rvs_to_values[rv].name] = np.array([0.2, -0.4])
+        outputs = model.replace_rvs_by_values(
+            [
+                model[name] if name in model else pt.zeros_like(
+                    model["bc_correction" if name == "bc_anomaly" else "mu_bc_mean_shift"]
+                )
+                for name in (
+                    "bc_anomaly",
+                    "bc_correction",
+                    "mu_bc_reference",
+                    "mu_bc_mean_shift",
+                    "mu_bc_anomaly",
+                    "mu_bc",
+                    "modelled_concentration",
+                )
+            ]
+        )
+        if model is cached.model:
+            likelihood = model.logp(vars=model.observed_RVs)
+            state_values = [model.rvs_to_values[model["bc_mean_shift"]]]
+            if has_contrasts:
+                state_values.append(model.rvs_to_values[_anomaly_rv(model)])
+            outputs.extend([likelihood, *pt.grad(likelihood, state_values)])
+        evaluate = model.compile_fn(outputs, inputs=model.value_vars, on_unused_input="ignore")
+        values = evaluate(point)
+        anomaly, correction, reference, shift, variation, boundary, mean = values[:7]
+        assert anomaly.shape == (n_boundary,)
+        if not has_contrasts:
+            np.testing.assert_array_equal(anomaly, np.zeros(n_boundary))
+            np.testing.assert_array_equal(variation, np.zeros(4))
+        response = inputs.H_bc_mass.values
+        weights = inputs.bc_centering_weights.values / inputs.bc_centering_weights.sum().item()
+        np.testing.assert_allclose(weights @ anomaly, 0.0, atol=1e-14)
+        np.testing.assert_allclose(weights @ correction, 0.7)
+        np.testing.assert_allclose(reference, inputs.H_bc.sum("bc_region"))
+        np.testing.assert_allclose(shift, response.sum(axis=1) * 0.7)
+        np.testing.assert_allclose(variation, response @ anomaly)
+        np.testing.assert_allclose(boundary, reference + response @ correction)
+        np.testing.assert_allclose(mean, boundary + 1.1)
+        predictions.append(mean)
+        if model is cached.model:
+            np.testing.assert_allclose(
+                values[7], multivariate_normal.logpdf(inputs.mf, mean=mean, cov=covariance)
+            )
+            residual_precision = np.linalg.solve(covariance, inputs.mf.values - mean)
+            np.testing.assert_allclose(
+                values[8], response.sum(axis=1) @ residual_precision, rtol=1e-6, atol=1e-8
+            )
+            if has_contrasts:
+                np.testing.assert_allclose(
+                    values[9],
+                    (response @ _anomaly_design(model)).T @ residual_precision,
+                    rtol=1e-6,
+                    atol=1e-8,
+                )
+    np.testing.assert_allclose(*predictions)
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"bc_anomaly_scale": None},
+        {"bc_anomaly_scale": -0.1},
+        {"bc_anomaly_scale": np.nan},
+        {"bc_anomaly_scale": np.inf},
+        {"bc_anomaly_scale": -np.inf},
+        {"bc_centering_weights": None},
+        {"boundary_operands": None},
+        {"bc_prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1}},
+        {"bc_state_activity": StateActivity()},
+    ],
+)
+def test_centered_boundary_rejects_incomplete_or_competing_options(override: dict[str, Any]) -> None:
+    inputs = _inputs()
+    kwargs = _kwargs(inputs)
+    kwargs.update(override)
+    with pytest.raises((ValueError, TypeError)):
+        build_co2_model(inputs.H, **kwargs)
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        "negative_weight",
+        "zero_weight",
+        "nan_weight",
+        "negative_response",
+        "zero_response",
+        "dimensional_response",
+        "misaligned_labels",
+    ],
+)
+def test_centered_boundary_validates_scientific_inputs(invalid: str) -> None:
+    inputs = _inputs()
+    kwargs = _kwargs(inputs)
+    if invalid.endswith("weight"):
+        weights = kwargs["bc_centering_weights"].copy(deep=True)
+        weights[0] = {"negative_weight": -1.0, "zero_weight": 0.0, "nan_weight": np.nan}[invalid]
+        kwargs["bc_centering_weights"] = weights
+    elif invalid == "misaligned_labels":
+        kwargs["bc_centering_weights"] = inputs.bc_centering_weights.assign_coords(
+            bc_region=["wrong", "east", "west"]
+        )
+    else:
+        response = inputs.H_bc_mass.copy(deep=True)
+        if invalid == "negative_response":
+            response[0, 0] = -0.1
+        elif invalid == "zero_response":
+            response[:] = 0.0
+        else:
+            response.attrs["units"] = "ppm"
+        kwargs["boundary_operands"]["H_bc_mass"] = response
+    with pytest.raises(ValueError):
+        build_co2_model(inputs.H, **kwargs)
+
+
+def test_additive_term_keeps_sampled_boundary_and_observation_offsets_in_mean() -> None:
+    from openghg_inversions.models import ConcentrationTerm, likelihood_representation, registered_model
+    from openghg_inversions.models.additive_boundary import prepare_additive_boundary, add_additive_boundary
+
+    inputs = _inputs()
+    mass = inputs.H_bc_mass
+    operands = xr.Dataset(
+        {
+            "H_bc_anomaly": (mass * 0.001).assign_attrs(units="ppm"),
+            "H_bc_mass": mass,
+            "bc_reference": xr.DataArray(200000.0, attrs={"units": "ppm"}),
+        }
+    )
+    prior = {"pdf": "normal", "mu": 0.0, "sigma": 0.2}
+    prepared = prepare_additive_boundary(
+        operands,
+        inputs.bc_centering_weights,
+        inputs.mf,
+        prior,
+        0.3,
+        None,
+        None,
+    )
+    assert prepared is not None
+    with registered_model() as model:
+        result = add_additive_boundary(prepared, prior, 0.3)
+        observation_offset = pm.Normal("observation_offset", mu=0.0, sigma=0.1)
+        offset = pt.ones(inputs.sizes["nmeasure"]) * observation_offset
+        absolute = result.term.output + offset
+        mean, observations, shift = likelihood_representation(
+            [result.term, ConcentrationTerm.absolute(offset)],
+            inputs.mf,
+            absolute,
+        )
+    expected_shift = 200000.0 * mass.sum("bc_region")
+    xr.testing.assert_allclose(shift, expected_shift)
+    xr.testing.assert_allclose(observations, inputs.mf - expected_shift)
+    evaluate = model.compile_fn(
+        model.replace_rvs_by_values([absolute, mean, model["bc_correction"]]),
+        inputs=model.value_vars,
+        on_unused_input="ignore",
+    )
+    for boundary_mean, instrument_offset in ((-0.25, 0.07), (0.17, -0.03)):
+        point = model.initial_point()
+        point["bc_mean_shift"] = np.asarray(boundary_mean)
+        point["bc_anomaly_latent"] = np.array([0.1, -0.05])
+        point["observation_offset"] = np.asarray(instrument_offset)
+        absolute_values, centered_values, correction = evaluate(point)
+        expected = (
+            operands.H_bc_anomaly.sum("bc_region").values + mass.values @ correction + instrument_offset
+        )
+        np.testing.assert_allclose(centered_values, expected, atol=1e-12)
+        np.testing.assert_allclose(absolute_values, centered_values + expected_shift, atol=1e-10)
+        xr.testing.assert_allclose(shift, expected_shift)
+
+
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize("drop_first", [False, True])
+@pytest.mark.parametrize("anomaly_scale", [0.0, 0.3])
+def test_public_additive_builders_warn_for_unanchored_observation_offsets(cached, drop_first, anomaly_scale):
+    import warnings
+
+    inputs = _inputs()
+    response = inputs.H_bc_mass.copy(data=np.tile([0.7, 0.3, 0.0], (4, 1)))
+    inputs["H_bc_mass"] = response
+    inputs["H_bc"] = (response * 400.0).assign_attrs(units="ppm")
+    inputs["mf"] = (response.sum("bc_region") * 400.0 + 1.0).assign_attrs(units="ppm")
+    kwargs = _kwargs(inputs)
+    kwargs["bc_anomaly_scale"] = anomaly_scale
+    kwargs["offset_prior"] = {"pdf": "normal", "mu": 0.0, "sigma": 0.1}
+    with warnings.catch_warnings(record=True) as recorded:
+        warnings.simplefilter("always")
+        if cached:
+            kwargs.update(
+                tau_hours=4.0,
+                site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.2},
+                offset_drop_first=drop_first,
+            )
+            model = build_co2_cached_sigma_model(inputs.H, **kwargs).model
+        else:
+            model = build_co2_model(inputs.H, **kwargs, offset_args={"drop_first": drop_first})
+    confounding = [
+        warning
+        for warning in recorded
+        if "boundary mean and unrestricted observation offsets" in str(warning.message)
+    ]
+    assert len(confounding) == (0 if drop_first else 1)
+    assert "bc_mean_shift" in model and "offset" in model
+    assert ("bc_anomaly_latent" in model) == (anomaly_scale > 0)
+
+
+def test_nonseparable_region_period_weights_preserve_whole_window_prior():
+    """A period may have nonzero mean while the full-window weighted sum is zero."""
+    from openghg_inversions.models.additive_boundary import prepare_additive_boundary, add_additive_boundary
+    from openghg_inversions.models import registered_model
+
+    from openghg_inversions.models.boundary import bind_boundary_operands
+    mass = xr.DataArray(np.tile([.6, .4], (4, 1)), dims=("nmeasure", "bc_region"),
+                        coords={"nmeasure": np.arange(4), "bc_region": ["north", "south"]}, attrs={"units": "1"})
+    raw = xr.Dataset({"H_bc_mass": mass, "H_bc_anomaly": (mass * .01).assign_attrs(units="ppm"),
+                      "bc_reference": xr.DataArray(400., attrs={"units": "ppm"})},
+                     attrs={"boundary_representation": "centered-v1"})
+    observations = mass.sum("bc_region").assign_coords(time=("nmeasure", pd.to_datetime([
+        "2020-01-01", "2020-01-20", "2020-02-01", "2020-02-20"])))
+    operands = bind_boundary_operands(raw, observations, frequency="monthly")
+    weights = xr.DataArray([1., 2., 3., 7.], dims="bc_region", coords=operands.bc_region.coords, attrs={"units": "1"})
+    prior = {"pdf": "uniform", "lower": -1., "upper": 2.}
+    prepared = prepare_additive_boundary(operands, weights, observations, prior, .3, None, None)
+    w = weights.values / weights.sum().item()
+    projection = np.eye(4) - np.ones((4, 1)) * w
+    np.testing.assert_allclose(prepared.basis.values @ prepared.basis.values.T,
+                               projection @ projection.T, atol=1e-14)
+    anomaly = prepared.basis.values @ np.array([.2, -.3, .4])
+    np.testing.assert_allclose(w @ anomaly, 0., atol=1e-15)
+    assert abs(weights.values[::2] @ anomaly[::2]) > 1e-3
+    with registered_model() as model:
+        result = add_additive_boundary(prepared, prior, .3)
+    assert result.latents[0].name == "bc_mean_shift"
+    assert "bc_mean_shift_interval__" in model.initial_point()
+
+
+def test_additive_preparation_computes_shared_operands_together():
+    import dask.array as da
+    from dask import delayed
+    from openghg_inversions.models.additive_boundary import prepare_additive_boundary
+
+    calls = []
+
+    @delayed
+    def payload():
+        calls.append("computed")
+        return np.array([[.7, .3], [.2, .8]])
+
+    mass = xr.DataArray(da.from_delayed(payload(), shape=(2, 2), dtype=float),
+                        dims=("nmeasure", "bc_region"),
+                        coords={"nmeasure": [0, 1], "bc_region": ["north", "south"]}, attrs={"units": "1"})
+    operands = xr.Dataset({"H_bc_mass": mass,
+                           "H_bc_anomaly": (mass * .001).assign_attrs(units="ppm"),
+                           "bc_reference": (mass.sum() * 200.).assign_attrs(units="ppm")})
+    weights = xr.DataArray([1., 2.], dims="bc_region", coords={"bc_region": mass.bc_region}, attrs={"units": "1"})
+    observations = xr.DataArray([400., 400.], dims="nmeasure", coords={"nmeasure": [0, 1]})
+    prior = {"pdf": "normal", "mu": 0., "sigma": .2}
+    assert prepare_additive_boundary(operands, weights, observations, None, None, None, None) is None
+    assert calls == []
+    prepared = prepare_additive_boundary(operands, weights, observations, prior, .3, None, None)
+    assert calls == ["computed"]
+    assert isinstance(operands.H_bc_mass.data, da.Array)
+    assert isinstance(prepared.operands.H_bc_mass.data, np.ndarray)
+    assert isinstance(prepared.operands.bc_reference.data, np.ndarray)

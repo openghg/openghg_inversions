@@ -148,6 +148,8 @@ def test_satellite_boundary_scaling_uses_footprint_level_provenance() -> None:
         }
     )
 
+    inputs["bc_centering_weights"] = xr.DataArray([2.0, 1.0], dims="bc_region", attrs={"units": "1"})
+    original = inputs.copy(deep=True)
     result = scale_satellite_boundary_sensitivity_to_column_signal(
         inputs,
         sites=["OCO2-EASTASIA"],
@@ -157,6 +159,9 @@ def test_satellite_boundary_scaling_uses_footprint_level_provenance() -> None:
     )
 
     np.testing.assert_allclose(result["H_bc"], [[12.5, 50.0], [37.5, 100.0]])
+
+    xr.testing.assert_identical(result.bc_centering_weights, inputs.bc_centering_weights)
+    xr.testing.assert_identical(inputs, original)
 
 
 def test_satellite_boundary_scaling_skips_matching_provenance_levels() -> None:

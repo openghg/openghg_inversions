@@ -209,12 +209,23 @@ def test_absent_baseline_is_zero_and_basic_reduces_it_without_sample_axes():
     np.testing.assert_array_equal(basic.boundary_posterior_mean, [0])
 
 
-def test_conditional_paris_uses_affine_draw_statistics_and_template_units():
+@pytest.mark.parametrize("additive_diagnostics", [False, True])
+def test_conditional_paris_uses_affine_draw_statistics_and_template_units(additive_diagnostics):
     from postprocessing.test_co2_flux_outputs import _fixture
     from openghg_inversions.rhime.co2.co2_outputs import _paris_products
 
     prepared, concentration_trace = _components_fixture()
     components = reconstruct_co2_concentrations(concentration_trace, prepared)
+    if additive_diagnostics:
+        for when in ("prior", "posterior"):
+            boundary = components[f"boundary_{when}"]
+            components[f"boundary_mean_shift_{when}"] = boundary.mean("nmeasure") * .1
+            components[f"boundary_mean_contribution_{when}"] = boundary * .1
+            components[f"boundary_anomaly_contribution_{when}"] = boundary * .2
+            components[f"boundary_reference_{when}"] = boundary * .7
+            components[f"boundary_correction_{when}"] = (
+                boundary.mean("nmeasure") * xr.DataArray([.1, -.1], dims="bc_region")
+            )
     bound, flux_trace, countries = _fixture()
     native, country = _affine_products(flux_trace, bound, countries, None)
     result = make_co2_output(
@@ -224,6 +235,8 @@ def test_conditional_paris_uses_affine_draw_statistics_and_template_units():
     output = Co2OutputOptions(output_format="paris", paris_postprocessing_kwargs={"flux_frequency": "monthly"})
     concentration, flux = _paris_products(components, native, country, countries, result, None, output=output)
     assert flux.attrs["uncertainty_scope"] == "retained_state_conditional"
+    np.testing.assert_array_equal(concentration.sector, ["emissions"])
+    assert "mf_boundary_mean_contribution_posterior" not in concentration
     np.testing.assert_allclose(
         flux.flux_total_posterior.isel(time=0), native.flux_total_posterior_mean, rtol=1e-6
     )
@@ -323,3 +336,14 @@ def test_reporting_country_selection_accepts_iterables_and_preserves_none(
         SimpleNamespace(affine_map=SimpleNamespace(flux=xr.DataArray(1.0))),
     )
     assert list(countries.matrix.country.values) == (names[:2] if select_countries else names)
+
+
+def test_legacy_centered_anomaly_transport_role_is_not_a_sampled_correction():
+    prepared, trace = _components_fixture()
+    roles = json.loads(trace.attrs["rhime_variable_roles"])
+    roles["boundary_anomaly"] = "H_bc_anomaly"
+    trace.attrs["rhime_variable_roles"] = json.dumps(roles)
+    trace["constant_data"] = xr.Dataset({"H_bc_anomaly": prepared.inv_inputs.H})
+    components = reconstruct_co2_concentrations(trace, prepared)
+    assert "boundary_anomaly_posterior" not in components
+    np.testing.assert_allclose(components.boundary_posterior, trace.posterior.bc_custom)

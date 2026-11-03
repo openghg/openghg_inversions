@@ -13,7 +13,7 @@ from openghg_inversions.models import StateActivity, get_coord_registry, restore
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.rhime.co2 import build_co2_model, Co2PreparedInputs, Co2O2PreparedInputs
-from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands, restore_absolute_predictives
+from openghg_inversions.models.boundary import bind_boundary_operands, restore_absolute_predictives
 from openghg_inversions.rhime.co2.co2_o2_runner import build_rhime_co2_o2, annotate_co2_o2_trace
 from openghg_inversions.rhime.co2.co2_runner import (
     materialize_co2_inputs,
@@ -430,7 +430,7 @@ def test_public_linked_preparation_retains_raw_operands():
     operands = {channel: _operands(options[f"{channel}_observations"]) for channel in ("co2", "o2")}
     prepared = prepare_co2_o2_inputs(**options, boundary_operands=operands)
     assert prepared.boundary_operands["co2"] is operands["co2"]
-    assert prepared.to_datatree().attrs["schema_version"] == 2
+    assert prepared.to_datatree().attrs["schema_version"] == 3
     with pytest.raises(ValueError, match="not both"):
         prepare_co2_o2_inputs(
             **options,
@@ -553,8 +553,9 @@ def test_direct_centered_binding_rejects_nat_anchor(linked):
             build_co2_from_materialized(inputs, prepared_inputs=prepared, priors=priors, **options)
 
 
-def test_linked_composes_replaced_boundary_scientific_fields(monkeypatch):
-    """A component can expose distinct absolute and centered graph variables."""
+@pytest.mark.parametrize("delta", [0.0, 0.25])
+def test_linked_composes_replaced_boundary_scientific_fields(monkeypatch, delta):
+    """The returned term owns concentration composition and grouped reports."""
     from openghg_inversions.array_ops import select_gathered_data_array
     from openghg_inversions.rhime.co2 import co2_o2_model
 
@@ -581,12 +582,16 @@ def test_linked_composes_replaced_boundary_scientific_fields(monkeypatch):
 
     def replacement(*args, **kwargs):
         result = original_component(*args, **kwargs)
-        # Graph names describe local implementation; the returned fields own meaning.
+        # Change only this channel's term, leaving the legacy component output intact.
+        change = delta * (result.operands.H_bc_mass != 0).any("bc_region").data
         name = f"alternative_{len(replacements)}"
-        absolute = pm.Deterministic(f"{name}_absolute", result.component.output)
-        centered = pm.Deterministic(f"{name}_centered", result.likelihood_contribution)
+        absolute = pm.Deterministic(f"{name}_absolute", result.term.output + change)
+        centered = pm.Deterministic(f"{name}_centered", result.term.likelihood_contribution + change)
         replacements.append(absolute)
-        return replace(result, component=replace(result.component, output=absolute), likelihood_contribution=centered)
+        return replace(
+            result,
+            term=replace(result.term, output=absolute, likelihood_contribution=centered),
+        )
 
     monkeypatch.setattr(co2_o2_model, "add_centered_boundary", replacement)
     alternative = build_rhime_co2_o2(**options).model
@@ -594,8 +599,9 @@ def test_linked_composes_replaced_boundary_scientific_fields(monkeypatch):
     point = original.initial_point()
     point["co2_bc"][:] = [0.9, 1.1]
     point["o2_bc"][:] = [1.3, 0.7]
-    np.testing.assert_allclose(original.compile_logp()(point), alternative.compile_logp()(point), rtol=1e-12)
-    np.testing.assert_allclose(original.compile_dlogp()(point), alternative.compile_dlogp()(point), rtol=1e-12)
+    if delta == 0:
+        np.testing.assert_allclose(original.compile_logp()(point), alternative.compile_logp()(point), rtol=1e-12)
+        np.testing.assert_allclose(original.compile_dlogp()(point), alternative.compile_dlogp()(point), rtol=1e-12)
     with original:
         original_trace = pm.sample_prior_predictive(draws=2, random_seed=17)
     with alternative:
@@ -603,8 +609,15 @@ def test_linked_composes_replaced_boundary_scientific_fields(monkeypatch):
     for trace, model in ((original_trace, original), (alternative_trace, alternative)):
         restore_inferencedata_coords(trace, get_coord_registry(model))
         restore_absolute_predictives(trace)
-    for group, variable in (("prior", "modelled_concentration"), ("prior_predictive", "y")):
-        np.testing.assert_allclose(original_trace[group][variable], alternative_trace[group][variable], rtol=1e-12)
+    for group, variable in (
+        ("prior", "modelled_concentration"),
+        ("prior", "boundary_concentration"),
+        ("prior", "baseline_concentration"),
+        ("prior_predictive", "y"),
+    ):
+        np.testing.assert_allclose(
+            original_trace[group][variable] + delta, alternative_trace[group][variable], rtol=1e-12,
+        )
 
 
 def test_linked_cached_runner_allows_disabled_centered_channel(monkeypatch):
@@ -614,7 +627,7 @@ def test_linked_cached_runner_allows_disabled_centered_channel(monkeypatch):
     operands = _operands(prepared.co2_sensitivity.isel({prepared.retained_prior.state_dim: 0}))
     prepared = replace(prepared, boundary_operands={"co2": operands})
 
-    def reached_materialization(prepared, errors, boundaries, operands):
+    def reached_materialization(prepared, errors, boundaries, operands, weights):
         assert "co2" not in boundaries
         assert not operands
         raise RuntimeError("enabled component selection complete")

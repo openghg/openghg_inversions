@@ -1,4 +1,4 @@
-"""Concrete centered boundary arithmetic and absolute predictive replay."""
+"""Shared centered boundary arithmetic and absolute predictive replay."""
 
 from __future__ import annotations
 
@@ -9,12 +9,11 @@ import pymc as pm
 import pytensor
 import pytensor.tensor as pt
 import xarray as xr
-from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.boundary_sensitivity import _select_native_boundary, align_boundary_operands
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.models.components import LinearComponentResult, add_state_vector
+from openghg_inversions.models.components import ConcentrationTerm, LinearComponentResult, add_state_vector
 from openghg_inversions.models.coords import add_model_data, component_coords
 from openghg_inversions.models.state_activity import StateActivity, prepare_linear_sensitivity, resolve_state_activity
 
@@ -84,21 +83,39 @@ def bind_boundary_operands(
     return aligned
 
 
+def centered_boundary_expression(anomaly, mass, reference, state):
+    """Evaluate ``A b + c M (b - 1)`` without subtracting a large reference.
+
+    Args:
+        anomaly: Concentration anomaly design A, on observations by states.
+        mass: Dimensionless transport M on the same axes.
+        reference: Scalar concentration reference c.
+        state: Dimensionless physical boundary scaling vector b.
+
+    Returns:
+        Centered concentration, using NumPy or PyTensor operands supplied by
+        the caller. Alignment and materialization belong to the caller.
+    """
+    return anomaly @ state + reference * (mass @ (state - 1.0))
+
+
 @dataclass(frozen=True)
 class CenteredBoundaryResult:
-    """Boundary graph with an absolute component and centered likelihood term.
+    """Boundary graph with its state, affine term and retained operands.
 
     Attributes:
         component: Boundary state, activity, anomaly design tensor and absolute
             concentration output ``A b + c M b``.
-        likelihood_contribution: Centered concentration ``A b + c M (b - 1)``.
-        reference_shift: Labelled concentration ``c M 1`` to subtract from
-            observations and restore to predictive draws.
+        term: Absolute output, centered likelihood contribution
+            ``A b + c M (b - 1)`` and observation shift ``q = c M 1``, which
+            is also restored to predictive draws.
+        operands: The aligned anomaly, mass and reference used to build the
+            graph, borrowed for a cached likelihood's dense lowering.
     """
 
     component: LinearComponentResult
-    likelihood_contribution: TensorVariable
-    reference_shift: xr.DataArray
+    term: ConcentrationTerm
+    operands: xr.Dataset
 
 
 def add_centered_boundary(
@@ -135,10 +152,10 @@ def add_centered_boundary(
         owner: Namespace owning the boundary-state coordinates.
 
     Returns:
-        The absolute boundary component, centered likelihood contribution and
-        labelled reference shift. The component's ``output`` is ``A b + c M b``;
-        its ``data`` is the anomaly design, not the complete absolute design.
-        Pair the likelihood contribution with observations minus the shift;
+        The boundary component, its affine term and the borrowed operands. The
+        component's ``output`` is ``A b + c M b``; its ``data`` is the anomaly
+        design, not the complete absolute design. Compose the term with
+        :func:`~openghg_inversions.models.components.likelihood_representation`;
         add the shift back to observed and predictive ``y`` for absolute output.
 
     Raises:
@@ -157,12 +174,14 @@ def add_centered_boundary(
     a = add_model_data(component_coords(anomaly, owner, observation_dim=output_dim), f"{prefix}H_bc_anomaly")
     m = add_model_data(component_coords(mass, owner, observation_dim=output_dim), f"{prefix}H_bc_mass")
     c = add_model_data(reference, f"{prefix}bc_reference")
-    centered = pt.dot(a, vector.state) + c * pt.dot(m, vector.state - 1)
     shift = (reference * mass.sum("bc_region")).rename(f"{prefix}bc_reference_shift")
-    shift_data = add_model_data(shift, shift.name)
+    shift_data = pt.as_tensor_variable(shift.values)
+    centered = centered_boundary_expression(a, m, c, vector.state)
     absolute = pm.Deterministic(f"{prefix}mu_bc", centered + shift_data, dims=output_dim)
     return CenteredBoundaryResult(
-        LinearComponentResult(a, vector.latent, vector.state, absolute, resolved), centered, shift
+        LinearComponentResult(a, vector.latent, vector.state, absolute, resolved),
+        ConcentrationTerm(absolute, centered, shift),
+        operands,
     )
 
 

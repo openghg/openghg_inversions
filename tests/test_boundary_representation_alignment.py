@@ -100,7 +100,7 @@ def test_indexed_boundary_time_conflict_is_rejected_without_computing_payload(ce
     import pytensor
     from dask import delayed
 
-    from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands
+    from openghg_inversions.models.boundary import bind_boundary_operands
 
     @delayed
     def forbidden_payload():
@@ -179,7 +179,7 @@ def test_native_datetime_dimension_restoration_preserves_rows_and_periods(center
     import numpy as np
     import pytensor
 
-    from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands
+    from openghg_inversions.models.boundary import bind_boundary_operands
 
     labels = np.array(["2020-01-01", "2020-02-01"], dtype="datetime64[D]")
     anomaly = xr.DataArray(da.from_array([[1., 2.]], chunks=(1, 1)), dims=("bc_region", raw_dim),

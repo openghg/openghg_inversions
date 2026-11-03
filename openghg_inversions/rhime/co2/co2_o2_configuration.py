@@ -197,6 +197,8 @@ class Co2O2ModelConfig:
     use_bc: Mapping[str, bool] | None = None
     bc_prior: Mapping[str, Any] | None = None
     bc_state_activity: Mapping[str, StateActivity] | None = None
+    bc_mean_shift_prior: Mapping[str, Mapping[str, Any]] | None = None
+    bc_anomaly_scale: Mapping[str, float] | None = None
     offset_prior: Mapping[str, Any] | None = None
     offset_args: Mapping[str, Any] | None = None
     tau_hours: float | Mapping[str, float] | None = None

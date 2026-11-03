@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from openghg_inversions.boundary_sensitivity import _validate_boundary_weight_periods
+
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import Any
@@ -10,7 +12,6 @@ import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
-from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array
@@ -26,21 +27,29 @@ from openghg_inversions.models import (
 from openghg_inversions.models.additive_sigma import add_additive_sigma_likelihood
 from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.models.components import (
+    ConcentrationTerm,
     LinearComponentResult,
     OffsetComponentResult,
     _add_offset_component_result,
     add_linear_component,
     add_model_data,
+    likelihood_representation,
 )
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from .co2_model import _normalise_offset_args
 from openghg_inversions.boundary_sensitivity import bind_boundary_sensitivity
 
-from .centered_boundary import bind_boundary_operands, add_centered_boundary
+from openghg_inversions.models.boundary import CenteredBoundaryResult, bind_boundary_operands, add_centered_boundary
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 
 from .co2_o2_fixed_ou import linked_fixed_ou_alignment
+from openghg_inversions.models.additive_boundary import (
+    AdditiveBoundaryResult,
+    prepare_additive_boundary,
+    add_additive_boundary,
+    warn_boundary_offset_confounding,
+)
 
 
 def _gather_co2_o2_sensitivity(
@@ -139,6 +148,10 @@ def _validate_channel_baseline_options(
     offset_prior: Mapping[str, PriorArgs] | None,
     offset_args: Mapping[str, Mapping[str, Any]] | None,
     boundary_operands: Mapping[str, xr.Dataset] | None = None,
+    *,
+    bc_mean_shift_prior: Mapping[str, PriorArgs] | None = None,
+    bc_anomaly_scale: Mapping[str, float] | None = None,
+    bc_centering_weights: Mapping[str, xr.DataArray] | None = None,
 ) -> None:
     """Reject unused channel options before constructing or sampling a model."""
     for name, values in (
@@ -148,19 +161,59 @@ def _validate_channel_baseline_options(
         ("bc_state_activity", bc_state_activity),
         ("offset_prior", offset_prior),
         ("offset_args", offset_args),
+        ("bc_mean_shift_prior", bc_mean_shift_prior),
+        ("bc_anomaly_scale", bc_anomaly_scale),
+        ("bc_centering_weights", bc_centering_weights),
     ):
         if values is not None and (not isinstance(values, Mapping) or set(values) - {"co2", "o2"}):
             raise ValueError(f"{name} must be a mapping keyed only by 'co2' and 'o2'.")
     if set(boundary_sensitivity or {}) & set(boundary_operands or {}):
         raise ValueError("Supply boundary_operands or boundary_sensitivity per channel, not both.")
     for channel in ("co2", "o2"):
-        if channel not in (boundary_sensitivity or {}) and channel not in (boundary_operands or {}) and (
-            channel in (bc_prior or {}) or channel in (bc_state_activity or {})
+        if (
+            channel not in (boundary_sensitivity or {})
+            and channel not in (boundary_operands or {})
+            and (channel in (bc_prior or {}) or channel in (bc_state_activity or {}))
         ):
             raise ValueError(f"{channel} boundary options require boundary_sensitivity.")
         if channel in (offset_args or {}) and channel not in (offset_prior or {}):
             raise ValueError(f"{channel} offset_args require offset_prior.")
         _normalise_offset_args((offset_args or {}).get(channel))
+        mean = (bc_mean_shift_prior or {}).get(channel)
+        scale = (bc_anomaly_scale or {}).get(channel)
+        if mean is not None or scale is not None:
+            if mean is None or scale is None:
+                raise ValueError(f"{channel} requires bc_mean_shift_prior and bc_anomaly_scale together.")
+            if channel in (bc_prior or {}) or channel in (bc_state_activity or {}):
+                raise ValueError(
+                    f"{channel} additive boundaries replace bc_prior and bc_state_activity; omit both."
+                )
+            if channel not in (boundary_operands or {}):
+                raise ValueError(f"{channel} additive boundaries require native centered boundary_operands.")
+
+
+def _validate_linked_boundary_weights(
+    observations: xr.DataArray,
+    co2_sensitivity: xr.DataArray,
+    o2_sensitivity: xr.DataArray,
+    operands: Mapping[str, xr.Dataset] | None,
+    weights: Mapping[str, xr.DataArray] | None,
+    *,
+    frequency: str | None,
+    anchor_time: DatetimeLike | None,
+) -> None:
+    """Reject incompatible selected weights before computing joint payloads."""
+    operands = operands or {}
+    weights = weights or {}
+    for channel, sensitivity in (("co2", co2_sensitivity), ("o2", o2_sensitivity)):
+        if channel not in (weights or {}) or channel not in (operands or {}):
+            continue
+        row = str(observations.dims[0])
+        native = select_gathered_data_array(
+            observations, key=channel, key_dim="species", ragged_dim="channel_observation", stack_dim=row,
+        ).rename({row: str(sensitivity.dims[0])})
+        bound = bind_boundary_operands(operands[channel], native, frequency=frequency, anchor_time=anchor_time)
+        _validate_boundary_weight_periods(bound, weights[channel])
 
 
 def _pad_channel_design(
@@ -185,19 +238,19 @@ def _pad_channel_design(
 
 @dataclass(frozen=True)
 class _ChannelBaselineComponent:
-    """One channel baseline's graph, joint design and likelihood contribution.
+    """One channel baseline's graph, joint design and affine term.
 
-    ``component.output`` is always absolute. ``likelihood_contribution`` is
-    centered only when ``reference_shift`` is present. Centered boundaries have
-    full operands retained separately for the cached affine likelihood.
+    ``term`` owns total concentration composition and grouped baseline reports.
+    ``component`` retains its registered graph, state, activity and design.
+    Centered boundaries keep their complete result for that lowering.
     """
 
     channel: str
-    component: LinearComponentResult | OffsetComponentResult
+    component: LinearComponentResult | OffsetComponentResult | AdditiveBoundaryResult | CenteredBoundaryResult
     design: xr.DataArray | None
-    likelihood_contribution: TensorVariable
-    reference_shift: xr.DataArray | None = None
-    boundary_operands: xr.Dataset | None = None
+    term: ConcentrationTerm
+    additive_design: np.ndarray | None = None
+    additive_fixed: np.ndarray | None = None
 
 
 def _add_co2_o2_baseline_components(
@@ -207,6 +260,9 @@ def _add_co2_o2_baseline_components(
     o2_sensitivity: xr.DataArray,
     boundary_sensitivity: Mapping[str, xr.DataArray] | None = None,
     boundary_operands: Mapping[str, xr.Dataset] | None = None,
+    bc_mean_shift_prior: Mapping[str, PriorArgs] | None = None,
+    bc_anomaly_scale: Mapping[str, float] | None = None,
+    bc_centering_weights: Mapping[str, xr.DataArray] | None = None,
     bc_prior: Mapping[str, PriorArgs] | None = None,
     bc_state_activity: Mapping[str, StateActivity] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
@@ -218,15 +274,20 @@ def _add_co2_o2_baseline_components(
     full joint design so the fixed-OU recipe can use the same affine terms.
     Centered boundaries retain their full padded anomaly and mass operands.
     """
-    _validate_channel_baseline_options(
-        boundary_sensitivity,
-        bc_prior,
-        bc_state_activity,
-        offset_prior,
-        offset_args,
-        boundary_operands,
-    )
-    if not boundary_sensitivity and not boundary_operands and not offset_prior:
+    if (
+        not boundary_sensitivity
+        and not boundary_operands
+        and not offset_prior
+        and all(
+            value is None
+            for value in (
+                (bc_mean_shift_prior or {}).get("co2"),
+                (bc_mean_shift_prior or {}).get("o2"),
+                (bc_anomaly_scale or {}).get("co2"),
+                (bc_anomaly_scale or {}).get("o2"),
+            )
+        )
+    ):
         return []
     if len(np.unique(observations["observation_units"].values)) != 1:
         raise ValueError("Linked boundary and offset components currently require identical channel units.")
@@ -236,24 +297,83 @@ def _add_co2_o2_baseline_components(
     offsets = []
     for channel, sensitivity in (("co2", co2_sensitivity), ("o2", o2_sensitivity)):
         operands = (boundary_operands or {}).get(channel)
-        if operands is not None:
-            padded = xr.Dataset({
-                name: _pad_channel_design(operands[name].transpose(sensitivity.dims[0], "bc_region"), observations, channel).transpose("bc_region", output_dim)
-                for name in ("H_bc_anomaly", "H_bc_mass")
-            })
+        native = (boundary_sensitivity or {}).get(channel)
+        mean_prior = (bc_mean_shift_prior or {}).get(channel)
+        anomaly_scale = (bc_anomaly_scale or {}).get(channel)
+        weights = (bc_centering_weights or {}).get(channel)
+        additive = mean_prior is not None or anomaly_scale is not None
+        if additive:
+            padded_operands = None
+            if operands is not None:
+                padded_operands = xr.Dataset(
+                    {
+                        name: _pad_channel_design(
+                            operands[name].transpose(sensitivity.dims[0], "bc_region"), observations, channel
+                        )
+                        for name in ("H_bc_anomaly", "H_bc_mass")
+                    }
+                )
+                padded_operands["bc_reference"] = operands.bc_reference
+            if weights is not None and weights.dims != ("bc_region",):
+                weights = weights.rename({str(weights.dims[0]): "bc_region"})
+            prepared = prepare_additive_boundary(
+                padded_operands,
+                weights,
+                observations,
+                mean_prior,
+                anomaly_scale,
+                (bc_prior or {}).get(channel),
+                (bc_state_activity or {}).get(channel),
+                output_dim=output_dim,
+            )
+            assert prepared is not None and mean_prior is not None and anomaly_scale is not None
+            result = add_additive_boundary(
+                prepared,
+                mean_prior,
+                anomaly_scale,
+                output_dim=output_dim,
+                prefix=f"{channel}_",
+                owner=channel,
+            )
+            components.append(
+                _ChannelBaselineComponent(
+                    channel,
+                    result,
+                    None,
+                    result.term,
+                    additive_design=prepared.design,
+                    additive_fixed=np.asarray(prepared.operands.H_bc_anomaly.sum("bc_region").values),
+                )
+            )
+            boundaries.append(result.term.output)
+        if operands is not None and not additive:
+            padded = xr.Dataset(
+                {
+                    name: _pad_channel_design(
+                        operands[name].transpose(sensitivity.dims[0], "bc_region"), observations, channel
+                    ).transpose("bc_region", output_dim)
+                    for name in ("H_bc_anomaly", "H_bc_mass")
+                }
+            )
             padded["bc_reference"] = operands.bc_reference
             centered_result = add_centered_boundary(
-                padded, prior=dict((bc_prior or {}).get(channel, DEFAULT_BC_PRIOR)),
-                activity=(bc_state_activity or {}).get(channel), prefix=f"{channel}_",
-                output_dim=output_dim, owner=channel,
+                padded,
+                prior=dict((bc_prior or {}).get(channel, DEFAULT_BC_PRIOR)),
+                activity=(bc_state_activity or {}).get(channel),
+                prefix=f"{channel}_",
+                output_dim=output_dim,
+                owner=channel,
             )
-            components.append(_ChannelBaselineComponent(
-                channel, centered_result.component, None,
-                centered_result.likelihood_contribution, centered_result.reference_shift, padded,
-            ))
-            boundaries.append(centered_result.component.output)
-        native = (boundary_sensitivity or {}).get(channel)
-        if native is not None:
+            components.append(
+                _ChannelBaselineComponent(
+                    channel,
+                    centered_result,
+                    None,
+                    centered_result.term,
+                )
+            )
+            boundaries.append(centered_result.term.output)
+        if native is not None and not additive:
             native_dim = str(sensitivity.dims[0])
             if native.ndim != 2 or native.dims[0] != native_dim:
                 raise ValueError(
@@ -263,7 +383,7 @@ def _add_co2_o2_baseline_components(
             activity = (bc_state_activity or {}).get(channel)
             prior = dict((bc_prior or {}).get(channel, DEFAULT_BC_PRIOR))
             design = _pad_channel_design(native, observations, channel)
-            result = add_linear_component(
+            linear_result = add_linear_component(
                 prepare_linear_sensitivity(design, output_dim=output_dim),
                 data_name=f"{channel}_hbc",
                 prior_args=prior,
@@ -273,8 +393,12 @@ def _add_co2_o2_baseline_components(
                 state_activity=activity,
                 coordinate_owner=channel,
             )
-            components.append(_ChannelBaselineComponent(channel, result, design, result.output))
-            boundaries.append(result.output)
+            components.append(
+                _ChannelBaselineComponent(
+                    channel, linear_result, design, ConcentrationTerm.absolute(linear_result.output)
+                )
+            )
+            boundaries.append(linear_result.output)
         channel_offset_prior = (offset_prior or {}).get(channel)
         if channel_offset_prior is not None:
             native_dim = f"{channel}_offset_observation"
@@ -300,6 +424,11 @@ def _add_co2_o2_baseline_components(
                 per_site=per_site,
                 namespace=f"{channel}_",
             )
+            if additive:
+                channel_rows = observations.indexes[output_dim].get_level_values("species") == channel
+                warn_boundary_offset_confounding(
+                    prepared.design[channel_rows, 0], drop_first=drop_first, channel=channel,
+                )
             design = _pad_channel_design(offset_result.design, observations, channel)
             design_data = add_model_data(design, f"{channel}_offset_design")
             offset_result = replace(
@@ -311,7 +440,11 @@ def _add_co2_o2_baseline_components(
                     dims=output_dim,
                 ),
             )
-            components.append(_ChannelBaselineComponent(channel, offset_result, design, offset_result.output))
+            components.append(
+                _ChannelBaselineComponent(
+                    channel, offset_result, design, ConcentrationTerm.absolute(offset_result.output)
+                )
+            )
             offsets.append(offset_result.output)
     if boundaries:
         pm.Deterministic("boundary_concentration", sum(boundaries), dims=output_dim)
@@ -335,6 +468,9 @@ def build_co2_o2_model(
     boundary_operands: Mapping[str, xr.Dataset] | None = None,
     bc_freq: str | None = None,
     bc_anchor_time: DatetimeLike | None = None,
+    bc_mean_shift_prior: Mapping[str, PriorArgs] | None = None,
+    bc_anomaly_scale: Mapping[str, float] | None = None,
+    bc_centering_weights: Mapping[str, xr.DataArray] | None = None,
     bc_prior: Mapping[str, PriorArgs] | None = None,
     bc_state_activity: Mapping[str, StateActivity] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
@@ -373,7 +509,7 @@ def build_co2_o2_model(
     absolute.
     After restoring sample coordinates, direct callers must restore absolute
     ``y`` with
-    :func:`~openghg_inversions.rhime.co2.centered_boundary.restore_absolute_predictives`
+    :func:`~openghg_inversions.models.boundary.restore_absolute_predictives`
     before serialization or postprocessing. Ordinary recipe runners do this
     through
     :func:`~openghg_inversions.rhime.co2.co2_o2_runner.annotate_co2_o2_trace`.
@@ -406,6 +542,12 @@ def build_co2_o2_model(
         bc_anchor_time: Optional anchor for boundary period alignment.
         bc_prior: Channel-keyed independent boundary-scale priors; the CO2
             default is used for each enabled channel when omitted.
+        bc_mean_shift_prior: Channel-keyed scalar additive mean priors in
+            concentration units, requiring native centered boundary operands.
+        bc_anomaly_scale: Matching channel-keyed nonnegative Gaussian scales
+            before weighted centering. Zero retains only the scalar mean.
+        bc_centering_weights: Positive dimensionless weights over all resolved
+            region/period states, keyed by channel; never inferred from sensitivity.
         bc_state_activity: Channel-keyed labelled fixed/active boundary policies.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
@@ -427,29 +569,63 @@ def build_co2_o2_model(
         ValueError: If shared-state sensitivity preparation, activity
             resolution, or registered coordinate alignment fails.
     """
-    if not boundary_operands and not boundary_sensitivity and (bc_freq is not None or bc_anchor_time is not None):
+    _validate_channel_baseline_options(
+        boundary_sensitivity,
+        bc_prior,
+        bc_state_activity,
+        offset_prior,
+        offset_args,
+        boundary_operands,
+        bc_mean_shift_prior=bc_mean_shift_prior,
+        bc_anomaly_scale=bc_anomaly_scale,
+        bc_centering_weights=bc_centering_weights,
+    )
+    _validate_linked_boundary_weights(
+        observations, co2_sensitivity, o2_sensitivity, boundary_operands,
+        {channel: value for channel, value in (bc_centering_weights or {}).items()
+         if (bc_mean_shift_prior or {}).get(channel) is not None},
+        frequency=bc_freq, anchor_time=bc_anchor_time,
+    )
+    if (
+        not boundary_operands
+        and not boundary_sensitivity
+        and (bc_freq is not None or bc_anchor_time is not None)
+    ):
         raise ValueError("Boundary period choices require boundary inputs.")
     if boundary_sensitivity:
         aligned_boundaries = {}
         for channel, sensitivity in boundary_sensitivity.items():
             channel_h = co2_sensitivity if channel == "co2" else o2_sensitivity
             native = select_gathered_data_array(
-                observations, key=channel, key_dim="species", ragged_dim="channel_observation", stack_dim=output_dim,
+                observations,
+                key=channel,
+                key_dim="species",
+                ragged_dim="channel_observation",
+                stack_dim=output_dim,
             ).rename({output_dim: str(channel_h.dims[0])})
             aligned_boundaries[channel] = bind_boundary_sensitivity(
-                sensitivity, native, frequency=bc_freq, anchor_time=bc_anchor_time,
+                sensitivity,
+                native,
+                frequency=bc_freq,
+                anchor_time=bc_anchor_time,
             )
         boundary_sensitivity = aligned_boundaries
     if boundary_operands:
-        _validate_channel_baseline_options(boundary_sensitivity, bc_prior, bc_state_activity, offset_prior, offset_args, boundary_operands)
         aligned_operands = {}
         for channel, operands in boundary_operands.items():
             sensitivity = co2_sensitivity if channel == "co2" else o2_sensitivity
             native = select_gathered_data_array(
-                observations, key=channel, key_dim="species", ragged_dim="channel_observation", stack_dim=output_dim,
+                observations,
+                key=channel,
+                key_dim="species",
+                ragged_dim="channel_observation",
+                stack_dim=output_dim,
             ).rename({output_dim: str(sensitivity.dims[0])})
             aligned_operands[channel] = bind_boundary_operands(
-                operands, native, frequency=bc_freq, anchor_time=bc_anchor_time,
+                operands,
+                native,
+                frequency=bc_freq,
+                anchor_time=bc_anchor_time,
             )
         boundary_operands = aligned_operands
     joint_sensitivity = _gather_co2_o2_sensitivity(
@@ -485,28 +661,29 @@ def build_co2_o2_model(
             o2_sensitivity=o2_sensitivity,
             boundary_sensitivity=boundary_sensitivity,
             boundary_operands=boundary_operands,
+            bc_mean_shift_prior=bc_mean_shift_prior,
+            bc_anomaly_scale=bc_anomaly_scale,
+            bc_centering_weights=bc_centering_weights,
             bc_prior=bc_prior,
             bc_state_activity=bc_state_activity,
             offset_prior=offset_prior,
             offset_args=offset_args,
         )
-        mean_signal = joint_signal + sum(term.component.output for term in baseline_components)
+        mean_signal = joint_signal + sum(baseline.term.output for baseline in baseline_components)
         fixed = add_model_data(fixed_prior_contribution)
         modelled = pm.Deterministic(
-            "modelled_concentration", fixed + mean_signal, dims=output_dim,
+            "modelled_concentration",
+            fixed + mean_signal,
+            dims=output_dim,
         )
 
-        likelihood_mean = modelled
-        likelihood_observations = observations
-        shifts = [term.reference_shift for term in baseline_components if term.reference_shift is not None]
-        if shifts:
-            shift = sum(shifts[1:], start=shifts[0]).rename("boundary_reference_shift")
-            add_model_data(shift, "boundary_reference_shift")
-            # Compose centered terms directly to preserve small concentration differences.
-            likelihood_mean = fixed + joint_signal + sum(
-                term.likelihood_contribution for term in baseline_components
-            )
-            likelihood_observations = observations - shift
+        likelihood_mean, likelihood_observations, shift = likelihood_representation(
+            [ConcentrationTerm.absolute(fixed + joint_signal), *(term.term for term in baseline_components)],
+            observations,
+            modelled,
+        )
+        if shift is not None:
+            add_model_data(shift.rename("boundary_reference_shift"), "boundary_reference_shift")
         if tau_hours is None:
             if fixed_site_amplitudes is not None or site_amplitude_prior is not None:
                 raise ValueError("Fixed-OU amplitudes require tau_hours.")

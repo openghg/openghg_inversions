@@ -11,7 +11,7 @@ from openghg_inversions.models import StateActivity
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.co2 import build_co2_model, build_co2_cached_sigma_model
-from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands
+from openghg_inversions.models.boundary import bind_boundary_operands
 from test_co2_cached_sigma import _inputs
 from test_co2_o2_fixed_ou import _prepared, _kwargs
 

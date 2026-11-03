@@ -137,6 +137,12 @@ outputs, such as aligned observation channels or a coherent reduction. A
 shorter signature, speculative flexibility, or provenance alone does not
 justify a new domain object.
 
+Recipes represent concentration contributions with ``ConcentrationTerm``:
+absolute output, likelihood contribution, and an optional fixed observation
+shift. Compose these explicitly with ``likelihood_representation`` so a
+numerical reference is restored exactly once. See
+:doc:`/usage/centered_boundary_conditions` for the scientific equations.
+
 For a concrete likelihood, show the completed mean and how measurement error,
 fixed aggregation error, and inferred mismatch enter its probability model.
 These quantities have different scientific meanings; the supported covariance
@@ -171,6 +177,15 @@ it protects a scientific policy or gives a materially better boundary failure.
 
 Keep configuration with its scientific owner
 --------------------------------------------
+
+Treat configuration as a description of scientific choices. Group those
+choices by the component that owns them: for example, boundary family,
+reference, periods, and physical widths; flux and prior choices and their
+calibration; or offsets and likelihood choices. Resolve and normalize each
+choice once at the boundary that owns it, such as configuration parsing,
+preparation, or model construction. Later stages should consume explicitly
+resolved values without implicitly reselecting a model or recalibrating its
+inputs.
 
 Runtime inputs and user choices are different interfaces. Function signatures
 describe observations, sensitivities, priors, and existing model terms.

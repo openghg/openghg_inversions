@@ -69,7 +69,8 @@ _PRIOR_OPTION_NAMES = frozenset({
     "pdf", "mu", "sigma", "lower", "upper", "nu", "alpha", "beta", "lam", "mean", "stdev", "reparameterise",
 })
 _MODEL_SECTION_OPTION_NAMES = {
-    "boundary": frozenset({"enabled", "prior", "frequency", "anchor_time"}),
+    "boundary": frozenset({"enabled", "prior", "frequency", "anchor_time", "mean_shift_prior", "anomaly_scale"}),
+    "boundary.mean_shift_prior": _PRIOR_OPTION_NAMES,
     "boundary.prior": _PRIOR_OPTION_NAMES,
     "offset": frozenset({"prior", "frequency", "per_site", "drop_first"}),
     "offset.prior": _PRIOR_OPTION_NAMES,
@@ -346,10 +347,34 @@ def _model(value: object) -> dict[str, Any]:
     if "boundary" in options:
         boundary = _table(options.pop("boundary"), "model.boundary")
         enabled = _bool(boundary.pop("enabled", True), "model.boundary.enabled")
-        prior = _prior(boundary.pop("prior"), "model.boundary.prior") if "prior" in boundary else None
+        prior = (
+            _prior(boundary.pop("prior"), "model.boundary.prior")
+            if "prior" in boundary
+            else None
+        )
+        mean_shift_prior = (
+            _prior(boundary.pop("mean_shift_prior"), "model.boundary.mean_shift_prior")
+            if "mean_shift_prior" in boundary
+            else None
+        )
+        anomaly_scale = (
+            _number(boundary.pop("anomaly_scale"), "model.boundary.anomaly_scale")
+            if "anomaly_scale" in boundary else None
+        )
+        if anomaly_scale is not None and anomaly_scale < 0:
+            raise ValueError("model.boundary.anomaly_scale must be non-negative.")
+        if (mean_shift_prior is None) != (anomaly_scale is None):
+            raise ValueError("model.boundary.mean_shift_prior and anomaly_scale must be supplied together.")
+        if mean_shift_prior is not None and prior is not None:
+            raise ValueError("Centred boundary corrections cannot use model.boundary.prior.")
         periods = {runner: boundary.pop(name) for name, runner in
                    (("frequency", "bc_freq"), ("anchor_time", "bc_anchor_time")) if name in boundary}
         _reject_unknown(boundary, "model.boundary")
+        if mean_shift_prior is not None:
+            if not enabled:
+                raise ValueError("model.boundary.mean_shift_prior requires model.boundary.enabled=true.")
+            result["bc_mean_shift_prior"] = mean_shift_prior
+            result["bc_anomaly_scale"] = anomaly_scale
         if not enabled and prior is not None:
             raise ValueError("model.boundary.prior requires model.boundary.enabled=true.")
         result["use_bc"] = enabled
@@ -525,6 +550,8 @@ class Co2ModelConfig:
 
     use_bc: bool | None = None
     bc_prior: Mapping[str, Any] | None = None
+    bc_mean_shift_prior: Mapping[str, Any] | None = None
+    bc_anomaly_scale: float | None = None
     offset_prior: Mapping[str, Any] | None = None
     offset_args: Mapping[str, Any] | None = None
     no_model_error: bool | None = None

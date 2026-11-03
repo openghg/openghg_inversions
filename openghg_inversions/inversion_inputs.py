@@ -329,6 +329,11 @@ def make_inv_inputs(
     if missing_sites:
         raise ValueError(f"`fp_data` is missing requested site(s): {missing_sites!r}.")
 
+    if any("bc_centering_weights" in fp_data[site] for site in sites):
+        raise ValueError(
+            "Supply bc_centering_weights on resolved boundary states in prepare_co2_inputs, "
+            "after gathering and period expansion."
+        )
     site_data = {site: fp_data[site] for site in sites}
     from openghg_inversions.boundary_sensitivity import validate_boundary_operands
 

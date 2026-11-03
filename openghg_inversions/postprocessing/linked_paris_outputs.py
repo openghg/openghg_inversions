@@ -41,6 +41,8 @@ def _role(trace: xr.DataTree, role: str, group: str) -> xr.DataArray:
     roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
     name = roles.get(role)
     dataset = trace_group(trace, group) if group in trace.children else xr.Dataset()
+    if name not in dataset and "constant_data" in trace.children and name in trace.constant_data:
+        dataset = trace.constant_data.to_dataset()
     if name not in dataset:
         raise ValueError(f"Linked output requires scientific role {role!r} in {group}.")
     value = dataset[name]

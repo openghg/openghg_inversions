@@ -716,7 +716,7 @@ def test_linked_save_computes_shared_payloads_together(tmp_path: Path, suffix: s
     )
     tree = prepared.to_datatree()
     assert executions == []
-    assert tree.attrs["schema_version"] == 1
+    assert tree.attrs["schema_version"] == 3
     path = tmp_path / f"shared{suffix}"
     prepared.save(path)
     assert executions == ["payload"]
@@ -931,3 +931,32 @@ def test_linked_save_passes_lazy_dense_chunks_to_writer(
     if suffix == ".zarr":
         with xr.open_datatree(path, engine="zarr", chunks={}) as tree:
             assert tree["co2_sensitivity"]["co2_effective_sensitivity"].data.chunks == payload.chunks
+
+
+def test_additive_boundary_weights_require_native_centered_channels():
+    inputs = _inputs()
+    weights = xr.DataArray([1., 2.], dims="bc_region", coords={"bc_region": ["north", "east"]}, attrs={"units": "1"})
+    with pytest.raises(ValueError, match="matching co2/o2 centered operands"):
+        prepare_co2_o2_inputs(**inputs, bc_centering_weights={"o2": weights})
+
+
+def test_centered_mass_is_an_explicit_unit_response_for_additive_preparation():
+    inputs = _inputs()
+    inputs["o2_units"] = "ppm"
+    observations = inputs["o2_observations"]
+    mass = xr.DataArray(
+        da.from_array([[0.8, 0.7, 0.6], [0., 0., 0.]], chunks=(2, 1)),
+        dims=("bc_region", "nmeasure"),
+        coords={"bc_region": ["north", "east"], "nmeasure": observations.o2_measure.values},
+        attrs={"units": "1"},
+    )
+    operands = xr.Dataset({"H_bc_anomaly": (mass * 2).assign_attrs(units="ppm"),
+                           "H_bc_mass": mass, "bc_reference": xr.DataArray(200_000., attrs={"units": "ppm"})},
+                          attrs={"boundary_representation": "centered-v1"})
+    weights = xr.DataArray([1., 2.], dims="bc_region", coords={"bc_region": ["north", "east"]}, attrs={"units": "1"})
+    prepared = prepare_co2_o2_inputs(**inputs, boundary_operands={"o2": operands},
+                                   bc_centering_weights={"o2": weights})
+    assert prepared.boundary_operands["o2"].H_bc_mass.data is mass.data
+    tree = prepared.to_datatree()
+    loaded = Co2O2PreparedInputs.from_datatree(tree)
+    xr.testing.assert_identical(loaded.boundary_operands["o2"].H_bc_mass, operands.H_bc_mass)

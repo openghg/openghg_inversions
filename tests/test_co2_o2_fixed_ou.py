@@ -495,7 +495,7 @@ def test_linked_ou_rejects_missing_station_labels():
 def test_centered_linked_cache_matches_independent_dense_gaussian(mixed, o2_reference):
     """Direct centered arithmetic survives large O2 backgrounds and native labels."""
     import pymc as pm
-    from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands
+    from openghg_inversions.models.boundary import bind_boundary_operands
     from openghg_inversions.array_ops import select_gathered_data_array
 
     with pytensor.config.change_flags(floatX="float64"):

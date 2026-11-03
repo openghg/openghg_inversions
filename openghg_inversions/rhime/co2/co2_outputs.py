@@ -54,6 +54,42 @@ class Co2Output:
     output_metadata: dict = field(default_factory=dict)
 
 
+def _zero_boundary_anomaly_draws(
+    trace: xr.DataTree, group: str, *, channel: str | None = None, observation_space: bool = False,
+) -> xr.DataArray | None:
+    """Reconstruct intentionally omitted zero draws from validated saved facts."""
+    prefix = "" if channel is None else f"{channel}_"
+    roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
+    constants = trace_group(trace, "constant_data") if "constant_data" in trace.children else xr.Dataset()
+    scale_name, weights_name = f"{prefix}bc_anomaly_scale", f"{prefix}bc_centering_weights"
+    if scale_name not in constants and weights_name not in constants:
+        if f"{prefix}boundary_correction" in roles:
+            raise ValueError("Boundary anomalies require saved scale and weights.")
+        return None
+    try:
+        scale, weights = constants[scale_name], constants[weights_name]
+    except KeyError as exc:
+        raise ValueError("Boundary anomalies require saved scale and weights.") from exc
+    if (scale.ndim != 0 or not np.isfinite(scale.item()) or scale.item() < 0
+            or weights.ndim != 1 or weights.size == 0
+            or not np.isfinite(weights.values).all() or not (weights.values > 0).all()):
+        raise ValueError("Saved zero boundary anomaly policy conflicts with its scale or weights.")
+    dataset = trace_group(trace, group)
+    if scale.item() > 0 and weights.size > 1:
+        for active_role in (f"{prefix}boundary_correction_anomaly", f"{prefix}boundary_anomaly_concentration"):
+            if roles.get(active_role) not in dataset:
+                raise ValueError("Active boundary anomalies require saved sampled state and concentration contributions.")
+        return None
+    role = f"{prefix}boundary_mean_shift_concentration" if observation_space else f"{prefix}boundary_correction"
+    if roles.get(role) not in dataset:
+        raise ValueError(f"Zero boundary anomaly reconstruction requires role {role!r}.")
+    correction_role = f"{prefix}boundary_correction"
+    if roles.get(correction_role) not in dataset:
+        raise ValueError("Zero boundary anomalies require saved boundary corrections.")
+    xr.align(dataset[roles[correction_role]], weights, join="exact", copy=False)
+    return xr.zeros_like(dataset[roles[role]])
+
+
 def validate_co2_trace(trace: xr.DataTree, prepared: Co2PreparedInputs | None = None) -> None:
     """Validate saved output roles and labelled reconstruction without computing draws."""
     roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
@@ -69,6 +105,7 @@ def validate_co2_trace(trace: xr.DataTree, prepared: Co2PreparedInputs | None = 
         if group not in trace.children:
             continue
         dataset = trace[group].to_dataset()
+        _zero_boundary_anomaly_draws(trace, group)
         for role in required | ({"boundary_concentration", "offset_concentration", "model_error"} & roles.keys()):
             if roles[role] not in dataset:
                 raise ValueError(f"CO2 scientific outputs require role {role!r} in {group}.")
@@ -273,6 +310,12 @@ def reconstruct_co2_concentrations(trace: xr.DataTree, prepared: Co2PreparedInpu
         "flux_scale": "flux_scale",
         "active_flux_scale": "active_flux_scale",
         "boundary_scale": "boundary_scale",
+        "boundary_mean_shift": "boundary_mean_shift",
+        "boundary_anomaly": "boundary_correction_anomaly",
+        "boundary_correction": "boundary_correction",
+        "boundary_reference": "boundary_reference_concentration",
+        "boundary_mean_contribution": "boundary_mean_shift_concentration",
+        "boundary_anomaly_contribution": "boundary_anomaly_concentration",
         "offset_coefficient": "offset_coefficient",
         "total_error": "model_error",
     }
@@ -286,6 +329,14 @@ def reconstruct_co2_concentrations(trace: xr.DataTree, prepared: Co2PreparedInpu
             name = roles.get(role)
             if name in dataset:
                 value = dataset[name]
+            elif component_name in {"boundary_anomaly", "boundary_anomaly_contribution"} and role not in roles:
+                value = _zero_boundary_anomaly_draws(
+                    trace, group, observation_space=component_name == "boundary_anomaly_contribution"
+                )
+                if value is None:
+                    continue
+            elif component_name in {"boundary_prescribed", "boundary_reference"} and "constant_data" in trace.children and name in trace.constant_data:
+                value = trace.constant_data[name].broadcast_like(dataset[roles["model_mean"]])
             elif component_name in {"boundary", "offset"} and role not in roles:
                 value = xr.zeros_like(dataset[roles["model_mean"]])
             elif component_name in {"modelled", "pollution", "flux_scale"} or role in roles:
@@ -421,6 +472,8 @@ def _paris_products(components, native, country, countries, result, source_to_se
             or "pollution" in str(name)
         ]
     )
+    # Boundary diagnostics are distinct from the one coherent emission component.
+    concentration.attrs["source_components"] = json.dumps(["emissions"])
     concentration["total_error"] = concentration.total_error_posterior
     concentration = concentration.drop_vars(["total_error_prior", "total_error_posterior", "residual_prior"])
     domain = result.domain

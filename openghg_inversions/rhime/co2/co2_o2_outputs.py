@@ -18,6 +18,7 @@ from openghg_inversions.serialization import reset_serialisation_multiindexes, s
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
 from .co2_o2_preparation import Co2O2PreparedInputs
+from .co2_outputs import _zero_boundary_anomaly_draws
 
 
 @dataclass
@@ -144,6 +145,8 @@ def validate_co2_o2_trace(trace: xr.DataTree, prepared: Co2O2PreparedInputs | No
     for group in ("prior", "posterior"):
         if group not in trace.children:
             continue
+        for channel in ("co2", "o2"):
+            _zero_boundary_anomaly_draws(trace, group, channel=channel)
         needed = {"flux_scale"} if group == "prior" else required
         needed = needed | ({"boundary_concentration", "offset_concentration"} & roles.keys())
         for role in needed:
@@ -240,8 +243,31 @@ def calculate_co2_o2_products(*, result: Co2O2Output, output: Co2O2OutputOptions
         "linked_preparation_provenance": json.dumps(dict(result.prepared.provenance), sort_keys=True),
         "linked_ratio_provenance": result.prepared.o2_sensitivity.attrs["oxidation_ratio_provenance"],
     }
+    roles = json.loads(result.idata.attrs["rhime_variable_roles"])
     products = {}
     for species, values in components.items():
+        rows = result.prepared.observations.species.values == species
+        for when in ("prior", "posterior"):
+            if when not in result.idata.children:
+                continue
+            for component in ("reference", "mean_shift", "anomaly"):
+                role = f"{species}_boundary_{component}_concentration"
+                if role in roles:
+                    component_draws = _role(result.idata, role, when).isel(observation=rows)
+                    if component == "reference":
+                        component_draws = component_draws.broadcast_like(values[f"boundary_{when}"])
+                    component_draws, _ = xr.align(component_draws, values, join="exact", copy=False)
+                    values[f"boundary_{component}_{when}"] = component_draws.variable
+                elif component == "anomaly":
+                    component_draws = _zero_boundary_anomaly_draws(
+                        result.idata, when, channel=species, observation_space=True
+                    )
+                    if component_draws is not None:
+                        component_draws = component_draws.isel(observation=rows)
+                        if when == "prior":
+                            component_draws = component_draws.rename({dim: f"prior_{dim}" for dim in ("chain", "draw") if dim in component_draws.dims})
+                        component_draws, _ = xr.align(component_draws, values, join="exact", copy=False)
+                        values[f"boundary_{component}_{when}"] = component_draws.variable
         values.attrs.update(metadata)
         products[f"{species}_concentration_components"] = values
         products[f"{species}_basic"] = _summaries(values)

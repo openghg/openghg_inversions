@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+import json
 
 import numpy as np
 import pandas as pd
@@ -86,7 +87,7 @@ def _expand_boundary_periods(
     observation_labels: xr.DataArray | None,
 ) -> xr.Dataset:
     """Select scientific rows and apply one period mask to all boundary operands."""
-    normalise_frequency(frequency)
+    resolved_frequency = normalise_frequency(frequency)
     if observation_labels is not None:
         raw = raw.sel({observation_dim: observation_labels.transpose(observation_dim)})
     if frequency is None:
@@ -103,6 +104,43 @@ def _expand_boundary_periods(
     result = (raw.rename(bc_region="bc_curtain") * mask).stack(
         bc_region=("bc_curtain", "bc_period")
     ).transpose("bc_region", observation_dim)
+    # The ordinal index alone cannot distinguish different calendar partitions.
+    # Keep its public labels and carry their resolved meaning on the coordinate.
+    periods = mask.bc_period.values
+    if resolved_frequency is None:
+        identity = {"frequency": "whole_window", "origin": None, "intervals": [[0, None, None]]}
+    else:
+        first_time = pd.Timestamp(time.values.min())
+        if resolved_frequency == "monthly":
+            origin = first_time.to_period("M").start_time
+            intervals = [
+                [
+                    int(period),
+                    (origin + pd.DateOffset(months=int(period))).isoformat(),
+                    (origin + pd.DateOffset(months=int(period) + 1)).isoformat(),
+                ]
+                for period in periods
+            ]
+        else:
+            anchor = pd.Timestamp(anchor_time) if anchor_time is not None else first_time
+            # make_freq_indicator labels the earliest occupied interval zero.
+            origin = anchor + ((first_time - anchor) // resolved_frequency) * resolved_frequency
+            intervals = [
+                [
+                    int(period),
+                    (origin + int(period) * resolved_frequency).isoformat(),
+                    (origin + (int(period) + 1) * resolved_frequency).isoformat(),
+                ]
+                for period in periods
+            ]
+        identity = {
+            "frequency": str(resolved_frequency),
+            "origin": origin.isoformat(),
+            "intervals": intervals,
+        }
+    result.bc_region.attrs["boundary_period_identity"] = json.dumps(
+        identity, sort_keys=True, separators=(",", ":")
+    )
     result.attrs = dict(raw.attrs)
     for name in raw.data_vars:
         result[name].attrs = dict(raw[name].attrs)
@@ -111,14 +149,48 @@ def _expand_boundary_periods(
             bc_frequency=frequency or "none",
             bc_anchor_time=(
                 str(np.datetime64(anchor_time) if anchor_time is not None else time.values.min())
-                if frequency not in (None, "monthly") else "not-applicable"
+                if frequency not in (None, "monthly")
+                else "not-applicable"
             ),
         )
     return result
 
 
+def _validate_boundary_weight_periods(bound: xr.Dataset, weights: xr.DataArray) -> None:
+    """Check resolved weight calendar meaning before any numerical execution.
+
+    A metadata-free whole-window field remains unambiguous. Temporal weights
+    must inherit ``bound.bc_region`` when constructed; identical ordinal labels
+    are insufficient evidence that their calendar intervals agree.
+    """
+    expected = bound.bc_region.attrs.get("boundary_period_identity")
+    actual = weights.coords[weights.dims[0]].attrs.get("boundary_period_identity")
+    try:
+        expected = json.loads(expected) if expected is not None else None
+        actual = json.loads(actual) if actual is not None else None
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Boundary centering weights have invalid period identity.") from exc
+    if any(value is not None and not isinstance(value, dict) for value in (actual, expected)):
+        raise ValueError("Boundary centering weights have invalid period identity.")
+    if actual is None:
+        if expected is not None and expected.get("frequency") == "whole_window":
+            return
+        index = bound.indexes["bc_region"]
+        if expected is None and (
+            not isinstance(index, pd.MultiIndex) or len(index.get_level_values("bc_period").unique()) == 1
+        ):
+            return
+        raise ValueError(
+            "Temporal boundary centering weights require resolved period identity from bound.bc_region."
+        )
+    if actual != expected:
+        raise ValueError("Boundary centering weights do not match the resolved boundary period identity.")
+
+
 def _select_native_boundary(
-    inputs: xr.Dataset, observations: xr.DataArray, observation_dim: str,
+    inputs: xr.Dataset,
+    observations: xr.DataArray,
+    observation_dim: str,
 ) -> xr.Dataset:
     """Select rows, borrow native timestamps, and check indexed-time identity.
 

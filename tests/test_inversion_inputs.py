@@ -460,3 +460,11 @@ def test_assembly_custom_nan_selection_and_independent_eager_inputs():
     result = _drop_nan_and_compute(ds, drop_nan_from=("quality", "absent"))
     xr.testing.assert_identical(result, original.isel(nmeasure=[0, 2]))
     xr.testing.assert_identical(ds, original)
+
+
+def test_make_inv_inputs_rejects_per_site_resolved_boundary_weights() -> None:
+    sites = {name: _make_minimal_fp_site(mf_base=400.0, include_inlet_height=False)
+             for name in ("AAA", "BBB")}
+    sites["AAA"]["bc_centering_weights"] = xr.DataArray([1.0, 1.0], dims="bc_region")
+    with pytest.raises(ValueError, match="resolved boundary states"):
+        make_inv_inputs(sites)

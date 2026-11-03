@@ -167,6 +167,17 @@ def _require_equivalent_units(actual: Any, expected: str, *, name: str) -> None:
         raise ValueError(f"{name} units {actual!r} do not have the same numeric scale as {expected!r}.")
 
 
+def _independent_boundary_weights(weights: xr.DataArray) -> xr.DataArray:
+    """Give resolved weights independent dimensions and MultiIndex level names."""
+    dim = str(weights.dims[0])
+    names = {dim: "bc_centering_state"} if dim != "bc_centering_state" else {}
+    index = weights.indexes.get(dim)
+    if isinstance(index, pd.MultiIndex):
+        names.update({str(name): f"bc_centering_{str(name).removeprefix('bc_')}"
+                      for name in index.names if not str(name).startswith("bc_centering_")})
+    return weights.rename(names) if names else weights
+
+
 def _validate_co2_dataset(inputs: xr.Dataset) -> None:
     """Validate the scientific layout owned by the CO2 artifact."""
     from openghg_inversions.boundary_sensitivity import validate_boundary_operands
@@ -224,6 +235,18 @@ def _validate_co2_dataset(inputs: xr.Dataset) -> None:
         )
     if mean.attrs.get("units") != "1" or covariance.attrs.get("units") != "1":
         raise ValueError("CO2 retained prior mean and covariance must be dimensionless.")
+
+    if "bc_centering_weights" in inputs:
+        if "H_bc_mass" not in inputs:
+            raise ValueError("Additive boundary weights require native centered boundary operands.")
+        weights = inputs.bc_centering_weights
+        if weights.dims != ("bc_centering_state",):
+            raise ValueError("bc_centering_weights must use the independent bc_centering_state dimension.")
+        _require_axis(weights, "bc_centering_state", name="Boundary centering weights")
+        _require_equivalent_units(weights.attrs.get("units"), "1", name="bc_centering_weights")
+        if not hasattr(weights.data, "__dask_graph__"):
+            if not np.isfinite(weights.data).all() or not (weights.data > 0).all():
+                raise ValueError("bc_centering_weights must be finite and strictly positive.")
 
     squared_units = f"({concentration_units})**2"
     if AGGREGATION_ERROR_COVARIANCE in inputs:
@@ -518,6 +541,7 @@ def prepare_co2_inputs(
     reduction: CoherentGaussianReduction,
     *,
     aggregation_error_rank: int | None = 512,
+    bc_centering_weights: xr.DataArray | None = None,
     provenance: Mapping[str, Any] | None = None,
 ) -> Co2PreparedInputs:
     """Map one coherent Gaussian reduction into the CO2 replay contract.
@@ -550,6 +574,14 @@ def prepare_co2_inputs(
             larger than the observation count are capped at that count; the
             actual factor width is further limited by numerical positive rank.
             Pass ``None`` to store the exact dense covariance.
+        bc_centering_weights: Explicit positive dimensionless weights on
+            resolved ``bc_region`` or ``bc_centering_state`` defining the boundary
+            mean. Stored on the independent ``bc_centering_state`` dimension;
+            model construction normalizes them to sum to one. For centered
+            operands, native ``H_bc_mass`` supplies the unit response. Existing canonical arrays
+            are retained when these arguments are omitted. Replacing weights
+            removes their previous independent axis; shared data variables or
+            multidimensional coordinate consumers prevent replacement.
         provenance: Optional JSON-serializable project or preparation
             provenance. The reduction strategy and LRPD diagnostics are added
             by this boundary.
@@ -693,6 +725,33 @@ def prepare_co2_inputs(
         ),
         "nmeasure",
     )
+
+    if bc_centering_weights is not None:
+        if "H_bc_mass" not in inputs:
+            raise ValueError("Additive boundary weights require native centered boundary operands.")
+        weights = _independent_boundary_weights(bc_centering_weights).transpose("bc_centering_state")
+        _require_axis(weights, "bc_centering_state", name="Boundary centering weights")
+        if "bc_centering_state" in mapped.dims:
+            consumers = [
+                name for name, array in mapped.variables.items()
+                if "bc_centering_state" in array.dims and name != "bc_centering_weights"
+                and (name not in mapped.coords or array.dims != ("bc_centering_state",))
+            ]
+            if consumers:
+                raise ValueError(
+                    "Boundary weight dimension 'bc_centering_state' is also used by "
+                    f"non-weight variable(s): {consumers!r}."
+                )
+            if "bc_centering_weights" not in mapped:
+                raise ValueError("Existing bc_centering_state dimension is not owned by boundary weights.")
+            mapped = mapped.drop_dims("bc_centering_state")
+        mapped = mapped.drop_vars("bc_centering_weights", errors="ignore")
+        mapped["bc_centering_weights"] = weights
+    elif "bc_centering_weights" in mapped and mapped.bc_centering_weights.dims == ("bc_region",):
+        # Keep resolved period-state weights independent of reusable spatial states.
+        weights = _independent_boundary_weights(mapped.bc_centering_weights)
+        mapped = mapped.drop_vars("bc_centering_weights")
+        mapped["bc_centering_weights"] = weights
 
     approximation = None
     if aggregation_error_rank is None:

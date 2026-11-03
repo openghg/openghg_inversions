@@ -19,11 +19,13 @@ from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 from .co2_cached_sigma_runner import (
     _sampler_for_cached_graph,
 )
-from .centered_boundary import require_centered_precision
+from openghg_inversions.models.boundary import require_centered_precision
 from .co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
+from .co2_o2_model import _validate_channel_baseline_options
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .co2_o2_runner import (
     _CO2_O2_VARIABLE_ROLES,
+    _add_additive_boundary_roles,
     annotate_co2_o2_trace,
     _co2_o2_metadata,
     _materialize_co2_o2_replay_inputs,
@@ -39,6 +41,9 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     use_bc: Mapping[str, bool] | None = None,
+    bc_mean_shift_prior: Mapping[str, PriorArgs] | None = None,
+    bc_anomaly_scale: Mapping[str, float] | None = None,
+    bc_centering_weights: Mapping[str, xr.DataArray] | None = None,
     bc_prior: Mapping[str, PriorArgs] | None = None,
     bc_state_activity: Mapping[str, StateActivity] | None = None,
     bc_freq: str | None = None,
@@ -90,6 +95,12 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             selecting a missing channel boundary fails.
         bc_prior: Channel-keyed dimensionless boundary-scale priors. Enabled
             channels use the ordinary CO2 boundary prior when omitted.
+        bc_mean_shift_prior: Channel-keyed scalar additive mean priors in
+            concentration units, requiring native centered boundary operands.
+        bc_anomaly_scale: Matching channel-keyed nonnegative Gaussian scales
+            before weighted centering. Zero retains only the scalar mean.
+        bc_centering_weights: Positive dimensionless weights over all resolved
+            region/period states, keyed by channel; never inferred from sensitivity.
         bc_state_activity: Optional channel-keyed labelled active/fixed
             boundary-state policies. Requires the selected channel boundary.
         bc_freq: Optional period for raw ordinary or centered channel boundaries.
@@ -150,10 +161,30 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             if not enabled:
                 boundaries.pop(channel, None)
                 operands.pop(channel, None)
+    _validate_channel_baseline_options(
+        boundaries,
+        bc_prior,
+        bc_state_activity,
+        offset_prior,
+        offset_args,
+        operands,
+        bc_mean_shift_prior=bc_mean_shift_prior,
+        bc_anomaly_scale=bc_anomaly_scale,
+        bc_centering_weights=bc_centering_weights,
+    )
+    selected_weights = {}
+    prepared_weights = prepared.bc_centering_weights
+    for channel in ("co2", "o2"):
+        if (bc_mean_shift_prior or {}).get(channel) is None:
+            continue
+        weights = (bc_centering_weights or {}).get(channel, prepared_weights.get(channel))
+        if weights is not None:
+            selected_weights[channel] = weights
     if operands:
         require_centered_precision()
-    materialized, boundaries, operands = _materialize_co2_o2_replay_inputs(
-        prepared, independent_error_sd, boundaries, operands
+    materialized, boundaries, operands, bc_centering_weights = _materialize_co2_o2_replay_inputs(
+        prepared, independent_error_sd, boundaries, operands, selected_weights,
+        bc_freq=bc_freq, bc_anchor_time=bc_anchor_time,
     )
     observations, fixed, co2, o2, error = materialized
     cached = build_co2_o2_cached_sigma_model(
@@ -172,6 +203,9 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         boundary_operands=operands,
         bc_freq=bc_freq,
         bc_anchor_time=bc_anchor_time,
+        bc_mean_shift_prior=bc_mean_shift_prior,
+        bc_anomaly_scale=bc_anomaly_scale,
+        bc_centering_weights=bc_centering_weights,
         bc_prior=bc_prior,
         bc_state_activity=bc_state_activity,
         offset_prior=offset_prior,
@@ -206,14 +240,24 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         roles[f"{channel}_boundary_mass"] = f"{channel}_H_bc_mass"
         roles[f"{channel}_boundary_reference"] = f"{channel}_bc_reference"
     if operands:
-        metadata.update(boundary_representation="centered-v1", bc_frequency=bc_freq,
-                        bc_anchor_time=None if bc_anchor_time is None else str(bc_anchor_time))
+        metadata.update(
+            boundary_representation="centered-v1",
+            bc_frequency=bc_freq,
+            bc_anchor_time=None if bc_anchor_time is None else str(bc_anchor_time),
+        )
     if boundaries or operands:
         roles["boundary_concentration"] = "boundary_concentration"
     if offset_prior:
         roles["offset_concentration"] = "offset_concentration"
     if boundaries or operands or offset_prior:
         roles["baseline_concentration"] = "baseline_concentration"
+    _add_additive_boundary_roles(
+        roles,
+        metadata,
+        co2_prior=(bc_mean_shift_prior or {}).get("co2"),
+        o2_prior=(bc_mean_shift_prior or {}).get("o2"),
+        model_variables=cached.model.named_vars,
+    )
     built = RhimeModelBuildResult(
         model=cached.model,
         output_contract=OutputContract(
