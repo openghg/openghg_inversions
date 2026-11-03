@@ -209,6 +209,40 @@ def get_obs_data(
     Missing results (``SearchError``, ``None``, or datasets with an empty time
     dimension) are skipped. Return ``None`` if all stores have missing results.
     Retrieval ``AttributeError`` exceptions are logged with context and re-raised.
+
+    Args:
+        site: Observation site name. For satellite observations, use
+            ``satellite-obs_region`` or ``satellite-obs_region-selection``.
+        species: Species to retrieve.
+        inlet: Inlet selector forwarded unchanged to the surface or site-column
+            provider. Strings, slices, and ``None`` follow the provider's
+            selection rules. ``"column"`` also selects column retrieval.
+        start_date: Retrieval start date forwarded to the provider.
+        end_date: Retrieval end date forwarded to the provider.
+        domain: Optional domain selector for satellite column observations.
+        platform: Optional platform selector used to choose surface, site-column,
+            or satellite column retrieval.
+        satellite: Satellite name; satellite retrieval derives this from ``site``
+            and overrides the supplied value.
+        max_level: Maximum vertical level forwarded to the column provider.
+            Required for column observations.
+        data_level: Optional ICOS data level for surface observations.
+        average: Optional averaging period for surface or site-column observations.
+        instrument: Optional instrument selector for surface or site-column
+            observations.
+        calibration_scale: Optional calibration scale for surface observations.
+        stores: OpenGHG store name or iterable of store names to try in order.
+            ``None`` delegates store selection to OpenGHG.
+        keep_variables: Optional variables to retain in surface observations,
+            forwarded to the provider.
+
+    Returns:
+        The first non-empty ``ObsData`` returned by a store, or ``None`` if no
+        store returns observations for the request.
+
+    Raises:
+        AttributeError: If column observations are requested without ``max_level``,
+            or if the provider raises an ``AttributeError`` during retrieval.
     """
 
     if is_column_observation(inlet, platform) and max_level is None:
