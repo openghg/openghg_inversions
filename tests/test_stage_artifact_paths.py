@@ -19,7 +19,7 @@ def test_checkpoint_rejects_overlapping_store_paths(tmp_path: Path, direction: s
         else (tmp_path, store.name, payload)
     )
 
-    with pytest.raises(ValueError, match="would overwrite"):
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         check_checkpoint_targets(destination, stage=None, payloads=(target,), referenced=(referenced,))
 
     assert payload.read_bytes() == b"original prepared data"
@@ -37,7 +37,7 @@ def test_checkpoint_rejects_existing_input_alias(tmp_path: Path, alias: str) -> 
     else:
         target = original
 
-    with pytest.raises(ValueError, match="would overwrite"):
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         check_checkpoint_targets(tmp_path, stage=None, payloads=(target.name,), referenced=(original,))
 
     assert original.read_bytes() == b"original prepared data"
