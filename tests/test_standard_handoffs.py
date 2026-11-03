@@ -611,7 +611,7 @@ def test_sample_targets_cannot_alias_a_colocated_preparation(tmp_path, target_na
         target.symlink_to(payload)
     else:
         target.hardlink_to(payload)
-    with pytest.raises(ValueError, match="overwrite another checkpoint artifact"):
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         stages.save_samples(
             preparation, result.trace, model=_model(sampled),
             output_contract=_contract(sampled), actual_inference={},
@@ -690,7 +690,7 @@ def test_sample_alias_preflight_precedes_inference(tmp_path, monkeypatch):
     preparation, _ = _saved(tmp_path)
     (preparation.parent / "posterior.nc").symlink_to(preparation.parent / "prepared-inputs.nc")
     monkeypatch.setattr(stages, "sample_rhime_model", lambda *a, **k: pytest.fail("inference"))
-    with pytest.raises(ValueError, match="overwrite another checkpoint artifact"):
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         stages.sample(preparation, model={"mismatch_model": "fixed_error"}, output_dir=preparation.parent)
 
 
@@ -701,7 +701,7 @@ def test_prior_predictive_targets_cannot_alias_preparation(tmp_path, monkeypatch
     original = payload.read_bytes()
     (preparation.parent / filename).hardlink_to(payload)
     monkeypatch.setattr(stages, "build_standard_model", lambda *a, **k: pytest.fail("model construction"))
-    with pytest.raises(ValueError, match="overwrite another checkpoint artifact"):
+    with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         stages.prior_predictive(
             preparation, model={"mismatch_model": "fixed_error"}, output_dir=preparation.parent,
         )
