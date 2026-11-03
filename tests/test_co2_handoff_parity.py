@@ -402,7 +402,7 @@ def test_full_rejects_supplied_preparation_with_an_unrelated_saved_affine_pair(t
     """The sampled preparation must own the reconstruction, even with output off."""
     from openghg_inversions.rhime.co2 import execution
     from openghg_inversions.rhime.co2.co2_preparation import Co2PreparedInputs
-    from openghg_inversions.inversion_data import RhimePreparedInputs
+    from openghg_inversions.inversion_data import PreparedInputs
 
     _, _, prepared, affine, countries = synthetic_inputs(tmp_path)
     source = tmp_path / "source.nc"
@@ -412,7 +412,7 @@ def test_full_rejects_supplied_preparation_with_an_unrelated_saved_affine_pair(t
     changed = prepared.inv_inputs.assign(alpha_prior_mean=prepared.inv_inputs.alpha_prior_mean * 1.1)
     changed.alpha_prior_mean.attrs = dict(prepared.inv_inputs.alpha_prior_mean.attrs)
     supplied = Co2PreparedInputs(
-        RhimePreparedInputs(changed, prepared.basis_functions, prepared.site_metadata),
+        PreparedInputs(changed, prepared.basis_functions, prepared.site_metadata),
         prepared.aggregation_error_mode, prepared.provenance,
     )
     params = configuration(tmp_path / "rejected", countries)

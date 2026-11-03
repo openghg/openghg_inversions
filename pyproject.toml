@@ -38,8 +38,8 @@ dependencies = [
     "pandas<3.0",
     "matplotlib",
     "scipy",
-    # OpenGHG 0.9.0 added combination of surface records selected by an inlet slice.
-    "openghg>=0.9.0",
+    # Temporary until a release includes the Numba fp_x_flux algorithm.
+    "openghg @ git+https://github.com/openghg/openghg.git@b9a9d1f21f22d2f8dcca714283eb936c22338c57",
     "openghg-defs!=0.0.13",
     "cf_xarray>=0.10.6",
     "sparse",
@@ -95,7 +95,6 @@ uv_dev = [
 
 [project.scripts]
 rhime = "openghg_inversions.cli:rhime_main"
-openghg-inversions = "openghg_inversions.cli:main"
 
 [tool.pixi.workspace]
 channels = ["conda-forge"]

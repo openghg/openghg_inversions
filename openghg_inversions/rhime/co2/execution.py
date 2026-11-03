@@ -10,7 +10,7 @@ from typing import Any
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.basis.affine_flux_map_io import AffineFluxMapArtifact, load as load_affine
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.rhime._stage_artifacts import _validate_filename_component
 
 from .co2_affine_output import _bind_affine_flux_map, prepared_inputs_content_id
@@ -21,7 +21,7 @@ from .co2_outputs import (
 from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs, requested_co2_facts
 from .inference import sample_co2_inference
 from .configuration import (
-    load_co2_family_config, validate_co2_config, Co2PreparationConfig,
+    load_co2_family_config, validate_co2_config, _validate_co2_option_names, Co2PreparationConfig,
     Co2ModelConfig, _resolve_co2_sampling,
 )
 
@@ -46,6 +46,7 @@ def load_co2_params(
             raise ValueError("CO2 params file must contain one JSON object.")
     else:
         options = dict(params or {})
+    _validate_co2_option_names(options, overrides or {})
     for name, value in (overrides or {}).items():
         if name in {"prepared_inputs", "model", "likelihood", "sampling", "outputs"} and isinstance(value, Mapping):
             previous = options.get(name, {})
@@ -68,7 +69,7 @@ def run_co2(
     *, config_file: str | Path | None = None, params_file: str | Path | None = None,
     params: Mapping[str, Any] | None = None, overrides: Mapping[str, Any] | None = None,
     output_path: str | Path | None = None, start_date: str | None = None, end_date: str | None = None,
-    prepared: Co2PreparedInputs | None = None, canonical_inputs: RhimePreparedInputs | None = None,
+    prepared: Co2PreparedInputs | None = None, canonical_inputs: PreparedInputs | None = None,
     reduction: CoherentGaussianReduction | None = None, affine_artifact: AffineFluxMapArtifact | None = None,
     aggregation_error_rank: int | None = 512,
 ) -> Co2Output:
@@ -93,7 +94,8 @@ def run_co2(
     if output_path is not None:
         options["outputs"] = {**options.get("outputs", {}), "output_path": Path(output_path).expanduser().resolve()}
     preparation = Co2PreparationConfig.from_params(options)
-    model = Co2ModelConfig.from_params(options).model_arguments()
+    model_config = Co2ModelConfig.from_params(options)
+    model = model_config.model_arguments()
     sampling = _resolve_co2_sampling(options, model=model)
     sampler = sampling.sampler
     output_choices = resolve_co2_output(options)
@@ -111,6 +113,7 @@ def run_co2(
         if source is None:
             raise ValueError("Pass prepared inputs or configure prepared_inputs.path.")
         prepared = Co2PreparedInputs.load(source)
+    model = model_config.model_arguments()
     facts = requested_co2_facts(
         prepared, start_date=start_date, end_date=end_date,
         recorded_facts={name: getattr(preparation, name) for name in ("start_date", "end_date", "domain")},

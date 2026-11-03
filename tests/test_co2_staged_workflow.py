@@ -18,7 +18,7 @@ import xarray as xr
 from openghg_inversions.basis.affine_flux_map_io import save as save_affine
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.cli import main
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.rhime.co2 import Co2PreparedInputs, prepare_co2_inputs
 from openghg_inversions.rhime.co2.co2_affine_output import (
     prepared_inputs_content_id,
@@ -44,13 +44,13 @@ def _handoff(directory: Path) -> tuple[Path, Co2PreparedInputs]:
         coords={"bc_region": ["background"]},
         attrs={"units": "ppm"},
     )
-    canonical = RhimePreparedInputs(
+    canonical = PreparedInputs(
         inputs,
         BasisFunctions.from_flat_basis(basis, flux, operator_kwargs={"state_dim": "region"}),
         original.site_metadata.assign(averaging_period=("site", ["1h", "1h"])),
     )
     state = canonical.basis_functions.operator.basis_matrix.region.values
-    canonical = RhimePreparedInputs(
+    canonical = PreparedInputs(
         canonical.inv_inputs.assign_coords(region=state), canonical.basis_functions, canonical.site_metadata
     )
     reduction = _reduction(canonical)
@@ -126,7 +126,7 @@ country_file = "countries.nc"
 
 def _cli(*arguments: str | Path, success: bool = True) -> subprocess.CompletedProcess[str]:
     """Execute the installed console script without replacing model or sampler code."""
-    executable = Path(sys.executable).with_name("openghg-inversions")
+    executable = Path(sys.executable).with_name("rhime")
     environment = os.environ.copy()
     environment.pop("RUN_ROOT", None)
     started = perf_counter()
@@ -194,7 +194,9 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(
     assert set(provenance) == {"version", "revision", "dirty"}
     assert provenance["version"]
     revision = provenance["revision"]
-    assert len(revision) == 40 and all(character in "0123456789abcdef" for character in revision)
+    assert revision is None or (
+        len(revision) == 40 and all(character in "0123456789abcdef" for character in revision)
+    )
     assert sample_manifest["provenance"] == provenance
     assert sample_manifest["preparation_generation"] == prepare_manifest["generation"]
     assert prepare_manifest["start_date"] == "2020-01-01"

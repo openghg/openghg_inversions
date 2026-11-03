@@ -109,19 +109,15 @@ Modern requests SHALL select exact BC basis paths; explicitly selected multiple
 files SHALL retain the existing time combination and alignment semantics.
 
 The built-in NESW calculation SHALL use acquired directional BC contributions
-without reading any BC basis file. Modern requests containing `bc_basis_case`
-or `bc_basis_directory` SHALL fail unsupported-option validation before
-acquisition rather than trigger translation, discovery or an unused-option
-warning. Disabled BCs SHALL NOT trigger basis-resource loading. File-backed
-selections SHALL fail early for missing or unreadable selected files rather
-than silently dropping them.
+without reading any BC basis file. Disabled BCs SHALL NOT trigger basis-resource
+loading. File-backed selections SHALL fail early for missing or unreadable
+selected files rather than silently dropping them.
 
 #### Scenario: NESW does not select a file
 
 - **WHEN** a canonical modern request selects the built-in NESW calculation
 - **THEN** no BC basis-file lookup is performed
 - **AND** sensitivities use acquired directional BC contributions
-- **AND** a historical `bc_basis_directory` request is rejected before acquisition
 
 #### Scenario: Explicit time-dependent BC basis
 
@@ -142,9 +138,8 @@ SHALL NOT require its default. Scientific preparation SHALL receive labelled map
 
 `country_file` SHALL remain the explicit reporting country definition, independent
 of these preparation defaults; the domain name SHALL NOT infer a reporting map.
-`country_directory` SHALL be unsupported in modern run configuration and rejected
-before scientific work. Reporting SHALL use `country_file`; preparation SHALL use
-`landsea_path` or `outer_regions_path` according to the selected operation.
+Reporting SHALL use `country_file`; preparation SHALL use `landsea_path` or
+`outer_regions_path` according to the selected operation.
 
 #### Scenario: Packaged preparation with explicit reporting
 
@@ -152,12 +147,6 @@ before scientific work. Reporting SHALL use `country_file`; preparation SHALL us
 - **THEN** the runner selects available EUROPE packaged preparation defaults for omitted support paths
 - **AND** the reporting country definition remains the explicitly selected file
 - **AND** an explicit preparation path overrides only its corresponding packaged default
-
-#### Scenario: Removed country directory
-
-- **WHEN** a modern run request supplies `country_directory`
-- **THEN** unsupported-option validation rejects it before acquisition
-- **AND** no downstream compatibility branch interprets that directory
 
 ### Requirement: Explicit partition collections have deterministic ordering
 

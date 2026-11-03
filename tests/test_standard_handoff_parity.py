@@ -98,7 +98,6 @@ def test_saved_preparation_retains_subset_and_borrows_lazy_inputs(tmp_path):
 
 
 def test_saved_model_missing_likelihood_input_fails_before_inference(tmp_path, monkeypatch):
-    from dataclasses import replace
     import pytest
     from examples.standard_handoffs import synthetic_inputs
     from openghg_inversions.rhime import _standard_stages as stages
@@ -107,11 +106,11 @@ def test_saved_model_missing_likelihood_input_fails_before_inference(tmp_path, m
     merged, options, *_ = synthetic_inputs(tmp_path)
     complete = stages.prepare(DataConfig.from_params(options), merged_data=merged, output_dir=tmp_path / "complete")
     prepared, data, _ = stages.load_preparation(complete)
-    prepared = replace(prepared, inv_inputs=prepared.inv_inputs.drop_vars("min_error"))
+    assert "min_error" not in prepared.inv_inputs
     manifest = stages.save_preparation(prepared, data_config=data, output_dir=tmp_path / "prepared")
     monkeypatch.setattr(stages, "sample_rhime_model", lambda *args, **kwargs: pytest.fail("inference"))
-    with pytest.raises(ValueError, match="Selected built-in likelihood.*min_error"):
-        stages.sample(manifest, model={"mismatch_model": "pollution_event"}, output_dir=tmp_path / "samples")
+    with pytest.raises(ValueError, match="Selected built-in likelihood.*mf_mod"):
+        stages.sample(manifest, model={"mismatch_model": "pollution_event", "min_error": "residual"}, output_dir=tmp_path / "samples")
     assert not (tmp_path / "samples").exists()
 
 
@@ -172,7 +171,7 @@ def test_multiple_native_sources_are_retained_once_and_replayed_without_original
 
     monkeypatch.setattr(standard, "resolve_runtime_flux", resolve_once)
     monkeypatch.setattr(standard, "prepare_basis", check_first_weight)
-    monkeypatch.setattr(standard.RhimeMergedData, "from_options", forbidden)
+    monkeypatch.setattr(standard.MergedData, "from_options", forbidden)
     monkeypatch.setattr(BasisFunctions, "save", forbidden)
     monkeypatch.setattr(RhimeSampler, "sample", forbidden)
     manifest = stages.prepare(DataConfig.from_params(options), merged_data=merged, output_dir=tmp_path / "prepared")
@@ -190,8 +189,7 @@ def test_multiple_native_sources_are_retained_once_and_replayed_without_original
     reversed_prepared = standard.prepare_standard(
         reversed_merged, basis_inputs=resolve_basis_inputs(data),
         **{**data.select("domain", "start_date", "flux_sources", "averaging_error", "filters",
-                        "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
-                        "min_error", "min_error_options"),
+                        "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc"),
            "flux_sources": ("supplemental", "inventory")},
     )
     assert resolutions == [("inventory", "supplemental"), ("supplemental", "inventory")]

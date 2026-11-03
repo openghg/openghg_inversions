@@ -440,7 +440,14 @@ def _model_or_input_var(
     if model_name in model_data:
         return model_data[model_name]
     if input_name in inv_out.inv_inputs:
-        return inv_out.inv_inputs[input_name]
+        value = inv_out.inv_inputs[input_name]
+        if (input_name == "H_bc"
+                and value.attrs.get("boundary_sensitivity_preparation") == "raw-spatial"):
+            raise ValueError(
+                "Legacy output requires the fitted boundary operand 'hbc' in trace constant_data; "
+                "raw spatial H_bc cannot replace the sampled model's temporal alignment."
+            )
+        return value
     raise ValueError(
         f"Legacy HBMCMC output formatting requires {description} as model data {model_name!r} "
         f"or InversionOutput.inv_inputs variable {input_name!r}."

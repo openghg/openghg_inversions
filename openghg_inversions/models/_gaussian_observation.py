@@ -42,7 +42,7 @@ class RegisteredAggregationError:
 
 
 def add_aggregation_error_data(
-    aggregation_error: AggregationError,
+    aggregation_error: AggregationError | None,
     observations: xr.DataArray,
     *,
     output_dim: str,
@@ -50,7 +50,8 @@ def add_aggregation_error_data(
     """Register labelled fixed aggregation-error data with the active model.
 
     Args:
-        aggregation_error: Validated backend-neutral covariance representation.
+        aggregation_error: Validated backend-neutral covariance representation,
+            or ``None`` for no fixed aggregation covariance.
         observations: Observation vector supplying labels for the marginal
             variance.
         output_dim: Observation dimension.
@@ -58,6 +59,8 @@ def add_aggregation_error_data(
     Returns:
         Registered tensors used by the error scale and likelihood graph.
     """
+    if aggregation_error is None:
+        return RegisteredAggregationError(mode="none", marginal_variance=pt.constant(floatX(0.0)))
     marginal = xr.DataArray(
         floatX(aggregation_error.marginal_variance),
         dims=(output_dim,),

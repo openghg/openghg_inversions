@@ -748,7 +748,7 @@ def add_fixed_ou_gaussian_likelihood(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: AggregationError | None = None,
     mean: TensorVariable,
     tau_hours: float | Mapping[str, float],
     fixed_site_amplitudes: float | Mapping[str, float] | None = None,
@@ -758,9 +758,10 @@ def add_fixed_ou_gaussian_likelihood(
 ) -> TensorVariable:
     """Add fixed-tau, within-site OU mismatch to a Gaussian observation model.
 
-    The residual covariance is fixed aggregation error plus reported observation
-    variance plus one labelled OU block per site. Inferred amplitudes require
-    an explicit prior in the observations' concentration units. A positive OU
+    Omitting ``aggregation_error`` or passing ``None`` adds no fixed aggregation
+    covariance. The residual covariance is fixed aggregation error plus reported
+    observation variance plus one labelled OU block per site. Inferred amplitudes
+    require an explicit prior in the observations' concentration units. A positive OU
     term may make a singular fixed base valid. Fixed amplitudes must produce
     strictly positive generalized base-plus-OU mode variances before the
     low-rank update. ``sigma_alignment`` may explicitly map a labelled joint
@@ -794,7 +795,11 @@ def add_fixed_ou_gaussian_likelihood(
     site_coord = alignment.site_labels.rename({"nsigma_site": "ou_site"}).rename("ou_site")
     site_labels = tuple(str(label) for label in site_coord.values)
     observation_variance = np.square(np.asarray(observation_error.values, dtype=np.float64))
-    factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation_error)
+    if aggregation_error is None:
+        factor = np.empty((observations.sizes[output_dim], 0), dtype=np.float64)
+        aggregation_diagonal = np.zeros(observations.sizes[output_dim], dtype=np.float64)
+    else:
+        factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation_error)
     resolved_tau = _site_values(
         tau_hours, alignment.nsite, "tau_hours", positive=True, coordinate=site_coord
     )

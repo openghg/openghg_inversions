@@ -91,10 +91,10 @@ reduction products together with canonical RHIME observations, basis data,
 and site metadata. Load the canonical inputs from a checkpoint produced by
 the :doc:`rhime` workflow::
 
-   from openghg_inversions.inversion_data import RhimePreparedInputs
+   from openghg_inversions.inversion_data import PreparedInputs
    from openghg_inversions.rhime.co2 import prepare_co2_inputs
 
-   canonical_inputs = RhimePreparedInputs.load("base-prepared-inputs.zarr")
+   canonical_inputs = PreparedInputs.load("base-prepared-inputs.zarr")
    co2_inputs = prepare_co2_inputs(canonical_inputs, reduction)
 
 The returned
@@ -105,7 +105,7 @@ The returned
 covariance. The artifact records one representation, and the CO2 runners use
 it without a separate mode argument.
 This handoff does not alter the prepared-input contracts of the standard,
-multisector, or ``run_hbmcmc.py`` paths.
+or multisector paths.
 
 For larger cases, request an explicit low-rank-plus-diagonal (LRPD) rank at the
 handoff::

@@ -34,11 +34,12 @@ model, sampler or output choices were already executed or fixed by preparation.
 - **AND** the original window/request remains available in the matched run context and the manifest identifies numerical artifacts containing TAC's retained metadata
 - **AND** consumers use TAC's retained metadata from those artifacts
 
-#### Scenario: Baked inverse-model policy
+#### Scenario: Family-specific baked inverse-model policy
 
-- **WHEN** preparation numerically encodes a boundary temporal parameterization or minimum-error floor
+- **WHEN** a supported family-specific preparation numerically encodes prior-dependent products or other baked policy
 - **THEN** the matched preparation context records that policy as a preparation fact
 - **AND** selecting a later model does not silently replace the encoded numerical values
+- **AND** this does not make standard/multisector BC temporal grouping or minimum-error selection preparation facts
 
 ### Requirement: Ordinary file references and current formats
 
@@ -183,11 +184,38 @@ or covariances from a prior SHALL likewise be recomputed when that prior changes
 reusable merged inputs need not be reacquired. Independent boundary/offset priors
 and supported observation-mismatch choices SHALL permit reuse when their required inputs exist.
 
+Standard and multisector preparation SHALL retain raw spatial BC inputs when
+enabled, rather than bake a model's temporal grouping or minimum-error floor into
+the reusable preparation. Compatible models SHALL be able to select different
+BC periods or minimum-error policies without acquisition, filtering, basis or
+spatial-sensitivity reconstruction. Required raw operands and retained facts
+SHALL follow the [scientific-inputs contract](../../../../specs/rhime-scientific-inputs/spec.md);
+option resolution SHALL follow the configuration contract. This raw-input reuse
+rule SHALL NOT replace CO2's linked prior-dependent preparation rules above.
+
+Older standard/multisector prepared formats whose baked numerical policies are
+incompatible with this raw-input contract SHALL fail with guidance to use matching
+software or prepare again. Loading SHALL NOT silently reinterpret their baked
+values as raw operands. This restriction SHALL NOT remove support from independent
+modern `InversionOutput` numerical codecs.
+
 #### Scenario: Two compatible standard or multisector models
 
 - **WHEN** two models select different graph-time scaling priors or supported likelihoods from one preparation with all required arrays
 - **THEN** both reuse the same preparation content without retrieval, filtering, basis or sensitivity reconstruction
 - **AND** a model requiring absent boundary or minimum-error inputs is rejected before inference
+
+#### Scenario: Reuse raw inputs with different model-owned numerical policies
+
+- **WHEN** two standard or multisector models select different valid BC periods or minimum-error policies from one compatible raw preparation
+- **THEN** both reuse the unchanged preparation without acquisition, filtering, basis or spatial-sensitivity reconstruction
+- **AND** each inference retains its own fitted operands through the sampled-recipe-handoff contract
+
+#### Scenario: Reject an incompatible baked preparation
+
+- **WHEN** a caller loads an older standard/multisector preparation whose baked policies are incompatible with the raw-input contract
+- **THEN** loading fails with migration guidance before inference or scientific artifact writes
+- **AND** no historical adapter silently substitutes model-time values or narrows independent modern output-codec support
 
 #### Scenario: Saved basis and current native flux
 

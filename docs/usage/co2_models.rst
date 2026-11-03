@@ -376,8 +376,17 @@ HalfStudentT, Gamma, Exponential, Uniform with a non-negative lower bound, or
 LogNormal.
 
 Optional model components belong in their own tables. ``[model.boundary]``
-accepts boolean ``enabled`` (default true) and ``prior``; a disabled boundary
-cannot specify a prior. ``[model.offset]`` requires ``prior`` and optionally
+accepts boolean ``enabled`` (default true), ``prior``, ``frequency``, and
+``anchor_time``. A disabled boundary cannot specify a prior or period choices.
+For raw reusable inputs, omitting ``frequency`` selects one period;
+``"monthly"`` selects calendar months, and a positive fixed duration such as
+``"2D"`` selects fixed-duration periods. ``anchor_time`` is accepted only with
+a fixed duration, never with monthly or omitted frequency. Linked CO2/O2
+channels share one frequency and anchor choice. See the
+:ref:`raw versus expanded boundary rules <surface-centered-boundary-contract>`
+for preparation reuse and period overrides.
+
+``[model.offset]`` requires ``prior`` and optionally
 accepts ``frequency``, ``per_site`` (default true), and ``drop_first`` (default
 false). A global offset (``per_site = false``) cannot set a frequency or use
 ``drop_first = true``.
@@ -586,14 +595,14 @@ native covariance products.
 Pass ``aggregation_error_rank=None`` to keep the reduction's exact dense
 unresolved covariance::
 
-   from openghg_inversions.inversion_data import RhimePreparedInputs
+   from openghg_inversions.inversion_data import PreparedInputs
    from openghg_inversions.rhime.co2 import prepare_co2_inputs
    from openghg_inversions.rhime.co2.co2_runner import (
        annotate_co2_trace, materialize_co2_inputs, build_co2_from_materialized,
    )
    from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
-   canonical_inputs = RhimePreparedInputs.load("base-prepared-inputs.zarr")
+   canonical_inputs = PreparedInputs.load("base-prepared-inputs.zarr")
    prepared = prepare_co2_inputs(
        canonical_inputs,
        reduction,
@@ -1084,6 +1093,13 @@ Its location and scale parameters use the observations' concentration units.
 These coefficients join the flux coefficients only inside the private cached
 likelihood calculation; their public scientific variables and contributions
 remain separate.
+
+Centered boundary operands are supported with the matched cached sampler for
+CO₂ and linked CO₂/O₂, with PyTensor ``floatX=float64``. The likelihood and
+amplitude update use directly composed centered means, while public BC states,
+priors and concentration outputs retain their physical meaning. See the
+:ref:`centered boundary contract <surface-centered-boundary-contract>` for
+period alignment, fixed states, restoration and persistence limits.
 
 :doc:`coherent_reduction` describes the linked retained prior, effective
 operator, affine contribution, and unresolved covariance.

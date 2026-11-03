@@ -10,8 +10,10 @@ coordinates must match exactly.
 
 Ratios may either be direct molar ratios applied to a ratio-free tracer design
 or multipliers applied to a design that already includes a declared reference
-ratio. Values must already share each channel's declared observation units;
-the module validates supported unit declarations but does not convert values.
+ratio. Observations, errors, sensitivities, and prior scales must already use
+each channel's declared observation units; their values are not converted.
+The shared residual-floor estimator converts modelled concentration operands
+to observation units before calculating residuals.
 """
 
 from .model import (

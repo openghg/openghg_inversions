@@ -15,7 +15,7 @@ import xarray as xr
 from scipy.stats import norm
 
 from openghg_inversions.basis import BasisFunctions
-from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
+from openghg_inversions.inversion_data import MergedData, SiteOptions
 from openghg_inversions.rhime import stages as handoffs
 from openghg_inversions.rhime.params import DataConfig, RhimeConfig
 from openghg_inversions.rhime.sampling import RhimeSampler
@@ -53,7 +53,7 @@ def synthetic_inputs(destination: Path, *, multiple_sources: bool = False) -> tu
         sources["supplemental"] = supplemental.to_dataset(name="flux")
         flux = flux + supplemental
         flux.attrs["units"] = "mol m-2 s-1"
-    merged = RhimeMergedData(site_data={"TAC": site}, flux_data=sources,
+    merged = MergedData(site_data={"TAC": site}, flux_data=sources,
                              site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"))
     preparation_options = dict(species="ch4", sites=["TAC"], averaging_period="1h", domain="EUROPE",
                                start_date="2019-01-01", end_date="2019-02-01", flux_sources=["inventory"],

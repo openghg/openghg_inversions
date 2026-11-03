@@ -39,7 +39,7 @@ def add_fixed_error_likelihood(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: AggregationError | None = None,
     mean: TensorVariable,
     output_dim: str = "nmeasure",
     observation_error_name: str = "error",
@@ -49,7 +49,8 @@ def add_fixed_error_likelihood(
     Args:
         observations: Observed mole fractions.
         observation_error: Reported observation-error standard deviations.
-        aggregation_error: Validated fixed aggregation-error representation.
+        aggregation_error: Validated fixed aggregation-error representation. Omit
+            or pass ``None`` for no fixed aggregation covariance.
         mean: Completed forward-model concentration aligned with
             ``output_dim``.
         output_dim: Observation dimension used for named PyMC variables.

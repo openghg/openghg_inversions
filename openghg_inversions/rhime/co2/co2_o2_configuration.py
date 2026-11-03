@@ -11,18 +11,22 @@ from typing import Any
 import numpy as np
 
 from openghg_inversions.models import StateActivity
+from openghg_inversions.inversion_inputs import normalise_frequency
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import normalise_optional_mapping
 
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .configuration import (
+    _validate_section_option_names, _PREPARATION_OPTION_NAMES, _SAMPLING_OPTION_NAMES,
+    _PRIOR_OPTION_NAMES, _MODEL_SECTION_OPTION_NAMES,
     _reject_unknown,
     _bool, _number, _take, _model, _co2_likelihood, _frozen,
     Co2PreparationConfig,
     _sampling,
     _string,
     _table,
+    _validate_boundary_periods,
     load_co2_family_config,
     resolve_co2_prior_seed,
 )
@@ -53,6 +57,7 @@ def load_co2_o2_params(
             raise ValueError("Linked CO2/O2 params file must contain one JSON object.")
     else:
         options = _table(params, "config")
+    _validate_co2_o2_option_names(options, overrides or {})
     for name, value in (overrides or {}).items():
         if name in {"prepared_inputs", "channels", "likelihood", "sampling", "outputs"} and isinstance(value, Mapping):
             previous = _table(options.get(name, {}), name)
@@ -73,9 +78,36 @@ def load_co2_o2_params(
         raise ValueError("config.recipe must be 'co2_o2' for linked execution.")
     if "variant" in options:
         raise ValueError("Linked CO2/O2 configuration has no variant selector; select the scientific likelihood.")
-    allowed = {"format_version", "recipe", "prepared_inputs", "channels", "likelihood", "sampling", "outputs"}
-    _reject_unknown({name: value for name, value in options.items() if name not in allowed}, "config")
     return options
+
+
+def _validate_co2_o2_option_names(*requests: Mapping[str, object]) -> None:
+    """Check request names while deferring scientific and inactive values."""
+    allowed = {"format_version", "recipe", "variant", "prepared_inputs", "channels", "likelihood", "sampling", "outputs"}
+    from .co2_o2_outputs import Co2O2OutputOptions
+
+    channel_sections = {
+        "": frozenset({"units", "independent_error_sd", "boundary", "offset"}),
+        **_MODEL_SECTION_OPTION_NAMES,
+        "boundary": _MODEL_SECTION_OPTION_NAMES["boundary"] | {"activity"},
+        "boundary.activity": frozenset({"active", "fixed_value"}),
+    }
+    _validate_section_option_names(requests, {
+        "": frozenset(allowed),
+        "prepared_inputs": _PREPARATION_OPTION_NAMES,
+        "channels": frozenset({"co2", "o2"}),
+        **{f"channels.{channel}" + (f".{path}" if path else ""): names
+           for channel in ("co2", "o2") for path, names in channel_sections.items()},
+        "likelihood": frozenset({"kind", "tau_hours", "fixed_site_amplitudes", "site_amplitude_prior",
+                                 "site_amplitude_prior_scale"}),
+        "likelihood.site_amplitude_prior": _PRIOR_OPTION_NAMES,
+        "sampling": _SAMPLING_OPTION_NAMES,
+        "outputs": frozenset(Co2O2OutputOptions.__dataclass_fields__),
+        "outputs.paris_postprocessing_kwargs": frozenset({
+            "template_version", "obs_avg_period", "flux_frequency", "country_selections",
+        }),
+        "outputs.native_flux_bases": frozenset({"co2", "o2"}),
+    })
 
 
 @dataclass(frozen=True)
@@ -155,6 +187,8 @@ class Co2O2ModelConfig:
     be supplied for both channels or omitted for both to use saved errors.
     Fixed independent error and fixed-amplitude OU are supported; inferred OU
     and per-meg transformations remain separate work.
+    Boundary frequency and anchor choices apply to all enabled raw boundary
+    channels; choices supplied under both channels must agree.
     """
 
     co2_units: str
@@ -167,8 +201,11 @@ class Co2O2ModelConfig:
     offset_args: Mapping[str, Any] | None = None
     tau_hours: float | Mapping[str, float] | None = None
     fixed_site_amplitudes: float | Mapping[str, float] | None = None
+    bc_freq: str | None = None
+    bc_anchor_time: str | None = None
 
     def __post_init__(self) -> None:
+        _validate_boundary_periods(self.bc_freq, self.bc_anchor_time)
         for item in fields(self):
             value = getattr(self, item.name)
             if isinstance(value, Mapping):
@@ -181,7 +218,7 @@ class Co2O2ModelConfig:
         channels = _table(options.get("channels", {}), "channels")
         units: dict[str, str] = {}
         errors: dict[str, float] = {}
-        model: dict[str, dict[str, Any]] = {}
+        model: dict[str, Any] = {}
         for name in ("co2", "o2"):
             channel = _table(_take(channels, name, "channels"), f"channels.{name}")
             units[name] = _string(_take(channel, "units", f"channels.{name}"), f"channels.{name}.units")
@@ -201,7 +238,15 @@ class Co2O2ModelConfig:
                     model.setdefault("bc_state_activity", {})[name] = StateActivity(active=active, fixed_value=fixed)
                 selected["boundary"] = boundary
             for key, value in _model(selected).items():
-                model.setdefault(key, {})[name] = value
+                if key in {"bc_freq", "bc_anchor_time"}:
+                    previous = model.get(key)
+                    same = (normalise_frequency(previous) == normalise_frequency(value)
+                            if key == "bc_freq" else previous == value)
+                    if key in model and not same:
+                        raise ValueError("Linked boundary frequency and anchor_time must agree across channels.")
+                    model[key] = value
+                else:
+                    model.setdefault(key, {})[name] = value
             _reject_unknown(channel, f"channels.{name}")
         _reject_unknown(channels, "channels")
         if errors and len(errors) != 2:

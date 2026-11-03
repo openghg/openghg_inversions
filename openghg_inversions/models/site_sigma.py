@@ -55,7 +55,7 @@ def add_site_sigma_gaussian_likelihood(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    aggregation_error: AggregationError,
+    aggregation_error: AggregationError | None = None,
     mean: TensorVariable,
     fixed_site_amplitudes: Mapping[str, float] | None = None,
     site_amplitude_prior: Mapping[str, Any] | None = None,
@@ -79,7 +79,8 @@ def add_site_sigma_gaussian_likelihood(
             observation order as ``observations``.
         aggregation_error: Validated fixed aggregation-error representation
             for the same observation order. Its diagonal, dense, or low-rank
-            covariance is included exactly once.
+            covariance is included exactly once. Omit or pass ``None`` for
+            no fixed aggregation covariance.
         mean: Completed one-dimensional forward-model concentration tensor
             aligned with ``output_dim`` and ``observations``.
         fixed_site_amplitudes: Fixed amplitudes keyed by site label, in the same
@@ -145,7 +146,7 @@ def add_site_sigma_gaussian_likelihood(
         fixed_independent_variance = (
             np.square(np.asarray(observation_error.values, dtype=np.float64)) + aligned_variance
         )
-        if aggregation_error.mode == "low_rank":
+        if aggregation_error is not None and aggregation_error.mode == "low_rank":
             assert aggregation_error.diagonal_variance is not None
             low_rank_diagonal = fixed_independent_variance + np.asarray(
                 aggregation_error.diagonal_variance.values,

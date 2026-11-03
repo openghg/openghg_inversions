@@ -53,8 +53,8 @@ supported behavior.
 ### Requirement: Explicit custom-likelihood scientific inputs
 
 The standard and multisector custom-likelihood seams SHALL call the supplied
-callable with `mean`, `observations`, `observation_error`, `aggregation_error`,
-and `output_dim`. The mean SHALL include the recipe's applicable pollution and
+callable with `mean`, `observations`, `observation_error`, and `output_dim`.
+The mean SHALL include the recipe's applicable pollution and
 baseline contributions. The seam SHALL keep built-in-specific inputs such as
 `minimum_error`, `pollution_mean`, and `pollution_event_baseline` outside this
 common argument set.
@@ -62,8 +62,8 @@ common argument set.
 #### Scenario: Replace the likelihood in a concrete recipe
 
 - **WHEN** a standard or multisector model is built with a custom likelihood
-- **THEN** the callable receives the completed forward mean and the common
-  observation arguments exactly once
+- **THEN** the callable receives `mean`, `observations`, `observation_error`,
+  and `output_dim` exactly once, with the completed forward mean
 - **AND** it receives additional options only through explicit
   `likelihood_kwargs`
 
@@ -102,9 +102,6 @@ argument SHALL remain available on the canonical eager builders.
 operations as acquired-data and saved execution without a complete-model-builder
 hook. Whole-model customization SHALL directly compose scientific functions with
 explicit inputs, materialization, sampling and compatible output operations.
-`run_rhime_from_prepared_inputs`, `build_multisector_rhime_model_result` and
-`build_multisector_rhime_model` SHALL be unavailable; no run-specification context
-or forwarding adapter SHALL preserve those interfaces.
 
 #### Scenario: Reject competing likelihood selections
 
@@ -150,6 +147,22 @@ are recorded as options.
 - **THEN** the result and output metadata retain the callable's
   module/qualified-name metadata and explicit options
 - **AND** reloading the output preserves the options
+
+### Requirement: Declared likelihood and prior semantics
+
+Modern recipes SHALL apply their declared scientific likelihood and prior
+semantics. Standard offsets SHALL retain their full-baseline semantics.
+Pollution-event likelihood construction SHALL NOT substitute boundary-only
+historical behavior. Sigma priors SHALL participate in the selected model rather
+than create disconnected variables; additive fixed-error construction SHALL NOT
+introduce a minimum-error floor. Custom likelihoods SHALL retain their explicit
+scientific ownership under the common composition seam.
+
+#### Scenario: Construct the selected scientific model
+
+- **WHEN** a modern recipe constructs a supported built-in likelihood and its priors
+- **THEN** it follows the selected scientific equations and full-baseline offset semantics
+- **AND** it does not add disconnected sigma variables or an additive fixed-error floor
 
 ## Source and test evidence
 

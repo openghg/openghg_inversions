@@ -16,7 +16,7 @@ from openghg_inversions import serialization
 from openghg_inversions.basis import BasisFunctions
 from openghg_inversions.cli import main
 from openghg_inversions.inference.sampling import RhimeSampler
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime import multisector_stages as stages
 from openghg_inversions.rhime.params import DataConfig, resolve_model_options
@@ -46,7 +46,7 @@ def preparation(tmp_path, data_config):
         flux=xr.concat([single.basis_functions.flux, single.basis_functions.flux * 3], dim=sources),
         operator_kwargs={"state_dim": "state"},
     )
-    prepared = RhimePreparedInputs(
+    prepared = PreparedInputs(
         inv_inputs=inputs, basis_functions=basis, site_metadata=single.site_metadata,
     )
     manifest = stages.save_preparation(prepared, data_config=data_config, output_dir=tmp_path / "prepared")
@@ -130,7 +130,7 @@ def test_failed_preparation_save_invalidates_old_completion_marker(preparation, 
     manifest, (prepared, data, _) = preparation
     def fail(*args, **kwargs):
         raise OSError("disk full")
-    monkeypatch.setattr(stages.RhimePreparedInputs, "save", fail)
+    monkeypatch.setattr(stages.PreparedInputs, "save", fail)
     with pytest.raises(OSError, match="disk full"):
         stages.save_preparation(prepared, data_config=data, output_dir=manifest.parent)
     assert not manifest.exists()
@@ -141,7 +141,7 @@ def test_wrong_family_fails_before_numerical_load(preparation, monkeypatch):
     record = json.loads(manifest.read_text())
     record["data"]["split_by_sectors"] = False
     manifest.write_text(json.dumps(record))
-    monkeypatch.setattr(stages.RhimePreparedInputs, "load", lambda *a, **k: pytest.fail("loaded numerical data"))
+    monkeypatch.setattr(stages.PreparedInputs, "load", lambda *a, **k: pytest.fail("loaded numerical data"))
     with pytest.raises(ValueError, match="split_by_sectors"):
         stages.load_preparation(manifest)
 
@@ -376,7 +376,7 @@ def test_invalid_sample_cannot_fall_back_to_graph(preparation, tmp_path, monkeyp
     if corruption == "schema":
         record["schema"] = "openghg_inversions.standard.sample"
     elif corruption == "version":
-        record["schema_version"] = 2
+        record["schema_version"] = 1
     elif corruption == "generation":
         record["preparation_generation"] = ""
     elif corruption == "missing_posterior":
@@ -416,6 +416,30 @@ def test_saved_sampling_rejects_invalid_sampler_before_loading(tmp_path, sampler
 def test_cli_leaves_malformed_schema_to_manifest_loader(tmp_path, schema):
     manifest = tmp_path / "prepared.json"
     manifest.write_text(json.dumps({"schema": schema}))
-    with pytest.raises(ValueError, match="version-1 manifest"):
+    with pytest.raises(ValueError, match="version-2 manifest"):
         main(["sample", "--model", "multisector", "--preparation-manifest", str(manifest),
               "--output-dir", str(tmp_path / "sample")])
+
+
+def test_sample_version_rejects_retired_model_record_before_payload_loading(preparation, tmp_path, monkeypatch):
+    sampled = _save_sample(tmp_path, preparation)
+    record = json.loads(sampled.read_text())
+    assert json.loads(preparation[0].read_text())["schema_version"] == 2
+    assert record["schema_version"] == 3
+    assert stages.load_samples(sampled).trace["posterior"].sizes["draw"] == 3
+    record["schema_version"] = 2
+    record["model"]["aggregation_error_mode"] = "none"
+    sampled.write_text(json.dumps(record))
+    monkeypatch.setattr(stages, "_load_preparation", lambda *a, **k: pytest.fail("loaded obsolete sample payload"))
+
+    with pytest.raises(ValueError, match="version-3 manifest.*Use the software version that wrote it or prepare and sample again"):
+        stages.load_samples(sampled)
+
+
+def test_independent_diagnosis_accepts_current_sample_manifest(preparation, tmp_path, monkeypatch):
+    from openghg_inversions.rhime._stage_checks import diagnose_rhime_stage
+    sampled = _save_sample(tmp_path, preparation)
+    monkeypatch.setattr(stages, "build_multisector_model", lambda *a, **k: pytest.fail("graph construction"))
+    check = diagnose_rhime_stage(sample_manifest=sampled, output_dir=tmp_path / "diagnosis")
+    assert check["status"] in {"unknown", "fail"}
+    assert check["measured_values"]["draws_per_chain"] == 3

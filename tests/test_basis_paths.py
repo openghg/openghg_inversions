@@ -83,12 +83,12 @@ def test_missing_selected_resource_fails_before_acquisition(tmp_path, monkeypatc
     if route == "multisector":
         params["flux_sources"] = ["a", "b"]
     config = RhimeConfig.from_params(params, multisector=route == "multisector")
-    monkeypatch.setattr(standard.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquired"))
+    monkeypatch.setattr(standard.MergedData, "from_options", lambda **kwargs: pytest.fail("acquired"))
     with pytest.raises(FileNotFoundError):
         if route == "standard":
             standard.run_standard(config=config)
         elif route == "multisector":
-            multisector.run_rhime_multisector(config=config)
+            multisector.run_multisector(config=config)
         elif route == "nested":
             nested.run_nested(config=config, inner_domain="6km")
         else:
@@ -136,7 +136,7 @@ def test_conflicting_explicit_basis_inputs_fail_before_acquisition(monkeypatch):
 
     config = RhimeConfig.from_params(_params(basis_path="missing.nc", basis_partition_path="also-missing.nc"),
                                      multisector=False)
-    monkeypatch.setattr(standard.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquired"))
+    monkeypatch.setattr(standard.MergedData, "from_options", lambda **kwargs: pytest.fail("acquired"))
     with pytest.raises(ValueError, match="Supply either"):
         standard.run_standard(config=config)
 
@@ -171,14 +171,6 @@ def test_legacy_relative_outer_map_resolves_at_compatibility_boundary(tmp_path, 
     xr.testing.assert_equal(legacy.flat_basis(), modern.flat_basis())
     assert outer.data is borrowed_payload
     assert isinstance(outer.data, da.Array)
-    from openghg_inversions.hbmcmc.legacy_basis import fixed_outer_regions_basis
-
-    historical_partition = fixed_outer_regions_basis(
-        fp_all={**sites, ".flux": sources}, domain="TEST", start_date="2020-01-01",
-        basis_algorithm="region_constrained", nbasis=1, region_classes=classes,
-        country_directory=str(tmp_path), outer_regions_path="custom.nc",
-    )
-    xr.testing.assert_equal(historical_partition.squeeze("time", drop=True), modern.flat_basis())
     assert resolve_legacy_outer_path("EUHROB", "intem_region_definition_EUHROB.nc", None).is_file()
     with pytest.raises(ValueError, match="Unsupported RHIME parameter.*country_directory"):
         RhimeConfig.from_params(
@@ -195,7 +187,7 @@ def test_legacy_relative_outer_map_resolves_at_compatibility_boundary(tmp_path, 
 def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeypatch, suffix, selection, route):
     from importlib import import_module
 
-    from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
+    from openghg_inversions.inversion_data import MergedData, SiteOptions
 
     module = import_module(
         "examples.rhime_customisation.runner" if route == "example"
@@ -219,7 +211,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
     elif selection == "reused":
         BasisFunctions.from_flat_basis(partition, resolve_runtime_flux(sources) * 3).save("input.nc")
         options["basis_path"] = "input.nc"
-    merged = RhimeMergedData(
+    merged = MergedData(
         site_data=sites, flux_data=sources,
         site_options=SiteOptions.from_inputs(sites=("A", "B"), averaging_period="1h"),
         split_by_sectors=route == "multisector",
@@ -227,7 +219,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
     if route != "staged":
         (tmp_path / "runs/prepared").mkdir(parents=True)
     borrowed = sources["a"].flux.data
-    monkeypatch.setattr(RhimeMergedData, "from_options", lambda **kwargs: merged)
+    monkeypatch.setattr(MergedData, "from_options", lambda **kwargs: merged)
     monkeypatch.setattr(module, "prepare_observation_errors", lambda data, **kwargs: data)
     monkeypatch.setattr(module, "filter_observations", lambda data, site_options, **kwargs: (data, site_options))
     captured = []
@@ -276,7 +268,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
             if route == "multisector":
                 inputs = inputs.assign(H=inputs.H.expand_dims(source=list(basis.source_labels)))
             return replace(prepared, inv_inputs=inputs, basis_functions=basis)
-        monkeypatch.setattr(module, "assemble_rhime_inputs", assemble)
+        monkeypatch.setattr(module, "assemble_inputs", assemble)
         def after_preparation(*args, **kwargs):
             captured.append(args[0].basis_functions)  # the prepared inputs
             raise AfterBasis
@@ -298,7 +290,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
         elif route == "example":
             module.run_custom_rhime(**options)
         elif route == "multisector":
-            module.run_rhime_multisector(config=config)
+            module.run_multisector(config=config)
         else:
             module.run_standard(config=config)
     assert sources["a"].flux.data is borrowed
@@ -361,7 +353,7 @@ def test_nested_resolves_both_domain_paths_before_acquisition(tmp_path, monkeypa
         return {}
 
     monkeypatch.setattr(nested, "resolve_basis_inputs", resources)
-    monkeypatch.setattr(nested.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquired"))
+    monkeypatch.setattr(nested.MergedData, "from_options", lambda **kwargs: pytest.fail("acquired"))
     with pytest.raises(BeforeAcquisition):
         nested.run_nested(config=config, inner_domain="6km", inner_basis_path="inner.nc",
                           inner_basis_output_path="inner-out.zarr")
@@ -391,7 +383,7 @@ def test_full_ini_resources_keep_invocation_directory_convention(tmp_path, monke
         raise BeforeAcquisition
 
     monkeypatch.setattr(standard, "resolve_basis_inputs", resources)
-    monkeypatch.setattr(standard.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquired"))
+    monkeypatch.setattr(standard.MergedData, "from_options", lambda **kwargs: pytest.fail("acquired"))
     with pytest.raises(BeforeAcquisition):
         standard.run_standard(config_file=source, basis_output_path="override.nc")
 

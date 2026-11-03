@@ -169,7 +169,7 @@ def test_nested_reader_path_exposes_transport_grid_boundary() -> None:
         "co2_model_family",
     ]
     assert _toctree_entries("nested_domain_model_family.rst") == ["nested_domains"]
-    assert "run_rhime_nested" in family
+    assert "run_nested" in family
     assert "run_nested(config=config, prepared=nested)" in family
     assert "generic staged commands do" in family
     assert 'output_format="none"' in family

@@ -74,7 +74,7 @@ from openghg_inversions.rhime.standard import run_standard
 from openghg_inversions.rhime.multisector import run_multisector
 from openghg_inversions.rhime.multisector_stages import prepare as prepare_multisector
 from openghg_inversions.rhime.nested import run_nested
-from openghg_inversions.inversion_data import RhimeMergedData
+from openghg_inversions.inversion_data import MergedData
 from tests.test_staged_workflow import _params
 
 class Acquired(Exception):
@@ -83,7 +83,7 @@ class Acquired(Exception):
 def acquire(**kwargs):
     raise Acquired
 
-RhimeMergedData.from_options = acquire
+MergedData.from_options = acquire
 options = _params(output_format="none", save_inversion_output=False, basis_algorithm="quadtree")
 config = RhimeConfig.from_params(options, multisector=False)
 multisector_options = {**options, "flux_sources": ["a", "b"]}
@@ -108,3 +108,12 @@ assert not any(name == "openghg_inversions.hbmcmc" or name.startswith("openghg_i
 '''
     result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_retired_namespace_cannot_be_imported():
+    import importlib
+    import importlib.util
+
+    assert importlib.util.find_spec(LEGACY) is None
+    with pytest.raises(ModuleNotFoundError, match=LEGACY):
+        importlib.import_module(LEGACY)

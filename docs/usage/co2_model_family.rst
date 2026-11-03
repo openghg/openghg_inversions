@@ -6,6 +6,11 @@ recipes. O₂ is a tracer in the linked recipe, not a standalone supported model
 Both recipes begin from scientific arrays that have already been prepared; they
 are not alternative species settings for the complete standard runner.
 
+The experimental :doc:`surface preparation pilot <surface_preparation>` adds
+explicit source transport and centered stable-BC operands for additive-Gaussian
+recipes and the matched cached fixed-OU samplers. Centered construction requires
+PyTensor ``floatX=float64``. Coherent-reduction construction remains explicit.
+
 Current support
 ---------------
 
@@ -105,9 +110,9 @@ scientist acceptance is tracked in `OPE-79
 the TOML configuration boundary and prepared-input scientific operations.
 
 The CO2-only handoff is intentionally separate from both the generic
-``RhimePreparedInputs`` boundary and the linked CO2/O2 preparation contract.
+``PreparedInputs`` boundary and the linked CO2/O2 preparation contract.
 It does not add coherent-reduction or aggregation-error options to the
-standard and multisector runners or to ``run_hbmcmc.py``.
+standard and multisector runners.
 
 .. toctree::
    :maxdepth: 1
@@ -195,9 +200,7 @@ Inferred-OU tuning belongs to ``sampling.sigma_target_accept`` and
 ``sampling.state_target_accept``. Saved Python sampling takes the same
 ``sampling`` mapping as the full configuration.
 
-``rhime run-co2`` remains a transitional alias until its approved
-:ref:`command-name retirement <rhime-cli-command-retirement>` lands.
-This configured CLI route uses
+The configured ``rhime run --model co2`` CLI route uses
 ``run_co2`` and writes requested products. Python
 ``rhime.run(model="co2", config_file="co2.toml")`` selects the same configured
 runner and returns ``Co2Output``. Acquisition and construction of the defining

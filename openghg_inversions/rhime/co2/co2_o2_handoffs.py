@@ -33,7 +33,7 @@ from openghg_inversions.rhime.sampling import sample_rhime_model
 from openghg_inversions.serialization import load_trace, save_trace
 
 from .co2_o2_configuration import (
-    Co2O2ModelConfig, resolve_co2_o2_sampler, validate_co2_o2_units,
+    Co2O2ModelConfig, load_co2_o2_params, resolve_co2_o2_sampler, validate_co2_o2_units,
 )
 from .co2_o2_outputs import (
     Co2O2Output, Co2O2OutputOptions, calculate_co2_o2_products, make_co2_o2_output,
@@ -181,10 +181,10 @@ def sample(
     The full prepared-input runner and this route use the same construction,
     sampling and scientific annotation operations.
     """
-    model_config = model if isinstance(model, Co2O2ModelConfig) else Co2O2ModelConfig.from_params(model)
+    options = load_co2_o2_params(params=model) if isinstance(model, Mapping) else {}
+    model_config = model if isinstance(model, Co2O2ModelConfig) else Co2O2ModelConfig.from_params(options)
     if sampler == "default":
-        sampling_config = model if isinstance(model, Mapping) else {}
-        active_sampler = resolve_co2_o2_sampler(sampling_config, model=model_config)
+        active_sampler = resolve_co2_o2_sampler(options, model=model_config)
     else:
         active_sampler = resolve_sampler(sampler)
     preparation = load_preparation(preparation_manifest)
@@ -263,8 +263,9 @@ def prior_predictive(
     """
     _check_draws(draws)
     stage = _check_stage(stage)
+    options = load_co2_o2_params(params=model) if isinstance(model, Mapping) else {}
+    model_config = model if isinstance(model, Co2O2ModelConfig) else Co2O2ModelConfig.from_params(options)
     preparation = load_preparation(preparation_manifest)
-    model_config = model if isinstance(model, Co2O2ModelConfig) else Co2O2ModelConfig.from_params(model)
     model_options = model_config.bind(preparation.prepared)
     destination = Path(output_dir).resolve()
     report = _output_path(destination, check_output, "prior-predictive-readiness.json")

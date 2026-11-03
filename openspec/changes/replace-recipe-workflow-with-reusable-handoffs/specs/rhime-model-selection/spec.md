@@ -15,7 +15,7 @@ component-section overrides. It SHALL consume configured model, sampler and
 output choices and write requested products without requiring manifests or
 acquiring data. `rhime` SHALL be the sole installed executable, with the retired
 executable and full-run subcommands unavailable as specified in
-[Bounded installed-command retirement](../../../../specs/rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement).
+[Canonical installed commands](../../../../specs/rhime-model-selection/spec.md#requirement-canonical-installed-commands).
 Canonical command names SHALL preserve effective inputs and scientific outputs.
 Positional dates and `--kwargs` remain open to a separately specified syntax
 amendment; command renaming SHALL NOT settle that design or rename the Python

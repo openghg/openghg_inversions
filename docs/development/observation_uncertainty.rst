@@ -24,7 +24,8 @@ Estimating variability from already averaged concentrations cannot reconstruct
 missing within-input variability or instrument repeatability. Conversely,
 absent repeatability does not necessarily mean that instrument uncertainty is
 unavailable: supplied variability may serve that role. ``mf_error`` is the
-prepared observation-error component supplied to the likelihood; RHIME
+prepared observation-error standard deviation supplied to the likelihood;
+``min_error`` is the minimum total-error floor selected by a likelihood. RHIME
 likelihoods may also include modeled mismatch uncertainty. These error
 quantities have the same mole-fraction units as ``mf``.
 
@@ -36,8 +37,11 @@ Existing uncertainty construction
 ---------------------------------
 
 :func:`openghg_inversions.inversion_data.observation_errors.prepare_observation_errors`
-constructs missing errors from each acquired site before temporal filtering or
-aggregation. Supplied custom ``mf_error`` remains unchanged. Preparation owns
+constructs missing errors after observation-selection filters, using only each
+retained site's accepted observations. Rejected observations must not influence
+the fallback through the concentration spread or the nonzero-error median.
+This is the intentional 23 October 2026 change from the historical pre-filter
+population. Supplied custom ``mf_error`` remains unchanged. Preparation owns
 ``averaging_error``; acquisition retains the ``averaging_period`` resampling
 selector. With averaging errors enabled, the derivation is:
 
@@ -74,6 +78,9 @@ Zero ``mf_error`` values are replaced by the maximum of the median nonzero,
 non-NaN error and the standard deviation of the merged ``mf`` series passed to
 the function. This is an empirical fallback over that series, not an estimate
 of instrument precision or an annual average of within-window variability.
+For example, selecting concentrations ``[0, 10]`` with component errors
+``[0, 2]`` gives a fallback of ``5``. A rejected concentration/error outlier
+does not enter either statistic.
 It need not be positive when concentrations are constant. NaN ``mf_error``
 values are not replaced by this step, despite the current warning referring to
 both zeros and NaNs.
@@ -83,6 +90,13 @@ required sensitivity, concentration, or ``mf_error`` variables. NaNs in the
 repeatability and variability diagnostic fields alone do not remove a row.
 A configured minimum total-error floor acts later; it cannot recover a site
 discarded during retrieval or bypass the missing-both-fields error.
+
+Resampling defines observations and must propagate their uncertainty before
+selection. It is a separate operation from accepting/rejecting observations or
+imputing missing errors. Observation-selection filters do not provide aggregation
+statistics. Define resampling and propagated uncertainty explicitly before
+selection; an acquisition mean is not a substitute for a separately chosen
+statistic. See :doc:`/usage/legacy_and_migration` for the supported workflow.
 
 Why preserving NaNs is not an incidental bug fix
 ------------------------------------------------

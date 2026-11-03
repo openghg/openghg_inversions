@@ -9,7 +9,7 @@ import pytest
 import xarray as xr
 from scipy.stats import norm
 
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.rhime.nested import (
     build_nested_rhime_model,
@@ -39,7 +39,7 @@ def test_nested_logp_matches_independent_two_grid_and_baseline_equation():
     nested = _nested()
     inputs = nested.combined.inv_inputs.copy(deep=False)
     inputs["H_bc"] = xr.DataArray([[.3, .4]], dims=("bc_region", "nmeasure"), coords={"bc_region": [0]})
-    prepared = RhimePreparedInputs(inputs, nested.combined.basis_functions, nested.combined.site_metadata)
+    prepared = PreparedInputs(inputs, nested.combined.basis_functions, nested.combined.site_metadata)
     model_spec = replace(
         _model_spec(), use_bc=True, add_offset=True,
         bc_prior={"pdf": "normal", "mu": 1., "sigma": .5},
@@ -78,7 +78,7 @@ def test_nested_inputs_and_priors_compute_shared_graph_once():
     inputs["H"] = inputs.H.variable.copy(data=shared)
     inputs["H_inner"] = inputs.H_inner.variable.copy(data=shared + 4.)
     inputs["extension"] = xr.DataArray(shared, dims=("region", "nmeasure"))
-    borrowed = RhimePreparedInputs(inputs, nested.combined.basis_functions, nested.combined.site_metadata)
+    borrowed = PreparedInputs(inputs, nested.combined.basis_functions, nested.combined.site_metadata)
     prior = {"pdf": "normal", "mu": xr.DataArray(shared[:, 0], dims="region", coords={"region": inputs.region}), "sigma": .2}
     spec = replace(_model_spec(), sectors=(replace(_model_spec().sectors[0], x_prior=prior),))
     inner_prior = {**prior, "mu": prior["mu"].rename(region="inner_region")}
@@ -289,6 +289,6 @@ def test_nested_no_basis_export_borrows_validated_preparations(monkeypatch):
     def forbidden(*args, **kwargs):
         pytest.fail("No basis export should rebuild prepared inputs")
 
-    monkeypatch.setattr(RhimePreparedInputs, "__init__", forbidden)
+    monkeypatch.setattr(PreparedInputs, "__init__", forbidden)
     with pytest.raises(ReachedMaterialization):
         run_nested(config=config, prepared=supplied)

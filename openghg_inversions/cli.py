@@ -45,20 +45,6 @@ def _run_command(args: argparse.Namespace) -> None:
     run(model=args.model, config_file=args.config, **_command_kwargs(args))
 
 
-def _run_rhime_command(args: argparse.Namespace) -> None:
-    """Run the standard RHIME command with lazy imports for fast help output."""
-    from openghg_inversions.rhime import run_standard
-
-    run_standard(config_file=args.config, **_command_kwargs(args))
-
-
-def _run_rhime_multisector_command(args: argparse.Namespace) -> None:
-    """Run the multi-sector RHIME command with lazy imports for fast help output."""
-    from openghg_inversions.rhime import run_rhime_multisector
-
-    run_rhime_multisector(config_file=args.config, **_command_kwargs(args))
-
-
 def _run_co2_command(args: argparse.Namespace) -> None:
     """Run configured CO2 inference and requested products."""
     from openghg_inversions.rhime import run
@@ -206,21 +192,20 @@ def _prior_predictive_command(args: argparse.Namespace) -> None:
     _check_saved_family(args)
     if args.model == "co2_o2":
         from openghg_inversions.rhime.co2.co2_o2_handoffs import prior_predictive as prior_linked
-        from openghg_inversions.rhime.co2.co2_o2_configuration import resolve_co2_o2_prior_seed
+        from openghg_inversions.rhime.co2.co2_o2_configuration import Co2O2ModelConfig, resolve_co2_o2_prior_seed
 
         params = _co2_o2_params(args)
         result = prior_linked(
-            args.preparation_manifest, model=params,
+            args.preparation_manifest, model=Co2O2ModelConfig.from_params(params),
             random_seed=resolve_co2_o2_prior_seed(params), **common,
         )
     elif args.model == "co2":
         from openghg_inversions.rhime.co2.handoffs import prior_predictive as prior_co2
 
-        from openghg_inversions.rhime.co2.configuration import resolve_co2_prior_seed
+        from openghg_inversions.rhime.co2.configuration import Co2ModelConfig, resolve_co2_prior_seed
 
         params = _co2_params(args)
-        choices: dict[str, Any] = {name: params[name] for name in ("model", "likelihood") if name in params}
-        result = prior_co2(args.preparation_manifest, model=choices,
+        result = prior_co2(args.preparation_manifest, model=Co2ModelConfig.from_params(params),
                            random_seed=resolve_co2_prior_seed(params), **common)
     elif args.model in {"standard", "multisector"}:
         if args.model == "multisector":
@@ -253,9 +238,10 @@ def _sample_command(args: argparse.Namespace) -> None:
         from openghg_inversions.rhime.co2.handoffs import sample as sample_co2
 
 
+        from openghg_inversions.rhime.co2.configuration import Co2ModelConfig
+
         params = _co2_params(args)
-        choices: dict[str, Any] = {name: params[name] for name in ("model", "likelihood") if name in params}
-        result = sample_co2(args.preparation_manifest, model=choices,
+        result = sample_co2(args.preparation_manifest, model=Co2ModelConfig.from_params(params),
                             sampling=params.get("sampling", {}), output_dir=_stage_output_dir(args))
         print(result)
     elif args.model in {"standard", "multisector"}:
@@ -316,14 +302,7 @@ def _postprocess_command(args: argparse.Namespace) -> None:
         postprocess(args.sample_manifest, output=RhimeOutputSpec.from_params(choices, multisector=args.model == "multisector"))
 
 
-def _run_rhime_nested_command(args: argparse.Namespace) -> None:
-    """Run the nested-domain RHIME command with lazy imports for fast help output."""
-    from openghg_inversions.rhime import run_rhime_nested
-
-    run_rhime_nested(config_file=args.config, **_command_kwargs(args))
-
-
-def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser:
+def build_parser(*, prog: str = "rhime") -> argparse.ArgumentParser:
     """Build the OpenGHG inversions CLI argument parser.
 
     Args:
@@ -342,20 +321,6 @@ def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser
         help="Configuration-driven model recipe (default: standard)",
     )
     selected_run.set_defaults(func=_run_command)
-
-    run_parser = subparsers.add_parser("run-rhime", help="Run a standard RHIME inversion")
-    _add_run_args(run_parser)
-    run_parser.set_defaults(func=_run_rhime_command)
-
-    run_multi_parser = subparsers.add_parser(
-        "run-rhime-multisector", help="Run a shared-basis multi-sector RHIME inversion"
-    )
-    _add_run_args(run_multi_parser)
-    run_multi_parser.set_defaults(func=_run_rhime_multisector_command)
-
-    co2_parser = subparsers.add_parser("run-co2", help="Alias for run --model co2")
-    _add_run_args(co2_parser)
-    co2_parser.set_defaults(func=_run_co2_command)
 
     merge_parser = subparsers.add_parser(
         "merge-paris-outputs",
@@ -417,16 +382,10 @@ def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser
     postprocess_parser.add_argument("--sample-manifest", required=True)
     postprocess_parser.set_defaults(func=_postprocess_command)
 
-    run_nested_parser = subparsers.add_parser(
-        "run-rhime-nested", help="Run a two-grid nested-domain RHIME inversion"
-    )
-    _add_run_args(run_nested_parser)
-    run_nested_parser.set_defaults(func=_run_rhime_nested_command)
-
     return parser
 
 
-def main(argv: list[str] | None = None, *, prog: str = "openghg-inversions") -> None:
+def main(argv: list[str] | None = None, *, prog: str = "rhime") -> None:
     """Run the OpenGHG inversions CLI.
 
     Args:
@@ -449,7 +408,7 @@ def main(argv: list[str] | None = None, *, prog: str = "openghg-inversions") -> 
 
 
 def rhime_main(argv: list[str] | None = None) -> None:
-    """Run the ``rhime`` CLI with the same commands as ``openghg-inversions``.
+    """Run the installed ``rhime`` CLI.
 
     Args:
         argv: Optional argument vector; reads ``sys.argv`` when omitted.

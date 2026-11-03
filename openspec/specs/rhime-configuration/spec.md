@@ -356,13 +356,11 @@ construction. Output metadata SHALL describe actual inference without output
 format, destinations, naming, save flags, written paths or live PyMC references.
 Model choices, output choices and retained preparation facts SHALL remain distinct.
 
-The old `run_rhime`, `run_rhime_from_prepared_inputs`, `RhimeResult` and
-`RhimeRunSpec` interfaces and retained-site construction helpers SHALL be
-unavailable. The supported eager builders SHALL be `build_standard_model` and
+The supported eager builders SHALL be `build_standard_model` and
 `build_multisector_model`; related numerical inputs SHALL be materialized
 explicitly before construction. Configuration helpers SHALL expose `load_params`,
 `group_params`, `option_groups` and `read_rhime_ini`. Named selection from the
-owning configuration record SHALL replace `RHIME_PREPARATION_OPTION_NAMES`.
+owning configuration record SHALL supply applicable component inputs.
 
 #### Scenario: Run canonical full or prepared execution
 
@@ -371,46 +369,29 @@ owning configuration record SHALL replace `RHIME_PREPARATION_OPTION_NAMES`.
 - **AND** prepared execution performs no acquisition or preparation
 - **AND** disabling writes does not suppress the returned scientific result
 
-#### Scenario: Old entry points are unavailable
+### Requirement: Canonical requests and phase-owned validation
 
-- **WHEN** a caller attempts to use `run_rhime`, `run_rhime_from_prepared_inputs`, `RhimeResult` or `RhimeRunSpec`
-- **THEN** those names do not provide a runnable interface or compatibility wrapper
-- **AND** the canonical runners retain their scientific result and output contracts
+Modern runner/acquisition requests SHALL use the supported canonical option
+names and scientific interfaces of their owning capabilities. Normal execution
+SHALL operate directly on those interfaces without migration translation.
 
-### Requirement: Compatible public adapters and scientific choices
+Unknown option names SHALL fail ordinary unsupported-option validation before
+acquisition, reload or scientific execution, including names in known inactive
+groups. Effective values applicable to the selected phase SHALL be validated by
+their owning configuration against supported values before that phase performs
+scientific work. Known inactive groups in shared requests SHALL defer value
+validation and resource resolution until consumed. Runner/acquisition validation
+SHALL describe supported names and applicable values without special recognition
+of historical spellings or tokens, alias translation, warning-and-ignore behavior
+or fallback. Supplying a canonical spelling alongside an unknown name SHALL NOT
+make that unknown name supported. Canonical names and other supported modern
+signatures and result types SHALL retain their separate contracts.
 
-Modern runner/acquisition requests SHALL use canonical option names. The following
-historical runtime interfaces SHALL be unavailable:
-
-- The complete `openghg_inversions.hbmcmc` namespace, including
-  `run_hbmcmc.main`, `run_hbmcmc.hbmcmc_extract_param`, `compatibility.params_from_config`,
-  `compatibility.fixedbasis_params_to_rhime`, `compatibility.adapt_resource_params`
-  and the `legacy_data`/`legacy_basis` utilities. No modern forwarding wrapper
-  SHALL preserve their signatures or dictionary/legacy-container returns.
-- The request spellings `outputpath`, `outputname`, `xprior`, `bcprior`, `sigprior`,
-  `offsetprior`, `emissions_name`, `outer_region_definition_file`, `emissions_store`,
-  `emissions_domain`, `inner_emissions_store` and `inner_emissions_domain`.
-  Their supported canonical replacements SHALL be `output_path`, `output_name`,
-  `x_prior`, `bc_prior`, `sigma_prior`, `offset_prior`, `flux_sources`,
-  `outer_regions_path`, `flux_store`, `flux_domain`, `inner_flux_store` and
-  `inner_flux_domain`, respectively.
-- The `output_format` values `hbmcmc` and `hbmcmc_postprocessing`. Canonical
-  `output_format="legacy"` SHALL remain independently supported.
-
-Every explicit occurrence of an unsupported historical request spelling or output
-alias SHALL fail ordinary unsupported-option validation before acquisition,
-reload or scientific execution. Supplying a canonical spelling alongside an old
-name SHALL NOT enable alias translation, warning-and-ignore behavior or fallback.
-Canonical names and other supported modern signatures and result types SHALL
-retain their separate contracts.
-
-Public command names SHALL follow
-[Bounded installed-command retirement](../rhime-model-selection/spec.md#requirement-bounded-installed-command-retirement).
-The five Python names SHALL follow only their exact canonical replacements in
-[Retire named Python aliases](../rhime-model-selection/spec.md#requirement-retire-named-python-aliases).
-These finite naming changes SHALL NOT authorize other Python path, signature,
-constructor or result-wrapper changes. Supported artifact formats and versions
-SHALL remain separate codec contracts, without implied historical-format support.
+Public commands and Python recipe/data interfaces SHALL follow
+[Canonical installed commands](../rhime-model-selection/spec.md#requirement-canonical-installed-commands)
+and [Canonical public Python interfaces](../rhime-model-selection/spec.md#requirement-canonical-public-python-interfaces).
+Supported artifact formats and versions SHALL follow their separate persistence
+contracts, without implied historical-format support from Python names.
 
 Scientific calculations, canonical site shorthand and override behavior, labelled
 alignment, borrowed inputs, named materialization boundaries, modern legacy-format
@@ -434,11 +415,18 @@ with guidance to omit the argument or pass `"default"`. Result fields MAY use
 `None` for absence of a live sampler. Established defaults and scientific behavior
 SHALL otherwise remain unchanged.
 
-Modern configuration SHALL contain no `use_tracer` field or special compatibility
-handling. Every explicit occurrence of `use_tracer`, regardless of value, SHALL
-fail ordinary unsupported-option validation before acquisition, reload or
-scientific work, including supplied-data and saved-phase routes. Omission SHALL
-remain valid and SHALL NOT imply tracer execution.
+#### Scenario: Unsupported applicable output value
+
+- **WHEN** a full or output-only request supplies an `output_format` value outside the output owner's supported values
+- **THEN** ordinary value validation rejects it before the selected phase performs scientific work
+- **AND** it receives the ordinary invalid-output diagnostic without alias translation
+
+#### Scenario: Known inactive output value
+
+- **WHEN** a preparation-only command reads a shared file with supported output option names and an invalid `output_format` value
+- **THEN** preparation defers validation of that inactive output value
+- **AND** a later output consumer validates its effective value against its supported formats
+- **AND** unknown names in that group still fail ordinary unsupported-option validation
 
 #### Scenario: Existing Python shorthand
 
@@ -452,51 +440,69 @@ remain valid and SHALL NOT imply tracer execution.
 - **THEN** acquisition/preparation and built-in model construction use the same disabled BC choice
 - **AND** neither phase infers an independent conflicting default
 
-#### Scenario: Explicit tracer option is unsupported
-
-- **WHEN** a full, saved-phase, supplied-data or direct preparation/retrieval request explicitly contains `use_tracer`, including `False`, `True` or `None`
-- **THEN** ordinary unsupported-option validation rejects that occurrence before scientific work
-- **AND** a request omitting the option remains valid without enabling tracer execution
-
 #### Scenario: Migrate an explicit null sampler
 
 - **WHEN** a caller passes `sampler=None` to a live entry point
 - **THEN** it fails before inference with guidance to omit the argument or pass `"default"`
 - **AND** omission continues to select the established defaults
 
-### Requirement: Scientific preparation owns its operations
+### Requirement: Accepted observation-selection filter names
 
-Scientific preparation SHALL receive acquired or supplied labelled data and
-explicit resolved scientific choices. It SHALL perform basis, sensitivity,
-filtering and assembly operations without configuration resolution retrieving
-scientific data or implicitly saving artifacts. Scientific stage functions SHALL
-remain independently callable with named scientific inputs.
+Observation-selection requests SHALL use supported registered filter names.
+Global scalar and sequence requests SHALL be validated even when no observation
+sites are present. Site-specific requests SHALL validate only entries for sites
+present in the supplied observations; absent-site entries SHALL remain deferred.
+Unsupported active names SHALL raise ordinary `KeyError` before applying any
+preceding filter or executing lazy scientific data, without historical-name
+recognition or migration translation.
 
-Observation selection, observation-error derivation and missing-data population
-rules SHALL belong to scientific preparation rather than requested configuration.
-Provider acquisition averaging, selection filters and explicit aggregation SHALL
-remain distinct operations; configuration resolution SHALL NOT impose an
-additional scientific transformation or error-construction order.
+Observation selection SHALL NOT provide aggregation filters or direct Python
+aggregation-filter functions. Resampling and propagation of the resulting
+observation uncertainty SHALL be explicit scientific choices separate from
+selection. No aggregation statistic SHALL be substituted automatically.
 
-Assembly SHALL preserve minimum-error `None`, integer and per-site mapping
-behavior. Prepared-input persistence SHALL remain independent of acquisition
-persistence. Public selector construction SHALL use `SiteOptions.from_inputs`,
-preserving supported scalar/sequence shorthand and retained-site alignment.
-Modern acquisition SHALL NOT load or save merged-data caches.
+#### Scenario: Reject an unsupported active filter
 
-#### Scenario: Shared nested spatial support
+- **WHEN** a global scalar or sequence request, or an active site-specific request, names an unregistered filter
+- **THEN** it raises ordinary `KeyError` before any earlier requested filter or lazy scientific payload executes
+- **AND** global requests receive the same validation with empty or metadata-only observations
+- **AND** no replacement aggregation statistic is selected automatically
 
-- **WHEN** retained nested sites share one outer domain and one inner domain
-- **THEN** preparation normalizes coordinate labels against their domain definitions, falling back to the first retained site with a warning for an unregistered domain
-- **AND** incompatible grids are rejected before overlap masking or basis projection
-- **AND** compatible sites share one inner rectangular extent, applied on each actual outer footprint and flux grid without mutating or eagerly computing borrowed arrays
-- **AND** output metadata retains the applied footprint rectangle; externally pre-masked inputs with no supplied extent retain an unknown mask extent
+#### Scenario: Defer absent-site filter choices
 
-#### Scenario: Direct scientific stages use named inputs
+- **WHEN** a site-specific request includes an unsupported filter for a site absent from the observations
+- **THEN** that site's choice is deferred without executing or validating it
+- **AND** requests for present sites are validated before any filter executes
 
-- **WHEN** a caller supplies acquired data and named required scientific choices
-- **THEN** each stage can execute without a `RhimeConfig` or raw parameter mapping
-- **AND** omitting a required keyword is rejected at the function-call boundary
+### Requirement: Configuration supplies explicit scientific choices
+
+Configuration SHALL resolve requested choices without acquiring data, preparing
+numerical arrays or saving scientific artifacts. Scientific preparation SHALL
+remain independently callable under
+[Scientific preparation owns its operations](../rhime-scientific-inputs/spec.md#requirement-scientific-preparation-owns-its-operations).
+Prepared-input construction SHALL follow
+[Canonical prepared scientific inputs](../rhime-scientific-inputs/spec.md#requirement-canonical-prepared-scientific-inputs).
+Saved format/version admission and replay SHALL remain with the prepared/sample
+handoff and persistence owners rather than configuration resolution.
+
+`averaging_error` SHALL remain a preparation option rather than an acquisition
+compatibility fact, preserving its default (`True`) and established component
+interpretation. Compatible supplied data SHALL permit changing this choice
+without reacquisition. Numerical population and borrowing follow
+`rhime-scientific-inputs`.
+
+#### Scenario: Change averaging error during preparation
+
+- **GIVEN** compatible supplied merged data with uncertainty components and no supplied final `mf_error`
+- **WHEN** a caller changes the valid `averaging_error` preparation choice
+- **THEN** preparation uses it without rejecting the handoff or repeating acquisition
+- **AND** configuration resolution does not calculate observation errors
+
+#### Scenario: Resolve choices without scientific execution
+
+- **WHEN** a caller constructs complete or phase-specific configuration
+- **THEN** it resolves applicable requested choices without acquisition, numerical preparation or artifact writes
+- **AND** direct scientific callers can supply those choices without a full run configuration
 
 ### Requirement: INI decoding is independent of semantic construction
 
@@ -514,13 +520,11 @@ groups before validating values or applying defaults, without constructing an
 unrelated complete request. Known unrelated groups SHALL remain inactive;
 unsupported names SHALL fail before scientific work.
 
-`RhimeConfig.from_params` and modern full/saved frontends SHALL accept only
-canonical request names. They SHALL NOT translate the historical spellings or
-output aliases enumerated above, issue deprecation warnings for them, or call a
-historical dictionary adapter. Ordinary unsupported-option validation SHALL
-reject old names. Modern resource selectors SHALL identify exact selected paths
-or resolved scientific inputs, without historical case/directory discovery.
-`resolve_rhime_config` and HBMCMC's `params_from_config` SHALL be unavailable.
+`RhimeConfig.from_params` and modern full/saved frontends SHALL accept supported
+canonical request names and use ordinary unsupported-option validation. Resource
+selectors SHALL identify exact selected paths or resolved scientific inputs;
+semantic construction SHALL NOT perform historical discovery or invoke migration
+translation.
 
 #### Scenario: Read recipe-specific or incomplete options
 
@@ -534,21 +538,19 @@ or resolved scientific inputs, without historical case/directory discovery.
 - **THEN** semantic construction expands only the winning values
 - **AND** the reader performs no premature expansion or date-dependent resolution
 
-#### Scenario: Reject an old name at every modern request boundary
+#### Scenario: Reject an unsupported name at every modern request boundary
 
-- **WHEN** a full runner, saved phase or `RhimeConfig.from_params` receives an enumerated historical request name
+- **WHEN** a full runner, saved phase or `RhimeConfig.from_params` receives an unsupported request name
 - **THEN** ordinary unsupported-option validation rejects it before scientific work
-- **AND** no boundary translates, warns-and-ignores or delegates to HBMCMC
+- **AND** no boundary translates or warns-and-ignores the unsupported name
 
 ### Requirement: Configuration is not a historical identity schema
 
 Requested configuration SHALL represent resolved choices without reconstructing
 original scalar/list spellings or sparse defaults solely to preserve historical
 staged hashes. Public scientific behavior and independently supported codecs
-SHALL remain supported. Only the explicitly enumerated interface exceptions in
-`Compatible public adapters and scientific choices` apply to signatures and
-result wrappers; historical hashes SHALL NOT justify further exceptions. Equality of
-historical encoding hashes SHALL NOT be an acceptance
+SHALL remain supported. Historical hashes SHALL NOT justify changing supported signatures or result
+wrappers. Equality of historical encoding hashes SHALL NOT be an acceptance
 requirement. Changes affecting a currently supported persisted contract SHALL
 be identified explicitly rather than silently assigned its old contract.
 
@@ -589,13 +591,10 @@ A labelled partition SHALL remain a valid scientific representation,
 independently of historical artifact policy. Scientific preparation and numerical
 kernels SHALL NOT depend on legacy discovery or naming policy.
 
-`RhimeConfig.from_params` SHALL remain data-free. Modern requests SHALL reject
-`fp_basis_case`, `basis_directory`, `bc_basis_case`, `bc_basis_directory` and
-`country_directory` before scientific work, rather than translate historical
-case/directory discovery fields. Resolved requests SHALL contain only explicit
-canonical scientific selections. Resource loading, exact paths, packaged
-defaults, BC inputs and optional exports follow
-[rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md).
+`RhimeConfig.from_params` SHALL remain data-free. Resolved requests SHALL contain
+explicit canonical scientific selections. Resource loading, exact paths, packaged
+defaults, BC inputs and optional exports SHALL follow
+[rhime-resource-io](../rhime-resource-io/spec.md).
 
 #### Scenario: Resolved basis scientific inputs
 
@@ -606,24 +605,14 @@ defaults, BC inputs and optional exports follow
 ### Requirement: Canonical modern flux selectors
 
 Modern configuration and acquisition SHALL use `flux_store`, `flux_domain`,
-`inner_flux_store` and `inner_flux_domain`. Their `emissions_*` predecessors SHALL
-be unsupported, whether supplied alone or alongside canonical names and regardless
-of equal or `None` values. Ordinary unsupported-option validation SHALL reject
-old names before acquisition or basis execution; modern boundaries SHALL NOT
-translate them or emit deprecation warnings in place of rejection. Configuration
-exports SHALL contain only canonical names.
+`inner_flux_store` and `inner_flux_domain`. Configuration exports SHALL contain
+canonical names; unknown names SHALL follow ordinary boundary validation.
 
 `flux_domain` SHALL select the source flux dataset domain, defaulting to the
 corresponding footprint domain; it SHALL NOT inherently mean the nested inner
 domain. Modern scientific source selection SHALL use canonical `flux_sources`.
 Independently supported basis representations, artifact codecs and standalone
 adapter capabilities SHALL retain their separate contracts.
-
-#### Scenario: Deprecated flux selector supplied
-
-- **WHEN** a modern caller supplies an `emissions_*` selector, alone or together with its canonical `flux_*` name
-- **THEN** ordinary unsupported-option validation rejects the historical name before acquisition or basis execution
-- **AND** no warning, translation or old/new precedence rule enables it
 
 #### Scenario: Source flux domain differs from footprint domain
 
@@ -718,23 +707,37 @@ accepted only when their required prepared inputs and structure are available;
 they SHALL NOT reinterpret baked preparation choices or reacquire inputs.
 
 For standard and multisector, preparation SHALL own the established `use_bc`
-default (`True`) and `bc_freq` default (`None`). A flat `use_bc` choice SHALL
-route to preparation and the full run's model choice consistently. When resolving
-a model group, omitted `use_bc` SHALL inherit the resolved requested preparation
-choice for a full run or its recorded fact for saved sampling. Explicit model
-`use_bc=False` MAY omit BC terms even when preparation contains BC inputs.
-Explicit model `use_bc=True` SHALL require preparation to provide those inputs;
-it SHALL NOT trigger acquisition or silent fallback. Full requests SHALL reject
-model BC use with preparation BC disabled before acquisition.
+default (`True`) and the presence of spatial BC inputs. A flat `use_bc` request
+SHALL route consistently to preparation and model selection. Omitted model
+`use_bc` SHALL inherit the requested or recorded preparation choice. Explicit
+model `use_bc=False` SHALL permit omitting available BC terms; explicit true
+SHALL require those inputs and SHALL NOT cause acquisition or silent fallback.
+Full requests SHALL reject model BC use with preparation BC disabled before
+acquisition.
 
-`bc_freq` SHALL remain a preparation-owned temporal policy. Sampling SHALL use
-the recorded policy when the key is omitted and SHALL accept a repeated equivalent
-claim; any conflicting claim SHALL fail before model construction, even when
-model BC terms are disabled. An explicit `None` claim SHALL be compared as the
-existing no-frequency policy, not treated as omission. Model binding SHALL NOT
-apply another default to replace saved temporal expansion. The same rules SHALL
-hold for full and independently resolved standard/multisector phases without
-changing CO2's family-specific defaults.
+For standard and multisector, `bc_freq` and `bc_freq_anchor` SHALL belong to the
+model group; `min_error` and `min_error_options` SHALL belong to the selected
+likelihood's model options, not acquisition/preparation. Model-only resolution
+SHALL accept valid choices using authoritative preparation facts without
+requiring acquisition choices to be resolved again. Omitted `bc_freq` SHALL
+select the established one-period policy. Configured requests SHALL resolve an
+omitted `bc_freq_anchor` from the requested start date, using the recorded date
+for saved-input sampling. Explicit `None` SHALL remain an explicit no-anchor
+choice. `bc_freq` SHALL accept `None`, calendar `"monthly"` and positive fixed
+durations; malformed, zero or negative fixed durations SHALL fail configuration
+resolution. `bc_freq_anchor` SHALL accept a valid timestamp or `None`.
+
+Likelihood floor options SHALL accept the established nonnegative finite scalar
+or site-mapping values, `None` as a zero scalar, and named `"residual"` or
+`"percentile"` methods. Omitted `min_error` SHALL resolve to `0.0`;
+`min_error_options` SHALL accept only boolean `by_site`, defaulting to `False`.
+Additive-sigma floor enablement SHALL remain an explicit boolean defaulting to
+`False`. Invalid option values SHALL fail configuration resolution without
+executing estimators. CO2 SHALL retain its independent family-specific defaults.
+
+Numerical resolution, retained estimator populations and supplied-operand
+compatibility follow `rhime-scientific-inputs`; durable preparations and fitted
+operand replay follow `prepared-recipe-handoff` and `sampled-recipe-handoff`.
 
 #### Scenario: Resolve disabled BC consistently across phases
 - **WHEN** standard or multisector preparation resolves `use_bc=False` and the
@@ -757,12 +760,15 @@ changing CO2's family-specific defaults.
 - **AND** explicit `use_bc=True` on a preparation with BC disabled fails before
   inference or artifact writes
 
-#### Scenario: Bind the saved boundary temporal policy
-- **WHEN** preparation baked `bc_freq="3h"` into its numerical inputs
-- **THEN** a later model request omitting `bc_freq` uses that saved temporal policy
-  and a repeated `"3h"` claim is accepted
-- **AND** an explicit different frequency or `None` is rejected before model
-  construction, including when model `use_bc=False`
+#### Scenario: Resolve model-owned options from saved facts
+
+- **WHEN** a sampling request supplies valid BC-period or likelihood-floor choices
+  with recorded preparation facts
+- **THEN** model resolution accepts those choices without asking the caller to
+  repeat acquisition configuration
+- **AND** omitted `bc_freq` resolves to the one-period policy and an omitted
+  `bc_freq_anchor` resolves from the recorded requested start date
+- **AND** explicit `bc_freq_anchor=None` remains `None`
 
 #### Scenario: Sample with model and sampler choices only
 - **WHEN** a caller supplies a prepared handoff, applicable run context and valid

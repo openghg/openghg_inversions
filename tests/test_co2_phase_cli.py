@@ -31,7 +31,7 @@ def test_inference_phase_ignores_inactive_resources_and_uses_current_sampler(tmp
     main(["sample", "--model", "co2", "--params-file", str(choices),
           "--preparation-manifest", str(manifest), "--output-dir", str(tmp_path / "sample")])
     assert calls[0][0] == str(manifest)
-    assert calls[0][1]["likelihood"]["no_model_error"] is True
+    assert calls[0][1].no_model_error is True
     assert calls[0][2:] == (7, tmp_path / "sample")
     assert "sample-manifest.json" in capsys.readouterr().out
 
@@ -164,7 +164,8 @@ def test_prior_cli_preserves_seed_without_resolving_inactive_mcmc_choices(tmp_pa
               "sampling": {"random_seed": 73, "draws": "inactive-invalid"},
           })])
     assert calls[0][1]["random_seed"] == 73
-    assert calls[0][1]["model"] == {"likelihood": {"kind": "additive_sigma", "no_model_error": True}}
+    assert isinstance(calls[0][1]["model"], Co2ModelConfig)
+    assert calls[0][1]["model"].no_model_error is True
 
 
 def test_unknown_co2_manifest_schema_fails_before_configuration_or_writes(tmp_path):
