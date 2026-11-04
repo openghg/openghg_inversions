@@ -67,22 +67,21 @@ def test_compact_recording_restores_all_deterministics_at_identical_states(
 ):
     """Compare compact reconstruction exactly with ordinary recording at the same states."""
     model = _model(cached, baseline, offsets, scales)
-    with model:
-        reference = pm.sample_prior_predictive(draws=4, random_seed=183)
     # Ordinary NDArray recording is the exact per-state oracle. Prior predictive
     # evaluation can use a differently optimized/vectorized concentration graph.
     # One chain isolates graph evaluation; this oracle does not test chain ordering.
-    backend = pm.backends.NDArray(model=model)
+    point = model.initial_point()
+    backend = pm.backends.NDArray(model=model, test_point=point)
     backend.setup(draws=4, chain=0)
     rng = np.random.default_rng(183)
-    initial = model.initial_point()
     for _ in range(4):
         backend.record({name: value + .01 * rng.normal(size=value.shape)
-                        for name, value in initial.items()}, in_warmup=False)
-    for name in reference.prior.data_vars:
-        reference["prior"][name] = reference.prior[name].copy(data=backend.get_values(name)[None, ...])
+                        for name, value in point.items()}, in_warmup=False)
+    reference = pm.to_inference_data(
+        prior={variable.name: backend.get_values(variable.name) for variable in model.free_RVs + model.deterministics},
+        model=model,
+    )
     gradient = model.compile_dlogp()
-    point = model.initial_point()
     original_gradient = gradient(point)
     recorded = {}
 
