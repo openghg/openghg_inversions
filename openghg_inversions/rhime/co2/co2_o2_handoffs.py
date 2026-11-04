@@ -188,13 +188,13 @@ def sample(
     else:
         active_sampler = resolve_sampler(sampler)
     preparation = load_preparation(preparation_manifest)
-    model_options = model_config.bind(preparation.prepared)
-    if model_options.get("tau_hours") is not None and active_sampler.nuts_sampler != "pymc":
+    if model_config.tau_hours is not None and active_sampler.nuts_sampler != "pymc":
         raise ValueError("Linked fixed-OU requires nuts_sampler='pymc'.")
     check_checkpoint_targets(
         Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),
-        referenced=(Path(preparation_manifest).resolve(), preparation.payload),
+        referenced=(Path(preparation_manifest).resolve(), preparation.payload) + model_config.artifact_paths(),
     )
+    model_options = model_config.bind(preparation.prepared)
     built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)
     trace = sample_rhime_model(built, active_sampler)
     trace = annotate_co2_o2_trace(trace, built=built, biosphere_prior=model_options.get("biosphere_prior"))
@@ -266,14 +266,14 @@ def prior_predictive(
     options = load_co2_o2_params(params=model) if isinstance(model, Mapping) else {}
     model_config = model if isinstance(model, Co2O2ModelConfig) else Co2O2ModelConfig.from_params(options)
     preparation = load_preparation(preparation_manifest)
-    model_options = model_config.bind(preparation.prepared)
     destination = Path(output_dir).resolve()
     report = _output_path(destination, check_output, "prior-predictive-readiness.json")
     check_checkpoint_targets(
         destination, stage=None, payloads=("prior-predictive.nc", str(report.relative_to(destination))),
-        referenced=(Path(preparation_manifest).resolve(), preparation.payload),
+        referenced=(Path(preparation_manifest).resolve(), preparation.payload) + model_config.artifact_paths(),
     )
     report.unlink(missing_ok=True)
+    model_options = model_config.bind(preparation.prepared)
     built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)
     with built.model:
         prior = pm.sample_prior_predictive(draws, random_seed=random_seed)

@@ -50,3 +50,9 @@ output_format = "basic"
 # enabled = true
 # anomaly_scale = 1.0
 # mean_shift_prior = {pdf = "normal", mu = 0.0, sigma = 2.0}
+
+# Each channel boundary accepts the same structure keys as [model.boundary]
+# (anomalies, mean_by_period, scale_sd, reference); channels share one calendar.
+# One calibrated prior belongs to the joint flux state, outside channels.
+# [biosphere]
+# path = "biosphere-prior.nc"
