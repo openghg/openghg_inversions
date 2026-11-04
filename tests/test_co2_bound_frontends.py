@@ -42,7 +42,8 @@ def double_precision():
         yield
 
 
-def _draws(built: Any, sampler: Any = None) -> xr.DataTree:
+def _draws(built: Any, sampler: Any = None, *, recompute_deterministics: bool = False) -> xr.DataTree:
+    assert recompute_deterministics is (sampler is not None)
     with built.model:
         trace = pm.sample_prior_predictive(draws=3, random_seed=471)
     trace = restore_inferencedata_coords(trace, get_coord_registry(built.model))
