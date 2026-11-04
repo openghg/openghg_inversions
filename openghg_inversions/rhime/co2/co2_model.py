@@ -15,6 +15,8 @@ import pymc as pm
 import xarray as xr
 from dask import compute as dask_compute
 
+from openghg_inversions.biosphere_prior import BiospherePrior
+from openghg_inversions.models.biosphere import add_biosphere_state
 from openghg_inversions.array_ops import to_dense_tree
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.additive_sigma import (
@@ -91,6 +93,7 @@ def build_co2_model(
     flux_sensitivity: xr.DataArray,
     *,
     retained_prior: CorrelatedLognormalPrior,
+    biosphere_prior: BiospherePrior | None = None,
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
@@ -152,6 +155,7 @@ def build_co2_model(
     Args:
         flux_sensitivity: Reduced CO2 sensitivity with observation dimension
             ``nmeasure`` and one labelled retained-state dimension.
+        biosphere_prior: Optional explicit retained-state calibration; omission preserves the existing prior.
         retained_prior: Complete labelled arithmetic-moment prior for the
             retained positive state.
         fixed_prior_contribution: Fixed coherent-reduction affine intercept
@@ -215,10 +219,12 @@ def build_co2_model(
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
 
     with registered_model() as model:
-        flux_scaling = add_correlated_lognormal_state_with_activity(
-            activity,
-            retained_prior,
-            var_name="flux_scaling",
+        flux_scaling = (
+            add_correlated_lognormal_state_with_activity(
+                activity, retained_prior, var_name="flux_scaling",
+            )
+            if biosphere_prior is None
+            else add_biosphere_state(activity, retained_prior, biosphere_prior)
         ).state
         scaled_flux_contribution = apply_linear_sensitivity(
             prepared_flux,
