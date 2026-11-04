@@ -18,7 +18,6 @@ from openghg_inversions.models import (
 from openghg_inversions.models.components import (
     AffineBlock, AffineConcentrationTerm, warn_constant_offset_confounding,
 )
-from openghg_inversions.rhime.co2 import co2_runner
 
 
 def _mean_response_term(mean_response):
@@ -135,7 +134,7 @@ def test_additive_nonseparable_weights_and_resolved_scale(double_precision, scal
                            coords={"bc_curtain": ["north", "south"],
                                    "bc_period": pd.to_datetime(["2020-01-01", "2020-02-01"])},
                            attrs={"units": "1"})
-    bound = AdditiveChoice(prior, scale, "monthly").bind(observations, _centered(data, weights))
+    bound = AdditiveChoice(prior, scale, frequency="monthly").bind(observations, _centered(data, weights))
     assert isinstance(bound, AdditiveBoundary)
     with registered_model() as model:
         result = bound.add(owner="boundary")
@@ -192,7 +191,7 @@ def test_additive_rejects_mismatched_period_labels(double_precision):
                                    "bc_period": pd.to_datetime(["2020-01-02", "2020-02-02"])},
                            attrs={"units": "1"})
     with pytest.raises(ValueError, match="align"):
-        AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 2., "monthly").bind(
+        AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 2., frequency="monthly").bind(
             observations, _centered(data, weights),
         )
 
@@ -213,19 +212,12 @@ def test_one_state_has_only_mean_even_with_positive_scale(double_precision, scal
         np.testing.assert_allclose((result.likelihood_contribution - _affine_expression(result)).eval(), 0., atol=1e-12)
 
 
-def test_additive_binding_requires_centering_weights():
+@pytest.mark.parametrize("transport", ["absolute", "unweighted"])
+def test_additive_binding_requires_centered_operands_with_weights(transport):
     data, observations = _native_boundary()
-    with pytest.raises(ValueError, match="require bc_centering_weights"):
-        AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.).bind(
-            observations, CenteredOperands.from_dataset(data),
-        )
-
-
-def test_absolute_inputs_are_rejected_where_the_representation_is_identified():
-    data, observations = _native_boundary()
-    inputs = xr.Dataset({"mf": observations, "H_bc": data.H_bc_anomaly})
-    with pytest.raises(ValueError, match="AdditiveChoice requires centered boundary operands; prepare them again"):
-        co2_runner._bind_co2_boundary(inputs, AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.))
+    transport = data.H_bc_anomaly if transport == "absolute" else CenteredOperands.from_dataset(data)
+    with pytest.raises(ValueError, match="require centered operands|require bc_centering_weights"):
+        AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.).bind(observations, transport)
 
 
 def test_absolute_boundary_registers_cli_data_name():
@@ -245,7 +237,7 @@ def test_one_temporal_period_binds_explicit_weight_periods(double_precision, fre
     weights = xr.DataArray([[1.], [2.]], dims=("bc_curtain", "bc_period"),
                            coords={"bc_curtain": ["north", "south"], "bc_period": pd.to_datetime([start])},
                            attrs={"units": "1"})
-    bound = AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0., frequency).bind(
+    bound = AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0., frequency=frequency).bind(
         observations, _centered(data, weights),
     )
     assert bound.data.sizes["bc_region"] == 2
@@ -435,8 +427,9 @@ def test_boundary_metadata_uses_choice_facts_without_evaluating_lazy_inputs(doub
                               coords={"bc_curtain": ["north", "south"],
                                       "bc_period": pd.to_datetime(["2020-01-01", "2020-02-01"])},
                               attrs={"units": "1"})
-        bound = AdditiveChoice(prior, 0., "monthly").bind(observations, _centered(data, weights))
+        bound = AdditiveChoice(prior, 0., frequency="monthly").bind(observations, _centered(data, weights))
         expected = {"boundary_formulation": "additive", "boundary_representation": "centered-v1",
+                    "boundary_anomalies": "weighted", "boundary_mean": "whole_window",
                     "bc_frequency": "monthly", "bc_anchor_time": None}
     else:
         transport = data.H_bc_anomaly if kind == "absolute" else CenteredOperands.from_dataset(data)

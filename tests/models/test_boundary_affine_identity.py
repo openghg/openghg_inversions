@@ -16,7 +16,12 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.models import StateActivity, registered_model
-from openghg_inversions.models.boundary import AdditiveChoice, CenteredOperands, MultiplicativeChoice
+from openghg_inversions.models.boundary import (
+    AdditiveChoice,
+    AnomalyScalingChoice,
+    CenteredOperands,
+    MultiplicativeChoice,
+)
 
 TIMES = pd.to_datetime(["2020-01-03", "2020-01-20", "2020-02-03", "2020-02-05"])
 ROWS = [10, 20, 30, 40]
@@ -73,6 +78,15 @@ CASES = {
     ),
     "additive-anomalies": lambda: (AdditiveChoice(MEAN_PRIOR, 2.0, frequency="monthly"), _operands(_weights("monthly"))),
     "additive-mean-only": lambda: (AdditiveChoice(MEAN_PRIOR, 0.0), _operands(_weights(None))),
+    "additive-period-contrasts-and-means": lambda: (
+        AdditiveChoice(MEAN_PRIOR, 2.0, anomalies="period_contrasts", mean_by_period=True, frequency="monthly"),
+        _operands(),
+    ),
+    "additive-independent": lambda: (AdditiveChoice(None, 2.0, anomalies="independent", frequency="monthly"), _operands()),
+    "anomaly-scaling": lambda: (
+        AnomalyScalingChoice(MEAN_PRIOR, 0.3, reference="whole_window_transport_mean", frequency="monthly"),
+        _operands(),
+    ),
 }
 
 
