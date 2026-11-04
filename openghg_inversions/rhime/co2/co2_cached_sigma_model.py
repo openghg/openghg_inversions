@@ -21,7 +21,7 @@ from openghg_inversions.models.biosphere import add_biosphere_state
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inference.cached_sigma import PytensorMarginalQuadraticCache
 from openghg_inversions.array_ops import to_dense_tree
-from openghg_inversions.models.boundary import Boundary
+from openghg_inversions.models.boundary import Boundary, BoundaryOutputs
 from openghg_inversions.models.cached_sigma import (
     FixedOuCachedSigmaTarget,
     MarginalQuadraticCache,
@@ -87,7 +87,7 @@ class Co2CachedSigmaModel:
     modelled_mean: TensorVariable
     cached_state_logp: TensorVariable
     initial_values: dict[str, Any]
-    boundary: Boundary | None = None
+    boundary_outputs: BoundaryOutputs | None = None
 
 
 def _materialize_cached_linear_projection(
@@ -521,7 +521,7 @@ def build_co2_cached_sigma_model(
             site_amplitude_prior=site_amplitude_prior,
             output_dim=output_dim,
         )
-        return replace(cached, boundary=boundary)
+        return replace(cached, boundary_outputs=None if boundary is None else boundary.outputs())
 
 
 
