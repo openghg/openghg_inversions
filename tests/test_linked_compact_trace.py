@@ -303,7 +303,7 @@ def test_restoration_matches_recording_with_an_explicit_observed_transform():
     backend = pm.backends.NDArray(model=model)
     backend.setup(draws=2, chain=0)
     for value in (1.0, 2.0):
-        backend.record({"state": value}, in_warmup=False)
+        backend.record({"state": np.asarray(value)}, in_warmup=False)
     posterior = xr.Dataset({"state": (("chain", "draw"), [[1.0, 2.0]])})
 
     restored = _restore_deterministics(posterior, model)
