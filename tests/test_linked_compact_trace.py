@@ -71,6 +71,7 @@ def test_compact_recording_restores_all_deterministics_at_identical_states(
         reference = pm.sample_prior_predictive(draws=4, random_seed=183)
     # Ordinary NDArray recording is the exact per-state oracle. Prior predictive
     # evaluation can use a differently optimized/vectorized concentration graph.
+    # One chain isolates graph evaluation; this oracle does not test chain ordering.
     backend = pm.backends.NDArray(model=model)
     backend.setup(draws=4, chain=0)
     rng = np.random.default_rng(183)
@@ -398,6 +399,73 @@ def test_compact_request_preserves_alternative_recording_options(
     if "warmup_posterior" in trace.children:
         assert trace.warmup_posterior.sizes["draw"] == 1
         assert set(trace.warmup_posterior.data_vars) == {"state", "signal"}
+
+
+@pytest.mark.parametrize("compact", [False, True])
+def test_requested_log_prior_matches_retained_nuts_states(compact):
+    from scipy.stats import norm
+
+    with pm.Model() as model:
+        state = pm.Normal("state", mu=0.3, sigma=1.7)
+        signal = pm.Deterministic("signal", 2 * state)
+        pm.Normal("y", signal, 0.5, observed=1.0)
+    trace = RhimeSampler(
+        draws=6, tune=10, burn=4, chains=2, progressbar=False,
+        sample_prior_predictive=5,
+        sample_kwargs={
+            "random_seed": 831, "cores": 1, "compute_convergence_checks": False,
+            "discard_tuned_samples": False,
+            "idata_kwargs": {"log_prior": True, "save_warmup": True},
+        },
+    ).sample(model, recompute_deterministics=compact)
+
+    for name in ("posterior", "sample_stats", "log_likelihood", "log_prior", "posterior_predictive"):
+        np.testing.assert_array_equal(trace[name].draw, [0, 1])
+        np.testing.assert_array_equal(trace[name].chain, [0, 1])
+        assert trace[name].attrs["burn"] == 4
+    np.testing.assert_allclose(trace.log_prior.state, norm.logpdf(trace.posterior.state, 0.3, 1.7))
+    np.testing.assert_allclose(trace.log_likelihood.y, norm.logpdf(1.0, 2 * trace.posterior.state, 0.5))
+    np.testing.assert_allclose(trace.posterior.signal, 2 * trace.posterior.state)
+    for name in ("warmup_posterior", "warmup_sample_stats"):
+        np.testing.assert_array_equal(trace[name].draw, np.arange(10))
+    for name in ("prior", "prior_predictive"):
+        np.testing.assert_array_equal(trace[name].draw, np.arange(5))
+
+
+@pytest.mark.parametrize("burn", [0, 2, 4])
+@pytest.mark.parametrize("independent_draws", [3, 5])
+def test_burn_and_relabel_share_one_group_boundary(burn, independent_draws):
+    from openghg_inversions.inference.sampling import _burn_retained_draws
+
+    posterior = xr.Dataset(
+        {"state": (("chain", "draw"), [[0.2, 0.4, 0.6]])},
+        coords={"chain": [7], "draw": [10, 11, 12]},
+    )
+    independent = xr.Dataset(
+        {"independent": (("chain", "draw"), [np.arange(independent_draws)])},
+        coords={"chain": [9], "draw": np.arange(independent_draws) + 100},
+        attrs={"source": "independent"},
+    )
+    sampled_names = ("posterior", "sample_stats", "log_likelihood", "log_prior")
+    untouched_names = (
+        "warmup_posterior", "warmup_sample_stats", "warmup_log_likelihood", "warmup_log_prior",
+        "prior", "prior_predictive", "posterior_predictive", "predictions",
+    )
+    raw = xr.DataTree.from_dict({
+        **dict.fromkeys(sampled_names, posterior),
+        **dict.fromkeys(untouched_names, independent),
+        "constant_data": xr.Dataset({"constant": 1}),
+    })
+    original = raw.copy(deep=True)
+    trace = _burn_retained_draws(raw.copy(deep=False), burn=burn)
+    expected = posterior.isel(draw=slice(burn, None))
+    expected = expected.assign_coords(draw=np.arange(expected.sizes["draw"]))
+    expected.attrs["burn"] = burn
+    for name in sampled_names:
+        xr.testing.assert_identical(trace[name].to_dataset(), expected)
+    for name in (*untouched_names, "constant_data"):
+        xr.testing.assert_identical(trace[name], original[name])
+    xr.testing.assert_identical(raw, original)
 
 
 @pytest.mark.parametrize("compact", [False, True])

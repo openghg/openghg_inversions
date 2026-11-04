@@ -183,24 +183,28 @@ def _log_sample_stats(trace: xr.DataTree, *, label: str) -> None:
         log_timing(label, 0.0, **fields)
 
 
-def _reset_retained_draws(trace: xr.DataTree, *, burn: int) -> xr.DataTree:
-    """Relabel retained draws and preserve the discarded burn-in count.
+def _burn_retained_draws(trace: xr.DataTree, *, burn: int) -> xr.DataTree:
+    """Discard and relabel post-tuning draws, preserving independent groups.
 
     Args:
-        trace: Trace tree whose retained draw-bearing groups are relabelled
-            in place; warmup groups keep their tuning coordinates.
-        burn: Number of discarded burn-in draws to record in metadata.
+        trace: Owned trace tree whose posterior-aligned groups are sliced
+            in place; warmup and prior/predictive groups keep their own axes.
+        burn: Number of post-tuning draws to discard and record in metadata.
 
     Returns:
         The mutated trace tree, with retained draw coordinates reset to
         consecutive zero-based integers and ``burn`` stored on the trace and
-        retained draw-bearing groups.
+        posterior-aligned groups.
     """
     trace.attrs["burn"] = burn
-    for group_name, node in trace.children.items():
-        group = node.to_dataset()
-        if group_name.startswith("warmup_") or "draw" not in group.dims:
+    # PyMC computes both log-density groups from the same posterior states.
+    for group_name in ("posterior", "sample_stats", "log_likelihood", "log_prior"):
+        if group_name not in trace.children:
             continue
+        group = trace[group_name].to_dataset()
+        if "draw" not in group.dims:
+            continue
+        group = group.isel(draw=slice(burn, None))
         group = group.assign_coords(draw=np.arange(group.sizes["draw"]))
         group.attrs["burn"] = burn
         trace[group_name] = group
@@ -459,12 +463,7 @@ class RhimeSampler:
 
         timing_start = timer_start()
         trace = raw_trace.copy(deep=False)
-        for group_name in ("posterior", "sample_stats", "log_likelihood"):
-            if group_name in trace.children:
-                trace[group_name] = trace.children[group_name].to_dataset().isel(
-                    draw=slice(self.burn, None), missing_dims="ignore",
-                )
-        trace = _reset_retained_draws(trace, burn=self.burn)
+        trace = _burn_retained_draws(trace, burn=self.burn)
         log_timing("rhime.sampler.burn_slicing", timer_seconds(timing_start), burn=self.burn)
 
         if compact:
