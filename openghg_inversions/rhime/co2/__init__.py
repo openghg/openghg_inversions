@@ -4,6 +4,11 @@ The package exposes CO2-only and separate linked CO2/O2
 recipes while reusing canonical RHIME inputs through explicit composition.
 """
 
+from openghg_inversions.models.linked_shared_baseline import bind_linked_shared_baseline
+from .linked_shared_baseline_model import (
+    build_shared_co2_o2_model, build_shared_co2_o2_cached_sigma_model,
+    annotate_linked_shared_baseline_trace, reconstruct_linked_shared_baseline,
+)
 from .shared_baseline_model import (
     build_shared_co2_model, build_shared_co2_cached_sigma_model,
     annotate_shared_baseline_trace, reconstruct_shared_baseline,
@@ -53,6 +58,9 @@ from .co2_outputs import Co2Output
 from .co2_o2_outputs import Co2O2Output, Co2O2OutputOptions
 
 __all__ = [
+    "bind_linked_shared_baseline", "build_shared_co2_o2_model",
+    "build_shared_co2_o2_cached_sigma_model", "annotate_linked_shared_baseline_trace",
+    "reconstruct_linked_shared_baseline",
     "build_shared_co2_model", "build_shared_co2_cached_sigma_model",
     "annotate_shared_baseline_trace", "reconstruct_shared_baseline",
     "Co2PreparationConfig", "Co2ModelConfig", "Co2O2PreparationConfig", "Co2O2ModelConfig",
