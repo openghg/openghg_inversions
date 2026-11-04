@@ -653,7 +653,9 @@ def build_co2_from_materialized(
     if offset_prior is not None:
         frequency, drop_first, per_site = _normalise_offset_args(offset_args)
         resolved_offset_args = {"offset_freq": frequency, "drop_first": drop_first, "per_site": per_site}
-    boundary_metadata = boundary_output_metadata(boundary) if boundary is not None else {"boundary_formulation": None}
+    boundary_metadata: dict[str, Any] = (
+        boundary_output_metadata(boundary) if boundary is not None else {"boundary_formulation": None}
+    )
     if use_bc:
         if "boundary_representation" in boundary_metadata:
             boundary_metadata.update(bc_frequency=bc_freq,

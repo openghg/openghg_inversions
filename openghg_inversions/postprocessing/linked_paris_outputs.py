@@ -75,6 +75,8 @@ def reconstruct_co2_o2_concentrations(
         contributions in channel units. Chain/draw labels remain shared. Prior
         draws, when present, preserve fixed-state activity. Their sample
         dimensions are named ``prior_chain`` and ``prior_draw``.
+        Boundary mean-shift and anomaly coefficients retain their own labelled
+        dimensions and declared units as ``boundary_*_coefficient_*`` variables.
         Inputs remain borrowed; computation is deferred to product creation.
 
     Raises:
@@ -125,9 +127,13 @@ def reconstruct_co2_o2_concentrations(
                 total = total + value
             quantities = boundary_by_group[when].get(species, {})
             for quantity, component in (("reference", "reference"), ("mean_contribution", "mean_shift"),
-                                        ("anomaly_contribution", "anomaly")):
+                                        ("anomaly_contribution", "anomaly"),
+                                        ("mean_shift", "mean_shift_coefficient"),
+                                        ("anomaly", "anomaly_coefficient")):
                 if quantity in quantities:
-                    value = quantities[quantity].isel(observation=rows)
+                    value = quantities[quantity]
+                    if "observation" in value.dims:
+                        value = value.isel(observation=rows)
                     if when == "prior":
                         value = value.rename({dim: f"prior_{dim}" for dim in ("chain", "draw") if dim in value.dims})
                     data[f"boundary_{component}_{when}"] = value

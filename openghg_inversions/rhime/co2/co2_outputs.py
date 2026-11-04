@@ -395,7 +395,7 @@ def _affine_products(
                     }
                 )
             )
-            if countries is not None:
+            if countries is not None and country is not None:
                 sector_country = co2_country_flux_outputs(trace, mapped, countries)
                 country = country.merge(
                     sector_country[

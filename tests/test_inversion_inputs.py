@@ -58,6 +58,22 @@ def test_period_calendar_preserves_nanosecond_anchor_precision():
     np.testing.assert_array_equal(starts, np.array(["2020-01-01T01:15:00.123456789"], dtype="datetime64[ns]"))
 
 
+@pytest.mark.parametrize("anchor", [np.datetime64("NaT"), pd.NaT, "NaT"])
+@pytest.mark.parametrize("frequency", [None, "monthly", "1h"])
+def test_period_calendar_rejects_missing_anchor_before_time_metadata_compute(anchor, frequency):
+    from dask import delayed
+
+    @delayed
+    def unexpected_time_compute():
+        raise AssertionError("Invalid anchor evaluated time metadata")
+
+    time = xr.DataArray(
+        da.from_delayed(unexpected_time_compute(), shape=(1,), dtype="datetime64[ns]"), dims="nmeasure"
+    )
+    with pytest.raises(ValueError, match="anchor_time.*NaT"):
+        make_period_calendar(time, frequency, anchor_time=anchor)
+
+
 def test_make_inv_inputs_preserves_requested_order_and_column_factors() -> None:
     """Mixed inputs retain requested site order and column-only factors."""
 

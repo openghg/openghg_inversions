@@ -128,6 +128,9 @@ def make_period_calendar(
     zero, while start labels retain the actual fixed-duration anchor.
     """
     frequency = normalise_frequency(freq)
+    resolved_anchor = pd.Timestamp(anchor_time) if anchor_time is not None else None
+    if resolved_anchor is not None and pd.isna(resolved_anchor):
+        raise ValueError("Period anchor_time must be a valid datetime, not NaT.")
     values = time.values.astype("datetime64[ns]")
     first = values.min()
     if frequency is None:
@@ -138,7 +141,7 @@ def make_period_calendar(
         idx = (months - months.min()).astype(int)
         starts = months.astype("datetime64[ns]")
     else:
-        anchor = pd.Timestamp(anchor_time).to_datetime64().astype("datetime64[ns]") if anchor_time is not None else first
+        anchor = resolved_anchor.to_datetime64().astype("datetime64[ns]") if resolved_anchor is not None else first
         duration = np.timedelta64(frequency.value, "ns")
         intervals = ((values - anchor) // duration).astype(int)
         starts = anchor + intervals * duration
