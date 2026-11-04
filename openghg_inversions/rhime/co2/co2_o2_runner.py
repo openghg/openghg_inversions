@@ -288,6 +288,8 @@ def build_rhime_co2_o2(
         ValueError: If input labels, errors, channel baseline choices, state
             activity or covariance are inconsistent with the linked model.
     """
+    if prepared_inputs.shared_baseline:
+        raise ValueError("Shared baseline preparations require sample_linked_shared_workflow.")
     prepared = prepared_inputs
     _validate_channel_offset_options(offset_prior, offset_args)
     materialized, bound, eager_priors = _materialize_co2_o2_replay_inputs(

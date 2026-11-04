@@ -136,7 +136,10 @@ entries are preserved. Cached inference requires the existing matched
 sigma-then-state sampler; an arbitrary sampler must not consume its quadratic
 cache without that update protocol.
 
-There is no separate baseline artifact. After normal linked sample-coordinate
+The direct recipe binds its choices at construction and records the bound
+operators in the trace. The optional :doc:`linked_shared_workflow` snapshots
+that same bound record in the linked prepared-input artifact for saved phases
+and frozen full-support centring. After normal linked sample-coordinate
 and absolute-predictive restoration, call
 ``annotate_linked_shared_baseline_trace(trace, baseline)``. It records each
 bound baseline in the ``shared_baseline_co2`` and ``shared_baseline_o2``

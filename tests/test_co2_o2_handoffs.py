@@ -112,16 +112,123 @@ def test_missing_imported_request_fails_before_destination(tmp_path, missing, no
 
 def test_preparation_replacement_rejects_old_samples_before_writing(tmp_path, joint_trace):
     prep = handoffs.save_preparation(synthetic_inputs(), output_dir=tmp_path / "prepare")
-    generation = handoffs.load_preparation(prep).generation
+    loaded = handoffs.load_preparation(prep)
+    generation, inputs_id = loaded.generation, loaded.inputs_id
     sample = handoffs.save_samples(prep, joint_trace, actual_inference={"draws": 4},
-        preparation_generation=generation, output_dir=tmp_path / "existing-sample")
+        preparation_generation=generation, preparation_inputs_id=inputs_id, output_dir=tmp_path / "existing-sample")
     handoffs.save_preparation(synthetic_inputs(), output_dir=prep.parent)
     with pytest.raises(ValueError, match="replaced|generation"):
         handoffs.load_samples(sample)
     with pytest.raises(ValueError, match="replaced|generation"):
         handoffs.save_samples(prep, joint_trace, actual_inference={"draws": 4},
-                              preparation_generation=generation, output_dir=tmp_path / "sample")
+                              preparation_generation=generation, preparation_inputs_id=inputs_id, output_dir=tmp_path / "sample")
     assert not (tmp_path / "sample").exists()
+
+
+def test_changed_prepared_payload_rejects_load_and_sampling_without_new_generation(tmp_path, joint_trace):
+    prepared = synthetic_inputs()
+    prep = handoffs.save_preparation(prepared, output_dir=tmp_path / "prepare")
+    loaded = handoffs.load_preparation(prep)
+    generation, inputs_id = loaded.generation, loaded.inputs_id
+    changed = replace(prepared, observations=prepared.observations.copy(data=prepared.observations.values + .1))
+    changed.save(prep.parent / "prepared-inputs.nc")
+    with pytest.raises(ValueError, match="content.*identity"):
+        handoffs.load_preparation(prep)
+    with pytest.raises(ValueError, match="content.*identity"):
+        handoffs.save_samples(prep, joint_trace, actual_inference={}, preparation_generation=generation, preparation_inputs_id=inputs_id,
+                              output_dir=tmp_path / "sample")
+    assert not (tmp_path / "sample").exists()
+
+
+@pytest.mark.parametrize("replace_preparation", [False, True])
+def test_sample_content_binding_rejects_valid_swapped_artifact(tmp_path, joint_trace, replace_preparation):
+    from openghg_inversions.rhime.co2.co2_affine_output import prepared_inputs_content_id
+    from openghg_inversions.serialization import save_trace
+
+    prepared = synthetic_inputs()
+    prep = handoffs.save_preparation(prepared, output_dir=tmp_path / "prepare")
+    sample = handoffs.save_samples(prep, joint_trace, actual_inference={},
+        preparation_generation=handoffs.load_preparation(prep).generation,
+        preparation_inputs_id=handoffs.load_preparation(prep).inputs_id, output_dir=tmp_path / "sample")
+    if replace_preparation:
+        payload = prep.parent / "prepared-inputs.nc"
+        changed = replace(prepared, observations=prepared.observations.copy(data=prepared.observations.values + .1))
+        changed.save(payload)
+        record = json.loads(prep.read_text())
+        record["prepared_inputs_id"] = prepared_inputs_content_id(payload)
+        prep.write_text(json.dumps(record))
+    else:
+        other = joint_trace.copy(deep=False)
+        other.attrs = {**other.attrs, "other_run": "different posterior"}
+        save_trace(other, sample.parent / "posterior.nc")
+    with pytest.raises(ValueError, match="content.*identity"):
+        handoffs.load_samples(sample)
+
+
+def test_previous_linked_manifests_without_content_ids_are_rejected(tmp_path, joint_trace):
+    prepared = synthetic_inputs()
+    prep = handoffs.save_preparation(prepared, output_dir=tmp_path / "prepare")
+    sample = handoffs.save_samples(prep, joint_trace, actual_inference={},
+        preparation_generation=handoffs.load_preparation(prep).generation,
+        preparation_inputs_id=handoffs.load_preparation(prep).inputs_id, output_dir=tmp_path / "sample")
+    for manifest in (prep, sample):
+        record = json.loads(manifest.read_text())
+        record.pop("prepared_inputs_id", None)
+        record.pop("posterior_id", None)
+        manifest.write_text(json.dumps(record))
+    with pytest.raises(ValueError, match="prepared_inputs_id"):
+        handoffs.load_samples(sample)
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_sampling_binds_loaded_inputs_if_preparation_changes_during_inference(tmp_path, joint_trace, legacy):
+    from openghg_inversions.rhime.co2.co2_affine_output import prepared_inputs_content_id
+
+    prepared = synthetic_inputs()
+    prep = handoffs.save_preparation(prepared, output_dir=tmp_path / "prepare")
+    record = json.loads(prep.read_text())
+    if legacy:
+        record.pop("prepared_inputs_id")
+        prep.write_text(json.dumps(record))
+    if legacy:
+        with pytest.raises(ValueError, match="prepared_inputs_id"):
+            handoffs.load_preparation(prep)
+        return
+    loaded = handoffs.load_preparation(prep)
+    payload = loaded.payload
+    changed = replace(prepared, observations=prepared.observations.copy(data=prepared.observations.values + .1))
+    changed.save(payload)
+    if not legacy:
+        record["prepared_inputs_id"] = prepared_inputs_content_id(payload)
+        prep.write_text(json.dumps(record))
+    with pytest.raises(ValueError, match="changed after"):
+        handoffs.save_samples(prep, joint_trace, actual_inference={},
+            preparation_generation=loaded.generation, preparation_inputs_id=loaded.inputs_id,
+            output_dir=tmp_path / "sample")
+    assert not (tmp_path / "sample").exists()
+
+
+@pytest.mark.parametrize("stage", ["prepare", "sample"])
+@pytest.mark.parametrize("nested", [False, True])
+def test_checkpoint_cannot_write_inside_imported_zarr_store(tmp_path, joint_trace, stage, nested):
+    from openghg_inversions.rhime.co2.co2_affine_output import prepared_inputs_content_id
+
+    source = tmp_path / "inputs.zarr"
+    synthetic_inputs().save(source)
+    before = prepared_inputs_content_id(source)
+    destination = source / "outputs" if nested else source
+    if stage == "prepare":
+        with pytest.raises(ValueError, match="overlaps an input or output artifact"):
+            handoffs.prepare(prepared_path=source, output_dir=destination)
+    else:
+        prep = handoffs.prepare(prepared_path=source, output_dir=tmp_path / "prepare")
+        loaded = handoffs.load_preparation(prep)
+        with pytest.raises(ValueError, match="overlaps an input or output artifact"):
+            handoffs.save_samples(prep, joint_trace, actual_inference={},
+                preparation_generation=loaded.generation, preparation_inputs_id=loaded.inputs_id,
+                output_dir=destination)
+    assert prepared_inputs_content_id(source) == before
+    assert not (source / "outputs").exists()
 
 
 def test_sample_cannot_overwrite_referenced_preparation(tmp_path, joint_trace):
@@ -132,6 +239,7 @@ def test_sample_cannot_overwrite_referenced_preparation(tmp_path, joint_trace):
     with pytest.raises(ValueError, match="overlaps an input or output artifact"):
         handoffs.save_samples(prep, joint_trace, actual_inference={"draws": 4},
                               preparation_generation=handoffs.load_preparation(prep).generation,
+        preparation_inputs_id=handoffs.load_preparation(prep).inputs_id,
                               output_dir=prep.parent)
     assert source.read_bytes() == original
 
@@ -140,6 +248,7 @@ def test_failed_sample_write_invalidates_completion(tmp_path, monkeypatch, joint
     prep = handoffs.save_preparation(synthetic_inputs(), output_dir=tmp_path / "prepare")
     options = {"actual_inference": {"draws": 4},
                "preparation_generation": handoffs.load_preparation(prep).generation,
+               "preparation_inputs_id": handoffs.load_preparation(prep).inputs_id,
                "output_dir": tmp_path / "sample"}
     sample = handoffs.save_samples(prep, joint_trace, **options)
 
@@ -155,7 +264,8 @@ def test_failed_sample_write_invalidates_completion(tmp_path, monkeypatch, joint
 def test_graph_free_replay_retains_roles_labels_and_inference(tmp_path, joint_trace):
     prep = handoffs.save_preparation(synthetic_inputs(), output_dir=tmp_path / "prepare")
     sample = handoffs.save_samples(prep, joint_trace, actual_inference={"draws": 4, "chains": 1},
-        preparation_generation=handoffs.load_preparation(prep).generation, output_dir=tmp_path / "sample")
+        preparation_generation=handoffs.load_preparation(prep).generation,
+        preparation_inputs_id=handoffs.load_preparation(prep).inputs_id, output_dir=tmp_path / "sample")
 
     result = handoffs.postprocess(sample, output=Co2O2OutputOptions(
         output_format="basic", output_path=tmp_path / "products", output_name="replayed",

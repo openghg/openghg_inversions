@@ -484,6 +484,9 @@ def test_actual_restored_trace_preserves_pattern_identity_and_reconstruction(tmp
     backend.close()
     trace = pm.to_inference_data(trace=pm.backends.base.MultiTrace([backend]), model=model)
     trace = restore_inferencedata_coords(trace, get_coord_registry(model))
+    from openghg_inversions.rhime.co2.boundary_output import restore_absolute_predictives
+    trace = restore_absolute_predictives(trace)
+    np.testing.assert_allclose(trace.observed_data.y, kwargs["observations"])
     trace = annotate_linked_shared_baseline_trace(trace, prepared)
     trace = annotate_linked_shared_baseline_trace(trace, prepared)
     for channel in ("co2", "o2"):
