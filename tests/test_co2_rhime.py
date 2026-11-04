@@ -18,7 +18,7 @@ from scipy.stats import multivariate_normal
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.boundary import boundary_payload
+from openghg_inversions.models.boundary import AdditiveChoice, CenteredOperands, MultiplicativeChoice
 from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.scalar_sigma import (
@@ -46,7 +46,10 @@ FIXTURE = Path(__file__).parent / "data" / "co2_only_golden.json"
 def _sample_co2(*, prepared_inputs: Any, sampler: Any = "default", **model: Any) -> xr.DataTree:
     """Compose explicit scientific operations for graph/annotation assertions."""
     active_sampler = resolve_sampler(sampler)
-    inputs, priors, boundary = co2_runner.materialize_co2_inputs(prepared_inputs=prepared_inputs, **model)
+    choice = model.pop("boundary", None)
+    inputs, priors, boundary = co2_runner.materialize_co2_inputs(
+        prepared_inputs=prepared_inputs, boundary=choice, **model,
+    )
     built = co2_runner.build_co2_from_materialized(
         inputs,
         boundary=boundary,
@@ -68,7 +71,7 @@ def _mock_materialization(monkeypatch: Any, operation: Any) -> None:
     def materialize(prepared, names, priors, boundary):
         return operation(prepared, variable_names=names), dict(priors), boundary
 
-    monkeypatch.setattr(co2_runner, "_materialize_co2_boundary_inputs", materialize)
+    monkeypatch.setattr(co2_runner, "_materialize_co2_inputs", materialize)
 
 
 def _golden_inputs() -> xr.Dataset:
@@ -606,11 +609,11 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any, me
         prepared_inputs=cast(Any, PreparedInputsStub()),
         fixed_model_mismatch=1.0,
         no_model_error=True,
-        use_bc=True,
-        bc_prior=None if mean_shift else {"pdf": "normal", "mu": 1.0, "sigma": 0.1},
-        bc_state_activity=None if mean_shift else StateActivity(active=bc_active, fixed_value=bc_fixed),
-        bc_anomaly_scale=0.2 if mean_shift else None,
-        bc_mean_shift_prior={"pdf": "normal", "mu": 0.3, "sigma": 0.5} if mean_shift else None,
+        boundary=(
+            AdditiveChoice({"pdf": "normal", "mu": 0.3, "sigma": 0.5}, 0.2) if mean_shift
+            else MultiplicativeChoice({"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+                                      StateActivity(active=bc_active, fixed_value=bc_fixed))
+        ),
         offset_prior={"pdf": "normal", "mu": 0.2, "sigma": 0.1},
         offset_args={"per_site": False},
     )
@@ -618,7 +621,10 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any, me
     model = built_models[0]
     roles = json.loads(result.attrs["rhime_variable_roles"])
     assert len(materialized_names) == 1
-    assert materialized_names[0].count("H_bc_mass" if mean_shift else "H_bc") == 1
+    # Boundary transport is bound once and materialized with the bound boundary, not by name.
+    assert not {"H_bc", "H_bc_anomaly", "H_bc_mass", "bc_reference", "bc_centering_weights"} & set(
+        materialized_names[0]
+    )
     assert {"H_bc_anomaly" if mean_shift else "hbc", "mu_bc", "offset", "offset_latent"} <= set(
         model.named_vars
     )
@@ -666,7 +672,6 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any, me
     )
 
     if mean_shift:
-        assert materialized_names[0].count("H_bc_mass") == 1
         assert "bc" not in model.named_vars
         assert "boundary_scale" not in roles
         assert roles["boundary_mean_shift"] == "bc_mean_shift"
@@ -675,8 +680,6 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any, me
             inputs.H_bc_anomaly.values.sum(axis=1) + 0.3 * inputs.H_bc_mass.values.sum(axis=1),
             rtol=1e-6,
         )
-    else:
-        assert "H_bc_mass" not in materialized_names[0]
 
 
 def test_co2_operations_does_not_auto_select_prepared_baseline(monkeypatch: Any) -> None:
@@ -1103,22 +1106,23 @@ def test_co2_materialization_shares_inputs_enabled_priors_and_explicit_mismatch_
     )
     prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
     mismatch = inputs["mf"].copy(data=shared[:1])
+    choice = MultiplicativeChoice({"pdf": "normal", "mu": 1.0, "sigma": shared[0]})
     choices: dict[str, Any] = {
-        "use_bc": True,
         "sigma_prior": {"pdf": "halfnormal", "sigma": shared[0]},
-        "bc_prior": {"pdf": "normal", "mu": 1.0, "sigma": shared[0]},
         "offset_prior": {"pdf": "normal", "mu": 0.0, "sigma": shared[0]},
         "fixed_model_mismatch": mismatch,
     }
-    model_inputs, priors, boundary = co2_runner.materialize_co2_inputs(prepared_inputs=prepared, **choices)
+    model_inputs, priors, boundary = co2_runner.materialize_co2_inputs(
+        prepared_inputs=prepared, boundary=choice, **choices,
+    )
     assert executions == ["shared"]
     assert isinstance(prepared.inv_inputs["H"].data, da.Array)
-    assert isinstance(choices["bc_prior"]["sigma"], da.Array)
+    assert isinstance(choice.prior["sigma"], da.Array)
     assert isinstance(mismatch.data, da.Array)
     assert isinstance(model_inputs["diagnostic"].data, da.Array)
     assert set(priors) == {"sigma", "offset_latent"}
     assert boundary is not None
-    boundary_prior = boundary_payload(boundary)["prior"]
+    boundary_prior = boundary.choice.prior
     assert not isinstance(boundary_prior["sigma"], da.Array)
     np.testing.assert_allclose(boundary_prior["sigma"], 0.1)
     np.testing.assert_allclose(model_inputs["fixed_model_mismatch"], [0.1])
@@ -1292,12 +1296,11 @@ def test_centered_additive_boundary_preserves_small_concentration_corrections(re
         "H_bc_mass": (("nmeasure", "bc_region"), mass, {"units": "1"}),
         "bc_reference": ((), reference, {"units": "ppm"}),
     }, coords={"nmeasure": inputs.nmeasure, "bc_region": ["north", "south"]}, attrs={"boundary_representation": "centered-v1"})
-    from openghg_inversions.models.boundary import bind_boundary_operands
-    bound = bind_boundary_operands(operands, inputs.mf)
+    bound = CenteredOperands.from_dataset(operands).bind(inputs.mf)
     weights = xr.DataArray([1., 3.], dims="bc_region", coords={"bc_region": bound.bc_region}, attrs={"units": "1"})
     model = _build_model(inputs, boundary_operands=operands,
         bc_mean_shift_prior={"pdf": "normal", "mu": 0.1, "sigma": 0.2},
-        bc_anomaly_scale=0.05, bc_centering_weights=weights)
+        bc_anomaly_scale=0.05, bc_centering_weights=weights.unstack("bc_region"))
     names = ["mu_bc_mean_shift", "mu_bc_anomaly", "mu_bc", "bc_mean_shift", "bc_anomaly", "co2_flux_contribution", "modelled_concentration"]
     evaluate = model.compile_fn(model.replace_rvs_by_values([model[name] for name in names]),
         inputs=model.value_vars, on_unused_input="ignore")
@@ -1325,13 +1328,12 @@ def test_centered_additive_boundary_rejects_nonfinite_reference(operand, value):
     }, coords={"nmeasure": inputs.nmeasure, "bc_region": ["north"]},
         attrs={"boundary_representation": "centered-v1"})
     operands[operand] = xr.full_like(operands[operand], value)
-    from openghg_inversions.models.boundary import bind_boundary_operands
-    bound = bind_boundary_operands(operands, inputs.mf)
+    bound = CenteredOperands.from_dataset(operands).bind(inputs.mf)
     weights = xr.DataArray([1.], dims="bc_region", coords={"bc_region": bound.bc_region}, attrs={"units": "1"})
     with pytest.raises(ValueError, match="reference.*finite" if operand == "bc_reference" else "H_bc_mass.*finite"):
         _build_model(inputs, boundary_operands=operands,
             bc_mean_shift_prior={"pdf": "normal", "mu": 0., "sigma": .2},
-            bc_anomaly_scale=.05, bc_centering_weights=weights)
+            bc_anomaly_scale=.05, bc_centering_weights=weights.unstack("bc_region"))
 
 
 def test_multiplicative_boundary_binds_explicit_periods():

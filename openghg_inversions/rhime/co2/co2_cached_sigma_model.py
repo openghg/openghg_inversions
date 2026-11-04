@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from typing import Any
 from warnings import warn
 
 import numpy as np
+from dask import compute as dask_compute
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
@@ -17,15 +18,8 @@ from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inference.cached_sigma import PytensorMarginalQuadraticCache
-from openghg_inversions.models.additive_boundary import warn_boundary_offset_confounding
-from openghg_inversions.models.boundary import (
-    AdditiveBoundary,
-    BoundBoundary,
-    add_boundary,
-    boundary_output_metadata,
-    boundary_output_roles,
-    boundary_output_units,
-)
+from openghg_inversions.array_ops import to_dense_tree
+from openghg_inversions.models.boundary import Boundary
 from openghg_inversions.models.cached_sigma import (
     FixedOuCachedSigmaTarget,
     MarginalQuadraticCache,
@@ -33,13 +27,13 @@ from openghg_inversions.models.cached_sigma import (
 from openghg_inversions.models.components import (
     AffineBlock,
     AffineConcentrationTerm,
-    ConcentrationTerm,
     _add_offset_component_result,
     _add_prepared_correlated_lognormal_state_with_activity,
     add_coherent_affine_component,
     add_model_data,
     apply_linear_sensitivity,
     likelihood_representation,
+    warn_constant_offset_confounding,
     prepare_active_correlated_lognormal_prior,
 )
 from openghg_inversions.models.coords import add_coords, registered_model
@@ -65,7 +59,6 @@ from openghg_inversions.observation_error import (
 )
 from openghg_inversions.sigma import SigmaAlignment
 
-from .co2_model import _materialize_model_boundary
 
 OU_SITE_DIM = "ou_site"
 OU_SITE_INDEX = "ou_site_index"
@@ -92,9 +85,7 @@ class Co2CachedSigmaModel:
     modelled_mean: TensorVariable
     cached_state_logp: TensorVariable
     initial_values: dict[str, Any]
-    boundary_roles: dict[str, str] = field(default_factory=dict)
-    boundary_units: dict[str, str] = field(default_factory=dict)
-    boundary_metadata: dict[str, Any] = field(default_factory=dict)
+    boundary: Boundary | None = None
 
 
 def _materialize_cached_linear_projection(
@@ -307,7 +298,7 @@ def build_co2_cached_sigma_model(
     site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
-    boundary: BoundBoundary | None = None,
+    boundary: Boundary | None = None,
     offset_prior: PriorArgs | None = None,
     offset_freq: str | None = None,
     offset_drop_first: bool = False,
@@ -381,11 +372,11 @@ def build_co2_cached_sigma_model(
             offset options are supplied without ``offset_prior``. Also raised
             for incompatible global-offset options.
     """
-    (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, priors = (
-        _materialize_model_boundary(
+    (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, priors = dask_compute(
+        *to_dense_tree((
             (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary,
-            priors={"amplitude": site_amplitude_prior, "offset": offset_prior},
-        )
+            {"amplitude": site_amplitude_prior, "offset": offset_prior},
+        ))
     )
     site_amplitude_prior, offset_prior = priors["amplitude"], priors["offset"]
     if offset_prior is None and (offset_freq is not None or offset_drop_first or not offset_per_site):
@@ -467,8 +458,8 @@ def build_co2_cached_sigma_model(
             output_name="co2_flux_contribution",
         )
         terms = [
-            AffineConcentrationTerm(
-                term=ConcentrationTerm.absolute(co2_flux_mean),
+            AffineConcentrationTerm.absolute(
+                co2_flux_mean,
                 fixed_contribution=fixed_prior_data + flux_fixed_contribution,
                 blocks=(AffineBlock(
                     flux_active_design,
@@ -477,10 +468,8 @@ def build_co2_cached_sigma_model(
                 sampled_rvs=((state_result.latent,) if state_result.latent is not None else ()),
             )
         ]
-        boundary_result = None
         if boundary is not None:
-            boundary_result = add_boundary(boundary, output_dim=output_dim)
-            terms.append(boundary_result)
+            terms.append(boundary.add(output_dim=output_dim))
         if offset_prior is not None:
             offset_result = _add_offset_component_result(
                 observations,
@@ -491,27 +480,22 @@ def build_co2_cached_sigma_model(
                 drop_first=offset_drop_first,
                 per_site=offset_per_site,
             )
-            if boundary_result is not None and isinstance(boundary, AdditiveBoundary):
-                warn_boundary_offset_confounding(
-                    boundary_result.blocks[0].design.isel({boundary_result.blocks[0].design.dims[1]: 0}).values,
-                    drop_first=offset_drop_first,
-                )
+            warn_constant_offset_confounding(terms, drop_first=offset_drop_first)
             terms.append(
-                AffineConcentrationTerm(
-                    term=ConcentrationTerm.absolute(offset_result.output),
+                AffineConcentrationTerm.absolute(
+                    offset_result.output,
                     fixed_contribution=xr.zeros_like(observations),
                     blocks=(AffineBlock(offset_result.design, offset_result.coefficients),),
                     sampled_rvs=(offset_result.latent,),
                 )
             )
-        affine_terms = [term.term for term in terms]
         modelled_mean = pm.Deterministic(
             "modelled_concentration",
-            sum((term.output for term in affine_terms[1:]), start=affine_terms[0].output),
+            sum((term.output for term in terms[1:]), start=terms[0].output),
             dims=output_dim,
         )
         likelihood_mean, likelihood_observations, shift = likelihood_representation(
-            affine_terms,
+            terms,
             observations,
             modelled_mean,
         )
@@ -529,12 +513,7 @@ def build_co2_cached_sigma_model(
             site_amplitude_prior=site_amplitude_prior,
             output_dim=output_dim,
         )
-        return replace(
-            cached,
-            boundary_metadata=boundary_output_metadata(boundary) if boundary is not None else {},
-            boundary_roles=boundary_output_roles(boundary) if boundary is not None else {},
-            boundary_units=boundary_output_units(boundary) if boundary is not None else {},
-        )
+        return replace(cached, boundary=boundary)
 
 
 

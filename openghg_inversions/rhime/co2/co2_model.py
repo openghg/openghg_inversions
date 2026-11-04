@@ -7,7 +7,7 @@ boundary and offset terms, and finally constructs the observation likelihood.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
@@ -15,20 +15,13 @@ import pymc as pm
 import xarray as xr
 from dask import compute as dask_compute
 
-from openghg_inversions.array_ops import to_dense
+from openghg_inversions.array_ops import to_dense_tree
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.additive_boundary import warn_boundary_offset_confounding
 from openghg_inversions.models.additive_sigma import (
     DEFAULT_ADDITIVE_SIGMA_PRIOR,
     add_additive_sigma_likelihood,
 )
-from openghg_inversions.models.boundary import (
-    AdditiveBoundary,
-    BoundBoundary,
-    add_boundary,
-    boundary_payload,
-    replace_boundary_payload,
-)
+from openghg_inversions.models.boundary import Boundary
 from openghg_inversions.models.components import (
     ConcentrationTerm,
     add_coherent_affine_component,
@@ -36,6 +29,7 @@ from openghg_inversions.models.components import (
     add_offset_component,
     apply_linear_sensitivity,
     likelihood_representation,
+    warn_constant_offset_confounding,
 )
 from openghg_inversions.models.coords import add_model_data, registered_model
 from openghg_inversions.models.priors import PriorArgs
@@ -93,39 +87,6 @@ def _normalise_offset_args(
     return frequency, drop_first, per_site
 
 
-def _materialize_model_boundary(
-    arrays: Sequence[xr.DataArray], boundary: BoundBoundary | None, *, priors: Mapping[str, Any],
-) -> tuple[tuple[xr.DataArray, ...], BoundBoundary | None, dict[str, Any]]:
-    """Materialize selected scientific arrays and bound priors together for PyMC."""
-    selected = {} if boundary is None else {"boundary": boundary}
-    eager_arrays, selected, eager_priors = _materialize_model_boundaries(arrays, selected, priors=priors)
-    return eager_arrays, selected.get("boundary"), eager_priors
-
-
-def _materialize_model_boundaries(
-    arrays: Sequence[xr.DataArray], boundaries: Mapping[str, BoundBoundary], *, priors: Mapping[str, Any],
-) -> tuple[tuple[xr.DataArray, ...], dict[str, BoundBoundary], dict[str, Any]]:
-    """Resolve shared graphs once at the named PyMC construction boundary."""
-    payloads = {channel: _dense_prior(boundary_payload(bound)) for channel, bound in boundaries.items()}
-    eager_arrays, payloads, eager_priors = dask_compute(
-        tuple(to_dense(value) for value in arrays), payloads, _dense_prior(priors),
-    )
-    return eager_arrays, {
-        channel: replace_boundary_payload(bound, payloads[channel]) for channel, bound in boundaries.items()
-    }, eager_priors
-
-
-def _dense_prior(value: Any) -> Any:
-    """Densify borrowed numerical payloads while preserving outer Dask graphs."""
-    if isinstance(value, xr.DataArray):
-        return to_dense(value)
-    if isinstance(value, xr.Dataset):
-        return value.map(to_dense, keep_attrs=True)
-    if isinstance(value, Mapping):
-        return {name: _dense_prior(item) for name, item in value.items()}
-    return value
-
-
 def build_co2_model(
     flux_sensitivity: xr.DataArray,
     *,
@@ -140,7 +101,7 @@ def build_co2_model(
     sigma_prior: PriorArgs | None = None,
     fixed_model_mismatch: float | xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
-    boundary: BoundBoundary | None = None,
+    boundary: Boundary | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> pm.Model:
@@ -182,7 +143,7 @@ def build_co2_model(
     fixed translation and any captured physical reference context explicitly.
     After restoring sample coordinates, direct callers must restore absolute
     ``y`` with
-    :func:`~openghg_inversions.models.boundary.restore_absolute_predictives`
+    :func:`~openghg_inversions.rhime.co2.boundary_output.restore_absolute_predictives`
     before serialization or postprocessing. Ordinary recipe runners do this
     through
     :func:`~openghg_inversions.rhime.co2.co2_runner.annotate_co2_trace`.
@@ -238,11 +199,11 @@ def build_co2_model(
             "additive-sigma or fixed-mismatch options; pass its options in "
             "likelihood_kwargs."
         )
-    (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, priors = (
-        _materialize_model_boundary(
+    (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary, priors = dask_compute(
+        *to_dense_tree((
             (flux_sensitivity, fixed_prior_contribution, observations, observation_error), boundary,
-            priors={"sigma": sigma_prior, "offset": offset_prior, "fixed_mismatch": fixed_model_mismatch},
-        )
+            {"sigma": sigma_prior, "offset": offset_prior, "fixed_mismatch": fixed_model_mismatch},
+        ))
     )
     sigma_prior, offset_prior = priors["sigma"], priors["offset"]
     fixed_model_mismatch = priors["fixed_mismatch"]
@@ -271,11 +232,9 @@ def build_co2_model(
             scaled_flux_contribution,
             output_name="co2_flux_contribution",
         )
-        terms = [ConcentrationTerm.absolute(co2_flux_contribution)]
-        boundary_result = None
+        terms: list[ConcentrationTerm] = [ConcentrationTerm.absolute(co2_flux_contribution)]
         if boundary is not None:
-            boundary_result = add_boundary(boundary)
-            terms.append(boundary_result.term)
+            terms.append(boundary.add())
         if offset_prior is not None:
             offset = add_offset_component(
                 observations,
@@ -286,11 +245,7 @@ def build_co2_model(
                 drop_first=offset_drop_first,
                 per_site=offset_per_site,
             )
-            if boundary_result is not None and isinstance(boundary, AdditiveBoundary):
-                warn_boundary_offset_confounding(
-                    boundary_result.blocks[0].design.isel({boundary_result.blocks[0].design.dims[1]: 0}).values,
-                    drop_first=offset_drop_first,
-                )
+            warn_constant_offset_confounding(terms, drop_first=offset_drop_first)
             terms.append(ConcentrationTerm.absolute(offset))
 
         modelled_mean = pm.Deterministic(

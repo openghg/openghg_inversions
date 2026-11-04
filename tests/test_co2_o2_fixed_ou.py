@@ -486,7 +486,7 @@ def test_linked_ou_rejects_missing_station_labels():
 def test_centered_linked_cache_matches_independent_dense_gaussian(mixed, o2_reference):
     """Direct centered arithmetic survives large O2 backgrounds and native labels."""
     import pymc as pm
-    from openghg_inversions.models.boundary import bind_boundary_operands
+    from openghg_inversions.models.boundary import CenteredOperands
     from openghg_inversions.array_ops import select_gathered_data_array
 
     with pytensor.config.change_flags(floatX="float64"):
@@ -513,7 +513,7 @@ def test_centered_linked_cache_matches_independent_dense_gaussian(mixed, o2_refe
                 "H_bc_mass": xr.DataArray(mass, dims=("nmeasure","bc_region"), attrs={"units":"1"}),
                 "bc_reference": xr.DataArray(reference, attrs={"units":"ppm"}),
             },coords={"nmeasure":sensitivity[native_dim].values,"bc_region":labels},attrs={"boundary_representation":"centered-v1"})
-            aligned = bind_boundary_operands(raw, native)
+            aligned = CenteredOperands.from_dataset(raw).bind(native)
             active = [True, True] if channel == "co2" else [True, False, False]
             fixed = [1.,1.] if channel == "co2" else [1.,1.+2e-13,.7]
             policies[channel] = StateActivity(

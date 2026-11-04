@@ -296,17 +296,14 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.likelihood_representation
    openghg_inversions.models.AffineBlock
    openghg_inversions.models.AffineConcentrationTerm
+   openghg_inversions.models.components.warn_constant_offset_confounding
+   openghg_inversions.models.boundary.MultiplicativeChoice
    openghg_inversions.models.boundary.MultiplicativeBoundary
-   openghg_inversions.models.additive_boundary.AdditiveBoundary
-   openghg_inversions.models.additive_boundary.prepare_additive_boundary
-   openghg_inversions.models.additive_boundary.add_additive_boundary
-   openghg_inversions.models.boundary.prepare_boundary
-   openghg_inversions.models.boundary.add_boundary
-   openghg_inversions.models.boundary.boundary_payload
-   openghg_inversions.models.boundary.replace_boundary_payload
-   openghg_inversions.models.boundary.boundary_output_metadata
-   openghg_inversions.models.boundary.boundary_output_roles
-   openghg_inversions.models.boundary.boundary_output_units
+   openghg_inversions.models.boundary.AdditiveChoice
+   openghg_inversions.models.boundary.AdditiveBoundary
+   openghg_inversions.models.boundary.CenteredOperands
+   openghg_inversions.models.boundary.BoundaryOutputs
+   openghg_inversions.array_ops.to_dense_tree
    openghg_inversions.models.add_linked_linear_component
    openghg_inversions.models.add_correlated_lognormal_state
    openghg_inversions.models.add_offset_component

@@ -1,4 +1,4 @@
-"""Shared boundary helpers preserve imports and warn about known constant overlap."""
+"""Bound boundary components and the constant-offset confounding warning."""
 
 from dataclasses import replace
 import warnings
@@ -12,17 +12,28 @@ import pytensor.tensor as pt
 import xarray as xr
 
 from openghg_inversions.models import (
-    AdditiveBoundary, MultiplicativeBoundary, StateActivity, add_boundary, prepare_boundary,
-    registered_model,
+    AdditiveBoundary, AdditiveChoice, CenteredOperands, MultiplicativeBoundary, MultiplicativeChoice,
+    StateActivity, registered_model,
 )
-from openghg_inversions.models.additive_boundary import warn_boundary_offset_confounding
+from openghg_inversions.models.components import (
+    AffineBlock, AffineConcentrationTerm, warn_constant_offset_confounding,
+)
+
+
+def _mean_response_term(mean_response):
+    """Affine term whose only design column is the boundary mean response ``M 1``."""
+    design = xr.DataArray(np.asarray(mean_response)[:, None], dims=("nmeasure", "bc_mean"))
+    return AffineConcentrationTerm.absolute(
+        pt.zeros(design.shape[0]), fixed_contribution=xr.zeros_like(design.isel(bc_mean=0)),
+        blocks=(AffineBlock(design, pt.ones(1)),), sampled_rvs=(),
+    )
 
 
 @pytest.mark.parametrize("channel", [None, "co2", "o2"])
 @pytest.mark.parametrize("mean_response", [np.ones(3), np.array([1.0, 1.0 + 5e-13])])
 def test_unit_boundary_mean_warns_for_unrestricted_offsets(channel, mean_response):
     with pytest.warns(UserWarning, match="likelihood identifies only their combined constant") as caught:
-        warn_boundary_offset_confounding(mean_response, drop_first=False, channel=channel)
+        warn_constant_offset_confounding([_mean_response_term(mean_response)], drop_first=False, channel=channel)
     assert len(caught) == 1
     if channel is not None:
         assert str(caught[0].message).startswith(f"{channel}: ")
@@ -40,22 +51,9 @@ def test_unit_boundary_mean_warns_for_unrestricted_offsets(channel, mean_respons
 def test_warning_is_limited_to_unrestricted_unit_mean_response(mean_response, drop_first):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        warn_boundary_offset_confounding(mean_response, drop_first=drop_first)
+        warn_constant_offset_confounding([_mean_response_term(mean_response)], drop_first=drop_first)
     assert not caught
 
-
-def test_warning_rejects_lazy_payload_without_computing_it():
-    calls = []
-
-    @delayed
-    def response():
-        calls.append("computed")
-        return np.ones(3)
-
-    lazy_response = da.from_delayed(response(), shape=(3,), dtype=float)
-    with pytest.raises(TypeError, match="eager NumPy array"):
-        warn_boundary_offset_confounding(lazy_response, drop_first=False)
-    assert calls == []
 
 @pytest.fixture
 def double_precision():
@@ -79,6 +77,15 @@ def _native_boundary():
     return data, observations
 
 
+def _whole_window(weights, observations):
+    """Label curtain weights with the whole-window period starting at the first observation."""
+    return weights.expand_dims(bc_period=[observations.time.values.min()], axis=-1)
+
+
+def _centered(data, weights=None):
+    return replace(CenteredOperands.from_dataset(data), weights=weights)
+
+
 def _affine_expression(result):
     return pt.as_tensor_variable(result.fixed_contribution.values) + sum(
         (pt.dot(block.design.values, block.coefficients) for block in result.blocks), start=pt.zeros((3,)),
@@ -88,14 +95,13 @@ def _affine_expression(result):
 @pytest.mark.parametrize("active", [[True, False], [False, False], [True, True]])
 def test_centered_affine_keeps_fixed_activity_and_physical_coefficients(double_precision, active):
     data, observations = _native_boundary()
-    bound = prepare_boundary(
-        observations, boundary_operands=data, bc_prior={"pdf": "normal", "mu": 1., "sigma": .1},
-        bc_state_activity=StateActivity(active=np.array(active), fixed_value=2.),
-    )
+    bound = MultiplicativeChoice(
+        {"pdf": "normal", "mu": 1., "sigma": .1}, StateActivity(active=np.array(active), fixed_value=2.),
+    ).bind(observations, CenteredOperands.from_dataset(data))
     assert isinstance(bound, MultiplicativeBoundary)
     with registered_model():
-        result = add_boundary(bound, owner="boundary")
-        difference = result.term.likelihood_contribution - _affine_expression(result)
+        result = bound.add(owner="boundary")
+        difference = result.likelihood_contribution - _affine_expression(result)
         np.testing.assert_allclose(difference.eval(), 0., atol=1e-12)
         assert len(result.sampled_rvs) == int(any(active))
         assert len(result.blocks) == int(any(active))
@@ -106,16 +112,14 @@ def test_centered_affine_keeps_fixed_activity_and_physical_coefficients(double_p
 def test_absolute_affine_keeps_inactive_effects():
     data, observations = _native_boundary()
     design = data.H_bc_anomaly.rename("H_bc")
-    bound = prepare_boundary(
-        observations, boundary_sensitivity=design,
-        bc_prior={"pdf": "normal", "mu": 1., "sigma": .1},
-        bc_state_activity=StateActivity(active=np.array([True, False]), fixed_value=3.),
-    )
+    bound = MultiplicativeChoice(
+        {"pdf": "normal", "mu": 1., "sigma": .1}, StateActivity(active=np.array([True, False]), fixed_value=3.),
+    ).bind(observations, design)
     with registered_model():
-        result = add_boundary(bound)
-        np.testing.assert_allclose((result.term.output - _affine_expression(result)).eval(), 0., atol=1e-12)
+        result = bound.add()
+        np.testing.assert_allclose((result.output - _affine_expression(result)).eval(), 0., atol=1e-12)
         np.testing.assert_allclose(result.fixed_contribution, [6., 12., 18.])
-        assert result.term.observation_shift is None
+        assert result.observation_shift is None
 
 
 @pytest.mark.parametrize("scale", [0., 2.])
@@ -130,19 +134,16 @@ def test_additive_nonseparable_weights_and_resolved_scale(double_precision, scal
                            coords={"bc_curtain": ["north", "south"],
                                    "bc_period": pd.to_datetime(["2020-01-01", "2020-02-01"])},
                            attrs={"units": "1"})
-    bound = prepare_boundary(
-        observations, boundary_operands=data, bc_frequency="monthly",
-        bc_mean_shift_prior=prior, bc_anomaly_scale=scale, bc_centering_weights=weights,
-    )
+    bound = AdditiveChoice(prior, scale, "monthly").bind(observations, _centered(data, weights))
     assert isinstance(bound, AdditiveBoundary)
     with registered_model() as model:
-        result = add_boundary(bound, owner="boundary")
+        result = bound.add(owner="boundary")
         assert len(result.blocks) == (2 if scale else 1)
         assert len(result.sampled_rvs) == (2 if scale else 1)
         assert ("bc_anomaly_latent" in model.named_vars) == bool(scale)
         assert model["bc_anomaly_scale"].eval() == scale
         np.testing.assert_allclose(
-            (result.term.likelihood_contribution - _affine_expression(result)).eval(), 0., atol=1e-12,
+            (result.likelihood_contribution - _affine_expression(result)).eval(), 0., atol=1e-12,
         )
         if scale:
             basis = model["bc_anomaly_basis"].eval()
@@ -169,18 +170,17 @@ def test_additive_preparation_borrows_lazy_shared_graph(double_precision):
     lazy = da.from_delayed(payload(), shape=(3, 2), dtype=float)
     data["H_bc_anomaly"] = data.H_bc_anomaly.copy(data=lazy)
     data["H_bc_mass"] = (data.H_bc_anomaly * 0 + .5).assign_attrs(units="1")
-    weights = xr.DataArray([1., 2.], dims="bc_curtain", coords={"bc_curtain": ["north", "south"]},
-                           attrs={"units": "1"})
-    bound = prepare_boundary(observations, boundary_operands=data, bc_mean_shift_prior={"pdf": "normal", "mu": 0., "sigma": 1.},
-                             bc_anomaly_scale=0., bc_centering_weights=weights)
+    weights = _whole_window(xr.DataArray([1., 2.], dims="bc_curtain", coords={"bc_curtain": ["north", "south"]},
+                                         attrs={"units": "1"}), observations)
+    bound = AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.).bind(observations, _centered(data, weights))
     assert calls == []
     with registered_model(), pytest.raises(ValueError, match="Materialize"):
-        add_boundary(bound)
+        bound.add()
     assert calls == []
     eager = replace(bound, data=bound.data.compute(scheduler="synchronous"))
     assert calls == ["computed"]
     with registered_model():
-        add_boundary(eager)
+        eager.add()
     assert calls == ["computed"]
 
 
@@ -191,76 +191,55 @@ def test_additive_rejects_mismatched_period_labels(double_precision):
                                    "bc_period": pd.to_datetime(["2020-01-02", "2020-02-02"])},
                            attrs={"units": "1"})
     with pytest.raises(ValueError, match="align"):
-        prepare_boundary(observations, boundary_operands=data, bc_frequency="monthly",
-                         bc_mean_shift_prior={"pdf": "normal", "mu": 0., "sigma": 1.},
-                         bc_anomaly_scale=2., bc_centering_weights=weights)
+        AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 2., "monthly").bind(
+            observations, _centered(data, weights),
+        )
 
 
 @pytest.mark.parametrize("scale", [0., 2.])
 def test_one_state_has_only_mean_even_with_positive_scale(double_precision, scale):
     data, observations = _native_boundary()
     data = data.sel(bc_region=["north"])
-    weights = xr.DataArray([100.], dims="bc_curtain", coords={"bc_curtain": ["north"]}, attrs={"units": "percent"})
-    bound = prepare_boundary(
-        observations, boundary_operands=data,
-        bc_mean_shift_prior={"pdf": "normal", "mu": 0., "sigma": 1.},
-        bc_anomaly_scale=scale, bc_centering_weights=weights,
+    weights = _whole_window(
+        xr.DataArray([100.], dims="bc_curtain", coords={"bc_curtain": ["north"]}, attrs={"units": "1"}), observations,
     )
+    bound = AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, scale).bind(observations, _centered(data, weights))
     with registered_model() as model:
-        result = add_boundary(bound)
+        result = bound.add()
         assert len(result.blocks) == len(result.sampled_rvs) == 1
         assert "bc_anomaly_latent" not in model.named_vars
         np.testing.assert_allclose(model["bc_centering_weights"].eval(), [1.])
-        np.testing.assert_allclose((result.term.likelihood_contribution - _affine_expression(result)).eval(), 0., atol=1e-12)
+        np.testing.assert_allclose((result.likelihood_contribution - _affine_expression(result)).eval(), 0., atol=1e-12)
 
 
-@pytest.mark.parametrize("options,match", [
-    ({"bc_anomaly_scale": 0.}, "require"),
-    ({"bc_mean_shift_prior": {"pdf": "normal", "mu": 0., "sigma": 1.}}, "require"),
-    ({"bc_mean_shift_prior": {"pdf": "normal"}, "bc_prior": {"pdf": "normal"}}, "replace"),
-    ({"bc_centering_weights": xr.DataArray([1.])}, "require"),
-    ({"bc_state_activity": StateActivity()}, "require"),
-])
-def test_boundary_adapter_rejects_incompatible_choices(options, match):
+@pytest.mark.parametrize("transport", ["absolute", "unweighted"])
+def test_additive_binding_requires_centered_operands_with_weights(transport):
     data, observations = _native_boundary()
-    with pytest.raises(ValueError, match=match):
-        prepare_boundary(observations, boundary_operands=data, **options)
-
-
-@pytest.mark.parametrize("additive", [False, True])
-def test_adapter_rejects_both_boundary_representations(double_precision, additive):
-    data, observations = _native_boundary()
-    choices = {"bc_prior": {"pdf": "normal", "mu": 1., "sigma": .1}}
-    if additive:
-        choices = {"bc_mean_shift_prior": {"pdf": "normal", "mu": 0., "sigma": 1.},
-                   "bc_anomaly_scale": 0., "bc_centering_weights": xr.DataArray([1., 1.])}
-    with pytest.raises(ValueError, match="not both"):
-        prepare_boundary(observations, boundary_sensitivity=data.H_bc_anomaly, boundary_operands=data, **choices)
+    transport = data.H_bc_anomaly if transport == "absolute" else CenteredOperands.from_dataset(data)
+    with pytest.raises(ValueError, match="require centered operands with bc_centering_weights"):
+        AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.).bind(observations, transport)
 
 
 def test_absolute_boundary_registers_cli_data_name():
     data, observations = _native_boundary()
-    bound = prepare_boundary(observations, boundary_sensitivity=data.H_bc_anomaly,
-                             bc_prior={"pdf": "normal", "mu": 1., "sigma": .1})
+    bound = MultiplicativeChoice({"pdf": "normal", "mu": 1., "sigma": .1}).bind(observations, data.H_bc_anomaly)
     with registered_model() as model:
-        add_boundary(bound, prefix="co2_")
+        bound.add(prefix="co2_")
     assert "co2_hbc" in model.named_vars
     assert "co2_H_bc" not in model.named_vars
 
 
 @pytest.mark.parametrize("frequency", ["monthly", "10D"])
-def test_one_temporal_period_requires_explicit_weight_periods(double_precision, frequency):
+def test_one_temporal_period_binds_explicit_weight_periods(double_precision, frequency):
     data, observations = _native_boundary()
     observations = observations.isel(nmeasure=[0])
-    weights = xr.DataArray([1., 2.], dims="bc_curtain", coords={"bc_curtain": ["north", "south"]}, attrs={"units": "1"})
-    choices = {"boundary_operands": data, "bc_frequency": frequency,
-               "bc_mean_shift_prior": {"pdf": "normal", "mu": 0., "sigma": 1.},
-               "bc_anomaly_scale": 0., "bc_centering_weights": weights}
-    with pytest.raises(ValueError, match="explicit period-start"):
-        prepare_boundary(observations, **choices)
     start = "2020-01-01" if frequency == "monthly" else "2020-01-03"
-    choices["bc_centering_weights"] = weights.expand_dims(bc_period=pd.to_datetime([start]))
-    bound = prepare_boundary(observations, **choices)
+    weights = xr.DataArray([[1.], [2.]], dims=("bc_curtain", "bc_period"),
+                           coords={"bc_curtain": ["north", "south"], "bc_period": pd.to_datetime([start])},
+                           attrs={"units": "1"})
+    bound = AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0., frequency).bind(
+        observations, _centered(data, weights),
+    )
     assert bound.data.sizes["bc_region"] == 2
 
 
@@ -268,16 +247,18 @@ def test_centered_rejects_nonfinite_reference_shift(double_precision):
     data, observations = _native_boundary()
     data["H_bc_mass"] = xr.ones_like(data.H_bc_mass).assign_attrs(units="1")
     data["bc_reference"] = xr.DataArray(1e308, attrs={"units": "ppm"})
-    bound = prepare_boundary(observations, boundary_operands=data,
-                             bc_prior={"pdf": "normal", "mu": 1., "sigma": .1})
+    bound = MultiplicativeChoice({"pdf": "normal", "mu": 1., "sigma": .1}).bind(
+        observations, CenteredOperands.from_dataset(data),
+    )
     with registered_model(), np.errstate(over="ignore"), pytest.raises(ValueError, match="reference shift must be finite"):
-        add_boundary(bound)
+        bound.add()
 
 
 @pytest.mark.parametrize("additive", [False, True])
 def test_boundary_payload_materializes_data_prior_and_activity_once(double_precision, additive):
     from dask import compute
-    from openghg_inversions.models import boundary_payload, replace_boundary_payload
+
+    from openghg_inversions.array_ops import to_dense_tree
 
     calls = []
     data, observations = _native_boundary()
@@ -292,54 +273,50 @@ def test_boundary_payload_materializes_data_prior_and_activity_once(double_preci
     data["H_bc_anomaly"] = data.H_bc_anomaly.copy(data=lazy)
     if additive:
         mean = data.H_bc_anomaly.mean()
-        bound = prepare_boundary(
-            observations, boundary_operands=data,
-            bc_mean_shift_prior={"pdf": "normal", "mu": mean, "sigma": 1.}, bc_anomaly_scale=0.,
-            bc_centering_weights=xr.DataArray([1., 2.], dims="bc_curtain",
+        weights = _whole_window(xr.DataArray([1., 2.], dims="bc_curtain",
                                              coords={"bc_curtain": ["north", "south"]}, attrs={"units": "1"}),
+                                observations)
+        bound = AdditiveChoice({"pdf": "normal", "mu": mean, "sigma": 1.}, 0.).bind(
+            observations, _centered(data, weights),
         )
     else:
         state = data.H_bc_anomaly.mean("nmeasure")
-        bound = prepare_boundary(
-            observations, boundary_sensitivity=data.H_bc_anomaly,
-            bc_prior={"pdf": "normal", "mu": state, "sigma": .1},
-            bc_state_activity=StateActivity(active=state > 0, fixed_value=state,
-                                           fixed_groups=(), group_coord="scientific_group"),
-        )
-    fields = boundary_payload(bound)
+        bound = MultiplicativeChoice(
+            {"pdf": "normal", "mu": state, "sigma": .1},
+            StateActivity(active=state > 0, fixed_value=state, fixed_groups=(), group_coord="scientific_group"),
+        ).bind(observations, data.H_bc_anomaly)
+    fields = to_dense_tree(bound)
     assert calls == []
-    assert fields["data"] is bound.data
-    eager_fields, = compute(fields, scheduler="synchronous")
+    eager, = compute(fields, scheduler="synchronous")
     assert calls == ["computed"]
-    eager = replace_boundary_payload(bound, eager_fields)
     assert type(eager) is type(bound)
+    assert not any(hasattr(value.data, "__dask_graph__") for value in eager.data.data_vars.values())
     if additive:
-        assert eager.anomaly_scale == bound.anomaly_scale
-        assert eager.mean_prior["mu"].item() == original.mean()
+        assert eager.choice.anomaly_scale == bound.choice.anomaly_scale
+        assert eager.choice.mean_prior["mu"].item() == original.mean()
     else:
-        assert eager.activity.group_coord == "scientific_group"
-        assert not hasattr(eager.activity.active.data, "__dask_graph__")
-        np.testing.assert_allclose(eager.prior["mu"], original.mean(axis=0))
+        assert eager.choice.activity.group_coord == "scientific_group"
+        assert not hasattr(eager.choice.activity.active.data, "__dask_graph__")
+        np.testing.assert_allclose(eager.choice.prior["mu"], original.mean(axis=0))
     with registered_model():
-        add_boundary(eager)
+        eager.add()
     assert calls == ["computed"]
 
 
 @pytest.mark.parametrize("scale,count,active", [(0., 2, False), (2., 1, False), (2., 2, True)])
 def test_output_roles_and_units_declare_resolved_anomaly_state(double_precision, scale, count, active):
-    from openghg_inversions.models import boundary_output_roles, boundary_output_units
-
     data, observations = _native_boundary()
     data = data.isel(bc_region=slice(count))
     curtains = data.bc_region.values
-    weights = xr.DataArray(np.ones(count), dims="bc_curtain", coords={"bc_curtain": curtains}, attrs={"units": "1"})
-    bound = prepare_boundary(
-        observations, boundary_operands=data,
-        bc_mean_shift_prior={"pdf": "lognormal", "mu": 0., "sigma": .1, "reparameterise": True},
-        bc_anomaly_scale=scale, bc_centering_weights=weights,
+    weights = _whole_window(
+        xr.DataArray(np.ones(count), dims="bc_curtain", coords={"bc_curtain": curtains}, attrs={"units": "1"}),
+        observations,
     )
-    roles = boundary_output_roles(bound, prefix="co2_")
-    units = boundary_output_units(bound, prefix="co2_")
+    bound = AdditiveChoice(
+        {"pdf": "lognormal", "mu": 0., "sigma": .1, "reparameterise": True}, scale,
+    ).bind(observations, _centered(data, weights))
+    outputs = bound.outputs(prefix="co2_")
+    roles, units = outputs.roles, outputs.units
     assert roles["co2_boundary_concentration"] == "co2_mu_bc"
     assert roles["co2_boundary_mean_shift"] == "co2_bc_mean_shift"
     assert ("co2_boundary_correction_anomaly" in roles) == active
@@ -349,7 +326,7 @@ def test_output_roles_and_units_declare_resolved_anomaly_state(double_precision,
     assert units["co2_bc_mean_shift_latent"] == "1"
     assert units["co2_H_bc_mass"] == units["co2_bc_centering_weights"] == "1"
     with registered_model() as model:
-        add_boundary(bound, prefix="co2_")
+        bound.add(prefix="co2_")
     assert set(roles.values()).issubset(model.named_vars)
     if active:
         assert roles["co2_boundary_correction_anomaly"] == "co2_bc_anomaly"
@@ -357,13 +334,11 @@ def test_output_roles_and_units_declare_resolved_anomaly_state(double_precision,
 
 @pytest.mark.parametrize("centered", [False, True])
 def test_multiplicative_output_declarations_match_registered_quantities(double_precision, centered):
-    from openghg_inversions.models import boundary_output_roles, boundary_output_units
-
     data, observations = _native_boundary()
-    inputs = {"boundary_operands": data} if centered else {"boundary_sensitivity": data.H_bc_anomaly}
-    bound = prepare_boundary(observations, bc_prior={"pdf": "normal", "mu": 1., "sigma": .1}, **inputs)
-    roles = boundary_output_roles(bound, prefix="o2_")
-    units = boundary_output_units(bound, prefix="o2_")
+    transport = CenteredOperands.from_dataset(data) if centered else data.H_bc_anomaly
+    bound = MultiplicativeChoice({"pdf": "normal", "mu": 1., "sigma": .1}).bind(observations, transport)
+    outputs = bound.outputs(prefix="o2_")
+    roles, units = outputs.roles, outputs.units
     assert roles["o2_boundary_scale"] == "o2_bc"
     assert units["o2_bc"] == "1"
     assert units["o2_mu_bc"] == "ppm"
@@ -374,21 +349,20 @@ def test_multiplicative_output_declarations_match_registered_quantities(double_p
         assert roles["o2_boundary_sensitivity"] == "o2_hbc"
         assert units["o2_hbc"] == "ppm"
     with registered_model() as model:
-        add_boundary(bound, prefix="o2_")
+        bound.add(prefix="o2_")
     assert set(roles.values()).issubset(model.named_vars)
 
 
-def test_direct_additive_preparation_accepts_only_actual_resolved_inputs(double_precision):
-    from openghg_inversions.models.additive_boundary import prepare_additive_boundary
-    from openghg_inversions.models.boundary import bind_boundary_operands
-
+def test_direct_additive_record_accepts_only_actual_resolved_inputs(double_precision):
     data, observations = _native_boundary()
-    operands = bind_boundary_operands(data, observations)
+    operands = CenteredOperands.from_dataset(data).bind(observations)
     weights = xr.ones_like(operands.bc_region, dtype=float).assign_attrs(units="1")
-    bound = prepare_additive_boundary(operands, weights, observations,
-                                      {"pdf": "normal", "mu": 0., "sigma": 1.}, 0.)
+    bound = AdditiveBoundary(
+        AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.),
+        operands.assign(bc_centering_weights=weights),
+    )
     with registered_model() as model:
-        result = add_boundary(bound)
+        result = bound.add()
     assert len(result.blocks) == 1
     assert "bc_anomaly_latent" not in model.named_vars
 
@@ -399,13 +373,12 @@ def test_direct_additive_preparation_accepts_only_actual_resolved_inputs(double_
 def test_absolute_boundary_preserves_original_coordinate_owner(state_dim, partial, owner):
     data, observations = _native_boundary()
     design = data.H_bc_anomaly.rename(bc_region=state_dim) if state_dim != "bc_region" else data.H_bc_anomaly
-    bound = prepare_boundary(
-        observations, boundary_sensitivity=design,
-        bc_prior={"pdf": "normal", "mu": 1., "sigma": .1},
-        bc_state_activity=StateActivity(active=np.array([True, False])) if partial else None,
-    )
+    bound = MultiplicativeChoice(
+        {"pdf": "normal", "mu": 1., "sigma": .1},
+        StateActivity(active=np.array([True, False])) if partial else None,
+    ).bind(observations, design)
     with registered_model() as model:
-        add_boundary(bound, owner=owner)
+        bound.add(**({} if owner is None else {"owner": owner}))  # None selects the default owner.
     expected = state_dim if owner is None and state_dim.startswith("bc_") else f"{owner or 'bc'}_{state_dim}"
     assert model.named_vars_to_dims["bc"] == (expected,)
     assert model.named_vars_to_dims["hbc"] == ("nmeasure", expected)
@@ -417,13 +390,12 @@ def test_absolute_boundary_preserves_original_coordinate_owner(state_dim, partia
 @pytest.mark.parametrize("owner,expected", [(None, "bc_region"), ("o2_boundary", "o2_boundary_bc_region")])
 def test_centered_boundary_preserves_original_coordinate_owner(double_precision, partial, owner, expected):
     data, observations = _native_boundary()
-    bound = prepare_boundary(
-        observations, boundary_operands=data,
-        bc_prior={"pdf": "normal", "mu": 1., "sigma": .1},
-        bc_state_activity=StateActivity(active=np.array([True, False])) if partial else None,
-    )
+    bound = MultiplicativeChoice(
+        {"pdf": "normal", "mu": 1., "sigma": .1},
+        StateActivity(active=np.array([True, False])) if partial else None,
+    ).bind(observations, CenteredOperands.from_dataset(data))
     with registered_model() as model:
-        add_boundary(bound, owner=owner)
+        bound.add(**({} if owner is None else {"owner": owner}))  # None selects the default owner.
     assert model.named_vars_to_dims["bc"] == (expected,)
     assert model.named_vars_to_dims["H_bc_anomaly"] == ("nmeasure", expected)
     assert model.named_vars_to_dims["H_bc_mass"] == ("nmeasure", expected)
@@ -431,26 +403,23 @@ def test_centered_boundary_preserves_original_coordinate_owner(double_precision,
         assert model.named_vars_to_dims["bc_active"] == (f"{expected}_bc_active",)
 
 
-def test_additive_boundary_keeps_unowned_default(double_precision):
+@pytest.mark.parametrize("owner,component", [((), "bc"), ((None,), None)])
+def test_additive_boundary_default_owner_keeps_local_state_names(double_precision, owner, component):
     from openghg_inversions.models import get_coord_registry
 
     data, observations = _native_boundary()
-    bound = prepare_boundary(
-        observations, boundary_operands=data,
-        bc_mean_shift_prior={"pdf": "normal", "mu": 0., "sigma": 1.}, bc_anomaly_scale=0.,
-        bc_centering_weights=xr.DataArray([1., 2.], dims="bc_curtain",
+    weights = _whole_window(xr.DataArray([1., 2.], dims="bc_curtain",
                                          coords={"bc_curtain": ["north", "south"]}, attrs={"units": "1"}),
-    )
+                            observations)
+    bound = AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.).bind(observations, _centered(data, weights))
     with registered_model() as model:
-        add_boundary(bound)
-    assert "rhime_component" not in get_coord_registry(model).coordinate_attrs["bc_region"]
+        bound.add(**dict(zip(("owner",), owner)))
+    assert get_coord_registry(model).coordinate_attrs["bc_region"].get("rhime_component") == component
     assert model.named_vars_to_dims["bc_correction"] == ("bc_region",)
 
 
 @pytest.mark.parametrize("kind", ["absolute", "centered", "additive"])
-def test_boundary_metadata_uses_operator_facts_without_evaluating_lazy_inputs(double_precision, kind):
-    from openghg_inversions.models import boundary_output_metadata
-
+def test_boundary_metadata_uses_choice_facts_without_evaluating_lazy_inputs(double_precision, kind):
     data, observations = _native_boundary()
     prior = {"pdf": "normal", "mu": 1., "sigma": .1}
     if kind == "additive":
@@ -458,13 +427,12 @@ def test_boundary_metadata_uses_operator_facts_without_evaluating_lazy_inputs(do
                               coords={"bc_curtain": ["north", "south"],
                                       "bc_period": pd.to_datetime(["2020-01-01", "2020-02-01"])},
                               attrs={"units": "1"})
-        bound = prepare_boundary(observations, boundary_operands=data, bc_frequency="monthly",
-                                 bc_mean_shift_prior=prior, bc_anomaly_scale=0., bc_centering_weights=weights)
+        bound = AdditiveChoice(prior, 0., "monthly").bind(observations, _centered(data, weights))
         expected = {"boundary_formulation": "additive", "boundary_representation": "centered-v1",
                     "bc_frequency": "monthly", "bc_anchor_time": None}
     else:
-        inputs = {"boundary_sensitivity": data.H_bc_anomaly} if kind == "absolute" else {"boundary_operands": data}
-        bound = prepare_boundary(observations, bc_prior=prior, bc_frequency="10D", bc_anchor_time="2020-01-01", **inputs)
+        transport = data.H_bc_anomaly if kind == "absolute" else CenteredOperands.from_dataset(data)
+        bound = MultiplicativeChoice(prior, frequency="10D", anchor_time="2020-01-01").bind(observations, transport)
         expected = {"boundary_formulation": "multiplicative", "bc_frequency": "10D", "bc_anchor_time": "2020-01-01"}
         if kind == "centered":
             expected["boundary_representation"] = "centered-v1"
@@ -483,11 +451,13 @@ def test_boundary_metadata_uses_operator_facts_without_evaluating_lazy_inputs(do
         bc_frequency="wrong-dataset-frequency", bc_anchor_time="wrong-dataset-anchor",
     )
     lazy_bound = replace(bound, data=lazy_data)
-    assert boundary_output_metadata(lazy_bound) == expected
+    assert lazy_bound.outputs().metadata == expected
     assert lazy_bound.data is lazy_data
     assert hasattr(lazy_bound.data[operator_name].data, "__dask_graph__")
-    # Whole-window sentinels describe no temporal subdivision or anchor.
+    # A whole-window choice records no temporal subdivision or anchor, whatever
+    # the transport's preparation sentinels say.
     unperiodized = lazy_data.copy(deep=False)
     unperiodized[operator_name].attrs = dict(operator.attrs, bc_frequency="none", bc_anchor_time="not-applicable")
     expected.update(bc_frequency=None, bc_anchor_time=None)
-    assert boundary_output_metadata(replace(lazy_bound, data=unperiodized)) == expected
+    whole_window = replace(bound.choice, frequency=None, anchor_time=None)
+    assert replace(lazy_bound, choice=whole_window, data=unperiodized).outputs().metadata == expected

@@ -57,7 +57,7 @@ def test_unsampled_builders_and_correlated_cached_prior(monkeypatch: Any, tmp_pa
 
     for module in (co2_runner, co2_cached_sigma_runner):
         monkeypatch.setattr(
-            module, "_materialize_co2_boundary_inputs",
+            module, "_materialize_co2_inputs",
             lambda prepared, names, priors, boundary: (
                 materialize(prepared, variable_names=names), priors, boundary,
             ),

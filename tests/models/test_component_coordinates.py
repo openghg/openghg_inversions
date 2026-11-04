@@ -21,7 +21,7 @@ from openghg_inversions.rhime.standard import build_standard_model
 from openghg_inversions.rhime.nested import build_nested_rhime_model
 from openghg_inversions.rhime.specs import FixedErrorSettings, RhimeModelSpec, SectorSpec
 from openghg_inversions.serialization import load_trace, save_trace
-from openghg_inversions.models.boundary import prepare_boundary
+from openghg_inversions.models.boundary import MultiplicativeChoice
 
 
 def _flux_sensitivity(layout):
@@ -103,12 +103,9 @@ def _co2_model(sensitivity, boundary, bc_prior, *, partial_activity=False, cache
         aggregation_error=AggregationError("none", np.zeros(2)),
         state_activity=StateActivity(active=np.array([True, False, True])) if partial_activity else None,
         **{"tau_hours": 6.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.5}} if cached else {},
-        boundary=prepare_boundary(
-            observations,
-            bc_prior=bc_prior,
-            bc_state_activity=StateActivity(active=np.array([True, False])) if partial_activity else None,
-            boundary_sensitivity=boundary,
-        ),
+        boundary=MultiplicativeChoice(
+            bc_prior, StateActivity(active=np.array([True, False])) if partial_activity else None,
+        ).bind(observations, boundary),
     )
     return result.model if cached else result
 

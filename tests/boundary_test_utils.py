@@ -1,7 +1,15 @@
-"""Assemble explicit scientific fixtures for the one-boundary API."""
+"""Assemble explicit scientific fixtures for the one-boundary API.
+
+Older fixtures describe a boundary with flat ``bc_*`` options. These helpers
+translate them once into a :class:`~openghg_inversions.models.boundary.BoundaryChoice`
+and bind it, so builder tests exercise the same choice -> bind -> add route as
+the runners.
+"""
+
+from dataclasses import replace
 
 from openghg_inversions.array_ops import select_gathered_data_array
-from openghg_inversions.models.boundary import prepare_boundary
+from openghg_inversions.models.boundary import AdditiveChoice, CenteredOperands, MultiplicativeChoice
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 
 
@@ -18,10 +26,44 @@ BOUNDARY_OPTIONS = (
 )
 
 
+def boundary_choice(options, channel=None):
+    """Return the choice described by flat fixture options, or None."""
+    def get(name):
+        if channel is None or name in {"bc_freq", "bc_anchor_time"}:
+            return options.get(name)
+        return (options.get(name) or {}).get(channel)
+
+    periods = {"frequency": get("bc_freq"), "anchor_time": get("bc_anchor_time")}
+    if get("bc_mean_shift_prior") is not None or get("bc_anomaly_scale") is not None:
+        return AdditiveChoice(get("bc_mean_shift_prior"), get("bc_anomaly_scale"), **periods)
+    if get("boundary_sensitivity") is None and get("boundary_operands") is None and get("bc_prior") is None:
+        return None
+    return MultiplicativeChoice(get("bc_prior") or dict(DEFAULT_BC_PRIOR), get("bc_state_activity"), **periods)
+
+
+def boundary_transport(options, channel=None):
+    """Return the absolute sensitivity or centered operands in fixture options."""
+    def get(name):
+        return options.get(name) if channel is None else (options.get(name) or {}).get(channel)
+
+    operands = get("boundary_operands")
+    if operands is not None:
+        weights = get("bc_centering_weights")
+        transport = CenteredOperands.from_dataset(operands)
+        return transport if weights is None else replace(transport, weights=weights)
+    sensitivity = get("boundary_sensitivity")
+    if sensitivity is None:
+        raise ValueError("A boundary choice requires boundary_sensitivity or centered operands.")
+    return sensitivity
+
+
 def bound_linked_model_arguments(options):
     """Bind each native channel once, preserving all other fixture arguments."""
     boundaries = {}
     for channel in ("co2", "o2"):
+        choice = boundary_choice(options, channel)
+        if choice is None:
+            continue
         sensitivity = options[f"{channel}_sensitivity"]
         native = select_gathered_data_array(
             options["observations"],
@@ -30,26 +72,7 @@ def bound_linked_model_arguments(options):
             ragged_dim="channel_observation",
             stack_dim="observation",
         ).rename({"observation": str(sensitivity.dims[0])})
-        if "observation_units" in native.coords:
-            native = native.assign_attrs(units=str(native.observation_units.values[0]))
-        choices = {
-            "bc_frequency" if name == "bc_freq" else name: (
-                options.get(name)
-                if name in {"bc_freq", "bc_anchor_time"}
-                else (options.get(name) or {}).get(channel)
-            )
-            for name in BOUNDARY_OPTIONS
-        }
-        if choices["bc_mean_shift_prior"] is None and choices["bc_anomaly_scale"] is None:
-            choices["bc_centering_weights"] = None
-        if (
-            choices["boundary_sensitivity"] is not None or choices["boundary_operands"] is not None
-        ) and choices["bc_mean_shift_prior"] is None and choices["bc_anomaly_scale"] is None:
-            if choices["bc_prior"] is None:
-                choices["bc_prior"] = dict(DEFAULT_BC_PRIOR)
-        boundary = prepare_boundary(native, **choices)
-        if boundary is not None:
-            boundaries[channel] = boundary
+        boundaries[channel] = choice.bind(native, boundary_transport(options, channel))
     return {
         **{name: value for name, value in options.items() if name not in BOUNDARY_OPTIONS},
         "boundary": boundaries,
@@ -58,17 +81,8 @@ def bound_linked_model_arguments(options):
 
 def bound_model_arguments(options):
     """Bind one single-channel scientific fixture before model construction."""
-    choices = {
-        "bc_frequency" if name == "bc_freq" else name: options[name]
-        for name in BOUNDARY_OPTIONS
-        if name in options
-    }
-    if (
-        choices.get("boundary_sensitivity") is not None or choices.get("boundary_operands") is not None
-    ) and choices.get("bc_mean_shift_prior") is None and choices.get("bc_anomaly_scale") is None:
-        if choices.get("bc_prior") is None:
-            choices["bc_prior"] = dict(DEFAULT_BC_PRIOR)
+    choice = boundary_choice(options)
     return {
         **{name: value for name, value in options.items() if name not in BOUNDARY_OPTIONS},
-        "boundary": prepare_boundary(options["observations"], **choices),
+        "boundary": None if choice is None else choice.bind(options["observations"], boundary_transport(options)),
     }

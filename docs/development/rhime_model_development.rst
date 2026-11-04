@@ -178,33 +178,34 @@ it protects a scientific policy or gives a materially better boundary failure.
 Boundary component extension check
 ----------------------------------
 
-The four CO2 builders accept one ``boundary`` input, a channel mapping for linked
-recipes. Frontends accept the same already-bound record, or a channel mapping
-for linked fits. A supplied record bypasses raw selection and binding; otherwise
-the scientific adapter calls ``prepare_boundary`` once per enabled channel and
-fit. Its concrete record retains labelled data, resolved priors and activity or
-anomaly scale. At the named PyMC boundary, ``boundary_payload`` exposes borrowed
-numerical inputs for joint computation with the selected core arrays and prior
-parameters; ``replace_boundary_payload`` restores the same concrete record.
-Reusable raw transport retains its spatial meaning independently of fit periods.
+A boundary family is a data-free *choice* and a *bound* record, both small
+frozen dataclasses in one module under ``models/boundary/``. The configuration
+adapter resolves user options into a choice (``MultiplicativeChoice`` or
+``AdditiveChoice``); it never touches arrays. Runners take that one choice (a
+channel mapping for linked recipes) and call ``choice.bind(observations,
+transport)`` once per channel and fit, where transport is the prepared absolute
+``H_bc`` or ``CenteredOperands``. The bound record pairs the choice with
+borrowed labelled transport on the fit's rows and boundary periods. Reusable raw
+transport keeps its spatial meaning independently of fit periods.
 
-``materialize_co2_inputs``, ``build_rhime_co2_cached_sigma``, the linked
-frontends and ``build_co2_inference`` all forward this handoff. The inference
-mapping uses the key ``boundary`` regardless of likelihood backend. Supplied
-records replace raw boundary choices, and core input selection excludes raw
-boundary operators owned by that payload. Linked ``boundary={}`` explicitly
-disables boundaries; ``None`` keeps configured raw selection. Offsets remain
-independent. The component's ``boundary_output_metadata`` supplies fitted facts;
-configured CLI routes retain their requested period metadata, including omitted
-anchors. Component-declared coefficient units survive scientific replay, while
-flux and multiplicative boundary scales remain dimensionless.
+Recipes materialize the bound record with their other inputs in one
+``dask.compute`` over :func:`~openghg_inversions.array_ops.to_dense_tree`, which
+traverses dataclasses, so no family needs payload accessors. Inside the
+registered model, ``boundary.add(...)`` returns an ``AffineConcentrationTerm``,
+a ``ConcentrationTerm`` subclass: ordinary recipes use it as a term, and cached
+recipes lower its labelled ``AffineBlock`` designs and physical coefficients
+once into numerical matrices. ``sampled_rvs`` identifies the underlying sampled
+variables, including transformed priors. ``boundary.outputs()`` declares the
+roles, units and metadata recorded with the trace. A linked recipe embeds
+native rows and namespaces coordinates without recovering boundary-family
+equations. Offsets remain separate components; the offset-confounding warning
+inspects every affine block for a constant unit response, so it needs no
+knowledge of boundary families.
 
-``add_boundary`` returns ``AffineConcentrationTerm``. Ordinary recipes consume
-``.term``. Cached recipes lower its separate labelled ``AffineBlock`` designs and
-physical coefficient expressions once into numerical matrices. ``sampled_rvs``
-identifies the underlying sampled variables, including transformed priors. A
-linked recipe embeds native rows and namespaces coordinates without recovering
-boundary-family equations. Offsets remain separate components.
+Validation is not repeated along this path. Preparation and artifact loading
+own units, labels and layout; ``bind`` owns calendar and row alignment and the
+single float64 check for centered transport; ``add`` checks only values that
+become available once lazy payloads are materialized.
 
 AST inspection of the concrete builder signatures gives:
 
@@ -240,9 +241,9 @@ are unchanged.
 
 A dry-run extension with a new supported boundary prior reaches these owners:
 
-* ``models/boundary.py`` or its nearby concrete component: define the prior,
-  bound payload, complete affine equation, and ``boundary_output_roles`` /
-  ``boundary_output_units`` declarations.
+* A new module under ``models/boundary/``: define the choice (with ``bind``) and
+  the bound record (with ``add`` and ``outputs``). ``BoundaryChoice`` and
+  ``Boundary`` are structural protocols, so no shared list of families changes.
 * ``rhime/co2/configuration.py`` and, for channel-specific syntax,
   ``co2_o2_configuration.py``: resolve user selections into component inputs.
 * Scientific component tests and the affected configuration tests: establish

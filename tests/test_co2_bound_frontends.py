@@ -1,4 +1,4 @@
-"""Pre-bound scientific records enter every frontend without raw BC arrays."""
+"""Boundary choices bind once in every frontend and materialize with the model inputs."""
 
 from dataclasses import replace
 from typing import Any
@@ -16,13 +16,10 @@ import xarray as xr
 from openghg_inversions.array_ops import select_gathered_data_array
 from openghg_inversions.models import StateActivity, get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.models.boundary import (
-    BoundBoundary,
-    boundary_output_metadata,
-    boundary_output_roles,
-    boundary_output_units,
-    boundary_payload,
-    prepare_boundary,
-    replace_boundary_payload,
+    AdditiveChoice,
+    BoundaryChoice,
+    CenteredOperands,
+    MultiplicativeChoice,
 )
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.rhime.co2 import (
@@ -34,7 +31,6 @@ from openghg_inversions.rhime.co2 import (
 )
 from openghg_inversions.rhime.co2.co2_outputs import reconstruct_co2_concentrations
 from openghg_inversions.rhime.sampling import RhimeSampler
-from test_centered_co2_boundaries import _operands
 from test_co2_affine_output import _prepared as _single
 from test_rhime_co2_o2_baselines import _prepared as _linked
 from test_rhime_co2_o2 import _independent_error
@@ -46,10 +42,6 @@ def double_precision():
         yield
 
 
-def _forbid_binding(*args: Any, **kwargs: Any) -> None:
-    pytest.fail("A supplied boundary must never rebind raw inputs.")
-
-
 def _draws(built: Any, sampler: Any = None) -> xr.DataTree:
     with built.model:
         trace = pm.sample_prior_predictive(draws=3, random_seed=471)
@@ -58,46 +50,109 @@ def _draws(built: Any, sampler: Any = None) -> xr.DataTree:
     return trace
 
 
-def _bound(observations: xr.DataArray, additive: bool) -> BoundBoundary:
-    operands = _operands(observations)
-    choices = (
-        dict(bc_mean_shift_prior={"pdf": "normal", "mu": 0.2, "sigma": 0.3},
-             bc_anomaly_scale=0.17,
-             bc_centering_weights=xr.DataArray([2., 3.], dims="bc_curtain",
-                                               coords={"bc_curtain": ["north", "south"]},
-                                               attrs={"units": "1"}))
-        if additive else dict(bc_prior={"pdf": "normal", "mu": 1.1, "sigma": 0.2},
-                              bc_state_activity=StateActivity(active=[True, False], fixed_value=[1., 1.3]))
+def _operands(observations: xr.DataArray) -> xr.Dataset:
+    """Raw two-curtain centered operands on the native observation rows."""
+    dim = str(observations.dims[0])
+    n = observations.size
+    coords = {name: coord for name, coord in observations.coords.items() if coord.dims == (dim,)}
+    values = xr.Dataset(
+        {
+            "H_bc_anomaly": (("bc_region", dim), np.arange(2 * n).reshape(2, n) * 0.03 - 0.04),
+            "H_bc_mass": (("bc_region", dim), np.linspace(0.2, 1.5, 2 * n).reshape(2, n)),
+            "bc_reference": xr.DataArray(400.0, attrs={"units": "ppm"}),
+        },
+        coords={dim: observations[dim], "bc_region": ["north", "south"], **coords},
+        attrs={"boundary_representation": "centered-v1"},
     )
-    bound = prepare_boundary(observations, boundary_operands=operands, **choices)
-    assert bound is not None
-    return bound
+    values.H_bc_anomaly.attrs["units"] = "ppm"
+    values.H_bc_mass.attrs["units"] = "1"
+    return values if dim == "nmeasure" else values.rename({dim: "nmeasure"})
 
 
-@pytest.mark.parametrize("cached", [False, True])
-@pytest.mark.parametrize("via_inference", [False, True])
-@pytest.mark.parametrize("additive", [False, True])
-def test_single_bound_frontends_compute_shared_payload_once_and_replay(
-    monkeypatch, cached: bool, via_inference: bool, additive: bool,
-) -> None:
+def _weights(observations: xr.DataArray) -> xr.DataArray:
+    return xr.DataArray(
+        [[2.0], [3.0]], dims=("bc_curtain", "bc_period"),
+        coords={"bc_curtain": ["north", "south"], "bc_period": [observations.time.values.min().astype("datetime64[ns]")]},
+        attrs={"units": "1"},
+    )
+
+
+def _choice(additive: bool, shared: Any = 1.0) -> BoundaryChoice:
+    if additive:
+        return AdditiveChoice({"pdf": "normal", "mu": 0.2 * shared, "sigma": 0.3}, 0.17)
+    return MultiplicativeChoice(
+        {"pdf": "normal", "mu": 1.1 * shared, "sigma": 0.2},
+        StateActivity(active=[True, False], fixed_value=[1., 1.3]),
+    )
+
+
+def _lazy(array: xr.DataArray, factor: Any) -> xr.DataArray:
+    return (array * factor).assign_attrs(array.attrs)
+
+
+def _single_with_operands(additive: bool, anomaly_factor: Any = 1.0) -> Any:
     prepared, _ = _single()
-    bound = _bound(prepared.inv_inputs.mf, additive)
-    executions = []
+    operands = _operands(prepared.inv_inputs.mf)
+    operands["H_bc_anomaly"] = _lazy(operands.H_bc_anomaly, anomaly_factor)
+    inputs = prepared.inv_inputs.assign(operands)
+    if additive:
+        inputs["bc_centering_weights"] = _weights(prepared.inv_inputs.mf)
+    inputs.attrs["boundary_representation"] = "centered-v1"
+    return replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
 
+
+def _native(prepared: Any, channel: str) -> xr.DataArray:
+    return select_gathered_data_array(
+        prepared.observations, key=channel, key_dim="species",
+        ragged_dim="channel_observation", stack_dim="observation",
+    )
+
+
+def _linked_with_operands(additive: bool, anomaly_factor: Any = 1.0, channels=("co2", "o2")) -> Any:
+    prepared = _linked()
+    operands, weights = {}, {}
+    for channel in channels:
+        native = _native(prepared, channel)
+        raw = _operands(native)
+        operands[channel] = raw.assign(H_bc_anomaly=_lazy(raw.H_bc_anomaly, anomaly_factor))
+        if additive:
+            weights[channel] = _weights(native)
+    return replace(prepared, boundary_operands=operands, bc_centering_weights=weights)
+
+
+def _record_binding(monkeypatch: Any) -> list[BoundaryChoice]:
+    calls: list[BoundaryChoice] = []
+    for family in (MultiplicativeChoice, AdditiveChoice):
+        def record(self, *args, _bind=family.bind, **kwargs):
+            calls.append(self)
+            return _bind(self, *args, **kwargs)
+
+        monkeypatch.setattr(family, "bind", record)
+    return calls
+
+
+def _shared_value(executions: list[str]) -> xr.DataArray:
     @delayed
     def shared_value():
         executions.append("shared")
         return np.asarray(1.0)
 
-    shared = xr.DataArray(da.from_delayed(shared_value(), shape=(), dtype=float))
-    inputs = prepared.inv_inputs.assign(H=(prepared.inv_inputs.H * shared).assign_attrs(prepared.inv_inputs.H.attrs))
+    return xr.DataArray(da.from_delayed(shared_value(), shape=(), dtype=float))
+
+
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize("via_inference", [False, True])
+@pytest.mark.parametrize("additive", [False, True])
+def test_single_choice_frontends_compute_shared_payload_once_and_replay(
+    monkeypatch, cached: bool, via_inference: bool, additive: bool,
+) -> None:
+    executions: list[str] = []
+    shared = _shared_value(executions)
+    prepared = _single_with_operands(additive, shared)
+    inputs = prepared.inv_inputs.assign(H=_lazy(prepared.inv_inputs.H, shared))
     prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
-    payload = boundary_payload(bound)
-    payload["data"] = payload["data"].assign(H_bc_anomaly=(payload["data"].H_bc_anomaly * shared).assign_attrs(payload["data"].H_bc_anomaly.attrs))
-    payload["prior"] = dict(payload["prior"], mu=payload["prior"]["mu"] * shared)
-    bound = replace_boundary_payload(bound, payload)
-    assert not any(name.startswith("H_bc") or name == "bc_reference" for name in inputs)
-    monkeypatch.setattr(co2_runner, "prepare_boundary", _forbid_binding)
+    choice = _choice(additive, shared)
+    calls = _record_binding(monkeypatch)
     module = co2_cached_sigma_runner if cached else co2_runner
     name = "build_co2_cached_sigma_model" if cached else "build_co2_model"
     builder = getattr(module, name)
@@ -108,7 +163,7 @@ def test_single_bound_frontends_compute_shared_payload_once_and_replay(
         return builder(*args, **kwargs)
 
     monkeypatch.setattr(module, name, capture)
-    choices = dict(boundary=bound)
+    choices: dict[str, Any] = dict(boundary=choice)
     if cached:
         choices.update(likelihood_builder=add_fixed_ou_gaussian_likelihood,
                        likelihood_kwargs={"tau_hours": 6., "site_amplitude_prior":
@@ -121,7 +176,7 @@ def test_single_bound_frontends_compute_shared_payload_once_and_replay(
             built, _ = inference.build_co2_inference(prepared, choices)
         elif cached:
             cached_model = co2_cached_sigma_runner.build_rhime_co2_cached_sigma(
-                prepared_inputs=prepared, boundary=bound, **choices["likelihood_kwargs"],
+                prepared_inputs=prepared, boundary=choice, **choices["likelihood_kwargs"],
             )
             built = co2_cached_sigma_runner.co2_cached_sigma_build_result(cached_model, prepared)
         else:
@@ -134,19 +189,23 @@ def test_single_bound_frontends_compute_shared_payload_once_and_replay(
             )
     assert executions == ["shared"]
     assert len(graphs) == 1
+    assert calls == [choice]
     eager = forwarded[0]
-    assert boundary_payload(eager)["prior"]["mu"].item() == (0.2 if additive else 1.1)
+    prior = eager.choice.mean_prior if additive else eager.choice.prior
+    assert prior["mu"].item() == (0.2 if additive else 1.1)
     assert not isinstance(eager.data.H_bc_anomaly.data, da.Array)
-    assert isinstance(bound.data.H_bc_anomaly.data, da.Array)
-    xr.testing.assert_identical(eager.data.bc_region, bound.data.bc_region)
+    assert isinstance(prepared.inv_inputs.H_bc_anomaly.data, da.Array)
+    lazy = choice.bind(prepared.inv_inputs.mf, CenteredOperands.from_dataset(prepared.inv_inputs))
+    xr.testing.assert_identical(eager.data.bc_region, lazy.data.bc_region)
     if additive:
-        assert eager.anomaly_scale == bound.anomaly_scale == 0.17
+        assert eager.choice.anomaly_scale == choice.anomaly_scale == 0.17
     else:
-        np.testing.assert_array_equal(eager.activity.active, [True, False])
-        np.testing.assert_allclose(eager.activity.fixed_value, [1., 1.3])
-    assert dict(built.output_contract.variable_roles).items() >= boundary_output_roles(bound).items()
-    assert built.output_contract.metadata["boundary_units"] == boundary_output_units(bound)
-    for key, value in boundary_output_metadata(bound).items():
+        np.testing.assert_array_equal(eager.choice.activity.active, [True, False])
+        np.testing.assert_allclose(eager.choice.activity.fixed_value, [1., 1.3])
+    outputs = eager.outputs()
+    assert dict(built.output_contract.variable_roles).items() >= outputs.roles.items()
+    assert built.output_contract.metadata["boundary_units"] == outputs.units
+    for key, value in outputs.metadata.items():
         assert built.output_contract.metadata[key] == value
     trace = co2_runner.annotate_co2_trace(_draws(built), built, concentration_units="ppm")
     original = trace.copy(deep=True)
@@ -169,37 +228,15 @@ def test_single_bound_frontends_compute_shared_payload_once_and_replay(
 
 @pytest.mark.parametrize("cached", [False, True])
 @pytest.mark.parametrize("additive", [False, True])
-def test_linked_bound_frontends_retain_channel_records_and_scientific_closure(
+def test_linked_choice_frontends_retain_channel_records_and_scientific_closure(
     monkeypatch, cached: bool, additive: bool,
 ) -> None:
-    prepared = _linked()
-    boundaries = {}
-    for channel in ("co2", "o2"):
-        dim = str(getattr(prepared, f"{channel}_sensitivity").dims[0])
-        native = select_gathered_data_array(
-            prepared.observations, key=channel, key_dim="species",
-            ragged_dim="channel_observation", stack_dim="observation",
-        ).rename({"observation": dim}).assign_attrs(units="ppm")
-        boundaries[channel] = _bound(native, additive)
-    executions = []
-
-    @delayed
-    def shared_value():
-        executions.append("shared")
-        return np.asarray(1.0)
-
-    shared = xr.DataArray(da.from_delayed(shared_value(), shape=(), dtype=float))
-    prepared = replace(prepared, co2_sensitivity=(prepared.co2_sensitivity * shared).assign_attrs(
-        prepared.co2_sensitivity.attrs,
-    ))
-    for channel, bound in boundaries.items():
-        payload = boundary_payload(bound)
-        anomaly = payload["data"].H_bc_anomaly
-        payload["data"] = payload["data"].assign(H_bc_anomaly=(anomaly * shared).assign_attrs(anomaly.attrs))
-        payload["prior"] = dict(payload["prior"], mu=payload["prior"]["mu"] * shared)
-        boundaries[channel] = replace_boundary_payload(bound, payload)
-    assert not prepared.boundary_sensitivity and not prepared.boundary_operands
-    monkeypatch.setattr(co2_o2_runner, "prepare_boundary", _forbid_binding)
+    executions: list[str] = []
+    shared = _shared_value(executions)
+    prepared = _linked_with_operands(additive, shared)
+    prepared = replace(prepared, co2_sensitivity=_lazy(prepared.co2_sensitivity, shared))
+    choices = {channel: _choice(additive, shared) for channel in ("co2", "o2")}
+    calls = _record_binding(monkeypatch)
     module = co2_o2_cached_sigma_runner if cached else co2_o2_runner
     monkeypatch.setattr(module, "sample_rhime_model", _draws)
     if cached:
@@ -220,26 +257,34 @@ def test_linked_bound_frontends_retain_channel_records_and_scientific_closure(
     monkeypatch.setattr(module, name, capture)
     graphs = []
     with Callback(start=lambda graph: graphs.append(graph)):
-        trace = runner(prepared_inputs=prepared, boundary=boundaries,
+        trace = runner(prepared_inputs=prepared, boundary=choices,
                        independent_error_sd=_independent_error(prepared),
                        sampler=RhimeSampler(nuts_sampler="pymc"), **options)
     assert executions == ["shared"]
     assert len(graphs) == 1
+    assert sorted(map(id, calls)) == sorted(map(id, choices.values()))
     roles = json.loads(trace.attrs["rhime_variable_roles"])
     metadata = json.loads(trace.attrs["rhime_model_metadata"])
-    for channel, bound in boundaries.items():
-        assert metadata["boundary_metadata"][channel] == boundary_output_metadata(bound)
-        assert roles.items() >= boundary_output_roles(bound, prefix=f"{channel}_").items()
+    for channel, choice in choices.items():
         eager = forwarded[0][channel]
-        assert boundary_payload(eager)["prior"]["mu"].item() == (0.2 if additive else 1.1)
-        assert isinstance(bound.data.H_bc_anomaly.data, da.Array)
-        xr.testing.assert_identical(eager.data.bc_region, bound.data.bc_region)
+        outputs = eager.outputs(prefix=f"{channel}_")
+        assert metadata["boundary_metadata"][channel] == outputs.metadata
+        assert roles.items() >= outputs.roles.items()
+        prior = eager.choice.mean_prior if additive else eager.choice.prior
+        assert prior["mu"].item() == (0.2 if additive else 1.1)
+        assert isinstance(prepared.boundary_operands[channel].H_bc_anomaly.data, da.Array)
+        native_dim = str(getattr(prepared, f"{channel}_sensitivity").dims[0])
+        lazy = choice.bind(
+            _native(prepared, channel).rename({"observation": native_dim}),
+            replace(CenteredOperands.from_dataset(prepared.boundary_operands[channel]),
+                    weights=prepared.bc_centering_weights.get(channel)),
+        )
+        xr.testing.assert_identical(eager.data.bc_region, lazy.data.bc_region)
         if additive:
-            assert eager.anomaly_scale == bound.anomaly_scale == 0.17
+            assert eager.choice.anomaly_scale == 0.17
         else:
-            np.testing.assert_array_equal(eager.activity.active, [True, False])
-            np.testing.assert_allclose(eager.activity.fixed_value, [1., 1.3])
-        native_dim = next(dim for dim in eager.data.H_bc_mass.dims if dim != "bc_region")
+            np.testing.assert_array_equal(eager.choice.activity.active, [True, False])
+            np.testing.assert_allclose(eager.choice.activity.fixed_value, [1., 1.3])
         mass = eager.data.H_bc_mass.transpose(native_dim, "bc_region").values
         absolute = (eager.data.H_bc_anomaly + eager.data.bc_reference * eager.data.H_bc_mass).transpose(
             native_dim, "bc_region",
@@ -254,9 +299,9 @@ def test_linked_bound_frontends_retain_channel_records_and_scientific_closure(
             expected = np.zeros((1, draws.sizes["draw"], prepared.observations.size))
             expected[..., prepared.observations.species.values == channel] = native_mean
             np.testing.assert_allclose(draws[f"{channel}_mu_bc"].transpose("chain", "draw", "observation"), expected)
-            for name, units in boundary_output_units(bound, prefix=f"{channel}_").items():
-                if name in draws:
-                    assert draws[name].attrs["units"] == units
+            for variable, units in outputs.units.items():
+                if variable in draws:
+                    assert draws[variable].attrs["units"] == units
             np.testing.assert_allclose(
                 draws[f"{channel}_mu_bc"].where(prepared.observations.species != channel, drop=True), 0,
             )
@@ -285,42 +330,27 @@ def _enter_frontend(kind: str, prepared: Any, boundary: Any, **choices: Any) -> 
 
 
 @pytest.mark.parametrize("kind", ["single", "single_cached", "linked", "linked_cached"])
-@pytest.mark.parametrize("choice", ["bc_freq", "bc_anomaly_scale", "bc_prior"])
-def test_bound_frontends_reject_competing_raw_choices(kind: str, choice: str) -> None:
-    prepared, _ = _single()
-    bound = _bound(prepared.inv_inputs.mf, True)
-    if kind.startswith("linked"):
-        prepared = _linked()
-        bound = {"co2": bound}
-    with pytest.raises(ValueError, match=rf"boundary replaces raw boundary choices; omit \['{choice}'\]"):
-        _enter_frontend(kind, prepared, bound, **{choice: "explicit conflicting choice"})
-
-
-@pytest.mark.parametrize("kind", ["single", "single_cached", "linked", "linked_cached"])
-def test_bound_precision_rejected_before_delayed_payload_compute(kind: str) -> None:
-    prepared, _ = _single()
-    bound = _bound(prepared.inv_inputs.mf, True)
-
+def test_centered_precision_rejected_before_delayed_payload_compute(kind: str) -> None:
     @delayed
     def unread_payload():
         pytest.fail("Precision rejection must precede payload computation.")
 
-    anomaly = bound.data.H_bc_anomaly
-    bound = replace(bound, data=bound.data.assign(H_bc_anomaly=anomaly.copy(
-        data=da.from_delayed(unread_payload(), shape=anomaly.shape, dtype=float),
-    )))
+    unread = xr.DataArray(da.from_delayed(unread_payload(), shape=(), dtype=float))
     if kind.startswith("linked"):
-        prepared = _linked()
-        bound = {"co2": bound}
+        prepared = _linked_with_operands(True, unread, channels=("co2",))
+        boundary: Any = {"co2": _choice(True)}
+    else:
+        prepared = _single_with_operands(True, unread)
+        boundary = _choice(True)
     with pytensor.config.change_flags(floatX="float32"):
         with pytest.raises(ValueError, match="float64"):
-            _enter_frontend(kind, prepared, bound)
+            _enter_frontend(kind, prepared, boundary)
 
 
 @pytest.mark.parametrize("cached", [False, True])
-def test_empty_linked_bound_mapping_disables_available_raw_boundaries(monkeypatch, cached: bool) -> None:
+def test_empty_linked_boundary_mapping_disables_available_boundaries(monkeypatch, cached: bool) -> None:
     prepared = _linked(("co2", "o2"))
-    monkeypatch.setattr(co2_o2_runner, "prepare_boundary", _forbid_binding)
+    calls = _record_binding(monkeypatch)
     module = co2_o2_cached_sigma_runner if cached else co2_o2_runner
     monkeypatch.setattr(module, "sample_rhime_model", _draws)
     options = {}
@@ -332,6 +362,7 @@ def test_empty_linked_bound_mapping_disables_available_raw_boundaries(monkeypatc
     trace = runner(prepared_inputs=prepared, boundary={},
                    independent_error_sd=_independent_error(prepared),
                    sampler=RhimeSampler(nuts_sampler="pymc"), **options)
+    assert calls == []
     assert not any("boundary" in role for role in json.loads(trace.attrs["rhime_variable_roles"]))
     for group in ("prior", "posterior"):
         draws = trace[group].to_dataset()
@@ -340,28 +371,15 @@ def test_empty_linked_bound_mapping_disables_available_raw_boundaries(monkeypatc
 
 
 @pytest.mark.parametrize("cached", [False, True])
-def test_raw_cli_keeps_requested_calendar_metadata_while_bound_uses_fitted_facts(cached: bool) -> None:
-    prepared, _ = _single()
-    operands = _operands(prepared.inv_inputs.mf)
-    bound = prepare_boundary(prepared.inv_inputs.mf, boundary_operands=operands,
-                             bc_prior={"pdf": "normal", "mu": 1., "sigma": 0.2},
-                             bc_frequency="2D")
-    assert bound is not None
-    facts = boundary_output_metadata(bound)
-    assert facts["bc_anchor_time"] is not None
+def test_choice_records_requested_calendar_metadata(cached: bool) -> None:
+    prepared = _single_with_operands(False)
+    choice = MultiplicativeChoice({"pdf": "normal", "mu": 1., "sigma": 0.2}, frequency="2D")
     likelihood = (dict(likelihood_builder=add_fixed_ou_gaussian_likelihood,
                        likelihood_kwargs={"tau_hours": 6., "site_amplitude_prior":
                                           {"pdf": "halfnormal", "sigma": 0.5}})
                   if cached else dict(no_model_error=True))
-    supplied, _ = inference.build_co2_inference(prepared, {"boundary": bound, **likelihood})
-    for key, value in facts.items():
-        assert supplied.output_contract.metadata[key] == value
-    raw_inputs = prepared.inv_inputs.assign(operands)
-    raw_inputs.attrs["boundary_representation"] = "centered-v1"
-    raw_prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=raw_inputs))
-    configured, _ = inference.build_co2_inference(
-        raw_prepared, dict(use_bc=True, bc_freq="2D", bc_anchor_time=None,
-                           bc_prior={"pdf": "normal", "mu": 1., "sigma": 0.2}, **likelihood),
-    )
-    assert configured.output_contract.metadata["bc_frequency"] == "2D"
-    assert configured.output_contract.metadata["bc_anchor_time"] is None
+    configured, _ = inference.build_co2_inference(prepared, {"boundary": choice, **likelihood})
+    metadata = configured.output_contract.metadata
+    assert metadata["bc_frequency"] == "2D"
+    assert metadata["bc_anchor_time"] is None
+    assert metadata["boundary_representation"] == "centered-v1"

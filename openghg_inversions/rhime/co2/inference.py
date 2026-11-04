@@ -55,13 +55,7 @@ def build_co2_inference(
         likelihood_builder=model.get("likelihood_builder"),
         likelihood_kwargs=model.get("likelihood_kwargs"),
         no_model_error=model.get("no_model_error", False),
-        use_bc=model.get("use_bc", False),
         boundary=model.get("boundary"),
-        bc_prior=model.get("bc_prior"),
-        bc_mean_shift_prior=model.get("bc_mean_shift_prior"),
-        bc_anomaly_scale=model.get("bc_anomaly_scale"),
-        bc_state_activity=model.get("bc_state_activity"),
-        bc_freq=model.get("bc_freq"), bc_anchor_time=model.get("bc_anchor_time"),
         offset_prior=model.get("offset_prior"),
         offset_args=model.get("offset_args"),
     )
@@ -73,14 +67,8 @@ def build_co2_inference(
         likelihood_builder=model.get("likelihood_builder"),
         likelihood_kwargs=model.get("likelihood_kwargs"),
         no_model_error=model.get("no_model_error", False),
-        use_bc=model.get("use_bc", False),
-        bc_prior=model.get("bc_prior"),
-        bc_mean_shift_prior=model.get("bc_mean_shift_prior"),
-        bc_anomaly_scale=model.get("bc_anomaly_scale"),
-        bc_state_activity=model.get("bc_state_activity"),
         offset_prior=model.get("offset_prior"),
         offset_args=model.get("offset_args"),
-        bc_freq=model.get("bc_freq"), bc_anchor_time=model.get("bc_anchor_time"),
     ), None
 
 

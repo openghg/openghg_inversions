@@ -11,14 +11,14 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.models import get_coord_registry, restore_inferencedata_coords
-from openghg_inversions.models.boundary import bind_boundary_operands
+from openghg_inversions.models.boundary import AdditiveChoice, CenteredOperands, MultiplicativeChoice
 from openghg_inversions.rhime.co2.co2_o2_model import build_co2_o2_model
 from openghg_inversions.rhime.co2.co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
 from openghg_inversions.rhime.co2.co2_o2_runner import build_rhime_co2_o2, annotate_co2_o2_trace
+from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from test_co2_o2_fixed_ou import _prepared, _kwargs
-from openghg_inversions.models.boundary import prepare_boundary
 from openghg_inversions.array_ops import select_gathered_data_array
-from boundary_test_utils import bound_linked_model_arguments
+from boundary_test_utils import boundary_choice, bound_linked_model_arguments
 
 
 @pytest.fixture(autouse=True)
@@ -62,7 +62,7 @@ def _additive_inputs(prepared=None):
             ragged_dim="channel_observation",
             stack_dim="observation",
         ).rename({"observation": dim})
-        bound = bind_boundary_operands(operands[channel], native_observations)
+        bound = CenteredOperands.from_dataset(operands[channel]).bind(native_observations)
         channel_weights = xr.DataArray(
             weights.values, dims="bc_region", coords={"bc_region": bound.bc_region}, attrs={"units": "1"}
         )
@@ -77,6 +77,12 @@ def _additive_inputs(prepared=None):
         coords={"observation": kwargs["observations"].observation},
     )
     return kwargs
+
+
+def _linked_choices(kwargs):
+    """Translate flat channel fixture options into the runners' boundary choices."""
+    choices = {channel: boundary_choice(kwargs, channel) for channel in ("co2", "o2")}
+    return {channel: choice for channel, choice in choices.items() if choice is not None}
 
 
 def test_linked_additive_o2_has_narrow_ppm_prior_and_weighted_closure():
@@ -177,15 +183,12 @@ def test_linked_additive_runner_restores_absolute_predictives_and_annotations(tm
         kwargs["bc_anomaly_scale"]["o2"] = o2_anomaly_scale
         prepared = _prepared()
         prepared = replace(
-            prepared, observations=kwargs["observations"], boundary_operands=kwargs["boundary_operands"]
+            prepared, observations=kwargs["observations"], boundary_operands=kwargs["boundary_operands"],
+            bc_centering_weights=kwargs["bc_centering_weights"],
         )
-        options = {
-            key: value
-            for key, value in kwargs.items()
-            if key.startswith(("bc_mean_", "bc_anomaly_", "bc_centering_"))
-        }
         built = build_rhime_co2_o2(
-            prepared_inputs=prepared, independent_error_sd=kwargs["independent_error_sd"], **options
+            prepared_inputs=prepared, independent_error_sd=kwargs["independent_error_sd"],
+            boundary=_linked_choices(kwargs),
         )
         with built.model:
             trace = pm.sample_prior_predictive(draws=3, random_seed=18)
@@ -240,25 +243,6 @@ def test_linked_additive_runner_restores_absolute_predictives_and_annotations(tm
         )
 
 
-@pytest.mark.parametrize("cached", [False, True])
-@pytest.mark.parametrize("conflicting", ["bc_prior", "bc_state_activity"])
-def test_linked_additive_rejects_multiplicative_options_early(cached, conflicting):
-    from openghg_inversions.models import StateActivity
-
-    with pytensor.config.change_flags(floatX="float64"):
-        kwargs = _additive_inputs()
-        kwargs[conflicting] = {
-            "o2": {"pdf": "normal", "mu": 1.0, "sigma": 0.01}
-            if conflicting == "bc_prior"
-            else StateActivity(active=False)
-        }
-        builder = build_co2_o2_cached_sigma_model if cached else build_co2_o2_model
-        if cached:
-            kwargs.update(tau_hours=6.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8})
-        with pytest.raises(ValueError, match="[Aa]dditive boundaries replace"):
-            builder(**bound_linked_model_arguments({**kwargs}))
-
-
 @pytest.mark.parametrize("anomaly_scale", [0.0, 0.04])
 def test_standalone_co2_matches_linked_co2_boundary_equation_and_marginal_density(anomaly_scale):
     from scipy.stats import multivariate_normal
@@ -296,12 +280,14 @@ def test_standalone_co2_matches_linked_co2_boundary_equation_and_marginal_densit
             observation_error=native(kwargs["independent_error_sd"]),
             aggregation_error=aggregation,
             state_activity=StateActivity(active=False),
-            boundary=prepare_boundary(
+            boundary=AdditiveChoice(
+                kwargs["bc_mean_shift_prior"]["co2"], kwargs["bc_anomaly_scale"]["co2"],
+            ).bind(
                 observations,
-                bc_anomaly_scale=kwargs["bc_anomaly_scale"]["co2"],
-                bc_centering_weights=kwargs["bc_centering_weights"]["co2"],
-                bc_mean_shift_prior=kwargs["bc_mean_shift_prior"]["co2"],
-                boundary_operands=kwargs["boundary_operands"]["co2"],
+                replace(
+                    CenteredOperands.from_dataset(kwargs["boundary_operands"]["co2"]),
+                    weights=kwargs["bc_centering_weights"]["co2"],
+                ),
             ),
         )
         outputs = []
@@ -354,7 +340,7 @@ def test_public_linked_runners_forward_prepared_additive_boundary_options(monkey
                 channel: kwargs["bc_centering_weights"][channel] for channel in ("co2", "o2")
             },
         )
-        options = {key: value for key, value in kwargs.items() if key.startswith(("bc_mean_", "bc_anomaly_"))}
+        options = {"boundary": _linked_choices(kwargs)}
 
         def prior_sample(built, sampler):
             with built.model:
@@ -391,19 +377,39 @@ def test_public_linked_runners_forward_prepared_additive_boundary_options(monkey
 
 @pytest.mark.parametrize("cached", [False, True])
 def test_linked_additive_requires_native_centered_operands(cached):
+    from openghg_inversions.rhime.co2 import co2_o2_runner, co2_o2_cached_sigma_runner
+    from openghg_inversions.rhime.sampling import RhimeSampler
+
     kwargs = _additive_inputs()
-    kwargs["boundary_operands"] = {}
+    absolute = {}
+    for channel, operands in kwargs["boundary_operands"].items():
+        dim = str(kwargs[f"{channel}_sensitivity"].dims[0])
+        absolute[channel] = (operands.H_bc_anomaly + operands.bc_reference * operands.H_bc_mass).rename(
+            nmeasure=dim
+        )
+    prepared = replace(
+        _prepared(), observations=kwargs["observations"], boundary_sensitivity=absolute, boundary_operands={},
+    )
+    options = {"boundary": _linked_choices(kwargs)}
     if cached:
-        kwargs.update(tau_hours=6.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8})
-    builder = build_co2_o2_cached_sigma_model if cached else build_co2_o2_model
+        options.update(tau_hours=6.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8})
+    runner = (
+        co2_o2_cached_sigma_runner.run_rhime_co2_o2_cached_sigma_from_prepared_inputs
+        if cached
+        else co2_o2_runner.run_rhime_co2_o2_from_prepared_inputs
+    )
     with pytest.raises(ValueError, match="[Aa]dditive boundaries require"):
-        builder(**bound_linked_model_arguments({**kwargs}))
+        runner(
+            prepared_inputs=prepared,
+            independent_error_sd=kwargs["independent_error_sd"],
+            sampler=RhimeSampler(draws=1, tune=0, chains=1, burn=0, nuts_sampler="pymc"),
+            **options,
+        )
 
 
 @pytest.mark.parametrize("cached", [False, True])
 @pytest.mark.parametrize("mode", ["multiplicative", "disabled", "co2_additive"])
-@pytest.mark.parametrize("source", ["prepared", "explicit"])
-def test_linked_runners_do_not_compute_passive_additive_arrays(monkeypatch, cached, mode, source):
+def test_linked_runners_do_not_compute_passive_additive_arrays(monkeypatch, cached, mode):
     from dask import delayed
     import dask.array as da
     from openghg_inversions.rhime.co2 import co2_o2_runner, co2_o2_cached_sigma_runner
@@ -419,26 +425,24 @@ def test_linked_runners_do_not_compute_passive_additive_arrays(monkeypatch, cach
     with pytensor.config.change_flags(floatX="float64"):
         kwargs = _additive_inputs()
         weights = {}
-        options = {}
+        boundary = {}
         for channel in ("co2", "o2"):
             channel_weights = kwargs["bc_centering_weights"][channel]
             if mode == "co2_additive" and channel == "co2":
-                options["bc_mean_shift_prior"] = {"co2": kwargs["bc_mean_shift_prior"]["co2"]}
-                options["bc_anomaly_scale"] = {"co2": kwargs["bc_anomaly_scale"]["co2"]}
+                boundary["co2"] = AdditiveChoice(kwargs["bc_mean_shift_prior"]["co2"], kwargs["bc_anomaly_scale"]["co2"])
             else:
                 channel_weights = passive(channel_weights)
+                if mode != "disabled":
+                    boundary[channel] = MultiplicativeChoice(dict(DEFAULT_BC_PRIOR))
             weights[channel] = channel_weights
-            if source == "explicit":
-                options.setdefault("bc_centering_weights", {})[channel] = channel_weights
         prepared = replace(
             _prepared(),
             observations=kwargs["observations"],
             boundary_sensitivity=kwargs["boundary_sensitivity"],
             boundary_operands=kwargs["boundary_operands"],
-            bc_centering_weights=weights if source == "prepared" else {},
+            bc_centering_weights=weights,
         )
-        if mode == "disabled":
-            options["use_bc"] = {"co2": False, "o2": False}
+        options = {"boundary": boundary}
 
         def prior_sample(built, sampler):
             with built.model:
@@ -490,7 +494,7 @@ def test_mixed_centered_boundary_ou_density_gradients_and_absolute_closure(o2_an
             observations = xr.DataArray(
                 np.zeros(sensitivity.sizes[dim]), dims=dim, coords={dim: sensitivity[dim]}
             )
-            bound = bind_boundary_operands(operands, observations)
+            bound = CenteredOperands.from_dataset(operands).bind(observations)
             if channel == "co2":
                 absolute_kwargs["boundary_sensitivity"][channel] = (
                     bound.H_bc_anomaly + bound.bc_reference * bound.H_bc_mass
@@ -560,9 +564,8 @@ def test_public_linked_ou_restores_mixed_centered_boundary_predictions(monkeypat
             boundary_operands=kwargs["boundary_operands"],
             bc_centering_weights={"o2": kwargs["bc_centering_weights"]["o2"]},
         )
-        options = {key: value for key, value in kwargs.items() if key.startswith(("bc_mean_", "bc_anomaly_"))}
-        options.update(
-            bc_prior=kwargs["bc_prior"],
+        options = dict(
+            boundary=_linked_choices(kwargs),
             tau_hours=6.0,
             site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8},
         )
@@ -630,7 +633,7 @@ def test_linked_public_additive_builders_warn_on_native_channel_rows(
         confounding = [
             warning
             for warning in recorded
-            if "boundary mean and unrestricted observation offsets" in str(warning.message)
+            if "unrestricted observation offsets share a constant observation response" in str(warning.message)
         ]
         assert len(confounding) == (0 if drop_first else 1)
         if confounding:

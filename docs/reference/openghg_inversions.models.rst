@@ -10,7 +10,6 @@ openghg\_inversions.models
 .. toctree::
    :maxdepth: 4
 
-   openghg_inversions.models.additive_boundary
    openghg_inversions.models.additive_sigma
    openghg_inversions.models.boundary
    openghg_inversions.models.cached_sigma

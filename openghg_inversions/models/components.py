@@ -26,7 +26,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, Self, cast
+from warnings import warn
 
 from dask import compute
 import numpy as np
@@ -322,9 +323,12 @@ class ConcentrationTerm:
     observation_shift: xr.DataArray | None = None
 
     @classmethod
-    def absolute(cls, output: TensorVariable) -> ConcentrationTerm:
-        """Describe a term whose likelihood contribution is its absolute output."""
-        return cls(output, output)
+    def absolute(cls, output: TensorVariable, **fields: Any) -> Self:
+        """Describe a term whose likelihood contribution is its absolute output.
+
+        Subclasses pass their additional keyword-only fields through ``fields``.
+        """
+        return cls(output, output, **fields)
 
 
 @dataclass(frozen=True)
@@ -341,22 +345,66 @@ class AffineBlock:
     coefficients: TensorVariable
 
 
-@dataclass(frozen=True)
-class AffineConcentrationTerm:
-    """Affine likelihood contribution, preserving physical blocks and sampled RVs.
+@dataclass(frozen=True, kw_only=True)
+class AffineConcentrationTerm(ConcentrationTerm):
+    """Concentration term whose likelihood contribution is affine in its coefficients.
 
     Fixed contribution plus design/coefficient products equals the term's
     likelihood contribution. The fixed contribution is a labelled concentration
     vector in observation-row order. Physical coefficients may be transformed sampled
     variables; ``sampled_rvs`` contains the underlying sampled variables,
     distinct from those physical coefficient expressions. Numerical consumers
-    concatenate blocks at their own boundary.
+    concatenate blocks at their own boundary; every other consumer can treat
+    the term as an ordinary :class:`ConcentrationTerm`.
     """
 
-    term: ConcentrationTerm
     fixed_contribution: xr.DataArray
     blocks: tuple[AffineBlock, ...]
     sampled_rvs: tuple[TensorVariable, ...]
+
+
+def warn_constant_offset_confounding(
+    terms: Sequence[ConcentrationTerm],
+    *,
+    drop_first: bool,
+    rows: np.ndarray | None = None,
+    channel: str | None = None,
+) -> None:
+    """Warn when an affine coefficient has the same constant response as offsets.
+
+    Call after materialization, before adding unrestricted observation offsets.
+    Any affine design column equal to one on every selected row (absolute
+    tolerance 1e-12) is exactly confounded with an unrestricted constant
+    offset: the likelihood identifies only their sum. Anchoring the first
+    site's offset (``drop_first``) removes that constant mode. Overlap with
+    non-constant responses is not assessed.
+
+    Args:
+        terms: Terms already added to the model; non-affine terms are skipped.
+        drop_first: Whether the offsets exclude the first site's constant.
+        rows: Optional boolean row selection, for one channel of a joint design.
+        channel: Optional channel name for the warning message.
+    """
+    if drop_first:
+        return
+    for term in terms:
+        if not isinstance(term, AffineConcentrationTerm):
+            continue
+        for block in term.blocks:
+            design = np.asarray(block.design.values)
+            if rows is not None:
+                design = design[rows]
+            if design.size and np.all(np.abs(design - 1.0) <= 1e-12, axis=0).any():
+                warn(
+                    (f"{channel}: " if channel is not None else "")
+                    + "A model coefficient and unrestricted observation offsets share a constant "
+                    "observation response; the likelihood identifies only their combined constant. "
+                    "Separating boundary-product bias from observation bias requires prior or external "
+                    "calibration information.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                return
 
 
 def likelihood_representation(

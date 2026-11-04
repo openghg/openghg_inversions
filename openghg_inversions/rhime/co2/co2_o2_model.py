@@ -7,11 +7,12 @@ from dataclasses import replace
 from typing import Any
 
 import numpy as np
+from dask import compute as dask_compute
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
 
-from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array
+from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array, to_dense_tree
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models import (
     StateActivity,
@@ -21,9 +22,8 @@ from openghg_inversions.models import (
     registered_model,
     resolve_state_activity,
 )
-from openghg_inversions.models.additive_boundary import warn_boundary_offset_confounding
 from openghg_inversions.models.additive_sigma import add_additive_sigma_likelihood
-from openghg_inversions.models.boundary import AdditiveBoundary, BoundBoundary, add_boundary
+from openghg_inversions.models.boundary import Boundary
 from openghg_inversions.models.components import (
     AffineBlock,
     AffineConcentrationTerm,
@@ -31,12 +31,13 @@ from openghg_inversions.models.components import (
     _add_offset_component_result,
     add_model_data,
     likelihood_representation,
+    warn_constant_offset_confounding,
 )
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.observation_error import AggregationError
 
-from .co2_model import _materialize_model_boundaries, _normalise_offset_args
+from .co2_model import _normalise_offset_args
 from .co2_o2_fixed_ou import linked_fixed_ou_alignment
 
 
@@ -154,7 +155,7 @@ def _add_co2_o2_baseline_components(
     observations: xr.DataArray,
     co2_sensitivity: xr.DataArray,
     o2_sensitivity: xr.DataArray,
-    boundary: Mapping[str, BoundBoundary] | None = None,
+    boundary: Mapping[str, Boundary] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[AffineConcentrationTerm]:
@@ -177,12 +178,9 @@ def _add_co2_o2_baseline_components(
                 if native_dim in value.dims else value
                 for name, value in bound.data.data_vars.items()
             })
-            boundary_result = add_boundary(
-                replace(bound, data=padded), output_dim=output_dim,
-                prefix=f"{channel}_", owner=channel,
-            )
+            boundary_result = replace(bound, data=padded).add(output_dim=output_dim, prefix=f"{channel}_", owner=channel)
             components.append(boundary_result)
-            boundaries.append(boundary_result.term.output)
+            boundaries.append(boundary_result.output)
         channel_offset_prior = (offset_prior or {}).get(channel)
         if channel_offset_prior is not None:
             native_dim = f"{channel}_offset_observation"
@@ -199,20 +197,19 @@ def _add_co2_o2_baseline_components(
                 output_dim=native_dim, drop_first=drop_first, per_site=per_site,
                 namespace=f"{channel}_",
             )
-            if boundary_result is not None and isinstance(bound, AdditiveBoundary):
-                rows = observations.indexes[output_dim].get_level_values("species") == channel
-                design = boundary_result.blocks[0].design
-                warn_boundary_offset_confounding(
-                    design.isel({design.dims[1]: 0}).values[rows], drop_first=drop_first, channel=channel,
+            if boundary_result is not None:
+                warn_constant_offset_confounding(
+                    [boundary_result], drop_first=drop_first, channel=channel,
+                    rows=observations.indexes[output_dim].get_level_values("species") == channel,
                 )
             design = _pad_channel_design(result.design, observations, channel)
             offset = pm.Deterministic(
                 f"{channel}_offset", pt.dot(add_model_data(design, f"{channel}_offset_design"), result.coefficients),
                 dims=output_dim,
             )
-            components.append(AffineConcentrationTerm(
-                ConcentrationTerm.absolute(offset), xr.zeros_like(observations),
-                (AffineBlock(design, result.coefficients),), (result.latent,),
+            components.append(AffineConcentrationTerm.absolute(
+                offset, fixed_contribution=xr.zeros_like(observations),
+                blocks=(AffineBlock(design, result.coefficients),), sampled_rvs=(result.latent,),
             ))
             offsets.append(offset)
     if boundaries:
@@ -233,7 +230,7 @@ def build_co2_o2_model(
     retained_prior: CorrelatedLognormalPrior,
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
-    boundary: Mapping[str, BoundBoundary] | None = None,
+    boundary: Mapping[str, Boundary] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
@@ -270,7 +267,7 @@ def build_co2_o2_model(
     absolute.
     After restoring sample coordinates, direct callers must restore absolute
     ``y`` with
-    :func:`~openghg_inversions.models.boundary.restore_absolute_predictives`
+    :func:`~openghg_inversions.rhime.co2.boundary_output.restore_absolute_predictives`
     before serialization or postprocessing. Ordinary recipe runners do this
     through
     :func:`~openghg_inversions.rhime.co2.co2_o2_runner.annotate_co2_o2_trace`.
@@ -316,10 +313,10 @@ def build_co2_o2_model(
             resolution, or registered coordinate alignment fails.
     """
     (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd), boundary, priors = (
-        _materialize_model_boundaries(
+        dask_compute(*to_dense_tree((
             (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd),
-            boundary or {}, priors={"amplitude": site_amplitude_prior, "offset": offset_prior},
-        )
+            dict(boundary or {}), {"amplitude": site_amplitude_prior, "offset": offset_prior},
+        )))
     )
     site_amplitude_prior, offset_prior = priors["amplitude"], priors["offset"]
     joint_sensitivity = _gather_co2_o2_sensitivity(
@@ -357,7 +354,7 @@ def build_co2_o2_model(
             offset_prior=offset_prior,
             offset_args=offset_args,
         )
-        mean_signal = joint_signal + sum(baseline.term.output for baseline in baseline_components)
+        mean_signal = joint_signal + sum(baseline.output for baseline in baseline_components)
         fixed = add_model_data(fixed_prior_contribution)
         modelled = pm.Deterministic(
             "modelled_concentration",
@@ -366,7 +363,7 @@ def build_co2_o2_model(
         )
 
         likelihood_mean, likelihood_observations, shift = likelihood_representation(
-            [ConcentrationTerm.absolute(fixed + joint_signal), *(term.term for term in baseline_components)],
+            [ConcentrationTerm.absolute(fixed + joint_signal), *baseline_components],
             observations,
             modelled,
         )

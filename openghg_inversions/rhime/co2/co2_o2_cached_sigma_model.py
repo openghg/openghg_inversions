@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import replace
 from typing import Any
 
 import numpy as np
+from dask import compute as dask_compute
 import pymc as pm
 import xarray as xr
 
+from openghg_inversions.array_ops import to_dense_tree
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models import (
     StateActivity,
@@ -19,11 +20,10 @@ from openghg_inversions.models import (
     registered_model,
     resolve_state_activity,
 )
-from openghg_inversions.models.boundary import BoundBoundary, boundary_output_roles, boundary_output_units
+from openghg_inversions.models.boundary import Boundary
 from openghg_inversions.models.components import (
     AffineBlock,
     AffineConcentrationTerm,
-    ConcentrationTerm,
     _add_prepared_correlated_lognormal_state_with_activity,
     add_model_data,
     likelihood_representation,
@@ -43,7 +43,6 @@ from .co2_cached_sigma_model import (
     _materialize_cached_linear_projection,
     _site_values,
 )
-from .co2_model import _materialize_model_boundaries
 from .co2_o2_fixed_ou import linked_fixed_ou_alignment
 from .co2_o2_model import (
     _add_co2_o2_baseline_components,
@@ -64,7 +63,7 @@ def build_co2_o2_cached_sigma_model(
     site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
-    boundary: Mapping[str, BoundBoundary] | None = None,
+    boundary: Mapping[str, Boundary] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
@@ -131,10 +130,10 @@ def build_co2_o2_cached_sigma_model(
             positive amplitudes or explicit double precision are invalid.
     """
     (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd), boundary, priors = (
-        _materialize_model_boundaries(
+        dask_compute(*to_dense_tree((
             (observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd),
-            boundary or {}, priors={"amplitude": site_amplitude_prior, "offset": offset_prior},
-        )
+            dict(boundary or {}), {"amplitude": site_amplitude_prior, "offset": offset_prior},
+        )))
     )
     site_amplitude_prior, offset_prior = priors["amplitude"], priors["offset"]
     validate_observation_error_arrays(
@@ -192,8 +191,8 @@ def build_co2_o2_cached_sigma_model(
             output_name="co2_o2_affine_contribution",
         )
         terms = [
-            AffineConcentrationTerm(
-                term=ConcentrationTerm.absolute(affine),
+            AffineConcentrationTerm.absolute(
+                affine,
                 fixed_contribution=fixed_prior_contribution + fixed_flux,
                 blocks=(AffineBlock(active_design,
                                     state.state[activity.active_indices]),) if activity.n_active else (),
@@ -209,14 +208,13 @@ def build_co2_o2_cached_sigma_model(
             offset_args=offset_args,
         )
         terms.extend(baselines)
-        affine_terms = [term.term for term in terms]
         mean = pm.Deterministic(
             "modelled_concentration",
-            sum(term.output for term in affine_terms),
+            sum(term.output for term in terms),
             dims=output_dim,
         )
         likelihood_mean, likelihood_observations, shift = likelihood_representation(
-            affine_terms,
+            terms,
             observations,
             mean,
         )
@@ -234,10 +232,4 @@ def build_co2_o2_cached_sigma_model(
             site_amplitude_prior=site_amplitude_prior,
             output_dim=output_dim,
         )
-        return replace(
-            cached,
-            boundary_roles={role: name for channel, bound in (boundary or {}).items()
-                            for role, name in boundary_output_roles(bound, prefix=f"{channel}_").items()},
-            boundary_units={name: unit for channel, bound in (boundary or {}).items()
-                            for name, unit in boundary_output_units(bound, prefix=f"{channel}_").items()},
-        )
+        return cached

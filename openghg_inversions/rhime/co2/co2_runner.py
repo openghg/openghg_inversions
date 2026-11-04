@@ -15,22 +15,14 @@ from typing import Any
 
 import xarray as xr
 from dask.array import Array
+from dask import compute as dask_compute
 from dask.base import unpack_collections
 
 from openghg_inversions._serialization_codecs import _json_value
+from openghg_inversions.array_ops import to_dense_tree
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_data import PreparedInputs
-from openghg_inversions.inversion_inputs import DatetimeLike
-from openghg_inversions.models.boundary import (
-    OPERAND_NAMES,
-    BoundBoundary,
-    boundary_output_metadata,
-    boundary_output_roles,
-    boundary_output_units,
-    prepare_boundary,
-    require_centered_precision,
-    restore_absolute_predictives,
-)
+from openghg_inversions.models.boundary import Boundary, BoundaryChoice, CenteredOperands
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.priors import PriorArgs, prior_records
 from openghg_inversions.models.scalar_sigma import (
@@ -56,10 +48,10 @@ from openghg_inversions.rhime.materialization import (
     materialize_pymc_inputs,
 )
 from openghg_inversions.rhime.outputs import annotate_likelihood_trace
-from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
 
-from .co2_model import _materialize_model_boundaries, _normalise_offset_args, build_co2_model
+from .boundary_output import restore_absolute_predictives
+from .co2_model import _normalise_offset_args, build_co2_model
 from .co2_preparation import Co2PreparedInputs
 
 _CO2_SCIENTIFIC_INPUT_NAMES = (
@@ -184,20 +176,16 @@ def co2_model_input_names(
     prepared_inputs: Co2PreparedInputs,
     *,
     preserve_prepared_fixed_mismatch: bool,
-    use_bc: bool = False,
-    use_bc_mean_shift: bool = False,
 ) -> tuple[str, ...]:
-    """Declare prepared arrays consumed by the selected CO2 components.
+    """Declare prepared non-boundary arrays consumed by the CO2 components.
+
+    Boundary transport is materialized with its bound boundary instead.
 
     Args:
         prepared_inputs: Prepared RHIME artifact containing the candidate
             inversion inputs.
         preserve_prepared_fixed_mismatch: Include a prepared fixed mismatch
             field when present.
-        use_bc: Include the prepared boundary-condition sensitivity.
-        use_bc_mean_shift: Include the prepared dimensionless boundary correction
-            operator ``H_bc_mass`` and
-            ``bc_centering_weights``. Requires ``use_bc=True``.
 
     Returns:
         Names of the arrays to materialize for model construction.
@@ -207,14 +195,6 @@ def co2_model_input_names(
     """
     inputs = prepared_inputs.inv_inputs
     names = list(_CO2_SCIENTIFIC_INPUT_NAMES)
-    if use_bc:
-        names.extend(OPERAND_NAMES if "H_bc_anomaly" in inputs else ("H_bc",))
-    if use_bc_mean_shift:
-        if not use_bc:
-            raise ValueError("A boundary mean shift requires use_bc=True.")
-        if "H_bc_anomaly" not in inputs:
-            raise ValueError("Additive boundaries require native centered boundary operands.")
-        names.append("bc_centering_weights")
     names.extend(aggregation_error_input_names(inputs, prepared_inputs.aggregation_error_mode))
     if "state_is_active" in inputs:
         names.append("state_is_active")
@@ -322,63 +302,31 @@ def describe_co2_likelihood_kwargs(value: Any) -> Any:
     return _json_value(value)
 
 
-def _validate_bound_boundary_options(
-    boundary: BoundBoundary | Mapping[str, BoundBoundary] | None, **choices: Any,
-) -> None:
-    """Keep supplied fitted records separate from raw scientific choices."""
-    competing = [name for name, value in choices.items() if value is not None and value is not False]
-    if boundary is not None and competing:
-        raise ValueError(f"boundary replaces raw boundary choices; omit {competing!r}.")
+def _bind_co2_boundary(
+    inputs: xr.Dataset, boundary: BoundaryChoice | None,
+) -> Boundary | None:
+    """Bind a boundary choice once to the prepared absolute or centered transport."""
+    if boundary is None:
+        return None
+    if "H_bc_anomaly" in inputs:
+        transport: xr.DataArray | CenteredOperands = CenteredOperands.from_dataset(inputs)
+    elif "H_bc" in inputs:
+        transport = inputs["H_bc"]
+    else:
+        raise ValueError("A boundary choice requires prepared H_bc or centered boundary operands.")
+    return boundary.bind(inputs["mf"], transport)
 
 
-def _prepare_co2_boundary(
-    inputs: xr.Dataset, *, use_bc: bool, bc_prior: PriorArgs | None = None,
-    bc_state_activity: StateActivity | None = None, bc_mean_shift_prior: PriorArgs | None = None,
-    bc_anomaly_scale: float | None = None, bc_freq: str | None = None,
-    bc_anchor_time: DatetimeLike | None = None,
-    boundary: BoundBoundary | None = None,
-) -> BoundBoundary | None:
-    """Normalize the configured boundary once, before computing payloads."""
-    _validate_bound_boundary_options(
-        boundary, use_bc=use_bc, bc_prior=bc_prior, bc_state_activity=bc_state_activity,
-        bc_mean_shift_prior=bc_mean_shift_prior, bc_anomaly_scale=bc_anomaly_scale,
-        bc_freq=bc_freq, bc_anchor_time=bc_anchor_time,
-    )
-    if boundary is not None:
-        if boundary_output_metadata(boundary).get("boundary_representation") == "centered-v1":
-            require_centered_precision()
-        return boundary
-    if not use_bc and (bc_freq is not None or bc_anchor_time is not None):
-        raise ValueError("Boundary period choices require use_bc=True.")
-    if (use_bc and ("H_bc" in inputs or "H_bc_anomaly" in inputs)
-            and bc_mean_shift_prior is None and bc_anomaly_scale is None and bc_prior is None):
-        bc_prior = dict(DEFAULT_BC_PRIOR)
-    return prepare_boundary(
-        inputs.mf,
-        boundary_sensitivity=inputs.get("H_bc") if use_bc and "H_bc_anomaly" not in inputs else None,
-        boundary_operands=inputs[list(OPERAND_NAMES)] if use_bc and "H_bc_anomaly" in inputs else None,
-        bc_prior=bc_prior, bc_state_activity=bc_state_activity,
-        bc_mean_shift_prior=bc_mean_shift_prior, bc_anomaly_scale=bc_anomaly_scale,
-        bc_centering_weights=inputs.get("bc_centering_weights") if bc_mean_shift_prior is not None else None,
-        bc_frequency=bc_freq, bc_anchor_time=bc_anchor_time,
-    )
-
-
-def _materialize_co2_boundary_inputs(
+def _materialize_co2_inputs(
     prepared: PreparedInputs, names: Collection[str], priors: Mapping[str, PriorArgs],
-    boundary: BoundBoundary | None,
-) -> tuple[xr.Dataset, dict[str, PriorArgs], BoundBoundary | None]:
-    """Compute selected core and boundary arrays and prior parameters together."""
+    boundary: Boundary | None,
+) -> tuple[xr.Dataset, dict[str, PriorArgs], Boundary | None]:
+    """Compute selected arrays, the bound boundary and prior parameters together."""
     selected = prepared.inv_inputs[list(names)]
-    payload = tuple(selected[name] for name in selected.data_vars)
-    dense, boundaries, eager_priors = _materialize_model_boundaries(
-        payload, {} if boundary is None else {"boundary": boundary}, priors=priors,
-    )
-    data = xr.Dataset(dict(zip(selected.data_vars, dense, strict=True)))
+    data, eager_priors, boundary = dask_compute(*to_dense_tree((selected, dict(priors), boundary)))
     variables = dict(prepared.inv_inputs.variables)
     variables.update(data.variables)
-    model_inputs = prepared.inv_inputs._replace(variables=variables)
-    return model_inputs, eager_priors, boundaries.get("boundary")
+    return prepared.inv_inputs._replace(variables=variables), eager_priors, boundary
 
 
 def materialize_co2_inputs(
@@ -390,22 +338,16 @@ def materialize_co2_inputs(
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     no_model_error: bool = False,
-    use_bc: bool = False,
-    boundary: BoundBoundary | None = None,
-    bc_prior: PriorArgs | None = None,
-    bc_state_activity: StateActivity | None = None,
-    bc_mean_shift_prior: PriorArgs | None = None,
-    bc_anomaly_scale: float | None = None,
-    bc_freq: str | None = None,
-    bc_anchor_time: DatetimeLike | None = None,
+    boundary: BoundaryChoice | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
-) -> tuple[xr.Dataset, dict[str, PriorArgs], BoundBoundary | None]:
+) -> tuple[xr.Dataset, dict[str, PriorArgs], Boundary | None]:
     """Jointly materialize selected CO2 inputs, enabled priors and fixed mismatch.
 
     Nonboundary prior parameters are keyed by graph variables: ``sigma``,
     ``offset_latent``, ``sigma_site``, ``ou_site_amplitude`` or ``sigma_global``.
-    The returned boundary owns its eager resolved prior, periods and activity.
+    The boundary choice is bound once to the prepared transport and returned
+    as an eager bound boundary.
     Explicit labelled fixed mismatch is installed in the returned Dataset. Construction consumes these numerical
     values separately from the unchanged model choices. Unselected arrays and
     arbitrary custom likelihood options remain borrowed and uncomputed.
@@ -425,21 +367,8 @@ def materialize_co2_inputs(
             additional numerical option materialization.
         no_model_error: Omit inferred additive error; cannot accompany a sigma
             prior, grouping or replacement likelihood.
-        use_bc: Include prepared boundary sensitivity.
-        boundary: Already bound scientific boundary. Replaces raw boundary
-            choices and participates in joint materialization without rebinding.
-        bc_prior: Optional boundary-scale prior, enabled only with ``use_bc``.
-        bc_state_activity: Optional boundary active/fixed-state policy.
-        bc_mean_shift_prior: Prior for the global additive boundary mean
-            correction, in observation concentration units. Selects centred
-            additive corrections and requires ``use_bc=True``, native centered ``H_bc_mass``, ``bc_centering_weights`` and
-            ``bc_anomaly_scale``. Cannot be
-            combined with multiplicative ``bc_prior`` or ``bc_state_activity``.
-        bc_anomaly_scale: Finite, nonnegative Gaussian standard deviation in
-            observation concentration units before weighted centring. Zero
-            retains only the common mean without sampled contrasts.
-        bc_freq: Resolved boundary frequency used to validate temporal weights before compute.
-        bc_anchor_time: Optional origin for the same boundary period alignment.
+        boundary: Optional boundary choice, bound to the prepared ``H_bc`` or
+            centered operands. ``None`` omits the boundary.
         offset_prior: Optional prior enabling concentration offsets.
         offset_args: Offset frequency, ``per_site`` and ``drop_first`` settings.
 
@@ -451,7 +380,8 @@ def materialize_co2_inputs(
 
     Raises:
         ValueError: If model choices conflict, required prepared arrays are
-            absent, or a labelled mismatch does not align exactly.
+            absent, a centered boundary uses a custom likelihood callback, or a
+            labelled mismatch does not align exactly.
     """
     if no_model_error and (sigma_alignment is not None or sigma_prior is not None):
         raise ValueError("`no_model_error=True` cannot be combined with `sigma_alignment` or `sigma_prior`.")
@@ -470,15 +400,12 @@ def materialize_co2_inputs(
             "pass its options in likelihood_kwargs."
         )
     prepared = prepared_inputs
-    if use_bc and "H_bc_anomaly" in prepared.inv_inputs:
-        if likelihood_builder is not None and likelihood_builder is not add_fixed_ou_gaussian_likelihood:
-            raise ValueError("Centered runner replay supports the built-in fixed-OU likelihood, not custom callbacks.")
-        require_centered_precision()
+    if (boundary is not None and "H_bc_anomaly" in prepared.inv_inputs
+            and likelihood_builder not in (None, add_fixed_ou_gaussian_likelihood)):
+        raise ValueError("Centered runner replay supports the built-in fixed-OU likelihood, not custom callbacks.")
     names = co2_model_input_names(
         prepared,
         preserve_prepared_fixed_mismatch=(likelihood_builder is None and fixed_model_mismatch is None),
-        use_bc=use_bc and boundary is None,
-        use_bc_mean_shift=bc_mean_shift_prior is not None and boundary is None,
     )
     backend_inputs = prepared.rhime_inputs
     if isinstance(fixed_model_mismatch, xr.DataArray):
@@ -499,17 +426,9 @@ def materialize_co2_inputs(
         priors["sigma_site"] = likelihood_options["site_amplitude_prior"]
     elif likelihood_builder is add_fixed_ou_gaussian_likelihood and "site_amplitude_prior" in likelihood_options:
         priors["ou_site_amplitude"] = likelihood_options["site_amplitude_prior"]
-    boundary = _prepare_co2_boundary(
-        prepared.inv_inputs, use_bc=use_bc, bc_prior=bc_prior, bc_state_activity=bc_state_activity,
-        bc_mean_shift_prior=bc_mean_shift_prior, bc_anomaly_scale=bc_anomaly_scale,
-        bc_freq=bc_freq, bc_anchor_time=bc_anchor_time,
-        boundary=boundary,
-    )
     # Boundary labels are checked before any selected numerical payload is computed.
-    model_inputs, priors, boundary = _materialize_co2_boundary_inputs(
-        backend_inputs, names, priors, boundary,
-    )
-    return model_inputs, priors, boundary
+    bound = _bind_co2_boundary(prepared.inv_inputs, boundary)
+    return _materialize_co2_inputs(backend_inputs, names, priors, bound)
 
 
 
@@ -518,20 +437,13 @@ def build_co2_from_materialized(
     *,
     prepared_inputs: Co2PreparedInputs,
     priors: Mapping[str, PriorArgs],
-    boundary: BoundBoundary | None = None,
+    boundary: Boundary | None = None,
     sigma_alignment: SigmaAlignment | None = None,
     sigma_prior: PriorArgs | None = None,
     fixed_model_mismatch: float | xr.DataArray | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     no_model_error: bool = False,
-    use_bc: bool = False,
-    bc_prior: PriorArgs | None = None,
-    bc_state_activity: StateActivity | None = None,
-    bc_freq: str | None = None,
-    bc_anchor_time: DatetimeLike | None = None,
-    bc_mean_shift_prior: PriorArgs | None = None,
-    bc_anomaly_scale: float | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> RhimeModelBuildResult:
@@ -553,9 +465,7 @@ def build_co2_from_materialized(
         model_inputs: Selected scientific arrays already materialized together.
         prepared_inputs: Preparation supplying aggregation mode and provenance.
         priors: Materialized prior parameters under their concrete graph names.
-        boundary: Jointly materialized boundary for this fit, or None when disabled.
-        bc_freq: Descriptive frequency already resolved in the bound boundary.
-        bc_anchor_time: Descriptive period anchor already resolved in the boundary.
+        boundary: Jointly materialized bound boundary, or None when disabled.
 
     Returns:
         Constructed PyMC model with component-declared scientific roles, units
@@ -566,12 +476,8 @@ def build_co2_from_materialized(
             scientific components reject the supplied choices.
     """
     prepared = prepared_inputs
-    if use_bc and "H_bc_anomaly" in prepared.inv_inputs:
-        if likelihood_builder is not None and likelihood_builder is not add_fixed_ou_gaussian_likelihood:
-            raise ValueError("Centered runner replay supports the built-in fixed-OU likelihood, not custom callbacks.")
-        require_centered_precision()
     names = co2_model_input_names(
-        prepared, use_bc=False,
+        prepared,
         preserve_prepared_fixed_mismatch=likelihood_builder is None and fixed_model_mismatch is None,
     )
     prepared_mismatch = (
@@ -639,8 +545,9 @@ def build_co2_from_materialized(
     }
     if "error" in model.named_vars:
         variable_roles["observation_error"] = "error"
-    if boundary is not None:
-        variable_roles.update(boundary_output_roles(boundary))
+    boundary_outputs = boundary.outputs() if boundary is not None else None
+    if boundary_outputs is not None:
+        variable_roles.update(boundary_outputs.roles)
     if offset_prior is not None:
         variable_roles["offset_concentration"] = "offset"
     for role, name in {
@@ -653,16 +560,6 @@ def build_co2_from_materialized(
     if offset_prior is not None:
         frequency, drop_first, per_site = _normalise_offset_args(offset_args)
         resolved_offset_args = {"offset_freq": frequency, "drop_first": drop_first, "per_site": per_site}
-    boundary_metadata: dict[str, Any] = (
-        boundary_output_metadata(boundary) if boundary is not None else {"boundary_formulation": None}
-    )
-    if use_bc:
-        if "boundary_representation" in boundary_metadata:
-            boundary_metadata.update(bc_frequency=bc_freq,
-                                     bc_anchor_time=None if bc_anchor_time is None else str(bc_anchor_time))
-        else:
-            boundary_metadata.pop("bc_frequency", None)
-            boundary_metadata.pop("bc_anchor_time", None)
     built = RhimeModelBuildResult(
         model=model,
         output_contract=OutputContract(
@@ -672,9 +569,9 @@ def build_co2_from_materialized(
                 "kind": "builtin",
                 "prior": "correlated arithmetic-moment lognormal",
                 "no_model_error": no_model_error,
-                "use_bc": use_bc or boundary is not None,
-                **boundary_metadata,
-                "boundary_units": boundary_output_units(boundary) if boundary is not None else {},
+                "use_bc": boundary is not None,
+                **(boundary_outputs.metadata if boundary_outputs is not None else {"boundary_formulation": None}),
+                "boundary_units": boundary_outputs.units if boundary_outputs is not None else {},
                 "add_offset": offset_prior is not None,
                 "offset_args": resolved_offset_args,
                 "likelihood": (

@@ -10,8 +10,13 @@ import xarray as xr
 from dask import delayed
 from dask import array as da
 
-from openghg_inversions.models.boundary import AdditiveBoundary, MultiplicativeBoundary
-from openghg_inversions.models.components import AffineBlock, AffineConcentrationTerm, ConcentrationTerm
+from openghg_inversions.models.boundary import (
+    AdditiveBoundary,
+    AdditiveChoice,
+    MultiplicativeBoundary,
+    MultiplicativeChoice,
+)
+from openghg_inversions.models.components import AffineBlock, AffineConcentrationTerm
 from openghg_inversions.rhime.co2 import co2_cached_sigma_model, co2_cached_sigma_runner, co2_runner
 from openghg_inversions.rhime.co2.co2_o2_model import _pad_channel_design
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
@@ -56,9 +61,9 @@ def _lower_until_target(monkeypatch, terms, observations):
 
 
 def _affine_term(fixed, *designs):
-    return AffineConcentrationTerm(
-        ConcentrationTerm.absolute(pt.zeros(2)), fixed,
-        tuple(AffineBlock(design, pt.ones(design.shape[1])) for design in designs), (),
+    return AffineConcentrationTerm.absolute(
+        pt.zeros(2), fixed_contribution=fixed,
+        blocks=tuple(AffineBlock(design, pt.ones(design.shape[1])) for design in designs), sampled_rvs=(),
     )
 
 
@@ -99,9 +104,20 @@ def test_cached_lowering_keeps_independent_same_named_coefficient_axes(monkeypat
     np.testing.assert_array_equal(lowered["fixed_contribution"], [3.0, 3.0])
 
 
+def _record_binding(monkeypatch):
+    calls = []
+    for family in (MultiplicativeChoice, AdditiveChoice):
+        def record(self, *args, _bind=family.bind, **kwargs):
+            calls.append(self)
+            return _bind(self, *args, **kwargs)
+
+        monkeypatch.setattr(family, "bind", record)
+    return calls
+
+
 @pytest.mark.parametrize("cached", [False, True])
 @pytest.mark.parametrize("mode", ["absent", "disabled", "default", "explicit", "additive"])
-def test_materialization_runner_resolves_boundary_prior_once(monkeypatch, mode, cached):
+def test_materialization_runner_binds_boundary_choice_once(monkeypatch, mode, cached):
     from test_co2_affine_output import _prepared
 
     prepared, _ = _prepared()
@@ -110,9 +126,9 @@ def test_materialization_runner_resolves_boundary_prior_once(monkeypatch, mode, 
                           coords={"nmeasure": prepared.inv_inputs.nmeasure, "bc_region": ["north"]},
                           attrs={"units": "ppm"}),
     )
-    choices = {"use_bc": mode != "disabled"}
+    choice = None if mode == "disabled" else MultiplicativeChoice(dict(DEFAULT_BC_PRIOR))
     if mode == "explicit":
-        choices["bc_prior"] = {"pdf": "normal", "mu": 1.2, "sigma": 0.3}
+        choice = MultiplicativeChoice({"pdf": "normal", "mu": 1.2, "sigma": 0.3})
     if mode == "additive":
         inputs = inputs.drop_vars("H_bc").assign(
             H_bc_anomaly=xr.DataArray([[0.1]], dims=("nmeasure", "bc_region"), attrs={"units": "ppm"}),
@@ -122,18 +138,12 @@ def test_materialization_runner_resolves_boundary_prior_once(monkeypatch, mode, 
                 coords={"bc_curtain": ["north"], "bc_period": [inputs.time.values[0]]}, attrs={"units": "1"}),
         )
         inputs.attrs["boundary_representation"] = "centered-v1"
-        choices.update(bc_mean_shift_prior={"pdf": "normal", "mu": 0.0, "sigma": 0.2}, bc_anomaly_scale=0.0)
+        choice = AdditiveChoice({"pdf": "normal", "mu": 0.0, "sigma": 0.2}, 0.0)
     if mode == "absent":
         inputs = inputs.drop_vars("H_bc")
     prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
-    calls = []
-    prepare = co2_runner.prepare_boundary
+    calls = _record_binding(monkeypatch)
 
-    def record_boundary(*args, **kwargs):
-        calls.append(kwargs)
-        return prepare(*args, **kwargs)
-
-    monkeypatch.setattr(co2_runner, "prepare_boundary", record_boundary)
     def build_boundary():
         if cached:
             class BoundaryReached(Exception):
@@ -146,58 +156,51 @@ def test_materialization_runner_resolves_boundary_prior_once(monkeypatch, mode, 
             with pytest.raises(BoundaryReached) as reached:
                 co2_cached_sigma_runner.build_rhime_co2_cached_sigma(
                     prepared_inputs=prepared, tau_hours=3.0,
-                    site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.2}, **choices,
+                    site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.2}, boundary=choice,
                 )
             return reached.value.args[0]
-        return co2_runner.materialize_co2_inputs(prepared_inputs=prepared, **choices)[2]
+        return co2_runner.materialize_co2_inputs(prepared_inputs=prepared, boundary=choice)[2]
 
     if mode == "absent":
-        with pytest.raises(ValueError, match="missing required"):
+        with pytest.raises(ValueError, match="requires prepared H_bc or centered boundary operands"):
             build_boundary()
         assert calls == []
         return
     boundary = build_boundary()
-    assert len(calls) == 1
     if mode == "disabled":
         assert boundary is None
-        assert calls[0]["bc_prior"] is None
-    elif mode == "additive":
+        assert calls == []
+        return
+    assert calls == [choice]
+    assert boundary.choice == choice
+    if mode == "additive":
         assert isinstance(boundary, AdditiveBoundary)
-        assert calls[0]["bc_prior"] is None
-        assert boundary.mean_prior == choices["bc_mean_shift_prior"]
     else:
         assert isinstance(boundary, MultiplicativeBoundary)
-        expected = DEFAULT_BC_PRIOR if mode == "default" else choices["bc_prior"]
-        assert calls[0]["bc_prior"] == boundary.prior == expected
+        expected = DEFAULT_BC_PRIOR if mode == "default" else {"pdf": "normal", "mu": 1.2, "sigma": 0.3}
+        assert boundary.choice.prior == expected
 
 
-def test_linked_runner_defaults_only_the_selected_boundary_once(monkeypatch):
+def test_linked_runner_binds_only_the_selected_boundary_once(monkeypatch):
     from openghg_inversions.rhime.co2 import co2_o2_runner
     from test_rhime_co2_o2 import _independent_error
     from test_rhime_co2_o2_baselines import _prepared
 
     prepared = _prepared(("co2", "o2"))
-    calls, forwarded = [], []
-    prepare = co2_o2_runner.prepare_boundary
-
-    def record_boundary(*args, **kwargs):
-        calls.append(kwargs)
-        return prepare(*args, **kwargs)
+    forwarded = []
+    calls = _record_binding(monkeypatch)
 
     def capture_builder(**kwargs):
         forwarded.append(kwargs["boundary"])
         raise RuntimeError("boundaries reached")
 
-    monkeypatch.setattr(co2_o2_runner, "prepare_boundary", record_boundary)
     monkeypatch.setattr(co2_o2_runner, "build_co2_o2_model", capture_builder)
+    choice = MultiplicativeChoice(dict(DEFAULT_BC_PRIOR))
     with pytest.raises(RuntimeError, match="boundaries reached"):
         co2_o2_runner.build_rhime_co2_o2(
             prepared_inputs=prepared, independent_error_sd=_independent_error(prepared),
-            use_bc={"co2": True, "o2": False},
+            boundary={"co2": choice},
         )
     assert set(forwarded[0]) == {"co2"}
-    assert forwarded[0]["co2"].prior == DEFAULT_BC_PRIOR
-    selected = [call for call in calls if call["boundary_sensitivity"] is not None]
-    assert len(selected) == 1
-    assert selected[0]["bc_prior"] == DEFAULT_BC_PRIOR
-    assert all(call["bc_prior"] is None for call in calls if call["boundary_sensitivity"] is None)
+    assert forwarded[0]["co2"].choice.prior == DEFAULT_BC_PRIOR
+    assert calls == [choice]

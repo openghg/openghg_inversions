@@ -3,12 +3,12 @@
 import dask.array as da
 from dask.callbacks import Callback
 import pandas as pd
+import pytensor
 import pytest
 import xarray as xr
 
-from openghg_inversions.boundary_sensitivity import (
-    align_boundary_operands, bind_boundary_sensitivity,
-)
+from openghg_inversions.boundary_sensitivity import bind_boundary_sensitivity
+from openghg_inversions.models.boundary import CenteredOperands, MultiplicativeChoice
 
 
 @pytest.mark.parametrize("frequency,anchor", [(None, None), ("monthly", None), ("1D", "2020-01-30")])
@@ -25,10 +25,9 @@ def test_reusable_ordinary_and_centered_share_selected_periods(frequency, anchor
         units="ppm", boundary_sensitivity_preparation="raw-spatial")
     observations = xr.DataArray([1., 2.], dims="nmeasure", coords={"nmeasure": ["c", "a"]})
     calls = []
-    with Callback(posttask=lambda *args: calls.append(args)):
+    with pytensor.config.change_flags(floatX="float64"), Callback(posttask=lambda *args: calls.append(args)):
         ordinary = bind_boundary_sensitivity(absolute, observations, frequency=frequency, anchor_time=anchor)
-        centered = align_boundary_operands(raw, frequency=frequency, anchor_time=anchor,
-                                          observation_labels=observations.nmeasure)
+        centered = CenteredOperands.from_dataset(raw).bind(observations, frequency=frequency, anchor_time=anchor)
     assert not calls
     assert hasattr(ordinary.data, "__dask_graph__")
     expected = (centered.H_bc_anomaly + centered.bc_reference * centered.H_bc_mass).transpose(*ordinary.dims)
@@ -53,7 +52,6 @@ def test_ordinary_binding_rejects_invalid_or_ignored_anchor(frequency, anchor):
 def test_public_linked_preparation_uses_observation_times_for_boundary_periods(centered):
     """Stale boundary auxiliaries cannot change the authoritative monthly mask."""
     import numpy as np
-    import pytensor
 
     from openghg_inversions.rhime.co2 import prepare_co2_o2_inputs
     from openghg_inversions.rhime.co2.co2_o2_runner import build_rhime_co2_o2
@@ -85,7 +83,10 @@ def test_public_linked_preparation_uses_observation_times_for_boundary_periods(c
     with pytensor.config.change_flags(floatX="float64"):
         built = build_rhime_co2_o2(
             prepared_inputs=prepared, independent_error_sd=_independent_error(prepared),
-            bc_freq="monthly", bc_prior={channel: {"pdf": "normal", "mu": 1., "sigma": .1} for channel in boundaries},
+            boundary={
+                channel: MultiplicativeChoice({"pdf": "normal", "mu": 1., "sigma": .1}, frequency="monthly")
+                for channel in boundaries
+            },
         )
         point = built.model.initial_point()
     for channel in boundaries:
@@ -97,10 +98,7 @@ def test_public_linked_preparation_uses_observation_times_for_boundary_periods(c
 @pytest.mark.parametrize("lazy_time", [False, True])
 def test_indexed_boundary_time_conflict_is_rejected_without_computing_payload(centered, lazy_time):
     import numpy as np
-    import pytensor
     from dask import delayed
-
-    from openghg_inversions.models.boundary import bind_boundary_operands
 
     @delayed
     def forbidden_payload():
@@ -118,12 +116,9 @@ def test_indexed_boundary_time_conflict_is_rejected_without_computing_payload(ce
     }, attrs={"units": "ppm"})
     with pytensor.config.change_flags(floatX="float64"), pytest.raises(ValueError, match="Indexed boundary time labels conflict"):
         if centered:
-            bind_boundary_operands(
-                xr.Dataset({"H_bc_anomaly": payload, "H_bc_mass": xr.ones_like(payload).assign_attrs(units="1"),
-                            "bc_reference": xr.DataArray(400., attrs={"units": "ppm"})},
-                           attrs={"boundary_representation": "centered-v1"}),
-                observations, frequency="monthly",
-            )
+            CenteredOperands(
+                payload, xr.ones_like(payload).assign_attrs(units="1"), xr.DataArray(400., attrs={"units": "ppm"}),
+            ).bind(observations, frequency="monthly")
         else:
             bind_boundary_sensitivity(payload, observations, frequency="monthly")
 
@@ -133,7 +128,6 @@ def test_indexed_boundary_time_conflict_is_rejected_without_computing_payload(ce
 def test_public_linked_native_time_axis_builds_with_raw_boundary_operands(centered, frequency):
     """A native time axis can consume centered operands indexed by nmeasure."""
     import numpy as np
-    import pytensor
 
     from openghg_inversions.rhime.co2 import prepare_co2_o2_inputs
     from openghg_inversions.rhime.co2.co2_o2_runner import build_rhime_co2_o2
@@ -164,8 +158,8 @@ def test_public_linked_native_time_axis_builds_with_raw_boundary_operands(center
     original = operands.copy(deep=True)
     with pytensor.config.change_flags(floatX="float64"):
         built = build_rhime_co2_o2(
-            prepared_inputs=prepared, independent_error_sd=_independent_error(prepared), bc_freq=frequency,
-            bc_prior={"co2": {"pdf": "normal", "mu": 1., "sigma": .1}},
+            prepared_inputs=prepared, independent_error_sd=_independent_error(prepared),
+            boundary={"co2": MultiplicativeChoice({"pdf": "normal", "mu": 1., "sigma": .1}, frequency=frequency)},
         )
         assert built.model.initial_point()["co2_bc"].size == (2 if frequency is None else 4)
     xr.testing.assert_identical(operands, original)
@@ -177,9 +171,6 @@ def test_public_linked_native_time_axis_builds_with_raw_boundary_operands(center
 @pytest.mark.parametrize("native_dim", ["nmeasure", "time"])
 def test_native_datetime_dimension_restoration_preserves_rows_and_periods(centered, frequency, raw_dim, native_dim):
     import numpy as np
-    import pytensor
-
-    from openghg_inversions.models.boundary import bind_boundary_operands
 
     labels = np.array(["2020-01-01", "2020-02-01"], dtype="datetime64[D]")
     anomaly = xr.DataArray(da.from_array([[1., 2.]], chunks=(1, 1)), dims=("bc_region", raw_dim),
@@ -196,7 +187,7 @@ def test_native_datetime_dimension_restoration_preserves_rows_and_periods(center
     original = operands.copy(deep=True)
     with pytensor.config.change_flags(floatX="float64"), Callback(posttask=lambda *args: pytest.fail("Boundary payload computed during binding")):
         if centered:
-            aligned = bind_boundary_operands(operands, observations, frequency=frequency)
+            aligned = CenteredOperands.from_dataset(operands).bind(observations, frequency=frequency)
             result = aligned.H_bc_anomaly + aligned.bc_reference * aligned.H_bc_mass
         else:
             raw = (operands.H_bc_anomaly + operands.bc_reference * operands.H_bc_mass).assign_attrs(

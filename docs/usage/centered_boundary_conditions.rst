@@ -231,7 +231,7 @@ The constraint removes the redundant direction internal to this decomposition:
 without it, a constant could be transferred between :math:`\delta` and all
 :math:`u_j` without changing :math:`d`. It does not guarantee identifiability
 against site offsets, other boundary patterns or flux contributions after
-transport. Setting ``bc_anomaly_scale=0`` retains the scalar common correction
+transport. Setting the additive ``anomaly_scale`` to 0 retains the scalar common correction
 and fixes every anomaly to zero, without sampling contrast variables.
 
 Independent priors on the :math:`K` corrections :math:`d_j` are a valid
@@ -362,7 +362,7 @@ Temporal state construction
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 At model binding,
-:func:`~openghg_inversions.boundary_sensitivity.align_boundary_operands`
+:meth:`~openghg_inversions.models.boundary.CenteredOperands.bind`
 assigns a fitted period from the retained observation timestamp.
 
 .. code-block:: text

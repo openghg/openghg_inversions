@@ -216,7 +216,8 @@ def _validate_co2_dataset(inputs: xr.Dataset) -> None:
     if not concentration_units:
         raise ValueError("CO2 observations require units.")
     mole_fraction_unit_scale(str(concentration_units), context="CO2 prepared observations")
-    for name in ("H", "fixed_prior_contribution", "mf_error"):
+    absolute_boundary = ("H_bc",) if "H_bc" in inputs and inputs.H_bc.attrs.get("units") is not None else ()
+    for name in ("H", "fixed_prior_contribution", "mf_error", *absolute_boundary):
         _require_equivalent_units(
             inputs[name].attrs.get("units"),
             str(concentration_units),

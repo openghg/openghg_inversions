@@ -645,11 +645,9 @@ def test_boundary_mean_shift_response_survives_preparation_and_round_trip(tmp_pa
         extra = (
             {"preserve_prepared_fixed_mismatch": False} if select is co2_runner.co2_model_input_names else {}
         )
-        assert "bc_centering_weights" not in select(loaded, use_bc=True, **extra)
-        names = select(loaded, use_bc=True, use_bc_mean_shift=True, **extra)
-        assert {"H_bc_mass", "bc_centering_weights"} <= set(names)
-        with pytest.raises(ValueError, match="requires use_bc"):
-            select(loaded, use_bc_mean_shift=True, **extra)
+        # Boundary transport is materialized with its bound boundary, never as a named input.
+        names = select(loaded, **extra)
+        assert not {"H_bc_anomaly", "H_bc_mass", "bc_reference", "bc_centering_weights"} & set(names)
     missing_operands = canonical.inv_inputs.drop_vars(["H_bc_mass", "H_bc_anomaly", "bc_reference"])
     missing_operands.attrs = {}
     broken = replace(canonical, inv_inputs=missing_operands.assign(bc_centering_weights=weights))

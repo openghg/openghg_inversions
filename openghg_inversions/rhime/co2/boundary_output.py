@@ -1,4 +1,4 @@
-"""Decode fitted boundary facts and reconstruct graph-free scientific quantities."""
+"""Restore absolute predictives, decode fitted boundary facts and reconstruct quantities."""
 
 from __future__ import annotations
 
@@ -22,6 +22,31 @@ _QUANTITY_ROLES = {
     "mean_contribution": "boundary_mean_shift_concentration",
     "anomaly_contribution": "boundary_anomaly_concentration",
 }
+
+
+def restore_absolute_predictives(trace: xr.DataTree) -> xr.DataTree:
+    """Restore centered y once, using only retained trace constants and labels."""
+    for name in ("observed_data", "prior_predictive", "posterior_predictive", "predictions"):
+        if name not in trace.children or "y" not in trace[name]:
+            continue
+        constants = ("predictions_constant_data", "constant_data") if name == "predictions" else ("constant_data",)
+        shift = next(
+            (trace[group].dataset["boundary_reference_shift"] for group in constants
+             if group in trace.children and "boundary_reference_shift" in trace[group]),
+            None,
+        )
+        if shift is None:
+            continue
+        trace.attrs["boundary_representation"] = "centered-v1"
+        y = trace[name].dataset["y"]
+        if y.attrs.get("concentration_representation") == "absolute-v1":
+            continue
+        shift = shift.sel({dim: y[dim] for dim in shift.dims})
+        y, aligned_shift = xr.align(y, shift, join="exact", copy=False)
+        restored = y + aligned_shift
+        restored.attrs = dict(y.attrs, concentration_representation="absolute-v1")
+        trace[name]["y"] = restored.variable
+    return trace
 
 
 @dataclass(frozen=True)

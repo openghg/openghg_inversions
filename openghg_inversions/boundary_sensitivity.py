@@ -14,7 +14,6 @@ from openghg_inversions.inversion_inputs import DatetimeLike, make_period_calend
 
 __all__ = [
     "BoundaryAlignment",
-    "align_boundary_operands",
     "validate_boundary_operands",
     "scale_satellite_boundary_sensitivity_to_column_signal",
 ]
@@ -285,51 +284,6 @@ def validate_centered_boundary_periods(frequency: str | None, anchor_time: Datet
                 raise ValueError("NaT is not an anchor")
         except (TypeError, ValueError) as exc:
             raise ValueError("Boundary anchor_time must be a valid datetime.") from exc
-
-
-def align_boundary_operands(
-    operands: xr.Dataset,
-    *,
-    frequency: str | None = None,
-    anchor_time: DatetimeLike | None = None,
-    observation_labels: xr.DataArray | None = None,
-) -> xr.Dataset:
-    """Expand raw anomaly and mass with a shared period mask at model binding.
-
-    Args:
-        operands: Raw dataset accepted by :func:`validate_boundary_operands`.
-        frequency: ``None`` creates one period without requiring timestamps.
-            A frequency (including ``'monthly'``) requires a one-dimensional
-            datetime ``time`` coordinate along the observation dimension.
-        anchor_time: Optional anchor for fixed-duration periods; not allowed
-            for a single period or calendar-month periods.
-        observation_labels: Optional authoritative labels used to select and
-            reorder the indexed observation dimension before expansion.
-
-    Returns:
-        New dataset with ``H_bc_anomaly`` and ``H_bc_mass`` on ``bc_region``
-        and the original observation dimension. The ``bc_region`` MultiIndex
-        contains ``bc_curtain`` and interval-start ``bc_period``. Units, representation and
-        scalar ``bc_reference`` are preserved. Outputs are marked expanded and
-        must not be passed through raw validation or expansion again. Borrowed
-        payloads stay lazy and unchanged; expansion materializes a lazy auxiliary
-        time coordinate once to construct the period mask and start labels.
-
-    Raises:
-        ValueError: If raw operands or period settings are invalid, or required
-            datetime coordinates are missing or incompatible.
-        KeyError: If an authoritative observation label is absent.
-    """
-    validate_centered_boundary_periods(frequency, anchor_time)
-    if not validate_boundary_operands(operands):
-        raise ValueError("Expected centered boundary operands.")
-    observation_dim = "time" if "time" in operands.H_bc_anomaly.dims else "nmeasure"
-    result = _expand_boundary_periods(
-        operands[["H_bc_anomaly", "H_bc_mass"]], observation_dim=observation_dim,
-        frequency=frequency, anchor_time=anchor_time, observation_labels=observation_labels,
-    )
-    result["bc_reference"] = operands.bc_reference
-    return result
 
 
 def scale_satellite_boundary_sensitivity_to_column_signal(

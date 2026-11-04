@@ -10,7 +10,7 @@ import pytensor
 import pytest
 import xarray as xr
 
-from openghg_inversions.models.boundary import prepare_boundary
+from openghg_inversions.models.boundary import AdditiveChoice, CenteredOperands, MultiplicativeChoice
 from openghg_inversions.serialization import (
     decode_cf_multiindexes,
     encode_cf_multiindexes,
@@ -45,26 +45,24 @@ def native(times=("2020-01-01", "2020-01-20", "2020-02-01", "2020-02-20")):
 
 
 def weights(bound):
+    """Prepared ``(bc_curtain, bc_period)`` weights on a bound calendar's states."""
     # Full-state weights are deliberately nonseparable across curtain and period.
     return xr.DataArray(
         [1.0, 4.0, 9.0, 2.0], dims="bc_region", coords=bound.bc_region.coords,
         attrs={"units": "1"}, name="bc_centering_weights",
-    )
+    ).unstack("bc_region")
 
 
 def prepare(raw, weight, observations, frequency=None, anchor=None):
-    return prepare_boundary(
-        observations, boundary_operands=raw, bc_frequency=frequency, bc_anchor_time=anchor,
-        bc_mean_shift_prior={"pdf": "uniform", "lower": -0.5, "upper": 0.5},
-        bc_anomaly_scale=0.04, bc_centering_weights=weight,
-    )
+    return AdditiveChoice(
+        {"pdf": "uniform", "lower": -0.5, "upper": 0.5}, 0.04, frequency, anchor,
+    ).bind(observations, replace(CenteredOperands.from_dataset(raw), weights=weight))
 
 
-def calendar(raw, observations, frequency):
-    return prepare_boundary(
-        observations, boundary_operands=raw, bc_frequency=frequency,
-        bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
-    ).data
+def calendar(raw, observations, frequency, anchor=None):
+    return MultiplicativeChoice(
+        {"pdf": "normal", "mu": 1.0, "sigma": 0.1}, frequency=frequency, anchor_time=anchor,
+    ).bind(observations, CenteredOperands.from_dataset(raw)).data
 
 
 def never_compute(array):
@@ -81,10 +79,7 @@ def test_calendar_mismatch_rejected_before_mass_or_observation_compute(mismatch)
         raw, obs = native(("2020-01-10", "2020-01-20", "2020-02-10", "2020-02-20"))
     frequency = "45D" if mismatch == "anchor" else "monthly"
     anchor = "2020-01-01" if mismatch == "anchor" else None
-    original = prepare_boundary(
-        obs, boundary_operands=raw, bc_frequency=frequency, bc_anchor_time=anchor,
-        bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
-    ).data
+    original = calendar(raw, obs, frequency, anchor)
     weight = never_compute(weights(original))
     if mismatch == "frequency":
         frequency, anchor = "45D", "2020-01-01"
@@ -107,26 +102,13 @@ def test_equivalent_duration_and_resolved_origin_preserve_nonseparable_prior():
     first = calendar(raw, obs, "45D")
     selected = weights(first)
     result = prepare(raw, selected, obs, "1080h", "2020-01-01")
-    xr.testing.assert_identical(result.data.bc_centering_weights, selected)
+    xr.testing.assert_identical(result.data.bc_centering_weights.unstack("bc_region"), selected)
     np.testing.assert_array_equal(result.data.bc_period, first.bc_period)
     assert result.data.sizes["bc_region"] == 4
     assert float(result.data.H_bc_mass.isel(bc_region=0).sum()) == 0.0
     assert np.linalg.det(selected.values.reshape(2, 2)) != 0.0
-    assert result.mean_prior == {"pdf": "uniform", "lower": -0.5, "upper": 0.5}
-    assert result.anomaly_scale == 0.04
-
-
-def test_single_temporal_period_requires_period_labels_before_payload_compute():
-    raw, obs = native(("2020-01-01", "2020-01-20"))
-    curtain_weights = xr.DataArray(
-        [1.0, 3.0], dims="bc_curtain", coords={"bc_curtain": ["north", "south"]},
-        attrs={"units": "1"},
-    )
-    bound = prepare(raw, curtain_weights, obs)
-    np.testing.assert_array_equal(bound.data.bc_centering_weights, [1.0, 3.0])
-    raw = raw.assign(H_bc_mass=never_compute(raw.H_bc_mass))
-    with pytest.raises(ValueError, match="period|bc_region|dimension"):
-        prepare(raw, never_compute(curtain_weights), never_compute(obs), "monthly")
+    assert result.choice.mean_prior == {"pdf": "uniform", "lower": -0.5, "upper": 0.5}
+    assert result.choice.anomaly_scale == 0.04
 
 
 @pytest.mark.parametrize("extension", ["nc", "zarr"])
@@ -135,11 +117,13 @@ def test_first_class_calendar_labels_roundtrip_without_identity_metadata(tmp_pat
     bound = calendar(raw, obs, "monthly")
     expected = prepare(raw, weights(bound), obs, "monthly")
     path = tmp_path / f"weights.{extension}"
-    save_datatree(xr.DataTree(encode_cf_multiindexes(weights(bound).to_dataset(), "bc_region")), path)
+    stacked = weights(bound).stack(bc_region=("bc_curtain", "bc_period"))
+    save_datatree(xr.DataTree(encode_cf_multiindexes(stacked.to_dataset(), "bc_region")), path)
     loaded = open_datatree_loaded(path).to_dataset()
     restored = decode_cf_multiindexes(loaded, "bc_region").bc_centering_weights
     assert "boundary_period_identity" not in restored.bc_region.attrs
     np.testing.assert_array_equal(restored.bc_period, pd.to_datetime(["2020-01-01", "2020-02-01"] * 2))
+    restored = restored.unstack("bc_region")
     actual = prepare(raw, restored, obs, "monthly")
     xr.testing.assert_identical(actual.data, expected.data)
     subset = prepare(raw, restored, obs.isel(nmeasure=[0, 3]), "monthly")

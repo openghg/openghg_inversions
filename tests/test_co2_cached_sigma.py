@@ -34,7 +34,8 @@ from openghg_inversions.rhime.co2 import co2_cached_sigma_runner
 from openghg_inversions.rhime.co2 import co2_cached_sigma_model
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.serialization import load_trace, save_trace
-from openghg_inversions.models.boundary import prepare_boundary
+from openghg_inversions.models.boundary import AdditiveChoice, CenteredOperands, MultiplicativeChoice
+from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from boundary_test_utils import bound_model_arguments
 
 
@@ -209,11 +210,6 @@ def _compound(cached):
 @pytest.mark.parametrize(
     ("options", "required_component"),
     [
-        (
-            {"bc_prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1}},
-            "boundary_sensitivity",
-        ),
-        ({"bc_state_activity": StateActivity()}, "Boundary activity and periods require a boundary prior"),
         ({"offset_freq": "monthly"}, "offset_prior"),
         ({"offset_drop_first": True}, "offset_prior"),
         ({"offset_per_site": False}, "offset_prior"),
@@ -445,12 +441,10 @@ def test_cached_boundary_and_default_site_offset_match_dense_oracle_at_varied_po
             ),
         ),
         offset_prior={"pdf": "normal", "mu": 0.2, "sigma": 0.1},
-        boundary=prepare_boundary(
-            inputs["mf"],
-            bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
-            bc_state_activity=StateActivity(active=bc_active, fixed_value=bc_fixed),
-            boundary_sensitivity=inputs["H_bc"],
-        ),
+        boundary=MultiplicativeChoice(
+            {"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+            StateActivity(active=bc_active, fixed_value=bc_fixed),
+        ).bind(inputs["mf"], inputs["H_bc"]),
     )
 
     value_vars = [cached.model.rvs_to_values[rv] for rv in cached.states]
@@ -887,10 +881,8 @@ def test_cached_state_dimensions_include_boundary_and_offset_coefficients(
         state_activity=StateActivity(active=np.asarray([True, False])),
         offset_prior={"pdf": "normal", "mu": 0.2, "sigma": 0.1},
         offset_freq=offset_freq,
-        boundary=prepare_boundary(
-            inputs["mf"],
-            bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
-            boundary_sensitivity=inputs["H_bc"],
+        boundary=MultiplicativeChoice({"pdf": "normal", "mu": 1.0, "sigma": 0.1}).bind(
+            inputs["mf"], inputs["H_bc"]
         ),
     )
 
@@ -1064,7 +1056,7 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
 
     monkeypatch.setattr(
         co2_cached_sigma_runner,
-        "_materialize_co2_boundary_inputs",
+        "_materialize_co2_inputs",
         materialize,
     )
     monkeypatch.setattr(
@@ -1091,15 +1083,14 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     result, actual = sample_co2_inference(
         cast(Any, PreparedInputsStub()),
         {
-            "use_bc": True,
-            "bc_prior": None if mean_shift else {"pdf": "normal", "mu": 1.0, "sigma": 0.1},
-            "bc_mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.5} if mean_shift else None,
-            "bc_anomaly_scale": 0.2 if mean_shift else None,
-            "bc_state_activity": None
+            "boundary": AdditiveChoice({"pdf": "normal", "mu": 0.0, "sigma": 0.5}, 0.2)
             if mean_shift
-            else StateActivity(
-                active=np.asarray([True, False, False, False, False, False, False, False]),
-                fixed_value=1.0,
+            else MultiplicativeChoice(
+                {"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+                StateActivity(
+                    active=np.asarray([True, False, False, False, False, False, False, False]),
+                    fixed_value=1.0,
+                ),
             ),
             "offset_prior": {"pdf": "normal", "mu": 0.2, "sigma": 0.1},
             "likelihood_builder": add_fixed_ou_gaussian_likelihood,
@@ -1122,7 +1113,8 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     assert actual["state_target_accept"] == 0.93
     assert json.loads(result.attrs["rhime_actual_inference"]) == actual
     assert len(selected) == 1
-    assert selected[0].count("H_bc_mass" if mean_shift else "H_bc") == 1
+    # Boundary transport is materialized with the bound boundary, never as a named input.
+    assert not {"H_bc", "H_bc_anomaly", "H_bc_mass", "bc_reference"} & set(selected[0])
     assert result.posterior["flux_scaling"].shape == (2, 2, 2)
     if not mean_shift:
         assert result.posterior["bc"].shape == (2, 2, 8)
@@ -1185,7 +1177,6 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     assert replay.posterior.sizes["draw"] == 2
 
     if mean_shift:
-        assert selected[0].count("H_bc_mass") == 1
         assert result.posterior["bc_mean_shift"].dims == ("chain", "draw")
         assert result.posterior["bc_mean_shift"].attrs["units"] == "ppm"
         assert result.constant_data["H_bc_mass"].attrs["units"] == "1"
@@ -1215,7 +1206,6 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
         )
         assert result.posterior["bc_correction"].attrs["units"] == "ppm"
     else:
-        assert "H_bc_mass" not in selected[0]
         assert "bc_mean_shift" not in result.posterior
 
 
@@ -1364,7 +1354,7 @@ def test_cached_runner_reuses_raw_boundary_periods(monkeypatch, frequency, expec
 
     monkeypatch.setattr(
         co2_cached_sigma_runner,
-        "_materialize_co2_boundary_inputs",
+        "_materialize_co2_inputs",
         lambda prepared, names, priors, boundary: (inputs, priors, boundary),
     )
     if direct:
@@ -1372,8 +1362,7 @@ def test_cached_runner_reuses_raw_boundary_periods(monkeypatch, frequency, expec
     else:
         result = co2_cached_sigma_runner.build_rhime_co2_cached_sigma(
             prepared_inputs=cast(Any, PreparedInputsStub()),
-            use_bc=True,
-            bc_freq=frequency,
+            boundary=MultiplicativeChoice(dict(DEFAULT_BC_PRIOR), frequency=frequency),
             tau_hours=3.0,
             site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
         )
@@ -1391,12 +1380,12 @@ def test_cached_runner_ignores_disabled_centered_boundary(monkeypatch):
 
     monkeypatch.setattr(
         co2_cached_sigma_runner,
-        "_materialize_co2_boundary_inputs",
+        "_materialize_co2_inputs",
         lambda prepared, names, priors, boundary: (inputs, priors, boundary),
     )
     result = co2_cached_sigma_runner.build_rhime_co2_cached_sigma(
         prepared_inputs=cast(Any, PreparedInputsStub()),
-        use_bc=False,
+        boundary=None,
         tau_hours=3.0,
         site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
     )
@@ -1421,8 +1410,7 @@ def test_centered_cache_full_operands_dense_density_and_gradients(all_fixed):
     shift = reference * mass.sum(axis=1)
     inputs["mf"] = inputs.mf + shift
     inputs.mf.attrs["units"] = "ppm"
-    from openghg_inversions.models.boundary import bind_boundary_operands
-    bound = bind_boundary_operands(operands, inputs.mf)
+    bound = CenteredOperands.from_dataset(operands).bind(inputs.mf)
     active = xr.DataArray([not all_fixed, not all_fixed, False], dims="bc_region", coords={"bc_region": bound.bc_region})
     fixed = xr.DataArray([.9, 1.2, .7], dims="bc_region", coords=active.coords)
     cached = _build(inputs=inputs, boundary_operands=operands,
@@ -1513,12 +1501,10 @@ def test_centered_stock_and_cached_boundary_match_dense_likelihood(reference, an
         coords={"nmeasure": inputs.nmeasure, "bc_region": ["north", "south"]},
         attrs={"boundary_representation": "centered-v1"},
     )
-    from openghg_inversions.models.boundary import bind_boundary_operands
-
-    bound = bind_boundary_operands(operands, inputs.mf)
+    bound = CenteredOperands.from_dataset(operands).bind(inputs.mf)
     weights = xr.DataArray(
         [1.0, 3.0], dims="bc_region", coords={"bc_region": bound.bc_region}, attrs={"units": "1"}
-    )
+    ).unstack("bc_region")
     boundary_parameters = (
         {"bc_mean_shift_prior": {"pdf": "normal", "mu": 0.1, "sigma": 0.2}, "bc_anomaly_scale": anomaly_scale}
         if additive
@@ -1533,9 +1519,7 @@ def test_centered_stock_and_cached_boundary_match_dense_likelihood(reference, an
     model = cached.model
     # Build the stock OU route through both public materialization/build boundaries.
 
-    stock_inputs = inputs.assign(operands.data_vars).assign(
-        bc_centering_weights=weights.unstack("bc_region"),
-    )
+    stock_inputs = inputs.assign(operands.data_vars).assign(bc_centering_weights=weights)
     stock_inputs.attrs.update(boundary_representation="centered-v1")
 
     class PreparedStub:
@@ -1546,19 +1530,24 @@ def test_centered_stock_and_cached_boundary_match_dense_likelihood(reference, an
     prepared = cast(Any, PreparedStub())
     monkeypatch.setattr(
         co2_runner,
-        "_materialize_co2_boundary_inputs",
+        "_materialize_co2_inputs",
         lambda prepared, names, priors, boundary: (stock_inputs, priors, boundary),
     )
     options = dict(
-        use_bc=True,
-        **boundary_parameters,
         likelihood_builder=add_fixed_ou_gaussian_likelihood,
         likelihood_kwargs={
             "tau_hours": {"AAA": 3.0, "BBB": 7.0},
             "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.75},
         },
     )
-    eager_inputs, priors, boundary = co2_runner.materialize_co2_inputs(prepared_inputs=prepared, **options)
+    choice = (
+        AdditiveChoice(boundary_parameters["bc_mean_shift_prior"], anomaly_scale)
+        if additive
+        else MultiplicativeChoice(boundary_parameters["bc_prior"])
+    )
+    eager_inputs, priors, boundary = co2_runner.materialize_co2_inputs(
+        prepared_inputs=prepared, boundary=choice, **options
+    )
     stock = co2_runner.build_co2_from_materialized(
         eager_inputs, boundary=boundary, prepared_inputs=prepared, priors=priors, **options
     ).model

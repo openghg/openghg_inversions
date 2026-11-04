@@ -7,6 +7,7 @@ import json
 import numpy as np
 import pytest
 
+from openghg_inversions.models.boundary import AdditiveChoice
 from openghg_inversions.rhime.co2.co2_o2_configuration import (
     load_co2_o2_params,
     Co2O2ModelConfig,
@@ -179,11 +180,13 @@ def test_channel_additive_prior_scales_are_independent_and_replayable(tmp_path, 
     path = tmp_path / "additive.json"
     path.write_text(json.dumps(config))
     choices = Co2O2ModelConfig.from_params(load_co2_o2_params(params_file=path)).bind(_prepared())
-    assert choices["bc_mean_shift_prior"]["co2"]["sigma"] == 0.5
-    assert choices["bc_mean_shift_prior"]["o2"]["sigma"] == 2.0
-    assert choices["bc_anomaly_scale"]["co2"] == co2_anomaly_scale
-    assert choices["bc_anomaly_scale"]["o2"] == o2_anomaly_scale
-    assert choices["use_bc"] == {"co2": True, "o2": True}
+    boundary = choices["boundary"]
+    assert set(boundary) == {"co2", "o2"}
+    assert all(isinstance(choice, AdditiveChoice) for choice in boundary.values())
+    assert boundary["co2"].mean_prior["sigma"] == 0.5
+    assert boundary["o2"].mean_prior["sigma"] == 2.0
+    assert boundary["co2"].anomaly_scale == co2_anomaly_scale
+    assert boundary["o2"].anomaly_scale == o2_anomaly_scale
     config["channels"]["o2"]["boundary"]["anomaly_scale"] = -0.1
     with pytest.raises(ValueError, match="non-negative"):
         Co2O2ModelConfig.from_params(config)

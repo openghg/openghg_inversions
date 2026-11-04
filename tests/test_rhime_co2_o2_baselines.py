@@ -13,6 +13,7 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.models import StateActivity, restore_inferencedata_coords, get_coord_registry
+from openghg_inversions.models.boundary import MultiplicativeChoice
 from openghg_inversions.rhime.co2 import (
     build_co2_o2_model,
     prepare_co2_o2_inputs,
@@ -21,6 +22,7 @@ from openghg_inversions.rhime.co2 import (
 )
 from openghg_inversions.rhime.co2 import co2_o2_runner
 from openghg_inversions.rhime.sampling import RhimeSampler
+from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.serialization import save_trace, load_trace
 from test_rhime_co2_o2 import _inputs, _independent_error
 from boundary_test_utils import bound_linked_model_arguments
@@ -201,7 +203,7 @@ def test_configuration_and_runner_forward_same_channel_options(monkeypatch):
 @pytest.mark.parametrize(
     "options,match",
     [
-        ({"bc_prior": {"o2": {}}}, "requires boundary_sensitivity or centered operands"),
+        ({"boundary": {"o2": MultiplicativeChoice(dict(DEFAULT_BC_PRIOR))}}, "requires prepared o2 boundary inputs"),
         ({"offset_args": {"co2": {"per_site": False}}}, "require offset_prior"),
         ({"offset_prior": {"co": {}}}, "keyed only"),
     ],

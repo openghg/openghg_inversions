@@ -406,6 +406,7 @@ def test_native_flux_rejects_uppercase_private_states_without_concentration_sign
 def test_cached_joint_draws_with_baseline_emit_paris(tmp_path, native_multiindex, monkeypatch):
     import pymc as pm
 
+    from openghg_inversions.models.boundary import MultiplicativeChoice
     from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
     from openghg_inversions.rhime.co2 import run_rhime_co2_o2_cached_sigma_from_prepared_inputs
     from openghg_inversions.rhime.co2 import co2_o2_cached_sigma_runner
@@ -443,7 +444,7 @@ def test_cached_joint_draws_with_baseline_emit_paris(tmp_path, native_multiindex
         independent_error_sd=_independent_error(prepared),
         tau_hours=12.0,
         site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.5},
-        bc_prior={"co2": {"pdf": "normal", "mu": 1.0, "sigma": 0.1}},
+        boundary={"co2": MultiplicativeChoice({"pdf": "normal", "mu": 1.0, "sigma": 0.1})},
         offset_prior={"o2": {"pdf": "normal", "mu": 0.0, "sigma": 0.1}},
         offset_args={"o2": {"per_site": False}},
         sampler=RhimeSampler(
