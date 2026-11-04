@@ -15,6 +15,7 @@ from typing import Any, cast
 import xarray as xr
 from pymc.initial_point import convert_str_to_rv_dict, make_initial_point_fn  # type: ignore[import-untyped]
 
+from openghg_inversions.biosphere_prior import BiospherePrior
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inference.cached_sigma import make_cached_sigma_compound_step
 from openghg_inversions.models.boundary import BoundaryChoice, CenteredOperands
@@ -169,12 +170,14 @@ def _annotate_cached_co2_trace(
     built: RhimeModelBuildResult,
     *,
     concentration_units: str | None,
+    biosphere_prior: BiospherePrior | None = None,
 ) -> xr.DataTree:
     """Add output semantics that belong only to the cached fixed-OU recipe."""
     trace = annotate_co2_trace(
         trace,
         built,
         concentration_units=concentration_units,
+        biosphere_prior=biosphere_prior,
     )
     for group in trace.children.values():
         group.attrs["rhime_recipe"] = built.output_contract.metadata["recipe"]
@@ -216,6 +219,7 @@ def _annotate_cached_co2_trace(
 
 def build_rhime_co2_cached_sigma(
     *,
+    biosphere_prior: BiospherePrior | None = None,
     prepared_inputs: Co2PreparedInputs,
     tau_hours: float | Mapping[str, float],
     site_amplitude_prior: PriorArgs,
@@ -227,6 +231,8 @@ def build_rhime_co2_cached_sigma(
     """Materialize and build the matched cached fixed-OU graph without sampling.
 
     Args:
+        biosphere_prior: Optional explicit calibration against the existing retained prior;
+            omission preserves existing behavior.
         prepared_inputs: Validated CO2 inputs with observation-aligned site and
             time coordinates and the selected aggregation-error representation.
         tau_hours: Fixed OU decorrelation time in hours, as a scalar or a
@@ -274,6 +280,7 @@ def build_rhime_co2_cached_sigma(
     cached_model = build_co2_cached_sigma_model(
         model_inputs["H"],
         retained_prior=retained_prior,
+        biosphere_prior=biosphere_prior,
         fixed_prior_contribution=model_inputs["fixed_prior_contribution"],
         observations=model_inputs["mf"],
         observation_error=model_inputs["mf_error"],
@@ -294,10 +301,13 @@ def build_rhime_co2_cached_sigma(
 def co2_cached_sigma_build_result(
     cached_model: Co2CachedSigmaModel,
     prepared_inputs: Co2PreparedInputs,
+    *,
+    biosphere_prior: BiospherePrior | None = None,
 ) -> RhimeModelBuildResult:
     """Describe a built cached graph for sampling and stored output metadata.
 
     Args:
+        biosphere_prior: Optional resolved calibration used for this graph.
         cached_model: Graph returned by :func:`build_rhime_co2_cached_sigma`.
         prepared_inputs: Prepared inputs used to build the graph, providing
             basis provenance.
@@ -308,7 +318,7 @@ def co2_cached_sigma_build_result(
     metadata = {
         "recipe": "co2",
         "kind": "builtin",
-        "prior": "correlated arithmetic-moment lognormal",
+        "prior": biosphere_prior.data.attrs["family"] if biosphere_prior is not None else "correlated arithmetic-moment lognormal",
         "mismatch_component": "fixed_within_site_ou",
         "basis_artifact_source": getattr(
             prepared_inputs,

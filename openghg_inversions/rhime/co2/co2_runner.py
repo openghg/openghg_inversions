@@ -18,6 +18,8 @@ from dask.array import Array
 from dask import compute as dask_compute
 from dask.base import unpack_collections
 
+from openghg_inversions.biosphere_prior import BiospherePrior
+from openghg_inversions.models.biosphere import annotate_biosphere_prior
 from openghg_inversions._serialization_codecs import _json_value
 from openghg_inversions.array_ops import to_dense_tree
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
@@ -69,6 +71,7 @@ def annotate_co2_trace(
     built: RhimeModelBuildResult,
     *,
     concentration_units: str | None,
+    biosphere_prior: BiospherePrior | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
 ) -> xr.DataTree:
@@ -84,6 +87,7 @@ def annotate_co2_trace(
     Args:
         trace: PyMC sample groups represented as a DataTree, annotated in place.
         built: Concrete model with the CO2 variable-role and provenance mapping.
+        biosphere_prior: Optional resolved calibration to persist with the trace.
         concentration_units: Observation concentration units, or ``None`` to
             omit concentration-unit attributes.
         likelihood_builder: Optional component whose identity is descriptive
@@ -157,7 +161,7 @@ def annotate_co2_trace(
                 variable.attrs["units"] = concentration_units
             if name in built.output_contract.metadata.get("boundary_units", {}):
                 variable.attrs["units"] = built.output_contract.metadata["boundary_units"][name]
-    return trace
+    return annotate_biosphere_prior(trace, biosphere_prior)
 
 
 def _state_activity_from_inputs(model_inputs: xr.Dataset) -> StateActivity | None:
@@ -441,6 +445,7 @@ def build_co2_from_materialized(
     model_inputs: xr.Dataset,
     *,
     prepared_inputs: Co2PreparedInputs,
+    biosphere_prior: BiospherePrior | None = None,
     priors: Mapping[str, PriorArgs],
     boundary: Boundary | None = None,
     sigma_alignment: SigmaAlignment | None = None,
@@ -467,6 +472,7 @@ def build_co2_from_materialized(
     before its likelihood is constructed.
 
     Args:
+        biosphere_prior: Optional explicit calibration of the retained state prior.
         model_inputs: Selected scientific arrays already materialized together.
         prepared_inputs: Preparation supplying aggregation mode and provenance.
         priors: Materialized prior parameters under their concrete graph names.
@@ -524,6 +530,7 @@ def build_co2_from_materialized(
     model = build_co2_model(
         model_inputs["H"],
         retained_prior=retained_prior,
+        biosphere_prior=biosphere_prior,
         fixed_prior_contribution=model_inputs["fixed_prior_contribution"],
         observations=model_inputs["mf"],
         observation_error=model_inputs["mf_error"],
@@ -572,7 +579,7 @@ def build_co2_from_materialized(
             metadata={
                 "recipe": "co2",
                 "kind": "builtin",
-                "prior": "correlated arithmetic-moment lognormal",
+                "prior": biosphere_prior.data.attrs["family"] if biosphere_prior is not None else "correlated arithmetic-moment lognormal",
                 "no_model_error": no_model_error,
                 "use_bc": boundary is not None,
                 **(boundary_outputs.metadata if boundary_outputs is not None else {"boundary_formulation": None}),

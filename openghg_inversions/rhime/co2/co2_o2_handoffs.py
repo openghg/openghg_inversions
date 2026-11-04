@@ -197,7 +197,7 @@ def sample(
     )
     built = build_rhime_co2_o2(prepared_inputs=preparation.prepared, **model_options)
     trace = sample_rhime_model(built, active_sampler)
-    trace = annotate_co2_o2_trace(trace, built=built)
+    trace = annotate_co2_o2_trace(trace, built=built, biosphere_prior=model_options.get("biosphere_prior"))
     return save_samples(
         preparation_manifest, trace, actual_inference=active_sampler.describe(),
         preparation_generation=preparation.generation, output_dir=output_dir,
@@ -280,7 +280,7 @@ def prior_predictive(
     registry = get_coord_registry(built.model)
     if registry is not None:
         prior = restore_inferencedata_coords(prior, registry)
-    prior = annotate_co2_o2_trace(prior, built=built)
+    prior = annotate_co2_o2_trace(prior, built=built, biosphere_prior=model_options.get("biosphere_prior"))
     concentration = built.output_contract.variable_roles.get("concentration")
     predictive = prior.children.get("prior_predictive")
     values = [np.asarray(group[name].values) for group in prior.children.values() for name in group.data_vars]
