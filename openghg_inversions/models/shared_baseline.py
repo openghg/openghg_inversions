@@ -275,7 +275,7 @@ class SharedBaseline:
     choice: SharedBaselineChoice
     data: xr.Dataset
 
-    def outputs(self) -> BoundaryOutputs:
+    def outputs(self, prefix: str = "") -> BoundaryOutputs:
         """Declare the atmospheric level's roles and units and the bound choice's metadata."""
         boundary = self.choice.boundary
         units = self.data.attrs["units"]
@@ -291,7 +291,7 @@ class SharedBaseline:
             "bc_frequency": None if boundary is None else boundary.frequency,
             "bc_anchor_time": None if boundary is None or boundary.anchor_time is None else str(boundary.anchor_time),
         }
-        return BoundaryOutputs(roles, {"bc_mean_shift": units, "mu_bc_mean_shift": units}, metadata)
+        return BoundaryOutputs(roles, {"bc_mean_shift": units, "mu_bc_mean_shift": units}, metadata).prefixed(prefix)
 
 
 __all__ = ["OuterMode", "SharedBaseline", "SharedBaselineChoice"]
