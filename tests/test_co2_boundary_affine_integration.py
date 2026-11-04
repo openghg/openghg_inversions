@@ -136,12 +136,19 @@ def test_materialization_runner_resolves_boundary_prior_once(monkeypatch, mode, 
     monkeypatch.setattr(co2_runner, "prepare_boundary", record_boundary)
     def build_boundary():
         if cached:
-            monkeypatch.setattr(co2_cached_sigma_runner, "build_co2_cached_sigma_model",
-                                lambda *args, **kwargs: kwargs["boundary"])
-            return co2_cached_sigma_runner.build_rhime_co2_cached_sigma(
-                prepared_inputs=prepared, tau_hours=3.0,
-                site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.2}, **choices,
-            )
+            class BoundaryReached(Exception):
+                pass
+
+            def capture_boundary(*args, **kwargs):
+                raise BoundaryReached(kwargs["boundary"])
+
+            monkeypatch.setattr(co2_cached_sigma_runner, "build_co2_cached_sigma_model", capture_boundary)
+            with pytest.raises(BoundaryReached) as reached:
+                co2_cached_sigma_runner.build_rhime_co2_cached_sigma(
+                    prepared_inputs=prepared, tau_hours=3.0,
+                    site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.2}, **choices,
+                )
+            return reached.value.args[0]
         return co2_runner.materialize_co2_inputs(prepared_inputs=prepared, **choices)[2]
 
     if mode == "absent":

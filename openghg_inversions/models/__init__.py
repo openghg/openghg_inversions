@@ -33,7 +33,7 @@ from openghg_inversions.models.components import (
 )
 from openghg_inversions.models.boundary import (
     BoundBoundary, MultiplicativeBoundary, add_boundary, prepare_boundary,
-    boundary_payload, replace_boundary_payload, boundary_output_roles, boundary_output_units,
+    boundary_payload, replace_boundary_payload, boundary_output_roles, boundary_output_units, boundary_output_metadata,
 )
 from openghg_inversions.models.additive_boundary import AdditiveBoundary
 from openghg_inversions.models.cached_sigma import (
@@ -103,6 +103,7 @@ __all__ = [
     "replace_boundary_payload",
     "boundary_output_roles",
     "boundary_output_units",
+    "boundary_output_metadata",
     "prepare_boundary",
     "add_boundary",
     "ConcentrationTerm",

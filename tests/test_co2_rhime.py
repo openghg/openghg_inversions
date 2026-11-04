@@ -18,6 +18,7 @@ from scipy.stats import multivariate_normal
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.models.boundary import boundary_payload
 from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.scalar_sigma import (
@@ -1115,7 +1116,11 @@ def test_co2_materialization_shares_inputs_enabled_priors_and_explicit_mismatch_
     assert isinstance(choices["bc_prior"]["sigma"], da.Array)
     assert isinstance(mismatch.data, da.Array)
     assert isinstance(model_inputs["diagnostic"].data, da.Array)
-    assert set(priors) == {"sigma", "bc", "offset_latent"}
+    assert set(priors) == {"sigma", "offset_latent"}
+    assert boundary is not None
+    boundary_prior = boundary_payload(boundary)["prior"]
+    assert not isinstance(boundary_prior["sigma"], da.Array)
+    np.testing.assert_allclose(boundary_prior["sigma"], 0.1)
     np.testing.assert_allclose(model_inputs["fixed_model_mismatch"], [0.1])
     built = co2_runner.build_co2_from_materialized(
         model_inputs,

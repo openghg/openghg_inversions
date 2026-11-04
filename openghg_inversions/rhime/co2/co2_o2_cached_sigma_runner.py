@@ -10,6 +10,7 @@ import xarray as xr
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models import StateActivity
+from openghg_inversions.models.boundary import BoundBoundary
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
@@ -25,8 +26,8 @@ from .co2_o2_runner import (
     _add_linked_boundary_metadata,
     _co2_o2_metadata,
     _materialize_co2_o2_replay_inputs,
-    _prepare_co2_o2_boundaries,
-    _validate_channel_baseline_options,
+    _linked_boundary_output_metadata,
+    _resolve_co2_o2_boundary,
     annotate_co2_o2_trace,
 )
 
@@ -40,6 +41,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     use_bc: Mapping[str, bool] | None = None,
+    boundary: Mapping[str, BoundBoundary] | None = None,
     bc_mean_shift_prior: Mapping[str, PriorArgs] | None = None,
     bc_anomaly_scale: Mapping[str, float] | None = None,
     bc_centering_weights: Mapping[str, xr.DataArray] | None = None,
@@ -89,6 +91,8 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             use the same keys as tau_hours. Defaults to the prior support point.
         state_activity: Optional labelled active/fixed retained-state policy.
             Omitted states follow the model's structural activity policy.
+        boundary: Already bound channel records, replacing raw boundary choices.
+            An empty mapping disables boundaries; None selects configured raw inputs.
         use_bc: Optional co2/o2 boolean mapping selecting prepared boundary
             sensitivities. Omitted entries include available boundaries;
             selecting a missing channel boundary fails.
@@ -144,46 +148,13 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     if requested_sampler.nuts_sampler != "pymc":
         raise ValueError("Linked cached fixed-OU requires nuts_sampler='pymc'.")
     prepared = prepared_inputs
-    boundaries = dict(getattr(prepared, "boundary_sensitivity", {}))
-    operands = dict(prepared.boundary_operands)
-    if use_bc is not None:
-        if (
-            not isinstance(use_bc, Mapping)
-            or set(use_bc) - {"co2", "o2"}
-            or any(not isinstance(value, bool) for value in use_bc.values())
-        ):
-            raise ValueError("use_bc must map co2/o2 to booleans.")
-    if use_bc is not None:
-        for channel, enabled in use_bc.items():
-            if enabled and channel not in boundaries and channel not in operands:
-                raise ValueError(f"{channel} use_bc requires prepared boundary_sensitivity.")
-            if not enabled:
-                boundaries.pop(channel, None)
-                operands.pop(channel, None)
-    _validate_channel_baseline_options(
-        boundaries,
-        bc_prior,
-        bc_state_activity,
-        offset_prior,
-        offset_args,
-        operands,
-        bc_mean_shift_prior=bc_mean_shift_prior,
-        bc_anomaly_scale=bc_anomaly_scale,
-        bc_centering_weights=bc_centering_weights,
-    )
-    selected_weights = {}
-    prepared_weights = prepared.bc_centering_weights
-    for channel in ("co2", "o2"):
-        if (bc_mean_shift_prior or {}).get(channel) is None:
-            continue
-        weights = (bc_centering_weights or {}).get(channel, prepared_weights.get(channel))
-        if weights is not None:
-            selected_weights[channel] = weights
-    boundary = _prepare_co2_o2_boundaries(
-        prepared, boundaries, operands, selected_weights,
-        bc_freq=bc_freq, bc_anchor_time=bc_anchor_time, bc_prior=bc_prior,
+    raw_boundary = boundary is None
+    boundary = _resolve_co2_o2_boundary(
+        prepared, boundary=boundary, use_bc=use_bc, bc_prior=bc_prior,
         bc_state_activity=bc_state_activity, bc_mean_shift_prior=bc_mean_shift_prior,
-        bc_anomaly_scale=bc_anomaly_scale,
+        bc_anomaly_scale=bc_anomaly_scale, bc_centering_weights=bc_centering_weights,
+        bc_freq=bc_freq, bc_anchor_time=bc_anchor_time,
+        offset_prior=offset_prior, offset_args=offset_args,
     )
     materialized, boundary, eager_priors = _materialize_co2_o2_replay_inputs(
         prepared, independent_error_sd, boundary,
@@ -224,19 +195,17 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     metadata["boundary_units"] = cached.boundary_units
     for channel in (offset_prior or {}):
         roles[f"{channel}_offset_concentration"] = f"{channel}_offset"
-    if operands:
-        metadata.update(
-            boundary_representation="centered-v1",
-            bc_frequency=bc_freq,
-            bc_anchor_time=None if bc_anchor_time is None else str(bc_anchor_time),
-        )
-    if boundaries or operands:
+    metadata.update(_linked_boundary_output_metadata(
+        boundary, raw_choices=raw_boundary, bc_freq=bc_freq, bc_anchor_time=bc_anchor_time,
+    ))
+    if boundary:
         roles["boundary_concentration"] = "boundary_concentration"
     if offset_prior:
         roles["offset_concentration"] = "offset_concentration"
-    if boundaries or operands or offset_prior:
+    if boundary or offset_prior:
         roles["baseline_concentration"] = "baseline_concentration"
-    _add_linked_boundary_metadata(roles, metadata)
+    if raw_boundary:
+        _add_linked_boundary_metadata(roles, metadata)
     built = RhimeModelBuildResult(
         model=cached.model,
         output_contract=OutputContract(

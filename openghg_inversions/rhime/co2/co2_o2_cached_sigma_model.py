@@ -88,6 +88,7 @@ def build_co2_o2_cached_sigma_model(
     Each channel consumes its previously bound boundary, including resolved
     periods, priors and activity. Centered likelihoods retain absolute named
     concentration outputs; raw predictive ``y`` needs absolute restoration.
+
     Args:
         observations: Joint CO2-then-O2 observation vector on ``output_dim``,
             with row-wise species and unit coordinates.

@@ -507,19 +507,36 @@ def test_related_centered_arrays_materialize_one_shared_graph():
 
 
 def test_centered_cached_rejects_float32_before_materialization(monkeypatch):
+    import dask.array as da
+    from dask import delayed
     from openghg_inversions.rhime.co2 import co2_cached_sigma_runner
 
-    def unexpected(*args, **kwargs):
-        pytest.fail("materialized unsupported centered request")
+    executions = []
 
-    monkeypatch.setattr(co2_cached_sigma_runner, "materialize_pymc_inputs", unexpected)
-    with pytensor.config.change_flags(floatX="float32"), pytest.raises(ValueError, match="float64"):
-        co2_cached_sigma_runner.build_rhime_co2_cached_sigma(
-            prepared_inputs=_centered_prepared(),
-            tau_hours=2.0,
-            site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.1},
-            use_bc=True,
-        )
+    @delayed
+    def payload():
+        executions.append("computed")
+        return np.array([401.0])
+
+    prepared = _centered_prepared()
+    values = da.from_delayed(payload(), shape=(1,), dtype=float)
+    inputs = prepared.inv_inputs.assign(mf=prepared.inv_inputs.mf.copy(data=values))
+    prepared = replace(prepared, rhime_inputs=replace(prepared.rhime_inputs, inv_inputs=inputs))
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("reached named materialization for unsupported centered request")
+
+    monkeypatch.setattr(co2_cached_sigma_runner, "_materialize_co2_boundary_inputs", unexpected)
+    with pytensor.config.change_flags(floatX="float32"):
+        with pytest.raises(ValueError, match="float64"):
+            co2_cached_sigma_runner.build_rhime_co2_cached_sigma(
+                prepared_inputs=prepared,
+                tau_hours=2.0,
+                site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.1},
+                use_bc=True,
+            )
+        assert pytensor.config.floatX == "float32"
+    assert executions == []
 
 
 def test_linked_codec_rejects_missing_centered_marker():

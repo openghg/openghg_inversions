@@ -138,7 +138,7 @@ def make_period_calendar(
         idx = (months - months.min()).astype(int)
         starts = months.astype("datetime64[ns]")
     else:
-        anchor = np.datetime64(anchor_time, "ns") if anchor_time is not None else first
+        anchor = pd.Timestamp(anchor_time).to_datetime64().astype("datetime64[ns]") if anchor_time is not None else first
         duration = np.timedelta64(frequency.value, "ns")
         intervals = ((values - anchor) // duration).astype(int)
         starts = anchor + intervals * duration

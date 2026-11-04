@@ -448,7 +448,7 @@ product formats retain their contracts. See :doc:`legacy_and_migration` for the
 multisector prepared-input entry point and retained custom-builder boundary.
 
 CO2-family internal handoffs
----------------------------
+----------------------------
 
 CO2 and linked CO2/O2 preparation and sample manifests use version 2. Their
 prepared scientific artifacts use schema versions 3 and 4 respectively. Only

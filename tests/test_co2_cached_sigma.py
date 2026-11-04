@@ -213,7 +213,7 @@ def _compound(cached):
             {"bc_prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1}},
             "boundary_sensitivity",
         ),
-        ({"bc_state_activity": StateActivity()}, "boundary_sensitivity"),
+        ({"bc_state_activity": StateActivity()}, "Boundary activity and periods require a boundary prior"),
         ({"offset_freq": "monthly"}, "offset_prior"),
         ({"offset_drop_first": True}, "offset_prior"),
         ({"offset_per_site": False}, "offset_prior"),
@@ -1193,11 +1193,17 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
             result.posterior["mu_bc_mean_shift"],
             result.posterior["bc_mean_shift"] * inputs.H_bc_mass.sum("bc_region"),
         )
-        np.testing.assert_allclose(
+        reference = result.constant_data["mu_bc_reference"]
+        assert reference.dims == ("nmeasure",)
+        assert "mu_bc_reference" not in result.posterior
+        xr.testing.assert_allclose(
+            reference,
+            (inputs.H_bc_anomaly + inputs.bc_reference * inputs.H_bc_mass).sum("bc_region"),
+        )
+        xr.testing.assert_identical(replay.constant_data["mu_bc_reference"], reference)
+        xr.testing.assert_allclose(
             result.posterior["mu_bc"],
-            result.posterior["mu_bc_reference"]
-            + result.posterior["mu_bc_mean_shift"]
-            + result.posterior["mu_bc_anomaly"],
+            result.posterior["mu_bc_mean_shift"] + result.posterior["mu_bc_anomaly"] + reference,
         )
         assert roles["boundary_mean_shift"] == "bc_mean_shift"
         assert "bc" not in result.posterior

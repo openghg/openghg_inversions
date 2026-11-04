@@ -339,7 +339,8 @@ def reconstruct_co2_concentrations(trace: xr.DataTree, prepared: Co2PreparedInpu
     for name, value in output.data_vars.items():
         value.attrs = dict(value.attrs)
         value.attrs["units"] = (
-            "1" if "flux_scale" in name or "boundary_scale" in name else observations.attrs["units"]
+            "1" if "flux_scale" in name or "boundary_scale" in name
+            else value.attrs.get("units", observations.attrs["units"])
         )
     return output
 

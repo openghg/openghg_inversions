@@ -36,6 +36,28 @@ def test_period_calendar_shares_ordinal_membership_and_actual_interval_starts(
         xr.testing.assert_identical(indicator, make_freq_indicator(time, frequency, anchor_time=anchor))
 
 
+@pytest.mark.parametrize(
+    "anchor",
+    ["2020-01-01T00:15:00.123456", np.datetime64("2020-01-01T00:15:00.123456"),
+     pd.Timestamp("2020-01-01T00:15:00.123456"),
+     pd.Timestamp("2020-01-01T00:15:00.123456").to_pydatetime(),
+     pd.Timestamp("2020-01-01T01:15:00.123456+01:00")],
+)
+def test_period_calendar_accepts_datetime_anchor_types_and_normalizes_timezone(anchor):
+    time = xr.DataArray(pd.to_datetime(["2020-01-01T02:00", "2020-01-01T04:00"]), dims="nmeasure")
+    indicator, starts = make_period_calendar(time, "1h", anchor_time=anchor)
+    np.testing.assert_array_equal(indicator, [0, 2])
+    np.testing.assert_array_equal(
+        starts, np.array(["2020-01-01T01:15:00.123456", "2020-01-01T03:15:00.123456"], dtype="datetime64[ns]")
+    )
+
+
+def test_period_calendar_preserves_nanosecond_anchor_precision():
+    time = xr.DataArray(pd.to_datetime(["2020-01-01T02:00"]), dims="nmeasure")
+    _, starts = make_period_calendar(time, "1h", anchor_time=pd.Timestamp("2020-01-01T00:15:00.123456789"))
+    np.testing.assert_array_equal(starts, np.array(["2020-01-01T01:15:00.123456789"], dtype="datetime64[ns]"))
+
+
 def test_make_inv_inputs_preserves_requested_order_and_column_factors() -> None:
     """Mixed inputs retain requested site order and column-only factors."""
 

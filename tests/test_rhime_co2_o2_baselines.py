@@ -201,7 +201,7 @@ def test_configuration_and_runner_forward_same_channel_options(monkeypatch):
 @pytest.mark.parametrize(
     "options,match",
     [
-        ({"bc_prior": {"o2": {}}}, "require boundary_sensitivity"),
+        ({"bc_prior": {"o2": {}}}, "requires boundary_sensitivity or centered operands"),
         ({"offset_args": {"co2": {"per_site": False}}}, "require offset_prior"),
         ({"offset_prior": {"co": {}}}, "keyed only"),
     ],

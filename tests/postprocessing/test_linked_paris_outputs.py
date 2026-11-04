@@ -89,6 +89,7 @@ def _joint_fixture(
             "/": xr.Dataset(
                 attrs={
                     "rhime_recipe": "co2_o2",
+                    "rhime_boundary_format_version": 1,
                     "rhime_variable_roles": json.dumps(roles),
                     "rhime_model_metadata": json.dumps({"provenance": "joint fixture"}),
                 }
@@ -158,7 +159,7 @@ def test_unsupported_units_templates_and_missing_components():
     with pytest.raises(ValueError, match="does not close"):
         make_co2_o2_paris_outputs(bad, prepared)
     del trace["prior"]["bc"]
-    with pytest.raises(ValueError, match="boundary_concentration.*prior"):
+    with pytest.raises(ValueError, match="boundary_concentration"):
         make_co2_o2_paris_outputs(trace, prepared)
     prepared, trace = _joint_fixture(baseline=False, o2_units="per meg")
     with pytest.raises(ValueError, match="cannot represent"):

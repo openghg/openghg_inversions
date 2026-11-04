@@ -173,6 +173,27 @@ def boundary_output_roles(bound: BoundBoundary, *, prefix: str = "") -> dict[str
     return {prefix + role: prefix + name for role, name in roles.items()}
 
 
+def boundary_output_metadata(bound: BoundBoundary) -> dict[str, Any]:
+    """Describe fitted boundary facts from canonical operator attributes.
+
+    The finite keys are ``boundary_formulation``, ``bc_frequency`` and
+    ``bc_anchor_time``, plus ``boundary_representation`` for centered inputs.
+    Missing calendar facts and the ``none``/``not-applicable`` sentinels become
+    ``None``. Dataset attributes and frontend requests do not override the
+    fitted operator. This reads no numerical payload or auxiliary coordinates.
+    """
+    additive = isinstance(bound, AdditiveBoundary)
+    centered = isinstance(bound, AdditiveBoundary) or bound.centered
+    operator = bound.data.H_bc_anomaly if centered else bound.data.H_bc
+    metadata: dict[str, Any] = {"boundary_formulation": "additive" if additive else "multiplicative"}
+    if centered:
+        metadata["boundary_representation"] = "centered-v1"
+    for key in ("bc_frequency", "bc_anchor_time"):
+        value = operator.attrs.get(key)
+        metadata[key] = None if value in (None, "none", "not-applicable") else value
+    return metadata
+
+
 def boundary_output_units(bound: BoundBoundary, *, prefix: str = "") -> dict[str, str]:
     """Declare physical units for boundary graph quantities and saved constants.
 
@@ -269,26 +290,29 @@ def prepare_boundary(
             H_bc_mass=_convert_units(boundary_operands.H_bc_mass, "1"),
             bc_reference=_convert_units(boundary_operands.bc_reference, units),
         )
-        data = bind_boundary_operands(
+        bound_operands = bind_boundary_operands(
             boundary_operands, observations, frequency=bc_frequency, anchor_time=bc_anchor_time,
         )
         if additive:
+            assert bc_centering_weights is not None
+            assert bc_mean_shift_prior is not None
+            assert bc_anomaly_scale is not None
             return prepare_additive_boundary(
-                data, bc_centering_weights, observations, bc_mean_shift_prior, bc_anomaly_scale,
+                bound_operands, bc_centering_weights, observations, bc_mean_shift_prior, bc_anomaly_scale,
                 output_dim=str(observations.dims[0]),
             )
         assert bc_prior is not None
-        return MultiplicativeBoundary(data, dict(bc_prior), bc_state_activity, True)
+        return MultiplicativeBoundary(bound_operands, dict(bc_prior), bc_state_activity, True)
     if boundary_sensitivity is None:
         raise ValueError("A multiplicative boundary prior requires boundary_sensitivity or centered operands.")
-    data = bind_boundary_sensitivity(
+    absolute_sensitivity = bind_boundary_sensitivity(
         boundary_sensitivity, observations, frequency=bc_frequency, anchor_time=bc_anchor_time,
     )
     units = observations.attrs.get("units")
-    if units is not None and data.attrs.get("units") is not None:
-        data = _convert_units(data, units)
+    if units is not None and absolute_sensitivity.attrs.get("units") is not None:
+        absolute_sensitivity = _convert_units(absolute_sensitivity, units)
     assert bc_prior is not None
-    return MultiplicativeBoundary(data.rename("H_bc").to_dataset(), dict(bc_prior), bc_state_activity, False)
+    return MultiplicativeBoundary(absolute_sensitivity.rename("H_bc").to_dataset(), dict(bc_prior), bc_state_activity, False)
 
 
 def add_boundary(

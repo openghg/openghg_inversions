@@ -179,12 +179,25 @@ Boundary component extension check
 ----------------------------------
 
 The four CO2 builders accept one ``boundary`` input, a channel mapping for linked
-recipes. The frontend calls ``prepare_boundary`` once per enabled channel and
+recipes. Frontends accept the same already-bound record, or a channel mapping
+for linked fits. A supplied record bypasses raw selection and binding; otherwise
+the scientific adapter calls ``prepare_boundary`` once per enabled channel and
 fit. Its concrete record retains labelled data, resolved priors and activity or
 anomaly scale. At the named PyMC boundary, ``boundary_payload`` exposes borrowed
 numerical inputs for joint computation with the selected core arrays and prior
 parameters; ``replace_boundary_payload`` restores the same concrete record.
 Reusable raw transport retains its spatial meaning independently of fit periods.
+
+``materialize_co2_inputs``, ``build_rhime_co2_cached_sigma``, the linked
+frontends and ``build_co2_inference`` all forward this handoff. The inference
+mapping uses the key ``boundary`` regardless of likelihood backend. Supplied
+records replace raw boundary choices, and core input selection excludes raw
+boundary operators owned by that payload. Linked ``boundary={}`` explicitly
+disables boundaries; ``None`` keeps configured raw selection. Offsets remain
+independent. The component's ``boundary_output_metadata`` supplies fitted facts;
+configured CLI routes retain their requested period metadata, including omitted
+anchors. Component-declared coefficient units survive scientific replay, while
+flux and multiplicative boundary scales remain dimensionless.
 
 ``add_boundary`` returns ``AffineConcentrationTerm``. Ordinary recipes consume
 ``.term``. Cached recipes lower its separate labelled ``AffineBlock`` designs and
@@ -237,7 +250,10 @@ A dry-run extension with a new supported boundary prior reaches these owners:
 
 The exercised extension probes are
 ``tests/test_co2_boundary_affine_integration.py`` and
-``tests/test_boundary_output.py``. They embed a one-dimensional native response
+``tests/test_boundary_output.py``. The frontend handoff is exercised in
+``tests/test_co2_bound_frontends.py`` with raw binding forbidden, absent raw
+operators, shared delayed payloads and independent concentration equations for
+ordinary/cached single/linked fits. The embedding probes exercise a one-dimensional native response
 and a matrix with unsorted coefficient labels into interleaved joint rows,
 reject reversed observation rows before reading lazy cache payloads, and accept
 independent coefficient blocks with different labels on identically named axes.

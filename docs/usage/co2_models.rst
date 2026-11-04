@@ -168,6 +168,25 @@ likelihood, and sampled outputs.
 The location and scale parameters in ``offset_prior`` use the observations'
 concentration units.
 
+Already-bound boundaries in Python
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Python callers can supply ``boundary=bound`` to
+:func:`~openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs` or
+:func:`~openghg_inversions.rhime.co2.co2_cached_sigma_runner.build_rhime_co2_cached_sigma`.
+The linked build/run frontends accept ``boundary={"co2": co2_bound, "o2": o2_bound}``;
+an empty mapping disables boundaries. ``build_co2_inference`` accepts the same
+single-channel record under ``model["boundary"]`` for either backend.
+
+A supplied record replaces ``use_bc`` and the raw ``bc_*`` scientific choices.
+It already owns the fitted operators, labels, prior, activity and scale; raw BC
+arrays need not be present in the preparation. Its borrowed numerical payload
+is computed jointly with selected core arrays and prior parameters at the
+named model boundary, then forwarded without binding again. ``None`` retains
+the configured raw selection route. CLI choices and defaults are unchanged.
+Fitted metadata and physical coefficient units come from the component;
+scientific replay preserves those units independently of contribution units.
+
 Common boundary mean and centred additive anomalies
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

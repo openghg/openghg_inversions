@@ -22,6 +22,7 @@ from openghg_inversions.models.boundary import (
     AdditiveBoundary,
     BoundBoundary,
     add_boundary,
+    boundary_output_metadata,
     boundary_output_roles,
     boundary_output_units,
 )
@@ -93,6 +94,7 @@ class Co2CachedSigmaModel:
     initial_values: dict[str, Any]
     boundary_roles: dict[str, str] = field(default_factory=dict)
     boundary_units: dict[str, str] = field(default_factory=dict)
+    boundary_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 def _materialize_cached_linear_projection(
@@ -529,6 +531,7 @@ def build_co2_cached_sigma_model(
         )
         return replace(
             cached,
+            boundary_metadata=boundary_output_metadata(boundary) if boundary is not None else {},
             boundary_roles=boundary_output_roles(boundary) if boundary is not None else {},
             boundary_units=boundary_output_units(boundary) if boundary is not None else {},
         )

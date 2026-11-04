@@ -46,9 +46,7 @@ def build_co2_inference(
         options.pop("likelihood_builder")
         likelihood = dict(options.pop("likelihood_kwargs"))
         cached = build_rhime_co2_cached_sigma(prepared_inputs=prepared, **options, **likelihood)
-        return co2_cached_sigma_build_result(
-            cached, prepared, bc_freq=options.get("bc_freq"), bc_anchor_time=options.get("bc_anchor_time"),
-        ), cached
+        return co2_cached_sigma_build_result(cached, prepared), cached
     inputs, priors, boundary = materialize_co2_inputs(
         prepared_inputs=prepared,
         sigma_alignment=model.get("sigma_alignment"),
@@ -58,6 +56,7 @@ def build_co2_inference(
         likelihood_kwargs=model.get("likelihood_kwargs"),
         no_model_error=model.get("no_model_error", False),
         use_bc=model.get("use_bc", False),
+        boundary=model.get("boundary"),
         bc_prior=model.get("bc_prior"),
         bc_mean_shift_prior=model.get("bc_mean_shift_prior"),
         bc_anomaly_scale=model.get("bc_anomaly_scale"),

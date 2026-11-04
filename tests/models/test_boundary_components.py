@@ -445,3 +445,49 @@ def test_additive_boundary_keeps_unowned_default(double_precision):
         add_boundary(bound)
     assert "rhime_component" not in get_coord_registry(model).coordinate_attrs["bc_region"]
     assert model.named_vars_to_dims["bc_correction"] == ("bc_region",)
+
+
+@pytest.mark.parametrize("kind", ["absolute", "centered", "additive"])
+def test_boundary_metadata_uses_operator_facts_without_evaluating_lazy_inputs(double_precision, kind):
+    from openghg_inversions.models import boundary_output_metadata
+
+    data, observations = _native_boundary()
+    prior = {"pdf": "normal", "mu": 1., "sigma": .1}
+    if kind == "additive":
+        weights = xr.DataArray(np.ones((2, 2)), dims=("bc_curtain", "bc_period"),
+                              coords={"bc_curtain": ["north", "south"],
+                                      "bc_period": pd.to_datetime(["2020-01-01", "2020-02-01"])},
+                              attrs={"units": "1"})
+        bound = prepare_boundary(observations, boundary_operands=data, bc_frequency="monthly",
+                                 bc_mean_shift_prior=prior, bc_anomaly_scale=0., bc_centering_weights=weights)
+        expected = {"boundary_formulation": "additive", "boundary_representation": "centered-v1",
+                    "bc_frequency": "monthly", "bc_anchor_time": None}
+    else:
+        inputs = {"boundary_sensitivity": data.H_bc_anomaly} if kind == "absolute" else {"boundary_operands": data}
+        bound = prepare_boundary(observations, bc_prior=prior, bc_frequency="10D", bc_anchor_time="2020-01-01", **inputs)
+        expected = {"boundary_formulation": "multiplicative", "bc_frequency": "10D", "bc_anchor_time": "2020-01-01"}
+        if kind == "centered":
+            expected["boundary_representation"] = "centered-v1"
+    operator_name = "H_bc" if kind == "absolute" else "H_bc_anomaly"
+    operator = bound.data[operator_name]
+
+    @delayed
+    def forbidden_payload():
+        raise AssertionError("metadata must not evaluate payloads or auxiliary coordinates")
+
+    lazy = da.from_delayed(forbidden_payload(), shape=operator.shape, dtype=float)
+    auxiliary = da.from_delayed(forbidden_payload(), shape=(3,), dtype=float)
+    lazy_data = bound.data.copy(deep=False)
+    lazy_data[operator_name].data = lazy
+    lazy_data = lazy_data.assign_coords(diagnostic=("nmeasure", auxiliary)).assign_attrs(
+        bc_frequency="wrong-dataset-frequency", bc_anchor_time="wrong-dataset-anchor",
+    )
+    lazy_bound = replace(bound, data=lazy_data)
+    assert boundary_output_metadata(lazy_bound) == expected
+    assert lazy_bound.data is lazy_data
+    assert hasattr(lazy_bound.data[operator_name].data, "__dask_graph__")
+    # Whole-window sentinels describe no temporal subdivision or anchor.
+    unperiodized = lazy_data.copy(deep=False)
+    unperiodized[operator_name].attrs = dict(operator.attrs, bc_frequency="none", bc_anchor_time="not-applicable")
+    expected.update(bc_frequency=None, bc_anchor_time=None)
+    assert boundary_output_metadata(replace(lazy_bound, data=unperiodized)) == expected

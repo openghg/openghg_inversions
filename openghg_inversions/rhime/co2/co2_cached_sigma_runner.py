@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import json
+from dataclasses import replace
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
@@ -18,7 +19,7 @@ from pymc.initial_point import convert_str_to_rv_dict, make_initial_point_fn  # 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inference.cached_sigma import make_cached_sigma_compound_step
 from openghg_inversions.inversion_inputs import DatetimeLike
-from openghg_inversions.models.boundary import OPERAND_NAMES, require_centered_precision
+from openghg_inversions.models.boundary import BoundBoundary, OPERAND_NAMES, require_centered_precision
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import (
@@ -235,6 +236,7 @@ def build_rhime_co2_cached_sigma(
     site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     use_bc: bool = False,
+    boundary: BoundBoundary | None = None,
     bc_freq: str | None = None,
     bc_anchor_time: DatetimeLike | None = None,
     bc_prior: PriorArgs | None = None,
@@ -256,6 +258,8 @@ def build_rhime_co2_cached_sigma(
         initial_site_amplitudes: Positive scalar or site mapping in the same
             units; defaults to the prior support point.
         use_bc: Include prepared ordinary or centered boundary operands.
+        boundary: Already bound scientific boundary, replacing raw boundary
+            choices. Its payload is jointly materialized without rebinding.
         bc_freq: Optional model-owned period for raw boundary inputs.
         bc_anchor_time: Optional origin for fixed-duration boundary periods.
         bc_prior: Optional boundary-scaling prior.
@@ -288,13 +292,15 @@ def build_rhime_co2_cached_sigma(
     prepared = prepared_inputs
     names = co2_cached_sigma_input_names(
         prepared,
-        use_bc=use_bc,
-        use_bc_mean_shift=bc_mean_shift_prior is not None,
+        use_bc=use_bc and boundary is None,
+        use_bc_mean_shift=bc_mean_shift_prior is not None and boundary is None,
     )
+    raw_boundary = boundary is None
     boundary = _prepare_co2_boundary(
         prepared.inv_inputs, use_bc=use_bc, bc_prior=bc_prior, bc_state_activity=bc_state_activity,
         bc_mean_shift_prior=bc_mean_shift_prior, bc_anomaly_scale=bc_anomaly_scale,
         bc_freq=bc_freq, bc_anchor_time=bc_anchor_time,
+        boundary=boundary,
     )
     model_inputs, eager_priors, boundary = _materialize_co2_boundary_inputs(
         prepared.rhime_inputs, names,
@@ -330,15 +336,21 @@ def build_rhime_co2_cached_sigma(
         offset_drop_first=offset_drop_first,
         offset_per_site=offset_per_site,
     )
+    if raw_boundary:
+        metadata = dict(cached_model.boundary_metadata)
+        if "boundary_representation" in metadata:
+            metadata.update(bc_frequency=bc_freq,
+                            bc_anchor_time=None if bc_anchor_time is None else str(bc_anchor_time))
+        else:
+            metadata.pop("bc_frequency", None)
+            metadata.pop("bc_anchor_time", None)
+        cached_model = replace(cached_model, boundary_metadata=metadata)
     return cached_model
 
 
 def co2_cached_sigma_build_result(
     cached_model: Co2CachedSigmaModel,
     prepared_inputs: Co2PreparedInputs,
-    *,
-    bc_freq: str | None = None,
-    bc_anchor_time: DatetimeLike | None = None,
 ) -> RhimeModelBuildResult:
     """Describe a built cached graph for sampling and stored output metadata.
 
@@ -346,8 +358,6 @@ def co2_cached_sigma_build_result(
         cached_model: Graph returned by :func:`build_rhime_co2_cached_sigma`.
         prepared_inputs: Prepared inputs used to build the graph, providing
             basis provenance.
-        bc_freq: Model-owned period used to build centered boundary states.
-        bc_anchor_time: Origin used for fixed-duration centered periods.
 
     Returns:
         Model build result with scientific roles and serializable provenance.
@@ -380,14 +390,9 @@ def co2_cached_sigma_build_result(
     }
     variable_roles.update(cached_model.boundary_roles)
     metadata["boundary_units"] = cached_model.boundary_units
-    if "boundary_anomaly" in variable_roles:
-        metadata.update(boundary_representation="centered-v1", bc_frequency=bc_freq,
-                        bc_anchor_time=None if bc_anchor_time is None else str(bc_anchor_time))
+    metadata.update(cached_model.boundary_metadata)
+    if metadata.get("boundary_representation") == "centered-v1":
         variable_roles["observation"] = "y"
-    if "boundary_mean_shift" in variable_roles:
-        metadata["boundary_formulation"] = "additive"
-    elif "boundary_scale" in variable_roles:
-        metadata["boundary_formulation"] = "multiplicative"
     if "offset" in cached_model.model.named_vars:
         variable_roles["offset_concentration"] = "offset"
     for role, name in {
