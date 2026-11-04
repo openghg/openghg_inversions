@@ -75,7 +75,7 @@ def test_compact_recording_restores_all_deterministics_at_identical_states(
     backend.setup(draws=4, chain=0)
     rng = np.random.default_rng(183)
     for _ in range(4):
-        backend.record({name: value + .01 * rng.normal(size=value.shape)
+        backend.record({name: np.asarray(value + .01 * rng.normal(size=value.shape))
                         for name, value in point.items()}, in_warmup=False)
     reference = pm.to_inference_data(
         prior={variable.name: backend.get_values(variable.name) for variable in model.free_RVs + model.deterministics},
