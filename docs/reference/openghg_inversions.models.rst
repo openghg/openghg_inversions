@@ -20,5 +20,6 @@ openghg\_inversions.models
    openghg_inversions.models.pollution_event
    openghg_inversions.models.priors
    openghg_inversions.models.scalar_sigma
+   openghg_inversions.models.shared_baseline
    openghg_inversions.models.site_sigma
    openghg_inversions.models.state_activity
