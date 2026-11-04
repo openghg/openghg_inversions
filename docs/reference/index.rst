@@ -301,6 +301,8 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.boundary.MultiplicativeBoundary
    openghg_inversions.models.boundary.AdditiveChoice
    openghg_inversions.models.boundary.AdditiveBoundary
+   openghg_inversions.models.boundary.AnomalyScalingChoice
+   openghg_inversions.models.boundary.AnomalyScalingBoundary
    openghg_inversions.models.boundary.CenteredOperands
    openghg_inversions.models.boundary.BoundaryOutputs
    openghg_inversions.array_ops.to_dense_tree

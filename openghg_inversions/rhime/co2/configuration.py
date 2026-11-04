@@ -370,7 +370,7 @@ def _boundary_choice(boundary: dict[str, object]) -> BoundaryChoice | None:
         if prior is not None:
             raise ValueError("Centred boundary corrections cannot use model.boundary.prior.")
         assert anomaly_scale is not None
-        return AdditiveChoice(mean_shift_prior, anomaly_scale, frequency, anchor_time)
+        return AdditiveChoice(mean_shift_prior, anomaly_scale, frequency=frequency, anchor_time=anchor_time)
     return MultiplicativeChoice(prior if prior is not None else dict(DEFAULT_BC_PRIOR),
                                 frequency=frequency, anchor_time=anchor_time)
 
