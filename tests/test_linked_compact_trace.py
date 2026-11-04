@@ -152,7 +152,7 @@ def test_compact_sampler_preserves_normalized_likelihood_and_absolute_products(t
     """Exercise recording, return, prediction, and serialization on actual small chains."""
     from scipy.stats import multivariate_normal
 
-    from openghg_inversions.models.boundary import restore_absolute_predictives
+    from openghg_inversions.rhime.co2.boundary_output import restore_absolute_predictives
     from openghg_inversions.rhime.co2.co2_cached_sigma_runner import _sampler_for_cached_graph
     from test_co2_o2_fixed_ou import _dense
 
