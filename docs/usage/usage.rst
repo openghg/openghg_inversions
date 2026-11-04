@@ -18,6 +18,7 @@ Using OpenGHG Inversions
    boundary_correction_structures
    shared_baseline
    linked_shared_baseline
+   configured_co2_priors
    prepared_format_support
    running_and_validating
    shared_scientific_concepts
