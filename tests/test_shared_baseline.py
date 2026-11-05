@@ -694,7 +694,7 @@ def test_single_shared_nonunit_mass_restores_absolute_predictives(cached):
     transport = replace(transport, mass=(transport.mass * scale).assign_attrs(units="1"))
     bound = bind(obs, h, prior, xr.full_like(obs, .2).assign_attrs(units="ppm"), transport=transport)
     builder = build_shared_co2_cached_sigma_model if cached else build_shared_co2_model
-    model = builder(bound, **errors(obs), **NOISE)
+    model = builder(bound, **errors(obs), **(NOISE if cached else {}))
     model = model.model if cached else model
     with model:
         trace = pm.sample_prior_predictive(2, random_seed=138)
