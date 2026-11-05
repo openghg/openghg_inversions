@@ -138,6 +138,9 @@ Import both values from
 :ref:`centered boundary contract <surface-centered-boundary-contract>` for
 operands and supported model routes.
 
+See :doc:`supplied backgrounds and an inner flux domain </usage/supplied_backgrounds>`
+for deterministic background accounting, preparation and scientific limitations.
+
 .. autosummary::
    :nosignatures:
 
@@ -147,6 +150,8 @@ operands and supported model routes.
    openghg_inversions.inversion_data.InputProvenance
    openghg_inversions.inversion_data.MergedDataProvenance
    openghg_inversions.inversion_data.PreparedInputs
+   openghg_inversions.rhime.prepare_supplied_baseline
+   openghg_inversions.rhime.co2.prepare_co2_supplied_baseline
    openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray
    openghg_inversions.inversion_data.prepare_surface_site
    openghg_inversions.inversion_data.acquire_surface_data
