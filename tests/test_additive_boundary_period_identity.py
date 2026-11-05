@@ -55,7 +55,7 @@ def weights(bound):
 
 def prepare(raw, weight, observations, frequency=None, anchor=None):
     return AdditiveChoice(
-        {"pdf": "uniform", "lower": -0.5, "upper": 0.5}, 0.04, frequency, anchor,
+        {"pdf": "uniform", "lower": -0.5, "upper": 0.5}, 0.04, frequency=frequency, anchor_time=anchor,
     ).bind(observations, replace(CenteredOperands.from_dataset(raw), weights=weight))
 
 

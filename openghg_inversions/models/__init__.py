@@ -34,6 +34,8 @@ from openghg_inversions.models.components import (
 from openghg_inversions.models.boundary import (
     AdditiveBoundary,
     AdditiveChoice,
+    AnomalyScalingBoundary,
+    AnomalyScalingChoice,
     Boundary,
     BoundaryChoice,
     BoundaryOutputs,
@@ -103,6 +105,8 @@ __all__ = [
     "AffineConcentrationTerm",
     "AdditiveBoundary",
     "AdditiveChoice",
+    "AnomalyScalingBoundary",
+    "AnomalyScalingChoice",
     "Boundary",
     "BoundaryChoice",
     "BoundaryOutputs",
