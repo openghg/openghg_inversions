@@ -165,8 +165,9 @@ For example, given independently prepared labelled arrays:
 The same ``biosphere_prior`` argument is accepted by ordinary/cached CO₂ and
 CO₂/O₂ graph builders, ``build_co2_from_materialized``,
 ``build_rhime_co2_cached_sigma``, ``build_rhime_co2_o2`` and the linked prepared
-sampling runners. These are explicit Python inputs; TOML/INI configuration and
-saved model-choice schemas do not load a calibration automatically. Pass the
+sampling runners. The :doc:`configured saved-calibration workflow
+<configured_co2_priors>` also loads explicitly selected artifacts through the
+CO2 and linked TOML/JSON model owners. Pass the
 original baseline alongside the calibration; a different baseline is rejected.
 The linked recipes apply it once to shared coefficients, independently of how
 many observation channels use them.
