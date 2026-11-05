@@ -4,8 +4,9 @@ A :class:`SharedBaselineChoice` is data-free: the boundary anomaly structure,
 the atmospheric level width and the outer-flux mode. Binding it to one fit's
 prepared transport, retained prior and observation rows returns a
 :class:`SharedBaseline` whose ``data`` holds the transformed, still lazy
-operators the recipe consumes. Nothing is prepared or saved separately: the
-recipe binds at construction, and the trace records what the model used.
+operators the recipe consumes. The recipe binds at construction, and the trace
+records what the model used. The optional linked staged workflow snapshots this
+bound record to preserve its original full-support centring across saved phases.
 
 Equal-site centring is computed from the bound rows. To fit a subset of rows
 with the centring of a larger support, bind on the larger support and subset

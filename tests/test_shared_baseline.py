@@ -540,7 +540,7 @@ def test_shared_float32_rejected_before_transport_materialization(cached):
 def test_shared_trace_roundtrip_canonical_roles_units_and_graph_free_replay(tmp_path):
     import pymc as pm
     from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
-    from openghg_inversions.rhime.co2.boundary_output import decode_boundary_facts, reconstruct_boundary
+    from openghg_inversions.rhime.co2.boundary_output import decode_boundary_facts, reconstruct_boundary, restore_absolute_predictives
     from openghg_inversions.rhime.co2.shared_baseline_model import annotate_shared_baseline_trace
     from openghg_inversions.serialization import load_trace, save_trace
 
@@ -551,6 +551,8 @@ def test_shared_trace_roundtrip_canonical_roles_units_and_graph_free_replay(tmp_
     with model:
         trace = pm.sample_prior_predictive(draws=2, random_seed=117)
     trace = restore_inferencedata_coords(trace, get_coord_registry(model))
+    trace = restore_absolute_predictives(trace)
+    np.testing.assert_allclose(trace.observed_data.y, obs)
     trace = annotate_shared_baseline_trace(trace, baseline)
     save_trace(trace, tmp_path / "shared.nc")
     restored = load_trace(tmp_path / "shared.nc")
@@ -677,3 +679,35 @@ def _assert_independent_density_and_all_gradients(ordinary, cached, point, h, ba
     for model in (ordinary, cached.model):
         np.testing.assert_allclose(model.compile_logp()(point), expected, rtol=0, atol=1e-10)
         np.testing.assert_allclose(model.compile_dlogp()(point), gradient, rtol=2e-6, atol=2e-7)
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_single_shared_nonunit_mass_restores_absolute_predictives(cached):
+    import pymc as pm
+    from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
+    from openghg_inversions.rhime.co2.boundary_output import restore_absolute_predictives
+    from openghg_inversions.rhime.co2.shared_baseline_model import annotate_shared_baseline_trace
+
+    obs, h, prior, _ = case()
+    transport = operands(obs)
+    scale = xr.DataArray([.5, 2., 1.5, .75], dims="nmeasure", coords={"nmeasure": obs.nmeasure})
+    transport = replace(transport, mass=(transport.mass * scale).assign_attrs(units="1"))
+    bound = bind(obs, h, prior, xr.full_like(obs, .2).assign_attrs(units="ppm"), transport=transport)
+    builder = build_shared_co2_cached_sigma_model if cached else build_shared_co2_model
+    model = builder(bound, **errors(obs), **(NOISE if cached else {}))
+    model = model.model if cached else model
+    with model:
+        trace = pm.sample_prior_predictive(2, random_seed=138)
+    trace = restore_inferencedata_coords(trace, get_coord_registry(model))
+    raw = trace.prior_predictive.y.copy(deep=True)
+    mean = trace.prior.modelled_concentration.copy(deep=True)
+    shift = transport.reference * transport.mass.sum("bc_region")
+    trace = restore_absolute_predictives(trace)
+    trace = annotate_shared_baseline_trace(trace, bound)
+    np.testing.assert_allclose(trace.observed_data.y, obs)
+    np.testing.assert_allclose(trace.prior_predictive.y, raw + shift)
+    np.testing.assert_array_equal(trace.prior.modelled_concentration, mean)
+    once = trace.copy(deep=True)
+    restore_absolute_predictives(trace)
+    annotate_shared_baseline_trace(trace, bound)
+    xr.testing.assert_identical(trace, once)
