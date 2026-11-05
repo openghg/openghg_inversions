@@ -14,6 +14,7 @@ Using OpenGHG Inversions
    co2_model_family
    surface_preparation
    prepared_format_support
+   supplied_backgrounds
    running_and_validating
    shared_scientific_concepts
    legacy_and_migration
