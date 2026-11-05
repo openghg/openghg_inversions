@@ -720,6 +720,7 @@ def prepare_co2_inputs(
             raise ValueError("Additive boundary weights require native centered boundary operands.")
         weights = bc_centering_weights.transpose("bc_curtain", "bc_period")
         if "bc_centering_weights" in mapped:
+            # Remove the old weight-owned calendar to avoid alignment to stale periods; protect shared axes first.
             for dim in ("bc_curtain", "bc_period"):
                 consumers = [
                     name for name, array in mapped.variables.items()

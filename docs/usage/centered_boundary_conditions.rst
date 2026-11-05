@@ -39,7 +39,8 @@ between the operators below.
      - Meaning
    * - :math:`P`
      - :math:`N\times L`, dimensionless
-     - Transport weights, including time selection and observation averaging.
+     - Transport weights derived from ``particle_locations_n/e/s/w``, including
+       time selection and observation averaging.
    * - :math:`C^0`
      - :math:`L`, concentration
      - Supplied concentration at each boundary cell and native time.
@@ -64,6 +65,10 @@ cell. We call any basis satisfying :math:`B\mathbf1=\mathbf1` a
 fields. Defining the field from coefficients and averaging concentrations
 into observation bins are separate operations.
 
+The built-in north/east/south/west (NESW) basis and complete partitions into
+disjoint regions partition unity. The current binary boundary-period expansion
+preserves this property: each observation belongs to exactly one fitted period.
+
 We aim to choose independent native basis columns, so that
 :math:`\operatorname{rank}(B)=K`. Reducing redundant columns requires
 re-expressing the intended prior consistently, preserving its distribution
@@ -85,10 +90,8 @@ For dimensionless state coefficients :math:`b`, the native boundary field is
    \mu_{bc} &= H_{bc}b, \\
    H_{bc,ij} &= \sum_\ell P_{i\ell}C^0_\ell B_{\ell j}.
 
-For a basis that partitions unity, :math:`b=\mathbf1` gives the supplied
-native field and :math:`H_{bc}\mathbf1=PC^0`. Otherwise its baseline is
-:math:`P\operatorname{diag}(C^0)B\mathbf1`, so the choice of basis also
-changes the baseline field.
+For these partition-of-unity bases, :math:`b=\mathbf1` gives the supplied
+native field and :math:`H_{bc}\mathbf1=PC^0`.
 
 We also define the transported basis, or mass operator,
 
@@ -105,9 +108,7 @@ The code name ``H_bc_mass`` refers to transport weight. For example,
 means that a unit concentration assigned through the first basis state gives
 responses 0.7 and 0.1 at the two observations. For normalized, complete
 transport and a basis that partitions unity, :math:`M\mathbf1=\mathbf1`.
-Incomplete transport coverage or a basis that does not partition unity can
-give other row sums. We retain the actual vector :math:`M\mathbf1` in the
-centering equations.
+We retain the actual vector :math:`M\mathbf1` in the centering equations.
 
 .. _boundary-numerical-centering:
 
@@ -187,9 +188,11 @@ Additive boundary corrections
 An additive formulation keeps the projected baseline
 :math:`H_{bc}\mathbf1` fixed and adds state corrections :math:`d` in
 concentration units through native dimensionless transport :math:`M=PB`.
-When the basis partitions unity, the corrected field is :math:`C=C^0+Bd`.
+Because the basis partitions unity, the corrected field is :math:`C=C^0+Bd`.
 With the example :math:`M` above, a 1 ppm correction to the first state changes
 the first prediction by 0.7 ppm.
+For NESW, each state is one curtain and fitted period; the
+:ref:`prior for these corrections <boundary-mean-anomaly-prior>` is described below.
 
 The supported additive interfaces require native centered operands
 ``H_bc_anomaly``, ``H_bc_mass`` and scalar ``bc_reference``. Numerical
@@ -204,6 +207,8 @@ The anomaly operator :math:`A` is signed and has concentration units, whereas
 :math:`M` is dimensionless. Substituting :math:`A` for :math:`M` would change
 coefficient units and prior semantics. See :ref:`boundary-numerical-centering`
 for the required accuracy checks and order of arithmetic.
+
+.. _boundary-mean-anomaly-prior:
 
 One whole-window correction and state anomalies
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -223,9 +228,8 @@ nonzero mean anomalies; we do not impose a zero mean within each period.
 For example, :math:`u_{rt}=\gamma_t` gives the same anomaly to every region in
 period :math:`t`. It is allowed when
 :math:`\sum_t(\sum_rw_{rt})\gamma_t=0`, with individual :math:`\gamma_t`
-potentially nonzero. For a basis that partitions unity, :math:`\delta` gives
-a constant native concentration correction. Otherwise its native pattern is
-:math:`\delta B\mathbf1`.
+potentially nonzero. Because the basis partitions unity, :math:`\delta` gives
+a constant native concentration correction.
 
 The constraint removes the redundant direction internal to this decomposition:
 without it, a constant could be transferred between :math:`\delta` and all
@@ -275,7 +279,7 @@ The positive weights :math:`w` define which mean is assigned to
 physical average requires a declared measure on the native boundary grid.
 For corrections using basis :math:`B`, let :math:`a_\ell\geq0` be normalized
 native weights with :math:`\sum_\ell a_\ell=1`, such as an explicitly
-specified curtain-area and duration measure. If the basis partitions unity,
+specified curtain-area and duration measure. Because the basis partitions unity,
 choose
 
 .. math::
@@ -292,13 +296,21 @@ Then :math:`\sum_jw_j=1` and
 Thus the state constraint represents the chosen native-field mean. The
 current interface requires every state weight to be strictly positive, so the
 native measure must give each retained correction state positive weight.
-For a basis that does not partition unity, :math:`a^\mathsf{T}B\mathbf1`
-need not equal one and this interpretation must be reconsidered.
 
 The caller supplies these weights; preparation does not infer a native
 measure or basis geometry. Choosing weights for a mean constraint does not
 derive the full state prior from a native-field prior. That would also require
 a native covariance and a justified transformation to state coefficients.
+
+.. note::
+
+   Supplied bases are not checked for partition of unity. If
+   :math:`B\mathbf1\ne\mathbf1`, the multiplicative baseline is
+   :math:`P\operatorname{diag}(C^0)B\mathbf1`, and the common additive
+   correction has native pattern :math:`\delta B\mathbf1`.
+   Also, :math:`a^\mathsf{T}B\mathbf1` need not equal one, so the native-mean
+   interpretation above must be reconsidered. The numerical centering identity
+   :math:`H_{bc}=A+cM` and shift :math:`r=cM\mathbf1` still apply.
 
 What the current surface preparation computes
 ---------------------------------------------

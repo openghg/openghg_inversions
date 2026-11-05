@@ -164,6 +164,7 @@ def _add_cached_likelihood(
 ) -> Co2CachedSigmaModel:
     """Lower ordered scientific terms once at the cached-likelihood boundary."""
     blocks = tuple(block for term in terms for block in term.blocks)
+    # Align observation rows only: coefficient axes belong to each block, even when their names coincide.
     fixed = [
         xr.align(term.fixed_contribution, observations, join="exact", copy=False,
                  exclude=set(term.fixed_contribution.dims) - {output_dim})[0]
@@ -248,6 +249,7 @@ def _add_cached_likelihood(
         pt.sqrt(covariance.marginal_variance(amplitude)),
         dims=output_dim,
     )
+    # Match the block/column order used to build the positional design matrix above.
     coefficients = (
         pt.concatenate([block.coefficients for block in blocks])
         if blocks
