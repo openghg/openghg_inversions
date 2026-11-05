@@ -12,8 +12,8 @@ boundary period; either responds through ``M``, so a whole-window shift
 contributes ``m M 1``. The anomaly structure is part of the prior:
 
 ``"weighted"``
-    Anomalies with zero weighted mean over every state,
-    ``d = (Q - 1 wᵀQ) z`` for a Helmert basis ``Q`` (see
+    Anomaly component with zero weighted mean over every state,
+    ``(Q - 1 wᵀQ) z`` for a Helmert basis ``Q`` (see
     https://mc-stan.org/docs/stan-users-guide/regression.html#parameterizing-centered-vectors).
 ``"period_contrasts"``
     Orthonormal Helmert contrasts of the curtains within each period, so every
@@ -63,7 +63,8 @@ class AdditiveChoice:
     """Prior specification for additive boundary corrections, before binding.
 
     A choice holds the scientific options (mean shift prior, anomaly
-    structure and width, and boundary period calendar) without any arrays.
+    structure and width, and boundary period calendar) without bound
+    observations or transport arrays.
     :meth:`bind` pairs it with one fit's observations and centered transport.
 
     Attributes:

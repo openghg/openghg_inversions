@@ -45,7 +45,8 @@ class AnomalyScalingChoice:
     """Prior specification for anomaly-scaling boundary corrections, before binding.
 
     A choice holds the scientific options (mean shift prior, scaling width,
-    reference policy and boundary period calendar) without any arrays.
+    reference policy and boundary period calendar) without bound
+    observations or transport arrays.
     :meth:`bind` pairs it with one fit's observations and centered transport.
 
     Attributes:

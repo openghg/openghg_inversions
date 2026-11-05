@@ -20,18 +20,19 @@ with its other inputs (``dask.compute`` traverses these dataclasses; see
 ordinary and cached likelihoods consume without knowing the family, and
 ``boundary.outputs()`` declares the roles, units and metadata recorded with
 the trace. :class:`BoundaryChoice` and :class:`Boundary` are structural
-protocols, so adding a boundary family means adding one module with a choice
-and a bound record, plus its configuration adapter and tests; nothing here
-enumerates the families.
+protocols, so adding a centered boundary family means adding one module with
+a choice and a bound record, plus its configuration adapter and tests;
+nothing here enumerates the families.
 
 Transport is either absolute ``H_bc`` or :class:`CenteredOperands`
 ``A``, ``M`` and ``c`` with ``H = A + c M``. :class:`BoundaryChoice` is
 generic in the transport its ``bind`` accepts: every family accepts centered
 operands, and only :class:`MultiplicativeChoice` also accepts absolute
 ``H_bc``, so a ``BoundaryChoice[CenteredOperands]`` is any family. The
-recipe input helper that identifies a prepared dataset's representation owns
-the remaining runtime check that absolute transport meets a choice that
-accepts it. Centered transport keeps small
+transport parameter is erased at runtime, so the recipe input helpers that
+identify a prepared dataset's representation admit absolute transport only
+for :class:`MultiplicativeChoice`; a new family that accepts absolute
+transport must also be admitted there. Centered transport keeps small
 anomalies after cancellation: likelihoods use observations shifted by the
 fixed ``c M 1``, while absolute outputs add it back. Centered graphs need a
 float64 PyTensor process (:func:`require_centered_precision`), checked once
