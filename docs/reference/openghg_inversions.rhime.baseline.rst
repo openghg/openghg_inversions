@@ -81,7 +81,7 @@ The caller must average the background over the same support before ingress.
 The background declares ``species`` in its attributes. All supplied series
 require concentration ``units`` compatible with mol/mol; conversion to the
 observation units is lazy. Nonfinite total background or inner affine values
-are rejected at the coordinated PyMC materialization boundary. A Dataset
+are rejected during model construction at the eager PyMC boundary. A Dataset
 preserves each named constituent and their converted units alongside the total.
 Provenance, species, constituent names and uncertainty policy survive prepared
 NetCDF/Zarr and modern inversion-output serialization.

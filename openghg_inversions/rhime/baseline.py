@@ -58,29 +58,61 @@ def prepare_supplied_baseline(
     """Rebuild an inner-only operator and attach an absolute supplied background.
 
     This bounded single-sector preparation implements
-    ``baseline + inner_fixed_contribution + H_inner @ x``. ``native_response``
-    is footprint times prior flux, on the retained basis grid and observation
-    MultiIndex. ``inner_support`` is an eager Boolean cell mask on that exact
-    grid: whole cells are included or excluded, with no interpolation or partial
-    overlap. Mask before basis reduction; states may span the domain edge.
-    Native flux outputs are also zero outside this support.
+    ``baseline + inner_fixed_contribution + H_inner @ x``. Masking occurs before
+    basis reduction; states may span the domain edge. Native flux outputs are
+    also zero outside the support. Observation offsets remain separate from the
+    supplied background and any sampled boundary correction.
 
-    ``constituents`` must include ``boundary`` and ``exterior_flux`` and may
-    name other supplied background constituents, but must exclude
-    ``inner_fixed_contribution`` and ``offset``. The inner affine contribution
-    is required explicitly (supply a labelled zero series when absent).
     Baseline uncertainty is omitted. Exterior prior dependence is discarded;
     callers must supply an inner prior and any aggregation covariance appropriate
     to that deterministic exterior treatment. Neither is silently conditioned.
 
-    A Dataset may provide each declared constituent as a separate series; those
-    series are converted, summed once and retained alongside the total.
-    Baseline and affine series may contain additional observation labels. All
-    retained releases must exist; missing/nonfinite values are rejected at the
-    PyMC materialization boundary. Site/inlet and averaging metadata must agree
-    with the prepared observation metadata. Species and provenance are explicit.
-    An enabled sampled boundary must be declared a correction to this background.
-    Inputs remain borrowed and native numerical payloads remain lazy.
+    Missing retained observation labels are rejected during preparation.
+    Nonfinite total background or inner affine values are rejected during model
+    construction at the eager PyMC boundary. Inputs remain borrowed and native
+    numerical payloads remain lazy.
+
+    Args:
+        prepared: Original single-sector preparation without an installed supplied
+            baseline, retaining the basis grid, prior flux and observation metadata.
+        baseline: Absolute background total, or a Dataset with one variable per
+            declared constituent. Its ``species`` attribute must match ``species``.
+            Each series must have only ``nmeasure``, unique observation labels covering
+            all retained releases, and explicit concentration units convertible to
+            observation units. Additional releases are selected away; Dataset series
+            are converted, summed once and retained alongside the total.
+        native_response: Footprint times prior flux with exactly the native grid and
+            ``nmeasure`` dimensions. Indexed grid coordinates must match the retained
+            basis; the observation index must match the retained releases exactly.
+            Explicit concentration units must be convertible to observation units.
+        inner_support: Eager Boolean whole-cell mask on exactly the indexed native
+            grid, retaining at least one cell. No interpolation or partial overlap
+            is supported.
+        inner_fixed_contribution: Complete inner-only affine concentration with the
+            same label and unit requirements as ``baseline``. Supply a labelled zero
+            series when absent; exclude it from the supplied background.
+        baseline_site_metadata: Site, inlet and averaging metadata equal to the
+            preparation's metadata after selection of retained sites.
+        species: Nonempty species name matching the background and intended model.
+        provenance: Nonempty description of the background product and processing.
+        constituents: Unique names including ``boundary`` and ``exterior_flux``,
+            excluding ``inner_fixed_contribution`` and ``offset``. Dataset variable
+            names must match these names exactly.
+        sampled_boundary_is_correction: Declare any enabled sampled boundary to be
+            a correction to the supplied background. Defaults to false; model input
+            validation rejects boundary sampling unless this is true.
+
+    Returns:
+        A new preparation with rebuilt inner sensitivity, masked native prior flux
+        carrying ``flux_support``, and separately retained background, inner affine
+        term, support mask and any named background constituents. The input preparation
+        is unchanged.
+
+    Raises:
+        ValueError: If a baseline is already installed, the basis is multisector,
+            the support or response dimensions/indexes are invalid, concentration
+            units are missing or incompatible, retained observations or site metadata
+            do not match, or species, provenance or constituent accounting is invalid.
     """
     if "supplied_baseline" in prepared.inv_inputs:
         raise ValueError("A supplied baseline is already installed; prepare from the original inputs.")
