@@ -278,7 +278,8 @@ resolved data, not ``bc_basis_case`` or ``bc_basis_directory`` discovery options
 
 ``bc_basis_algorithm="NESW"`` selects the built-in calculation and is the
 canonical default. It uses acquired directional boundary contributions without
-reading a basis file; scientific calls receive ``bc_basis=None``. Exact
+reading a basis file; scientific calls receive the ``nesw_basis`` builder,
+which is also their default. Exact
 ``bc_basis_paths`` take precedence over the algorithm, whose value is then
 inactive. Selected files fail on read errors rather than falling back to NESW.
 ``use_bc=False`` skips BC basis resolution and loading, including selected files.

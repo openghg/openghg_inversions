@@ -57,7 +57,10 @@ def boundary_basis(algorithm: object, *, split_height: object = 3000.0) -> Calla
 
     Args:
         algorithm: One of :data:`BOUNDARY_BASIS_ALGORITHMS`.
-        split_height: Twelve-region height split; ignored by NESW.
+        split_height: Twelve-region split in the curtains' native ``height``
+            coordinate units, with no unit or datum conversion (for example
+            ``3.0`` for 3 km when heights are in km). Ignored by NESW. See
+            :func:`twelve_region_basis` for the full geometry contract.
 
     Raises:
         ValueError: If the algorithm is unknown or, for twelve-region, the

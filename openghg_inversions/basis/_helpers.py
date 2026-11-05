@@ -41,10 +41,6 @@ def bc_sensitivity(fp_and_data: dict, bc_basis: BoundaryBasis = nesw_basis) -> d
     result = dict(fp_and_data)
     if not callable(bc_basis):
         bc_basis = _normalise_basis(bc_basis)
-        if bc_basis.sizes.get("time") == 1:
-            bc_basis = bc_basis.squeeze("time")
-        elif "time" in bc_basis.dims:
-            bc_basis = bc_basis.sortby("time")
 
     for site, ds in fp_and_data.items():
         if site.startswith("."):
@@ -70,8 +66,16 @@ def bc_sensitivity(fp_and_data: dict, bc_basis: BoundaryBasis = nesw_basis) -> d
 
 
 def _normalise_basis(basis: xr.Dataset) -> xr.Dataset:
-    """Rename stored ``bc_basis_<d>``/``basis_bc_<d>`` weights to ``bc_<d>``."""
-    return basis.rename({dv: str(dv).replace("basis_", "") for dv in basis.data_vars})
+    """Rename stored weights to ``bc_<d>``; squeeze one time or sort several.
+
+    Applies equally to resolved datasets and to builder results.
+    """
+    basis = basis.rename({dv: str(dv).replace("basis_", "") for dv in basis.data_vars})
+    if basis.sizes.get("time") == 1:
+        return basis.squeeze("time")
+    if "time" in basis.dims:
+        return basis.sortby("time")
+    return basis
 
 
 def _project_boundaries(ds: xr.Dataset, basis: xr.Dataset, *, centered: bool = False) -> xr.DataArray:
@@ -90,6 +94,9 @@ def _project_boundaries(ds: xr.Dataset, basis: xr.Dataset, *, centered: bool = F
             except KeyError as exc:
                 raise ValueError("Centered boundary basis must cover every retained site timestamp.") from exc
         ds, basis = xr.align(ds, basis, join="exact", copy=False)
+    else:
+        # Absolute projection keeps the shared labels, e.g. retained observation times.
+        ds, basis = xr.align(ds, basis, join="inner", copy=False)
     parts = []
     for direction in "nesw":
         weights = basis[f"bc_{direction}"]
