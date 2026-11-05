@@ -231,6 +231,7 @@ operands and supported model routes.
    openghg_inversions.rhime.co2.co2_outputs.validate_co2_product_request
    openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma
    openghg_inversions.rhime.co2.prepare_co2_o2_inputs
+   openghg_inversions.rhime.co2.surface_templates.prepare_linked_surface_templates
 
 Basis construction and state geometry
 -------------------------------------

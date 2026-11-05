@@ -26,6 +26,9 @@ from ._surface_schema import validate_surface_inputs
 from ._boundary import baseline_reference_sensitivities as _reference_sensitivities
 
 
+SURFACE_POLICY_REVISION = "957-source-wise-v1"
+
+
 TransportMode = Literal["integrated", "time_resolved"]
 FootprintInput = xr.Dataset | FootprintData
 SurfaceInput = xr.Dataset | ObsData | FootprintData | FluxData | BoundaryConditionsData
@@ -485,7 +488,7 @@ def _attach_surface_provenance(
     site.attrs["surface_transport"] = json.dumps(dict(transport), sort_keys=True)
     # Scientific policy: independent source products on native releases, then observation means.
     # This provenance marker is separate from persisted artifact/manifest format versions.
-    site.attrs["surface_policy_revision"] = "957-source-wise-v1"
+    site.attrs["surface_policy_revision"] = SURFACE_POLICY_REVISION
     site.attrs["surface_provider_version"] = str(getattr(openghg, "__version__", None) or "unknown")
     site.attrs["surface_provider_revision"] = str(getattr(openghg, "__revisionid__", None) or "unknown")
     site.attrs["surface_transport_provenance"] = json.dumps(
