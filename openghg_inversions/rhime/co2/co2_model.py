@@ -14,6 +14,7 @@ import numpy as np
 import pymc as pm
 import xarray as xr
 
+from openghg_inversions.array_ops import to_dense
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.additive_sigma import (
@@ -88,6 +89,32 @@ def _normalise_offset_args(
     return frequency, drop_first, per_site
 
 
+def _validate_co2_supplied_baseline(
+    supplied_baseline: xr.DataArray | None,
+    observations: xr.DataArray,
+    *,
+    incompatible_components: bool,
+    output_dim: str = "nmeasure",
+) -> xr.DataArray | None:
+    """Validate a direct graph caller's fixed concentration at the PyMC boundary."""
+    if supplied_baseline is None:
+        return None
+    if incompatible_components:
+        raise ValueError("supplied_baseline cannot be combined with boundary or offset components/options.")
+    if supplied_baseline.dims != (output_dim,):
+        raise ValueError(f"supplied_baseline must have only the {output_dim} dimension.")
+    if output_dim not in supplied_baseline.indexes or not supplied_baseline.get_index(output_dim).is_unique:
+        raise ValueError("supplied_baseline requires unique indexed observation labels.")
+    supplied_baseline, _ = xr.align(supplied_baseline, observations, join="exact", copy=False)
+    units = supplied_baseline.attrs.get("units")
+    if not units or units != observations.attrs.get("units"):
+        raise ValueError("supplied_baseline must use the observations' concentration units.")
+    supplied_baseline = to_dense(supplied_baseline).compute()
+    if not np.isfinite(supplied_baseline.to_numpy()).all():
+        raise ValueError("supplied_baseline must be finite at every retained observation.")
+    return supplied_baseline.rename("supplied_baseline")
+
+
 def build_co2_model(
     flux_sensitivity: xr.DataArray,
     *,
@@ -102,6 +129,7 @@ def build_co2_model(
     sigma_prior: PriorArgs | None = None,
     fixed_model_mismatch: float | xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
+    supplied_baseline: xr.DataArray | None = None,
     boundary_sensitivity: xr.DataArray | None = None,
     boundary_operands: xr.Dataset | None = None,
     bc_freq: str | None = None,
@@ -172,6 +200,9 @@ def build_co2_model(
             standard deviation.
         state_activity: Optional labelled activity policy for retained flux
             states.
+        supplied_baseline: Optional labelled deterministic background in observation
+            concentration units. Added once, separately from the inner coherent
+            affine contribution; excludes boundary and offset components/options.
         boundary_sensitivity: Optional atmospheric boundary-condition
             sensitivity on spatial states. Raw states are expanded using the
             model's periods; already expanded states cannot accept overrides.
@@ -198,6 +229,13 @@ def build_co2_model(
             coordinate alignment fails, or if ``sigma_prior`` is supplied
             without ``sigma_alignment``.
     """
+    supplied_baseline = _validate_co2_supplied_baseline(
+        supplied_baseline, observations,
+        incompatible_components=any(value is not None for value in (
+            boundary_sensitivity, boundary_operands, bc_freq, bc_anchor_time,
+            bc_prior, bc_state_activity, offset_prior,
+        )) or bool(offset_args),
+    )
     if boundary_sensitivity is not None:
         boundary_sensitivity = bind_boundary_sensitivity(
             boundary_sensitivity, observations, frequency=bc_freq, anchor_time=bc_anchor_time,
@@ -288,6 +326,11 @@ def build_co2_model(
             )
 
         mean_expression = co2_flux_contribution
+        if supplied_baseline is not None:
+            baseline_contribution = pm.Deterministic(
+                "supplied_baseline_contribution", add_model_data(supplied_baseline), dims="nmeasure",
+            )
+            mean_expression = mean_expression + baseline_contribution
         if boundary_contribution is not None:
             mean_expression = mean_expression + boundary_contribution
         if offset is not None:

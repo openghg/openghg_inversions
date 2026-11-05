@@ -50,6 +50,7 @@ from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.sigma import SigmaAlignment
 
 from .co2_model import _normalise_offset_args, build_co2_model
+from .co2_preparation import co2_supplied_baseline_input_names
 from .centered_boundary import OPERAND_NAMES, require_centered_precision, restore_absolute_predictives
 from .co2_preparation import Co2PreparedInputs
 
@@ -122,6 +123,8 @@ def annotate_co2_trace(
         "hbc": ["boundary_sensitivity"],
         "bc": ["boundary_scale"],
         "mu_bc": ["boundary_concentration"],
+        "supplied_baseline": ["supplied_baseline_input"],
+        "supplied_baseline_contribution": ["baseline_concentration", "supplied_baseline_concentration"],
         "offset_latent": ["offset_coefficient"],
         "offset": ["offset_concentration"],
         "sigma_global": ["global_iid_mismatch_standard_deviation"],
@@ -132,6 +135,7 @@ def annotate_co2_trace(
         roles_by_variable[name].extend(scientific_roles)
 
     concentration_variables = {
+        "supplied_baseline", "supplied_baseline_contribution",
         "H_bc_anomaly", "bc_reference", "bc_reference_shift", "boundary_reference_shift",
         "error",
         "fixed_model_mismatch",
@@ -198,7 +202,9 @@ def co2_model_input_names(
         ValueError: If a required prepared input is absent.
     """
     inputs = prepared_inputs.inv_inputs
+    baseline_names = co2_supplied_baseline_input_names(inputs, use_bc=use_bc)
     names = list(_CO2_SCIENTIFIC_INPUT_NAMES)
+    names.extend(baseline_names)
     if use_bc:
         names.extend(OPERAND_NAMES if "H_bc_anomaly" in inputs else ("H_bc",))
     names.extend(aggregation_error_input_names(inputs, prepared_inputs.aggregation_error_mode))
@@ -238,6 +244,7 @@ def prepare_co2_scalar_sigma_eigenbasis(
     names = (
         "mf",
         "mf_error",
+        *co2_supplied_baseline_input_names(prepared.inv_inputs),
         *aggregation_error_input_names(
             prepared.inv_inputs,
             prepared.aggregation_error_mode,
@@ -367,6 +374,11 @@ def materialize_co2_inputs(
         raise ValueError("likelihood_kwargs require likelihood_builder.")
     if not use_bc and (bc_prior is not None or bc_state_activity is not None):
         raise ValueError("bc_prior and bc_state_activity require use_bc=True.")
+    if "supplied_baseline" in prepared_inputs.inv_inputs and (
+        use_bc or bc_prior is not None or bc_state_activity is not None
+        or offset_prior is not None or bool(offset_args)
+    ):
+        raise ValueError("supplied_baseline cannot be combined with boundary or offset components/options.")
     if offset_prior is None and offset_args:
         raise ValueError("offset_args require offset_prior.")
     if likelihood_builder is not None and (
@@ -510,6 +522,7 @@ def build_co2_from_materialized(
         model_inputs["H"],
         retained_prior=retained_prior,
         fixed_prior_contribution=model_inputs["fixed_prior_contribution"],
+        supplied_baseline=model_inputs.get("supplied_baseline"),
         observations=model_inputs["mf"],
         observation_error=model_inputs["mf_error"],
         aggregation_error=aggregation_error,
@@ -551,6 +564,11 @@ def build_co2_from_materialized(
     if use_bc and "H_bc_anomaly" in model_inputs:
         variable_roles.pop("boundary_sensitivity", None)
         variable_roles.update(boundary_anomaly="H_bc_anomaly", boundary_mass="H_bc_mass", boundary_reference="bc_reference")
+    if "supplied_baseline" in model.named_vars:
+        variable_roles.update(
+            baseline_concentration="supplied_baseline_contribution",
+            supplied_baseline_concentration="supplied_baseline_contribution",
+        )
     if offset_prior is not None:
         variable_roles["offset_concentration"] = "offset"
     for role, name in {

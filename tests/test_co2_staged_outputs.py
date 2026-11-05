@@ -323,3 +323,61 @@ def test_reporting_country_selection_accepts_iterables_and_preserves_none(
         SimpleNamespace(affine_map=SimpleNamespace(flux=xr.DataArray(1.0))),
     )
     assert list(countries.matrix.country.values) == (names[:2] if select_countries else names)
+
+
+def test_paris_supplied_background_is_baseline_not_emissions_sector():
+    from postprocessing.test_co2_flux_outputs import _fixture
+    from openghg_inversions.rhime.co2.co2_outputs import _paris_products
+
+    prepared, trace = _components_fixture()
+    roles = json.loads(trace.attrs["rhime_variable_roles"])
+    roles.pop("boundary_concentration")
+    roles.pop("offset_concentration")
+    roles["baseline_concentration"] = "supplied_background"
+    trace.attrs["rhime_variable_roles"] = json.dumps(roles)
+    for group in ("prior", "posterior"):
+        trace[group]["supplied_background"] = xr.full_like(trace[group]["mean_custom"], 400.)
+        trace[group]["mean_custom"] = trace[group]["emission_custom"] + trace[group]["supplied_background"]
+    components = reconstruct_co2_concentrations(trace, prepared)
+    bound, flux_trace, countries = _fixture()
+    native, country = _affine_products(flux_trace, bound, countries, None)
+    result = make_co2_output(
+        prepared=prepared, trace=trace, domain="EUROPE", start_date="2020-01-01", end_date="2020-02-01",
+    )
+    concentration, _ = _paris_products(
+        components, native, country, countries, result, None,
+        output=Co2OutputOptions(output_format="paris", paris_postprocessing_kwargs={"flux_frequency": "monthly"}),
+    )
+    assert concentration.sector.values.tolist() == ["emissions"]
+    assert "mf_baseline_posterior" not in concentration
+    for group in ("prior", "posterior"):
+        np.testing.assert_allclose(concentration[f"mf_bc_{group}"], 400.e-6, rtol=1e-6)
+        np.testing.assert_allclose(
+            concentration[f"mf_{group}"], concentration.mf_coherent_prior
+            + concentration[f"mf_emissions_{group}"] + concentration[f"mf_bc_{group}"], rtol=1e-6,
+        )
+        dims = ("prior_chain", "prior_draw") if group == "prior" else ("chain", "draw")
+        expected = (components[f"pollution_{group}"]-components.affine).mean(dims)
+        np.testing.assert_allclose(concentration[f"mf_emissions_{group}"], expected*1.e-6, rtol=1e-6)
+
+
+@pytest.mark.parametrize("invalid", ["units", "dimensions"])
+def test_validate_trace_checks_supplied_baseline_role(invalid):
+    from openghg_inversions.rhime.co2.co2_outputs import validate_co2_trace
+
+    prepared, trace = _components_fixture()
+    roles = json.loads(trace.attrs["rhime_variable_roles"])
+    roles["baseline_concentration"] = "supplied_background"
+    trace.attrs["rhime_variable_roles"] = json.dumps(roles)
+    for group in ("prior", "posterior"):
+        trace[group]["supplied_background"] = xr.full_like(trace[group]["mean_custom"], 400.)
+        for role, name in roles.items():
+            if name in trace[group]:
+                trace[group][name].attrs["units"] = "1" if role == "flux_scale" else "ppm"
+    validate_co2_trace(trace, prepared)
+    if invalid == "units":
+        trace.posterior["supplied_background"].attrs["units"] = "kg"
+    else:
+        trace.posterior["supplied_background"] = trace.posterior["supplied_background"].isel(nmeasure=0, drop=True)
+    with pytest.raises(ValueError, match="baseline_concentration"):
+        validate_co2_trace(trace, prepared)

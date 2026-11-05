@@ -58,6 +58,7 @@ from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
 
 
+from .co2_model import _validate_co2_supplied_baseline
 from .centered_boundary import add_centered_boundary, bind_boundary_operands, require_centered_precision
 
 
@@ -314,6 +315,7 @@ def build_co2_cached_sigma_model(
     site_amplitude_prior: PriorArgs,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
+    supplied_baseline: xr.DataArray | None = None,
     boundary_sensitivity: xr.DataArray | None = None,
     boundary_operands: xr.Dataset | None = None,
     bc_freq: str | None = None,
@@ -368,6 +370,10 @@ def build_co2_cached_sigma_model(
             observed site. Defaults to the prior support point.
         state_activity: Optional labelled active/fixed policy for retained flux
             states. Fixed values are dimensionless flux scalings.
+        supplied_baseline: Optional labelled deterministic background in observation
+            concentration units. Added once to both the public mean and cached
+            intercept, separately from the coherent inner affine contribution.
+            Cannot be combined with boundary or offset components/options.
         boundary_sensitivity: Optional atmospheric boundary-condition
             sensitivity, in concentration units per unit dimensionless
             boundary scaling.
@@ -405,6 +411,13 @@ def build_co2_cached_sigma_model(
             offset options are supplied without ``offset_prior``. Also raised
             for incompatible global-offset options.
     """
+    supplied_baseline = _validate_co2_supplied_baseline(
+        supplied_baseline, observations, output_dim=output_dim,
+        incompatible_components=any(value is not None for value in (
+            boundary_sensitivity, boundary_operands, bc_freq, bc_anchor_time,
+            bc_prior, bc_state_activity, offset_prior, offset_freq,
+        )) or offset_drop_first or not offset_per_site,
+    )
     if boundary_operands is None and (bc_freq is not None or bc_anchor_time is not None):
         if boundary_sensitivity is None:
             raise ValueError("Boundary period choices require boundary inputs.")
@@ -549,6 +562,16 @@ def build_co2_cached_sigma_model(
                 output=co2_flux_mean,
             )
         ]
+        if supplied_baseline is not None:
+            terms.append(_CachedAffineTerm(
+                fixed_contribution=np.asarray(supplied_baseline.to_numpy(), dtype=np.float64),
+                active_design=np.empty((observations.size, 0)),
+                coefficients=None,
+                sampled_rvs=(),
+                output=pm.Deterministic(
+                    "supplied_baseline_contribution", add_model_data(supplied_baseline), dims=output_dim,
+                ),
+            ))
         centered_boundary = None
         reference_shift = None
         if boundary_operands is not None:

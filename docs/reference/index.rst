@@ -151,6 +151,7 @@ for deterministic background accounting, preparation and scientific limitations.
    openghg_inversions.inversion_data.MergedDataProvenance
    openghg_inversions.inversion_data.PreparedInputs
    openghg_inversions.rhime.prepare_supplied_baseline
+   openghg_inversions.rhime.co2.prepare_co2_supplied_baseline
    openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray
    openghg_inversions.inversion_data.prepare_surface_site
    openghg_inversions.inversion_data.acquire_surface_data

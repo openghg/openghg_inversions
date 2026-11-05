@@ -57,11 +57,13 @@ def prepare_supplied_baseline(
 ) -> PreparedInputs:
     """Rebuild an inner-only operator and attach an absolute supplied background.
 
-    This bounded single-sector preparation implements
+    This independent-state preparation implements
     ``baseline + inner_fixed_contribution + H_inner @ x``. Masking occurs before
     basis reduction; states may span the domain edge. Native flux outputs are
     also zero outside the support. Observation offsets remain separate from the
-    supplied background and any sampled boundary correction.
+    supplied background and any sampled boundary correction. Existing coherent
+    reductions instead use ``prepare_co2_supplied_baseline`` to select their
+    effective operator verbatim.
 
     Baseline uncertainty is omitted. Exterior prior dependence is discarded;
     callers must supply an inner prior and any aggregation covariance appropriate
@@ -73,7 +75,7 @@ def prepare_supplied_baseline(
     numerical payloads remain lazy.
 
     Args:
-        prepared: Original single-sector preparation without an installed supplied
+        prepared: Original independent-state preparation without an installed supplied
             baseline, retaining the basis grid, prior flux and observation metadata.
         baseline: Absolute background total, or a Dataset with one variable per
             declared constituent. Its ``species`` attribute must match ``species``.
@@ -84,6 +86,8 @@ def prepare_supplied_baseline(
         native_response: Footprint times prior flux with exactly the native grid and
             ``nmeasure`` dimensions. Indexed grid coordinates must match the retained
             basis; the observation index must match the retained releases exactly.
+            Source-aware responses also require an indexed ``source`` dimension
+            matching the retained source labels; sector priors remain independent.
             Explicit concentration units must be convertible to observation units.
         inner_support: Eager Boolean whole-cell mask on exactly the indexed native
             grid, retaining at least one cell. No interpolation or partial overlap
@@ -100,7 +104,9 @@ def prepare_supplied_baseline(
             names must match these names exactly.
         sampled_boundary_is_correction: Declare any enabled sampled boundary to be
             a correction to the supplied background. Defaults to false; model input
-            validation rejects boundary sampling unless this is true.
+            validation rejects boundary sampling unless this is true. Multisector
+            supplied backgrounds replace all sampled boundary operands and reject
+            corrections; observation offsets must also be disabled.
 
     Returns:
         A new preparation with rebuilt inner sensitivity, masked native prior flux
@@ -109,11 +115,96 @@ def prepare_supplied_baseline(
         is unchanged.
 
     Raises:
-        ValueError: If a baseline is already installed, the basis is multisector,
-            the support or response dimensions/indexes are invalid, concentration
+        ValueError: If a baseline is already installed, the preparation is coherently
+            reduced, the support or response dimensions/indexes are invalid, concentration
             units are missing or incompatible, retained observations or site metadata
             do not match, or species, provenance or constituent accounting is invalid.
     """
+    if {"alpha_prior_mean", "alpha_prior_covariance", "fixed_prior_contribution"}.issubset(prepared.inv_inputs):
+        raise ValueError("Coherent preparations require prepare_co2_supplied_baseline; do not rebuild their H.")
+    supplied, fixed, components = _prepare_baseline_series(
+        prepared, baseline, inner_fixed_contribution=inner_fixed_contribution,
+        baseline_site_metadata=baseline_site_metadata, species=species,
+        provenance=provenance, constituents=constituents,
+        sampled_boundary_is_correction=sampled_boundary_is_correction,
+    )
+    grid_dims = prepared.basis_functions.operator.meta.grid_dims
+    if set(inner_support.dims) != set(grid_dims) or inner_support.dtype.kind != "b":
+        raise ValueError("Inner support must be a Boolean mask on exactly the native grid dimensions.")
+    if is_dask_collection(inner_support):
+        raise ValueError("Materialize the inner-domain support mask explicitly before preparation.")
+    if not bool(inner_support.any()):
+        raise ValueError("Inner support must contain at least one cell.")
+    sources = prepared.basis_functions.source_labels
+    expected_dims = {*grid_dims, "nmeasure"} | ({"source"} if sources is not None else set())
+    if set(native_response.dims) != expected_dims:
+        raise ValueError("Native response must have exactly native grid, nmeasure and any retained source dimensions.")
+    if sources is not None:
+        index = native_response.indexes.get("source")
+        if index is None or not index.is_unique or set(index) != set(sources):
+            raise ValueError("Native response source labels must match the retained basis exactly.")
+        native_response = native_response.sel(source=list(sources))
+    for name, array in (("Inner support", inner_support), ("Native response", native_response)):
+        for dim in grid_dims:
+            if dim not in array.indexes:
+                raise ValueError(f"{name} requires an indexed coordinate for native grid dimension {dim!r}.")
+    if "nmeasure" not in native_response.indexes:
+        raise ValueError("Native response requires indexed observation labels on nmeasure.")
+    observations = prepared.inv_inputs.mf
+    native_response, _ = xr.align(native_response, observations, join="exact", copy=False)
+    masked_response = remove_domain_overlap(native_response, ~inner_support)
+    masked_flux = remove_domain_overlap(prepared.basis_functions.flux, ~inner_support).assign_coords(
+        flux_support=inner_support,
+    )
+    basis = replace(prepared.basis_functions, flux=masked_flux)
+    matrix = basis.operator.basis_matrix
+    if sources is not None and "source" in matrix.coords and "source" in prepared.inv_inputs.H.dims:
+        per_source = []
+        for source in sources:
+            source_matrix = basis.operator.operator_for_source(
+                source, state_dim=basis.operator.meta.state_dim,
+            ).basis_matrix
+            response, source_matrix = xr.align(
+                masked_response.sel(source=source, drop=True), source_matrix, join="exact", copy=False,
+            )
+            per_source.append(xr.dot(response, source_matrix, dim=list(grid_dims)))
+        sensitivity = xr.concat(per_source, dim=xr.IndexVariable("source", list(sources))).rename("H")
+    else:
+        if sources is not None and "source" not in matrix.dims and "source" in matrix.coords:
+            # Pair each gathered state with its source before the spatial contraction.
+            state_dim = basis.operator.meta.state_dim
+            masked_response = masked_response.sel(source=xr.DataArray(matrix.source.to_numpy(), dims=state_dim))
+            masked_response = masked_response.drop_vars("source").assign_coords(
+                xr.Coordinates.from_pandas_multiindex(matrix.get_index(state_dim), state_dim),
+            )
+        matrix, masked_response = xr.align(matrix, masked_response, join="exact", copy=False)
+        sensitivity = xr.dot(masked_response, matrix, dim=list(grid_dims)).rename("H")
+    sensitivity = _response_units(sensitivity, native_response, observations)
+    inputs = prepared.inv_inputs.assign(
+        H=sensitivity, supplied_baseline=supplied, inner_fixed_contribution=fixed,
+        inner_domain_support=inner_support, **components,
+    )
+    if sources is not None:
+        if sampled_boundary_is_correction:
+            raise ValueError("Supplied multisector baselines replace sampled boundaries; corrections are unsupported.")
+        inputs = inputs.drop_vars(("H_bc", "H_bc_anomaly", "H_bc_mass", "bc_reference"), errors="ignore")
+        if "bc_region" in inputs.dims:
+            inputs = inputs.drop_dims("bc_region")
+    return PreparedInputs(inputs, basis, prepared.site_metadata)
+
+
+def _prepare_baseline_series(
+    prepared: PreparedInputs,
+    baseline: xr.DataArray | xr.Dataset,
+    *,
+    inner_fixed_contribution: xr.DataArray,
+    baseline_site_metadata: xr.Dataset,
+    species: str,
+    provenance: str,
+    constituents: tuple[str, ...],
+    sampled_boundary_is_correction: bool = False,
+) -> tuple[xr.DataArray, xr.DataArray, dict[str, xr.DataArray]]:
+    """Align absolute-background accounting shared by the preparation recipes."""
     if "supplied_baseline" in prepared.inv_inputs:
         raise ValueError("A supplied baseline is already installed; prepare from the original inputs.")
     if not species.strip() or not provenance.strip():
@@ -131,33 +222,7 @@ def prepare_supplied_baseline(
         raise ValueError("Baseline metadata is missing retained sites.") from exc
     if not metadata.equals(prepared.site_metadata):
         raise ValueError("Baseline site/inlet/averaging metadata must match retained observations.")
-    grid_dims = prepared.basis_functions.operator.meta.grid_dims
-    if set(inner_support.dims) != set(grid_dims) or inner_support.dtype.kind != "b":
-        raise ValueError("Inner support must be a Boolean mask on exactly the native grid dimensions.")
-    if is_dask_collection(inner_support):
-        raise ValueError("Materialize the inner-domain support mask explicitly before preparation.")
-    if not bool(inner_support.any()):
-        raise ValueError("Inner support must contain at least one cell.")
-    if set(native_response.dims) != {*grid_dims, "nmeasure"}:
-        raise ValueError("Native response must have only native grid and nmeasure dimensions (single sector).")
-    for name, array in (("Inner support", inner_support), ("Native response", native_response)):
-        for dim in grid_dims:
-            if dim not in array.indexes:
-                raise ValueError(f"{name} requires an indexed coordinate for native grid dimension {dim!r}.")
-    if "nmeasure" not in native_response.indexes:
-        raise ValueError("Native response requires indexed observation labels on nmeasure.")
-    if prepared.basis_functions.source_labels is not None:
-        raise ValueError("Supplied inner-domain preparation currently requires a single-sector basis.")
     observations = prepared.inv_inputs.mf
-    native_response, _ = xr.align(native_response, observations, join="exact", copy=False)
-    masked_response = remove_domain_overlap(native_response, ~inner_support)
-    masked_flux = remove_domain_overlap(prepared.basis_functions.flux, ~inner_support).assign_coords(
-        flux_support=inner_support,
-    )
-    basis = replace(prepared.basis_functions, flux=masked_flux)
-    matrix, masked_response = xr.align(basis.operator.basis_matrix, masked_response, join="exact", copy=False)
-    sensitivity = xr.dot(masked_response, matrix, dim=list(grid_dims)).rename("H")
-    sensitivity = _response_units(sensitivity, native_response, observations)
     fixed = _concentration(inner_fixed_contribution, observations, name="inner_fixed_contribution")
     components = {}
     if isinstance(baseline, xr.Dataset):
@@ -176,11 +241,7 @@ def prepare_supplied_baseline(
         sampled_boundary_is_correction=int(sampled_boundary_is_correction),
         domain_policy="exact-grid-whole-cell-mask",
     )
-    inputs = prepared.inv_inputs.assign(
-        H=sensitivity, supplied_baseline=supplied, inner_fixed_contribution=fixed,
-        inner_domain_support=inner_support, **components,
-    )
-    return PreparedInputs(inputs, basis, prepared.site_metadata)
+    return supplied, fixed, components
 
 
 def _response_units(sensitivity: xr.DataArray, native: xr.DataArray, observations: xr.DataArray) -> xr.DataArray:

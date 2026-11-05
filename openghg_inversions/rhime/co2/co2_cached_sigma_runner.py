@@ -38,6 +38,7 @@ from .co2_cached_sigma_model import (
     Co2CachedSigmaModel,
     build_co2_cached_sigma_model,
 )
+from .co2_preparation import co2_supplied_baseline_input_names
 from .centered_boundary import OPERAND_NAMES, require_centered_precision
 from .co2_model import _normalise_offset_args
 from .co2_preparation import Co2PreparedInputs
@@ -75,7 +76,9 @@ def co2_cached_sigma_input_names(
         ValueError: If a selected input is missing from the artifact.
     """
     inputs = prepared_inputs.inv_inputs
+    baseline_names = co2_supplied_baseline_input_names(inputs, use_bc=use_bc)
     names = list(_CO2_CACHED_SIGMA_INPUT_NAMES)
+    names.extend(baseline_names)
     if use_bc:
         names.extend(OPERAND_NAMES if "H_bc_anomaly" in inputs else ("H_bc",))
     names.extend(
@@ -266,6 +269,12 @@ def build_rhime_co2_cached_sigma(
         require_centered_precision()
     if not use_bc and (bc_prior is not None or bc_state_activity is not None):
         raise ValueError("bc_prior and bc_state_activity require use_bc=True.")
+    if "supplied_baseline" in prepared_inputs.inv_inputs and (
+        use_bc or bc_prior is not None or bc_state_activity is not None
+        or offset_prior is not None or bool(offset_args)
+        or bc_freq is not None or bc_anchor_time is not None
+    ):
+        raise ValueError("supplied_baseline cannot be combined with boundary or offset components/options.")
     if offset_prior is None and offset_args:
         raise ValueError("offset_args require offset_prior.")
     offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
@@ -299,6 +308,7 @@ def build_rhime_co2_cached_sigma(
         model_inputs["H"],
         retained_prior=retained_prior,
         fixed_prior_contribution=model_inputs["fixed_prior_contribution"],
+        supplied_baseline=model_inputs.get("supplied_baseline"),
         observations=model_inputs["mf"],
         observation_error=model_inputs["mf_error"],
         aggregation_error=aggregation_error,
@@ -379,6 +389,11 @@ def co2_cached_sigma_build_result(
         variable_roles.update(
             observation="y", boundary_concentration="mu_bc", boundary_scale="bc",
             boundary_anomaly="H_bc_anomaly", boundary_mass="H_bc_mass", boundary_reference="bc_reference",
+        )
+    if "supplied_baseline" in cached_model.model.named_vars:
+        variable_roles.update(
+            baseline_concentration="supplied_baseline_contribution",
+            supplied_baseline_concentration="supplied_baseline_contribution",
         )
     if "offset" in cached_model.model.named_vars:
         variable_roles["offset_concentration"] = "offset"

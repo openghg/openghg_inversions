@@ -283,6 +283,7 @@ class Co2PreparedInputs:
             raise ValueError("CO2 aggregation_error_mode must be 'dense' or 'low_rank'.")
         inputs = self.rhime_inputs.inv_inputs
         _validate_co2_dataset(inputs)
+        co2_supplied_baseline_input_names(inputs)
         dense = AGGREGATION_ERROR_COVARIANCE in inputs
         factor_present = LOW_RANK_FACTOR in inputs
         diagonal_present = DIAGONAL_RESIDUAL_VARIANCE in inputs
@@ -758,10 +759,258 @@ def prepare_co2_inputs(
     )
 
 
+def co2_supplied_baseline_input_names(inputs: xr.Dataset, *, use_bc: bool = False) -> tuple[str, ...]:
+    """Validate the absolute-background CO2 contract without computing arrays."""
+    from ..baseline import supplied_baseline_input_names
+
+    if "supplied_baseline" not in inputs:
+        return ()
+    if use_bc or any(name in inputs for name in ("H_bc", "H_bc_anomaly", "H_bc_mass", "bc_reference")):
+        raise ValueError("A supplied absolute CO2 baseline replaces all sampled boundary inputs.")
+    if "inner_fixed_contribution" in inputs:
+        raise ValueError("CO2 inner affine contributions belong only in fixed_prior_contribution.")
+    if inputs.supplied_baseline.attrs.get("aggregation_error_policy") != "inherited":
+        raise ValueError("Supplied CO2 baselines require explicit inherited aggregation-error accounting.")
+    supplied_baseline_input_names(
+        inputs.assign(inner_fixed_contribution=inputs.fixed_prior_contribution), species="co2", use_bc=False,
+    )
+    return ("supplied_baseline",)
+
+
+def _inner_basis(prepared: Co2PreparedInputs, positions: np.ndarray, support: xr.DataArray) -> Any:
+    """Retain selected bucket geometry for native outputs, never for coherent H."""
+    from dataclasses import replace
+    from dask import is_dask_collection
+    from openghg_inversions.basis.operators import BucketBasisOperator, MultiSourceBucketBasisOperator
+    from .._domain_support import remove_domain_overlap
+
+    basis = prepared.basis_functions
+    operator = basis.operator
+    state_dim = operator.meta.state_dim
+    original = operator.basis_matrix.get_index(state_dim)
+    retained = prepared.inv_inputs.H.get_index(state_dim)
+    if original.names != retained.names or not original.is_unique:
+        raise ValueError("Coherent H and basis states must have matching unique labelled axes.")
+    positions = original.get_indexer(retained[positions])
+    if np.any(positions < 0):
+        raise ValueError("Selected coherent H states are missing from the retained basis geometry.")
+    if np.any(np.diff(positions) <= 0):
+        raise ValueError("Coherent H state order must follow the retained basis geometry.")
+    grid_dims = operator.meta.grid_dims
+    allowed = set(grid_dims) | ({"source"} if basis.source_labels is not None else set())
+    if set(support.dims) not in (set(grid_dims), allowed) or support.dtype.kind != "b":
+        raise ValueError("Inner support must be a Boolean native-grid mask, optionally indexed by source.")
+    if is_dask_collection(support):
+        raise ValueError("Materialize the inner-domain support mask explicitly before preparation.")
+    for dim in support.dims:
+        expected = (
+            pd.Index(operator.source_labels, name="source") if dim == "source"
+            else operator.basis_matrix.get_index(dim)
+        )
+        _require_same_axis(support, str(dim), expected, name="Inner support")
+    if not bool(support.any()):
+        raise ValueError("Inner support must contain at least one cell.")
+    if isinstance(operator, BucketBasisOperator):
+        if basis.source_labels is not None:
+            raise ValueError("Coherent source states require a MultiSourceBucketBasisOperator.")
+        flat = operator.basis_flat
+        if is_dask_collection(flat):
+            raise ValueError("Materialize retained bucket geometry explicitly before baseline preparation.")
+        raw_labels = np.unique(flat.to_numpy()[np.isfinite(flat.to_numpy())])
+        flat = flat.where(flat.isin(raw_labels[positions]) & support)
+        metadata = operator.state_metadata
+        selected_metadata = None if metadata is None else metadata.isel({state_dim: positions})
+        selected = BucketBasisOperator(flat, meta=operator.meta, region_labels="basis_values")
+        if selected_metadata is not None:
+            selected_metadata = selected_metadata.assign_coords({state_dim: selected.basis_matrix[state_dim]})
+            selected = BucketBasisOperator(
+                flat, meta=operator.meta, region_labels="basis_values", state_metadata=selected_metadata,
+            )
+    elif isinstance(operator, MultiSourceBucketBasisOperator):
+        chosen = original[positions]
+        flats = {}
+        for source in operator.source_labels:
+            source_positions = np.flatnonzero(original.get_level_values(operator.source_dim) == source)
+            chosen_positions = np.flatnonzero(np.isin(source_positions, positions))
+            if not len(chosen_positions):
+                continue
+            flat = operator.basis_flat[source]
+            if is_dask_collection(flat):
+                raise ValueError("Materialize retained bucket geometry explicitly before baseline preparation.")
+            raw_labels = np.unique(flat.to_numpy()[np.isfinite(flat.to_numpy())])
+            mask = support.sel(source=source, drop=True) if "source" in support.dims else support
+            flats[source] = flat.where(flat.isin(raw_labels[chosen_positions]) & mask)
+        selected = MultiSourceBucketBasisOperator(
+            flats, meta=operator.meta, source_dim=operator.source_dim,
+            region_in_source_dim=operator.region_in_source_dim,
+        )
+        if selected.basis_matrix.sizes[state_dim] != len(chosen):
+            raise ValueError("Inner support must retain native cells for every selected state.")
+    else:
+        raise ValueError("Supplied coherent backgrounds currently require retained bucket geometry.")
+    if selected.basis_matrix.sizes[state_dim] != len(positions):
+        raise ValueError("Inner support must retain native cells for every selected state.")
+    flux = basis.flux
+    if "source" in support.dims and "source" not in flux.dims:
+        flux = flux.expand_dims(source=list(selected.source_labels))
+    if isinstance(selected, MultiSourceBucketBasisOperator) and "source" in flux.dims:
+        flux = flux.sel(source=list(selected.source_labels))
+        if "source" in support.dims:
+            support = support.sel(source=list(selected.source_labels))
+    flux = remove_domain_overlap(flux, ~support).assign_coords(flux_support=support)
+    return replace(basis, operator=selected, flux=flux)
+
+
+def prepare_co2_supplied_baseline(
+    prepared: Co2PreparedInputs,
+    baseline: xr.DataArray | xr.Dataset,
+    *,
+    inner_states: xr.DataArray,
+    inner_fixed_contribution: xr.DataArray,
+    inner_support: xr.DataArray,
+    baseline_site_metadata: xr.Dataset,
+    species: str,
+    provenance: str,
+    constituents: tuple[str, ...],
+    aggregation_error_policy: Literal["inherited"] = "inherited",
+) -> Co2PreparedInputs:
+    """Replace the exterior mean and boundaries of an existing coherent CO2 preparation.
+
+    ``inner_states`` is an eager, labelled Boolean mask on the complete retained
+    state axis. H columns are selected verbatim, and the retained arithmetic prior
+    uses its marginal mean and covariance principal block. No conditioning at
+    outer scaling one, or recomputation of coherent H from bucket geometry, occurs.
+    ``inner_fixed_contribution`` supplies the complete inner-only affine term;
+    a labelled zero series is required when it vanishes. Native reconstruction
+    uses the explicit whole-cell ``inner_support``; it must preserve every selected
+    state. State labels follow the retained operator after subset reconstruction;
+    original selected labels are recorded in provenance.
+
+    Only ``aggregation_error_policy='inherited'`` is supported: the original dense
+    or low-rank payload is borrowed unchanged. Its unresolved exterior uncertainty
+    may remain. This is not an inner-only recomputation of coherent residual error.
+    Baseline uncertainty itself is omitted. All sampled boundary operands are
+    removed. Baseline series and native flux stay lazy until the ordinary model or
+    serialization boundary; concentration finiteness is checked by the model.
+
+    Args:
+        prepared: Original coherent CO2 preparation with retained bucket geometry
+            and no supplied baseline already installed. Bucket geometry must be eager.
+        baseline: Absolute background total, or a Dataset with one variable per
+            declared constituent, with a matching ``species`` attribute. Each series
+            must have only ``nmeasure``, unique observation labels covering all retained
+            releases, and explicit concentration units convertible to observation units.
+            Additional releases are selected away; Dataset constituents are summed once.
+        inner_states: Eager Boolean mask with the exact complete retained-state index
+            in its existing order, selecting at least one state.
+        inner_fixed_contribution: Complete inner-only affine concentration on
+            ``nmeasure``, with the same label and unit requirements as the baseline.
+            Supply a labelled zero series when absent; exclude it from the baseline.
+        inner_support: Eager Boolean whole-cell mask with exact native-grid indexes,
+            optionally also indexed by source. Must retain cells for every selected state.
+        baseline_site_metadata: Site, inlet and averaging metadata equal to the
+            preparation's metadata after selection of retained sites.
+        species: Must be ``"co2"`` and match the baseline's species attribute.
+        provenance: Nonempty description of the background product and processing.
+        constituents: Unique background constituent names including ``boundary`` and
+            ``exterior_flux``, excluding ``inner_fixed_contribution`` and ``offset``.
+            Dataset variable names must match these names exactly.
+        aggregation_error_policy: Only ``"inherited"`` is supported, as described above.
+
+    Returns:
+        A new inner-domain preparation with the supplied absolute baseline, selected
+        coherent operator and marginal prior, explicit inner affine term, and masked
+        native flux geometry. Original state mappings are retained; sampled boundary
+        operands are removed and aggregation covariance is borrowed unchanged.
+        The input preparation is unchanged.
+
+    Raises:
+        TypeError: If ``prepared`` is not a ``Co2PreparedInputs`` instance.
+        ValueError: If selection masks, retained geometry or concentration units are
+            invalid, labels or site metadata do not match, baseline accounting is incomplete,
+            a baseline is already installed, or the species or policy is unsupported.
+    """
+    from dask import is_dask_collection
+    from ..baseline import _prepare_baseline_series
+
+    if not isinstance(prepared, Co2PreparedInputs):
+        raise TypeError("prepare_co2_supplied_baseline requires Co2PreparedInputs.")
+    if species.lower() != "co2":
+        raise ValueError("The coherent supplied-baseline recipe requires species='co2'.")
+    if aggregation_error_policy != "inherited":
+        raise ValueError("Only aggregation_error_policy='inherited' is supported; no covariance is recomputed.")
+    inputs = prepared.inv_inputs
+    state_dim = str(inputs.H.dims[1])
+    if inner_states.dims != (state_dim,) or inner_states.dtype.kind != "b":
+        raise ValueError("inner_states must be a labelled Boolean mask on the complete retained-state axis.")
+    _require_same_axis(inner_states, state_dim, inputs.H.get_index(state_dim), name="inner_states")
+    if is_dask_collection(inner_states):
+        raise ValueError("Materialize the inner_states selection mask explicitly before preparation.")
+    positions = np.flatnonzero(inner_states.to_numpy())
+    if not positions.size:
+        raise ValueError("inner_states must select at least one retained state.")
+    supplied, fixed, components = _prepare_baseline_series(
+        prepared.rhime_inputs, baseline, inner_fixed_contribution=inner_fixed_contribution,
+        baseline_site_metadata=baseline_site_metadata, species=species, provenance=provenance,
+        constituents=constituents,
+    )
+    basis = _inner_basis(prepared, positions, inner_support)
+    covariance_dim = f"{state_dim}_cov"
+    selected = inputs.isel({state_dim: positions, covariance_dim: positions})
+    # Boundary states and their coordinates no longer belong to the fitted model.
+    selected = selected.drop_vars(("H_bc", "H_bc_anomaly", "H_bc_mass", "bc_reference"), errors="ignore")
+    if "bc_region" in selected.dims:
+        selected = selected.drop_dims("bc_region")
+    selected = selected.drop_vars(("fixed_prior_contribution", "inner_fixed_contribution"), errors="ignore")
+    new_index = basis.operator.basis_matrix.get_index(state_dim)
+    # Regenerated source bucket labels are compact; both covariance axes follow H.
+    for dim in (state_dim, covariance_dim):
+        index = selected.indexes[dim]
+        selected = selected.drop_vars(list(index.names) if isinstance(index, pd.MultiIndex) else dim)
+    selected = selected.assign_coords(xr.Coordinates.from_pandas_multiindex(new_index, state_dim)
+        if isinstance(new_index, pd.MultiIndex) else {state_dim: new_index})
+    from openghg_inversions._labelled_matrices import renamed_column_coordinates
+    selected = selected.assign_coords(renamed_column_coordinates(
+        selected.H, row_dim=state_dim, column_dim=covariance_dim,
+    ))
+    original_index = inputs.H.get_index(state_dim)[positions]
+    original_name = "original_region_in_source" if isinstance(original_index, pd.MultiIndex) else "original_state_label"
+    original_values = (
+        original_index.get_level_values(basis.operator.region_in_source_dim).to_numpy()
+        if isinstance(original_index, pd.MultiIndex) else original_index.to_numpy()
+    )
+    selected = selected.assign_coords({original_name: (state_dim, original_values)})
+    supplied = supplied.assign_attrs(
+        aggregation_error_policy="inherited",
+        aggregation_error_warning="Inherited aggregation error may retain unresolved exterior uncertainty.",
+    )
+    selected = selected.assign(
+        supplied_baseline=supplied, fixed_prior_contribution=fixed.rename("fixed_prior_contribution"),
+        inner_domain_support=(inner_support.rename(source="native_source")
+            if "source" in inner_support.dims else inner_support), **components,
+    )
+    metadata = {
+        **prepared.provenance,
+        "supplied_baseline": {
+            "provenance": provenance, "aggregation_error_policy": "inherited",
+            "aggregation_error_warning": supplied.attrs["aggregation_error_warning"],
+            "retained_prior_policy": "marginal",
+            "original_inner_states": [str(value) for value in inputs.H.get_index(state_dim)[positions]],
+        },
+    }
+    result = Co2PreparedInputs(
+        PreparedInputs(selected, basis, prepared.site_metadata), prepared.aggregation_error_mode, metadata,
+    )
+    co2_supplied_baseline_input_names(result.inv_inputs)
+    return result
+
+
 __all__ = [
     "CO2_PREPARED_INPUTS_SCHEMA",
     "CO2_PREPARED_INPUTS_SCHEMA_VERSION",
     "Co2PreparedInputs",
     "prepare_co2_inputs",
+    "prepare_co2_supplied_baseline",
+    "co2_supplied_baseline_input_names",
     "requested_co2_facts",
 ]
