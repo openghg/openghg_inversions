@@ -341,8 +341,8 @@ def co2_cached_sigma_build_result(
         "emissions_sensitivity": "co2_sensitivity",
         "coherent_prior_contribution": "fixed_prior_contribution",
     }
-    if cached_model.boundary is not None:
-        outputs = cached_model.boundary.outputs()
+    if cached_model.boundary_outputs is not None:
+        outputs = cached_model.boundary_outputs
         variable_roles.update(outputs.roles)
         metadata.update(outputs.metadata, boundary_units=outputs.units)
     else:

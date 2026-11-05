@@ -178,6 +178,17 @@ def test_prepare_linear_sensitivity_removes_columns_and_retains_full_mapping() -
     np.testing.assert_array_equal(prepared.retained_indices, [0, 2, 3])
 
 
+def test_prepare_linear_sensitivity_can_preserve_zero_columns_for_joint_priors() -> None:
+    """A design transform can remove sensitivity without removing a physical state."""
+    sensitivity = _sensitivity()
+    prepared = prepare_linear_sensitivity(sensitivity, prune_zero_columns=False)
+
+    xr.testing.assert_identical(prepared.sensitivity, sensitivity)
+    np.testing.assert_array_equal(prepared.removed, False)
+    assert resolve_state_activity(prepared.removed).n_active == 4
+    assert resolve_state_activity(prepared.removed, StateActivity(active=False)).n_active == 0
+
+
 def test_prepare_linear_sensitivity_keeps_retained_dask_payload_lazy() -> None:
     """Inspect once, then keep retained data lazy until PyMC registration."""
     executions: list[object] = []
