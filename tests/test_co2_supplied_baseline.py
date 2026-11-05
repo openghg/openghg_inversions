@@ -243,20 +243,21 @@ def test_scalar_sigma_absolute_subtracted_target_parity(inputs):
         prepare_scalar_sigma_eigenbasis, add_scalar_sigma_eigen_likelihood,
     )
 
-    options = dict(
-        eigenbasis=prepare_scalar_sigma_eigenbasis(
-            observations=inputs.mf, observation_error=inputs.mf_error,
-            aggregation_error=resolve_aggregation_error(inputs, "dense"),
-        ),
-        sigma_prior={"pdf": "halfnormal", "sigma": .75},
-    )
-    absolute = _build(inputs, cached=False, likelihood_builder=add_scalar_sigma_eigen_likelihood,
-                      likelihood_kwargs=options)
-    residual_inputs = inputs.assign(mf=(inputs.mf-inputs.supplied_baseline).assign_attrs(units="ppm"))
-    subtracted = _build(residual_inputs, cached=False, baseline=False,
-                        likelihood_builder=add_scalar_sigma_eigen_likelihood, likelihood_kwargs=options)
-    point = absolute.initial_point()
-    point["flux_scaling_latent"] = np.array([-.2, .35])
-    point["sigma_global_log__"] = np.log(.6)
-    np.testing.assert_allclose(absolute.compile_logp()(point), subtracted.compile_logp()(point), atol=1e-10)
-    np.testing.assert_allclose(absolute.compile_dlogp()(point), subtracted.compile_dlogp()(point), atol=1e-9)
+    with pytensor.config.change_flags(floatX="float64"):
+        options = dict(
+            eigenbasis=prepare_scalar_sigma_eigenbasis(
+                observations=inputs.mf, observation_error=inputs.mf_error,
+                aggregation_error=resolve_aggregation_error(inputs, "dense"),
+            ),
+            sigma_prior={"pdf": "halfnormal", "sigma": .75},
+        )
+        absolute = _build(inputs, cached=False, likelihood_builder=add_scalar_sigma_eigen_likelihood,
+                          likelihood_kwargs=options)
+        residual_inputs = inputs.assign(mf=(inputs.mf-inputs.supplied_baseline).assign_attrs(units="ppm"))
+        subtracted = _build(residual_inputs, cached=False, baseline=False,
+                            likelihood_builder=add_scalar_sigma_eigen_likelihood, likelihood_kwargs=options)
+        point = absolute.initial_point()
+        point["flux_scaling_latent"] = np.array([-.2, .35])
+        point["sigma_global_log__"] = np.log(.6)
+        np.testing.assert_allclose(absolute.compile_logp()(point), subtracted.compile_logp()(point), atol=1e-10)
+        np.testing.assert_allclose(absolute.compile_dlogp()(point), subtracted.compile_dlogp()(point), atol=1e-9)
