@@ -22,8 +22,7 @@ from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
 from .boundary_output import restore_absolute_predictives
-from .co2_model import _normalise_offset_args
-from .co2_o2_model import build_co2_o2_model
+from .co2_o2_model import _validate_channel_offset_options, build_co2_o2_model
 from .co2_o2_preparation import Co2O2PreparedInputs
 
 _CO2_O2_VARIABLE_ROLES = {
@@ -203,18 +202,6 @@ def _annotate_co2_o2_trace(
     return trace
 
 
-def _validate_channel_offset_options(
-    offset_prior: Mapping[str, PriorArgs] | None,
-    offset_args: Mapping[str, Mapping[str, Any]] | None,
-) -> None:
-    """Reject malformed channel offset options before materializing inputs."""
-    for name, values in (("offset_prior", offset_prior), ("offset_args", offset_args)):
-        if values is not None and (not isinstance(values, Mapping) or set(values) - {"co2", "o2"}):
-            raise ValueError(f"{name} must be a mapping keyed only by 'co2' and 'o2'.")
-    for channel in ("co2", "o2"):
-        if channel in (offset_args or {}) and channel not in (offset_prior or {}):
-            raise ValueError(f"{channel} offset_args require offset_prior.")
-        _normalise_offset_args((offset_args or {}).get(channel))
 
 
 def _bind_co2_o2_boundaries(

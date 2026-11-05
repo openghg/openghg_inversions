@@ -130,6 +130,25 @@ def evaluate_co2_o2_prior_forward_mean(
     return (fixed_prior_contribution + joint_contribution).rename("prior_forward_concentration")
 
 
+def _validate_channel_offset_options(
+    offset_prior: Mapping[str, PriorArgs] | None,
+    offset_args: Mapping[str, Mapping[str, Any]] | None,
+) -> None:
+    """Reject unknown channels and offset options that would not enter the model.
+
+    Linked builders call this before any early return, so direct callers cannot
+    silently fit a model without the offset they configured. Runners call it
+    again before materializing inputs.
+    """
+    for name, values in (("offset_prior", offset_prior), ("offset_args", offset_args)):
+        if values is not None and (not isinstance(values, Mapping) or set(values) - {"co2", "o2"}):
+            raise ValueError(f"{name} must be a mapping keyed only by 'co2' and 'o2'.")
+    for channel in ("co2", "o2"):
+        if channel in (offset_args or {}) and channel not in (offset_prior or {}):
+            raise ValueError(f"{channel} offset_args require offset_prior.")
+        _normalise_offset_args((offset_args or {}).get(channel))
+
+
 def _pad_channel_design(
     design: xr.DataArray,
     observations: xr.DataArray,
@@ -160,6 +179,9 @@ def _add_co2_o2_baseline_components(
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[AffineConcentrationTerm]:
     """Embed native boundary and offset responses on labelled joint rows."""
+    if boundary is not None and (not isinstance(boundary, Mapping) or set(boundary) - {"co2", "o2"}):
+        raise ValueError("boundary must be a mapping keyed only by 'co2' and 'o2'.")
+    _validate_channel_offset_options(offset_prior, offset_args)
     if not boundary and not offset_prior:
         return []
     if len(np.unique(observations["observation_units"].values)) != 1:

@@ -612,3 +612,20 @@ def test_centered_linked_all_fixed_boundary_cache(centered_precision):
     assert len(cached.states) == 1
     assert cached.target.design.shape[1] == kwargs["co2_sensitivity"].sizes[kwargs["co2_sensitivity"].dims[1]]
     np.testing.assert_allclose(cached.target.observations,kwargs["observations"].values-shift)
+
+
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize(
+    "options, message",
+    [
+        ({"offset_args": {"co2": {"offset_freq": "monthly"}}}, "co2 offset_args require offset_prior"),
+        ({"offset_prior": {"CO2": {"pdf": "normal", "mu": 0.0, "sigma": 1.0}}}, "offset_prior must be a mapping keyed only"),
+        ({"offset_args": {"o3": {}}, "offset_prior": {}}, "offset_args must be a mapping keyed only"),
+    ],
+)
+def test_direct_linked_builders_reject_offset_options_they_would_ignore(cached, options, message):
+    kwargs = {**_kwargs(_prepared()), "tau_hours": 6.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.8},
+              **options}
+    builder = build_co2_o2_cached_sigma_model if cached else build_co2_o2_model
+    with pytest.raises(ValueError, match=message):
+        builder(**kwargs)
