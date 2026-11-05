@@ -370,6 +370,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html">openghg_inversions.basis.affine_flux_map</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map_io.html">openghg_inversions.basis.affine_flux_map_io</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html">openghg_inversions.basis.basis_functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.boundary.html">openghg_inversions.basis.boundary</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.compatibility.html">openghg_inversions.basis.compatibility</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.covariance_products.html">openghg_inversions.basis.covariance_products</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.layout.html">openghg_inversions.basis.layout</a></li>
@@ -589,6 +590,82 @@ here choose a compatible restriction/prolongation pair and prepare labelled
 product blocks. They are low-level inputs to
 <a class="reference internal" href="openghg_inversions.coherent_reduction.html#module-openghg_inversions.coherent_reduction" title="openghg_inversions.coherent_reduction"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.coherent_reduction</span></code></a> and do not themselves construct
 the centred reduced likelihood or unresolved covariance.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.basis.boundary_basis">
+<span class="sig-name descname"><span class="pre">boundary_basis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">algorithm</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">split_height</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">3000.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.boundary_basis" title="Link to this definition">#</a></dt>
+<dd><p>Select a built-in boundary basis builder without reading data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>algorithm</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><em>object</em></a>) – One of <code class="xref py py-data docutils literal notranslate"><span class="pre">BOUNDARY_BASIS_ALGORITHMS</span></code>.</p></li>
+<li><p><strong>split_height</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><em>object</em></a>) – Twelve-region split in the curtains’ native <code class="docutils literal notranslate"><span class="pre">height</span></code>
+coordinate units, with no unit or datum conversion (for example
+<code class="docutils literal notranslate"><span class="pre">3.0</span></code> for 3 km when heights are in km). Ignored by NESW. See
+<a class="reference internal" href="#openghg_inversions.basis.twelve_region_basis" title="openghg_inversions.basis.twelve_region_basis"><code class="xref py py-func docutils literal notranslate"><span class="pre">twelve_region_basis()</span></code></a> for the full geometry contract.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the algorithm is unknown or, for twelve-region, the
+    split height is invalid.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.15)"><em>Callable</em></a>[[<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>], <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.basis.nesw_basis">
+<span class="sig-name descname"><span class="pre">nesw_basis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">curtains</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.nesw_basis" title="Link to this definition">#</a></dt>
+<dd><p>Assign each whole NESW curtain to its own region.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>curtains</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Site dataset. It is not read; the basis is independent of
+curtain geometry and payloads.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dimensionless <code class="docutils literal notranslate"><span class="pre">bc_basis_n/e/s/w</span></code> one-hot weights over regions
+<code class="docutils literal notranslate"><span class="pre">n,e,s,w</span></code>, with no spatial dimensions.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.basis.twelve_region_basis">
+<span class="sig-name descname"><span class="pre">twelve_region_basis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">curtains</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">split_height</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">3000.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.twelve_region_basis" title="Link to this definition">#</a></dt>
+<dd><p>Split each NESW curtain into two lower halves and one upper region.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>curtains</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Dataset carrying indexed <code class="docutils literal notranslate"><span class="pre">height</span></code>, <code class="docutils literal notranslate"><span class="pre">lat</span></code> and <code class="docutils literal notranslate"><span class="pre">lon</span></code>
+coordinates. Only coordinates are read; curtain payloads are borrowed.</p></li>
+<li><p><strong>split_height</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a>) – Native height-coordinate value separating lower cells
+(strictly below) from upper cells (at or above). The initial 3000
+convention follows the prototype, not an exact published InTEM
+threshold. No unit conversion or height-datum assumption is made.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dimensionless <code class="docutils literal notranslate"><span class="pre">bc_basis_n/e/s/w</span></code> masks, with twelve regions ordered
+by direction <code class="docutils literal notranslate"><span class="pre">n,e,s,w</span></code>, then <code class="docutils literal notranslate"><span class="pre">lower_first,lower_second,upper</span></code>.
+North/south split longitude; east/west split latitude. First means
+coordinate strictly below the midpoint of the coordinate extrema;
+equality belongs to second. Each native curtain cell belongs to exactly
+one region. There is no top boundary. Coordinate attributes are retained.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the split height or spatial coordinates are not finite
+    numeric values, or a required indexed coordinate is absent/empty.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.basis.basis_weights_from_data">
 <span class="sig-name descname"><span class="pre">basis_weights_from_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">site_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weighting_flux</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">abs_flux</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.basis_weights_from_data" title="Link to this definition">#</a></dt>
@@ -1874,6 +1951,14 @@ active-state model sampling.</p></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.BasisFunctions"><code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.basis.boundary.html">openghg_inversions.basis.boundary</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.boundary.html#openghg_inversions.basis.boundary.BoundaryBasis"><code class="docutils literal notranslate"><span class="pre">BoundaryBasis</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.boundary.html#openghg_inversions.basis.boundary.nesw_basis"><code class="docutils literal notranslate"><span class="pre">nesw_basis()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.boundary.html#openghg_inversions.basis.boundary.validate_split_height"><code class="docutils literal notranslate"><span class="pre">validate_split_height()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.boundary.html#openghg_inversions.basis.boundary.boundary_basis"><code class="docutils literal notranslate"><span class="pre">boundary_basis()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.boundary.html#openghg_inversions.basis.boundary.twelve_region_basis"><code class="docutils literal notranslate"><span class="pre">twelve_region_basis()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.basis.compatibility.html">openghg_inversions.basis.compatibility</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.compatibility.html#openghg_inversions.basis.compatibility.make_basis_functions"><code class="docutils literal notranslate"><span class="pre">make_basis_functions()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.compatibility.html#openghg_inversions.basis.compatibility.load_basis_functions"><code class="docutils literal notranslate"><span class="pre">load_basis_functions()</span></code></a></li>
@@ -2020,6 +2105,9 @@ active-state model sampling.</p></li>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.boundary_basis"><code class="docutils literal notranslate"><span class="pre">boundary_basis()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.nesw_basis"><code class="docutils literal notranslate"><span class="pre">nesw_basis()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.twelve_region_basis"><code class="docutils literal notranslate"><span class="pre">twelve_region_basis()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_weights_from_data"><code class="docutils literal notranslate"><span class="pre">basis_weights_from_data()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions_from_flat_basis"><code class="docutils literal notranslate"><span class="pre">basis_functions_from_flat_basis()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.AffineFluxMap"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap</span></code></a><ul class="nav section-nav flex-column">

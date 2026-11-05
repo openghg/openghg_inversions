@@ -592,7 +592,7 @@ preserves the existing basis value and its original source provenance. The
 requested export path belongs to configuration, not a rewritten scientific value. <code class="docutils literal notranslate"><span class="pre">prepare_basis</span></code>
 accepts no export destination and performs no export write. Sensitivity construction
 and input assembly consume the returned <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code>. Pass <code class="docutils literal notranslate"><span class="pre">bc_basis</span></code> to
-<code class="docutils literal notranslate"><span class="pre">build_sensitivities</span></code>; <code class="docutils literal notranslate"><span class="pre">None</span></code> uses NESW without any BC basis-file I/O.
+<code class="docutils literal notranslate"><span class="pre">build_sensitivities</span></code>; its default <code class="docutils literal notranslate"><span class="pre">nesw_basis</span></code> builder needs no BC basis-file I/O.
 Historical names,
 case/glob discovery and filename construction belong only to the temporary
 HBMCMC entry route described in <a class="reference internal" href="rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a>. Modern custom runners

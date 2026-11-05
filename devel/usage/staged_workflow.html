@@ -589,6 +589,10 @@ Missing or unreadable selected files fail before acquisition.
 default without exact paths. Explicit <code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code> take precedence, leaving
 the algorithm inactive. NESW uses acquired directional contributions without
 reading a BC basis file. <code class="docutils literal notranslate"><span class="pre">use_bc=False</span></code> bypasses BC basis resolution and loading.
+For twelve lateral regions, select <code class="docutils literal notranslate"><span class="pre">&quot;bc_basis_algorithm&quot;:</span> <span class="pre">&quot;twelve-region&quot;</span></code>
+and optionally <code class="docutils literal notranslate"><span class="pre">&quot;bc_basis_split_height&quot;:</span> <span class="pre">3000.0</span></code>; saved preparation retains
+both options. See <a class="reference internal" href="rhime_configuration.html#twelve-region-boundary-basis"><span class="std std-ref">Twelve-region lateral boundary basis</span></a> for native units, exact
+partition rules and the public Python basis constructor.
 Staged commands accept canonical resource names; see <a class="reference internal" href="legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a>
 for historical selector replacements.</p>
 <p><code class="docutils literal notranslate"><span class="pre">country_directory</span></code> is removed in 0.8. Use <code class="docutils literal notranslate"><span class="pre">country_file</span></code> for reporting,

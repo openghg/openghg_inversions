@@ -522,7 +522,8 @@ Country reporting requires an explicit file, independently of these defaults.</p
 before acquisition and preserve their time combination and alignment.
 Custom scientific sensitivity calls receive the loaded <code class="docutils literal notranslate"><span class="pre">bc_basis</span></code> dataset.
 <code class="docutils literal notranslate"><span class="pre">bc_basis_algorithm=&quot;NESW&quot;</span></code> is the default built-in selection. It uses
-acquired directional contributions and <code class="docutils literal notranslate"><span class="pre">bc_basis=None</span></code> without a file.
+acquired directional contributions through the default <code class="docutils literal notranslate"><span class="pre">nesw_basis</span></code>
+builder, without a file.
 Exact <code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code> win over the inactive algorithm; <code class="docutils literal notranslate"><span class="pre">use_bc=False</span></code>
 skips BC basis resolution and loading.</p></li>
 <li><p>Modern runners reject <code class="docutils literal notranslate"><span class="pre">fp_basis_case</span></code>, <code class="docutils literal notranslate"><span class="pre">basis_directory</span></code>, <code class="docutils literal notranslate"><span class="pre">bc_basis_case</span></code>

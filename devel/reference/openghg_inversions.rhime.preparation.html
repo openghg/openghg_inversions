@@ -370,6 +370,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html">openghg_inversions.basis.affine_flux_map</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map_io.html">openghg_inversions.basis.affine_flux_map_io</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html">openghg_inversions.basis.basis_functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.boundary.html">openghg_inversions.basis.boundary</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.compatibility.html">openghg_inversions.basis.compatibility</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.covariance_products.html">openghg_inversions.basis.covariance_products</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.layout.html">openghg_inversions.basis.layout</a></li>
@@ -686,10 +687,10 @@ Error diagnostics and zero replacement may compute derived arrays.</p>
 <dl>
 <dd><em class="sig-param"><span class="n"><span class="pre">site_data</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">basis_functions</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">*</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">flux_sources</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">bc_basis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_basis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;function</span> <span class="pre">nesw_basis&gt;</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">multisector</span></span></em>,</dd>
 </dl>
 
@@ -705,8 +706,9 @@ using preloaded boundary-condition basis data. <code class="docutils literal not
 <li><p><strong>basis_functions</strong> (<a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><em>FluxWeightedBasis</em></a>) – Retained basis and fluxes to project onto observations.</p></li>
 <li><p><strong>flux_sources</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>]</em>) – Source names used to align the flux sensitivities.</p></li>
 <li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether to construct boundary-condition sensitivities.</p></li>
-<li><p><strong>bc_basis</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a><em> | </em><em>None</em>) – Loaded boundary basis; None uses acquired NESW directional
-contributions without a basis file. Ignored when BCs are disabled.</p></li>
+<li><p><strong>bc_basis</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.15)"><em>Callable</em></a><em>[</em><em>[</em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a><em>]</em><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a><em>]</em>) – Loaded boundary basis or per-site basis builder. The
+default NESW builder needs no basis file. Ignored when BCs are
+disabled.</p></li>
 <li><p><strong>multisector</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether to retain separate source sensitivities instead
 of the standard single-source layout.</p></li>
 </ul>
@@ -796,19 +798,20 @@ here and loaded later by basis preparation. The request is not mutated.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.preparation.resolve_bc_basis">
 <span class="sig-name descname"><span class="pre">resolve_bc_basis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.preparation.resolve_bc_basis" title="Link to this definition">#</a></dt>
-<dd><p>Load enabled exact BC resources, or select the built-in directional basis.</p>
+<dd><p>Load enabled exact BC resources, or select a built-in basis builder.</p>
 <p>Configuration owns algorithm validation. Exact files take precedence over
-that inactive algorithm choice. With no files, resolved <code class="docutils literal notranslate"><span class="pre">&quot;NESW&quot;</span></code> uses
-acquired directional contributions through the scientific <code class="docutils literal notranslate"><span class="pre">None</span></code> input.
-Disabled BCs perform no resource I/O. Selected files are loaded before
-acquisition using the existing time combination and spatial alignment.
-The configuration and borrowed scientific inputs remain unchanged.</p>
+the algorithm choice. With no files, <code class="docutils literal notranslate"><span class="pre">bc_basis_algorithm</span></code> selects the
+NESW or twelve-region builder, which reads only each site’s coordinates.
+Disabled BCs perform no resource I/O and return the NESW builder, which
+preparation never calls. Selected files are loaded before acquisition using
+the existing time combination and spatial alignment. The configuration and
+borrowed scientific inputs remain unchanged.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>data_config</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>) – Resolved acquisition/preparation configuration.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Loaded labelled BC basis, or None for disabled BCs or built-in NESW.</p>
+<dd class="field-even"><p>Loaded labelled BC basis or a built-in per-site basis builder.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -817,7 +820,7 @@ The configuration and borrowed scientific inputs remain unchanged.</p>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a> | None</p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a> | <a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.15)"><em>Callable</em></a>[[<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>], <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>]</p>
 </dd>
 </dl>
 </dd></dl>

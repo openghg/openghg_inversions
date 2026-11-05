@@ -132,6 +132,10 @@ Missing or unreadable selected files fail before acquisition.
 default without exact paths. Explicit ``bc_basis_paths`` take precedence, leaving
 the algorithm inactive. NESW uses acquired directional contributions without
 reading a BC basis file. ``use_bc=False`` bypasses BC basis resolution and loading.
+For twelve lateral regions, select ``"bc_basis_algorithm": "twelve-region"``
+and optionally ``"bc_basis_split_height": 3000.0``; saved preparation retains
+both options. See :ref:`twelve-region-boundary-basis` for native units, exact
+partition rules and the public Python basis constructor.
 Staged commands accept canonical resource names; see :doc:`legacy_and_migration`
 for historical selector replacements.
 

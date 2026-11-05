@@ -717,7 +717,8 @@ selected files fail before acquisition. Scientific sensitivity functions accept
 resolved data, not <code class="docutils literal notranslate"><span class="pre">bc_basis_case</span></code> or <code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code> discovery options.</p>
 <p><code class="docutils literal notranslate"><span class="pre">bc_basis_algorithm=&quot;NESW&quot;</span></code> selects the built-in calculation and is the
 canonical default. It uses acquired directional boundary contributions without
-reading a basis file; scientific calls receive <code class="docutils literal notranslate"><span class="pre">bc_basis=None</span></code>. Exact
+reading a basis file; scientific calls receive the <code class="docutils literal notranslate"><span class="pre">nesw_basis</span></code> builder,
+which is also their default. Exact
 <code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code> take precedence over the algorithm, whose value is then
 inactive. Selected files fail on read errors rather than falling back to NESW.
 <code class="docutils literal notranslate"><span class="pre">use_bc=False</span></code> skips BC basis resolution and loading, including selected files.
@@ -727,6 +728,66 @@ before acquisition. Replace it with <code class="docutils literal notranslate"><
 <code class="docutils literal notranslate"><span class="pre">landsea_path</span></code> for land/sea classes, or <code class="docutils literal notranslate"><span class="pre">outer_regions_path</span></code> for fixed outer
 regions. Reporting maps remain explicit: <code class="docutils literal notranslate"><span class="pre">domain</span></code> never selects a reporting
 <code class="docutils literal notranslate"><span class="pre">country_file</span></code>. See <a class="reference internal" href="legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a> for the migration schedule.</p>
+<section id="twelve-region-lateral-boundary-basis">
+<span id="twelve-region-boundary-basis"></span><h3>Twelve-region lateral boundary basis<a class="headerlink" href="#twelve-region-lateral-boundary-basis" title="Link to this heading">#</a></h3>
+<p>Select <code class="docutils literal notranslate"><span class="pre">bc_basis_algorithm=&quot;twelve-region&quot;</span></code> to divide each native N/E/S/W
+curtain into two lower horizontal halves and one upper region. The same options
+work in Python run parameters or the <code class="docutils literal notranslate"><span class="pre">[INPUT.BASIS_CASE]</span></code> INI section:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">bc_basis_algorithm</span> <span class="o">=</span> <span class="s2">"twelve-region"</span>
+<span class="n">bc_basis_split_height</span> <span class="o">=</span> <span class="mf">3000.0</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">bc_basis_split_height</span></code> is a finite number in the native <code class="docutils literal notranslate"><span class="pre">height</span></code> coordinate’s
+units; it defaults to 3000. No unit conversion or vertical-datum conversion is
+performed. Inspect the acquired coordinate metadata before choosing a physical
+threshold. With a height coordinate in kilometres, a 3 km split requires
+<code class="docutils literal notranslate"><span class="pre">bc_basis_split_height=3.0</span></code>.</p>
+<p>The default follows the archived feasibility prototype’s native-coordinate
+threshold of 3000. The prototype’s height coordinate had no units or AGL/ASL
+datum metadata; its physical interpretation remains unverified. Motivation
+comes from the lower/upper boundary distinction in
+<a class="reference external" href="https://acp.copernicus.org/articles/18/13305/2018/">Arnold et al. (2018), section 2.6</a>
+and the 3 km division in
+<a class="reference external" href="https://acp.copernicus.org/articles/21/12739/2021/">Manning et al. (2021), section 2.3</a>.
+This twelve-region geometry is an adaptation: Manning describes eleven
+boundaries and a 3 km above-ground division. This selector does not implement
+that exact InTEM scheme or establish an above-ground datum for NAME inputs.</p>
+<p>For each direction, cells with <code class="docutils literal notranslate"><span class="pre">height</span> <span class="pre">&lt;</span> <span class="pre">bc_basis_split_height</span></code> are lower;
+equality belongs to the upper region. The horizontal split is the arithmetic
+midpoint of the minimum and maximum native coordinate centres, rather than the
+middle array index. On north/south curtains use longitude: <code class="docutils literal notranslate"><span class="pre">lower_first</span></code> is
+west of the midpoint and <code class="docutils literal notranslate"><span class="pre">lower_second</span></code> includes the midpoint and everything
+east. On east/west curtains use latitude: <code class="docutils literal notranslate"><span class="pre">lower_first</span></code> is south and
+<code class="docutils literal notranslate"><span class="pre">lower_second</span></code> includes the midpoint and everything north. Ascending and
+descending axes follow the same geographic assignment. All native lateral
+heights above the split are retained, with no 8 km cutoff and no top boundary.
+Each curtain cell has exactly one unit mask; no overlap or uncovered cells occur.
+A coarse grid or a split outside the height range can leave some regions empty.</p>
+<p>Region order is <code class="docutils literal notranslate"><span class="pre">n_lower_first</span></code>, <code class="docutils literal notranslate"><span class="pre">n_lower_second</span></code>, <code class="docutils literal notranslate"><span class="pre">n_upper</span></code>, then the same
+three suffixes for <code class="docutils literal notranslate"><span class="pre">e</span></code>, <code class="docutils literal notranslate"><span class="pre">s</span></code>, and <code class="docutils literal notranslate"><span class="pre">w</span></code>. Coordinate values and their attributes
+are retained. Basis and projected sensitivity attributes record the geometry
+and split height, native coordinate units/datum (<code class="docutils literal notranslate"><span class="pre">unspecified</span></code> when absent),
+and horizontal midpoints; saved preparation retains this provenance.</p>
+<p>For direct scientific preparation, build a serializable basis from the native
+site curtain coordinates and pass it through the existing projection route:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.basis</span><span class="w"> </span><span class="kn">import</span> <span class="n">twelve_region_basis</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.basis._helpers</span><span class="w"> </span><span class="kn">import</span> <span class="n">bc_sensitivity</span>
+
+<span class="n">basis</span> <span class="o">=</span> <span class="n">twelve_region_basis</span><span class="p">(</span><span class="n">site_dataset</span><span class="p">,</span> <span class="n">split_height</span><span class="o">=</span><span class="mf">3000.0</span><span class="p">)</span>
+<span class="n">projected</span> <span class="o">=</span> <span class="n">bc_sensitivity</span><span class="p">({</span><span class="s2">"SITE"</span><span class="p">:</span> <span class="n">site_dataset</span><span class="p">},</span> <span class="n">bc_basis</span><span class="o">=</span><span class="n">basis</span><span class="p">)[</span><span class="s2">"SITE"</span><span class="p">]</span>
+<span class="n">basis</span><span class="o">.</span><span class="n">to_netcdf</span><span class="p">(</span><span class="s2">"twelve-region-basis.nc"</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The configured selector builds each site’s geometry on its acquired grid.
+It applies the same masks to absolute <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> or centered anomaly/mass operands
+<code class="docutils literal notranslate"><span class="pre">H_bc_anomaly</span></code> and <code class="docutils literal notranslate"><span class="pre">H_bc_mass</span></code>. The scalar concentration reference
+<code class="docutils literal notranslate"><span class="pre">bc_reference</span></code> is preserved. Summing each parent’s three columns recovers its
+NESW column; normalized mass sums to one across all twelve regions. Geometry
+is independent of <code class="docutils literal notranslate"><span class="pre">bc_freq</span></code> and the chosen prior. Independent child
+coefficients change prior covariance; tying each parent’s children recovers
+the NESW response. File selection still takes precedence and <code class="docutils literal notranslate"><span class="pre">use_bc=False</span></code>
+still bypasses basis preparation.</p>
+</section>
 </section>
 <section id="site-selectors-and-retained-observations">
 <h2>Site selectors and retained observations<a class="headerlink" href="#site-selectors-and-retained-observations" title="Link to this heading">#</a></h2>
@@ -884,7 +945,10 @@ own, without constructing a full run. Explicit <code class="docutils literal not
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#inspecting-the-resolved-request">Inspecting the resolved request</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#ini-files-and-overrides">INI files and overrides</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#flux-selectors-and-deprecations">Flux selectors and deprecations</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#basis-paths-support-maps-and-compatibility">Basis paths, support maps and compatibility</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#basis-paths-support-maps-and-compatibility">Basis paths, support maps and compatibility</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#twelve-region-lateral-boundary-basis">Twelve-region lateral boundary basis</a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#site-selectors-and-retained-observations">Site selectors and retained observations</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#forwarding-resolved-values-in-custom-runners">Forwarding resolved values in custom runners</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#changing-and-persisting-configuration">Changing and persisting configuration</a></li>
