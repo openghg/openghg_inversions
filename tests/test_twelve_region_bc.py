@@ -167,3 +167,36 @@ def test_prepared_sensitivity_roundtrip_retains_geometry_provenance(tmp_path, ce
 def test_public_basis_constructor_rejects_invalid_split(split):
     with pytest.raises(ValueError, match="split_height"):
         twelve_region_basis(_curtains(), split_height=split)
+
+
+@pytest.mark.parametrize("builder", [None, twelve_region_basis])
+def test_nonfinite_curtain_cell_stays_in_its_own_regions(builder):
+    site = _curtains(centered=True).compute()
+    site["bc_anomaly_n"][0, 0, 0] = np.nan
+    basis = {} if builder is None else {"bc_basis": builder}
+    anomaly = bc_sensitivity({"AAA": site}, **basis)["AAA"].H_bc_anomaly.isel(time=0)
+    poisoned = [str(r) for r in anomaly.bc_region.values if np.isnan(anomaly.sel(bc_region=r))]
+    assert poisoned == (["n"] if builder is None else ["n_lower_first"])
+
+
+@pytest.mark.parametrize("basis_kind", ["NESW", "twelve-region", "file"])
+def test_absolute_sensitivity_metadata_does_not_depend_on_basis_kind(tmp_path, basis_kind):
+    from openghg_inversions.basis import boundary_basis
+
+    site = _curtains()
+    if basis_kind == "file":
+        twelve_region_basis(site).to_netcdf(tmp_path / "basis.nc")
+        basis = xr.open_dataset(tmp_path / "basis.nc").load()
+    else:
+        basis = boundary_basis(basis_kind)
+    sensitivity = bc_sensitivity({"AAA": site}, basis)["AAA"].H_bc
+    assert sensitivity.dims == ("bc_region", "time")
+    assert sensitivity.attrs["units"] == "ppm"
+    assert sensitivity.attrs["bc_basis_algorithm"] == ("NESW" if basis_kind == "NESW" else "twelve-region")
+
+
+def test_unknown_builtin_boundary_basis_is_rejected():
+    from openghg_inversions.basis import boundary_basis
+
+    with pytest.raises(ValueError, match="NESW"):
+        boundary_basis("eight-region")

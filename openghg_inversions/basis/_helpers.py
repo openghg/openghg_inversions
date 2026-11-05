@@ -1,13 +1,11 @@
 """Boundary-condition sensitivity helpers."""
 
-from collections.abc import Callable
-
 import xarray as xr
 
-BoundaryBasis = xr.Dataset | Callable[[xr.Dataset], xr.Dataset]
+from .boundary import BoundaryBasis, nesw_basis
 
 
-def bc_sensitivity(fp_and_data: dict, bc_basis: BoundaryBasis | None = None) -> dict:
+def bc_sensitivity(fp_and_data: dict, bc_basis: BoundaryBasis = nesw_basis) -> dict:
     """Project absolute or centered directional boundary contributions.
 
     Absolute ``bc_n/e/s/w`` inputs produce ``H_bc``. Centered
@@ -24,14 +22,15 @@ def bc_sensitivity(fp_and_data: dict, bc_basis: BoundaryBasis | None = None) -> 
             ``"1"``. Dot-prefixed metadata entries are retained unchanged.
         bc_basis: Resolved labelled basis with ``bc_basis_<direction>`` variables
             and a ``region`` dimension. A singleton time applies to every
-            observation; multiple times align by their labels. None uses the
-            acquired NESW contributions directly, without resource I/O. A callable
-            builds a basis from each site's spatial coordinates.
+            observation; multiple times align by their labels. A callable
+            builds a basis from each site's dataset. The default assigns each
+            whole curtain to its own ``n/e/s/w`` region, without resource I/O.
 
     Returns:
         New mapping and site datasets, sharing input storage where possible.
         Projected sensitivities have ``bc_region`` and ``time`` dimensions;
-        centered anomaly retains concentration units and mass retains ``"1"``.
+        Each sensitivity keeps its directional operand attributes (including
+        units) plus the basis ``bc_basis_*`` provenance attributes.
         Centered operands remain spatial, without fitted boundary-period
         expansion. Inputs remain unchanged and lazy arrays remain lazy.
 
@@ -40,22 +39,17 @@ def bc_sensitivity(fp_and_data: dict, bc_basis: BoundaryBasis | None = None) -> 
             shape, units or basis alignment are invalid.
     """
     result = dict(fp_and_data)
-    if bc_basis is not None and not callable(bc_basis):
+    if not callable(bc_basis):
+        bc_basis = _normalise_basis(bc_basis)
         if bc_basis.sizes.get("time") == 1:
             bc_basis = bc_basis.squeeze("time")
         elif "time" in bc_basis.dims:
             bc_basis = bc_basis.sortby("time")
-        bc_basis = bc_basis.rename({dv: str(dv).replace("basis_", "") for dv in bc_basis.data_vars})
 
     for site, ds in fp_and_data.items():
         if site.startswith("."):
             continue
-        site_basis: xr.Dataset | None
-        if callable(bc_basis):
-            site_basis = bc_basis(ds)
-            site_basis = site_basis.rename({dv: str(dv).replace("basis_", "") for dv in site_basis.data_vars})
-        else:
-            site_basis = bc_basis
+        site_basis = _normalise_basis(bc_basis(ds)) if callable(bc_basis) else bc_basis
         representation = ds.attrs.get("boundary_representation")
         if representation is not None and representation != "centered-v1":
             raise ValueError(f"Unsupported boundary_representation {representation!r}.")
@@ -65,25 +59,30 @@ def bc_sensitivity(fp_and_data: dict, bc_basis: BoundaryBasis | None = None) -> 
         if centered:
             projected = _project_centered_boundaries(ds, site_basis)
         else:
-            projected = {"H_bc": _project_boundaries(ds[[f"bc_{d}" for d in "nesw"]], site_basis)}
-            if site_basis is not None and site_basis.attrs.get("bc_basis_algorithm") == "twelve-region":
-                projected["H_bc"].attrs = dict(ds.bc_n.attrs)
-        if site_basis is not None:
-            for sensitivity in projected.values():
-                sensitivity.attrs.update({key: value for key, value in site_basis.attrs.items()
-                                          if key.startswith("bc_basis_")})
+            sensitivity = _project_boundaries(ds[[f"bc_{d}" for d in "nesw"]], site_basis)
+            sensitivity.attrs = dict(ds.bc_n.attrs)
+            projected = {"H_bc": sensitivity}
+        provenance = {key: value for key, value in site_basis.attrs.items() if key.startswith("bc_basis_")}
+        for sensitivity in projected.values():
+            sensitivity.attrs.update(provenance)
         result[site] = ds.assign(projected)
     return result
 
 
-def _project_boundaries(
-    ds: xr.Dataset, basis: xr.Dataset | None, *, centered: bool = False,
-) -> xr.DataArray:
-    """Contract directional curtains with the same spatial boundary basis."""
-    if basis is None:
-        return ds.rename({f"bc_{d}": d for d in "nesw"}).sum(
-            ["lat", "lon", "height"], skipna=False if centered else None,
-        ).to_dataarray(dim="bc_region")
+def _normalise_basis(basis: xr.Dataset) -> xr.Dataset:
+    """Rename stored ``bc_basis_<d>``/``basis_bc_<d>`` weights to ``bc_<d>``."""
+    return basis.rename({dv: str(dv).replace("basis_", "") for dv in basis.data_vars})
+
+
+def _project_boundaries(ds: xr.Dataset, basis: xr.Dataset, *, centered: bool = False) -> xr.DataArray:
+    """Contract directional curtains with the same spatial boundary basis.
+
+    A curtain cell contributes only where its weight is nonzero, so a
+    non-finite cell never reaches a region it does not belong to. In-memory
+    weights are also narrowed to the regions they touch; lazy weights are not
+    computed.
+    """
+    skipna = False if centered else None
     if centered:
         if basis.sizes.get("time", 0) > 1:
             try:
@@ -91,14 +90,19 @@ def _project_boundaries(
             except KeyError as exc:
                 raise ValueError("Centered boundary basis must cover every retained site timestamp.") from exc
         ds, basis = xr.align(ds, basis, join="exact", copy=False)
-    return (
-        (ds * basis).sum(["lat", "lon", "height"], skipna=False if centered else None)
-        .to_dataarray(dim="__newdim__").sum("__newdim__", skipna=False if centered else None)
-        .rename(region="bc_region")
-    )
+    parts = []
+    for direction in "nesw":
+        weights = basis[f"bc_{direction}"]
+        if weights.chunks is None:
+            weights = weights.isel(region=(weights != 0).any([d for d in weights.dims if d != "region"]).values)
+        curtain = (ds[f"bc_{direction}"] * weights).where(weights != 0, 0)
+        spatial = [dim for dim in ("lat", "lon", "height") if dim in curtain.dims]
+        parts.append(curtain.sum(spatial, skipna=skipna).reindex(region=basis.region, fill_value=0))
+    total = sum(parts[1:], parts[0])
+    return total.rename(region="bc_region").transpose("bc_region", ...)
 
 
-def _project_centered_boundaries(ds: xr.Dataset, basis: xr.Dataset | None) -> dict[str, xr.DataArray]:
+def _project_centered_boundaries(ds: xr.Dataset, basis: xr.Dataset) -> dict[str, xr.DataArray]:
     """Validate the directional centered handoff and project anomaly and mass."""
     prefixes = ("bc_anomaly", "bc_mass")
     required = {f"{prefix}_{d}" for prefix in prefixes for d in "nesw"} | {"bc_reference"}

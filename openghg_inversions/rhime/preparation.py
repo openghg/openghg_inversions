@@ -33,7 +33,8 @@ import numpy as np
 import xarray as xr
 
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
-from openghg_inversions.basis._helpers import BoundaryBasis, bc_sensitivity
+from openghg_inversions.basis._helpers import bc_sensitivity
+from openghg_inversions.basis.boundary import BoundaryBasis, boundary_basis, nesw_basis
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR, BasisFunctions
 from openghg_inversions.boundary_sensitivity import scale_satellite_boundary_sensitivity_to_column_signal
 from openghg_inversions.filters import filtering
@@ -107,7 +108,7 @@ def build_sensitivities(
     *,
     flux_sources: Sequence[str],
     use_bc: bool = True,
-    bc_basis: BoundaryBasis | None = None,
+    bc_basis: BoundaryBasis = nesw_basis,
     multisector: bool,
 ) -> dict[str, xr.Dataset]:
     """Construct labelled flux and optional boundary-condition sensitivities.
@@ -121,9 +122,9 @@ def build_sensitivities(
         basis_functions: Retained basis and fluxes to project onto observations.
         flux_sources: Source names used to align the flux sensitivities.
         use_bc: Whether to construct boundary-condition sensitivities.
-        bc_basis: Loaded boundary basis or coordinate-based basis builder;
-            None uses acquired NESW directional
-            contributions without a basis file. Ignored when BCs are disabled.
+        bc_basis: Loaded boundary basis or per-site basis builder. The
+            default NESW builder needs no basis file. Ignored when BCs are
+            disabled.
         multisector: Whether to retain separate source sensitivities instead
             of the standard single-source layout.
 
@@ -353,22 +354,22 @@ def _validate_multisector_sensitivity_sources(
 
 
 
-def resolve_bc_basis(data_config: Any) -> BoundaryBasis | None:
-    """Load enabled exact BC resources, or select the built-in directional basis.
+def resolve_bc_basis(data_config: Any) -> BoundaryBasis:
+    """Load enabled exact BC resources, or select a built-in basis builder.
 
     Configuration owns algorithm validation. Exact files take precedence over
-    that inactive algorithm choice. With no files, resolved ``"NESW"`` uses
-    acquired directional contributions through the scientific ``None`` input.
-    Disabled BCs perform no resource I/O. Selected files are loaded before
-    acquisition using the existing time combination and spatial alignment.
-    The configuration and borrowed scientific inputs remain unchanged.
+    the algorithm choice. With no files, ``bc_basis_algorithm`` selects the
+    NESW or twelve-region builder, which reads only each site's coordinates.
+    Disabled BCs perform no resource I/O and return the NESW builder, which
+    preparation never calls. Selected files are loaded before acquisition using
+    the existing time combination and spatial alignment. The configuration and
+    borrowed scientific inputs remain unchanged.
 
     Args:
         data_config: Resolved acquisition/preparation configuration.
 
     Returns:
-        Loaded labelled BC basis, coordinate-based twelve-region builder, or
-        None for disabled BCs or built-in NESW.
+        Loaded labelled BC basis or a built-in per-site basis builder.
 
     Raises:
         ValueError: If the exact file selection is empty.
@@ -377,15 +378,10 @@ def resolve_bc_basis(data_config: Any) -> BoundaryBasis | None:
     from openghg_inversions.basis.support import load_bc_basis
 
     if not data_config.use_bc:
-        return None
+        return nesw_basis
     if data_config.bc_basis_paths is not None:
         return load_bc_basis(data_config.bc_basis_paths)
-    if data_config.bc_basis_algorithm == "twelve-region":
-        from functools import partial
-        from openghg_inversions.basis import twelve_region_basis
-
-        return partial(twelve_region_basis, split_height=data_config.bc_basis_split_height)
-    return None
+    return boundary_basis(data_config.bc_basis_algorithm, split_height=data_config.bc_basis_split_height)
 
 
 def resolve_basis_inputs(data_config: Any) -> dict[str, Any]:

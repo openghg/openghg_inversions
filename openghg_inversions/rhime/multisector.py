@@ -24,7 +24,7 @@ from dask.base import unpack_collections
 
 import xarray as xr
 
-from openghg_inversions.basis._helpers import BoundaryBasis
+from openghg_inversions.basis.boundary import BoundaryBasis, nesw_basis
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import MergedData, PreparedInputs
@@ -398,7 +398,7 @@ def prepare_multisector(
     fix_basis_outer_regions: bool,
     use_bc: bool,
     basis_inputs: Mapping[str, Any],
-    bc_basis: BoundaryBasis | None = None,
+    bc_basis: BoundaryBasis = nesw_basis,
 ) -> PreparedInputs:
     """Prepare observations and sensitivities from supplied scientific resources.
 

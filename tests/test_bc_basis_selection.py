@@ -13,6 +13,7 @@ import xarray as xr
 
 from openghg_inversions.basis import BasisFunctions
 from openghg_inversions.basis._helpers import bc_sensitivity
+from openghg_inversions.basis.boundary import nesw_basis
 from openghg_inversions.basis import support
 from openghg_inversions.inversion_data import PreparedInputs
 from openghg_inversions.rhime.params import RhimeConfig
@@ -35,7 +36,7 @@ def test_omitted_and_explicit_nesw_preserve_directional_labels_and_lazy_inputs(m
             assert config.data.bc_basis_algorithm == "NESW"
             assert isinstance(config.data.bc_basis_algorithm, str)
             basis = resolve_bc_basis(config.data)
-            assert basis is None
+            assert basis is nesw_basis
             results.append(bc_sensitivity({"TAC": site}, bc_basis=basis)["TAC"].H_bc)
             assert request == original
     assert "H_bc" not in site
@@ -60,7 +61,7 @@ def test_files_override_inactive_algorithm_without_reinterpreting_time_alignment
     basis = resolve_bc_basis(config.data)
     snapshot = basis.copy(deep=True)
     result = bc_sensitivity({"TAC": _contributions()}, bc_basis=basis)["TAC"].H_bc
-    np.testing.assert_array_equal(result.compute(), [[20], [30]])
+    np.testing.assert_array_equal(result.compute(), [[20, 30]])
     xr.testing.assert_identical(basis, snapshot)
     assert config.data.to_params() == saved
 
@@ -77,7 +78,7 @@ def test_disabled_bc_does_not_load_selected_resources_or_activate_algorithm(monk
     config = RhimeConfig.from_params(_params(
         use_bc=False, bc_basis_algorithm=algorithm, bc_basis_paths=[tmp_path / "absent.nc"],
     ), multisector=False)
-    assert resolve_bc_basis(config.data) is None
+    assert resolve_bc_basis(config.data) is nesw_basis
 
 
 @pytest.mark.parametrize("multisector", [False, True])
@@ -117,6 +118,6 @@ def test_nested_inner_preparation_keeps_bc_disabled_with_outer_file_selection(mo
     inner = nested.inner_data_config(outer, inner_domain="6km")
     assert not inner.use_bc
     assert inner.bc_basis_paths is None
-    assert resolve_bc_basis(inner) is None
+    assert resolve_bc_basis(inner) is nesw_basis
     assert outer.use_bc
     assert outer.bc_basis_paths == (tmp_path / "outer.nc",)
