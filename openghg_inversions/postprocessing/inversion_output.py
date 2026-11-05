@@ -444,6 +444,14 @@ class InversionOutput:
             )
             _add_attributes_to_trace_dataset(result, obs.attrs.get("units", ""), obs_long_name)
 
+        concentration_roles = self.model_metadata.get("variable_roles", {})
+        for role in ("baseline", "flux_contribution", "concentration_mean"):
+            name = concentration_roles.get(role)
+            if name is not None and obs_name in self.inv_inputs:
+                for variable in result.data_vars:
+                    if str(variable) == name or str(variable).startswith(f"{name}_"):
+                        result[variable].attrs["units"] = self.inv_inputs[obs_name].attrs.get("units", "")
+
         if selected:
             result = self._normalise_selected_trace_state_dimension(result)
 
