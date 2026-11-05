@@ -137,6 +137,12 @@ outputs, such as aligned observation channels or a coherent reduction. A
 shorter signature, speculative flexibility, or provenance alone does not
 justify a new domain object.
 
+Recipes represent concentration contributions with ``ConcentrationTerm``:
+absolute output, likelihood contribution, and an optional fixed observation
+shift. Compose these explicitly with ``likelihood_representation`` so a
+numerical reference is restored exactly once. See
+:doc:`/usage/centered_boundary_conditions` for the scientific equations.
+
 For a concrete likelihood, show the completed mean and how measurement error,
 fixed aggregation error, and inferred mismatch enter its probability model.
 These quantities have different scientific meanings; the supported covariance
@@ -169,8 +175,129 @@ intermediates. Ordinary labelled alignment, Pint conversion, and the numerical
 operation itself often express the required check; add a custom assertion when
 it protects a scientific policy or gives a materially better boundary failure.
 
+Boundary component extension check
+----------------------------------
+
+A boundary family is a data-free *choice* and a *bound* record, both small
+frozen dataclasses in one module under ``models/boundary/``. The configuration
+adapter resolves user options into a choice (``MultiplicativeChoice`` or
+``AdditiveChoice``); it never touches arrays. Runners take that one choice (a
+channel mapping for linked recipes) and call ``choice.bind(observations,
+transport)`` once per channel and fit, where transport is the prepared absolute
+``H_bc`` or ``CenteredOperands``. The bound record pairs the choice with
+borrowed labelled transport on the fit's rows and boundary periods. Reusable raw
+transport keeps its spatial meaning independently of fit periods.
+
+Recipes materialize the bound record with their other inputs in one
+``dask.compute`` over :func:`~openghg_inversions.array_ops.to_dense_tree`, which
+traverses dataclasses, so no family needs payload accessors. Inside the
+registered model, ``boundary.add(...)`` returns an ``AffineConcentrationTerm``,
+a ``ConcentrationTerm`` subclass: ordinary recipes use it as a term, and cached
+recipes lower its labelled ``AffineBlock`` designs and physical coefficients
+once into numerical matrices. ``sampled_rvs`` identifies the underlying sampled
+variables, including transformed priors. ``boundary.outputs()`` declares the
+roles, units and metadata recorded with the trace. A linked recipe embeds
+native rows and namespaces coordinates without recovering boundary-family
+equations. Offsets remain separate components; the offset-confounding warning
+inspects every affine block for a constant unit response, so it needs no
+knowledge of boundary families.
+
+Validation is not repeated along this path. Preparation and artifact loading
+own units, labels and layout; ``bind`` owns calendar and row alignment and the
+single float64 check for centered transport; ``add`` checks only values that
+become available once lazy payloads are materialized.
+
+AST inspection of the concrete builder signatures gives:
+
+.. list-table:: Builder parameters, including keyword-only arguments
+   :header-rows: 1
+   :widths: 55 15 15 15
+
+   * - Builder
+     - Before
+     - Current
+     - Boundary inputs
+   * - ``build_co2_model``
+     - 23
+     - 15
+     - 9 → 1
+   * - ``build_co2_cached_sigma_model``
+     - 24
+     - 16
+     - 9 → 1
+   * - ``build_co2_o2_model``
+     - 23
+     - 15
+     - 9 → 1
+   * - ``build_co2_o2_cached_sigma_model``
+     - 23
+     - 15
+     - 9 → 1
+
+To reproduce the current count, parse each builder module with ``ast.parse``,
+select its top-level ``FunctionDef`` and count ``posonlyargs + args +
+kwonlyargs``. The only boundary parameter is ``boundary``; unrelated arguments
+are unchanged.
+
+A dry-run extension with a new supported boundary prior reaches these owners:
+
+* A new module under ``models/boundary/``: define the choice (with ``bind``) and
+  the bound record (with ``add`` and ``outputs``). ``BoundaryChoice`` and
+  ``Boundary`` are structural protocols, so no shared list of families changes.
+* ``rhime/co2/configuration.py`` and, for channel-specific syntax,
+  ``co2_o2_configuration.py``: resolve user selections into component inputs.
+* Scientific component tests and the affected configuration tests: establish
+  the equation, fixed-state behavior, units, full density and gradients.
+
+The exercised extension probes are
+``tests/test_co2_boundary_affine_integration.py`` and
+``tests/test_boundary_output.py``. The frontend handoff is exercised in
+``tests/test_co2_bound_frontends.py`` with raw binding forbidden, absent raw
+operators, shared delayed payloads and independent concentration equations for
+ordinary/cached single/linked fits. The embedding probes exercise a one-dimensional native response
+and a matrix with unsorted coefficient labels into interleaved joint rows,
+reject reversed observation rows before reading lazy cache payloads, and accept
+independent coefficient blocks with different labels on identically named axes.
+The cached conversion aligns only observation rows; it does not align separate
+coefficient axes. Independent curtain corrections replay through the same
+scientific correction role without declaring a weighted anomaly policy.
+Only explicit ``boundary_anomaly_scale`` and ``boundary_centering_weights``
+roles select that policy, and either declaration requires both.
+
+For a new family, scientific tests belong with its component in
+``tests/models/test_boundary_components.py`` and its configuration in
+``tests/test_rhime_co2_configuration.py`` or
+``tests/test_co2_o2_configuration.py``. These generic embedding and replay
+probes protect the consumer seam; downstream boundary-family work supplies the
+new prior's equation tests.
+
+A runnable dry-run temporarily added ``StudentT(nu, mu, sigma)`` to the
+configuration prior table in memory. Existing component prior construction
+handled it directly. Ordinary and cached graphs had finite full log densities,
+and reconstructed boundary contributions closed for three prior draws and two
+posterior draws. The only temporarily extended module was
+``rhime/co2/configuration.py``; no likelihood, cache or output module changed.
+This probe does not add Student-t to the released configuration choices.
+
+The review check is that this module list does not grow to include likelihood,
+cache, sampler or output modules. Those consumers operate on the shared affine
+result and the component's declarations through the existing ``OutputContract``.
+The pure saved-boundary decoder/reconstructor consumes fitted scientific facts,
+including explicit zero anomalies for mean-only fits. Saved traces can omit
+those zero matrices. Prior and posterior groups retain independent sample sizes;
+replay neither builds a graph nor chooses a new period calendar.
+
 Keep configuration with its scientific owner
 --------------------------------------------
+
+Treat configuration as a description of scientific choices. Group those
+choices by the component that owns them: for example, boundary family,
+reference, periods, and physical widths; flux and prior choices and their
+calibration; or offsets and likelihood choices. Resolve and normalize each
+choice once at the boundary that owns it, such as configuration parsing,
+preparation, or model construction. Later stages should consume explicitly
+resolved values without implicitly reselecting a model or recalibrating its
+inputs.
 
 Runtime inputs and user choices are different interfaces. Function signatures
 describe observations, sensitivities, priors, and existing model terms.
@@ -245,6 +372,12 @@ their separate reuse constraints. The :download:`#876 alignment change tasks
 <../../openspec/changes/move-alignments-to-model-boundary/tasks.md>` record
 revision-specific validation evidence and limits. Broader handoff programme
 acceptance remains pending.
+
+Internal Python APIs, staged manifests and prepared/posterior artifacts have no
+compatibility guarantee; only CLI behaviour and CLI outputs are protected.
+Do not add readers, aliases or shims for earlier internal formats. Reject old
+artifacts with instructions to prepare again. The approved boundary-label
+change uses interval-start timestamps in CLI products.
 
 Keep one scientific sample codec owner for save/load and let replay consume its
 decoded result. Keep product/export saving in a nearby operational helper with

@@ -18,6 +18,8 @@ from openghg_inversions.serialization import reset_serialisation_multiindexes, s
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
 from .co2_o2_preparation import Co2O2PreparedInputs
+from .boundary_output import decode_boundary_facts, reconstruct_boundary
+from openghg_inversions.postprocessing.inversion_output import trace_group
 
 
 @dataclass
@@ -141,9 +143,12 @@ def validate_co2_o2_trace(trace: xr.DataTree, prepared: Co2O2PreparedInputs | No
         raise ValueError(f"Linked trace lacks scientific role(s): {sorted(missing)!r}.")
     if "posterior" not in trace.children:
         raise ValueError("Linked outputs require posterior draws.")
+    boundary_facts = decode_boundary_facts(trace, roles=roles, channels=("co2", "o2"))
     for group in ("prior", "posterior"):
         if group not in trace.children:
             continue
+        for facts in boundary_facts.values():
+            reconstruct_boundary(facts, trace_group(trace, group))
         needed = {"flux_scale"} if group == "prior" else required
         needed = needed | ({"boundary_concentration", "offset_concentration"} & roles.keys())
         for role in needed:

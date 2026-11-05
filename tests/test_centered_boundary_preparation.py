@@ -4,18 +4,29 @@ import dask.array as da
 from dask.callbacks import Callback
 import numpy as np
 import pandas as pd
+import pytensor
 import pytest
 import sparse
 import xarray as xr
 
 from openghg_inversions.basis._helpers import bc_sensitivity
-from openghg_inversions.boundary_sensitivity import (
-    BoundaryAlignment, align_boundary_operands, validate_boundary_operands,
-)
+from openghg_inversions.boundary_sensitivity import BoundaryAlignment, validate_boundary_operands
 from openghg_inversions.filters import pblh_min
 from openghg_inversions.inversion_data import PreparedInputs, prepare_rhime_inputs_from_xarray
 from openghg_inversions.inversion_inputs import make_inv_inputs
+from openghg_inversions.models.boundary import CenteredOperands, MultiplicativeChoice
 from tests.test_xarray_input_adapter import _basis_functions, _site_dataset
+
+
+def _bind(operands, observations, **periods):
+    """Bind raw centered operands to one fit's observation rows and periods."""
+    with pytensor.config.change_flags(floatX="float64"):
+        return CenteredOperands.from_dataset(operands).bind(observations, **periods)
+
+
+def _rows(labels):
+    """Observation rows carrying only the requested labels, without timestamps."""
+    return xr.DataArray(np.zeros(labels.size), dims=labels.dims, coords={labels.dims[0]: labels.values})
 
 
 def _site():
@@ -62,10 +73,12 @@ def test_reusable_alignment_identity(frequency):
     original = ds.copy(deep=True)
     anchor = None if frequency in (None, "monthly") else "2020-01-01"
     with Callback(posttask=lambda *args: pytest.fail("operand materialized during alignment")):
-        result = align_boundary_operands(ds, frequency=frequency, anchor_time=anchor)
+        result = _bind(ds, ds.mf, frequency=frequency, anchor_time=anchor)
     absolute = ds.H_bc_anomaly + ds.bc_reference * ds.H_bc_mass
     expected = BoundaryAlignment.prepare(absolute, frequency=frequency, anchor_time=anchor).data
-    xr.testing.assert_allclose(result.H_bc_anomaly + result.bc_reference * result.H_bc_mass, expected.rename(None))
+    xr.testing.assert_allclose(
+        result.H_bc_anomaly + result.bc_reference * result.H_bc_mass, expected.rename(None).transpose("time", "bc_region"),
+    )
     assert result.bc_reference.ndim == 0
     assert result.H_bc_mass.attrs["units"] == "1"
     xr.testing.assert_identical(ds, original)
@@ -78,14 +91,14 @@ def test_validated_no_time_operands_bind_one_period_without_computation():
     labels = raw.nmeasure[[1, 0]]
     with Callback(posttask=lambda *args: pytest.fail("borrowed payload was computed")):
         assert validate_boundary_operands(raw)
-        result = align_boundary_operands(raw, observation_labels=labels)
+        result = _bind(raw, _rows(labels))
     assert "time" not in result.coords
     assert result.indexes["bc_region"].names == ["bc_curtain", "bc_period"]
-    assert set(result.bc_period.values) == {0}
+    assert set(result.bc_period.values) == {"whole_window"}
     for name in ("H_bc_anomaly", "H_bc_mass"):
         assert result[name].attrs["bc_frequency"] == "none"
         assert result[name].attrs["bc_anchor_time"] == "not-applicable"
-        np.testing.assert_allclose(result[name], raw[name].sel(nmeasure=labels))
+        np.testing.assert_allclose(result[name].transpose("bc_region", "nmeasure"), raw[name].sel(nmeasure=labels))
     xr.testing.assert_identical(result.bc_reference, raw.bc_reference)
     xr.testing.assert_identical(raw, original)
 
@@ -98,7 +111,7 @@ def test_period_expansion_requires_datetime_time(frequency, time_kind):
         raw = raw.assign_coords(time=("nmeasure", [0, 1, 2]))
     assert validate_boundary_operands(raw)
     with pytest.raises(ValueError, match="requires a datetime time coordinate"):
-        align_boundary_operands(raw, frequency=frequency)
+        _bind(raw, _rows(raw.nmeasure), frequency=frequency)
 
 
 def test_gather_keeps_raw_regions_and_scalar_reference():
@@ -173,13 +186,15 @@ def test_gathered_alignment_uses_requested_labels_and_keeps_zero_anomaly_states(
     gathered = make_inv_inputs({"AAA": ds})
     assert gathered.sizes["bc_region"] == 2
     labels = gathered.nmeasure[[2, 0]]
-    aligned = align_boundary_operands(gathered, frequency="6h", observation_labels=labels)
+    aligned = _bind(gathered, gathered.mf.sel(nmeasure=labels), frequency="6h")
     np.testing.assert_array_equal(aligned.nmeasure, labels)
     expected = BoundaryAlignment.prepare(
         gathered.H_bc_anomaly + gathered.bc_reference * gathered.H_bc_mass,
         frequency="6h", observation_labels=labels,
     ).data
-    xr.testing.assert_allclose(aligned.H_bc_anomaly + aligned.bc_reference * aligned.H_bc_mass, expected)
+    xr.testing.assert_allclose(
+        aligned.H_bc_anomaly + aligned.bc_reference * aligned.H_bc_mass, expected.transpose("nmeasure", "bc_region"),
+    )
 
 
 
@@ -208,11 +223,10 @@ def test_core_materializes_shared_operands_once_without_mutating_inputs():
 def test_prepared_boundary_rejects_already_expanded_operands():
     from openghg_inversions.boundary_sensitivity import validate_boundary_operands
 
-    expanded = align_boundary_operands(_site(), frequency="6h")
+    site = _site()
+    expanded = _bind(site, site.mf, frequency="6h").assign_attrs(boundary_representation="centered-v1")
     with pytest.raises(ValueError, match="unexpanded spatial operands"):
         validate_boundary_operands(expanded)
-    with pytest.raises(ValueError, match="unexpanded spatial operands"):
-        align_boundary_operands(expanded, frequency="1D")
 
 
 
@@ -245,9 +259,9 @@ def test_gather_preserves_site_specific_transport_and_normalization_provenance()
 
 
 @pytest.mark.parametrize("frequency,anchor", [("1D", "NaT"), (None, "invalid"), ("monthly", "2020-01-01")])
-def test_alignment_rejects_invalid_or_ignored_anchors(frequency, anchor):
+def test_boundary_choice_rejects_invalid_or_ignored_anchors(frequency, anchor):
     with pytest.raises(ValueError, match="anchor_time"):
-        align_boundary_operands(_site(), frequency=frequency, anchor_time=anchor)
+        MultiplicativeChoice({"pdf": "normal", "mu": 1., "sigma": .1}, frequency=frequency, anchor_time=anchor)
 
 
 def test_supported_selection_keeps_scalar_reference_and_shared_operand_rows():

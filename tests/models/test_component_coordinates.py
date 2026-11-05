@@ -9,7 +9,9 @@ from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.components import prepare_active_correlated_lognormal_prior
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.models.state_activity import (
-    StateActivity, prepare_linear_sensitivity, resolve_state_activity,
+    StateActivity,
+    prepare_linear_sensitivity,
+    resolve_state_activity,
 )
 from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.rhime.co2 import build_co2_model
@@ -19,6 +21,7 @@ from openghg_inversions.rhime.standard import build_standard_model
 from openghg_inversions.rhime.nested import build_nested_rhime_model
 from openghg_inversions.rhime.specs import FixedErrorSettings, RhimeModelSpec, SectorSpec
 from openghg_inversions.serialization import load_trace, save_trace
+from openghg_inversions.models.boundary import MultiplicativeChoice
 
 
 def _flux_sensitivity(layout):
@@ -80,11 +83,13 @@ def _multisector_model(sensitivity, boundary, bc_prior, *, partial_activity=Fals
 
 def _co2_model(sensitivity, boundary, bc_prior, *, partial_activity=False, cached=False):
     mean = xr.ones_like(sensitivity.isel(nmeasure=0, drop=True))
-    retained_prior = CorrelatedLognormalPrior(mean, np.eye(mean.size) * .04)
+    retained_prior = CorrelatedLognormalPrior(mean, np.eye(mean.size) * 0.04)
     observations = xr.DataArray(
-        [1., 2.], dims="nmeasure",
+        [1.0, 2.0],
+        dims="nmeasure",
         coords={
-            "nmeasure": [0, 1], "site": ("nmeasure", ["MHD", "TAC"]),
+            "nmeasure": [0, 1],
+            "site": ("nmeasure", ["MHD", "TAC"]),
             "time": ("nmeasure", np.array(["2021-01-01", "2021-01-02"], dtype="datetime64[D]")),
         },
     )
@@ -94,13 +99,13 @@ def _co2_model(sensitivity, boundary, bc_prior, *, partial_activity=False, cache
         retained_prior=retained_prior,
         fixed_prior_contribution=xr.zeros_like(observations).rename("fixed_prior_contribution"),
         observations=observations,
-        observation_error=xr.full_like(observations, .1),
+        observation_error=xr.full_like(observations, 0.1),
         aggregation_error=AggregationError("none", np.zeros(2)),
-        boundary_sensitivity=boundary,
-        bc_prior=bc_prior,
         state_activity=StateActivity(active=np.array([True, False, True])) if partial_activity else None,
-        bc_state_activity=StateActivity(active=np.array([True, False])) if partial_activity else None,
-        **({"tau_hours": 6., "site_amplitude_prior": {"pdf": "halfnormal", "sigma": .5}} if cached else {}),
+        **{"tau_hours": 6.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.5}} if cached else {},
+        boundary=MultiplicativeChoice(
+            bc_prior, StateActivity(active=np.array([True, False])) if partial_activity else None,
+        ).bind(observations, boundary),
     )
     return result.model if cached else result
 

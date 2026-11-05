@@ -24,9 +24,10 @@ Model components derive frequency indicators from observation coordinates with
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, Self, cast
+from warnings import warn
 
 from dask import compute
 import numpy as np
@@ -295,6 +296,153 @@ def add_coherent_affine_component(
     """
     fixed = add_model_data(fixed_contribution)
     return pm.Deterministic(output_name, fixed + linear_signal, dims=fixed_contribution.dims)
+
+
+@dataclass(frozen=True)
+class ConcentrationTerm:
+    """One concentration contribution in its absolute and likelihood forms.
+
+    Most terms enter the likelihood mean as their absolute ``output``. A
+    centered term instead contributes a small ``likelihood_contribution``
+    against observations translated by its fixed ``observation_shift``;
+    adding the shift back gives ``output``. The translation changes no
+    covariance, so both forms describe the same probability model. The shift
+    is independent of inferred parameters: sampled boundary means and site
+    biases remain in the likelihood contribution. This record does not
+    require the contribution to be affine in its parameters.
+
+    Attributes:
+        output: Absolute concentration contribution.
+        likelihood_contribution: This term's contribution to the likelihood mean.
+        observation_shift: Labelled concentration subtracted from the
+            observations, or ``None`` when the term enters absolutely.
+    """
+
+    output: TensorVariable
+    likelihood_contribution: TensorVariable
+    observation_shift: xr.DataArray | None = None
+
+    @classmethod
+    def absolute(cls, output: TensorVariable, **fields: Any) -> Self:
+        """Describe a term whose likelihood contribution is its absolute output.
+
+        Subclasses pass their additional keyword-only fields through ``fields``.
+        """
+        return cls(output, output, **fields)
+
+
+@dataclass(frozen=True)
+class AffineBlock:
+    """One labelled two-dimensional design and its physical coefficient vector.
+
+    Rows follow the observation labels. Columns follow the matching one-
+    dimensional physical coefficient expression in exactly that order. Each
+    block retains its own design/coefficient units; blocks with different
+    physical units remain separate until the numerical consumer lowers them.
+    """
+
+    design: xr.DataArray
+    coefficients: TensorVariable
+
+
+@dataclass(frozen=True, kw_only=True)
+class AffineConcentrationTerm(ConcentrationTerm):
+    """Concentration term whose likelihood contribution is affine in its coefficients.
+
+    Fixed contribution plus design/coefficient products equals the term's
+    likelihood contribution. The fixed contribution is a labelled concentration
+    vector in observation-row order. Physical coefficients may be transformed sampled
+    variables; ``sampled_rvs`` contains the underlying sampled variables,
+    distinct from those physical coefficient expressions. Numerical consumers
+    concatenate blocks at their own boundary; every other consumer can treat
+    the term as an ordinary :class:`ConcentrationTerm`.
+    """
+
+    fixed_contribution: xr.DataArray
+    blocks: tuple[AffineBlock, ...]
+    sampled_rvs: tuple[TensorVariable, ...]
+
+
+def warn_constant_offset_confounding(
+    terms: Sequence[ConcentrationTerm],
+    *,
+    drop_first: bool,
+    rows: np.ndarray | None = None,
+    channel: str | None = None,
+) -> None:
+    """Warn when an affine coefficient has the same constant response as offsets.
+
+    Call after materialization, before adding unrestricted observation offsets.
+    Any affine design column equal to one on every selected row (absolute
+    tolerance 1e-12) is exactly confounded with an unrestricted constant
+    offset: the likelihood identifies only their sum. Anchoring the first
+    site's offset (``drop_first``) removes that constant mode. Overlap with
+    non-constant responses is not assessed.
+
+    Args:
+        terms: Terms already added to the model; non-affine terms are skipped.
+        drop_first: Whether the offsets exclude the first site's constant.
+        rows: Optional boolean row selection, for one channel of a joint design.
+        channel: Optional channel name for the warning message.
+    """
+    if drop_first:
+        return
+    for term in terms:
+        if not isinstance(term, AffineConcentrationTerm):
+            continue
+        for block in term.blocks:
+            design = np.asarray(block.design.values)
+            if rows is not None:
+                design = design[rows]
+            if design.size and np.all(np.abs(design - 1.0) <= 1e-12, axis=0).any():
+                warn(
+                    (f"{channel}: " if channel is not None else "")
+                    + "A model coefficient and unrestricted observation offsets share a constant "
+                    "observation response; the likelihood identifies only their combined constant. "
+                    "Separating boundary-product bias from observation bias requires prior or external "
+                    "calibration information.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                return
+
+
+def likelihood_representation(
+    terms: Sequence[ConcentrationTerm],
+    observations: xr.DataArray,
+    modelled_mean: TensorVariable,
+) -> tuple[TensorVariable, xr.DataArray, xr.DataArray | None]:
+    """Choose the likelihood mean and observations for concentration terms.
+
+    Without observation shifts this returns ``modelled_mean`` and the
+    observations unchanged. Otherwise it sums the likelihood contributions
+    directly, rather than subtracting a large shift from ``modelled_mean``,
+    which would lose small centered anomalies.
+
+    Args:
+        terms: Complete ordered decomposition of ``modelled_mean``. Tensor
+            contributions must follow the observations' row order and use
+            their concentration units. Shifts must use the same observation
+            dimensions; indexed row labels are checked exactly here.
+        observations: Labelled observations in the contributions' common units.
+        modelled_mean: Prebuilt absolute mean from those same term outputs,
+            retaining the recipe's summation grouping and deterministic name.
+
+    Returns:
+        The likelihood mean, the translated observations and the total
+        observation shift (``None`` when no term is shifted).
+
+    Raises:
+        ValueError: If indexed observation labels differ between observations
+            and any shift, or between shifts.
+    """
+    shifts = [term.observation_shift for term in terms if term.observation_shift is not None]
+    if not shifts:
+        return modelled_mean, observations, None
+    observations, *shifts = xr.align(observations, *shifts, join="exact", copy=False)
+    shift = sum(shifts[1:], start=shifts[0])
+    mean = sum((term.likelihood_contribution for term in terms[1:]), start=terms[0].likelihood_contribution)
+    return mean, observations - shift, shift
 
 
 def _active_state_coords(

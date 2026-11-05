@@ -72,7 +72,7 @@ class Co2Preparation:
 def _preparation_record(manifest: str | Path) -> tuple[Path, dict[str, Any]]:
     path, record = read_manifest(manifest, "openghg_inversions.co2.prepare", (
         "prepared_inputs", "generation", "start_date", "end_date", "domain",
-    ))
+    ), schema_version=2)
     if not isinstance(record["generation"], str) or not record["generation"]:
         raise ValueError(f"CO2 preparation {path} requires a nonempty generation.")
     return path, record
@@ -84,7 +84,7 @@ def _finish_preparation(
 ) -> Path:
     """Publish one preparation record after saving or validating its numerical pair."""
     record = {
-        "schema": "openghg_inversions.co2.prepare", "schema_version": 1,
+        "schema": "openghg_inversions.co2.prepare", "schema_version": 2,
         "producer": "openghg_inversions", "stage": "prepare", "generation": uuid4().hex,
         "prepared_inputs": os.path.relpath(prepared_path, destination), **facts,
         "provenance": installed_ogi_provenance(),
@@ -218,7 +218,7 @@ def save_samples(
     )
     save_trace(trace, destination / "posterior.nc")
     return finish_checkpoint(destination, "sample", {
-        "schema": "openghg_inversions.co2.sample", "schema_version": 1,
+        "schema": "openghg_inversions.co2.sample", "schema_version": 2,
         "producer": "openghg_inversions", "stage": "sample", "inference_kind": "mcmc",
         "preparation": os.path.relpath(preparation_path, destination),
         "preparation_generation": preparation_generation, "posterior": "posterior.nc",
@@ -266,7 +266,7 @@ def load_samples(sample_manifest: str | Path) -> Co2Output:
     """
     path, record = read_manifest(sample_manifest, "openghg_inversions.co2.sample", (
         "preparation", "preparation_generation", "posterior", "inference_kind",
-    ))
+    ), schema_version=2)
     if record["inference_kind"] != "mcmc":
         raise ValueError(f"CO2 samples {path} require inference_kind='mcmc'.")
     generation = record["preparation_generation"]

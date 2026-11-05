@@ -42,7 +42,7 @@ from .co2_o2_preparation import Co2O2PreparedInputs
 
 
 CO2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_prepared_inputs"
-CO2_PREPARED_INPUTS_SCHEMA_VERSION = 2
+CO2_PREPARED_INPUTS_SCHEMA_VERSION = 3
 Co2AggregationErrorMode = Literal["dense", "low_rank"]
 _AGGREGATION_PAYLOAD_NAMES = (
     AGGREGATION_ERROR_COVARIANCE,
@@ -216,7 +216,8 @@ def _validate_co2_dataset(inputs: xr.Dataset) -> None:
     if not concentration_units:
         raise ValueError("CO2 observations require units.")
     mole_fraction_unit_scale(str(concentration_units), context="CO2 prepared observations")
-    for name in ("H", "fixed_prior_contribution", "mf_error"):
+    absolute_boundary = ("H_bc",) if "H_bc" in inputs and inputs.H_bc.attrs.get("units") is not None else ()
+    for name in ("H", "fixed_prior_contribution", "mf_error", *absolute_boundary):
         _require_equivalent_units(
             inputs[name].attrs.get("units"),
             str(concentration_units),
@@ -224,6 +225,21 @@ def _validate_co2_dataset(inputs: xr.Dataset) -> None:
         )
     if mean.attrs.get("units") != "1" or covariance.attrs.get("units") != "1":
         raise ValueError("CO2 retained prior mean and covariance must be dimensionless.")
+
+    if "bc_centering_weights" in inputs:
+        if "H_bc_mass" not in inputs:
+            raise ValueError("Additive boundary weights require native centered boundary operands.")
+        weights = inputs.bc_centering_weights
+        if weights.dims != ("bc_curtain", "bc_period"):
+            raise ValueError("bc_centering_weights must use dimensions ('bc_curtain', 'bc_period').")
+        for dim in weights.dims:
+            _require_axis(weights, str(dim), name="Boundary centering weights")
+        if not isinstance(weights.indexes["bc_period"], pd.DatetimeIndex):
+            raise ValueError("bc_centering_weights bc_period labels must be interval start times.")
+        _require_equivalent_units(weights.attrs.get("units"), "1", name="bc_centering_weights")
+        if not hasattr(weights.data, "__dask_graph__"):
+            if not np.isfinite(weights.data).all() or not (weights.data > 0).all():
+                raise ValueError("bc_centering_weights must be finite and strictly positive.")
 
     squared_units = f"({concentration_units})**2"
     if AGGREGATION_ERROR_COVARIANCE in inputs:
@@ -387,7 +403,7 @@ class Co2PreparedInputs:
         tree = xr.DataTree.from_dict({"rhime_inputs": serializable.to_datatree()})
         tree.attrs = {
             "schema": CO2_PREPARED_INPUTS_SCHEMA,
-            "schema_version": CO2_PREPARED_INPUTS_SCHEMA_VERSION if "H_bc_anomaly" in self.inv_inputs else 1,
+            "schema_version": CO2_PREPARED_INPUTS_SCHEMA_VERSION,
             "aggregation_error_mode": self.aggregation_error_mode,
             "provenance_json": json.dumps(dict(self.provenance), sort_keys=True, allow_nan=False),
         }
@@ -414,9 +430,10 @@ class Co2PreparedInputs:
                 f"got {tree.attrs.get('schema')!r}."
             )
         version = tree.attrs.get("schema_version")
-        if isinstance(version, bool) or not isinstance(version, Integral) or version not in (1, 2):
+        if isinstance(version, bool) or not isinstance(version, Integral) or version != CO2_PREPARED_INPUTS_SCHEMA_VERSION:
             raise ValueError(
-                f"Expected Co2PreparedInputs schema_version 1 or 2, got {version!r}."
+                f"Expected Co2PreparedInputs schema_version {CO2_PREPARED_INPUTS_SCHEMA_VERSION}, "
+                f"got {version!r}; prepare again."
             )
         if "rhime_inputs" not in tree.children:
             raise KeyError("Missing required Co2PreparedInputs node 'rhime_inputs'.")
@@ -431,8 +448,6 @@ class Co2PreparedInputs:
             aggregation_error_mode=cast(Co2AggregationErrorMode, mode),
             provenance=provenance,
         )
-        if version == 1 and "H_bc_anomaly" in prepared.inv_inputs:
-            raise ValueError("Centered boundary operands require CO2 prepared schema version 2.")
         resolve_aggregation_error(prepared.inv_inputs, prepared.aggregation_error_mode)
         return prepared
 
@@ -518,6 +533,7 @@ def prepare_co2_inputs(
     reduction: CoherentGaussianReduction,
     *,
     aggregation_error_rank: int | None = 512,
+    bc_centering_weights: xr.DataArray | None = None,
     provenance: Mapping[str, Any] | None = None,
 ) -> Co2PreparedInputs:
     """Map one coherent Gaussian reduction into the CO2 replay contract.
@@ -550,6 +566,11 @@ def prepare_co2_inputs(
             larger than the observation count are capped at that count; the
             actual factor width is further limited by numerical positive rank.
             Pass ``None`` to store the exact dense covariance.
+        bc_centering_weights: Positive dimensionless averaging weights on
+            ``(bc_curtain, bc_period)``, with interval start times as period
+            labels. Raw transport stays spatial and reusable; binding stacks
+            these weights against the selected fit calendar. Model construction
+            normalizes them to sum to one. Omit to retain existing weights.
         provenance: Optional JSON-serializable project or preparation
             provenance. The reduction strategy and LRPD diagnostics are added
             by this boundary.
@@ -693,6 +714,23 @@ def prepare_co2_inputs(
         ),
         "nmeasure",
     )
+
+    if bc_centering_weights is not None:
+        if "H_bc_mass" not in inputs:
+            raise ValueError("Additive boundary weights require native centered boundary operands.")
+        weights = bc_centering_weights.transpose("bc_curtain", "bc_period")
+        if "bc_centering_weights" in mapped:
+            # Remove the old weight-owned calendar to avoid alignment to stale periods; protect shared axes first.
+            for dim in ("bc_curtain", "bc_period"):
+                consumers = [
+                    name for name, array in mapped.variables.items()
+                    if dim in array.dims and name != "bc_centering_weights"
+                    and (name != dim or array.dims != (dim,))
+                ]
+                if consumers:
+                    raise ValueError(f"Boundary weight dimension {dim!r} is shared by {consumers!r}.")
+            mapped = mapped.drop_dims(("bc_curtain", "bc_period"))
+        mapped["bc_centering_weights"] = weights
 
     approximation = None
     if aggregation_error_rank is None:

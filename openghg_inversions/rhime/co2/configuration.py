@@ -13,12 +13,13 @@ from typing import Any
 import tomllib
 
 
+from openghg_inversions.models.boundary import AdditiveChoice, BoundaryChoice, MultiplicativeChoice
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.priors import positive_prior_args
 from openghg_inversions.models.scalar_sigma import add_scalar_sigma_eigen_likelihood
 from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
 from openghg_inversions.rhime.sampling import RhimeSampler
-from openghg_inversions.rhime.specs import normalise_optional_mapping
+from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR, normalise_optional_mapping
 
 from .co2_cached_sigma_runner import validate_cached_co2_sampler
 from .inference import uses_cached_ou
@@ -69,7 +70,8 @@ _PRIOR_OPTION_NAMES = frozenset({
     "pdf", "mu", "sigma", "lower", "upper", "nu", "alpha", "beta", "lam", "mean", "stdev", "reparameterise",
 })
 _MODEL_SECTION_OPTION_NAMES = {
-    "boundary": frozenset({"enabled", "prior", "frequency", "anchor_time"}),
+    "boundary": frozenset({"enabled", "prior", "frequency", "anchor_time", "mean_shift_prior", "anomaly_scale"}),
+    "boundary.mean_shift_prior": _PRIOR_OPTION_NAMES,
     "boundary.prior": _PRIOR_OPTION_NAMES,
     "offset": frozenset({"prior", "frequency", "per_site", "drop_first"}),
     "offset.prior": _PRIOR_OPTION_NAMES,
@@ -340,24 +342,44 @@ def _sampling(value: object) -> RhimeSampler:
     return sampler
 
 
+def _boundary_choice(boundary: dict[str, object]) -> BoundaryChoice | None:
+    """Resolve one ``[model.boundary]`` table; ``None`` when explicitly disabled."""
+    enabled = _bool(boundary.pop("enabled", True), "model.boundary.enabled")
+    prior = _prior(boundary.pop("prior"), "model.boundary.prior") if "prior" in boundary else None
+    mean_shift_prior = (
+        _prior(boundary.pop("mean_shift_prior"), "model.boundary.mean_shift_prior")
+        if "mean_shift_prior" in boundary else None
+    )
+    anomaly_scale = (
+        _number(boundary.pop("anomaly_scale"), "model.boundary.anomaly_scale") if "anomaly_scale" in boundary else None
+    )
+    frequency = boundary.pop("frequency", None)
+    anchor_time = boundary.pop("anchor_time", None)
+    if frequency is not None:
+        frequency = _string(frequency, "model.boundary.frequency")
+    if anchor_time is not None:
+        anchor_time = _string(anchor_time, "model.boundary.anchor_time")
+    _reject_unknown(boundary, "model.boundary")
+    if not enabled:
+        if any(value is not None for value in (prior, mean_shift_prior, anomaly_scale, frequency, anchor_time)):
+            raise ValueError("model.boundary options require model.boundary.enabled=true.")
+        return None
+    if (mean_shift_prior is None) != (anomaly_scale is None):
+        raise ValueError("model.boundary.mean_shift_prior and anomaly_scale must be supplied together.")
+    if mean_shift_prior is not None:
+        if prior is not None:
+            raise ValueError("Centred boundary corrections cannot use model.boundary.prior.")
+        assert anomaly_scale is not None
+        return AdditiveChoice(mean_shift_prior, anomaly_scale, frequency, anchor_time)
+    return MultiplicativeChoice(prior if prior is not None else dict(DEFAULT_BC_PRIOR),
+                                frequency=frequency, anchor_time=anchor_time)
+
+
 def _model(value: object) -> dict[str, Any]:
     options = _table(value, "model")
     result: dict[str, Any] = {}
     if "boundary" in options:
-        boundary = _table(options.pop("boundary"), "model.boundary")
-        enabled = _bool(boundary.pop("enabled", True), "model.boundary.enabled")
-        prior = _prior(boundary.pop("prior"), "model.boundary.prior") if "prior" in boundary else None
-        periods = {runner: boundary.pop(name) for name, runner in
-                   (("frequency", "bc_freq"), ("anchor_time", "bc_anchor_time")) if name in boundary}
-        _reject_unknown(boundary, "model.boundary")
-        if not enabled and prior is not None:
-            raise ValueError("model.boundary.prior requires model.boundary.enabled=true.")
-        result["use_bc"] = enabled
-        if prior is not None:
-            result["bc_prior"] = prior
-        if not enabled and any(value is not None for value in periods.values()):
-            raise ValueError("Boundary frequency and anchor_time require enabled=true.")
-        result.update(periods)
+        result["boundary"] = _boundary_choice(_table(options.pop("boundary"), "model.boundary"))
     if "offset" in options:
         offset = _table(options.pop("offset"), "model.offset")
         result["offset_prior"] = _prior(_take(offset, "prior", "model.offset"), "model.offset.prior")
@@ -503,15 +525,6 @@ def co2_config_templates() -> Mapping[str, Traversable]:
     )
 
 
-def _validate_boundary_periods(frequency: str | None, anchor_time: str | None) -> None:
-    """Validate model-owned period syntax without touching prepared arrays."""
-    from openghg_inversions.boundary_sensitivity import validate_centered_boundary_periods
-
-    if anchor_time is not None:
-        _string(anchor_time, "model.boundary.anchor_time")
-    validate_centered_boundary_periods(frequency, anchor_time)
-
-
 @dataclass(frozen=True)
 class Co2ModelConfig:
     """Scientific choices for ordinary CO2, independent of arrays and inference.
@@ -519,12 +532,10 @@ class Co2ModelConfig:
     Construction through :meth:`from_params` validates only model and likelihood
     sections. Ordinary containers are owned; opaque numerical values are borrowed.
     Defaults omitted here remain owned by the concrete scientific recipe.
-    Boundary frequency and anchor choices apply to raw ordinary or centered operands
-    and bind when inference consumes the preparation.
+    The boundary choice is data-free; inference binds it to the preparation.
     """
 
-    use_bc: bool | None = None
-    bc_prior: Mapping[str, Any] | None = None
+    boundary: BoundaryChoice | None = None
     offset_prior: Mapping[str, Any] | None = None
     offset_args: Mapping[str, Any] | None = None
     no_model_error: bool | None = None
@@ -532,13 +543,8 @@ class Co2ModelConfig:
     fixed_model_mismatch: float | None = None
     likelihood_builder: Callable[..., Any] | None = None
     likelihood_kwargs: Mapping[str, Any] | None = None
-    bc_freq: str | None = None
-    bc_anchor_time: str | None = None
 
     def __post_init__(self) -> None:
-        _validate_boundary_periods(self.bc_freq, self.bc_anchor_time)
-        if self.use_bc is False and (self.bc_freq is not None or self.bc_anchor_time is not None):
-            raise ValueError("Boundary frequency and anchor_time require enabled=true.")
         for item in fields(self):
             value = getattr(self, item.name)
             if isinstance(value, Mapping):

@@ -15,6 +15,7 @@ from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.basis.operators import BucketBasisOperator
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.rhime.co2.co2_o2_model import _gather_co2_o2_sensitivity
+from openghg_inversions.rhime.co2.boundary_output import decode_boundary_facts, reconstruct_boundary
 from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
@@ -41,6 +42,8 @@ def _role(trace: xr.DataTree, role: str, group: str) -> xr.DataArray:
     roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
     name = roles.get(role)
     dataset = trace_group(trace, group) if group in trace.children else xr.Dataset()
+    if name not in dataset and "constant_data" in trace.children and name in trace.constant_data:
+        dataset = trace.constant_data.to_dataset()
     if name not in dataset:
         raise ValueError(f"Linked output requires scientific role {role!r} in {group}.")
     value = dataset[name]
@@ -72,6 +75,8 @@ def reconstruct_co2_o2_concentrations(
         contributions in channel units. Chain/draw labels remain shared. Prior
         draws, when present, preserve fixed-state activity. Their sample
         dimensions are named ``prior_chain`` and ``prior_draw``.
+        Boundary mean-shift and anomaly coefficients retain their own labelled
+        dimensions and declared units as ``boundary_*_coefficient_*`` variables.
         Inputs remain borrowed; computation is deferred to product creation.
 
     Raises:
@@ -96,6 +101,12 @@ def reconstruct_co2_o2_concentrations(
         prior_scale = _role(trace, "flux_scale", "prior")
         sensitivity, prior_scale = xr.align(sensitivity, prior_scale, join="exact", copy=False)
         scales_by_group["prior"] = prior_scale
+    boundary_facts = decode_boundary_facts(trace, roles=roles, channels=("co2", "o2"))
+    boundary_by_group = {
+        group: {channel: reconstruct_boundary(facts, trace_group(trace, group))
+                for channel, facts in boundary_facts.items()}
+        for group in scales_by_group
+    }
     result = {}
     for species in ("co2", "o2"):
         rows = np.flatnonzero(observations["species"].values == species)
@@ -114,6 +125,18 @@ def reconstruct_co2_o2_concentrations(
                 )
                 data[f"{component}_{when}"] = value
                 total = total + value
+            quantities = boundary_by_group[when].get(species, {})
+            for quantity, component in (("reference", "reference"), ("mean_contribution", "mean_shift"),
+                                        ("anomaly_contribution", "anomaly"),
+                                        ("mean_shift", "mean_shift_coefficient"),
+                                        ("anomaly", "anomaly_coefficient")):
+                if quantity in quantities:
+                    value = quantities[quantity]
+                    if "observation" in value.dims:
+                        value = value.isel(observation=rows)
+                    if when == "prior":
+                        value = value.rename({dim: f"prior_{dim}" for dim in ("chain", "draw") if dim in value.dims})
+                    data[f"boundary_{component}_{when}"] = value
             selected = prepared.retained_prior.mean.tracer_scope.str.lower().isin(["shared", species])
             for source in np.unique(prepared.retained_prior.mean.source.values[selected.values]):
                 states = np.flatnonzero((selected & (prepared.retained_prior.mean.source == source)).values)

@@ -31,18 +31,17 @@ Supported numerical envelopes
        marker or operands, no representation field, and any ``H_bc`` must be
        marked ``raw-spatial`` without fitted boundary periods.
    * - ``openghg_inversions.co2_prepared_inputs``
-     - 1 / 2
-     - Version 1 supports ordinary CO₂ coherent reduction; version 2 additionally
-       supports centered operands. Writers use 1 / 2 for ordinary / centered.
-       The embedded
-       ``rhime_inputs`` tree follows the generic format rules above.
+     - 3
+     - Coherent reduction with ordinary or centered transport and optional
+       unstacked curtain/period averaging weights. The embedded ``rhime_inputs``
+       tree follows the generic format rules above.
    * - ``openghg_inversions.co2_o2_prepared_inputs``
-     - 1 / 2
-     - Version 1 supports linked absolute boundaries; version 2 additionally
-       supports independently labelled centered channel operands. Writers use
-       1 / 2 for absolute / centered.
+     - 4
+     - Linked channels with absolute or independently labelled centered
+       transport and optional unstacked curtain/period averaging weights.
 
-The CO₂ and linked envelopes have independent histories. Their versions do not
+Only the current CO₂ and linked envelopes are accepted; older internal artifacts
+require preparation and sampling again. The envelopes have independent histories. Their versions do not
 follow the generic version number. Coherent-reduction covariance remains part of
 the CO₂ scientific contract.
 
@@ -64,13 +63,13 @@ Supported stage manifests
    * - ``openghg_inversions.multisector.sample``
      - 3
    * - ``openghg_inversions.co2.prepare``
-     - 1
+     - 2
    * - ``openghg_inversions.co2.sample``
-     - 1
+     - 2
    * - ``openghg_inversions.co2_o2.prepare``
-     - 1
+     - 2
    * - ``openghg_inversions.co2_o2.sample``
-     - 1
+     - 2
 
 Standard and multisector sample version 3 records the supported model choices
 without the retired aggregation-error option. Older sample manifests, including

@@ -12,7 +12,9 @@ import xarray as xr
 from openghg_inversions.array_ops import select_gathered_data_array
 from openghg_inversions.models import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.rhime.co2 import co2_o2_cached_sigma_runner as runner
-from openghg_inversions.rhime.co2.centered_boundary import restore_absolute_predictives
+from openghg_inversions.models.boundary import MultiplicativeChoice
+from openghg_inversions.rhime.co2.boundary_output import restore_absolute_predictives
+from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.serialization import load_trace, save_trace
 
@@ -71,10 +73,12 @@ def test_linked_cached_runner_restores_absolute_predictions_and_replay(tmp_path,
         trace = runner.run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             prepared_inputs=prepared, tau_hours=3.0,
             site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.1},
-            bc_freq="3h", bc_anchor_time=anchor,
-            bc_prior={channel: {"pdf": "normal", "mu": 1.0, "sigma": 0.01}
-                      for channel in ("co2", "o2") if channel != "co2" or route != "disabled"},
-            use_bc={"co2": route != "disabled", "o2": True},
+            boundary={
+                channel: MultiplicativeChoice(
+                    {"pdf": "normal", "mu": 1.0, "sigma": 0.01}, frequency="3h", anchor_time=anchor,
+                )
+                for channel in ("co2", "o2") if channel != "co2" or route != "disabled"
+            },
             sampler=RhimeSampler(draws=3, tune=2, chains=1, nuts_sampler="pymc"),
         )
     roles = json.loads(trace.attrs["rhime_variable_roles"])
@@ -94,8 +98,7 @@ def test_linked_cached_runner_restores_absolute_predictions_and_replay(tmp_path,
         raw = raw.sel(bc_region=xr.DataArray(curtains, dims="state"))
         matrix = (raw.H_bc_anomaly + raw.bc_reference * raw.H_bc_mass).transpose("nmeasure", "state").values
         times = raw.time.values.astype("datetime64[ns]")
-        row_periods = ((times - np.datetime64(anchor)) // np.timedelta64(3, "h")).astype(int)
-        row_periods -= row_periods.min()
+        row_periods = np.datetime64(anchor) + ((times - np.datetime64(anchor)) // np.timedelta64(3, "h")) * np.timedelta64(3, "h")
         matrix *= row_periods[:, None] == periods[None, :]
         expected = np.zeros_like(expected_total)
         selected = prepared.observations.species.values == channel
@@ -111,8 +114,10 @@ def test_linked_cached_runner_restores_absolute_predictions_and_replay(tmp_path,
     np.testing.assert_allclose(trace.prior.modelled_concentration, expected_total, atol=1e-9)
     if route != "disabled":
         metadata = json.loads(trace.attrs["rhime_model_metadata"])
-        assert metadata["bc_frequency"] == "3h"
-        assert metadata["bc_anchor_time"] == anchor
+        for channel, facts in metadata["boundary_metadata"].items():
+            assert facts["bc_frequency"] == "3h"
+            assert facts["bc_anchor_time"] == anchor
+            assert ("boundary_representation" in facts) == (channel in prepared.boundary_operands)
         xr.testing.assert_allclose(
             trace.prior_predictive.y,
             captured["centered_y"] + trace.constant_data.boundary_reference_shift,
@@ -137,8 +142,8 @@ def test_linked_cached_precision_guard_runs_after_selection_before_materializati
     class ReachedMaterialization(Exception):
         pass
 
-    def materialize(prepared, error, boundaries, operands):
-        assert not operands
+    def materialize(prepared, error, boundary, *, prior_parameters):
+        assert "co2" not in boundary
         raise ReachedMaterialization
 
     monkeypatch.setattr(runner, "_materialize_co2_o2_replay_inputs", materialize)
@@ -148,6 +153,9 @@ def test_linked_cached_precision_guard_runs_after_selection_before_materializati
             runner.run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
                 prepared_inputs=prepared, tau_hours=3.0,
                 site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.1},
-                use_bc={"co2": enabled, "o2": True},
+                boundary={
+                    channel: MultiplicativeChoice(dict(DEFAULT_BC_PRIOR))
+                    for channel in ("co2", "o2") if channel != "co2" or enabled
+                },
             )
         assert pytensor.config.floatX == "float32"

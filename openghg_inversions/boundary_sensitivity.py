@@ -10,11 +10,10 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.array_ops import get_xr_dummies
-from openghg_inversions.inversion_inputs import DatetimeLike, make_freq_indicator, normalise_frequency
+from openghg_inversions.inversion_inputs import DatetimeLike, make_period_calendar, normalise_frequency
 
 __all__ = [
     "BoundaryAlignment",
-    "align_boundary_operands",
     "validate_boundary_operands",
     "scale_satellite_boundary_sensitivity_to_column_signal",
 ]
@@ -26,7 +25,9 @@ class BoundaryAlignment:
 
     Args:
         data: Prepared ``H_bc`` with a ``bc_region`` MultiIndex whose levels
-            are ``bc_curtain`` and ``bc_period``, plus one observation axis.
+            are ``bc_curtain`` and interval-start ``bc_period``, plus one
+            observation axis. Timestamp-free whole-window inputs use the
+            explicit period label ``'whole_window'``.
 
     Raises:
         ValueError: If the resolved boundary-state labels are invalid.
@@ -89,17 +90,20 @@ def _expand_boundary_periods(
     normalise_frequency(frequency)
     if observation_labels is not None:
         raw = raw.sel({observation_dim: observation_labels.transpose(observation_dim)})
-    if frequency is None:
-        period = xr.zeros_like(raw[observation_dim], dtype=int)
-    else:
-        if "time" not in raw.coords or raw.time.dims != (observation_dim,) or raw.time.dtype.kind != "M":
+    has_time = "time" in raw.coords and raw.time.dims == (observation_dim,) and raw.time.dtype.kind == "M"
+    if not has_time:
+        if frequency is not None:
             raise ValueError("Frequency-based boundary expansion requires a datetime time coordinate along observations.")
+        period = xr.full_like(raw[observation_dim], "whole_window", dtype="U12")
+    else:
         time = raw.time
         if hasattr(time.data, "__dask_graph__"):
             time = time.compute()
             raw = raw.assign_coords(time=(observation_dim, time.data))
-        period = make_freq_indicator(time, frequency, anchor_time=anchor_time)
-    mask = get_xr_dummies(period.rename("bc_period"), return_sparse=False, cat_dim="bc_period")
+        _, period = make_period_calendar(time, frequency, anchor_time=anchor_time)
+    mask = get_xr_dummies(
+        period, categories=np.unique(period.data), return_sparse=False, cat_dim="bc_period"
+    )
     result = (raw.rename(bc_region="bc_curtain") * mask).stack(
         bc_region=("bc_curtain", "bc_period")
     ).transpose("bc_region", observation_dim)
@@ -111,14 +115,17 @@ def _expand_boundary_periods(
             bc_frequency=frequency or "none",
             bc_anchor_time=(
                 str(np.datetime64(anchor_time) if anchor_time is not None else time.values.min())
-                if frequency not in (None, "monthly") else "not-applicable"
+                if frequency not in (None, "monthly")
+                else "not-applicable"
             ),
         )
     return result
 
 
 def _select_native_boundary(
-    inputs: xr.Dataset, observations: xr.DataArray, observation_dim: str,
+    inputs: xr.Dataset,
+    observations: xr.DataArray,
+    observation_dim: str,
 ) -> xr.Dataset:
     """Select rows, borrow native timestamps, and check indexed-time identity.
 
@@ -277,51 +284,6 @@ def validate_centered_boundary_periods(frequency: str | None, anchor_time: Datet
                 raise ValueError("NaT is not an anchor")
         except (TypeError, ValueError) as exc:
             raise ValueError("Boundary anchor_time must be a valid datetime.") from exc
-
-
-def align_boundary_operands(
-    operands: xr.Dataset,
-    *,
-    frequency: str | None = None,
-    anchor_time: DatetimeLike | None = None,
-    observation_labels: xr.DataArray | None = None,
-) -> xr.Dataset:
-    """Expand raw anomaly and mass with a shared period mask at model binding.
-
-    Args:
-        operands: Raw dataset accepted by :func:`validate_boundary_operands`.
-        frequency: ``None`` creates one period without requiring timestamps.
-            A frequency (including ``'monthly'``) requires a one-dimensional
-            datetime ``time`` coordinate along the observation dimension.
-        anchor_time: Optional anchor for fixed-duration periods; not allowed
-            for a single period or calendar-month periods.
-        observation_labels: Optional authoritative labels used to select and
-            reorder the indexed observation dimension before expansion.
-
-    Returns:
-        New dataset with ``H_bc_anomaly`` and ``H_bc_mass`` on ``bc_region``
-        and the original observation dimension. The ``bc_region`` MultiIndex
-        contains ``bc_curtain`` and ``bc_period``. Units, representation and
-        scalar ``bc_reference`` are preserved. Outputs are marked expanded and
-        must not be passed through raw validation or expansion again. Borrowed
-        payloads stay lazy and unchanged; frequency-based expansion materializes
-        a lazy auxiliary time coordinate once to construct the period mask.
-
-    Raises:
-        ValueError: If raw operands or period settings are invalid, or required
-            datetime coordinates are missing or incompatible.
-        KeyError: If an authoritative observation label is absent.
-    """
-    validate_centered_boundary_periods(frequency, anchor_time)
-    if not validate_boundary_operands(operands):
-        raise ValueError("Expected centered boundary operands.")
-    observation_dim = "time" if "time" in operands.H_bc_anomaly.dims else "nmeasure"
-    result = _expand_boundary_periods(
-        operands[["H_bc_anomaly", "H_bc_mass"]], observation_dim=observation_dim,
-        frequency=frequency, anchor_time=anchor_time, observation_labels=observation_labels,
-    )
-    result["bc_reference"] = operands.bc_reference
-    return result
 
 
 def scale_satellite_boundary_sensitivity_to_column_signal(

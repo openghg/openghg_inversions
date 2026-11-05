@@ -41,6 +41,7 @@ an xarray issue, which now is written in terms of ``force_align``.
 
 from __future__ import annotations
 
+import dataclasses
 import warnings
 from collections.abc import Hashable, Iterable, Iterator, Mapping, Sequence
 from typing import Any, Literal, TypeVar, overload
@@ -303,6 +304,31 @@ def to_dense(da: xr.DataArray) -> xr.DataArray:
         return xr.apply_ufunc(_sparse_dask_to_dense, da, dask="allowed")
 
     return da
+
+
+def to_dense_tree(value: Any) -> Any:
+    """Apply :func:`to_dense` to every labelled array in a nested value.
+
+    Traverses Datasets, mappings, lists, tuples and dataclass instances, such
+    as bound scientific components or prior arguments with array-valued
+    parameters. Other leaves are returned unchanged. Dask graphs are preserved,
+    so the caller can pass the result to one ``dask.compute`` call that
+    materializes related arrays together. Inputs are not mutated.
+    """
+    if isinstance(value, xr.DataArray):
+        return to_dense(value)
+    if isinstance(value, xr.Dataset):
+        return value.map(to_dense, keep_attrs=True)
+    if isinstance(value, Mapping):
+        return {key: to_dense_tree(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return type(value)(to_dense_tree(item) for item in value)
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return dataclasses.replace(value, **{
+            field.name: to_dense_tree(getattr(value, field.name))
+            for field in dataclasses.fields(value) if field.init
+        })
+    return value
 
 
 def jax_to_numpy(da: xr.DataArray) -> xr.DataArray:

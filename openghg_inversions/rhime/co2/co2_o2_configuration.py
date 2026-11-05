@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
 import json
 from pathlib import Path
 from typing import Any
@@ -11,10 +11,11 @@ from typing import Any
 import numpy as np
 
 from openghg_inversions.models import StateActivity
+from openghg_inversions.models.boundary import BoundaryChoice, MultiplicativeChoice
 from openghg_inversions.inversion_inputs import normalise_frequency
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.rhime.sampling import RhimeSampler
-from openghg_inversions.rhime.specs import normalise_optional_mapping
+from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR, normalise_optional_mapping
 
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .configuration import (
@@ -26,7 +27,6 @@ from .configuration import (
     _sampling,
     _string,
     _table,
-    _validate_boundary_periods,
     load_co2_family_config,
     resolve_co2_prior_seed,
 )
@@ -187,25 +187,23 @@ class Co2O2ModelConfig:
     be supplied for both channels or omitted for both to use saved errors.
     Fixed independent error and fixed-amplitude OU are supported; inferred OU
     and per-meg transformations remain separate work.
-    Boundary frequency and anchor choices apply to all enabled raw boundary
-    channels; choices supplied under both channels must agree.
+    ``boundary`` maps configured channels to a choice, or to ``None`` when
+    that channel's boundary is explicitly disabled. Boundary frequency and
+    anchor choices apply to every enabled channel; choices supplied under both
+    channels must agree. :meth:`bind` gives channels without a boundary table
+    the default multiplicative prior when the preparation has their transport.
     """
 
     co2_units: str
     o2_units: str
     independent_error_sd: Mapping[str, float]
-    use_bc: Mapping[str, bool] | None = None
-    bc_prior: Mapping[str, Any] | None = None
-    bc_state_activity: Mapping[str, StateActivity] | None = None
+    boundary: Mapping[str, BoundaryChoice | None] | None = None
     offset_prior: Mapping[str, Any] | None = None
     offset_args: Mapping[str, Any] | None = None
     tau_hours: float | Mapping[str, float] | None = None
     fixed_site_amplitudes: float | Mapping[str, float] | None = None
-    bc_freq: str | None = None
-    bc_anchor_time: str | None = None
 
     def __post_init__(self) -> None:
-        _validate_boundary_periods(self.bc_freq, self.bc_anchor_time)
         for item in fields(self):
             value = getattr(self, item.name)
             if isinstance(value, Mapping):
@@ -226,29 +224,26 @@ class Co2O2ModelConfig:
             if "independent_error_sd" in channel:
                 errors[name] = _number(channel.pop("independent_error_sd"), f"channels.{name}.independent_error_sd", positive=True)
             selected = {key: channel.pop(key) for key in ("boundary", "offset") if key in channel}
+            activity = None
             if "boundary" in selected:
                 boundary = _table(selected["boundary"], f"channels.{name}.boundary")
                 if "activity" in boundary:
-                    activity = _table(boundary.pop("activity"), f"channels.{name}.boundary.activity")
-                    active = _bool(activity.pop("active", True), f"channels.{name}.boundary.activity.active")
-                    fixed = _number(activity.pop("fixed_value", 1.0), f"channels.{name}.boundary.activity.fixed_value")
-                    _reject_unknown(activity, f"channels.{name}.boundary.activity")
-                    if boundary.get("enabled", True) is False:
-                        raise ValueError("Boundary activity requires enabled=true.")
-                    model.setdefault("bc_state_activity", {})[name] = StateActivity(active=active, fixed_value=fixed)
+                    table = _table(boundary.pop("activity"), f"channels.{name}.boundary.activity")
+                    active = _bool(table.pop("active", True), f"channels.{name}.boundary.activity.active")
+                    fixed = _number(table.pop("fixed_value", 1.0), f"channels.{name}.boundary.activity.fixed_value")
+                    _reject_unknown(table, f"channels.{name}.boundary.activity")
+                    activity = StateActivity(active=active, fixed_value=fixed)
                 selected["boundary"] = boundary
             for key, value in _model(selected).items():
-                if key in {"bc_freq", "bc_anchor_time"}:
-                    previous = model.get(key)
-                    same = (normalise_frequency(previous) == normalise_frequency(value)
-                            if key == "bc_freq" else previous == value)
-                    if key in model and not same:
-                        raise ValueError("Linked boundary frequency and anchor_time must agree across channels.")
-                    model[key] = value
-                else:
-                    model.setdefault(key, {})[name] = value
+                if key == "boundary" and activity is not None:
+                    if not isinstance(value, MultiplicativeChoice):
+                        raise ValueError("Boundary activity requires an enabled multiplicative boundary.")
+                    value = replace(value, activity=activity)
+                model.setdefault(key, {})[name] = value
             _reject_unknown(channel, f"channels.{name}")
         _reject_unknown(channels, "channels")
+        if "boundary" in model:
+            model["boundary"] = _shared_boundary_periods(model["boundary"])
         if errors and len(errors) != 2:
             raise ValueError("Configure independent_error_sd for both linked channels or omit it for both.")
         if units["co2"] != units["o2"]:
@@ -280,8 +275,43 @@ class Co2O2ModelConfig:
             if independent is None:
                 raise ValueError("Omitted channel independent_error_sd requires errors in the prepared artifact.")
         result = {item.name: getattr(self, item.name) for item in fields(self)
-                  if item.name not in {"co2_units", "o2_units", "independent_error_sd"} and getattr(self, item.name) is not None}
-        return {**result, "independent_error_sd": independent}
+                  if item.name not in {"co2_units", "o2_units", "independent_error_sd", "boundary"}
+                  and getattr(self, item.name) is not None}
+        return {**result, "independent_error_sd": independent, "boundary": self._channel_boundaries(prepared)}
+
+    def _channel_boundaries(self, prepared: Co2O2PreparedInputs) -> dict[str, BoundaryChoice]:
+        """Resolve configured choices and default prepared channels to choices."""
+        configured = dict(self.boundary or {})
+        enabled = [choice for choice in configured.values() if choice is not None]
+        default = MultiplicativeChoice(
+            dict(DEFAULT_BC_PRIOR),
+            frequency=enabled[0].frequency if enabled else None,
+            anchor_time=enabled[0].anchor_time if enabled else None,
+        )
+        available = set(prepared.boundary_operands) | set(prepared.boundary_sensitivity)
+        result = {}
+        for channel in ("co2", "o2"):
+            choice = configured.get(channel, default if channel in available else None)
+            if choice is not None:
+                result[channel] = choice
+        return result
+
+
+def _shared_boundary_periods(
+    choices: Mapping[str, BoundaryChoice | None],
+) -> dict[str, BoundaryChoice | None]:
+    """Apply one boundary calendar to every enabled linked channel."""
+    enabled = [choice for choice in choices.values() if choice is not None]
+    frequencies = {normalise_frequency(choice.frequency) for choice in enabled if choice.frequency is not None}
+    anchors = {choice.anchor_time for choice in enabled if choice.anchor_time is not None}
+    if len(frequencies) > 1 or len(anchors) > 1:
+        raise ValueError("Linked boundary frequency and anchor_time must agree across channels.")
+    frequency = next((choice.frequency for choice in enabled if choice.frequency is not None), None)
+    anchor_time = next(iter(anchors), None)
+    return {
+        channel: None if choice is None else replace(choice, frequency=frequency, anchor_time=anchor_time)
+        for channel, choice in choices.items()
+    }
 
 
 def resolve_co2_o2_sampler(config: Mapping[str, object], *, model: Co2O2ModelConfig) -> RhimeSampler:

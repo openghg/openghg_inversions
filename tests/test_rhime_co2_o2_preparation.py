@@ -716,7 +716,7 @@ def test_linked_save_computes_shared_payloads_together(tmp_path: Path, suffix: s
     )
     tree = prepared.to_datatree()
     assert executions == []
-    assert tree.attrs["schema_version"] == 1
+    assert tree.attrs["schema_version"] == 4
     path = tmp_path / f"shared{suffix}"
     prepared.save(path)
     assert executions == ["payload"]
@@ -931,3 +931,58 @@ def test_linked_save_passes_lazy_dense_chunks_to_writer(
     if suffix == ".zarr":
         with xr.open_datatree(path, engine="zarr", chunks={}) as tree:
             assert tree["co2_sensitivity"]["co2_effective_sensitivity"].data.chunks == payload.chunks
+
+
+def test_additive_boundary_weights_require_native_centered_channels():
+    inputs = _inputs()
+    weights = xr.DataArray([1., 2.], dims="bc_region", coords={"bc_region": ["north", "east"]}, attrs={"units": "1"})
+    with pytest.raises(ValueError, match="matching co2/o2 centered operands"):
+        prepare_co2_o2_inputs(**inputs, bc_centering_weights={"o2": weights})
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_centered_mass_and_nonseparable_weights_survive_prepared_roundtrip(tmp_path, suffix):
+    inputs = _inputs()
+    inputs["o2_units"] = "ppm"
+    observations = inputs["o2_observations"]
+    mass = xr.DataArray(
+        da.from_array([[0.8, 0.7, 0.6], [0., 0., 0.]], chunks=(2, 1)),
+        dims=("bc_region", "nmeasure"),
+        coords={"bc_region": ["north", "east"], "nmeasure": observations.o2_measure.values},
+        attrs={"units": "1"},
+    )
+    operands = xr.Dataset(
+        {"H_bc_anomaly": (mass * 2).assign_attrs(units="ppm"),
+         "H_bc_mass": mass, "bc_reference": xr.DataArray(200_000., attrs={"units": "ppm"})},
+        attrs={"boundary_representation": "centered-v1"},
+    )
+    weights = xr.DataArray(
+        [[1., 7.], [3., 2.]], dims=("bc_curtain", "bc_period"),
+        coords={"bc_curtain": ["north", "east"],
+                "bc_period": np.array(["2021-01-02", "2021-01-04"], dtype="datetime64[ns]")},
+        attrs={"units": "1"}, name="bc_centering_weights",
+    )
+    prepared = prepare_co2_o2_inputs(
+        **inputs, boundary_operands={"o2": operands}, bc_centering_weights={"o2": weights},
+    )
+    assert prepared.boundary_operands["o2"].H_bc_mass.data is mass.data
+    assert prepared.bc_centering_weights["o2"].data is weights.data
+    path = tmp_path / f"linked-weighted-boundary{suffix}"
+    prepared.save(path)
+    loaded = Co2O2PreparedInputs.load(path)
+    xr.testing.assert_identical(loaded.boundary_operands["o2"].H_bc_mass, mass.rename("H_bc_mass").compute())
+    xr.testing.assert_identical(loaded.bc_centering_weights["o2"], weights)
+    # The raw spatial state keeps the unobserved curtain independently of fit periods.
+    assert loaded.boundary_operands["o2"].sizes["bc_region"] == 2
+    np.testing.assert_array_equal(loaded.boundary_operands["o2"].H_bc_mass.sel(bc_region="east"), 0.)
+    assert "bc_period" not in loaded.boundary_operands["o2"].dims
+    assert isinstance(prepared.boundary_operands["o2"].H_bc_mass.data, da.Array)
+
+
+@pytest.mark.parametrize("version", [1, 2, 3])
+def test_linked_rejects_old_prepared_formats_with_repreparation_message(version):
+    prepared = prepare_co2_o2_inputs(**_durable_inputs())
+    tree = prepared.to_datatree()
+    tree.attrs["schema_version"] = version
+    with pytest.raises(ValueError, match="[Pp]repare.*again"):
+        Co2O2PreparedInputs.from_datatree(tree)
