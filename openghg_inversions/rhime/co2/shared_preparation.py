@@ -312,6 +312,11 @@ def _validate_shared_baseline(prepared: Co2O2PreparedInputs, *, numerical: bool)
                 raise ValueError("Shared baseline numerical operands must be finite.")
             if float(dense.delta_sd) <= 0:
                 raise ValueError("Shared baseline delta widths must be positive.")
+            boundary = bound.choice.boundary
+            if boundary is None or isinstance(boundary, AdditiveChoice) or (
+                isinstance(boundary, AnomalyScalingChoice) and boundary.reference == "stored"
+            ):
+                _same_array(dense.reference, raw_bc.bc_reference, "stored reference")
             _validate_operator_identity(
                 dense, original_h, original_fixed, raw_bc,
                 obs.assign_attrs(units=units), prepared.retained_prior,

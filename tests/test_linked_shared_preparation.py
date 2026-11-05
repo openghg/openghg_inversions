@@ -486,3 +486,22 @@ def test_snapshot_choice_codec_retains_prescribed_and_additive_choices(native, t
     for channel in ("co2", "o2"):
         assert restored.shared_baseline[channel].choice == prepared.shared_baseline[channel].choice
         xr.testing.assert_identical(restored.shared_baseline[channel].data, prepared.shared_baseline[channel].data)
+
+
+@pytest.mark.parametrize("boundary", [None, AdditiveChoice(None, .3, anomalies="period_contrasts"),
+                                      AnomalyScalingChoice(None, .3)])
+def test_snapshot_rejects_changed_stored_reference_with_equal_physical_boundary(native, boundary):
+    kwargs = options(native)
+    kwargs["choices"] = {channel: replace(choice, boundary=boundary) for channel, choice in kwargs["choices"].items()}
+    prepared = prepare_linked_shared_inputs(native, **kwargs)
+    tree = prepared.to_datatree()
+    frozen = tree["shared_baseline_co2"]
+    mass = frozen.native_H_bc_mass.sum("native_bc_region")
+    frozen["reference"] = (frozen.reference + 1.).assign_attrs(frozen.reference.attrs)
+    frozen["bc_prescribed_centered"] = (frozen.bc_prescribed_centered - mass).assign_attrs(frozen.bc_prescribed_centered.attrs)
+    frozen["bc_reference_shift"] = (frozen.bc_reference_shift + mass).assign_attrs(frozen.bc_reference_shift.attrs)
+    # A compensating anomaly/shift change preserves the physical BC but changes
+    # a reference that these three choices explicitly promise to keep stored.
+    np.testing.assert_allclose(frozen.bc_prescribed_centered + frozen.bc_reference_shift, frozen.physical_bc_prior)
+    with pytest.raises(ValueError, match="stored reference values must match"):
+        Co2O2PreparedInputs.from_datatree(tree)
