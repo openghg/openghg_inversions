@@ -13,6 +13,7 @@ from typing import Literal
 
 from dask import compute
 import numpy as np
+import pandas as pd
 from openghg.util import cf_ureg
 import xarray as xr
 from scipy.linalg import qr
@@ -143,7 +144,9 @@ class BiospherePrior:
         if self.positive_prior is None:
             raise ValueError("This selection requires the lognormal family.")
         dim, cov_dim = self.baseline.state_dim, self.baseline.covariance_dim
-        positions = self.data.get_index(dim).get_indexer(labels)
+        positions = self.data.get_index(dim).get_indexer(
+            pd.Index(labels.values if isinstance(labels, xr.DataArray) else labels)
+        )
         if (positions < 0).any() or len(np.unique(positions)) != len(positions):
             raise ValueError("Marginal labels must be unique and belong to the full state.")
         selected = self.data.isel({dim: positions, cov_dim: positions})

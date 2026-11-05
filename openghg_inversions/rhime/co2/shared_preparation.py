@@ -96,8 +96,9 @@ def prepare_linked_shared_inputs(
         calibrated_prior: Optional already resolved positive calibration.
 
     Returns:
-        New borrowed handoff carrying frozen native-row baselines. Transport stays
-        lazy; independently mutable input payloads are not overwritten.
+        openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs:
+            New borrowed handoff carrying frozen native-row baselines. Transport
+            stays lazy; independently mutable input payloads are not overwritten.
     """
     channels = {"co2", "o2"}
     if prepared.shared_baseline:
@@ -209,7 +210,7 @@ def _restore_state(array: xr.DataArray, prefix: str, prior: CorrelatedLognormalP
     return array.rename({
         name: (prior.state_dim if name == prefix else prior.covariance_dim if name == f"{prefix}_cov"
                else name.removeprefix(f"{prefix}_"))
-        for name in set(array.coords) | set(array.dims) if name.startswith(prefix)
+        for name in set(array.coords) | set(array.dims) if isinstance(name, str) and name.startswith(prefix)
     })
 
 
@@ -340,15 +341,15 @@ def _validate_shared_baseline(prepared: Co2O2PreparedInputs, *, numerical: bool)
             rename = {coord: (prior.state_dim if coord == "original_state" else
                               prior.covariance_dim if coord == "original_state_cov" else
                               coord.removeprefix("original_state_"))
-                      for coord in set(original.coords) | set(original.dims) if coord.startswith("original_state")}
+                      for coord in set(original.coords) | set(original.dims) if isinstance(coord, str) and coord.startswith("original_state")}
             _same_array(original.rename(rename), expected, name)
     if len(modes) != 1 or not modes <= {"fixed", "multiplicative", "multiplicative_shrunk"}:
         raise ValueError("Both shared channels must use the same supported mode.")
     if len(channel_units) != 1:
         raise ValueError("Linked shared baselines require common channel units.")
     left, right = shared["co2"].data, shared["o2"].data
-    calibration_names = {name for name in left if name.startswith("calibration_")}
-    if calibration_names != {name for name in right if name.startswith("calibration_")}:
+    calibration_names = {name for name in left if isinstance(name, str) and name.startswith("calibration_")}
+    if calibration_names != {name for name in right if isinstance(name, str) and name.startswith("calibration_")}:
         raise ValueError("Both shared channels must retain the same calibration identity.")
     if left.attrs.get("calibration_attrs") != right.attrs.get("calibration_attrs"):
         raise ValueError("Both shared channels must retain the same calibration identity.")
@@ -368,9 +369,10 @@ def _validate_shared_baseline(prepared: Co2O2PreparedInputs, *, numerical: bool)
         value = left
         selected_prior = prior
         if value.attrs["mode"] == "multiplicative_shrunk":
-            calibration = value[[name for name in value if name.startswith("calibration_")]]
+            calibration = value[[name for name in value if isinstance(name, str) and name.startswith("calibration_")]]
             calibration = calibration.rename({
                 name: name.removeprefix("calibration_") for name in set(calibration.variables) | set(calibration.dims)
+                if isinstance(name, str) and name.startswith("calibration_")
             }).assign_attrs(json.loads(value.attrs["calibration_attrs"]))
             if (calibration.attrs.get("biosphere_prior_schema") != "openghg_inversions.biosphere_prior/v1"
                     or calibration.attrs.get("family") != "lognormal"):
@@ -378,9 +380,10 @@ def _validate_shared_baseline(prepared: Co2O2PreparedInputs, *, numerical: bool)
             _same_array(calibration.baseline_mean, prior.mean, "calibration baseline mean")
             _same_array(calibration.baseline_covariance, prior.arithmetic_covariance,
                         "calibration baseline covariance")
-            selected_prior = BiospherePrior.from_dataset(calibration).positive_prior
-            if selected_prior is None:
+            calibrated_positive = BiospherePrior.from_dataset(calibration).positive_prior
+            if calibrated_positive is None:
                 raise ValueError("Shared shrinkage requires a resolved positive prior.")
+            selected_prior = calibrated_positive
         outer, sampled = value.original_outer, value.original_sampled_outer
         if bool((sampled & ~outer).any()):
             raise ValueError("Shared sampled_outer must be a subset of outer.")
@@ -416,6 +419,16 @@ def materialize_linked_shared_inputs(
 
     The returned record continues through model construction, annotation and saving.
     Borrowed source records and unused auxiliary diagnostics remain untouched.
+
+    Args:
+        prepared: Linked handoff carrying frozen native shared baselines.
+        independent_error_sd: Labelled error SDs, or None to use saved errors.
+            Explicit and saved errors must agree when both are supplied.
+        likelihood: Resolved likelihood operands to materialize with both channels.
+
+    Returns:
+        tuple: Eager prepared handoff, selected independent error SDs and resolved
+            likelihood operands. Reuse these values for construction and saving.
     """
     from .co2_o2_runner import _validate_independent_error_labels, _validate_independent_error_values
     from openghg_inversions.models.boundary import require_centered_precision
