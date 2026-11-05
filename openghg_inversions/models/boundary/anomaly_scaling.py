@@ -264,8 +264,10 @@ class AnomalyScalingBoundary:
             "boundary_mass": "H_bc_mass",
             "boundary_reference": "bc_reference",
             "boundary_reference_concentration": "mu_bc_reference",
-            "boundary_anomaly_scaling": "bc_scaling",
-            "boundary_anomaly_scaling_concentration": "mu_bc_scaling",
+            # The shared anomaly roles carry the dimensionless scalings v and
+            # their contribution A' v through boundary reconstruction.
+            "boundary_correction_anomaly": "bc_scaling",
+            "boundary_anomaly_concentration": "mu_bc_scaling",
         }
         units = {name: concentration for name in (
             "mu_bc", "H_bc_anomaly", "bc_reference", "bc_reference_shift", "boundary_reference_shift",

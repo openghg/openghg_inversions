@@ -477,3 +477,26 @@ def test_boundary_metadata_uses_choice_facts_without_evaluating_lazy_inputs(doub
     expected.update(bc_frequency=None, bc_anchor_time=None)
     whole_window = replace(bound.choice, frequency=None, anchor_time=None)
     assert replace(lazy_bound, choice=whole_window, data=unperiodized).outputs().metadata == expected
+
+
+@pytest.mark.parametrize("owner", [None, "bc", "co2"])
+@pytest.mark.parametrize("family", ["additive", "anomaly_scaling"])
+def test_labelled_period_mean_prior_shares_the_owned_period_axis(family, owner):
+    data, observations = _native_boundary()
+    starts = pd.to_datetime(["2020-01-01", "2020-02-01"])
+    # Reversed labels: the prior must follow the period labels, not their order.
+    mu = xr.DataArray([1.0, 0.0], dims="bc_mean_period", coords={"bc_mean_period": starts[::-1]})
+    prior = {"pdf": "normal", "mu": mu, "sigma": 0.5}
+    if family == "additive":
+        choice = AdditiveChoice(prior, 0.0, anomalies="period_contrasts", mean_by_period=True, frequency="monthly")
+    else:
+        choice = AnomalyScalingChoice(prior, 0.1, mean_by_period=True, frequency="monthly")
+    bound = choice.bind(observations, CenteredOperands.from_dataset(data))
+    bound = replace(bound, data=bound.data.compute())
+    with registered_model() as model:
+        bound.add(prefix="co2_", owner=owner)
+    mean = model["co2_bc_mean_shift"]
+    period_dim = model.named_vars_to_dims["co2_bc_mean_shift"][0]
+    assert period_dim.endswith("bc_mean_period") and (owner is None or period_dim.startswith(owner))
+    assert model.named_vars_to_dims["co2_bc_mean_indicator"][1] == period_dim
+    np.testing.assert_allclose(mean.owner.op.dist_params(mean.owner)[0].eval(), [0.0, 1.0])

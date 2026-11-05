@@ -358,15 +358,25 @@ def test_public_co2_trace_products_reconstruct_each_structure(cached, method):
             assert trace[group][latent].attrs["units"] == "ppm"
             total = total + components[f"boundary_anomaly_contribution_{group}"]
         if method == "scaling":
-            assert trace[group].bc_scaling.attrs["units"] == "1"
-            scaling = trace[group].mu_bc_scaling
-            if group == "prior":
-                scaling = scaling.rename(chain="prior_chain", draw="prior_draw")
-            total = total + scaling
+            # Exported components alone decompose the scaling contribution.
+            assert components[f"boundary_anomaly_{group}"].attrs["units"] == "1"
+            assert "bc_region" in components[f"boundary_anomaly_{group}"].dims
+            total = total + components[f"boundary_anomaly_contribution_{group}"]
         xr.testing.assert_allclose(components[f"boundary_{group}"], total.transpose(*components[f"boundary_{group}"].dims))
         xr.testing.assert_allclose(components[f"modelled_{group}"],
                                    components[f"pollution_{group}"] + components[f"boundary_{group}"])
 
+
+
+def test_missing_scaling_draws_fail_boundary_reconstruction():
+    prepared = _single_with_operands(additive=False)
+    built, _ = inference.build_co2_inference(
+        prepared, {"boundary": _choice("scaling", level_sd=0.5, scale=0.2), "no_model_error": True},
+    )
+    trace = co2_runner.annotate_co2_trace(_draws(built), built, concentration_units="ppm")
+    trace["posterior"] = trace["posterior"].to_dataset().drop_vars("mu_bc_scaling")
+    with pytest.raises(ValueError, match="boundary_anomaly_concentration"):
+        reconstruct_co2_concentrations(trace, prepared)
 
 def test_restored_trace_coordinates_label_period_contrast_states():
     prepared = _single_with_operands(additive=False)

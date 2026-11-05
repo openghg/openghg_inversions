@@ -60,7 +60,10 @@ def add_boundary_mean_shift(
 
     Args:
         prior: Mean shift prior in observation concentration units, as passed
-            to :func:`~openghg_inversions.models.priors.parse_prior`.
+            to :func:`~openghg_inversions.models.priors.parse_prior`. With
+            ``by_period``, labelled parameters may lie on ``bc_mean_period``
+            with the fit's period-start labels; they are qualified with
+            ``owner`` like the period indicators.
         mass: Materialized ``M`` on ``(output_dim, bc_region)`` with a
             ``bc_period`` state level.
         mass_data: The same ``M`` already registered in the model.
@@ -84,7 +87,12 @@ def add_boundary_mean_shift(
         )).astype(float).assign_attrs(units="1")
         registered = component_coords(indicator, owner)
         states = add_model_data(registered, f"{prefix}bc_mean_indicator")
-        mean = parse_prior(f"{prefix}bc_mean_shift", dict(prior), dims=str(registered.dims[1]))
+        # Labelled parameters share the indicator's owner-qualified period axis.
+        owned_prior = {
+            name: component_coords(value, owner) if isinstance(value, xr.DataArray) else value
+            for name, value in prior.items()
+        }
+        mean = parse_prior(f"{prefix}bc_mean_shift", owned_prior, dims=str(registered.dims[1]))
         state = pt.dot(states, mean)
         coefficients = mean
     else:
