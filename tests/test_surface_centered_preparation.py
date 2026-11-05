@@ -134,7 +134,7 @@ def test_local_boundary_operands_without_upstream_kernel(
     import openghg
 
     assert result.attrs["surface_provider_revision"] == str(openghg.__revisionid__ or "unknown")
-    assert result.attrs["surface_policy_revision"] == "957-source-wise-v1"
+    assert result.attrs["surface_policy_revision"] == surface.SURFACE_POLICY_REVISION
     xr.testing.assert_identical(bc, saved_bc)
     xr.testing.assert_identical(fp, saved_fp)
 
