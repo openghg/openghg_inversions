@@ -13,8 +13,9 @@ A boundary family is two small records in its own module:
   expanded to its boundary periods.
 
 A recipe binds each boundary once, materializes the bound record together
-with its other inputs (``dask.compute`` traverses these dataclasses; see
-:func:`~openghg_inversions.array_ops.to_dense_tree`), then calls
+with its other inputs (``dask.compute`` traverses these dataclasses, including
+choice priors; see :func:`~openghg_inversions.array_ops.to_dense_tree` and the
+joint-computation example in :doc:`/development/rhime_model_development`), then calls
 ``boundary.add(...)`` inside its registered model. ``add`` returns an
 :class:`~openghg_inversions.models.components.AffineConcentrationTerm`, which
 ordinary and cached likelihoods consume without knowing the family, and

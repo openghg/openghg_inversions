@@ -203,11 +203,13 @@ class AnomalyScalingBoundary:
 
         # Owner-qualified coordinates plus model data, sharing the observation axis.
         def register_boundary_data(array: xr.DataArray, name: str) -> TensorVariable:
+            """Register a boundary array with the recipe's coordinate ownership."""
             return add_model_data(component_coords(array, owner, observation_dim=output_dim), f"{prefix}{name}")
 
         a = register_boundary_data(anomaly, "H_bc_anomaly")
         m = register_boundary_data(mass, "H_bc_mass")
         register_boundary_data(reference, "bc_reference")
+        # Save the resolved width for provenance; the prior uses the scalar directly.
         register_boundary_data(xr.DataArray(choice.scale_sd), "bc_scale_sd")
         state_dim = str(component_coords(mass, owner, observation_dim=output_dim).dims[1])
         latents: tuple[TensorVariable, ...] = ()

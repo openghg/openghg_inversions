@@ -178,6 +178,29 @@ def test_temporal_contrast_covariance_is_not_full_weighted_centering():
     assert not np.allclose(states @ states.T, weighted_states @ weighted_states.T)
 
 
+@pytest.mark.parametrize("weight_scale", [1.0, 1e307])
+def test_weighted_factor_and_graph_share_the_centered_design(weight_scale):
+    """Lazy factors and sampled anomalies obey the same nonuniform centering."""
+    obs = _inputs().mf
+    periods = {"frequency": "2h", "anchor_time": "2021-01-01"}
+    transport = _operands(obs, normalised=False)
+    states = transport.bind(obs, **periods).indexes["bc_region"]
+    raw_weights = np.array([[1., 2., 3.], [4., 5., 6.]])
+    weights = xr.DataArray(
+        weight_scale * raw_weights, dims=("bc_curtain", "bc_period"),
+        coords={"bc_curtain": states.levels[0], "bc_period": states.levels[1]},
+    )
+    transport = replace(transport, mass=transport.mass.chunk(), weights=weights)
+    bound = AdditiveChoice(_normal(0.2), 0.3, **periods).bind(obs, transport)
+    factor = bound.anomaly_factor()
+    assert dask.is_dask_collection(factor)
+    model, _, (_, design) = _designs(_eager(bound))
+    normalized = raw_weights.ravel() / raw_weights.sum()
+    basis = model["bc_anomaly_basis"].eval()
+    np.testing.assert_allclose(normalized @ basis, 0.0, atol=1e-16)
+    np.testing.assert_allclose(factor.compute().values, 0.3 * design, rtol=0, atol=1e-15)
+
+
 def test_reference_reexpresses_prescribed_boundary_but_changes_scaling_covariance():
     obs = _inputs().mf
     transport = _operands(obs, 209300.0, normalised=False)

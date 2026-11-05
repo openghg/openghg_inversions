@@ -178,9 +178,8 @@ it protects a scientific policy or gives a materially better boundary failure.
 Boundary component extension check
 ----------------------------------
 
-A boundary family is a *choice*, the prior specification before binding, and a
-*bound* record, both small frozen dataclasses in one module under
-``models/boundary/``. The configuration
+A boundary family is a data-free *choice* and a *bound* record, both small
+frozen dataclasses in one module under ``models/boundary/``. The configuration
 adapter resolves user options into a choice (``MultiplicativeChoice`` or
 ``AdditiveChoice``); it never touches arrays. Runners take that one choice (a
 channel mapping for linked recipes) and call ``choice.bind(observations,
@@ -217,10 +216,20 @@ equations. Offsets remain separate components; the offset-confounding warning
 inspects every affine block for a constant unit response, so it needs no
 knowledge of boundary families.
 
+The additive recipe composes its mean shift, selected anomaly formulation and
+complete boundary concentration in that order. The ordinary functions in
+``models/boundary/additive_anomalies.py`` keep weighted centering, per-period
+curtain contrasts and independent state anomalies explicit. The contrast
+formulations share sampling of ``B z`` after constructing their different
+bases; independent anomalies sample states directly. Their basis functions
+also define the observation-space factors used before graph construction.
+Pass the current bound arrays into these functions: linked recipes may replace
+or pad rows, and callable closures must not retain an earlier transport array.
+
 The scalar ``bc_anomaly_scale`` saved in model data records the resolved prior
 width for trace reconstruction; the distributions use the resolved choice
-value directly. Updating the saved scalar does not update the distributions'
-widths.
+value directly. Likewise ``bc_scale_sd`` records anomaly-scaling provenance.
+Updating these saved scalars does not update the distributions' widths.
 
 Validation is not repeated along this path. Preparation and artifact loading
 own units, labels and layout; ``bind`` owns calendar and row alignment and the

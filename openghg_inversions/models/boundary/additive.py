@@ -35,7 +35,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Literal, get_args
+from typing import Any, get_args
 
 import numpy as np
 import pandas as pd
@@ -44,18 +44,25 @@ import pytensor.tensor as pt
 import xarray as xr
 from dask import is_dask_collection
 from pytensor.tensor.variable import TensorVariable
-from scipy.linalg import helmert
 
 from openghg_inversions.boundary_sensitivity import validate_centered_boundary_periods
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models.components import AffineBlock, AffineConcentrationTerm
 from openghg_inversions.models.coords import add_model_data, component_coords
 
+from .additive_anomalies import (
+    AnomalyStructure,
+    add_independent_anomalies,
+    add_period_contrast_anomalies,
+    add_weighted_anomalies,
+    anomaly_outputs,
+    normalized_centering_weights,
+    period_contrast_basis,
+    weighted_anomaly_basis,
+)
 from .mean_shift import add_boundary_mean_shift, mean_shift_outputs
 from .operands import CenteredOperands, materialized_reference_shift
 from .outputs import BoundaryOutputs
-
-AnomalyStructure = Literal["weighted", "period_contrasts", "independent"]
 
 
 @dataclass(frozen=True)
@@ -192,34 +199,6 @@ class AdditiveBoundary:
         }[self.choice.anomalies]
         return self.choice.anomaly_scale > 0 and count > 0
 
-    def _anomaly_basis(self, weights: np.ndarray | None) -> xr.DataArray | None:
-        """Basis ``B`` mapping anomaly coordinates to every bound state.
-
-        ``weights`` are the normalized centering weights of weighted anomalies.
-        Independent anomalies need no basis (``B = I``) and return ``None``.
-        """
-        if self.choice.anomalies == "independent":
-            return None
-        periods = self.data.bc_period
-        count = periods.size
-        q: np.ndarray
-        if self.choice.anomalies == "weighted":
-            assert weights is not None
-            q = helmert(count, full=False).T
-            q = q - np.ones((count, 1)) @ (weights @ q)[None, :]
-        else:
-            columns = []
-            for label in pd.unique(periods.values):
-                members = np.flatnonzero(periods.values == label)
-                block = np.zeros((count, members.size - 1))
-                block[members] = helmert(members.size, full=False).T
-                columns.append(block)
-            q = np.hstack(columns)
-        return xr.DataArray(
-            q, dims=("bc_region", "bc_contrast"), coords={"bc_contrast": np.arange(q.shape[1])},
-            attrs={"units": "1"},
-        ).assign_coords(self.data.bc_region.coords)
-
     def anomaly_factor(self) -> xr.DataArray | None:
         """Observation-space anomaly design scaled to standard-normal coordinates.
 
@@ -234,18 +213,20 @@ class AdditiveBoundary:
             concentration. ``None`` when :attr:`has_anomalies` is false.
 
         Raises:
-            ValueError: If weighted-centering weights are still lazy.
+            ValueError: If weighted-centering weights are lazy, empty, non-finite
+                or not strictly positive.
         """
         if not self.has_anomalies:
             return None
-        weights = None
-        if self.choice.anomalies == "weighted":
-            values = self.data.bc_centering_weights
-            if is_dask_collection(values.data):
-                raise ValueError("Materialize bc_centering_weights before forming a weighted anomaly design.")
-            weights = (values / values.sum()).values
-        basis = self._anomaly_basis(weights)
-        design = self.data.H_bc_mass if basis is None else xr.dot(self.data.H_bc_mass, basis, dim="bc_region")
+        if self.choice.anomalies == "independent":
+            design = self.data.H_bc_mass
+        elif self.choice.anomalies == "weighted":
+            weights = normalized_centering_weights(self.data.bc_centering_weights)
+            basis = weighted_anomaly_basis(weights)
+            design = xr.dot(self.data.H_bc_mass, basis, dim="bc_region")
+        else:
+            basis = period_contrast_basis(self.data.bc_region)
+            design = xr.dot(self.data.H_bc_mass, basis, dim="bc_region")
         return (design * self.choice.anomaly_scale).assign_attrs(units=self.data.bc_reference.attrs["units"])
 
     def add(self, *, output_dim: str = "nmeasure", prefix: str = "", owner: str | None = "bc") -> AffineConcentrationTerm:
@@ -287,22 +268,20 @@ class AdditiveBoundary:
         reference = self.data.bc_reference
         reference_shift = materialized_reference_shift(anomaly, mass, reference).rename(f"{prefix}bc_reference_shift")
         fixed = anomaly.sum("bc_region", skipna=False).assign_attrs(anomaly.attrs)
-        weights = None
-        if choice.anomalies == "weighted":
-            weights = self.data.bc_centering_weights
-            if not weights.size or not np.isfinite(weights.values).all() or not (weights.values > 0).all():
-                raise ValueError("bc_centering_weights must be finite and strictly positive.")
-            weights = weights / weights.max()
-            weights = (weights / weights.sum()).assign_attrs(units="1")
-        basis = self._anomaly_basis(None if weights is None else weights.values) if self.has_anomalies else None
+        weights = (
+            normalized_centering_weights(self.data.bc_centering_weights)
+            if choice.anomalies == "weighted" else None
+        )
 
         # Owner-qualified coordinates plus model data, sharing the observation axis.
         def register_boundary_data(array: xr.DataArray, name: str) -> TensorVariable:
+            """Register a boundary array with the recipe's coordinate ownership."""
             return add_model_data(component_coords(array, owner, observation_dim=output_dim), f"{prefix}{name}")
 
         a = register_boundary_data(anomaly, "H_bc_anomaly")
         m = register_boundary_data(mass, "H_bc_mass")
         register_boundary_data(reference, "bc_reference")
+        # Save the resolved width for replay; the priors use the scalar directly.
         register_boundary_data(xr.DataArray(choice.anomaly_scale), "bc_anomaly_scale")
         if weights is not None:
             register_boundary_data(weights, "bc_centering_weights")
@@ -322,24 +301,24 @@ class AdditiveBoundary:
             latents += (mean.latent,)
             blocks.append(mean.block)
 
-        # Anomaly correction B z on the states, transported through M.
+        # Select the anomaly formulation; independent states need no basis.
         anomaly_state, anomaly_signal = pt.zeros((n_states,)), pt.zeros((n_rows,))
         if self.has_anomalies:
-            if basis is None:
-                anomaly_state = pm.Normal(f"{prefix}bc_anomaly", mu=0.0, sigma=choice.anomaly_scale, dims=state_dim)
-                coordinates, response = anomaly_state, mass
-            else:
-                # Registering the basis also registers its contrast coordinate.
-                basis_data = register_boundary_data(basis, "bc_anomaly_basis")
-                contrast_dim = str(component_coords(basis, owner).dims[1])
-                coordinates = pm.Normal(
-                    f"{prefix}bc_anomaly_latent", mu=0.0, sigma=choice.anomaly_scale, dims=contrast_dim,
+            if weights is not None:
+                anomalies = add_weighted_anomalies(
+                    mass, m, weights, choice.anomaly_scale, output_dim=output_dim, prefix=prefix, owner=owner,
                 )
-                anomaly_state = pm.Deterministic(f"{prefix}bc_anomaly", pt.dot(basis_data, coordinates), dims=state_dim)
-                response = xr.dot(mass, basis, dim="bc_region").transpose(output_dim, "bc_contrast")
-            anomaly_signal = pm.Deterministic(f"{prefix}mu_bc_anomaly", pt.dot(m, anomaly_state), dims=output_dim)
-            latents += (coordinates,)
-            blocks.append(AffineBlock(response.assign_attrs(units="1"), coordinates))
+            elif choice.anomalies == "period_contrasts":
+                anomalies = add_period_contrast_anomalies(
+                    mass, m, choice.anomaly_scale, output_dim=output_dim, prefix=prefix, owner=owner,
+                )
+            else:
+                anomalies = add_independent_anomalies(
+                    mass, m, choice.anomaly_scale, output_dim=output_dim, prefix=prefix, owner=owner,
+                )
+            anomaly_state, anomaly_signal = anomalies.state, anomalies.signal
+            latents += (anomalies.latent,)
+            blocks.append(anomalies.block)
 
         # Complete boundary contribution A 1 + c M 1 + M d.
         pm.Deterministic(f"{prefix}bc_correction", mean_state + anomaly_state, dims=state_dim)
@@ -383,7 +362,7 @@ class AdditiveBoundary:
         }
         units = {name: concentration for name in (
             "mu_bc", "H_bc_anomaly", "bc_reference", "bc_reference_shift", "boundary_reference_shift",
-            "bc_anomaly_scale", "bc_correction", "mu_bc_reference",
+            "bc_correction", "mu_bc_reference",
         )}
         units["H_bc_mass"] = "1"
 
@@ -391,15 +370,9 @@ class AdditiveBoundary:
         roles.update(mean.roles)
         units.update(mean.units)
 
-        if choice.anomalies == "weighted":
-            roles.update(boundary_anomaly_scale="bc_anomaly_scale", boundary_centering_weights="bc_centering_weights")
-            units["bc_centering_weights"] = "1"
-
-        if self.has_anomalies:
-            roles.update(boundary_correction_anomaly="bc_anomaly", boundary_anomaly_concentration="mu_bc_anomaly")
-            units.update(bc_anomaly=concentration, mu_bc_anomaly=concentration)
-            if choice.anomalies != "independent":
-                units.update(bc_anomaly_latent=concentration, bc_anomaly_basis="1")
+        anomalies = anomaly_outputs(choice.anomalies, sampled=self.has_anomalies, concentration=concentration)
+        roles.update(anomalies.roles)
+        units.update(anomalies.units)
 
         metadata = {
             "boundary_formulation": "additive",
