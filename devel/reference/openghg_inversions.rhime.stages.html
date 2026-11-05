@@ -393,6 +393,7 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.cached_sigma.html">openghg_inversions.inference.cached_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.convergence.html">openghg_inversions.inference.convergence</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.diagnostics.html">openghg_inversions.inference.diagnostics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.sampling.html">openghg_inversions.inference.sampling</a></li>
 </ul>
@@ -838,24 +839,61 @@ without constructing a model or applying output policy.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">sample_manifest</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">check_output</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">max_rhat</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.01</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">min_bulk_ess</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">400</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">min_tail_ess</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">400</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">max_divergences</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">rhat_max</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">ess_min_ratio</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">ess_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bfmi_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">stage</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'posterior'</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.stages.diagnose_rhime_stage" title="Link to this definition">#</a></dt>
-<dd><p>Calculate convergence from a posterior path or current sample manifest.</p>
-<p>An optional sample manifest supplies descriptive run context, without
-authenticating the posterior file. When <code class="docutils literal notranslate"><span class="pre">posterior</span></code> is omitted, resolve
-its reference beside the sample manifest. Diagnosis needs no preparation,
-model construction or inference; explicit posterior paths take precedence.
-A draw diverges when either its ordinary or cached-amplitude NUTS flag is
-true. Missing both flags leaves divergence assessment unknown.</p>
+<dd><p>Assess saved posterior samples and write convergence evidence and a report.</p>
+<p>Diagnosis loads samples without constructing or sampling a model. An optional
+sample manifest supplies a posterior reference without authenticating its
+contents; an explicit posterior path takes precedence.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>posterior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a><em> | </em><em>None</em>) – Posterior trace file. Required unless <code class="docutils literal notranslate"><span class="pre">sample_manifest</span></code>
+supplies its reference, resolved relative to the manifest directory.</p></li>
+<li><p><strong>output_dir</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a>) – Directory created for the diagnostic artifacts. Existing
+symlinks within it are rejected.</p></li>
+<li><p><strong>sample_manifest</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a><em> | </em><em>None</em>) – Current sample-stage manifest, validated when supplied
+even if <code class="docutils literal notranslate"><span class="pre">posterior</span></code> is explicit.</p></li>
+<li><p><strong>check_output</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a><em> | </em><em>None</em>) – JSON report path beneath <code class="docutils literal notranslate"><span class="pre">output_dir</span></code>, relative to that
+directory unless absolute. Defaults to <code class="docutils literal notranslate"><span class="pre">sampler-convergence.json</span></code>.</p></li>
+<li><p><strong>rhat_max</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><em>None</em>) – Maximum acceptable R-hat, finite and at least one.
+<code class="docutils literal notranslate"><span class="pre">None</span></code> uses the ArviZ default.</p></li>
+<li><p><strong>ess_min_ratio</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><em>None</em>) – Minimum acceptable ratio of the smaller bulk/tail effective
+sample size (ESS) to total retained samples across chains. Must be
+finite and non-negative; <code class="docutils literal notranslate"><span class="pre">None</span></code> uses the ArviZ default.</p></li>
+<li><p><strong>ess_threshold</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><em>None</em>) – Minimum acceptable bulk ESS, independently of the ratio
+check. Must be a non-negative integer; <code class="docutils literal notranslate"><span class="pre">None</span></code> uses ArviZ’s default
+of 100 times the number of chains.</p></li>
+<li><p><strong>bfmi_threshold</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><em>None</em>) – Minimum acceptable energy Bayesian fraction of missing
+information (E-BFMI). Must be finite and non-negative; <code class="docutils literal notranslate"><span class="pre">None</span></code> uses
+the ArviZ default.</p></li>
+<li><p><strong>stage</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Non-empty label recorded in the check, with whitespace stripped.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The CheckResult dictionary written to the JSON report, with the plain
+assessment from
+<a class="reference internal" href="openghg_inversions.inference.convergence.html#openghg_inversions.inference.convergence.posterior_convergence_check" title="openghg_inversions.inference.convergence.posterior_convergence_check"><code class="xref py py-func docutils literal notranslate"><span class="pre">posterior_convergence_check()</span></code></a>
+wrapped in the versioned staged-check envelope. Its artifact path refers
+to <code class="docutils literal notranslate"><span class="pre">posterior-diagnostics.nc</span></code>, the detailed ArviZ summary written under
+<code class="docutils literal notranslate"><span class="pre">output_dir</span></code>. Existing artifact/report files are replaced. Failed or
+incomplete assessments are returned and written without raising.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If inputs, threshold overrides, the manifest, stage label or
+    output paths are invalid, including when no posterior is provided.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#OSError" title="(in Python v3.15)"><strong>OSError</strong></a> – If reading the trace or writing diagnostic artifacts fails.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>
 </dd>
 </dl>
 </dd></dl>

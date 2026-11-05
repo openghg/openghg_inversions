@@ -695,6 +695,39 @@ Inspect the <code class="docutils literal notranslate"><span class="pre">site</s
 array position. The complete role and model-variable contract is described in
 <a class="reference internal" href="concrete_rhime_model.html"><span class="doc">Standard and multisector RHIME models</span></a>.</p>
 <p id="standard-rhime-diagnostics">Inspect diagnostics before interpreting any posterior quantity:</p>
+<p>Every completed <code class="docutils literal notranslate"><span class="pre">RhimeSampler</span></code> NUTS run assesses retained samples with
+<code class="docutils literal notranslate"><span class="pre">arviz.diagnose</span></code> after burn slicing. The compact assessment is reported in
+the timing log and preserved as JSON in
+<code class="docutils literal notranslate"><span class="pre">result.trace.attrs[&quot;sampler_convergence&quot;]</span></code>. It records chain and retained
+draw counts, the ArviZ version and error flag, total divergences, and reasons
+why assessment is incomplete. It assesses sampled latent variables, names them
+in <code class="docutils literal notranslate"><span class="pre">measured_values.assessed_variables</span></code>, and excludes deterministic posterior
+outputs. One-chain output explicitly reports that between-chain convergence
+is not assessable. ArviZ also checks tree depth and energy diagnostics when
+those sampler statistics are available. PyMC’s separate pre-burn convergence
+checks default to disabled; set <code class="docutils literal notranslate"><span class="pre">sample_kwargs={&quot;compute_convergence_checks&quot;:</span> <span class="pre">True}</span></code>
+when you also want those warnings.</p>
+<p>The saved assessment is plain diagnostic JSON. For an <code class="docutils literal notranslate"><span class="pre">openghg-run</span></code>
+CheckResult envelope, use staged <a class="reference internal" href="staged_workflow.html#staged-convergence-check"><span class="std std-ref">diagnose</span></a>
+on the saved trace. That reference also describes ArviZ’s threshold policy.</p>
+<p>Parse the preserved JSON to inspect the assessment and the latent variables
+it assessed:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+
+<span class="n">convergence</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">trace</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"sampler_convergence"</span><span class="p">])</span>
+<span class="n">convergence</span><span class="p">[</span><span class="s2">"measured_values"</span><span class="p">][</span><span class="s2">"assessed_variables"</span><span class="p">]</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>['x', 'bc', 'sigma']
+</pre></div>
+</div>
+</div>
+</div>
+<p>Use ArviZ when you need the detailed per-variable table:</p>
 <div class="jupyter_cell jupyter_container docutils container">
 <div class="cell_input code_cell docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">arviz</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">az</span>
