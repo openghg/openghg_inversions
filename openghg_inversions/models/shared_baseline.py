@@ -177,10 +177,11 @@ class SharedBaselineChoice:
         removed = np.flatnonzero(~keep.values)
         if np.any(selected_covariance.values[np.ix_(positions, removed)] != 0):
             raise ValueError("Removing fixed outer states requires zero cross covariance with retained sampled states.")
-        outer_mean = xr.dot(weights, h, dim=row)
-        centered_h = h - outer_mean
+        column_mean = xr.dot(weights, h, dim=row)
+        centered_h = h - column_mean
         transformed_h = (xr.where(sampled_outer, centered_h, h).transpose(row, dim) if multi else h).assign_attrs(units=units)
         physical_outer = xr.dot(h.where(outer, 0), mean, dim=dim)
+        # Compensate at the prior mean: affine + H_new @ m_kept = fixed_old + H_old @ m_full.
         affine = fixed_prior_contribution + physical_outer
         if multi:
             affine = affine - xr.dot(centered_h.where(sampled_outer, 0), mean, dim=dim)
@@ -201,7 +202,7 @@ class SharedBaselineChoice:
         result = xr.Dataset(
             {
                 "centering_weights": weights,
-                "outer_column_mean": renamed_state(outer_mean, "original_state"),
+                "outer_column_mean": renamed_state(column_mean, "original_state"),
                 "original_prior_mean": renamed_state(mean, "original_state"),
                 "original_prior_covariance": renamed_state(covariance, "original_state"),
                 "physical_outer_prior": physical_outer,
