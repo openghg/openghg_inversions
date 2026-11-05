@@ -112,6 +112,36 @@ def test_independent_curtains_match_contrasts_only_for_specific_widths():
     assert not np.allclose(independent, s**2 * level @ level.T + s**2 * contrasts @ contrasts.T)
 
 
+def test_independent_curtains_across_periods_need_one_mean_per_period():
+    obs = _inputs().mf
+    transport = _operands(obs, normalised=False)
+    s, k = 1.2, 2
+    periods = {"frequency": "2h", "anchor_time": "2021-01-01"}
+    bound = _eager(_choice("independent", scale=s, **periods).bind(obs, transport))
+    assert bound.data.indexes["bc_region"].get_level_values("bc_period").nunique() > 1
+    _, _, (iid,) = _designs(bound)
+    independent = s**2 * iid @ iid.T
+
+    def contrasts_plus_mean(by_period):
+        choice = replace(_choice("contrasts", level_sd=s / np.sqrt(k), scale=s, **periods), mean_by_period=by_period)
+        _, _, (level, contrasts) = _designs(_eager(choice.bind(obs, transport)))
+        return s**2 / k * level @ level.T + s**2 * contrasts @ contrasts.T
+
+    np.testing.assert_allclose(independent, contrasts_plus_mean(True), atol=1e-14)
+    assert not np.allclose(independent, contrasts_plus_mean(False))
+
+
+def test_independent_anomalies_are_sampled_on_the_states_without_a_basis():
+    obs = _inputs().mf
+    transport = _operands(obs, normalised=False)
+    bound = _eager(_choice("independent", scale=0.3, frequency="2h", anchor_time="2021-01-01").bind(obs, transport))
+    model, term, (design,) = _designs(bound)
+    assert "bc_anomaly_basis" not in model and "bc_anomaly_latent" not in model
+    assert term.sampled_rvs == (model["bc_anomaly"],)
+    np.testing.assert_array_equal(design, bound.data.H_bc_mass.transpose("nmeasure", "bc_region").values)
+    assert bound.anomaly_factor().dims == ("nmeasure", "bc_region")
+
+
 def test_temporal_contrast_covariance_is_not_full_weighted_centering():
     obs = _inputs().mf
     transport = _operands(obs)
@@ -205,7 +235,8 @@ def test_one_curtain_keeps_scalings_and_independent_states_but_no_contrast(metho
     with registered_model() as model:
         _eager(_choice(method).bind(obs, transport)).add()
     assert ("bc_scaling" in model) == (method == "scaling")
-    assert ("bc_anomaly_latent" in model) == (method == "independent")
+    assert ("bc_anomaly" in model) == (method == "independent")
+    assert "bc_anomaly_latent" not in model
     assert np.isfinite(model.compile_logp()(model.initial_point()))
 
 
@@ -291,7 +322,7 @@ def test_linked_ordinary_cached_channels_are_independent_at_oxygen_precision(met
     assert "co2_bc" not in model and "o2_bc" not in model
     point = model.initial_point()
     independent = method == "independent"
-    point["o2_bc_anomaly_latent" if independent else "o2_bc_mean_shift"] = (
+    point["o2_bc_anomaly" if independent else "o2_bc_mean_shift"] = (
         np.full(2, 0.000123) if independent else np.array(0.000123)
     )
     signal = "mu_bc_anomaly" if independent else "mu_bc_mean_shift"
@@ -323,7 +354,8 @@ def test_public_co2_trace_products_reconstruct_each_structure(cached, method):
             assert trace[group].bc_mean_shift.attrs["units"] == "ppm"
             total = total + components[f"boundary_mean_contribution_{group}"]
         if method in ("contrasts", "independent"):
-            assert trace[group].bc_anomaly_latent.attrs["units"] == "ppm"
+            latent = "bc_anomaly" if method == "independent" else "bc_anomaly_latent"
+            assert trace[group][latent].attrs["units"] == "ppm"
             total = total + components[f"boundary_anomaly_contribution_{group}"]
         if method == "scaling":
             assert trace[group].bc_scaling.attrs["units"] == "1"

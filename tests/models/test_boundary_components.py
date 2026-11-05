@@ -12,12 +12,13 @@ import pytensor.tensor as pt
 import xarray as xr
 
 from openghg_inversions.models import (
-    AdditiveBoundary, AdditiveChoice, CenteredOperands, MultiplicativeBoundary, MultiplicativeChoice,
+    AdditiveBoundary, AdditiveChoice, AnomalyScalingChoice, CenteredOperands, MultiplicativeBoundary, MultiplicativeChoice,
     StateActivity, registered_model,
 )
 from openghg_inversions.models.components import (
     AffineBlock, AffineConcentrationTerm, warn_constant_offset_confounding,
 )
+from openghg_inversions.rhime.co2 import co2_runner
 
 
 def _mean_response_term(mean_response):
@@ -212,12 +213,26 @@ def test_one_state_has_only_mean_even_with_positive_scale(double_precision, scal
         np.testing.assert_allclose((result.likelihood_contribution - _affine_expression(result)).eval(), 0., atol=1e-12)
 
 
-@pytest.mark.parametrize("transport", ["absolute", "unweighted"])
-def test_additive_binding_requires_centered_operands_with_weights(transport):
+def test_weighted_additive_binding_requires_centering_weights():
     data, observations = _native_boundary()
-    transport = data.H_bc_anomaly if transport == "absolute" else CenteredOperands.from_dataset(data)
-    with pytest.raises(ValueError, match="require centered operands|require bc_centering_weights"):
-        AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.).bind(observations, transport)
+    with pytest.raises(ValueError, match="require bc_centering_weights"):
+        AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.).bind(
+            observations, CenteredOperands.from_dataset(data),
+        )
+
+
+@pytest.mark.parametrize(
+    "choice",
+    [
+        AdditiveChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.),
+        AnomalyScalingChoice({"pdf": "normal", "mu": 0., "sigma": 1.}, 0.1),
+    ],
+)
+def test_absolute_inputs_are_rejected_where_the_representation_is_identified(choice):
+    data, observations = _native_boundary()
+    inputs = xr.Dataset({"mf": observations, "H_bc": data.H_bc_anomaly})
+    with pytest.raises(ValueError, match="requires centered boundary operands; prepare them again"):
+        co2_runner._bind_co2_boundary(inputs, choice)
 
 
 def test_absolute_boundary_registers_cli_data_name():
