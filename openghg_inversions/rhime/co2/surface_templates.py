@@ -55,7 +55,7 @@ def _channel_templates(
     references: Mapping[str, xr.DataArray],
 ) -> tuple[xr.DataArray, xr.DataArray, xr.DataArray, xr.Dataset, dict[str, Any]]:
     facts = data.acquisition
-    if facts.species != channel or not all((facts.domain, facts.start_date, facts.end_date)):
+    if facts.species != channel or not facts.domain or not facts.start_date or not facts.end_date:
         raise ValueError(f"{channel} requires explicit species/domain/window acquisition facts.")
     if not data.split_by_sectors or not data.sites or any(value is None for value in data.site_options.inlet):
         raise ValueError(f"{channel} requires source-resolved data and explicit site/inlet selectors.")
@@ -83,8 +83,8 @@ def _channel_templates(
         selected = json.loads(ds.attrs["surface_transport_provenance"])
         if set(selected.get("sources", {})) != set(mapping):
             raise ValueError(f"{channel}/{site} selected source provenance does not match source_state.")
-        for name, value in (("species", channel), ("site", site), ("inlet", inlet)):
-            if name in ds.attrs and ds.attrs[name] != value:
+        for name, selector in (("species", channel), ("site", site), ("inlet", inlet)):
+            if name in ds.attrs and ds.attrs[name] != selector:
                 raise ValueError(f"{channel}/{site} conflicts with acquisition {name}.")
         if ds.mf.dims != ("time",):
             raise ValueError(f"{channel}/{site} mf requires only the native time axis.")
@@ -129,10 +129,12 @@ def _channel_templates(
         reference = current_reference
         reference_value = current_value
         normalized = ds.assign(
-            bc_reference=current_reference,
-            **{f"bc_anomaly_{direction}": _ppm(
-                ds[f"bc_anomaly_{direction}"], context=f"{channel}/{site}/bc_anomaly_{direction}",
-            ) for direction in "nesw"},
+            {
+                "bc_reference": current_reference,
+                **{f"bc_anomaly_{direction}": _ppm(
+                    ds[f"bc_anomaly_{direction}"], context=f"{channel}/{site}/bc_anomaly_{direction}",
+                ) for direction in "nesw"},
+            }
         )
         projected = {name: native(value) for name, value in
                      _project_centered_boundaries(normalized, basis=None).items()}

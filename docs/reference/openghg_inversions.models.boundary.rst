@@ -4,3 +4,14 @@ openghg\_inversions.models.boundary
 .. automodule:: openghg_inversions.models.boundary
    :members:
    :show-inheritance:
+
+
+
+.. toctree::
+   :maxdepth: 4
+
+   openghg_inversions.models.boundary.additive
+   openghg_inversions.models.boundary.anomaly_scaling
+   openghg_inversions.models.boundary.multiplicative
+   openghg_inversions.models.boundary.operands
+   openghg_inversions.models.boundary.outputs

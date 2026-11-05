@@ -34,12 +34,12 @@ def physical_flux_scaling(trace: xr.DataTree, group: str) -> xr.DataArray:
         chain/draw. No repeated full-state draws are stored in the trace.
     """
     value = _role(trace, "flux_scale", group)
-    frozen = trace["shared_baseline_co2"].to_dataset(inherit=False)
+    frozen = trace.children["shared_baseline_co2"].to_dataset(inherit=False)
     state_dim = frozen.attrs["state_dim"]
     mean = frozen.original_prior_mean.rename({
         name: state_dim if name == "original_state" else name.removeprefix("original_state_")
         for name in set(frozen.original_prior_mean.coords) | set(frozen.original_prior_mean.dims)
-        if name.startswith("original_state")
+        if isinstance(name, str) and name.startswith("original_state")
     })
     full, _ = xr.align(value, mean, join="right", copy=False)
     bare_mean = xr.DataArray(mean.data, dims=mean.dims, coords={state_dim: mean[state_dim]})
@@ -92,9 +92,19 @@ def reconstruct_shared_concentrations(
     sensitivities and full physical scales produce per-source physical effects;
     those effects exclude the removed-mean atmospheric corrections. All products
     preserve native channel rows and the shared posterior draw labels.
+
+    Args:
+        trace: Saved linked trace with selected physical flux
+            scales, atmospheric coefficients and frozen baseline context.
+        prepared:
+            Matching linked handoff with original native sensitivities and baselines.
+
+    Returns:
+        dict[str, xarray.Dataset]: Channel-keyed concentration components and
+            per-source physical contributions, retaining native rows and draw labels.
     """
     validate_shared_baseline_trace(trace, prepared)
-    result = {}
+    result: dict[str, xr.Dataset] = {}
     for group in ("prior", "posterior"):
         if group not in trace.children:
             continue

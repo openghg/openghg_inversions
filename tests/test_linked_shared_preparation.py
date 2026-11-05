@@ -115,6 +115,22 @@ def test_preparation_and_tree_borrow_lazy_transport(native):
     assert isinstance(tree["shared_baseline_o2"].bc_prescribed_centered.data, da.Array)
 
 
+def test_shared_validation_accepts_hashable_extension_names(native):
+    from openghg_inversions.rhime.co2.shared_preparation import _restore_state, _validate_shared_baseline
+
+    prepared = prepare_linked_shared_inputs(native, **options(native, "multiplicative_shrunk"))
+    frozen = {
+        channel: replace(value, data=value.data.assign({42: xr.DataArray(0.)}))
+        for channel, value in prepared.shared_baseline.items()
+    }
+    _validate_shared_baseline(replace(prepared, shared_baseline=frozen), numerical=True)
+    original = frozen["co2"].data.original_prior_mean.assign_coords({43: xr.DataArray(da.from_array(1.))})
+    with Callback(pretask=lambda *a: pytest.fail("state restoration computed an auxiliary coordinate")):
+        restored = _restore_state(original, "original_state", prepared.retained_prior)
+    assert restored.coords[43].data is original.coords[43].data
+    xr.testing.assert_equal(restored.drop_vars(43), prepared.retained_prior.mean)
+
+
 @pytest.mark.parametrize("frequency", [None, "2h"])
 def test_lazy_receptor_metadata_does_not_execute_transport(native, frequency):
     from dask import delayed
