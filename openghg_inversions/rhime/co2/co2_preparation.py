@@ -892,6 +892,43 @@ def prepare_co2_supplied_baseline(
     Baseline uncertainty itself is omitted. All sampled boundary operands are
     removed. Baseline series and native flux stay lazy until the ordinary model or
     serialization boundary; concentration finiteness is checked by the model.
+
+    Args:
+        prepared: Original coherent CO2 preparation with retained bucket geometry
+            and no supplied baseline already installed. Bucket geometry must be eager.
+        baseline: Absolute background total, or a Dataset with one variable per
+            declared constituent, with a matching ``species`` attribute. Each series
+            must have only ``nmeasure``, unique observation labels covering all retained
+            releases, and explicit concentration units convertible to observation units.
+            Additional releases are selected away; Dataset constituents are summed once.
+        inner_states: Eager Boolean mask with the exact complete retained-state index
+            in its existing order, selecting at least one state.
+        inner_fixed_contribution: Complete inner-only affine concentration on
+            ``nmeasure``, with the same label and unit requirements as the baseline.
+            Supply a labelled zero series when absent; exclude it from the baseline.
+        inner_support: Eager Boolean whole-cell mask with exact native-grid indexes,
+            optionally also indexed by source. Must retain cells for every selected state.
+        baseline_site_metadata: Site, inlet and averaging metadata equal to the
+            preparation's metadata after selection of retained sites.
+        species: Must be ``"co2"`` and match the baseline's species attribute.
+        provenance: Nonempty description of the background product and processing.
+        constituents: Unique background constituent names including ``boundary`` and
+            ``exterior_flux``, excluding ``inner_fixed_contribution`` and ``offset``.
+            Dataset variable names must match these names exactly.
+        aggregation_error_policy: Only ``"inherited"`` is supported, as described above.
+
+    Returns:
+        A new inner-domain preparation with the supplied absolute baseline, selected
+        coherent operator and marginal prior, explicit inner affine term, and masked
+        native flux geometry. Original state mappings are retained; sampled boundary
+        operands are removed and aggregation covariance is borrowed unchanged.
+        The input preparation is unchanged.
+
+    Raises:
+        TypeError: If ``prepared`` is not a ``Co2PreparedInputs`` instance.
+        ValueError: If selection masks, retained geometry or concentration units are
+            invalid, labels or site metadata do not match, baseline accounting is incomplete,
+            a baseline is already installed, or the species or policy is unsupported.
     """
     from dask import is_dask_collection
     from ..baseline import _prepare_baseline_series

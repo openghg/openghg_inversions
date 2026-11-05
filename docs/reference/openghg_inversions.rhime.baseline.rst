@@ -12,7 +12,8 @@ prepared-input API implements
 In the single-sector standard recipe, ``o`` is an optional observation offset.
 A separately enabled sampled boundary component is added to the supplied
 background only when explicitly declared to be a correction. Independent
-multisector runs require no observation offset or sampled boundary correction.
+multisector supplied-background runs do not support observation offsets or
+sampled boundary corrections.
 The supplied background already contains the boundary and exterior-flux
 contributions. Adding an ordinary sampled boundary
 again would double-count the background and is rejected.
