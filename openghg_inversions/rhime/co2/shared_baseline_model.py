@@ -66,25 +66,32 @@ def shared_model_payload(prepared: xr.Dataset, *, linked_identity: bool = False)
         names.update({"original_prior_mean", "original_prior_covariance", "sampled_outer", "original_outer_mean"})
         names.update(name for name in prepared if name.startswith("calibration_"))
     payload = prepared[[name for name in prepared if name in names]]
+    row = prepared.attrs.get("native_observation_dim", "nmeasure")
     unused_coordinates = [
         name for name, coord in payload.coords.items()
-        if "nmeasure" in coord.dims and name not in {"nmeasure", "site", "time"} and name not in payload.indexes
+        if row in coord.dims and name not in {row, "site", "time"} and name not in payload.indexes
     ]
     return payload.drop_vars(unused_coordinates)
 
 
-def _add_atmospheric_level(prepared: xr.Dataset) -> tuple[pt.TensorVariable, AffineBlock, tuple]:
-    """One unattributed atmospheric level with response exactly one on every row."""
-    delta = pm.Normal("bc_mean_shift", mu=0.0, sigma=float(prepared.delta_sd))
-    rows = prepared.sizes["nmeasure"]
-    level = pm.Deterministic("mu_bc_mean_shift", pt.ones((rows,)) * delta, dims="nmeasure")
-    design = xr.ones_like(prepared.bc_prescribed_centered).expand_dims(bc_mean=[0], axis=1).assign_attrs(units="1")
+def _add_atmospheric_level(
+    response: xr.DataArray, delta_sd: float, *, prefix: str = "", output_dim: str = "nmeasure",
+) -> tuple[pt.TensorVariable, AffineBlock, tuple]:
+    """One unattributed atmospheric level responding with one on its own rows.
+
+    ``response`` is one on the channel's rows and zero on any other channel's.
+    """
+    delta = pm.Normal(f"{prefix}bc_mean_shift", mu=0.0, sigma=delta_sd)
+    level = pm.Deterministic(
+        f"{prefix}mu_bc_mean_shift", pt.as_tensor_variable(response.values) * delta, dims=output_dim,
+    )
+    design = response.expand_dims(bc_mean=[0], axis=1).assign_attrs(units="1")
     return level, AffineBlock(design, pt.atleast_1d(delta)), (delta,)
 
 
-def _model_inputs(
+def _validate_model_inputs(
     prepared: xr.Dataset, observations: xr.DataArray,
-) -> tuple[xr.Dataset, CorrelatedLognormalPrior]:
+) -> xr.Dataset:
     """Validate materialized bound arrays at their owning recipe boundary."""
     prepared, observations = xr.align(prepared, observations, join="exact", copy=False)
     if observations.attrs.get("units") != prepared.attrs["units"]:
@@ -95,6 +102,14 @@ def _model_inputs(
         if np.issubdtype(v.dtype, np.number)
     ):
         raise ValueError("Shared baseline numerical operands must be finite.")
+    return prepared
+
+
+def _model_inputs(
+    prepared: xr.Dataset, observations: xr.DataArray,
+) -> tuple[xr.Dataset, CorrelatedLognormalPrior]:
+    """Validate bound operands and construct their selected physical prior."""
+    prepared = _validate_model_inputs(prepared, observations)
     prior = CorrelatedLognormalPrior(
         prepared.retained_mean,
         prepared.retained_covariance,
@@ -202,7 +217,9 @@ def build_shared_co2_model(
         prescribed = add_model_data(prepared.bc_prescribed_centered, "bc_prescribed_centered")
         shift = prepared.bc_reference_shift
         terms.append(ConcentrationTerm(prescribed + shift.data, prescribed, shift))
-        level, _, _ = _add_atmospheric_level(prepared)
+        level, _, _ = _add_atmospheric_level(
+            xr.ones_like(prepared.bc_prescribed_centered), float(prepared.delta_sd),
+        )
         terms.append(ConcentrationTerm.absolute(level))
         for source, variable, dimension, coefficient in (
             ("bc", "bc_pattern_centered", "bc_pattern_term", "bc_pattern_standardized"),
@@ -308,7 +325,9 @@ def build_shared_co2_cached_sigma_model(
             fixed_contribution=prepared.bc_prescribed_centered, blocks=(), sampled_rvs=(),
         ))
         zero = xr.zeros_like(prepared.bc_prescribed_centered)
-        level, level_block, level_rvs = _add_atmospheric_level(prepared)
+        level, level_block, level_rvs = _add_atmospheric_level(
+            xr.ones_like(prepared.bc_prescribed_centered), float(prepared.delta_sd),
+        )
         terms.append(AffineConcentrationTerm.absolute(
             level, fixed_contribution=zero, blocks=(level_block,), sampled_rvs=level_rvs,
         ))
