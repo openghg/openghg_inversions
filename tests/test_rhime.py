@@ -45,6 +45,7 @@ from openghg_inversions.basis.basis_functions import (
     BasisFunctions,
 )
 from openghg_inversions.basis.operators import BasisMeta, BasisOperator, BucketBasisOperator
+from openghg_inversions.basis.boundary import nesw_basis
 from openghg_inversions.cli import main
 from openghg_inversions.flux_sanitization import (
     NONFINITE_POLICY_ZERO_FILL,
@@ -2858,7 +2859,7 @@ def test_public_rhime_runners_follow_named_stage_order(
         """Record public sensitivity construction."""
         assert actual is with_errors
         assert actual_basis is basis
-        assert kwargs["bc_basis"] is None
+        assert kwargs["bc_basis"] is nesw_basis
         assert kwargs["use_bc"] is config.data.use_bc
         assert kwargs["multisector"] is multisector
         calls.append("sensitivities")

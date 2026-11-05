@@ -14,6 +14,7 @@ from openghg_inversions.inversion_data import MergedData, SiteOptions
 from openghg_inversions.rhime.params import RhimeConfig
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.basis.boundary import nesw_basis
 
 
 _RUNNER_PATH = Path(__file__).parents[2] / "examples" / "rhime_customisation" / "custom_basis_runner.py"
@@ -254,7 +255,7 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
         assert actual_basis is incompatible_basis
         assert kwargs["flux_sources"] == config.data.flux_sources
         assert kwargs["use_bc"] == config.data.use_bc
-        assert kwargs["bc_basis"] is None
+        assert kwargs["bc_basis"] is nesw_basis
         assert kwargs["multisector"] is False
         raise TypeError("build_sensitivities requires compatible BasisFunctions")
 
