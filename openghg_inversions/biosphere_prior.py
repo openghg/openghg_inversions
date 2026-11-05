@@ -260,10 +260,14 @@ def calibrate_biosphere_prior(
     diagonal = np.abs(np.diag(triangular))
     tolerance = np.finfo(float).eps * max(standardized.shape) * (diagonal.max() if diagonal.size else 0)
     rank = int(np.sum(diagonal > tolerance))
-    c = standardized[pivot[:rank]]
-    residual = gross - c.T @ np.linalg.solve(c @ b @ c.T, c @ b @ gross)
-    direction = b @ residual
-    residual_variance = float(residual @ direction)
+    independent_controls = standardized[pivot[:rank]]
+    # Remove gross exchange predicted by the controls in the prior covariance metric.
+    residual = gross - independent_controls.T @ np.linalg.solve(
+        independent_controls @ b @ independent_controls.T, independent_controls @ b @ gross
+    )
+    covariance_direction = b @ residual
+    # controls @ covariance_direction = 0, so the update preserves all control covariances.
+    residual_variance = float(residual @ covariance_direction)
     gross_variance = float(gross @ b @ gross)
     explained = max(0.0, gross_variance - residual_variance)
     if residual_variance <= np.finfo(float).eps * max(gross_variance, np.finfo(float).tiny) * mean.size:
@@ -272,7 +276,7 @@ def calibrate_biosphere_prior(
                 "Gross exchange has zero residual variance after the controls; no mode to calibrate."
             )
         residual = np.zeros_like(gross)
-        direction = np.zeros_like(gross)
+        covariance_direction = np.zeros_like(gross)
         residual_variance = 0.0
         explained = gross_variance
 
@@ -312,7 +316,9 @@ def calibrate_biosphere_prior(
         changed = (
             b.copy()
             if factor == 1
-            else b + (np.square(factor) - 1) * np.outer(direction, direction) / residual_variance
+            else b + (np.square(factor) - 1) * np.outer(
+                covariance_direction, covariance_direction
+            ) / residual_variance
         )
     if not np.isfinite(changed).all():
         raise ValueError("Requested uncertainty produces nonfinite arithmetic covariance.")
