@@ -131,7 +131,9 @@ def add_anomalies(
     ``bc_anomaly_latent``, the state anomalies are ``bc_anomaly = B z`` and
     the block design is ``M B``. Without one, ``bc_anomaly`` is sampled
     directly on the states and the block design is ``M``; no basis or extra
-    latent is registered. Must be called inside a registered model.
+    latent is registered. Must be called inside a registered model, with a
+    positive ``scale`` and at least one coefficient; :class:`~openghg_inversions.models.boundary.AdditiveBoundary`
+    calls it only when ``has_anomalies`` establishes both.
 
     Args:
         mass: Materialized dimensionless ``M`` on ``(output_dim, bc_region)``.
@@ -146,13 +148,7 @@ def add_anomalies(
     Returns:
         State anomalies, their response ``mu_bc_anomaly``, the affine block
         and the sampled coefficients.
-
-    Raises:
-        ValueError: If ``scale`` is not positive or there is no coefficient
-            to sample.
     """
-    if not scale > 0 or (mass.sizes["bc_region"] if basis is None else basis.sizes["bc_contrast"]) == 0:
-        raise ValueError("Anomalies need a positive scale and at least one coefficient.")
     if basis is None:
         state_dim = str(component_coords(mass, owner, observation_dim=output_dim).dims[1])
         state = pm.Normal(f"{prefix}bc_anomaly", mu=0.0, sigma=scale, dims=state_dim)
