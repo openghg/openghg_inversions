@@ -23,6 +23,7 @@ from ._provenance import footprint_metadata, selected_provenance
 from ._units import mole_fraction_unit_scale
 from ._site_options import is_surface_platform
 from ._surface_schema import validate_surface_inputs
+from ._boundary import BoundaryTemporalPolicy, select_boundary_fields
 from ._boundary import baseline_reference_sensitivities as _reference_sensitivities
 
 
@@ -223,6 +224,7 @@ def prepare_surface_site(
     boundary_reference: float | None = None,
     boundary_reference_units: str | None = None,
     boundary_mass_tolerance: float | None = None,
+    boundary_temporal_policy: BoundaryTemporalPolicy | None = None,
     output_units: str | None = None,
     observation_variable: str | None = None,
 ) -> xr.Dataset:
@@ -251,8 +253,9 @@ def prepare_surface_site(
             filter fields and boundary transport. Source responses must preserve
             the resulting observation axis and spatial grid.
         boundary_data: Optional ``vmr_n/e/s/w`` curtains on ``height``, ``lon``
-            (north/south) or ``lat`` (east/west), interval-start ``time``, with
-            ``time_period`` metadata and mole-fraction units. Requires matching
+            (north/south) or ``lat`` (east/west), mole-fraction units and temporal
+            metadata for the selected policy (by default interval-start ``time``
+            and ``time_period``). Requires matching
             ``particle_locations_n/e/s/w`` in site transport.
         boundary_representation: Ordinary absolute contributions by default.
             Explicit ``centered`` retains anomaly/mass/reference operands for
@@ -264,6 +267,9 @@ def prepare_surface_site(
         boundary_mass_tolerance: Required with centered boundary data; allowed absolute
             deviation of total nonnegative curtain mass from one before joint
             normalization.
+        boundary_temporal_policy: Explicit native-field hold, point-sample nearest/linear
+            or interval-mean containment contract. None retains archived hold behavior.
+            Interval bounds must be eager datetime metadata for supplied inputs.
         output_units: Concentration output units; defaults to observation units.
         observation_variable: Explicit primary mole-fraction variable for supplied
             observations. Error/count aliases still use ``mf`` or the species prefix.
@@ -294,6 +300,8 @@ def prepare_surface_site(
     """
     if species.lower() not in {"co2", "o2"}:
         raise ValueError("Surface preparation currently supports only CO2 and O2.")
+    if boundary_temporal_policy is not None and boundary_data is None:
+        raise ValueError("Boundary temporal policy requires boundary_data.")
     if boundary_representation not in {"ordinary", "centered"}:
         raise ValueError("boundary_representation must be 'ordinary' or 'centered'.")
     if boundary_representation == "centered" and boundary_data is None:
@@ -355,6 +363,7 @@ def prepare_surface_site(
         species=species, transport=transport, boundary_view=boundary_view,
         boundary_representation=boundary_representation, boundary_reference=boundary_reference,
         boundary_reference_units=boundary_reference_units, boundary_mass_tolerance=boundary_mass_tolerance,
+        boundary_temporal_policy=boundary_temporal_policy,
     )
     return _attach_surface_provenance(
         site, site_footprint=site_footprint, source_footprints=source_footprints,
@@ -369,6 +378,7 @@ def _surface_site_responses(
     *, species: str, transport: Mapping[str, TransportMode], boundary_view: xr.Dataset | None,
     boundary_representation: Literal["ordinary", "centered"], boundary_reference: float | None,
     boundary_reference_units: str | None, boundary_mass_tolerance: float | None,
+    boundary_temporal_policy: BoundaryTemporalPolicy | None = None,
 ) -> xr.Dataset:
     """Form native source products and boundary operands before observation averaging."""
     align, integrated, resolved = _surface_operations()
@@ -423,9 +433,24 @@ def _surface_site_responses(
     site["mf_mod"] = site.fp_x_flux.sum(["lat", "lon"], skipna=False, keep_attrs=True)
     if boundary_view is not None:
         # Boundary operands use the same retained native releases as source products.
+        policy = boundary_temporal_policy or BoundaryTemporalPolicy()
+        site.attrs["boundary_temporal_policy"] = policy.method
+        site.attrs["boundary_temporal_policy_revision"] = "native-fields-v1"
+        if policy.method == "nearest":
+            site.attrs["boundary_temporal_nearest_tie"] = "later"
+        if policy.input_semantics is not None:
+            site.attrs["boundary_input_semantics"] = policy.input_semantics
+        if policy.max_gap is not None:
+            site.attrs["boundary_temporal_max_gap"] = str(pd.Timedelta(policy.max_gap))
+        if policy.bounds is not None:
+            site.attrs["boundary_temporal_bounds"] = policy.bounds
+        if policy.retrieval_padding is not None:
+            site.attrs["boundary_retrieval_padding"] = str(pd.Timedelta(policy.retrieval_padding))
         if boundary_representation == "ordinary":
             from openghg.analyse._modelled_baseline import baseline_sensitivities
 
+            if policy.method != "hold":
+                boundary_view = select_boundary_fields(boundary_view, native_site_fp.time, policy=policy)
             absolute_operands = baseline_sensitivities(
                 boundary_view, native_site_fp, species=species, allow_climatology=False
             )
@@ -448,6 +473,7 @@ def _surface_site_responses(
                 boundary_view, native_site_fp, species=species,
                 reference=boundary_reference, reference_units=boundary_reference_units,
                 mass_tolerance=boundary_mass_tolerance,
+                temporal_policy=boundary_temporal_policy,
             )
             reference = operands.bc_reference
             operands = observation_means(operands.drop_vars("bc_reference")).assign(bc_reference=reference)
