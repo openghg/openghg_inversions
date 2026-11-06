@@ -2,7 +2,9 @@
 
 The boundary contribution is ``H b`` for dimensionless scaling states ``b``.
 With absolute transport ``H`` (``H_bc``) the graph evaluates that product
-directly. With centered transport ``H = A + c M`` the likelihood instead uses
+directly. With centered transport ``H = A + c M``
+(:class:`~.operands.CenteredOperands`; see
+:doc:`/usage/centered_boundary_conditions`) the likelihood instead uses
 ``A b + c M (b - 1)`` against observations shifted by ``c M 1``, which keeps
 small anomalies after cancellation; the absolute output still adds the shift.
 """
@@ -24,7 +26,12 @@ from openghg_inversions.models.components import AffineBlock, AffineConcentratio
 from openghg_inversions.models.coords import add_model_data, component_coords
 from openghg_inversions.models.state_activity import StateActivity, prepare_linear_sensitivity, resolve_state_activity
 
-from .operands import CenteredOperands, centered_boundary_expression, materialized_reference_shift
+from .operands import (
+    CenteredOperands,
+    centered_boundary_expression,
+    check_bound_transport,
+    materialized_reference_shift,
+)
 from .outputs import BoundaryOutputs
 
 
@@ -116,11 +123,26 @@ class MultiplicativeBoundary:
             ``(observation, state)``. The arrays are borrowed and may be
             Dask-backed. Materialize them jointly with the other model inputs
             and the choice prior before :meth:`add`; rows may be padded or
-            subset with ``dataclasses.replace``.
+            subset with ``dataclasses.replace``, keeping that layout.
+
+    Raises:
+        ValueError: On construction, if ``data`` lacks a variable or does not
+            have that layout. Only dimensions are checked.
     """
 
     choice: MultiplicativeChoice
     data: xr.Dataset
+
+    def __post_init__(self) -> None:
+        if self.centered:
+            check_bound_transport(self.data, ("H_bc_anomaly", "H_bc_mass"), state_dim="bc_region")
+        else:
+            check_bound_transport(self.data, ("H_bc",))
+
+    @property
+    def observation_dim(self) -> str:
+        """Observation dimension of the bound transport."""
+        return str(self.data["H_bc_anomaly" if self.centered else "H_bc"].dims[0])
 
     @property
     def centered(self) -> bool:
@@ -158,23 +180,27 @@ class MultiplicativeBoundary:
             has no affine blocks or sampled variables.
 
         Raises:
-            ValueError: If ``data`` is still lazy, materialized centered
+            ValueError: If ``output_dim`` is not the bound observation
+                dimension, ``data`` is still lazy, materialized centered
                 operands are non-finite or have invalid mass, the reference
                 shift is non-finite, or the activity policy cannot be resolved
                 against the states.
             RuntimeError: If the model lacks the coordinate registry.
         """
+        if output_dim != self.observation_dim:
+            raise ValueError(f"output_dim {output_dim!r} is not the bound observation dimension {self.observation_dim!r}.")
         if any(is_dask_collection(value) for value in self.data.data_vars.values()):
             raise ValueError("Materialize boundary data jointly with model inputs before add().")
+
         shift: xr.DataArray | None = None
         if self.centered:
-            anomaly = self.data.H_bc_anomaly.transpose(output_dim, "bc_region")
-            mass = self.data.H_bc_mass.transpose(output_dim, "bc_region")
+            anomaly = self.data.H_bc_anomaly
+            mass = self.data.H_bc_mass
             reference = self.data.bc_reference
             shift = materialized_reference_shift(anomaly, mass, reference).rename(f"{prefix}bc_reference_shift")
             design = (anomaly + reference * mass).assign_attrs(anomaly.attrs)
         else:
-            design = self.data.H_bc.transpose(output_dim, ...)
+            design = self.data.H_bc
         prepared = prepare_linear_sensitivity(design, output_dim=output_dim)
         activity = resolve_state_activity(prepared.removed, self.choice.activity)
         vector = add_state_vector(activity, prior_args=dict(self.choice.prior), var_name=f"{prefix}bc", coordinate_owner=owner)
@@ -228,7 +254,7 @@ class MultiplicativeBoundary:
             concentration = self.data.bc_reference.attrs["units"]
             roles.update(boundary_anomaly="H_bc_anomaly", boundary_mass="H_bc_mass", boundary_reference="bc_reference")
             units.update({name: concentration for name in (
-                "mu_bc", "H_bc_anomaly", "bc_reference", "bc_reference_shift", "boundary_reference_shift",
+                "mu_bc", "H_bc_anomaly", "bc_reference",
             )})
             units["H_bc_mass"] = "1"
             metadata["boundary_representation"] = "centered-v1"

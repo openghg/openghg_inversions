@@ -196,7 +196,7 @@ def _add_co2_o2_baseline_components(
         if bound is not None:
             native_dim = str(sensitivity.dims[0])
             padded = xr.Dataset({
-                name: _pad_channel_design(value.transpose(native_dim, ...), observations, channel)
+                name: _pad_channel_design(value, observations, channel)
                 if native_dim in value.dims else value
                 for name, value in bound.data.data_vars.items()
             })

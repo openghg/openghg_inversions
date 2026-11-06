@@ -1,7 +1,8 @@
 """Additive boundary corrections with weighted-centred anomalies.
 
 The additive boundary replaces fitted multiplicative scales. With centered
-transport ``A``, ``M`` and ``c`` its absolute contribution is
+transport ``A``, ``M`` and ``c`` (:class:`~.operands.CenteredOperands`; see
+:doc:`/usage/centered_boundary_conditions`) its absolute contribution is
 ``A 1 + c M 1 + M (m 1 + d)``: a scalar common mean shift ``m`` plus anomalies
 ``d`` with zero weighted mean, both in observation concentration units. The
 likelihood omits the fixed ``c M 1``. Anomalies use the non-redundant normal
@@ -31,7 +32,7 @@ from openghg_inversions.models.components import AffineBlock, AffineConcentratio
 from openghg_inversions.models.coords import add_model_data, component_coords
 from openghg_inversions.models.priors import parse_prior
 
-from .operands import CenteredOperands, materialized_reference_shift
+from .operands import CenteredOperands, check_bound_transport, materialized_reference_shift
 from .outputs import BoundaryOutputs
 
 
@@ -127,11 +128,25 @@ class AdditiveBoundary:
             ``bc_centering_weights`` on ``bc_region``. The arrays are borrowed
             and may be Dask-backed. Materialize them jointly with the other
             model inputs before :meth:`add`; rows may be padded or subset with
-            ``dataclasses.replace``.
+            ``dataclasses.replace``, keeping that layout.
+
+    Raises:
+        ValueError: On construction, if ``data`` lacks a variable or does not
+            have that layout. Only dimensions are checked.
     """
 
     choice: AdditiveChoice
     data: xr.Dataset
+
+    def __post_init__(self) -> None:
+        check_bound_transport(self.data, ("H_bc_anomaly", "H_bc_mass"), state_dim="bc_region")
+        if "bc_centering_weights" not in self.data or self.data.bc_centering_weights.dims != ("bc_region",):
+            raise ValueError("Bound additive data needs bc_centering_weights on bc_region; bind the choice again.")
+
+    @property
+    def observation_dim(self) -> str:
+        """Observation dimension of the bound transport."""
+        return str(self.data.H_bc_anomaly.dims[0])
 
     @property
     def has_anomalies(self) -> bool:
@@ -166,14 +181,19 @@ class AdditiveBoundary:
             latent and anomaly coordinates.
 
         Raises:
-            ValueError: If ``data`` is still lazy, materialized operands or
+            ValueError: If ``output_dim`` is not the bound observation
+                dimension, ``data`` is still lazy, materialized operands or
                 weights are invalid, or the mean prior is not scalar.
             RuntimeError: If the model lacks the coordinate registry.
         """
+        if output_dim != self.observation_dim:
+            raise ValueError(f"output_dim {output_dim!r} is not the bound observation dimension {self.observation_dim!r}.")
         if any(is_dask_collection(value) for value in self.data.data_vars.values()):
             raise ValueError("Materialize boundary data jointly with model inputs before add().")
-        anomaly = self.data.H_bc_anomaly.transpose(output_dim, "bc_region")
-        mass = self.data.H_bc_mass.transpose(output_dim, "bc_region")
+
+        # Values become checkable only after joint materialization.
+        anomaly = self.data.H_bc_anomaly
+        mass = self.data.H_bc_mass
         reference = self.data.bc_reference
         weights = self.data.bc_centering_weights
         reference_shift = materialized_reference_shift(anomaly, mass, reference).rename(f"{prefix}bc_reference_shift")
@@ -181,6 +201,8 @@ class AdditiveBoundary:
             raise ValueError("bc_centering_weights must be finite and strictly positive.")
         weights = weights / weights.max()
         weights = (weights / weights.sum()).assign_attrs(units="1")
+
+        # Weighted-centred contrast basis (Q - 1 wᵀQ) for a Helmert basis Q.
         count = weights.size
         q = helmert(count, full=False).T if self.has_anomalies else np.empty((count, 0))
         basis = xr.DataArray(
@@ -198,6 +220,8 @@ class AdditiveBoundary:
         register(weights, "bc_centering_weights")
         register(xr.DataArray(self.choice.anomaly_scale), "bc_anomaly_scale")
         state_dim = str(component_coords(weights, owner).dims[0])
+
+        # Sampled mean shift and, with anomalies, contrast coordinates.
         mean = parse_prior(f"{prefix}bc_mean_shift", dict(self.choice.mean_prior))
         if mean.ndim != 0:
             raise ValueError("bc_mean_shift_prior must define one scalar over the inversion window.")
@@ -222,6 +246,8 @@ class AdditiveBoundary:
         else:
             corrections = pt.zeros((count,))
         pm.Deterministic(f"{prefix}bc_correction", mean + corrections, dims=state_dim)
+
+        # Concentration responses: absolute output and centered likelihood term.
         absolute_reference = register(
             (anomaly.sum("bc_region") + reference_shift).assign_attrs(anomaly.attrs), "mu_bc_reference",
         )
@@ -268,8 +294,8 @@ class AdditiveBoundary:
             "boundary_mean_shift_concentration": "mu_bc_mean_shift",
         }
         units = {name: concentration for name in (
-            "mu_bc", "H_bc_anomaly", "bc_reference", "bc_reference_shift", "boundary_reference_shift",
-            "bc_mean_shift", "bc_anomaly_scale", "bc_correction", "mu_bc_reference", "mu_bc_mean_shift",
+            "mu_bc", "H_bc_anomaly", "bc_reference", "bc_mean_shift", "bc_anomaly_scale", "bc_correction",
+            "mu_bc_reference", "mu_bc_mean_shift",
         )}
         units.update(H_bc_mass="1", bc_centering_weights="1")
         prior = self.choice.mean_prior

@@ -130,6 +130,7 @@ def annotate_co2_trace(
         roles_by_variable[name].extend(scientific_roles)
 
     concentration_variables = {
+        "boundary_reference_shift",
         "error",
         "fixed_model_mismatch",
         "fixed_prior_contribution",
