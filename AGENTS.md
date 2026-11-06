@@ -50,6 +50,19 @@ constructed intermediates. Prefer ordinary xarray transpose/alignment patterns
 and Pint unit conversion to repeated custom runtime assertions; see
 `docs/development/validation_and_xarray.rst`.
 
+## Docstrings
+
+All public functions, classes, methods, modules, and other public objects must
+have full Google-style docstrings. Private functions, classes, methods, modules,
+and other private objects must have at least a one-line docstring. Use a full
+Google-style docstring for private objects when they are complex, such as when
+the meaning of arguments is not obvious or the function or logic is complex.
+Accurate, visible inherited documentation is sufficient for unchanged contracts;
+document constructor inputs in one place rather than duplicating them in the
+class and `__init__`. Full docstrings should describe the useful contract with
+the applicable Google-style sections, not a fixed template or repetition of
+information already clear from annotations.
+
 ## Testing
 
 Keep the worktree-local `uv` environment lean. A plain `uv sync` installs the

@@ -45,6 +45,7 @@ from openghg_inversions.basis.basis_functions import (
     BasisFunctions,
 )
 from openghg_inversions.basis.operators import BasisMeta, BasisOperator, BucketBasisOperator
+from openghg_inversions.basis.boundary import nesw_basis
 from openghg_inversions.cli import main
 from openghg_inversions.flux_sanitization import (
     NONFINITE_POLICY_ZERO_FILL,
@@ -2867,7 +2868,7 @@ def test_public_rhime_runners_follow_named_stage_order(
         """Record public sensitivity construction."""
         assert actual is with_errors
         assert actual_basis is basis
-        assert kwargs["bc_basis"] is None
+        assert kwargs["bc_basis"] is nesw_basis
         assert kwargs["use_bc"] is config.data.use_bc
         assert kwargs["multisector"] is multisector
         calls.append("sensitivities")
@@ -4453,6 +4454,74 @@ def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
     assert calls == [(result, registry, ["posterior", "prior", "posterior_predictive"])]
 
 
+@pytest.mark.parametrize("pymc_checks", [None, True])
+def test_rhime_sampler_diagnoses_free_variables_after_restoring_coords(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    pymc_checks: bool | None,
+) -> None:
+    """Automatic diagnostics use latent names and restored scientific labels."""
+    trace = make_trace(
+        posterior=xr.Dataset(
+            {"x": (("chain", "draw", "region"), np.ones((2, 4, 2)))},
+            coords={"chain": range(2), "draw": range(4), "region": range(2)},
+        ),
+        sample_stats=xr.Dataset(
+            {"diverging": (("chain", "draw"), np.zeros((2, 4), dtype=bool))}
+        ),
+    )
+    seen: dict[str, Any] = {}
+    convergence = {
+        "status": "pass",
+        "measured_values": {"assessed_variables": ["x"], "chains": 2, "draws_per_chain": 4},
+        "thresholds": {"policy": "arviz.diagnose defaults"},
+        "message": "ArviZ detected no sampling problems.",
+    }
+
+    def capture_diagnostics(trace: xr.DataTree, *, variable_names: list[str]):
+        seen["region"] = trace["posterior"].region.values.tolist()
+        seen["variable_names"] = variable_names
+        return xr.Dataset(), convergence
+
+    def sample(**kwargs):
+        seen["pymc_checks"] = kwargs["compute_convergence_checks"]
+        return trace
+
+    monkeypatch.setattr(inference_sampling.pm, "sample", sample)
+    monkeypatch.setattr(inference_sampling, "posterior_convergence_check", capture_diagnostics)
+    monkeypatch.setattr(inference_sampling, "log_timing", lambda *args, **kwargs: None)
+    with pm.Model(coords={"region": range(2)}) as model:
+        pm.Normal("x", dims="region")
+    models.attach_coord_registry(
+        model,
+        models.CoordRegistry(original_coords={"region": np.array(["north", "south"])}),
+    )
+
+    result = RhimeSampler(
+        draws=4,
+        chains=2,
+        tune=0,
+        sample_prior_predictive=False,
+        sample_posterior_predictive=False,
+        sample_kwargs={} if pymc_checks is None else {"compute_convergence_checks": pymc_checks},
+    ).sample(model)
+
+    assert seen == {
+        "region": ["north", "south"], "variable_names": ["x"],
+        "pymc_checks": False if pymc_checks is None else pymc_checks,
+    }
+    assert json.loads(result.attrs["sampler_convergence_variables"]) == ["x"]
+    assert json.loads(result.attrs["sampler_convergence"]) == convergence
+
+    from openghg_inversions.serialization import load_trace, save_trace
+
+    posterior_path = tmp_path / "posterior.nc"
+    save_trace(result, posterior_path)
+    restored = load_trace(posterior_path)
+    assert json.loads(restored.attrs["sampler_convergence"]) == convergence
+    assert json.loads(restored.attrs["sampler_convergence_variables"]) == ["x"]
+
+
 @pytest.mark.parametrize("prior", [-1, 1.5, "5", None])
 def test_rhime_sampler_rejects_invalid_prior_counts_before_sampling(
     monkeypatch: pytest.MonkeyPatch,
@@ -4507,7 +4576,12 @@ def test_rhime_sampler_predictive_kwargs_override_names_before_role_resolution(
     expected: list[str],
 ) -> None:
     seen: dict[str, Any] = {}
-    trace = make_trace(posterior=xr.Dataset())
+    trace = make_trace(
+        posterior=xr.Dataset(
+            {"mu": (("chain", "draw"), np.random.default_rng(42).normal(size=(2, 20)))},
+            coords={"chain": range(2), "draw": range(20)},
+        )
+    )
     monkeypatch.setattr(inference_sampling.pm, "sample", lambda **kwargs: trace)
 
     def fake_predictive(trace: xr.DataTree, **kwargs: Any) -> xr.DataTree:

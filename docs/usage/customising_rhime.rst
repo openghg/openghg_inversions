@@ -137,7 +137,7 @@ preserves the existing basis value and its original source provenance. The
 requested export path belongs to configuration, not a rewritten scientific value. ``prepare_basis``
 accepts no export destination and performs no export write. Sensitivity construction
 and input assembly consume the returned ``BasisFunctions``. Pass ``bc_basis`` to
-``build_sensitivities``; ``None`` uses NESW without any BC basis-file I/O.
+``build_sensitivities``; its default ``nesw_basis`` builder needs no BC basis-file I/O.
 Historical names,
 case/glob discovery and filename construction belong only to the temporary
 HBMCMC entry route described in :doc:`rhime_configuration`. Modern custom runners

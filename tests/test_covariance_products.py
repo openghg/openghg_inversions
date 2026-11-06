@@ -740,7 +740,7 @@ def test_projection_strategy_restriction_must_be_real() -> None:
         _project(covariance, basis_operator, h, strategy=ComplexStrategy())
 
 
-def test_redundant_bucket_states_are_rejected() -> None:
+def test_redundant_bucket_states_are_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     """Linearly dependent retained coordinates fail instead of being pseudoinverted."""
     covariance, basis_operator, _, _ = _problem()
     prolongation = to_dense(basis_operator.basis_matrix).compute()
@@ -752,6 +752,11 @@ def test_redundant_bucket_states_are_rejected() -> None:
         dim=xr.IndexVariable("state", ["west", "west-copy"]),
     ).transpose("lat", "lon", "state")
 
+    def unexpected_cholesky(*args, **kwargs):
+        """Ensure rejection does not depend on the Cholesky implementation."""
+        pytest.fail("A redundant Gram matrix must be rejected before Cholesky")
+
+    monkeypatch.setattr("openghg_inversions.basis.covariance_products.cho_factor", unexpected_cholesky)
     with pytest.raises(ValueError, match="positive definite|redundant|rank"):
         PreserveBucketProlongation().projection(
             covariance,
