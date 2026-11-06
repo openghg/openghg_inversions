@@ -590,6 +590,14 @@ it protects a scientific policy or gives a materially better boundary failure.</
 </section>
 <section id="keep-configuration-with-its-scientific-owner">
 <h2>Keep configuration with its scientific owner<a class="headerlink" href="#keep-configuration-with-its-scientific-owner" title="Link to this heading">#</a></h2>
+<p>Treat configuration as a description of scientific choices. Group those
+choices by the component that owns them: for example, boundary family,
+reference, periods, and physical widths; flux and prior choices and their
+calibration; or offsets and likelihood choices. Resolve and normalize each
+choice once at the boundary that owns it, such as configuration parsing,
+preparation, or model construction. Later stages should consume explicitly
+resolved values without implicitly reselecting a model or recalibrating its
+inputs.</p>
 <p>Runtime inputs and user choices are different interfaces. Function signatures
 describe observations, sensitivities, priors, and existing model terms.
 Configuration groups choices by the component that owns their meaning. For
