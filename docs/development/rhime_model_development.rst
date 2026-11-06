@@ -216,15 +216,10 @@ equations. Offsets remain separate components; the offset-confounding warning
 inspects every affine block for a constant unit response, so it needs no
 knowledge of boundary families.
 
-The additive recipe composes its mean shift, selected anomaly formulation and
-complete boundary concentration in that order. The ordinary functions in
-``models/boundary/additive_anomalies.py`` keep weighted centering, per-period
-curtain contrasts and independent state anomalies explicit. The contrast
-formulations share sampling of ``B z`` after constructing their different
-bases; independent anomalies sample states directly. Their basis functions
-also define the observation-space factors used before graph construction.
-Pass the current bound arrays into these functions: linked recipes may replace
-or pad rows, and callable closures must not retain an earlier transport array.
+The additive recipe composes its mean shift, anomalies and complete boundary
+concentration in that order. Each anomaly structure is defined once, by its
+contrast basis; the observation-space factor used before graph construction
+and the sampled graph both derive from that basis, so they cannot disagree.
 
 The scalar ``bc_anomaly_scale`` saved in model data records the resolved prior
 width for trace reconstruction; the distributions use the resolved choice

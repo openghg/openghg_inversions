@@ -201,6 +201,31 @@ def test_weighted_factor_and_graph_share_the_centered_design(weight_scale):
     np.testing.assert_allclose(factor.compute().values, 0.3 * design, rtol=0, atol=1e-15)
 
 
+@pytest.mark.parametrize(
+    ("values", "lazy", "message"),
+    [
+        ([[1., 2., 3.], [4., 0., 6.]], False, "finite and strictly positive"),
+        ([[1., 2., np.inf], [4., 5., 6.]], False, "finite and strictly positive"),
+        ([[1., 2., 3.], [4., 5., 6.]], True, "Materialize bc_centering_weights"),
+    ],
+)
+def test_weighted_factor_rejects_invalid_or_lazy_weights(values, lazy, message):
+    """The lazy factor validates weights exactly as model construction does."""
+    obs = _inputs().mf
+    periods = {"frequency": "2h", "anchor_time": "2021-01-01"}
+    transport = _operands(obs, normalised=False)
+    states = transport.bind(obs, **periods).indexes["bc_region"]
+    weights = xr.DataArray(
+        np.array(values), dims=("bc_curtain", "bc_period"),
+        coords={"bc_curtain": states.levels[0], "bc_period": states.levels[1]},
+    )
+    if lazy:
+        weights = weights.chunk()
+    bound = AdditiveChoice(_normal(0.2), 0.3, **periods).bind(obs, replace(transport, weights=weights))
+    with pytest.raises(ValueError, match=message):
+        bound.anomaly_factor()
+
+
 def test_reference_reexpresses_prescribed_boundary_but_changes_scaling_covariance():
     obs = _inputs().mf
     transport = _operands(obs, 209300.0, normalised=False)

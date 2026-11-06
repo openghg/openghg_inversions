@@ -11,7 +11,6 @@ shift rather than a constant.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
@@ -24,26 +23,7 @@ from openghg_inversions.models.components import AffineBlock, get_model_latent
 from openghg_inversions.models.coords import add_model_data, component_coords
 from openghg_inversions.models.priors import parse_prior
 
-from .outputs import BoundaryOutputs
-
-
-@dataclass(frozen=True)
-class BoundaryMeanShift:
-    """Graph pieces of one transported boundary mean shift.
-
-    Attributes:
-        state: Shift on every bound boundary state, in concentration units.
-        signal: Observation response ``M m``, registered as ``mu_bc_mean_shift``.
-        block: Affine block whose design is the response of ``M`` to each
-            mean coefficient (``M 1``, or ``M`` summed over each period's
-            states) and whose coefficients are the sampled shifts.
-        latent: Sampled variable behind the shift, after any reparameterization.
-    """
-
-    state: TensorVariable
-    signal: TensorVariable
-    block: AffineBlock
-    latent: TensorVariable
+from .outputs import BoundaryCorrection, BoundaryOutputs
 
 
 def add_boundary_mean_shift(
@@ -55,7 +35,7 @@ def add_boundary_mean_shift(
     output_dim: str,
     prefix: str,
     owner: str | None,
-) -> BoundaryMeanShift:
+) -> BoundaryCorrection:
     """Add a transported boundary mean shift to the current model.
 
     Args:
@@ -74,7 +54,9 @@ def add_boundary_mean_shift(
         owner: Namespace for component-owned coordinates.
 
     Returns:
-        The state shift, observation response, affine block and sampled latent.
+        The state shift, its response ``mu_bc_mean_shift``, an affine block
+        whose design is ``M 1`` (or ``M`` summed over each period's states)
+        and the sampled shift latent.
 
     Raises:
         ValueError: If a whole-window prior does not define one scalar.
@@ -104,7 +86,7 @@ def add_boundary_mean_shift(
         coefficients = pt.atleast_1d(mean)
     signal = pm.Deterministic(f"{prefix}mu_bc_mean_shift", pt.dot(mass_data, state), dims=output_dim)
     response = xr.dot(mass, indicator, dim="bc_region").assign_attrs(units="1")
-    return BoundaryMeanShift(
+    return BoundaryCorrection(
         state, signal, AffineBlock(response, coefficients), get_model_latent(mean, f"{prefix}bc_mean_shift"),
     )
 
@@ -132,4 +114,4 @@ def mean_shift_outputs(prior: Mapping[str, Any] | None, *, by_period: bool, conc
     return BoundaryOutputs(roles, units, {"boundary_mean": "by_period" if by_period else "whole_window"})
 
 
-__all__ = ["BoundaryMeanShift", "add_boundary_mean_shift", "mean_shift_outputs"]
+__all__ = ["add_boundary_mean_shift", "mean_shift_outputs"]
