@@ -15,12 +15,18 @@ Maintained guidance is [validation and xarray](../development/validation_and_xar
 [numerical array ownership](../development/numerical_array_ownership.rst) and
 [RHIME model development](../development/rhime_model_development.rst).
 
-The #905 comparison refresh integrates `devel` at `80782dd41b3e3ee36c7338115af7e0ba6195edf3`.
+The #905 comparison refresh integrates `devel` at `eaa5d7c23` (6 November 2026).
 The baseline and issue map below remain dated research. Current public handoffs
 are `MergedData` and `PreparedInputs`; retired names are not restored. Native
 flux validation preserves the explicit surface route's compatible-unit conversion
 in `resolve_runtime_flux`, while the legacy route keeps its canonical-scale
 requirement. This integration does not adopt the prototype for production.
+
+[Issue #1031](https://github.com/openghg/openghg_inversions/issues/1031) now
+tracks adoption of schema-bearing static xarray contracts, starting with
+centered boundary data. Its specification, producer and consumer work are
+scoped in #1032, #1033 and #1034. This prototype supplies the schema-library
+evaluation; it does not yet implement those typed contracts.
 
 ## Landed baseline
 
