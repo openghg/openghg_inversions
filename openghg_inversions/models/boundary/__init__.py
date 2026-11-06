@@ -2,11 +2,11 @@
 
 A boundary family is two small records in its own module:
 
-* a data-free *choice* (:class:`MultiplicativeChoice`, :class:`AdditiveChoice`,
-  :class:`AnomalyScalingChoice`) holding the resolved scientific options:
-  priors, activity, anomaly structure and scale, reference and the boundary
-  period calendar. Configuration adapters produce choices; they
-  never touch arrays.
+* a *choice* (:class:`MultiplicativeChoice`, :class:`AdditiveChoice`,
+  :class:`AnomalyScalingChoice`): the prior specification before binding,
+  holding the resolved scientific options (priors, activity, anomaly
+  structure and scale, reference and the boundary period calendar) without
+  arrays. Configuration adapters produce choices; they never touch arrays.
 * a *bound boundary* (:class:`MultiplicativeBoundary`, :class:`AdditiveBoundary`,
   :class:`AnomalyScalingBoundary`) returned by ``choice.bind(observations, transport)``. It pairs the choice
   with borrowed labelled transport aligned to one fit's observation rows and

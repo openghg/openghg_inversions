@@ -178,8 +178,9 @@ it protects a scientific policy or gives a materially better boundary failure.
 Boundary component extension check
 ----------------------------------
 
-A boundary family is a data-free *choice* and a *bound* record, both small
-frozen dataclasses in one module under ``models/boundary/``. The configuration
+A boundary family is a *choice*, the prior specification before binding, and a
+*bound* record, both small frozen dataclasses in one module under
+``models/boundary/``. The configuration
 adapter resolves user options into a choice (``MultiplicativeChoice`` or
 ``AdditiveChoice``); it never touches arrays. Runners take that one choice (a
 channel mapping for linked recipes) and call ``choice.bind(observations,
