@@ -152,9 +152,10 @@ class MultiplicativeBoundary:
             The boundary term: ``output`` is the absolute boundary
             concentration ``mu_bc``; when centered, the likelihood
             contribution omits the reference shift ``c M 1``; the fixed
-            contribution and one affine block over the active states follow
-            the representation above; the sampled variable is the state
-            vector's latent.
+            contribution follows the representation above. When active states
+            exist, the term includes one affine block over those states and
+            the state vector's latent as its sampled variable. Otherwise it
+            has no affine blocks or sampled variables.
 
         Raises:
             ValueError: If ``data`` is still lazy, materialized centered
