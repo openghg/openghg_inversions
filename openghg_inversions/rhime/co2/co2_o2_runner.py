@@ -15,7 +15,7 @@ from dask import compute as dask_compute
 from openghg_inversions.array_ops import select_gathered_data_array, to_dense_tree
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.models import StateActivity
-from openghg_inversions.models.boundary import Boundary, BoundaryChoice, CenteredOperands
+from openghg_inversions.models.boundary import Boundary, BoundaryChoice, CenteredOperands, MultiplicativeChoice
 from openghg_inversions.models.priors import PriorArgs, prior_records
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
@@ -205,7 +205,7 @@ def _annotate_co2_o2_trace(
 
 
 def _bind_co2_o2_boundaries(
-    prepared: Co2O2PreparedInputs, boundary: Mapping[str, BoundaryChoice] | None,
+    prepared: Co2O2PreparedInputs, boundary: Mapping[str, BoundaryChoice[CenteredOperands]] | None,
 ) -> dict[str, Boundary]:
     """Bind each channel's boundary choice once to its native prepared transport."""
     if boundary is not None and (not isinstance(boundary, Mapping) or set(boundary) - {"co2", "o2"}):
@@ -215,19 +215,22 @@ def _bind_co2_o2_boundaries(
         choice = (boundary or {}).get(channel)
         if choice is None:
             continue
-        transport: xr.DataArray | CenteredOperands
-        if channel in prepared.boundary_operands:
-            transport = CenteredOperands.from_dataset(prepared.boundary_operands[channel])
-            transport = replace(transport, weights=prepared.bc_centering_weights.get(channel))
-        elif channel in prepared.boundary_sensitivity:
-            transport = prepared.boundary_sensitivity[channel]
-        else:
-            raise ValueError(f"The {channel} boundary choice requires prepared {channel} boundary inputs.")
         native = select_gathered_data_array(
             prepared.observations, key=channel, key_dim="species", ragged_dim="channel_observation",
             stack_dim=str(prepared.observations.dims[0]),
         ).rename({str(prepared.observations.dims[0]): str(sensitivity.dims[0])})
-        result[channel] = choice.bind(native, transport)
+        if channel in prepared.boundary_operands:
+            operands = CenteredOperands.from_dataset(prepared.boundary_operands[channel])
+            operands = replace(operands, weights=prepared.bc_centering_weights.get(channel))
+            result[channel] = choice.bind(native, operands)
+        elif channel not in prepared.boundary_sensitivity:
+            raise ValueError(f"The {channel} boundary choice requires prepared {channel} boundary inputs.")
+        elif isinstance(choice, MultiplicativeChoice):
+            result[channel] = choice.bind(native, prepared.boundary_sensitivity[channel])
+        else:
+            raise ValueError(
+                f"The {channel} {type(choice).__name__} requires centered boundary operands; prepare them again."
+            )
     return result
 
 
@@ -250,7 +253,7 @@ def build_rhime_co2_o2(
     prepared_inputs: Co2O2PreparedInputs,
     independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
-    boundary: Mapping[str, BoundaryChoice] | None = None,
+    boundary: Mapping[str, BoundaryChoice[CenteredOperands]] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     tau_hours: float | Mapping[str, float] | None = None,
@@ -332,7 +335,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
     prepared_inputs: Co2O2PreparedInputs,
     independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
-    boundary: Mapping[str, BoundaryChoice] | None = None,
+    boundary: Mapping[str, BoundaryChoice[CenteredOperands]] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     sampler: RhimeSampler | Literal["default"] = "default",

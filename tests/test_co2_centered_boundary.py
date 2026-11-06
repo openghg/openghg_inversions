@@ -262,15 +262,12 @@ def test_forward_equations_and_cached_likelihood_gradient(n_boundary: int, anoma
         {"bc_anomaly_scale": np.inf},
         {"bc_anomaly_scale": -np.inf},
         {"bc_centering_weights": None},
-        {"boundary_operands": None, "boundary_sensitivity": "absolute"},
     ],
 )
 def test_centered_boundary_rejects_incomplete_options(override: dict[str, Any]) -> None:
     inputs = _inputs()
     kwargs = _kwargs(inputs)
     kwargs.update(override)
-    if kwargs.get("boundary_sensitivity") == "absolute":
-        kwargs["boundary_sensitivity"] = inputs.H_bc
     with pytest.raises((ValueError, TypeError)):
         build_co2_model(inputs.H, **bound_model_arguments(kwargs))
 

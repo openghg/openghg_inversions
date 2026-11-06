@@ -398,7 +398,7 @@ def test_linked_additive_requires_native_centered_operands(cached):
         if cached
         else co2_o2_runner.run_rhime_co2_o2_from_prepared_inputs
     )
-    with pytest.raises(ValueError, match="[Aa]dditive boundaries require"):
+    with pytest.raises(ValueError, match="co2 AdditiveChoice requires centered boundary operands"):
         runner(
             prepared_inputs=prepared,
             independent_error_sd=kwargs["independent_error_sd"],

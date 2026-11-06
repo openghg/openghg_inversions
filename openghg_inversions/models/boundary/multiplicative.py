@@ -13,7 +13,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
@@ -25,19 +24,37 @@ from openghg_inversions.models.components import AffineBlock, AffineConcentratio
 from openghg_inversions.models.coords import add_model_data, component_coords
 from openghg_inversions.models.state_activity import StateActivity, prepare_linear_sensitivity, resolve_state_activity
 
-from .operands import CenteredOperands, centered_boundary_expression
+from .operands import CenteredOperands, centered_boundary_expression, materialized_reference_shift
 from .outputs import BoundaryOutputs
 
 
 @dataclass(frozen=True)
 class MultiplicativeChoice:
-    """Data-free multiplicative boundary choice.
+    """Prior specification for multiplicative boundary scaling, before binding.
+
+    A choice holds the scientific options (scaling prior, state activity and
+    boundary period calendar) without bound observations or transport arrays.
+    :meth:`bind` pairs it with one fit's observations and transport.
 
     Attributes:
-        prior: Prior for the dimensionless scaling states ``bc``.
-        activity: Optional active/fixed state policy.
-        frequency: Optional boundary period frequency.
-        anchor_time: Optional origin for fixed-duration periods.
+        prior: Prior for the dimensionless scaling states ``bc``, as passed to
+            :func:`~openghg_inversions.models.components.add_state_vector`.
+            Labelled parameters remain borrowed and are materialized with the
+            bound record.
+        activity: Active/fixed state policy. ``None`` makes every state with
+            nonzero sensitivity active and fixes structurally zero states at
+            one.
+        frequency: Boundary period frequency, with the syntax and calendar of
+            ``bc_freq``: ``None`` for one period over the window,
+            ``"monthly"`` for calendar months, or a positive fixed-duration
+            string such as ``"7D"``.
+        anchor_time: Origin of fixed-duration periods; only valid with a
+            fixed-duration ``frequency``. ``None`` uses the earliest selected
+            observation of the fit. The RHIME parameter adapter instead
+            defaults ``bc_freq_anchor`` to the configured start date.
+
+    Raises:
+        ValueError: On construction, for an invalid frequency or anchor.
     """
 
     prior: Mapping[str, Any]
@@ -52,7 +69,32 @@ class MultiplicativeChoice:
     def bind(
         self, observations: xr.DataArray, transport: xr.DataArray | CenteredOperands,
     ) -> MultiplicativeBoundary:
-        """Bind prepared absolute or centered transport to one fit's rows and periods."""
+        """Bind prepared absolute or centered transport to one fit's rows and periods.
+
+        Args:
+            observations: One channel's observations with its observation axis
+                first. Its labels select and order the transport rows; its
+                ``time`` values assign rows to boundary periods.
+            transport: Absolute ``H_bc`` in concentration units, or centered
+                operands, on the raw ``nmeasure`` or ``time`` axis. Absolute
+                transport already expanded to periods is accepted only without
+                a ``frequency`` or ``anchor_time``.
+
+        Returns:
+            The bound boundary. ``data`` holds ``H_bc``, or ``H_bc_anomaly``,
+            ``H_bc_mass`` and the scalar ``bc_reference``, on
+            ``(observation, state)``. Raw spatial transport and any explicit
+            calendar give a ``bc_region`` state index with
+            ``(bc_curtain, bc_period)`` levels; unmarked absolute transport
+            without a calendar keeps its own state labels. Numerical payloads
+            stay borrowed and lazy.
+
+        Raises:
+            ValueError: If centered transport is bound without float64
+                PyTensor, periods or indexed timestamps conflict with the
+                observations, or a calendar override is requested for
+                already-expanded absolute transport.
+        """
         if isinstance(transport, CenteredOperands):
             data = transport.bind(observations, frequency=self.frequency, anchor_time=self.anchor_time)
         else:
@@ -66,9 +108,15 @@ class MultiplicativeChoice:
 class MultiplicativeBoundary:
     """Multiplicative choice bound to one fit's borrowed labelled transport.
 
-    ``data`` holds ``H_bc``, or centered ``H_bc_anomaly``, ``H_bc_mass`` and
-    ``bc_reference``, on ``(observation, state)``. Materialize it with the
-    other model inputs before :meth:`add`.
+    Attributes:
+        choice: The resolved multiplicative choice.
+        data: Absolute ``H_bc`` (concentration units), or centered
+            ``H_bc_anomaly`` (concentration units) and ``H_bc_mass``
+            (dimensionless) beside the scalar ``bc_reference``, on
+            ``(observation, state)``. The arrays are borrowed and may be
+            Dask-backed. Materialize them jointly with the other model inputs
+            and the choice prior before :meth:`add`; rows may be padded or
+            subset with ``dataclasses.replace``.
     """
 
     choice: MultiplicativeChoice
@@ -82,6 +130,12 @@ class MultiplicativeBoundary:
     def add(self, *, output_dim: str = "nmeasure", prefix: str = "", owner: str | None = "bc") -> AffineConcentrationTerm:
         """Add the scaling states and the boundary concentration to the current model.
 
+        Must be called inside an active PyMC model that has the coordinate
+        registry, after ``data`` has been materialized jointly with the other
+        model inputs. It registers the transport (``hbc``, or
+        ``H_bc_anomaly``, ``H_bc_mass`` and ``bc_reference``) as model data,
+        plus the scaling state vector ``bc`` and the deterministic ``mu_bc``.
+
         The affine representation is ``fixed + D_active (b_active - k)``,
         where ``D`` is the absolute design (``A + cM`` when centered),
         ``k = 1`` for centered and ``0`` for absolute transport, and the fixed
@@ -90,22 +144,33 @@ class MultiplicativeBoundary:
         Args:
             output_dim: Observation dimension registered by the model.
             prefix: Prefix for graph variable names.
-            owner: Namespace for labelled boundary-state coordinates.
+            owner: Namespace for component-owned boundary-state coordinates;
+                ``None`` keeps the local names. Graph names are controlled
+                separately by ``prefix``.
+
+        Returns:
+            The boundary term: ``output`` is the absolute boundary
+            concentration ``mu_bc``; when centered, the likelihood
+            contribution omits the reference shift ``c M 1``; the fixed
+            contribution and one affine block over the active states follow
+            the representation above; the sampled variable is the state
+            vector's latent.
 
         Raises:
-            ValueError: If ``data`` is still lazy, or materialized centered
-                operands are non-finite or have invalid mass.
+            ValueError: If ``data`` is still lazy, materialized centered
+                operands are non-finite or have invalid mass, the reference
+                shift is non-finite, or the activity policy cannot be resolved
+                against the states.
+            RuntimeError: If the model lacks the coordinate registry.
         """
         if any(is_dask_collection(value) for value in self.data.data_vars.values()):
             raise ValueError("Materialize boundary data jointly with model inputs before add().")
+        shift: xr.DataArray | None = None
         if self.centered:
             anomaly = self.data.H_bc_anomaly.transpose(output_dim, "bc_region")
             mass = self.data.H_bc_mass.transpose(output_dim, "bc_region")
             reference = self.data.bc_reference
-            if not np.isfinite(reference.values).all():
-                raise ValueError("Centered bc_reference must be finite.")
-            if not np.isfinite(mass.values).all() or (mass.values < 0).any() or not (mass.values > 0).any():
-                raise ValueError("H_bc_mass must be finite, non-negative and not all zero.")
+            shift = materialized_reference_shift(anomaly, mass, reference).rename(f"{prefix}bc_reference_shift")
             design = (anomaly + reference * mass).assign_attrs(anomaly.attrs)
         else:
             design = self.data.H_bc.transpose(output_dim, ...)
@@ -116,15 +181,10 @@ class MultiplicativeBoundary:
         active, inactive = activity.active_indices, activity.fixed_indices
         inactive_design = design.isel({state_dim: inactive})
         inactive_values = activity.fixed_value.isel({state_dim: inactive})
-        if self.centered:
+        if shift is not None:
             a = add_model_data(component_coords(anomaly, owner, observation_dim=output_dim), f"{prefix}H_bc_anomaly")
             m = add_model_data(component_coords(mass, owner, observation_dim=output_dim), f"{prefix}H_bc_mass")
             c = add_model_data(reference, f"{prefix}bc_reference")
-            shift = (reference * mass.sum(state_dim, skipna=False)).rename(
-                f"{prefix}bc_reference_shift"
-            ).assign_attrs(reference.attrs)
-            if not np.isfinite(shift.values).all():
-                raise ValueError("Boundary reference shift must be finite.")
             likelihood = centered_boundary_expression(a, m, c, vector.state)
             output = pm.Deterministic(f"{prefix}mu_bc", likelihood + pt.as_tensor_variable(shift.values), dims=output_dim)
             fixed = anomaly.sum(state_dim, skipna=False) + xr.dot(inactive_design, inactive_values - 1, dim=state_dim)
@@ -132,7 +192,7 @@ class MultiplicativeBoundary:
         else:
             h = add_model_data(component_coords(design, owner, observation_dim=output_dim), f"{prefix}hbc")
             output = pm.Deterministic(f"{prefix}mu_bc", pt.dot(h, vector.state), dims=output_dim)
-            likelihood, shift = output, None
+            likelihood = output
             fixed = xr.dot(inactive_design, inactive_values, dim=state_dim)
             coefficients = vector.state[active]
         return AffineConcentrationTerm(
@@ -143,7 +203,19 @@ class MultiplicativeBoundary:
         )
 
     def outputs(self, prefix: str = "") -> BoundaryOutputs:
-        """Declare roles, units and metadata for the graph built by :meth:`add`."""
+        """Declare the roles, units and metadata of this boundary's graph.
+
+        Declarations depend only on the choice and the bound data, so they
+        are available before :meth:`add` or sampling.
+
+        Args:
+            prefix: Graph-name prefix used for :meth:`add`.
+
+        Returns:
+            Scientific roles mapped to graph variable names, graph variable
+            units, and configuration and binding metadata. ``prefix`` is
+            applied to both role keys and graph names; metadata is unprefixed.
+        """
         roles = {"boundary_concentration": "mu_bc", "boundary_scale": "bc"}
         units = {name: "1" for name in ("bc", "bc_active", "bc_fixed_value", "bc_latent", "bc_active_latent")}
         metadata = {

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import pytensor
 import xarray as xr
 
@@ -46,6 +47,40 @@ def centered_boundary_expression(anomaly, mass, reference, state):
         the caller. Alignment and materialization belong to the caller.
     """
     return anomaly @ state + reference * (mass @ (state - 1.0))
+
+
+def materialized_reference_shift(
+    anomaly: xr.DataArray, mass: xr.DataArray, reference: xr.DataArray, *, state_dim: str = "bc_region",
+) -> xr.DataArray:
+    """Check materialized centered values and return the fixed shift ``c M 1``.
+
+    Preparation validates layout, labels and units without computing borrowed
+    payloads, and recentring at binding can derive new values, so finite
+    values are first checkable here, after the joint materialization that
+    must precede graph construction. Every centered family calls this once at
+    the start of ``add``.
+
+    Args:
+        anomaly: Materialized ``A`` on observation-by-state axes.
+        mass: Materialized dimensionless ``M`` on the same axes.
+        reference: Materialized scalar ``c`` in concentration units.
+        state_dim: Boundary-state dimension summed by ``M 1``.
+
+    Returns:
+        ``c M 1`` on the observation axis, with the reference's attributes.
+
+    Raises:
+        ValueError: If ``A`` or ``c`` is non-finite, ``M`` is non-finite,
+            negative or all zero, or the shift is non-finite.
+    """
+    if not np.isfinite(reference.values).all() or not np.isfinite(anomaly.values).all():
+        raise ValueError("Centered bc_reference and boundary anomaly must be finite.")
+    if not np.isfinite(mass.values).all() or (mass.values < 0).any() or not (mass.values > 0).any():
+        raise ValueError("H_bc_mass must be finite, non-negative and not all zero.")
+    shift = (reference * mass.sum(state_dim, skipna=False)).assign_attrs(reference.attrs)
+    if not np.isfinite(shift.values).all():
+        raise ValueError("Boundary reference shift must be finite.")
+    return shift
 
 
 @dataclass(frozen=True)
@@ -122,4 +157,9 @@ class CenteredOperands:
         return bound.transpose(native_dim, "bc_region").assign(bc_reference=self.reference)
 
 
-__all__ = ["CenteredOperands", "centered_boundary_expression", "require_centered_precision"]
+__all__ = [
+    "CenteredOperands",
+    "centered_boundary_expression",
+    "materialized_reference_shift",
+    "require_centered_precision",
+]

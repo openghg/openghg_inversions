@@ -31,22 +31,37 @@ from openghg_inversions.models.components import AffineBlock, AffineConcentratio
 from openghg_inversions.models.coords import add_model_data, component_coords
 from openghg_inversions.models.priors import parse_prior
 
-from .operands import CenteredOperands
+from .operands import CenteredOperands, materialized_reference_shift
 from .outputs import BoundaryOutputs
 
 
 @dataclass(frozen=True)
 class AdditiveChoice:
-    """Data-free additive boundary choice.
+    """Prior specification for additive boundary corrections, before binding.
+
+    A choice holds the scientific options (mean shift prior, anomaly width
+    and boundary period calendar) without bound observations or transport
+    arrays. :meth:`bind` pairs it with one fit's observations and centered
+    transport.
 
     Attributes:
-        mean_prior: Scalar prior for the common mean shift, in observation
-            concentration units.
-        anomaly_scale: Finite non-negative Gaussian scale of the anomalies
-            before weighted centring. Zero, or a single boundary state, keeps
-            only the common mean.
-        frequency: Optional boundary period frequency.
-        anchor_time: Optional origin for fixed-duration periods.
+        mean_prior: Scalar prior for the common mean shift over the inversion
+            window, in observation concentration units.
+        anomaly_scale: Finite non-negative Gaussian standard deviation of the
+            anomaly coordinates before weighted centring, in concentration
+            units. Zero, or a single boundary state, keeps only the mean shift.
+        frequency: Boundary period frequency, with the syntax and calendar of
+            ``bc_freq``: ``None`` for one period over the window,
+            ``"monthly"`` for calendar months, or a positive fixed-duration
+            string such as ``"7D"``.
+        anchor_time: Origin of fixed-duration periods; only valid with a
+            fixed-duration ``frequency``. ``None`` uses the earliest selected
+            observation of the fit. The RHIME parameter adapter instead
+            defaults ``bc_freq_anchor`` to the configured start date.
+
+    Raises:
+        ValueError: On construction, for a negative or non-finite scale, or an
+            invalid frequency or anchor.
     """
 
     mean_prior: Mapping[str, Any]
@@ -60,15 +75,33 @@ class AdditiveChoice:
         if not np.isfinite(self.anomaly_scale) or self.anomaly_scale < 0:
             raise ValueError("bc_anomaly_scale must be finite and non-negative.")
 
-    def bind(self, observations: xr.DataArray, transport: xr.DataArray | CenteredOperands) -> AdditiveBoundary:
+    def bind(self, observations: xr.DataArray, transport: CenteredOperands) -> AdditiveBoundary:
         """Bind centered transport and its centering weights to one fit.
 
-        Weights on ``(bc_curtain, bc_period)`` are stacked onto the bound
-        ``bc_region`` states; their labels must match exactly, so a weight
-        calendar that differs from the fit's periods is rejected.
+        Args:
+            observations: One channel's observations with its observation axis
+                first. Its labels select and order the transport rows; its
+                ``time`` values assign rows to boundary periods.
+            transport: Prepared centered operands on their raw ``nmeasure``
+                or ``time`` axis, with ``weights`` on
+                ``(bc_curtain, bc_period)``.
+
+        Returns:
+            The bound boundary. ``H_bc_anomaly`` and ``H_bc_mass`` lie on
+            ``(observation, bc_region)`` with a ``(bc_curtain, bc_period)``
+            state index, beside the stored scalar ``bc_reference`` and
+            ``bc_centering_weights`` on ``bc_region``. Numerical payloads stay
+            borrowed and lazy.
+
+        Raises:
+            ValueError: If PyTensor is not configured for float64, periods or
+                indexed timestamps conflict with the observations, there are
+                no weights, or the weights' curtain and period labels differ
+                from the bound states (for example because they were prepared
+                with another calendar).
         """
-        if not isinstance(transport, CenteredOperands) or transport.weights is None:
-            raise ValueError("Additive boundaries require centered operands with bc_centering_weights.")
+        if transport.weights is None:
+            raise ValueError("Additive boundaries require bc_centering_weights.")
         data = transport.bind(observations, frequency=self.frequency, anchor_time=self.anchor_time)
         weights = transport.weights
         periods = weights.indexes["bc_period"]
@@ -85,9 +118,16 @@ class AdditiveChoice:
 class AdditiveBoundary:
     """Additive choice bound to one fit's borrowed centered operands and weights.
 
-    ``data`` holds ``H_bc_anomaly``, ``H_bc_mass``, ``bc_reference`` and
-    ``bc_centering_weights`` on the bound ``bc_region`` states. Materialize it
-    with the other model inputs before :meth:`add`.
+    Attributes:
+        choice: The resolved additive choice.
+        data: ``H_bc_anomaly`` (concentration units) and ``H_bc_mass``
+            (dimensionless) on ``(observation, bc_region)``, where
+            ``bc_region`` indexes ``(bc_curtain, bc_period)`` states; scalar
+            ``bc_reference`` in the anomaly's units; and positive
+            ``bc_centering_weights`` on ``bc_region``. The arrays are borrowed
+            and may be Dask-backed. Materialize them jointly with the other
+            model inputs before :meth:`add`; rows may be padded or subset with
+            ``dataclasses.replace``.
     """
 
     choice: AdditiveChoice
@@ -101,18 +141,34 @@ class AdditiveBoundary:
     def add(self, *, output_dim: str = "nmeasure", prefix: str = "", owner: str | None = "bc") -> AffineConcentrationTerm:
         """Add the mean shift, anomalies and boundary concentration to the current model.
 
-        The corrections multiply only the dimensionless transport ``M``; they
-        are never multiplied by ``c`` or ``A``. Its affine blocks are the mean
-        response ``M 1`` (first) and, with anomalies, ``M (Q - 1 wᵀQ)``.
+        Must be called inside an active PyMC model that has the coordinate
+        registry, after ``data`` has been materialized jointly with the other
+        model inputs. It registers the transport, reference, scale, weights
+        and any anomaly basis as model data, plus the sampled variables and
+        their deterministic responses. The corrections multiply only the
+        dimensionless transport ``M``; they are never multiplied by ``c`` or
+        ``A``.
 
         Args:
             output_dim: Observation dimension registered by the model.
             prefix: Prefix for graph variable names.
-            owner: Namespace for labelled boundary-state coordinates.
+            owner: Namespace for component-owned boundary-state coordinates;
+                ``None`` keeps the local names such as ``bc_region``. Graph
+                names are controlled separately by ``prefix``.
+
+        Returns:
+            The boundary term: ``output`` is the absolute boundary
+            concentration ``mu_bc``; the likelihood contribution omits the
+            fixed ``c M 1``, which is the reference shift; the fixed
+            contribution is ``A 1``; the affine blocks are the mean response
+            ``M 1`` followed, with anomalies, by ``M (Q - 1 wᵀQ)`` with their
+            physical coefficients; and the sampled variables are the mean
+            latent and anomaly coordinates.
 
         Raises:
             ValueError: If ``data`` is still lazy, materialized operands or
                 weights are invalid, or the mean prior is not scalar.
+            RuntimeError: If the model lacks the coordinate registry.
         """
         if any(is_dask_collection(value) for value in self.data.data_vars.values()):
             raise ValueError("Materialize boundary data jointly with model inputs before add().")
@@ -120,10 +176,7 @@ class AdditiveBoundary:
         mass = self.data.H_bc_mass.transpose(output_dim, "bc_region")
         reference = self.data.bc_reference
         weights = self.data.bc_centering_weights
-        if not np.isfinite(reference.values).all() or not np.isfinite(anomaly.values).all():
-            raise ValueError("Centered bc_reference and boundary anomaly must be finite.")
-        if not np.isfinite(mass.values).all() or (mass.values < 0).any() or not (mass.values > 0).any():
-            raise ValueError("H_bc_mass must be finite, non-negative and not all zero.")
+        reference_shift = materialized_reference_shift(anomaly, mass, reference).rename(f"{prefix}bc_reference_shift")
         if not weights.size or not np.isfinite(weights.values).all() or not (weights.values > 0).all():
             raise ValueError("bc_centering_weights must be finite and strictly positive.")
         weights = weights / weights.max()
@@ -134,11 +187,6 @@ class AdditiveBoundary:
             q - np.ones((count, 1)) @ (weights.values @ q)[None, :], dims=("bc_region", "bc_contrast"),
             coords={"bc_region": weights.bc_region, "bc_contrast": np.arange(q.shape[1])}, attrs={"units": "1"},
         )
-        reference_shift = (reference * mass.sum("bc_region", skipna=False)).rename(
-            f"{prefix}bc_reference_shift"
-        ).assign_attrs(reference.attrs)
-        if not np.isfinite(reference_shift.values).all():
-            raise ValueError("Boundary reference shift must be finite.")
         fixed = anomaly.sum("bc_region", skipna=False).assign_attrs(anomaly.attrs)
 
         def register(array: xr.DataArray, name: str) -> TensorVariable:
@@ -190,11 +238,21 @@ class AdditiveBoundary:
         )
 
     def outputs(self, prefix: str = "") -> BoundaryOutputs:
-        """Declare roles, units and metadata for the graph built by :meth:`add`.
+        """Declare the roles, units and metadata of this boundary's graph.
 
-        A positive scale with several states always declares anomaly outputs,
-        so missing anomaly draws remain errors. Otherwise the zero anomalies
-        are reconstructed from the saved scale and weights.
+        Declarations depend only on the choice and the bound data, so they
+        are available before :meth:`add` or sampling. A positive scale with
+        several states always declares anomaly outputs, so missing anomaly
+        draws remain errors. Otherwise the zero anomalies are reconstructed
+        from the saved scale and weights.
+
+        Args:
+            prefix: Graph-name prefix used for :meth:`add`.
+
+        Returns:
+            Scientific roles mapped to graph variable names, graph variable
+            units, and configuration and binding metadata. ``prefix`` is
+            applied to both role keys and graph names; metadata is unprefixed.
         """
         concentration = self.data.bc_reference.attrs["units"]
         roles = {

@@ -174,7 +174,8 @@ concentration units.
 Boundary choices in Python
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-A boundary is one data-free choice: ``MultiplicativeChoice(prior,
+A boundary is one choice, the prior specification before binding:
+``MultiplicativeChoice(prior,
 activity=None, frequency=None, anchor_time=None)`` or
 ``AdditiveChoice(mean_prior, anomaly_scale, frequency=None,
 anchor_time=None)``. Pass it as ``boundary=`` to
@@ -668,7 +669,10 @@ cannot specify a prior, anomaly scale or period choices.
 For raw reusable inputs, omitting ``frequency`` selects one period;
 ``"monthly"`` selects calendar months, and a positive fixed duration such as
 ``"2D"`` selects fixed-duration periods. ``anchor_time`` is accepted only with
-a fixed duration, never with monthly or omitted frequency. Linked CO2/O2
+a fixed duration, never with monthly or omitted frequency; without it,
+fixed-duration periods start at the fit's earliest selected observation. (The
+RHIME parameter adapter instead defaults ``bc_freq_anchor`` to the configured
+start date.) Linked CO2/O2
 channels share one frequency and anchor choice. See the
 :ref:`raw versus expanded boundary rules <surface-centered-boundary-contract>`
 for preparation reuse and period overrides.
