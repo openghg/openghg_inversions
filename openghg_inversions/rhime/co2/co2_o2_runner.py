@@ -4,27 +4,26 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import Any, Literal
 
-from dask import compute as dask_compute
-from dask.array import Array as DaskArray
 import numpy as np
 import xarray as xr
 
-from openghg_inversions.inversion_inputs import DatetimeLike
-from openghg_inversions.postprocessing.contracts import OutputContract
+from dask import compute as dask_compute
 
-from openghg_inversions.array_ops import to_dense
-from openghg_inversions.models import StateActivity
-from openghg_inversions.models.priors import PriorArgs, prior_records
-from openghg_inversions.rhime.builders import RhimeModelBuildResult
+from openghg_inversions.array_ops import select_gathered_data_array, to_dense_tree
 from openghg_inversions.inference.sampling import resolve_sampler
+from openghg_inversions.models import StateActivity
+from openghg_inversions.models.boundary import Boundary, BoundaryChoice, CenteredOperands, MultiplicativeChoice
+from openghg_inversions.models.priors import PriorArgs, prior_records
+from openghg_inversions.postprocessing.contracts import OutputContract
+from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
-from .co2_o2_model import build_co2_o2_model, _validate_channel_baseline_options
-from .centered_boundary import OPERAND_NAMES, require_centered_precision, restore_absolute_predictives
+from .boundary_output import restore_absolute_predictives
+from .co2_o2_model import _validate_channel_offset_options, build_co2_o2_model
 from .co2_o2_preparation import Co2O2PreparedInputs
-
 
 _CO2_O2_VARIABLE_ROLES = {
     "observation": "y",
@@ -37,34 +36,6 @@ _CO2_O2_VARIABLE_ROLES = {
     "independent_error": "fixed_independent_error_sd",
     "total_marginal_error": "epsilon",
 }
-
-
-def _materialize_co2_o2_pymc_inputs(
-    *arrays: xr.DataArray,
-) -> tuple[xr.DataArray, ...]:
-    """Materialize related labelled arrays together without changing inputs."""
-    lazy_coordinates = [
-        (array_index, name, coordinate)
-        for array_index, array in enumerate(arrays)
-        for name, coordinate in array.coords.items()
-        if isinstance(coordinate.data, DaskArray)
-    ]
-    computed = dask_compute(
-        *(to_dense(array).data for array in arrays),
-        *(coordinate.data for _, _, coordinate in lazy_coordinates),
-    )
-    dense_arrays = [
-        array.copy(deep=False, data=data) for array, data in zip(arrays, computed[: len(arrays)], strict=True)
-    ]
-    for (array_index, name, coordinate), data in zip(
-        lazy_coordinates,
-        computed[len(arrays) :],
-        strict=True,
-    ):
-        dense_arrays[array_index] = dense_arrays[array_index].assign_coords(
-            {name: coordinate.copy(deep=False, data=data)}
-        )
-    return tuple(dense_arrays)
 
 
 def _validate_independent_error_labels(
@@ -102,33 +73,10 @@ def _validate_independent_error_values(array: xr.DataArray) -> None:
 
 
 def _materialize_co2_o2_replay_inputs(
-    prepared: Co2O2PreparedInputs,
-    independent_error_sd: xr.DataArray | None,
-    boundaries: Mapping[str, xr.DataArray],
-    operands: Mapping[str, xr.Dataset] | None = None,
-) -> tuple[tuple[xr.DataArray, ...], dict[str, xr.DataArray], dict[str, xr.Dataset]]:
-    """Resolve fixed errors and jointly materialize the linked replay payloads.
-
-    Args:
-        prepared: Borrowed joint observations, affine intercept, native-channel
-            sensitivities, and optional saved independent-error vector.
-        independent_error_sd: Explicit error vector, or None to use saved errors.
-            When both exist, their labels, row units, and values must agree.
-        boundaries: Selected channel-native boundary sensitivities.
-
-    Returns:
-        Materialized observations, intercept, CO2 and O2 sensitivities, and
-        resolved error vector, followed by the materialized boundary mapping.
-        Payloads and lazy auxiliary coordinates share one computation; borrowed
-        arrays are not mutated.
-
-    Raises:
-        ValueError: If no error vector is available, labels or row units differ,
-            values are not finite positive real numbers, or saved and explicit
-            errors disagree.
-    """
-    operands = dict(operands or {})
-    operand_arrays = [(channel, name, value[name]) for channel, value in operands.items() for name in OPERAND_NAMES]
+    prepared: Co2O2PreparedInputs, independent_error_sd: xr.DataArray | None,
+    boundary: Mapping[str, Boundary], *, prior_parameters: Mapping[str, Any],
+) -> tuple[tuple[xr.DataArray, ...], dict[str, Boundary], dict[str, Any]]:
+    """Compute core, bound boundary and selected priors together for PyMC."""
     saved_error = getattr(prepared, "independent_error_sd", None)
     if independent_error_sd is None:
         independent_error_sd = saved_error
@@ -139,32 +87,23 @@ def _materialize_co2_o2_replay_inputs(
         errors.append(saved_error)
     for error in errors:
         _validate_independent_error_labels(prepared.observations, error)
-    materialized = _materialize_co2_o2_pymc_inputs(
-        prepared.observations,
-        prepared.fixed_prior_contribution,
-        prepared.co2_sensitivity,
-        prepared.o2_sensitivity,
-        *errors,
-        *boundaries.values(),
-        *(value for _, _, value in operand_arrays),
-    )
+    materialized: tuple[xr.DataArray, ...]
+    bound: dict[str, Boundary]
+    priors: dict[str, Any]
+    materialized, bound, priors = dask_compute(*to_dense_tree((
+        (prepared.observations, prepared.fixed_prior_contribution,
+         prepared.co2_sensitivity, prepared.o2_sensitivity, *errors),
+        dict(boundary), dict(prior_parameters),
+    )))
     observations = materialized[0]
-    dense_errors = materialized[4 : 4 + len(errors)]
+    dense_errors = materialized[4:]
     for error in dense_errors:
         if not np.array_equal(error["observation_units"].data, observations["observation_units"].data):
             raise ValueError("independent_error_sd observation_units must match the prepared observations.")
         _validate_independent_error_values(error)
     if len(dense_errors) == 2 and not np.array_equal(dense_errors[0].data, dense_errors[1].data):
         raise ValueError("Explicit independent_error_sd must match the prepared artifact values.")
-    return (
-        (*materialized[:4], dense_errors[0]),
-        dict(zip(boundaries, materialized[4 + len(errors) : 4 + len(errors) + len(boundaries)], strict=True)),
-        {
-            channel: xr.Dataset({
-                name: value for (key, name, _), value in zip(operand_arrays, materialized[4 + len(errors) + len(boundaries):], strict=True) if key == channel
-            }, attrs=dict(raw.attrs)) for channel, raw in operands.items()
-        },
-    )
+    return (*materialized[:4], dense_errors[0]), bound, priors
 
 
 def _co2_o2_metadata(
@@ -215,8 +154,6 @@ def _annotate_co2_o2_trace(
 
     concentration_variables = {
         "boundary_reference_shift",
-        "co2_H_bc_anomaly", "o2_H_bc_anomaly",
-        "co2_bc_reference_shift", "o2_bc_reference_shift",
         "y",
         "observed_concentration",
         "modelled_concentration",
@@ -226,7 +163,9 @@ def _annotate_co2_o2_trace(
         "epsilon",
     }
     concentration_variables.update(
-        variable for role, variable in built.output_contract.variable_roles.items() if role.endswith("concentration")
+        variable
+        for role, variable in built.output_contract.variable_roles.items()
+        if role.endswith("concentration")
     )
     state_variables = {
         "flux_scaling",
@@ -252,25 +191,61 @@ def _annotate_co2_o2_trace(
             group["co2_o2_sensitivity"].attrs["units"] = "observation_units per dimensionless flux scale"
         if "aggregation_error_covariance" in group:
             group["aggregation_error_covariance"].attrs["units"] = "observation_units * observation_units_cov"
+        for name, unit in built.output_contract.metadata.get("boundary_units", {}).items():
+            if name in group:
+                group[name].attrs["units"] = unit
+                group[name].attrs["tracer"] = name.split("_", 1)[0]
         for channel in ("co2", "o2"):
-            for variable in (f"{channel}_bc", f"{channel}_bc_fixed_value"):
-                if variable in group:
-                    group[variable].attrs["units"] = "dimensionless boundary scale"
-                    group[variable].attrs["tracer"] = channel
-            for variable in (f"{channel}_mu_bc", f"{channel}_offset"):
-                if variable in group:
-                    group[variable].attrs["tracer"] = channel
-            if f"{channel}_hbc" in group:
-                group[f"{channel}_hbc"].attrs["units"] = "observation_units per dimensionless boundary scale"
-        for channel in ("co2", "o2"):
-            for variable in (f"{channel}_H_bc_mass",):
-                if variable in group:
-                    group[variable].attrs["units"] = "1"
-            reference = f"{channel}_bc_reference"
-            if reference in group:
-                group[reference].attrs["units"] = built.output_contract.metadata["observation_units"][channel]
+            if f"{channel}_offset" in group:
+                group[f"{channel}_offset"].attrs["tracer"] = channel
         group.attrs["rhime_recipe"] = "co2_o2"
     return trace
+
+
+
+
+def _bind_co2_o2_boundaries(
+    prepared: Co2O2PreparedInputs, boundary: Mapping[str, BoundaryChoice[CenteredOperands]] | None,
+) -> dict[str, Boundary]:
+    """Bind each channel's boundary choice once to its native prepared transport."""
+    if boundary is not None and (not isinstance(boundary, Mapping) or set(boundary) - {"co2", "o2"}):
+        raise ValueError("boundary must be a mapping keyed only by 'co2' and 'o2'.")
+    result = {}
+    for channel, sensitivity in (("co2", prepared.co2_sensitivity), ("o2", prepared.o2_sensitivity)):
+        choice = (boundary or {}).get(channel)
+        if choice is None:
+            continue
+        native = select_gathered_data_array(
+            prepared.observations, key=channel, key_dim="species", ragged_dim="channel_observation",
+            stack_dim=str(prepared.observations.dims[0]),
+        ).rename({str(prepared.observations.dims[0]): str(sensitivity.dims[0])})
+        if channel in prepared.boundary_operands:
+            operands = CenteredOperands.from_dataset(prepared.boundary_operands[channel])
+            operands = replace(operands, weights=prepared.bc_centering_weights.get(channel))
+            result[channel] = choice.bind(native, operands)
+        elif channel not in prepared.boundary_sensitivity:
+            raise ValueError(f"The {channel} boundary choice requires prepared {channel} boundary inputs.")
+        elif isinstance(choice, MultiplicativeChoice):
+            result[channel] = choice.bind(native, prepared.boundary_sensitivity[channel])
+        else:
+            raise ValueError(
+                f"The {channel} {type(choice).__name__} requires centered boundary operands; prepare them again."
+            )
+    return result
+
+
+def _linked_boundary_contract(boundary: Mapping[str, Boundary]) -> tuple[dict[str, str], dict[str, Any]]:
+    """Collect channel-prefixed boundary roles, units and metadata."""
+    roles: dict[str, str] = {}
+    metadata: dict[str, Any] = {"boundary_units": {}, "boundary_metadata": {}}
+    for channel, bound in boundary.items():
+        outputs = bound.outputs(prefix=f"{channel}_")
+        roles.update(outputs.roles)
+        metadata["boundary_units"].update(outputs.units)
+        metadata["boundary_metadata"][channel] = outputs.metadata
+    if boundary:
+        roles["boundary_concentration"] = "boundary_concentration"
+    return roles, metadata
 
 
 def build_rhime_co2_o2(
@@ -278,11 +253,7 @@ def build_rhime_co2_o2(
     prepared_inputs: Co2O2PreparedInputs,
     independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
-    use_bc: Mapping[str, bool] | None = None,
-    bc_prior: Mapping[str, PriorArgs] | None = None,
-    bc_state_activity: Mapping[str, StateActivity] | None = None,
-    bc_freq: str | None = None,
-    bc_anchor_time: DatetimeLike | None = None,
+    boundary: Mapping[str, BoundaryChoice[CenteredOperands]] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     tau_hours: float | Mapping[str, float] | None = None,
@@ -305,28 +276,16 @@ def build_rhime_co2_o2(
             activity or covariance are inconsistent with the linked model.
     """
     prepared = prepared_inputs
-    boundaries = dict(getattr(prepared, "boundary_sensitivity", {}))
-    operands = dict(getattr(prepared, "boundary_operands", {}))
-    if use_bc is not None:
-        if (
-            not isinstance(use_bc, Mapping)
-            or set(use_bc) - {"co2", "o2"}
-            or any(not isinstance(value, bool) for value in use_bc.values())
-        ):
-            raise ValueError("use_bc must map co2/o2 to booleans.")
-        for channel, enabled in use_bc.items():
-            if enabled and channel not in boundaries and channel not in operands:
-                raise ValueError(f"{channel} use_bc requires prepared boundary_sensitivity.")
-            if not enabled:
-                boundaries.pop(channel, None)
-                operands.pop(channel, None)
-    if operands:
-        require_centered_precision()
-    _validate_channel_baseline_options(boundaries, bc_prior, bc_state_activity, offset_prior, offset_args, operands)
-    materialized, boundaries, operands = _materialize_co2_o2_replay_inputs(
-        prepared, independent_error_sd, boundaries, operands
+    _validate_channel_offset_options(offset_prior, offset_args)
+    materialized, bound, eager_priors = _materialize_co2_o2_replay_inputs(
+        prepared, independent_error_sd, _bind_co2_o2_boundaries(prepared, boundary),
+        prior_parameters={"offset": offset_prior or {}, "amplitude": site_amplitude_prior or {}},
     )
-    observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd = materialized
+    offset_prior = eager_priors["offset"]
+    site_amplitude_prior = eager_priors["amplitude"] or None
+    observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd = (
+        materialized
+    )
     model = build_co2_o2_model(
         observations=observations,
         fixed_prior_contribution=fixed_prior_contribution,
@@ -339,48 +298,28 @@ def build_rhime_co2_o2(
         tau_hours=tau_hours,
         fixed_site_amplitudes=fixed_site_amplitudes,
         site_amplitude_prior=site_amplitude_prior,
-        boundary_sensitivity=boundaries,
-        boundary_operands=operands,
-        bc_freq=bc_freq,
-        bc_anchor_time=bc_anchor_time,
-        bc_prior=bc_prior,
-        bc_state_activity=bc_state_activity,
+        boundary=bound,
         offset_prior=offset_prior,
         offset_args=offset_args,
     )
-    variable_roles = dict(_CO2_O2_VARIABLE_ROLES)
-    for channel in ("co2", "o2"):
-        if channel in boundaries or channel in operands:
-            variable_roles.update(
-                {
-                    f"{channel}_boundary_concentration": f"{channel}_mu_bc",
-                    f"{channel}_boundary_scale": f"{channel}_bc",
-                    f"{channel}_boundary_sensitivity": f"{channel}_hbc",
-                }
-            )
-        if channel in (offset_prior or {}):
-            variable_roles[f"{channel}_offset_concentration"] = f"{channel}_offset"
-    for channel in operands:
-        variable_roles.pop(f"{channel}_boundary_sensitivity", None)
-        variable_roles[f"{channel}_boundary_anomaly"] = f"{channel}_H_bc_anomaly"
-        variable_roles[f"{channel}_boundary_mass"] = f"{channel}_H_bc_mass"
-        variable_roles[f"{channel}_boundary_reference"] = f"{channel}_bc_reference"
-    if boundaries or operands:
-        variable_roles["boundary_concentration"] = "boundary_concentration"
+    boundary_roles, boundary_metadata = _linked_boundary_contract(bound)
+    variable_roles = {**_CO2_O2_VARIABLE_ROLES, **boundary_roles}
+    for channel in (offset_prior or {}):
+        variable_roles[f"{channel}_offset_concentration"] = f"{channel}_offset"
     if offset_prior:
         variable_roles["offset_concentration"] = "offset_concentration"
-    if boundaries or operands or offset_prior:
+    if bound or offset_prior:
         variable_roles["baseline_concentration"] = "baseline_concentration"
-    metadata = _co2_o2_metadata(prepared, observations=observations)
-    if operands:
-        metadata.update(
-            boundary_representation="centered-v1", bc_frequency=bc_freq,
-            bc_anchor_time=None if bc_anchor_time is None else str(bc_anchor_time),
-        )
+    metadata = {**_co2_o2_metadata(prepared, observations=observations), **boundary_metadata}
     if tau_hours is not None:
-        variable_roles.update({"independent_error": "error", "fixed_ou_site_amplitude": "ou_site_amplitude",
-                      "observation_to_fixed_ou_site_index": "ou_site_index",
-                      "fixed_ou_timescale": "ou_tau_hours"})
+        variable_roles.update(
+            {
+                "independent_error": "error",
+                "fixed_ou_site_amplitude": "ou_site_amplitude",
+                "observation_to_fixed_ou_site_index": "ou_site_index",
+                "fixed_ou_timescale": "ou_tau_hours",
+            }
+        )
         metadata["likelihood"] = "joint Gaussian with fixed OU blocks by (species, site)"
     return RhimeModelBuildResult(
         model=model,
@@ -396,11 +335,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
     prepared_inputs: Co2O2PreparedInputs,
     independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
-    use_bc: Mapping[str, bool] | None = None,
-    bc_prior: Mapping[str, PriorArgs] | None = None,
-    bc_state_activity: Mapping[str, StateActivity] | None = None,
-    bc_freq: str | None = None,
-    bc_anchor_time: DatetimeLike | None = None,
+    boundary: Mapping[str, BoundaryChoice[CenteredOperands]] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     sampler: RhimeSampler | Literal["default"] = "default",
@@ -435,13 +370,10 @@ def run_rhime_co2_o2_from_prepared_inputs(
         state_activity: Optional labelled active/fixed policy on the retained
             state dimension. Omitted states use the model's structural activity
             policy.
-        use_bc: Optional co2/o2 boolean mapping selecting prepared boundary
-            sensitivities. Omitted entries include available channel boundaries.
-        bc_prior: Channel-keyed independent boundary-scale priors; the CO2
-            default is used for each enabled channel when omitted.
-        bc_state_activity: Channel-keyed labelled fixed/active boundary policies.
-        bc_freq: Optional model-owned frequency for raw boundary periods.
-        bc_anchor_time: Optional timestamp anchoring raw boundary periods.
+        boundary: Optional boundary choices keyed by ``co2``/``o2``. Each is
+            bound once to that channel's prepared absolute sensitivity or
+            centered operands (with any prepared centering weights). Omitted
+            channels have no boundary term.
         offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
             with the same meanings as the CO2 offset component. Baseline terms
@@ -481,11 +413,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
         prepared_inputs=prepared_inputs,
         independent_error_sd=independent_error_sd,
         state_activity=state_activity,
-        use_bc=use_bc,
-        bc_prior=bc_prior,
-        bc_state_activity=bc_state_activity,
-        bc_freq=bc_freq,
-        bc_anchor_time=bc_anchor_time,
+        boundary=boundary,
         offset_prior=offset_prior,
         offset_args=offset_args,
         tau_hours=tau_hours,
@@ -530,7 +458,9 @@ def _annotate_linked_fixed_ou_trace(
 
 
 def annotate_co2_o2_trace(
-    trace: xr.DataTree, *, built: RhimeModelBuildResult,
+    trace: xr.DataTree,
+    *,
+    built: RhimeModelBuildResult,
 ) -> xr.DataTree:
     """Attach the built joint model's scientific meaning after coordinate restoration.
 
@@ -546,6 +476,7 @@ def annotate_co2_o2_trace(
     species/site grouping and joint likelihood/predictive scope. The trace is
     updated and returned; no graph is constructed or inference performed.
     """
+    trace.attrs["rhime_boundary_format_version"] = 1
     restore_absolute_predictives(trace)
     trace = _annotate_co2_o2_trace(trace, built=built)
     if "log_likelihood" in trace.children and "y" in trace["log_likelihood"]:

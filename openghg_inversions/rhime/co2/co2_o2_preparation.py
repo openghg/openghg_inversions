@@ -44,7 +44,7 @@ from openghg_inversions.serialization import (
 
 
 CO2_O2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_o2_prepared_inputs"
-CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION = 2
+CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION = 4
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -92,6 +92,8 @@ class Co2O2PreparedInputs:
         boundary_operands: Raw centered-v1 H_bc_anomaly/H_bc_mass and scalar
             bc_reference, retained until model binding. Mutually exclusive with
             absolute boundary_sensitivity for the same channel.
+        bc_centering_weights: Matching channel mapping of positive dimensionless
+            scientific averaging weights on the resolved boundary states.
         independent_error_sd: Optional positive independent-error standard
             deviations on the joint observation axis, with matching row units.
             The borrowed payload may remain lazy.
@@ -109,6 +111,7 @@ class Co2O2PreparedInputs:
     boundary_sensitivity: Mapping[str, xr.DataArray] = field(default_factory=dict)
     independent_error_sd: xr.DataArray | None = None
     boundary_operands: Mapping[str, xr.Dataset] = field(default_factory=dict)
+    bc_centering_weights: Mapping[str, xr.DataArray] = field(default_factory=dict)
 
     def to_datatree(self) -> xr.DataTree:
         """Build a versioned tree without writing or materializing payloads.
@@ -123,6 +126,9 @@ class Co2O2PreparedInputs:
             ValueError: If dense aggregation covariance is absent, boundary
                 channels or operands are invalid, or metadata cannot be serialized.
         """
+        _validate_boundary_corrections(
+            self.bc_centering_weights, self.boundary_operands, materialize=False,
+        )
         covariance = self.aggregation_error.covariance
         if self.aggregation_error.mode != "dense" or covariance is None:
             raise ValueError("CO2/O2 prepared inputs require dense aggregation error.")
@@ -155,6 +161,8 @@ class Co2O2PreparedInputs:
             arrays[f"{channel}_boundary"] = {"boundary_sensitivity": boundary}
         for channel, operands in self.boundary_operands.items():
             arrays[f"{channel}_boundary_operands"] = dict(operands.data_vars)
+        for channel in self.bc_centering_weights:
+            arrays[f"{channel}_boundary_weights"] = {"bc_centering_weights": self.bc_centering_weights[channel]}
         datasets: dict[str, xr.Dataset] = {}
         for name, variables in arrays.items():
             dataset = xr.Dataset(variables)
@@ -175,7 +183,7 @@ class Co2O2PreparedInputs:
         tree = xr.DataTree.from_dict(datasets)
         tree.attrs = {
             "schema": CO2_O2_PREPARED_INPUTS_SCHEMA,
-            "schema_version": CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION if self.boundary_operands else 1,
+            "schema_version": CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION,
             "provenance_json": json.dumps(dict(self.provenance), sort_keys=True, allow_nan=False),
             "o2_co2_flux_ratio_unavailable_reason": self.o2_co2_flux_ratio_unavailable_reason or "",
         }
@@ -183,12 +191,11 @@ class Co2O2PreparedInputs:
 
     @classmethod
     def from_datatree(cls, tree: xr.DataTree) -> Self:
-        """Restore version-1 or version-2 inputs and their saved intercept.
+        """Restore versioned inputs and their saved intercept.
 
         Args:
             tree: Tree using the dedicated CO2/O2 prepared-input schema.
-                Version 1 supports absolute boundaries; version 2 additionally
-                supports centered boundary operands.
+                Only the current format is accepted; prepare older inputs again.
 
         Returns:
             Validated scientific inputs. Observations, fixed intercept, dense
@@ -203,14 +210,16 @@ class Co2O2PreparedInputs:
         if tree.attrs.get("schema") != CO2_O2_PREPARED_INPUTS_SCHEMA:
             raise ValueError(f"Expected Co2O2PreparedInputs schema {CO2_O2_PREPARED_INPUTS_SCHEMA!r}.")
         version = tree.attrs.get("schema_version")
-        if isinstance(version, bool) or not isinstance(version, Integral) or version not in (1, 2):
-            raise ValueError(f"Expected Co2O2PreparedInputs schema_version 1 or 2; got {version!r}.")
-        if version == 1 and any(name.endswith("_boundary_operands") for name in tree.children):
-            raise ValueError("Centered boundary operands require CO2/O2 prepared schema version 2.")
+        if isinstance(version, bool) or not isinstance(version, Integral) or version != CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION:
+            raise ValueError(
+                f"Expected Co2O2PreparedInputs schema_version {CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION}; "
+                f"got {version!r}; prepare again."
+            )
         unexpected_boundaries = {
             name
             for name in tree.children
-            if ("boundary" in name and name not in {"co2_boundary", "o2_boundary", "co2_boundary_operands", "o2_boundary_operands"})
+            if ("boundary" in name and name not in {"co2_boundary", "o2_boundary", "co2_boundary_operands", "o2_boundary_operands",
+                                                                "co2_boundary_weights", "o2_boundary_weights"})
         }
         if unexpected_boundaries:
             raise ValueError(f"Unsupported serialized boundary nodes: {sorted(unexpected_boundaries)!r}.")
@@ -274,6 +283,10 @@ class Co2O2PreparedInputs:
             boundary_operands={
                 channel: datasets[f"{channel}_boundary_operands"]
                 for channel in ("co2", "o2") if f"{channel}_boundary_operands" in datasets
+            },
+            bc_centering_weights={
+                channel: _stored_array(datasets[f"{channel}_boundary_weights"], "bc_centering_weights")
+                for channel in ("co2", "o2") if f"{channel}_boundary_weights" in datasets
             },
             independent_error_sd=(
                 _stored_array(datasets["independent_error"], "independent_error_sd")
@@ -538,6 +551,9 @@ def _validate_prepared_inputs(prepared: Co2O2PreparedInputs) -> None:
         xr.align(boundary, native, join="exact", copy=False)
         if boundary.dims[1] not in boundary.indexes or not boundary.indexes[boundary.dims[1]].is_unique:
             raise ValueError(f"{channel} boundary states require unique labels.")
+    _validate_boundary_corrections(
+        prepared.bc_centering_weights, prepared.boundary_operands, materialize=True,
+    )
     _validate_independent_error(observations, prepared.independent_error_sd, materialize=True)
 
 
@@ -796,6 +812,7 @@ def prepare_co2_o2_inputs(
     provenance: Mapping[str, Any] | None = None,
     boundary_sensitivity: Mapping[str, xr.DataArray] | None = None,
     boundary_operands: Mapping[str, xr.Dataset] | None = None,
+    bc_centering_weights: Mapping[str, xr.DataArray] | None = None,
     independent_error_sd: xr.DataArray | None = None,
 ) -> Co2O2PreparedInputs:
     """Validate coherent-reduction channel products and form one joint likelihood.
@@ -853,6 +870,9 @@ def prepare_co2_o2_inputs(
         boundary_operands: Optional co2/o2 mapping of raw centered-v1 operands
             on independent native channel labels. The spatial BC states remain
             unexpanded until model binding; channels require identical units.
+        bc_centering_weights: Matching co2/o2 mapping of strictly positive
+            dimensionless scientific averaging weights on resolved BC states.
+            Lazy responses and weights remain borrowed until loading or binding.
         independent_error_sd: Optional finite positive independent-error standard
             deviations on the gathered observation axis, with matching labels
             and observation_units. Eager values are checked here; lazy payloads
@@ -880,6 +900,8 @@ def prepare_co2_o2_inputs(
 
     boundary_sensitivity = dict(boundary_sensitivity or {})
     boundary_operands = dict(boundary_operands or {})
+    bc_centering_weights = dict(bc_centering_weights or {})
+    _validate_boundary_corrections(bc_centering_weights, boundary_operands, materialize=False)
     _validate_centered_channels(boundary_operands, boundary_sensitivity, co2_observations, o2_observations, co2_units, o2_units)
     if set(boundary_sensitivity) - {"co2", "o2"}:
         raise ValueError("boundary_sensitivity must be keyed only by co2 and o2.")
@@ -894,17 +916,12 @@ def prepare_co2_o2_inputs(
                 )
             boundary, _ = xr.align(boundary, observations, join="exact", copy=False)
             declared_units = boundary.attrs.get("units")
-            if declared_units is not None and declared_units not in (
-                co2_units,
-                f"{co2_units} per dimensionless boundary scale",
-            ):
+            if declared_units is not None and declared_units != co2_units:
                 raise ValueError(f"{channel} boundary sensitivity units must match its channel units.")
             state_dim = boundary.dims[1]
             if state_dim not in boundary.indexes or not boundary.indexes[state_dim].is_unique:
                 raise ValueError(f"{channel} boundary states require unique labels.")
-            boundary_sensitivity[channel] = boundary.assign_attrs(
-                units=f"{co2_units} per dimensionless boundary scale"
-            )
+            boundary_sensitivity[channel] = boundary.assign_attrs(units=co2_units)
 
     co2_dim = _axis(co2_observations, "CO2 observations")
     o2_dim = _axis(o2_observations, "O2 observations")
@@ -1041,6 +1058,7 @@ def prepare_co2_o2_inputs(
         provenance=prepared_provenance,
         boundary_sensitivity=boundary_sensitivity,
         boundary_operands=boundary_operands,
+        bc_centering_weights=bc_centering_weights,
         independent_error_sd=independent_error_sd,
     )
 
@@ -1072,3 +1090,33 @@ def _validate_centered_channels(
         for name in ("H_bc_anomaly", "bc_reference"):
             if values[name].attrs.get("units") != co2_units:
                 raise ValueError(f"{channel} {name} units must match channel units.")
+
+
+def _validate_boundary_corrections(
+    weights: Mapping[str, xr.DataArray],
+    operands: Mapping[str, xr.Dataset],
+    *,
+    materialize: bool,
+) -> None:
+    """Validate explicit full-window weights without executing borrowed transport.
+
+    Model binding validates their labels against the resolved period-state axis.
+    Loading checks weight values jointly; saving keeps lazy payloads borrowed.
+    """
+    if set(weights) - {"co2", "o2"} or set(weights) - set(operands):
+        raise ValueError("Boundary centering weights require matching co2/o2 centered operands.")
+    arrays = list(weights.values())
+    if materialize:
+        arrays = dask_compute(*(to_dense(array) for array in arrays))
+    for channel, array in zip(weights, arrays):
+        if array.dims != ("bc_curtain", "bc_period"):
+            raise ValueError(f"{channel} boundary weights require dimensions ('bc_curtain', 'bc_period').")
+        if any(dim not in array.indexes or not array.indexes[dim].is_unique for dim in array.dims):
+            raise ValueError(f"{channel} boundary weights require unique curtain and period labels.")
+        if not isinstance(array.indexes["bc_period"], pd.DatetimeIndex):
+            raise ValueError(f"{channel} boundary weight bc_period labels must be interval start times.")
+        if array.attrs.get("units") != "1":
+            raise ValueError(f"{channel} bc_centering_weights requires dimensionless units '1'.")
+        if not isinstance(array.data, DaskArray):
+            if not np.isfinite(array.data).all() or not (array.data > 0).all():
+                raise ValueError(f"{channel} boundary weights must be finite and strictly positive.")

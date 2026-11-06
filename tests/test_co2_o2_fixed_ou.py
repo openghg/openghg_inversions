@@ -1,5 +1,7 @@
 """Dense two-tracer oracle and matched linked fixed-OU sampler contracts."""
 
+from boundary_test_utils import bound_linked_model_arguments
+
 from dataclasses import replace
 import json
 
@@ -119,7 +121,7 @@ def _dense(kwargs, amplitudes, tau):
 def test_linked_native_joint_predictions_and_density_ignore_poisoned_cache():
     kwargs = _kwargs(_prepared(), interleaved=True, native_multiindex=True)
     tau = {"co2:A": 6.0, "o2:A": 8.0, "o2:B": 2.0}
-    cached = build_co2_o2_cached_sigma_model(**kwargs, tau_hours=tau, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8})
+    cached = build_co2_o2_cached_sigma_model(**bound_linked_model_arguments({**kwargs, 'tau_hours': tau, 'site_amplitude_prior': {"pdf": "halfnormal", "sigma": 0.8}}))
     assert not cached.model.potentials
     assert [rv.name for rv in cached.model.observed_RVs] == ["y"]
     covariance = _dense(kwargs, np.zeros(3), tau)
@@ -135,15 +137,8 @@ def test_linked_stock_cached_covariance_logp_and_gradients_match_dense(interleav
     alignment = linked_fixed_ou_alignment(kwargs["observations"])
     tau = {"co2:A": 6.0, "o2:A": 8.0, "o2:B": 2.0}
     sigma = np.array([0.4, 0.6, 0.8])
-    cached = build_co2_o2_cached_sigma_model(
-        **kwargs,
-        tau_hours=tau,
-        site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8},
-        initial_site_amplitudes=dict(zip(alignment.site_labels.values, sigma)),
-    )
-    stock = build_co2_o2_model(
-        **kwargs, tau_hours=tau, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8}
-    )
+    cached = build_co2_o2_cached_sigma_model(**bound_linked_model_arguments({**kwargs, 'tau_hours': tau, 'site_amplitude_prior': {"pdf": "halfnormal", "sigma": 0.8}, 'initial_site_amplitudes': dict(zip(alignment.site_labels.values, sigma))}))
+    stock = build_co2_o2_model(**bound_linked_model_arguments({**kwargs, 'tau_hours': tau, 'site_amplitude_prior': {"pdf": "halfnormal", "sigma": 0.8}}))
     covariance = _dense(kwargs, sigma, tau)
     species = kwargs["observations"].species.values
     aggregation = kwargs["aggregation_error"].covariance.values
@@ -177,9 +172,7 @@ def test_linked_stock_cached_covariance_logp_and_gradients_match_dense(interleav
             - multivariate_normal.logpdf(residual, cov=_dense(kwargs, minus, tau))
         ) / 2e-5
         np.testing.assert_allclose(amplitude_gradient[index], expected_gradient, rtol=1e-6)
-    fixed = build_co2_o2_model(
-        **kwargs, tau_hours=tau, fixed_site_amplitudes=dict(zip(alignment.site_labels.values, sigma))
-    )
+    fixed = build_co2_o2_model(**bound_linked_model_arguments({**kwargs, 'tau_hours': tau, 'fixed_site_amplitudes': dict(zip(alignment.site_labels.values, sigma))}))
     fixed_point = fixed.initial_point()
     fixed_mean = fixed.compile_fn(
         fixed.replace_rvs_by_values([fixed["modelled_concentration"]]),
@@ -226,8 +219,8 @@ def test_linked_cache_accept_reject_order_and_chain_locality(monkeypatch, center
             "bc_reference": xr.DataArray(400.,attrs={"units":"ppm"}),
         },coords={"nmeasure":sensitivity[dim].values,"bc_region":["north"]},attrs={"boundary_representation":"centered-v1"})
         kwargs["boundary_operands"] = {"co2":operands}
-    first = build_co2_o2_cached_sigma_model(**kwargs, tau_hours=6.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8})
-    second = build_co2_o2_cached_sigma_model(**kwargs, tau_hours=6.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8})
+    first = build_co2_o2_cached_sigma_model(**bound_linked_model_arguments({**kwargs, 'tau_hours': 6.0, 'site_amplitude_prior': {"pdf": "halfnormal", "sigma": 0.8}}))
+    second = build_co2_o2_cached_sigma_model(**bound_linked_model_arguments({**kwargs, 'tau_hours': 6.0, 'site_amplitude_prior': {"pdf": "halfnormal", "sigma": 0.8}}))
     sampler = _sampler_for_cached_graph(
         RhimeSampler(nuts_sampler="pymc"),
         cached_model=first,
@@ -405,10 +398,8 @@ def test_cached_affine_design_includes_fixed_pruned_boundary_and_channel_offsets
         offset_prior={channel: {"pdf": "normal", "mu": 0.1, "sigma": 0.2} for channel in boundaries},
         offset_args={channel: {"per_site": native_multiindex} for channel in boundaries},
     )
-    cached = build_co2_o2_cached_sigma_model(**kwargs, tau_hours=6.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8})
-    stock = build_co2_o2_model(
-        **kwargs, tau_hours=6.0, site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.8}
-    )
+    cached = build_co2_o2_cached_sigma_model(**bound_linked_model_arguments({**kwargs, 'tau_hours': 6.0, 'site_amplitude_prior': {"pdf": "halfnormal", "sigma": 0.8}}))
+    stock = build_co2_o2_model(**bound_linked_model_arguments({**kwargs, 'tau_hours': 6.0, 'site_amplitude_prior': {"pdf": "halfnormal", "sigma": 0.8}}))
     point = stock.initial_point()
     point["co2_bc_active"] = np.array([1.3])
     point["o2_bc_active"] = np.array([0.7])
@@ -495,7 +486,7 @@ def test_linked_ou_rejects_missing_station_labels():
 def test_centered_linked_cache_matches_independent_dense_gaussian(mixed, o2_reference):
     """Direct centered arithmetic survives large O2 backgrounds and native labels."""
     import pymc as pm
-    from openghg_inversions.rhime.co2.centered_boundary import bind_boundary_operands
+    from openghg_inversions.models.boundary import CenteredOperands
     from openghg_inversions.array_ops import select_gathered_data_array
 
     with pytensor.config.change_flags(floatX="float64"):
@@ -522,7 +513,7 @@ def test_centered_linked_cache_matches_independent_dense_gaussian(mixed, o2_refe
                 "H_bc_mass": xr.DataArray(mass, dims=("nmeasure","bc_region"), attrs={"units":"1"}),
                 "bc_reference": xr.DataArray(reference, attrs={"units":"ppm"}),
             },coords={"nmeasure":sensitivity[native_dim].values,"bc_region":labels},attrs={"boundary_representation":"centered-v1"})
-            aligned = bind_boundary_operands(raw, native)
+            aligned = CenteredOperands.from_dataset(raw).bind(native)
             active = [True, True] if channel == "co2" else [True, False, False]
             fixed = [1.,1.] if channel == "co2" else [1.,1.+2e-13,.7]
             policies[channel] = StateActivity(
@@ -547,10 +538,7 @@ def test_centered_linked_cache_matches_independent_dense_gaussian(mixed, o2_refe
                 shifts += reference*padded_m.sum(axis=1)
         kwargs["observations"] = observations + xr.DataArray(shifts,dims="observation",coords={"observation":observations.observation})
         tau = {"co2:A":6.,"o2:A":8.,"o2:B":2.}
-        cached = build_co2_o2_cached_sigma_model(**kwargs,boundary_operands=operands,
-            bc_state_activity=policies,bc_prior={channel:{"pdf":"normal","mu":1.,"sigma":.1} for channel in ("co2","o2")},
-            offset_prior={"co2":{"pdf":"normal","mu":0.,"sigma":.1}},
-            tau_hours=tau,site_amplitude_prior={"pdf":"halfnormal","sigma":.8})
+        cached = build_co2_o2_cached_sigma_model(**bound_linked_model_arguments({**kwargs, 'boundary_operands': operands, 'bc_state_activity': policies, 'bc_prior': {channel:{"pdf":"normal","mu":1.,"sigma":.1} for channel in ("co2","o2")}, 'offset_prior': {"co2":{"pdf":"normal","mu":0.,"sigma":.1}}, 'tau_hours': tau, 'site_amplitude_prior': {"pdf":"halfnormal","sigma":.8}}))
         model = cached.model
         oracle_mean = model["co2_o2_affine_contribution"] + model["co2_offset"]
         oracle_absolute = oracle_mean
@@ -619,10 +607,25 @@ def test_centered_linked_all_fixed_boundary_cache(centered_precision):
         rows = kwargs["observations"].species.values == channel
         shift[rows] = .1*reference
         centered_fixed[rows] = .02*fixed_value+.1*reference*(fixed_value-1.)
-    cached = build_co2_o2_cached_sigma_model(**kwargs,boundary_operands=operands,
-        bc_state_activity={"co2":StateActivity(active=False,fixed_value=1.2),"o2":StateActivity(active=False,fixed_value=.8)},
-        tau_hours=6.,site_amplitude_prior={"pdf":"halfnormal","sigma":.8})
+    cached = build_co2_o2_cached_sigma_model(**bound_linked_model_arguments({**kwargs, 'boundary_operands': operands, 'bc_state_activity': {"co2":StateActivity(active=False,fixed_value=1.2),"o2":StateActivity(active=False,fixed_value=.8)}, 'tau_hours': 6., 'site_amplitude_prior': {"pdf":"halfnormal","sigma":.8}}))
     np.testing.assert_allclose(cached.target.fixed_contribution,kwargs["fixed_prior_contribution"].values+centered_fixed)
     assert len(cached.states) == 1
     assert cached.target.design.shape[1] == kwargs["co2_sensitivity"].sizes[kwargs["co2_sensitivity"].dims[1]]
     np.testing.assert_allclose(cached.target.observations,kwargs["observations"].values-shift)
+
+
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize(
+    "options, message",
+    [
+        ({"offset_args": {"co2": {"offset_freq": "monthly"}}}, "co2 offset_args require offset_prior"),
+        ({"offset_prior": {"CO2": {"pdf": "normal", "mu": 0.0, "sigma": 1.0}}}, "offset_prior must be a mapping keyed only"),
+        ({"offset_args": {"o3": {}}, "offset_prior": {}}, "offset_args must be a mapping keyed only"),
+    ],
+)
+def test_direct_linked_builders_reject_offset_options_they_would_ignore(cached, options, message):
+    kwargs = {**_kwargs(_prepared()), "tau_hours": 6.0, "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.8},
+              **options}
+    builder = build_co2_o2_cached_sigma_model if cached else build_co2_o2_model
+    with pytest.raises(ValueError, match=message):
+        builder(**kwargs)

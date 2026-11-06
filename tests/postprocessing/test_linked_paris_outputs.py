@@ -1,7 +1,9 @@
 """Joint-draw closure and per-species PARIS serialization."""
 
 import json
+from dataclasses import replace
 
+from dask.callbacks import Callback
 import numpy as np
 import pytest
 import xarray as xr
@@ -89,6 +91,7 @@ def _joint_fixture(
             "/": xr.Dataset(
                 attrs={
                     "rhime_recipe": "co2_o2",
+                    "rhime_boundary_format_version": 1,
                     "rhime_variable_roles": json.dumps(roles),
                     "rhime_model_metadata": json.dumps({"provenance": "joint fixture"}),
                 }
@@ -158,7 +161,7 @@ def test_unsupported_units_templates_and_missing_components():
     with pytest.raises(ValueError, match="does not close"):
         make_co2_o2_paris_outputs(bad, prepared)
     del trace["prior"]["bc"]
-    with pytest.raises(ValueError, match="boundary_concentration.*prior"):
+    with pytest.raises(ValueError, match="boundary_concentration"):
         make_co2_o2_paris_outputs(trace, prepared)
     prepared, trace = _joint_fixture(baseline=False, o2_units="per meg")
     with pytest.raises(ValueError, match="cannot represent"):
@@ -175,6 +178,134 @@ def test_fixed_state_prior_draws_are_preserved():
         make_co2_o2_paris_outputs(trace, prepared)["co2"]["concentration"].attrs["rhime_recipe"]
         == "co2_o2_cached_sigma_fixed_ou"
     )
+
+
+@pytest.mark.parametrize("anomaly_units,zero_anomaly", [("1", False), ("ppm", False), ("ppm", True)])
+def test_declared_boundary_coefficients_survive_linked_products(monkeypatch, anomaly_units, zero_anomaly):
+    from openghg_inversions.postprocessing import linked_paris_outputs
+    from openghg_inversions.rhime.co2.co2_o2_outputs import (
+        Co2O2Output, Co2O2OutputOptions, calculate_co2_o2_products,
+    )
+
+    prepared, trace = _joint_fixture(baseline=False)
+    # Exercise native-row selection independently of preparation's channel concatenation.
+    order = [2, 0, 3, 1, 4]
+    sensitivity = _gather_co2_o2_sensitivity(prepared.co2_sensitivity, prepared.o2_sensitivity).isel(
+        observation=order
+    )
+    monkeypatch.setattr(linked_paris_outputs, "_gather_co2_o2_sensitivity", lambda *_: sensitivity)
+    prepared = replace(
+        prepared,
+        observations=prepared.observations.isel(observation=order),
+        fixed_prior_contribution=prepared.fixed_prior_contribution.isel(observation=order),
+    )
+    trace["posterior"] = trace.posterior.to_dataset().isel(observation=order)
+    roles = json.loads(trace.attrs["rhime_variable_roles"])
+    roles["boundary_concentration"] = "all_boundary"
+    constants = xr.Dataset()
+    for species in ("co2", "o2"):
+        prefix = f"{species}_"
+        declared = {
+            "boundary_concentration": "contribution",
+            "boundary_reference_concentration": "reference",
+            "boundary_mean_shift": "level",
+            "boundary_mean_shift_concentration": "level_response",
+        }
+        if zero_anomaly:
+            declared.update(boundary_correction="correction", boundary_anomaly_scale="width",
+                            boundary_centering_weights="weights")
+            constants[prefix + "width"] = xr.DataArray(0.0, attrs={"units": "ppm"})
+            constants[prefix + "weights"] = xr.DataArray(
+                [1.0, 2.0, 3.0], dims=prefix + "pattern_term",
+                coords={prefix + "pattern_term": ["east", "west", "top"]},
+            )
+        else:
+            declared.update(boundary_correction_anomaly="pattern", boundary_anomaly_concentration="pattern_response")
+        roles.update({prefix + role: prefix + name for role, name in declared.items()})
+        for group in ("posterior", "prior"):
+            draws = trace[group].to_dataset()
+            samples = draws.scales.isel(state=0, drop=True).drop_vars(["source", "tracer_scope"], errors="ignore")
+            level = (samples * xr.DataArray(
+                [0.2, -0.1], dims=prefix + "level_period",
+                coords={prefix + "level_period": np.array(["2024-01-01", "2024-02-01"], dtype="datetime64[ns]")},
+            )).assign_attrs(units="ppm", long_name="physical level coefficient").chunk()
+            pattern = (samples * xr.DataArray(
+                [0.1, -0.3, 0.2], dims=prefix + "pattern_term",
+                coords={prefix + "pattern_term": ["east", "west", "top"]},
+            )).assign_attrs(units=anomaly_units, long_name="physical pattern coefficient").chunk()
+            native = prepared.observations.species == species
+            reference = xr.where(native, 400.0 if species == "co2" else 209300.0, 0.0)
+            level_response = xr.where(native, level.sum(prefix + "level_period"), 0.0)
+            pattern_response = xr.where(native, (pattern * [1.0, 2.0, 4.0]).sum(prefix + "pattern_term"), 0.0)
+            if zero_anomaly:
+                pattern_response = xr.zeros_like(level_response)
+                draws[prefix + "correction"] = xr.full_like(pattern, 2.0).assign_attrs(units="ppm")
+            else:
+                draws[prefix + "pattern"] = pattern
+                draws[prefix + "pattern_response"] = pattern_response.assign_attrs(units="ppm")
+            draws[prefix + "level"] = level
+            draws[prefix + "reference"] = reference.assign_attrs(units="ppm")
+            draws[prefix + "level_response"] = level_response.assign_attrs(units="ppm")
+            contribution = reference + level_response + pattern_response
+            draws[prefix + "contribution"] = contribution.assign_attrs(units="ppm")
+            draws["all_boundary"] = draws.get("all_boundary", 0.0) + contribution
+            if group == "posterior":
+                draws["prediction"] = draws.prediction + contribution
+            trace[group] = draws
+    trace["constant_data"] = constants
+    trace.attrs.update(rhime_boundary_format_version=1, rhime_variable_roles=json.dumps(roles))
+    before = trace.copy(deep=True)
+    observed_data = prepared.observations.data
+    coefficient_data = trace.posterior.co2_level.data
+    tasks = []
+    output = Co2O2Output(prepared, trace, "2024-01-01", "2024-02-01", "EUROPE")
+    with Callback(pretask=lambda *args: tasks.append(args[0])):
+        components = reconstruct_co2_o2_concentrations(trace, prepared)
+    assert tasks == []
+    calculate_co2_o2_products(result=output, output=Co2O2OutputOptions())
+    products = make_co2_o2_paris_outputs(trace, prepared)
+    for species, raw in components.items():
+        assert raw.sizes["draw"] == 3 and raw.sizes["prior_draw"] == 4
+        xr.testing.assert_equal(
+            raw.observed,
+            prepared.observations.where(prepared.observations.species == species, drop=True).rename("observed"),
+        )
+        for group in ("posterior", "prior"):
+            for component, source in (
+                ("mean_shift", "level"), ("anomaly", "correction" if zero_anomaly else "pattern"),
+            ):
+                name = f"boundary_{component}_coefficient_{group}"
+                expected = trace[group][f"{species}_{source}"]
+                if zero_anomaly and component == "anomaly":
+                    expected = xr.zeros_like(expected)
+                if group == "prior":
+                    expected = expected.rename(chain="prior_chain", draw="prior_draw")
+                xr.testing.assert_identical(raw[name], expected.rename(name))
+                assert "observation" not in raw[name].dims
+                assert hasattr(raw[name].data, "__dask_graph__")
+                assert name in output.outputs[f"{species}_concentration_components"]
+                sample_dims = ("prior_chain", "prior_draw") if group == "prior" else ("chain", "draw")
+                xr.testing.assert_allclose(
+                    output.outputs[f"{species}_basic"][f"{name}_mean"],
+                    expected.mean(sample_dims).rename(f"{name}_mean"),
+                )
+            xr.testing.assert_allclose(
+                raw[f"boundary_{group}"],
+                (raw[f"boundary_reference_{group}"] + raw[f"boundary_mean_shift_{group}"]
+                 + raw[f"boundary_anomaly_{group}"]).transpose(*raw[f"boundary_{group}"].dims),
+            )
+            total = raw[f"pollution_{group}"] + raw[f"boundary_{group}"] + raw[f"offset_{group}"]
+            xr.testing.assert_allclose(total, raw[f"modelled_{group}"].transpose(*total.dims))
+        if zero_anomaly:
+            assert (raw.boundary_anomaly_coefficient_prior == 0).all()
+            assert (raw.boundary_anomaly_posterior == 0).all()
+        paris = products[species]["concentration"]
+        assert not any("coefficient" in str(name) for name in paris.variables)
+        assert set(paris.dims) <= {"index", "platform", "sector", "percentile", "nbnds"}
+        np.testing.assert_allclose(paris.mf_bc_posterior, raw.boundary_posterior.mean(("chain", "draw")) * 1e-6)
+    xr.testing.assert_identical(trace, before)
+    assert trace.posterior.co2_level.data is coefficient_data
+    assert prepared.observations.data is observed_data
 
 
 def test_native_flux_reuses_joint_state_and_roundtrips(tmp_path):
@@ -275,6 +406,7 @@ def test_native_flux_rejects_uppercase_private_states_without_concentration_sign
 def test_cached_joint_draws_with_baseline_emit_paris(tmp_path, native_multiindex, monkeypatch):
     import pymc as pm
 
+    from openghg_inversions.models.boundary import MultiplicativeChoice
     from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
     from openghg_inversions.rhime.co2 import run_rhime_co2_o2_cached_sigma_from_prepared_inputs
     from openghg_inversions.rhime.co2 import co2_o2_cached_sigma_runner
@@ -312,7 +444,7 @@ def test_cached_joint_draws_with_baseline_emit_paris(tmp_path, native_multiindex
         independent_error_sd=_independent_error(prepared),
         tau_hours=12.0,
         site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.5},
-        bc_prior={"co2": {"pdf": "normal", "mu": 1.0, "sigma": 0.1}},
+        boundary={"co2": MultiplicativeChoice({"pdf": "normal", "mu": 1.0, "sigma": 0.1})},
         offset_prior={"o2": {"pdf": "normal", "mu": 0.0, "sigma": 0.1}},
         offset_args={"o2": {"per_site": False}},
         sampler=RhimeSampler(

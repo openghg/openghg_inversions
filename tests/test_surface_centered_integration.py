@@ -9,9 +9,9 @@ import pytensor
 import xarray as xr
 
 from examples.surface_centered_pilot import acquire_supplied, prepare_pilot, run_example, surface_inputs
-from openghg_inversions.boundary_sensitivity import align_boundary_operands
 from openghg_inversions.inversion_data import MergedData, SiteOptions, acquisition
-from openghg_inversions.rhime.co2.centered_boundary import restore_absolute_predictives
+from openghg_inversions.models.boundary import CenteredOperands
+from openghg_inversions.rhime.co2.boundary_output import restore_absolute_predictives
 
 
 @pytest.mark.parametrize("mixed_transport", [False, True])
@@ -52,7 +52,8 @@ def test_offline_scientific_chain_and_absolute_saved_replay(tmp_path, request, m
     xr.testing.assert_allclose(prepared.inv_inputs.H_bc_mass, canonical.inv_inputs.H_bc_mass)
 
     # Arbitrary sampled BC factors preserve the original multiplicative model.
-    aligned = align_boundary_operands(canonical.inv_inputs)
+    with pytensor.config.change_flags(floatX="float64"):
+        aligned = CenteredOperands.from_dataset(canonical.inv_inputs).bind(canonical.inv_inputs.mf)
     aligned_absolute = aligned.H_bc_anomaly + aligned.bc_reference * aligned.H_bc_mass
     expected_bc = (trace.prior.bc * aligned_absolute).sum("bc_region")
     xr.testing.assert_allclose(trace.prior.mu_bc, expected_bc.transpose(*trace.prior.mu_bc.dims))
