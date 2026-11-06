@@ -251,6 +251,7 @@ def test_prepared_single_save_reopen_and_tiny_runner(tmp_path, predictions):
     xr.testing.assert_allclose(trace[group].y, centered_y + trace.constant_data.boundary_reference_shift)
     assert trace[group].y.attrs["concentration_representation"] == "absolute-v1"
     assert "boundary_reference_shift" in trace.constant_data
+    assert trace.constant_data.boundary_reference_shift.attrs["units"] == "ppm"
     from openghg_inversions.serialization import save_trace, load_trace
 
     trace_path = tmp_path / "trace.nc"

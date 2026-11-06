@@ -19,7 +19,12 @@ from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.co2 import build_co2_cached_sigma_model, build_co2_model
 from openghg_inversions.boundary_sensitivity import validate_boundary_operands
-from openghg_inversions.models.boundary import AdditiveChoice, CenteredOperands
+from openghg_inversions.models.boundary import (
+    AdditiveChoice,
+    AnomalyScalingChoice,
+    CenteredOperands,
+    MultiplicativeChoice,
+)
 from boundary_test_utils import bound_model_arguments, boundary_transport
 
 
@@ -510,6 +515,26 @@ def test_bound_additive_affine_result_equals_likelihood_and_keeps_resolved_scale
             point["bc_anomaly_latent"] = np.array([0.1, -0.2])
         direct, lowered = evaluate(point)
         np.testing.assert_allclose(direct, lowered, rtol=1e-13, atol=1e-13)
+
+
+@pytest.mark.parametrize("choice", [
+    AdditiveChoice({"pdf": "normal", "mu": 0.0, "sigma": 0.2}, 0.3),
+    MultiplicativeChoice({"pdf": "lognormal", "mu": 0.0, "sigma": 0.1}),
+    AnomalyScalingChoice({"pdf": "normal", "mu": 0.0, "sigma": 0.2}, 0.5),
+])
+def test_bound_records_own_their_transport_layout(choice):
+    """Bound records reject reordered or incomplete transport, and a foreign output dimension."""
+    from openghg_inversions.models import registered_model
+
+    inputs = _inputs()
+    boundary = choice.bind(inputs.mf, boundary_transport(_kwargs(inputs)))
+    assert boundary.observation_dim == "nmeasure"
+    with pytest.raises(ValueError, match="layout"):
+        replace(boundary, data=boundary.data.assign(H_bc_mass=boundary.data.H_bc_mass.T))
+    with pytest.raises(ValueError, match="lacks H_bc_mass"):
+        replace(boundary, data=boundary.data.drop_vars("H_bc_mass"))
+    with registered_model(), pytest.raises(ValueError, match="bound observation dimension"):
+        replace(boundary, data=boundary.data.compute()).add(output_dim="time")
 
 
 def test_boundary_calendar_mismatch_rejected_before_lazy_payload_computation():

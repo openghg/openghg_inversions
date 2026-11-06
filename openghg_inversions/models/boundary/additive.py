@@ -1,6 +1,8 @@
 """Additive boundary corrections in observation concentration units.
 
-With centered transport ``A``, ``M`` and ``c`` the absolute boundary
+With centered transport ``A``, ``M`` and ``c``
+(:class:`~.operands.CenteredOperands`; see
+:doc:`/usage/centered_boundary_conditions`) the absolute boundary
 contribution is ``A 1 + c M 1 + M d``. The corrections ``d`` live on the bound
 ``(bc_curtain, bc_period)`` states and are transported only by the
 dimensionless ``M``; they are never multiplied by ``c`` or ``A``. The
@@ -58,7 +60,7 @@ from .additive_anomalies import (
     normalized_centering_weights,
 )
 from .mean_shift import add_boundary_mean_shift, mean_shift_outputs
-from .operands import CenteredOperands, materialized_reference_shift
+from .operands import CenteredOperands, check_bound_transport, materialized_reference_shift
 from .outputs import BoundaryOutputs
 
 
@@ -174,11 +176,27 @@ class AdditiveBoundary:
             anomalies, positive ``bc_centering_weights`` on ``bc_region``.
             The arrays are borrowed and may be Dask-backed. Materialize them
             jointly with the other model inputs before :meth:`add`; rows may
-            be padded or subset with ``dataclasses.replace``.
+            be padded or subset with ``dataclasses.replace``, keeping that
+            layout.
+
+    Raises:
+        ValueError: On construction, if ``data`` lacks a variable or does not
+            have that layout. Only dimensions are checked.
     """
 
     choice: AdditiveChoice
     data: xr.Dataset
+
+    def __post_init__(self) -> None:
+        check_bound_transport(self.data, ("H_bc_anomaly", "H_bc_mass"), state_dim="bc_region")
+        weights = self.data.get("bc_centering_weights")
+        if self.choice.anomalies == "weighted" and (weights is None or weights.dims != ("bc_region",)):
+            raise ValueError("Bound weighted anomalies need bc_centering_weights on bc_region; bind the choice again.")
+
+    @property
+    def observation_dim(self) -> str:
+        """Observation dimension of the bound transport."""
+        return str(self.data.H_bc_anomaly.dims[0])
 
     @property
     def has_anomalies(self) -> bool:
@@ -254,15 +272,20 @@ class AdditiveBoundary:
             variables are the mean latent and anomaly coordinates.
 
         Raises:
-            ValueError: If ``data`` is still lazy, materialized operands or
+            ValueError: If ``output_dim`` is not the bound observation
+                dimension, ``data`` is still lazy, materialized operands or
                 weights are invalid, or a whole-window mean prior is not scalar.
             RuntimeError: If the model lacks the coordinate registry.
         """
+        if output_dim != self.observation_dim:
+            raise ValueError(f"output_dim {output_dim!r} is not the bound observation dimension {self.observation_dim!r}.")
         if any(is_dask_collection(value) for value in self.data.data_vars.values()):
             raise ValueError("Materialize boundary data jointly with model inputs before add().")
+
+        # Values become checkable only after joint materialization.
         choice = self.choice
-        anomaly = self.data.H_bc_anomaly.transpose(output_dim, "bc_region")
-        mass = self.data.H_bc_mass.transpose(output_dim, "bc_region")
+        anomaly = self.data.H_bc_anomaly
+        mass = self.data.H_bc_mass
         reference = self.data.bc_reference
         reference_shift = materialized_reference_shift(anomaly, mass, reference).rename(f"{prefix}bc_reference_shift")
         fixed = anomaly.sum("bc_region", skipna=False).assign_attrs(anomaly.attrs)
@@ -348,8 +371,7 @@ class AdditiveBoundary:
             "boundary_reference_concentration": "mu_bc_reference",
         }
         units = {name: concentration for name in (
-            "mu_bc", "H_bc_anomaly", "bc_reference", "bc_reference_shift", "boundary_reference_shift",
-            "bc_correction", "mu_bc_reference",
+            "mu_bc", "H_bc_anomaly", "bc_reference", "bc_correction", "mu_bc_reference",
         )}
         units["H_bc_mass"] = "1"
 

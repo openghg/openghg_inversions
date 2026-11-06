@@ -1,6 +1,8 @@
 """Boundary corrections that scale the prescribed concentration anomaly.
 
-Centered transport gives the prescribed boundary as ``A 1 + c M 1``. This
+Centered transport (:class:`~.operands.CenteredOperands`; see
+:doc:`/usage/centered_boundary_conditions`) gives the prescribed boundary as
+``A 1 + c M 1``. This
 family adds two corrections: a mean shift ``m`` in concentration units,
 transported through ``M`` as in the additive family, and dimensionless
 independent zero-mean Gaussian scalings ``v`` of the reference-adjusted
@@ -34,7 +36,7 @@ from openghg_inversions.models.components import AffineBlock, AffineConcentratio
 from openghg_inversions.models.coords import add_model_data, component_coords
 
 from .mean_shift import add_boundary_mean_shift, mean_shift_outputs
-from .operands import CenteredOperands, materialized_reference_shift
+from .operands import CenteredOperands, check_bound_transport, materialized_reference_shift
 from .outputs import BoundaryOutputs
 
 ReferencePolicy = float | Literal["stored", "whole_window_transport_mean"]
@@ -144,11 +146,23 @@ class AnomalyScalingBoundary:
             units. The arrays are borrowed and may be Dask-backed.
             Materialize them jointly with the other model inputs before
             :meth:`add`; rows may be padded or subset with
-            ``dataclasses.replace``.
+            ``dataclasses.replace``, keeping that layout.
+
+    Raises:
+        ValueError: On construction, if ``data`` lacks a variable or does not
+            have that layout. Only dimensions are checked.
     """
 
     choice: AnomalyScalingChoice
     data: xr.Dataset
+
+    def __post_init__(self) -> None:
+        check_bound_transport(self.data, ("H_bc_anomaly", "H_bc_mass"), state_dim="bc_region")
+
+    @property
+    def observation_dim(self) -> str:
+        """Observation dimension of the bound transport."""
+        return str(self.data.H_bc_anomaly.dims[0])
 
     def anomaly_factor(self) -> xr.DataArray:
         """Observation-space anomaly design scaled to standard-normal coordinates.
@@ -188,15 +202,20 @@ class AnomalyScalingBoundary:
             ``v``; and the sampled variables are the mean latent and ``v``.
 
         Raises:
-            ValueError: If ``data`` is still lazy, materialized operands are
+            ValueError: If ``output_dim`` is not the bound observation
+                dimension, ``data`` is still lazy, materialized operands are
                 invalid, or a whole-window mean prior is not scalar.
             RuntimeError: If the model lacks the coordinate registry.
         """
+        if output_dim != self.observation_dim:
+            raise ValueError(f"output_dim {output_dim!r} is not the bound observation dimension {self.observation_dim!r}.")
         if any(is_dask_collection(value) for value in self.data.data_vars.values()):
             raise ValueError("Materialize boundary data jointly with model inputs before add().")
+
+        # Values become checkable only after joint materialization.
         choice = self.choice
-        anomaly = self.data.H_bc_anomaly.transpose(output_dim, "bc_region")
-        mass = self.data.H_bc_mass.transpose(output_dim, "bc_region")
+        anomaly = self.data.H_bc_anomaly
+        mass = self.data.H_bc_mass
         reference = self.data.bc_reference
         reference_shift = materialized_reference_shift(anomaly, mass, reference).rename(f"{prefix}bc_reference_shift")
         fixed = anomaly.sum("bc_region", skipna=False).assign_attrs(anomaly.attrs)
@@ -272,8 +291,7 @@ class AnomalyScalingBoundary:
             "boundary_anomaly_concentration": "mu_bc_scaling",
         }
         units = {name: concentration for name in (
-            "mu_bc", "H_bc_anomaly", "bc_reference", "bc_reference_shift", "boundary_reference_shift",
-            "mu_bc_reference", "mu_bc_scaling",
+            "mu_bc", "H_bc_anomaly", "bc_reference", "mu_bc_reference", "mu_bc_scaling",
         )}
         units.update(H_bc_mass="1", bc_scaling="1", bc_scale_sd="1")
 
