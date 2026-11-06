@@ -152,6 +152,8 @@ operands and supported model routes.
    openghg_inversions.inversion_data.acquire_surface_data
    openghg_inversions.inversion_data.MergedData.from_options
    openghg_inversions.inversion_data.MergedData.validate_for_preparation
+   openghg_inversions.inversion_data.MergedData.site_schema
+   openghg_inversions.inversion_data.MergedData.validate_scientific_inputs
    openghg_inversions.inversion_data.MergedData.with_site_data
    openghg_inversions.rhime.preparation.resolve_basis_inputs
    openghg_inversions.rhime.preparation.resolve_bc_basis

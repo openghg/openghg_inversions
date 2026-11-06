@@ -2175,6 +2175,7 @@ dependencies = [
     { name = "scipy" },
     { name = "sparse" },
     { name = "xarray" },
+    { name = "xarray-validate" },
 ]
 
 [package.optional-dependencies]
@@ -2245,6 +2246,7 @@ requires-dist = [
     { name = "sparse" },
     { name = "towncrier", marker = "extra == 'dev'", specifier = ">=24.8" },
     { name = "xarray", specifier = ">=2025.8.0" },
+    { name = "xarray-validate", specifier = "==0.0.5" },
 ]
 provides-extras = ["jupyter", "dev"]
 
