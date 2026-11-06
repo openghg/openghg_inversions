@@ -5,8 +5,8 @@ A boundary family is two small records in its own module:
 * a *choice* (:class:`MultiplicativeChoice`, :class:`AdditiveChoice`): the
   prior specification before binding, holding the resolved scientific
   options (priors, activity, anomaly scale and the boundary period calendar)
-  without arrays. Configuration adapters produce choices; they never touch
-  arrays.
+  without bound observations or transport arrays. Configuration adapters
+  produce choices; recipes bind them to observations and transport.
 * a *bound boundary* (:class:`MultiplicativeBoundary`, :class:`AdditiveBoundary`)
   returned by ``choice.bind(observations, transport)``. It pairs the choice
   with borrowed labelled transport aligned to one fit's observation rows and
