@@ -51,6 +51,70 @@ the calculation's meaning, or gives a materially clearer failure before
 expensive or irreversible work. Otherwise, an equation-level test is often
 the clearer home for the invariant.
 
+Make established contracts visible in types
+------------------------------------------
+
+Use a named contract at a handoff where an ordinary ``xr.Dataset`` annotation
+leaves important structure implicit. Keep the contract description and its
+validation together. Describe the variables, dimensions, indexed coordinates,
+units and relationships that consumers can assume, distinguishing structural
+guarantees from numerical checks that await materialization.
+
+The :download:`explicit data contracts proposal
+<../../openspec/changes/explicit-data-contracts/specs/explicit-data-contracts/spec.md>`
+captures this pattern; it does not indicate that contract types have already
+been implemented. The following pseudocode illustrates the recommended static
+marker. ``check_bound_layout`` and ``select_and_expand_transport`` stand for
+domain-specific validation and preparation, not existing package functions.
+
+.. code-block:: python
+
+   from typing import cast
+
+   import xarray as xr
+
+   class BoundTransport(xr.Dataset):
+       """Static contract; runtime values remain ordinary Datasets."""
+
+       __slots__ = ()
+
+       @staticmethod
+       def validate(
+           data: xr.Dataset, *, observation_dim: str
+       ) -> "BoundTransport":
+           """Check the layout and return the same borrowed dataset."""
+           check_bound_layout(data, observation_dim=observation_dim)
+           return cast("BoundTransport", data)
+
+   def bind_transport(raw, observations) -> BoundTransport:
+       """Construct observation-aligned transport in canonical order."""
+       bound = select_and_expand_transport(raw, observations)
+       return cast(BoundTransport, bound)
+
+At an existing boundary accepting independently supplied data, call the
+validator and use its typed return value. A trusted producer instead establishes
+the contract through its preparation operations. ``cast`` only records that
+claim for the type checker; it performs no validation. A validator returning
+``None`` does not by itself narrow the caller's variable.
+
+Keep ordinary Dataset or DataTree representations when their shared coordinates,
+alignment and joint selection are useful. A static marker requires no runtime
+wrapper or special constructor. Do not attach new instance behavior to a phantom
+subtype or use ``isinstance`` to decide whether its contract holds.
+
+Package-owned transformations must preserve or establish the contract they
+return. Inherited xarray ``Self`` annotations do not prove that a selection,
+rename or reduction preserves the schema. Use tests of supported transformations
+to establish this, rather than complete validation in every ``__post_init__``
+or dataclass reconstruction. Mutating an object so that its declared contract no
+longer holds is caller error; interception or mutation warnings are not required.
+
+Use this pattern where it clarifies a real handoff, rather than introducing a
+special type for every intermediate. Keep normalization, alignment and unit
+conversion explicit, following the guidance below. Structural validation
+preserves lazy payloads; finite-value and other numerical checks belong to their
+named execution boundary.
+
 Transpose, align, compute
 -------------------------
 
